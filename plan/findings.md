@@ -3688,3 +3688,38 @@ cases, 169 deferred; `SmSurface::EvaluateNormal` and `DropVectors` now call the
   Hermite source curves, a container case past `MIN_ARRAY_SIZE`). At unit and huge scale
   the UV-curve cases defer on `SmSurface::LocalPointSolve` (`surface.surface_p5`, 20
   cases); only the tiny-scale ones are compared until that unit lands.
+
+## topology.brep_p8 (`SmBrep` face builders, blocked, 2026-10-14)
+
+Blocked: no output of this unit can be compared with the C++ yet. Checked against
+`bin/callgraph/graph.json` and `plan/modules.toml` on `main` at `8190c302`.
+
+- **Every success path ends in an unported topology builder.** The 7 owned functions
+  (`CreateFacesWithCurves`, `CreatePlanarFacesWith3DCurves`, `CreatePlanarFaceWith3DCurves`,
+  `CreateFaceInRegionFromSurface`, `CreateFaceFromSurface`, `CreateFacesFromSurface`,
+  `MakeFacesWithCurves`) only orchestrate. The B-rep they return is built by
+  `MakeFaceWithCurves` (`topology.brep_p7`), `MakeFaceTopology` (`brep_p6`),
+  `MakeEdgeInFace` (`brep_p5`), `MakeVertexLoop` (`brep_p9`), `DeleteFace` (`brep_p3`),
+  `DeleteEdge`/`DeleteVertex` (`brep_p4`) and `GetInfiniteRegion`/`GetTolerance`
+  (`brep_p1`). All of these are `todo` and none has an open PR. Before the builders run,
+  the inputs pass through more unported code: `CreateNaturalUVTrimCurves`
+  (`surface.surface_p6`), `FindKnotsByMaxContinuity` (`surface.surface_p8`),
+  `CreateIsoParametricCurve`/`DropPoint` (`surface.surface_p5`) and `SmCurveLoops` /
+  `SmTrimmingTools::FindOuterLoops` (`topology.trimming_tools`, 13 calls).
+- **Consequence for difftest.** Every case would be deferred, apart from input-validation
+  errors (a null surface, or a UV domain that `CreateFaceInRegionFromSurface` finds not
+  contained in the natural domain). The plane fit in `CreatePlanarFace(s)With3DCurves` is
+  `Surface::create_plane_with_3d_curves`, which `surface.surface_p2` already compares, so it
+  doesn't test this unit. A runner whose only non-deferred comparisons are error statuses
+  would pass the gate without checking anything this unit computes (AGENTS.md section 4,
+  item 5.7).
+- **Hard dependency missing.** `topology.loopuse` is still `todo` with no PR. The Rust
+  `topology::Brep` on `main` is still the skeleton: no regions, face surfaces, edge curves or
+  use records. The open PR #55 (`topology.edgeuse_p1`) co-ports most of that model.
+- **Unblock when** `brep_p1`, `brep_p5`, `brep_p6`, `brep_p7` and `brep_p9` are green or
+  partial, and the data model from #55 has merged. Then `CreateFaceInRegionFromSurface`
+  (for planes, B-spline surfaces and cylinders: natural, sub-domain and closed-seam
+  domains) and `CreateFacesFromSurface` (C0-split B-splines, once `surface_p8` lands) can be
+  compared as traversal-order topology plus vertex and edge geometry. `MakeFacesWithCurves`
+  also needs `topology.trimming_tools`. No `UNPORTED(topology.brep_p8)` stubs exist in
+  `crates/solidcore` yet.
