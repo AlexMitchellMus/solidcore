@@ -1424,11 +1424,22 @@ mod tests {
     }
 
     #[test]
-    fn drop_and_trim_on_plane() {
-        let s = plane();
+    fn drop_and_trim_iso_line() {
+        // the flat bilinear patch P(u, v) = (u, v, 0) and the u-iso line v = 0.3
+        let w =
+            |x: f64, y: f64| crate::nurbs::math::CPoint::new(x, y, 0.0, crate::nurbs::math::NOW);
+        let net = vec![
+            vec![w(0.0, 0.0), w(0.0, 1.0)],
+            vec![w(1.0, 0.0), w(1.0, 1.0)],
+        ];
+        let kn = vec![0.0, 0.0, 1.0, 1.0];
+        let n = crate::nurbs::srf_basic::Surface::new(net, 1, 1, kn.clone(), kn).unwrap();
+        let s = Surface::from(crate::nurbs::b_spline_surface::BSplineSurface::from_nurb(
+            n, false,
+        ));
         let c = Curve::from(crate::curve::line::Line::from_points(
-            Vec3::new(0.1, 0.2, 0.0),
-            Vec3::new(0.9, 0.7, 0.0),
+            Vec3::new(0.0, 0.3, 0.0),
+            Vec3::new(1.0, 0.3, 0.0),
             3,
         ));
         let r = s.drop_and_trim_curve::<crate::topology::ObjectHandle>(
@@ -1438,7 +1449,7 @@ mod tests {
             &Extent1d::from_min_max(0.0, 1.0),
             1e-6,
             true,
-            false,
+            true,
             None,
         );
         let r = r.expect("drop and trim");
@@ -1450,11 +1461,11 @@ mod tests {
         let a = uv.evaluate_point(ivl.min()).expect("start");
         let b = uv.evaluate_point(ivl.max()).expect("end");
         assert!(
-            (a.x - 0.1).abs() < 1e-9 && (a.y - 0.2).abs() < 1e-9,
+            (a.x - 0.0).abs() < 1e-9 && (a.y - 0.3).abs() < 1e-9,
             "{a:?}"
         );
         assert!(
-            (b.x - 0.9).abs() < 1e-9 && (b.y - 0.7).abs() < 1e-9,
+            (b.x - 1.0).abs() < 1e-9 && (b.y - 0.3).abs() < 1e-9,
             "{b:?}"
         );
     }

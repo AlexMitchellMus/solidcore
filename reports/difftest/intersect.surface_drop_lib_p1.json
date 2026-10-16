@@ -2626,6 +2626,282 @@
       "values_compared": 4
     },
     {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "trim_flat_bilinear_v_iso",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#0 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "trim_flat_bilinear_u_iso",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#1 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 21
+    },
+    {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "trim_flat_bilinear_v_iso_partial",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#2 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "trim_flat_bilinear_v_iso_subinterval",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#3 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "trim_flat_bilinear_v_iso_boundary",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#4 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "trim_flat_bilinear_offset_keep",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#5 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "trim_flat_bilinear_offset_dropped",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#6 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "trim_flat_bilinear_offset_tol0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#7 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "trim_flat_bilinear_subdomain",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#8 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "trim_twisted_bilinear_v_iso",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#9 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "trim_twisted_bilinear_u_iso",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#10 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "trim_flat_bilinear_scale_1e3",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#11 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "trim_cylinder_vertical_line",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#12 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "trim_cylinder_vertical_line_seam",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#13 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "trim_flat_bilinear_v_iso_on",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#14 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "trim_flat_bilinear_v_iso_partial_on",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#15 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "trim_flat_bilinear_v_iso_subinterval_on",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#16 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "trim_flat_bilinear_v_iso_boundary_on",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#17 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 21
+    },
+    {
+      "deferred": {
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "trim_flat_bilinear_offset_keep_on",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#18 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "trim_flat_bilinear_offset_dropped_on",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#19 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "trim_flat_bilinear_offset_tol0_on",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#20 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "trim_flat_bilinear_subdomain_on",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#21 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "trim_twisted_bilinear_v_iso_on",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#22 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "trim_twisted_bilinear_u_iso_on",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#23 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "trim_flat_bilinear_scale_1e3_on",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#24 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "trim_cylinder_vertical_line_on",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#25 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "trim_cylinder_vertical_line_seam_on",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/intersect.surface_drop_lib_p1/trim_iso_lines.json#26 (upstream tests/SM_API_test/src/TestSmCurves.cpp:424)",
+      "values_compared": 38
+    },
+    {
       "max_rel_err": 0.0,
       "name": "rectangle_bottom_edge_iso",
       "outcome": "pass",
@@ -2875,8 +3151,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
       },
       "max_rel_err": 0.0,
       "name": "trim_line_on_plane",
@@ -2966,12 +3242,16 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0008",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179769949",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3542,12 +3822,16 @@
       "values_compared": 22
     },
     {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
       "max_rel_err": 0.0,
       "name": "gen0080",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770021",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3598,12 +3882,16 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0087",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770028",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3766,12 +4054,16 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0108",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770049",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3798,12 +4090,16 @@
       "values_compared": 40
     },
     {
+      "deferred": {
+        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0112",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770053",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3971,7 +4267,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13903232358179770074",
-      "values_compared": 5
+      "values_compared": 38
     },
     {
       "max_rel_err": 0.0,
@@ -4374,12 +4670,16 @@
       "values_compared": 38
     },
     {
+      "deferred": {
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen0184",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770125",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4495,8 +4795,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0199",
@@ -4722,12 +5022,16 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0227",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770168",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -5170,12 +5474,16 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
       "max_rel_err": 0.0,
       "name": "gen0283",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770224",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -5346,12 +5654,16 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0305",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770246",
-      "values_compared": 22
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -5747,8 +6059,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0355",
@@ -5926,12 +6238,16 @@
       "values_compared": 51
     },
     {
+      "deferred": {
+        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0377",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770318",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -6014,16 +6330,12 @@
       "values_compared": 39
     },
     {
-      "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
-      },
       "max_rel_err": 0.0,
       "name": "gen0388",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13903232358179770329",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -6370,12 +6682,16 @@
       "values_compared": 38
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0432",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770373",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -6530,12 +6846,16 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0452",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770393",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -6546,12 +6866,16 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0454",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770395",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -6642,12 +6966,16 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0466",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770407",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -6811,8 +7139,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0487",
@@ -6918,12 +7246,16 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
       "max_rel_err": 0.0,
       "name": "gen0500",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770441",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -7054,16 +7386,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
-      },
       "max_rel_err": 0.0,
       "name": "gen0517",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13903232358179770458",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -7466,12 +7794,16 @@
       "values_compared": 39
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0568",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770509",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -7642,12 +7974,16 @@
       "values_compared": 38
     },
     {
+      "deferred": {
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen0590",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770531",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -7674,12 +8010,16 @@
       "values_compared": 39
     },
     {
+      "deferred": {
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen0594",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770535",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -8171,8 +8511,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0656",
@@ -8278,12 +8618,16 @@
       "values_compared": 39
     },
     {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
       "max_rel_err": 0.0,
       "name": "gen0669",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770610",
-      "values_compared": 22
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -8334,12 +8678,16 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0676",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770617",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -8647,8 +8995,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0715",
@@ -8690,16 +9038,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
-      },
       "max_rel_err": 0.0,
       "name": "gen0720",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13903232358179770661",
-      "values_compared": 0
+      "values_compared": 10
     },
     {
       "max_rel_err": 0.0,
@@ -8771,7 +9115,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13903232358179770670",
-      "values_compared": 5
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -8806,16 +9150,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
-      },
       "max_rel_err": 0.0,
       "name": "gen0734",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13903232358179770675",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -8874,12 +9214,16 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0742",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770683",
-      "values_compared": 22
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -8978,12 +9322,16 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0755",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770696",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -9002,12 +9350,16 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0758",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770699",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10234,12 +10586,16 @@
       "values_compared": 78
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0912",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770853",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10290,12 +10646,16 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0919",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770860",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10354,12 +10714,16 @@
       "values_compared": 38
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0927",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770868",
-      "values_compared": 22
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10514,12 +10878,16 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0947",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770888",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10586,12 +10954,16 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0956",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770897",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10775,7 +11147,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13903232358179770920",
-      "values_compared": 22
+      "values_compared": 39
     },
     {
       "max_rel_err": 0.0,
@@ -10858,12 +11230,16 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen0990",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770931",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10890,12 +11266,16 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
       "max_rel_err": 0.0,
       "name": "gen0994",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770935",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11018,12 +11398,16 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen1010",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770951",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11162,20 +11546,28 @@
       "values_compared": 40
     },
     {
+      "deferred": {
+        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen1028",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770969",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
       "max_rel_err": 0.0,
       "name": "gen1029",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179770970",
-      "values_compared": 22
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11231,7 +11623,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13903232358179770977",
-      "values_compared": 5
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -11371,8 +11763,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen1054",
@@ -11422,12 +11814,16 @@
       "values_compared": 39
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen1060",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179771001",
-      "values_compared": 22
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11566,12 +11962,16 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen1078",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179771019",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11591,8 +11991,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen1081",
@@ -11850,12 +12250,16 @@
       "values_compared": 38
     },
     {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
       "max_rel_err": 0.0,
       "name": "gen1113",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179771054",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -12047,7 +12451,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13903232358179771078",
-      "values_compared": 5
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -12503,7 +12907,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13903232358179771135",
-      "values_compared": 5
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -12530,20 +12934,28 @@
       "values_compared": 10
     },
     {
+      "deferred": {
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen1198",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179771139",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen1199",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179771140",
-      "values_compared": 22
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -12554,20 +12966,28 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen1201",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179771142",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
       "max_rel_err": 0.0,
       "name": "gen1202",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179771143",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -12915,8 +13335,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen1246",
@@ -13014,12 +13434,16 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen1258",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179771199",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -13590,12 +14014,16 @@
       "values_compared": 38
     },
     {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
       "max_rel_err": 0.0,
       "name": "gen1330",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179771271",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -13758,12 +14186,16 @@
       "values_compared": 38
     },
     {
+      "deferred": {
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen1351",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179771292",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -13838,12 +14270,16 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen1361",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179771302",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -13875,7 +14311,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13903232358179771306",
-      "values_compared": 5
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -13918,12 +14354,16 @@
       "values_compared": 78
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen1371",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179771312",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -14270,12 +14710,16 @@
       "values_compared": 39
     },
     {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
       "max_rel_err": 0.0,
       "name": "gen1415",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179771356",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -14302,12 +14746,16 @@
       "values_compared": 38
     },
     {
+      "deferred": {
+        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen1419",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179771360",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -14406,12 +14854,16 @@
       "values_compared": 39
     },
     {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
       "max_rel_err": 0.0,
       "name": "gen1432",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179771373",
-      "values_compared": 22
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -14422,12 +14874,16 @@
       "values_compared": 39
     },
     {
+      "deferred": {
+        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen1434",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179771375",
-      "values_compared": 22
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -14526,12 +14982,16 @@
       "values_compared": 38
     },
     {
+      "deferred": {
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
+      },
       "max_rel_err": 0.0,
       "name": "gen1447",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179771388",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -14742,12 +15202,16 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
+      },
       "max_rel_err": 0.0,
       "name": "gen1474",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13903232358179771415",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -14855,8 +15319,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmCurveClassification::SmCurveClassification",
+        "unit": "intersect.curve_class_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen1488",
@@ -14867,8 +15331,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen1489",
@@ -14959,12 +15423,14 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 15,
+  "cases_deferred": 77,
   "cases_failed": 0,
-  "cases_passed": 1847,
-  "cases_total": 1862,
+  "cases_passed": 1812,
+  "cases_total": 1889,
   "deferred_by_unit": {
-    "intersect.surface_drop_curve": 15
+    "intersect.curve_class_p4": 26,
+    "intersect.surface_drop_lib_p3": 7,
+    "surface.surface_cache_p1": 44
   },
   "max_rel_err": 0.0,
   "pass": true,
