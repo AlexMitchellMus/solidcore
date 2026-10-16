@@ -92,7 +92,7 @@
 //!   (`surface.surface_p5`) and the general
 //!   `SmSurface::GlobalLineIntersect` (`surface.surface_p8`) return
 //!   [`SolidError::Unported`]. The general `SmSurface::DropCurve`
-//!   ([`Surface::drop_curve_base`]) runs on a copy of the plane (no owner). Statuses
+//!   ([`Surface::drop_curve_base`]) runs on a copy of the plane with the caller's owner. Statuses
 //!   upstream ignores are propagated where upstream would go on with uninitialised
 //!   values.
 
@@ -111,6 +111,7 @@ use crate::geom::geom_utility::p1::{
 };
 use crate::geom::geom_utility::p2::ContinuityType;
 use crate::geom::global_solver::SolverOperation;
+use crate::geom::object::ObjectRef;
 use crate::geom::solution_array::{
     ObjectKind, Solution, SolutionArray, SolutionObject, SolutionType,
 };
@@ -1335,7 +1336,10 @@ impl Plane {
     /// control points are projected and clamped to the domain: the UV B-spline of
     /// those points is exact when no clamp moves a point off its normal line by more
     /// than `approx_tol`, and is kept when `keep_all` or every control point drops
-    /// within `approx_tol`. Everything else is the general `SmSurface::DropCurve`.
+    /// within `approx_tol`. Everything else is the general `SmSurface::DropCurve`, run
+    /// on the plane with its `owner` (the plane's `m_pOwner`, which a bare [`Plane`]
+    /// does not carry: pass the owning [`Surface`]'s [`Surface::owner`]; a face owner
+    /// makes the general drop return `Unported`, as for every other kind).
     ///
     /// # Errors
     ///
@@ -1350,6 +1354,7 @@ impl Plane {
         approx_tol: f64,
         keep_all: bool,
         creating_uv_trim_curve: bool,
+        owner: Option<ObjectRef>,
     ) -> Result<PlaneDropCurve> {
         // init output
         let mut out = PlaneDropCurve {
@@ -1457,7 +1462,9 @@ impl Plane {
         // when the curve is a BSpline Curve
         if curve.is_kind_of(BSplineCurve::TYPE) {
             let Some(b_spline) = b_spline_part(curve) else {
-                return surface_drop_curve(k, self, uv_domain, curve, &ivl, approx_tol, keep_all);
+                return surface_drop_curve(
+                    k, self, uv_domain, curve, &ivl, approx_tol, keep_all, owner,
+                );
             };
 
             // copy and trim the original crv to the given interval
@@ -1495,7 +1502,7 @@ impl Plane {
                 // if clamping moves the control point - give up - pass the call along
                 if dev_from_srf_nrm_line > approx_tol {
                     return surface_drop_curve(
-                        k, self, uv_domain, curve, &ivl, approx_tol, keep_all,
+                        k, self, uv_domain, curve, &ivl, approx_tol, keep_all, owner,
                     );
                 }
 
@@ -1530,7 +1537,7 @@ impl Plane {
         }
 
         // else pass the call along to the general DropCurve method
-        surface_drop_curve(k, self, uv_domain, curve, &ivl, approx_tol, keep_all)
+        surface_drop_curve(k, self, uv_domain, curve, &ivl, approx_tol, keep_all, owner)
     }
 
     // ---- coincidence ------------------------------------------------------------------
@@ -2129,7 +2136,7 @@ fn surface_drop_point(
 }
 
 /// The general `SmSurface::DropCurve(ctx, domain, curve, interval, tol, .., keep_all,
-/// NULL, ..)` on the plane (a copy: no owner).
+/// NULL, ..)` on the plane (a copy with the plane's `owner`).
 fn surface_drop_curve(
     k: &Kernel,
     plane: &Plane,
@@ -2138,8 +2145,11 @@ fn surface_drop_curve(
     interval: &Extent1d,
     approx_tol: f64,
     keep_all: bool,
+    owner: Option<ObjectRef>,
 ) -> Result<PlaneDropCurve> {
-    let r = Surface::from(plane.clone()).drop_curve_base::<crate::surface::surface::p4::NoObject>(
+    let mut surface = Surface::from(plane.clone());
+    *surface.owner_mut() = owner;
+    let r = surface.drop_curve_base::<crate::surface::surface::p4::NoObject>(
         k, uv_domain, curve, interval, approx_tol, keep_all, None,
     )?;
     Ok(PlaneDropCurve {

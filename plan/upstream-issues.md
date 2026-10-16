@@ -1055,13 +1055,13 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Rust port:** `heal::gap` returns `InvalidInput`.
 
 #### UB-129. `SmSurface::DropCurve` uses results whose status it ignores
-- **Location:** `source/SMLib/src/SmSurfaceDropLib.cpp:4590`-`4591` (`SmBSplineCurve::CreateLineSegment` of the pole line, status ignored, then `pUVTrimCurve->EditParameterization` on the pointer that stays `NULL` on a failure), `:5489` (`p3dCurve->EvaluatePoint(sInterval.GetMax(), sCurveEnd)`, status ignored, then `sCurveEnd` read), `:4232` (`SmTol::GetScaledZero(cr3dCurve)`, `SmTol.cpp:1400`, reads the point of an ignored `EvaluatePoint`) and `:4233` (`cr3dCurve.IsDegenerate(.., &crInterval)`, `SmCurve.cpp:14395`-`14427`: an interval outside the curve's natural interval breaks its `SM_ASSERT`, compiled out, and the derivatives of `Evaluate` calls with ignored statuses are read).
+- **Location:** `source/SMLib/src/SmSurfaceDropLib.cpp:4590`-`4591` (`SmBSplineCurve::CreateLineSegment` of the pole line, status ignored, then `pUVTrimCurve->EditParameterization` on the pointer that stays `NULL` on a failure), `:5489` (`p3dCurve->EvaluatePoint(sInterval.GetMax(), sCurveEnd)`, status ignored, then `sCurveEnd` read), `:4232` (`SmTol::GetScaledZero(cr3dCurve)`, `SmTol.cpp:1400`, reads the point of an ignored `EvaluatePoint`) and `:4233` (`cr3dCurve.IsDegenerate(.., &crInterval)`, `SmCurve.cpp:14395`-`14427`: it reads the derivatives of `Evaluate` calls whose statuses it ignores; its asserted precondition, `crInterval` inside the natural interval, is compiled out and only matters for a curve kind whose `Evaluate` fails outside that interval).
 - **What happens:** A failing callee leaves the output unset (a `NULL` curve pointer, an uninitialised point or derivative array) and the next statement uses it.
-- **Trigger:** `CreateLineSegment` fails only for coincident ends (a natural domain shorter than `SM_EFF_ZERO` in the pole direction, which the domain checks above nearly exclude); the `EvaluatePoint`s fail only for curve kinds whose point evaluation can fail (`SmBSplineCurve`, `SmLine` and `SmCircle` clamp or extend instead); `IsDegenerate` needs `crInterval` reaching outside the curve's parameter range.
+- **Trigger:** `CreateLineSegment` fails only for coincident ends (a natural domain shorter than `SM_EFF_ZERO` in the pole direction, which the domain checks above nearly exclude); the `EvaluatePoint`s fail only for curve kinds whose point evaluation can fail (`SmBSplineCurve`, `SmLine` and `SmCircle` clamp or extend instead); the `:4233` `IsDegenerate` case needs a curve kind whose `Evaluate` fails outside its natural interval, and `crInterval` reaching outside it (none in the harness: `SmBSplineCurve::Evaluate`/`EvaluatePoint` clamp, `SmBSplineCurve.cpp:3056`, `:3307`, and `SmLine` and `SmCircle` evaluate anywhere, so those intervals are not undefined).
 - **How found:** read during porting.
 - **Confirmed:** no.
 - **Severity:** crash/UB (needs a bad argument or a failing evaluator).
-- **Rust port:** `Surface::drop_curve_base` propagates those errors. The FFI rejects intervals outside the curve's parameter range.
+- **Rust port:** `Surface::drop_curve_base` propagates those errors. The FFI rejects nothing for the `IsDegenerate` case (it accepts intervals outside the curve's range, zero-length and inverted ones; probed).
 
 ### Topology
 
@@ -1355,13 +1355,13 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Rust port:** The wrappers are stubs until `primitive.primitive_creation_p3` lands. The FFI rejects a negative distance with a full circle (B-spline, analytic, or an arc spanning 360 degrees); the generator sweeps circles over positive distances.
 
 #### HANG-16. `SmSurface::DropCurve` can subdivide the same span forever
-- **Location:** `source/SMLib/src/SmSurfaceDropLib.cpp:5637` `SmSurface::DropCurve`, the span stack loop: a span that fails `TestSpanAccuracy` is split at `(sStart.m_dT + sEnd.m_dT) / 2.0` (`:5937`) and the split point pushed (`:6014`); a failing span is only accepted once it is shorter than `sInterval.GetLength() / 8000.0` (`:5823`).
-- **What happens:** Nothing bounds the stack. When the interval is so short (or zero long) that `1/8000` of it is below one ulp of the span ends, a span of one ulp neither passes that test nor shrinks: the midpoint rounds to `sEnd.m_dT`, `GetNextPoint` succeeds there, and the same point is pushed again on every iteration, so the stack grows until memory runs out.
-- **Trigger:** A curve interval shorter than about `8000` ulps of its end parameters over a span that fails `TestSpanAccuracy` (or a zero interval with a non-positive tolerance, which then does not skip the span).
+- **Location:** `source/SMLib/src/SmSurfaceDropLib.cpp:5637` `SmSurface::DropCurve`, the span stack loop: a span that fails `TestSpanAccuracy` is split at `(sStart.m_dT + sEnd.m_dT) / 2.0` (`:5937`) and the split point pushed (`:6014`); a failing span is only accepted once it is shorter than `sInterval.GetLength() / 8000.0` (`:5824`).
+- **What happens:** Nothing bounds the stack. When `1/8000` of the interval is at most one ulp of the span ends, a span of one ulp neither passes that test nor shrinks: the midpoint rounds to `sEnd.m_dT`, `GetNextPoint` succeeds there, and the same point is pushed again on every iteration, so the stack grows until memory runs out.
+- **Trigger:** A non-degenerate curve interval of length `L` with `L / 8000 <= ulp(max |end|)` (some float spacing inside the interval is at least `L / 8000`) over a span that fails `TestSpanAccuracy`. A zero-length interval is not a trigger: `IsDegenerate` is `TRUE` on it, so no drop point gets `m_eDropDerivRtn == SM_SUCCESS` (`SmSurfaceDropLib.cpp:1894`-`1931`) and the keep-all rescue (`:5514`) needs a deviation below the tolerance.
 - **How found:** read during porting.
 - **Confirmed:** no.
 - **Severity:** hang.
-- **Rust port:** `intersect::surface_drop_lib::p3` bounds the stack at `MAX_SPAN_DEPTH` (64) drop points and returns `SolidError::NotConverged` past it (exact arithmetic needs about 15). The FFI rejects intervals shorter than `1e-6 * max(1, |ends|)` and non-positive tolerances.
+- **Rust port:** `intersect::surface_drop_lib::p3` bounds the stack at `MAX_SPAN_DEPTH` (64) drop points and returns `SolidError::NotConverged` past it (exact arithmetic needs about 15). The FFI rejects a non-degenerate interval (ends normalised, as `SmExtent1d` swaps them) of length `L` with `L / 8000 <= 2 ulp(max |end|)` (about 16000 ulps, twice the margin) and nothing else: zero-length, inverted and out-of-range intervals and any tolerance (zero and negative included) are accepted.
 
 ## Nondeterminism
 

@@ -904,7 +904,7 @@ fn rust_op(k: &Kernel, op: &OpIn, a: &mut Plane, o: &mut Vec<f64>) -> Result<(),
             let d = dom_of(a, *dom);
             let c = rust_curve(curve)?;
             let i = ivl.map_or_else(|| c.natural_interval(), |[x, y]| Extent1d::from_min_max(x, y));
-            let r = a.drop_curve(k, &d, &c, &i, *tol, *keep_all, *creating);
+            let r = a.drop_curve(k, &d, &c, &i, *tol, *keep_all, *creating, None);
             if let Some(res) = st(o, r)? {
                 o.extend([
                     res.max_drop_to_surf,

@@ -19,14 +19,13 @@
 //!
 //! A surface of revolution whose `CreateCanonical` fails makes the record
 //! [[`NO_SURFACE`]]. [`run`] accepts the surfaces and curves the p2 wrapper accepts,
-//! finite domains, a positive finite tolerance and an interval inside the curve's
-//! parameter range (B-spline knots, circle interval, `[0, 1]` for a line) that is at
-//! least `1e-6 * max(1, |ends|)` long. The range is `SmCurve::IsDegenerate`'s asserted
-//! precondition (`SM_ASSERT(pInterval->IsContainedBy(GetNaturalInterval(), ..))`,
-//! compiled out), and past it that function reads the derivatives of `Evaluate` calls
-//! whose status it ignores. On shorter (or zero) intervals, or with a zero tolerance,
-//! upstream's span subdivision (`(start + end) / 2` rounding to `end`) can push the same
-//! span forever (plan/upstream-issues.md HANG-16; the port bounds that depth,
+//! finite domains, any finite tolerance (zero and negative included) and any finite
+//! interval: zero-length, inverted (`SmExtent1d` swaps the ends) and outside the curve's
+//! parameter range (B-spline `Evaluate` clamps, a line and a circle extend, so the ignored
+//! `Evaluate`s of `SmCurve::IsDegenerate` never fail). It rejects only a non-degenerate
+//! interval of length `L` with `L / 8000 <= 2 ulp(max |end|)`: there upstream's span
+//! subdivision (`(start + end) / 2`) cannot shrink a failing span to `L / 8000` and loops
+//! forever (plan/upstream-issues.md HANG-16; the port bounds that depth,
 //! `MAX_SPAN_DEPTH`).
 
 use crate::{call_with_buffer, FfiError};
@@ -80,15 +79,6 @@ fn finite(x: f64) -> Result<f64, FfiError> {
     }
 }
 
-/// The parameter range of `c`.
-fn curve_range(c: &CurveIn) -> Option<[f64; 2]> {
-    match c {
-        CurveIn::Line { .. } => Some([0.0, 1.0]),
-        CurveIn::Circle { d, .. } => Some(*d),
-        CurveIn::BSpline { knots, .. } => Some([*knots.first()?, *knots.last()?]),
-    }
-}
-
 /// Encodes `d` as the shim's input.
 ///
 /// # Errors
@@ -104,20 +94,18 @@ pub fn encode(d: &Drop) -> Result<Vec<f64>, FfiError> {
     let [i0, i1] = d.interval;
     finite(i0)?;
     finite(i1)?;
-    let range = curve_range(&d.curve).ok_or_else(|| bad("curve range"))?;
-    if i0 < range[0] || i1 > range[1] {
-        return Err(bad("interval outside the curve"));
-    }
-    let scale = 1.0f64.max(i0.abs()).max(i1.abs());
-    if i1 - i0 < 1e-6 * scale {
-        return Err(bad("interval too short"));
+    // HANG-16: a non-degenerate interval whose span the subdivision can never shrink
+    // below `length / 8000` (a float spacing inside it is at least that) hangs upstream.
+    // Zero-length, inverted (`SmExtent1d` swaps) and out-of-range intervals are fine.
+    let (lo, hi) = if i0 <= i1 { (i0, i1) } else { (i1, i0) };
+    let len = hi - lo;
+    let m = lo.abs().max(hi.abs());
+    if len > 0.0 && len / 8000.0 <= 2.0 * (m.next_up() - m) {
+        return Err(bad("interval too short for the span subdivision (HANG-16)"));
     }
     v.push(i0);
     v.push(i1);
     let tol = finite(d.tol)?;
-    if tol <= 0.0 {
-        return Err(bad("tolerance not positive"));
-    }
     v.push(tol);
     v.push(if d.keep_all { 1.0 } else { 0.0 });
     v.push(if d.want_record { 1.0 } else { 0.0 });
@@ -146,4 +134,55 @@ pub fn run(d: &Drop) -> Result<Vec<f64>, FfiError> {
             )
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn drop_with(interval: [f64; 2], tol: f64) -> Drop {
+        Drop {
+            surface: SurfaceIn::Plane {
+                o: [0.0; 3],
+                x: [1.0, 0.0, 0.0],
+                y: [0.0, 1.0, 0.0],
+                scale: [1.0, 1.0],
+                domain: [0.0, 0.0, 1.0, 1.0],
+            },
+            curve: CurveIn::Line {
+                a: [0.0; 3],
+                b: [1.0, 0.0, 0.0],
+            },
+            domain: [0.0, 0.0, 1.0, 1.0],
+            interval,
+            tol,
+            keep_all: true,
+            want_record: true,
+        }
+    }
+
+    #[test]
+    fn guard_rejects_only_the_hanging_intervals() {
+        // accepted: zero-length, inverted, outside the range, any tolerance
+        for (ivl, tol) in [
+            ([0.5, 0.5], 1.0e-4),
+            ([1.0, 0.0], 1.0e-4),
+            ([-0.5, 2.0], 1.0e-4),
+            ([2.0, 3.0], 1.0e-4),
+            ([0.0, 1.0], 0.0),
+            ([0.0, 1.0], -1.0),
+            ([0.0, 1.0], 1.0e-12),
+        ] {
+            assert!(encode(&drop_with(ivl, tol)).is_ok(), "{ivl:?} {tol}");
+        }
+        // rejected (HANG-16): a non-degenerate interval of at most 16000 ulps
+        let m = 1.0f64;
+        let ulp = m.next_up() - m;
+        assert!(encode(&drop_with([1.0, 1.0 + 100.0 * ulp], 1.0e-4)).is_err());
+        assert!(encode(&drop_with([1.0 + 100.0 * ulp, 1.0], 1.0e-4)).is_err());
+        assert!(encode(&drop_with([1.0, 1.0 + 20000.0 * ulp], 1.0e-4)).is_ok());
+        assert!(encode(&drop_with([0.0, f64::MIN_POSITIVE], 1.0e-4)).is_ok());
+        // non-finite stays rejected
+        assert!(encode(&drop_with([0.0, f64::NAN], 1.0e-4)).is_err());
+    }
 }

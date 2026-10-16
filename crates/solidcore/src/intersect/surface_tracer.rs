@@ -1643,7 +1643,16 @@ fn surface_drop_curve(
 ) -> Result<(f64, f64, Vec<Curve>)> {
     match surface.kind() {
         SurfaceKind::Plane(p) => {
-            let r = p.drop_curve(k, uv_domain, curve, interval, approx_tol, true, false)?;
+            let r = p.drop_curve(
+                k,
+                uv_domain,
+                curve,
+                interval,
+                approx_tol,
+                true,
+                false,
+                surface.owner(),
+            )?;
             Ok((r.max_drop_to_surf, r.max_approx_dev, r.uv_curves))
         }
         SurfaceKind::BSpline(_)

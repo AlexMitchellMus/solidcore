@@ -62,7 +62,9 @@
 //!   [`MAX_SPAN_DEPTH`] drop points deep (upstream fixtures reach about 15: a span
 //!   passes once shorter than `1/8000` of the interval; upstream is unbounded,
 //!   plan/upstream-issues.md HANG-16); deeper is
-//!   [`SolidError::NotConverged`].
+//!   [`SolidError::NotConverged`]. No compared case reaches the second `GetNextPoint` of
+//!   a span yet (the offset surface defers first), so the bound, the span stack and
+//!   `sm_AddToCurve` are untested until surface.offset_surface lands.
 //! - **Not ported here.** The `SM_DEBUG_CODE` blocks, the `SM_ASSERT`s and the
 //!   messages.
 
@@ -292,8 +294,9 @@ fn uv_curve_gap(
     approx_tol_3d: f64,
 ) -> Result<(f64, f64)> {
     let SurfaceKind::BSpline(bs) = surface.kind() else {
-        // DISPATCH GAP: SmCrvOnSurf over a non-B-spline SmSurface (curve.crv_on_surf,
-        // partial; no UNPORTED marker, as in intersect::surface_drop_curve)
+        // UNPORTED(curve.crv_on_surf): SmCrvOnSurf over a non-B-spline SmSurface (dispatch
+        // gap: the ported curve holds a B-spline surface only) -- justified: findings.md
+        // intersect.surface_drop_lib_p3
         return Err(SolidError::unported(
             "SmSurface (non-B-spline) in SmCrvOnSurf",
             "curve.crv_on_surf",

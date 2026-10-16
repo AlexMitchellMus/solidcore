@@ -441,8 +441,12 @@ pub(crate) fn rust_surface(k: &Kernel, s: &SurfIn) -> Result<Option<Surface>, Ha
                 &ext(*domain),
             );
             // with its NURB, as the shim makes it (a read-only query of the Rust plane
-            // never keeps one; upstream's would, changing later point solves)
-            p.make_nurb().map_err(|e| harness(format!("plane NURB: {e}")))?;
+            // never keeps one; upstream's would, changing later point solves). The shim
+            // ignores the NURB's status as well: a plane whose natural domain has no
+            // width or height makes none on either side (probed: the C++ drop does not
+            // crash and agrees with the Rust one, intersect.surface_drop_lib_p3
+            // fixtures plane_natural_zero_*).
+            let _ = p.make_nurb();
             Some(Surface::from(p))
         }
         SurfIn::Bspline { p, q, net, u, v } => {

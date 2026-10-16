@@ -353,15 +353,29 @@ fn point_at(p: [f64; 3]) -> CurveIn {
     }
 }
 
-/// The curve's whole parameter range or a random part of it.
+/// The curve's whole parameter range or a random part of it, an interval overhanging the
+/// range, one entirely past its end, a zero-length or inverted one, or one just above the
+/// ffi guard's length bound (HANG-16).
 fn gen_interval(rng: &mut Rng, range: [f64; 2]) -> [f64; 2] {
-    if rng.chance(0.7) {
-        return range;
-    }
     let w = range[1] - range[0];
     let a = range[0] + rng.uniform(0.0, 0.4) * w;
     let b = range[0] + rng.uniform(0.6, 1.0) * w;
-    [a, b]
+    match rng.below(100) {
+        0..=39 => range,
+        40..=64 => [a, b],
+        65..=74 => [range[0] - 0.1 * w, range[1] + 0.1 * w],
+        75..=79 => [range[0] + rng.uniform(-0.1, 0.1) * w, range[1] + 0.1 * w],
+        80..=82 => [range[1] + 0.1 * w, range[1] + 0.5 * w],
+        83..=86 => [a, a],
+        87..=91 => [b, a],
+        92..=94 => [range[1], range[0]],
+        _ => {
+            // length 3x the guard's bound (16000 ulp of the larger end)
+            let m = a.abs().max(1.0);
+            let len = 3.0 * 16000.0 * (m.next_up() - m);
+            [a, a + len]
+        }
+    }
 }
 
 fn curve_range(c: &CurveIn) -> [f64; 2] {
@@ -376,6 +390,10 @@ fn curve_range(c: &CurveIn) -> [f64; 2] {
 }
 
 fn gen_tol(rng: &mut Rng, s: f64) -> f64 {
+    if rng.chance(0.06) {
+        // zero, tiny and huge
+        return pick(rng, &[0.0, 1.0e-12, 10.0], 0.0) * s;
+    }
     pick(rng, &[1.0e-6, 1.0e-4, 1.0e-3, 1.0e-2, 1.0e-8], 1.0e-4) * s
 }
 
@@ -413,7 +431,7 @@ fn gen_case(rng: &mut Rng, k: &Kernel) -> Option<Inputs> {
         let r = curve_range(&c);
         (c, r)
     };
-    if rng.chance(0.3) {
+    if rng.chance(0.4) {
         interval = gen_interval(rng, interval);
     }
 
@@ -429,6 +447,8 @@ fn gen_case(rng: &mut Rng, k: &Kernel) -> Option<Inputs> {
             let e = 1.0e-9 * (1.0 + nat[0].abs());
             domain = [nat[0], nat[1], nat[2] + e, nat[3]];
         }
+        4 => domain = [nat[2], nat[1], nat[0], nat[3]],
+        5 => domain = [nat[0], nat[3], nat[2], nat[1]],
         _ => {}
     }
 
@@ -464,6 +484,30 @@ fn square_plane() -> SurfIn {
         y: [0.0, 1.0, 0.0],
         scale: [1.0, 1.0],
         domain: [0.0, 0.0, 1.0, 1.0],
+    }
+}
+
+/// A plane with the given natural domain.
+fn plane_with_domain(domain: [f64; 4]) -> SurfIn {
+    SurfIn::Plane {
+        o: [0.0, 0.0, 0.0],
+        x: [1.0, 0.0, 0.0],
+        y: [0.0, 1.0, 0.0],
+        scale: [1.0, 1.0],
+        domain,
+    }
+}
+
+/// A cone of base radius 1 and height 1 about the z axis, apex at `(0, 0, 1)`.
+fn cone_to_apex() -> SurfIn {
+    SurfIn::Revolution {
+        gen: CurveIn::Line {
+            a: [1.0, 0.0, 0.0],
+            b: [0.0, 0.0, 1.0],
+        },
+        point: [0.0, 0.0, 0.0],
+        axis: [0.0, 0.0, 1.0],
+        swap: false,
     }
 }
 
@@ -567,8 +611,156 @@ fn fixtures() -> Vec<(String, Inputs)> {
                 [0.0, 1.0],
             ),
         ),
+        // a plane whose natural domain has no width (DegenSurfaceFail: the given
+        // degenerate domain is replaced by the natural one)
+        (
+            "plane_natural_zero_width".to_owned(),
+            fixture(
+                plane_with_domain([0.0, 0.0, 0.0, 1.0]),
+                point_at([0.0, 0.5, 0.0]),
+                [0.0, 0.0, 0.0, 1.0],
+                [0.0, 1.0],
+            ),
+        ),
+        // a plane whose natural domain has no height (WR-100: upstream tests the width
+        // twice, so the drop goes on with degen_v = 0)
+        (
+            "plane_natural_zero_height".to_owned(),
+            fixture(
+                plane_with_domain([0.0, 0.0, 1.0, 0.0]),
+                point_at([0.5, 0.0, 0.0]),
+                [0.0, 0.0, 1.0, 0.0],
+                [0.0, 1.0],
+            ),
+        ),
+        // the apex of a cone (a surface pole) with a point curve there: the pole line
+        // (a degenerate curve on a pole)
+        (
+            "cone_apex_pole_line".to_owned(),
+            Inputs {
+                surface: cone_to_apex(),
+                curve: point_at([0.0, 0.0, 1.0]),
+                domain: [0.0; 4],
+                interval: [0.0, 1.0],
+                tol: 1.0e-4,
+                keep_all: true,
+                want_record: true,
+            },
+        ),
+        // lines along the axis through a sphere pole: the drop of the start lands on the
+        // pole, so FindDegenParamForDirection runs (SM_CTC_BAD_FIND_DEGENPARAM_WARNING).
+        // All of them defer on the offset surface today (the tangent is (anti-)parallel to
+        // the normal, yet `SetProperties` still reaches `rOffset.DropVectors`), so they
+        // only compare once surface.offset_surface (PR #62) lands.
+        (
+            "sphere_axis_line_n_up_from_pole".to_owned(),
+            Inputs {
+                surface: sphere(1.0),
+                curve: line([0.0, 0.0, 1.0], [0.0, 0.0, 1.5]),
+                domain: [0.0; 4],
+                interval: [0.0, 1.0],
+                tol: 1.0e-4,
+                keep_all: true,
+                want_record: true,
+            },
+        ),
+        (
+            "sphere_axis_line_n_down_from_pole".to_owned(),
+            Inputs {
+                surface: sphere(1.0),
+                curve: line([0.0, 0.0, 1.0], [0.0, 0.0, 0.5]),
+                domain: [0.0; 4],
+                interval: [0.0, 1.0],
+                tol: 1.0e-4,
+                keep_all: true,
+                want_record: true,
+            },
+        ),
+        (
+            "sphere_axis_line_n_up_from_above".to_owned(),
+            Inputs {
+                surface: sphere(1.0),
+                curve: line([0.0, 0.0, 1.5], [0.0, 0.0, 2.5]),
+                domain: [0.0; 4],
+                interval: [0.0, 1.0],
+                tol: 1.0e-4,
+                keep_all: true,
+                want_record: true,
+            },
+        ),
+        (
+            "sphere_axis_line_n_down_from_above".to_owned(),
+            Inputs {
+                surface: sphere(1.0),
+                curve: line([0.0, 0.0, 1.5], [0.0, 0.0, 0.5]),
+                domain: [0.0; 4],
+                interval: [0.0, 1.0],
+                tol: 1.0e-4,
+                keep_all: true,
+                want_record: true,
+            },
+        ),
+        (
+            "sphere_axis_line_s_down_from_pole".to_owned(),
+            Inputs {
+                surface: sphere(1.0),
+                curve: line([0.0, 0.0, -1.0], [0.0, 0.0, -1.5]),
+                domain: [0.0; 4],
+                interval: [0.0, 1.0],
+                tol: 1.0e-4,
+                keep_all: true,
+                want_record: true,
+            },
+        ),
+        (
+            "sphere_axis_line_s_up_from_pole".to_owned(),
+            Inputs {
+                surface: sphere(1.0),
+                curve: line([0.0, 0.0, -1.0], [0.0, 0.0, -0.5]),
+                domain: [0.0; 4],
+                interval: [0.0, 1.0],
+                tol: 1.0e-4,
+                keep_all: true,
+                want_record: true,
+            },
+        ),
+        (
+            "sphere_axis_line_s_down_from_below".to_owned(),
+            Inputs {
+                surface: sphere(1.0),
+                curve: line([0.0, 0.0, -1.5], [0.0, 0.0, -2.5]),
+                domain: [0.0; 4],
+                interval: [0.0, 1.0],
+                tol: 1.0e-4,
+                keep_all: true,
+                want_record: true,
+            },
+        ),
+        (
+            "sphere_axis_line_s_up_from_below".to_owned(),
+            Inputs {
+                surface: sphere(1.0),
+                curve: line([0.0, 0.0, -1.5], [0.0, 0.0, -0.5]),
+                domain: [0.0; 4],
+                interval: [0.0, 1.0],
+                tol: 1.0e-4,
+                keep_all: true,
+                want_record: true,
+            },
+        ),
+        // a zero-length interval
+        (
+            "plane_zero_length_interval".to_owned(),
+            fixture(
+                square_plane(),
+                line([0.5, 0.5, 0.0], [0.5, 0.5, 1.0]),
+                unit,
+                [0.5, 0.5],
+            ),
+        ),
     ];
-    // point curves on the sphere's poles and seam, on the cylinder's seam
+    // point curves on the sphere's poles and seam, on the cylinder's seam (the four pole
+    // ones end at FirstDropUncontainedFail; the pole line is reached by cone_apex_pole_line)
     for (name, srf, p) in [
         ("sphere_north_pole", sphere(1.0), [0.0, 0.0, 1.0]),
         ("sphere_south_pole", sphere(1.0), [0.0, 0.0, -1.0]),

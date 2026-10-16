@@ -44,6 +44,8 @@
 //! | [`scaled_zero_of_volume`]              | `SmTol::GetScaledZero(const SmVolume&)`        |
 //! | [`scaled_zero_of_curve`]               | `SmTol::GetScaledZero(const SmCurve&)` (CO-PORTED by `intersect.surface_drop_lib_p3`) |
 //! | [`map_to_1d`]                          | `SmTol::MapTo1d(SmTol3d&, SmVector3d&, const SmExtent1d&)` |
+//! | [`map_to_1d_on_curve`]                 | `SmTol::MapTo1d(SmTol3d&, double, const SmCurve&)` (PR #136 round 2) |
+//! | [`is_degenerate_curve`], [`zone_tol_3d_of_curve`] | `SmTol::IsDegenerate(const SmCurve*, SmExtent1d, SmXSectTol3d*)`, the `SmCurve` branch of `SmTol::GetZoneTol3d(const SmObject*)` |
 //! | [`scaled_zero_sq_of`], [`scaled_zero_sqrt_of`] | unary `GetScaledZeroSq<cA>`, `GetScaledZeroSqrt<cA>` |
 //! | [`scaled_zero2`], [`scaled_zero_sq2`], [`scaled_zero_sqrt2`] | binary `GetScaledZero<cA,cB>`, `...Sq`, `...Sqrt` |
 //! | [`scaled_zero3`], [`scaled_zero_sq3`], [`scaled_zero_sqrt3`] | tertiary templates     |
@@ -126,10 +128,11 @@ use crate::surface::volume::Volume;
 // overrides belong to SmVertex, SmEdge, SmFace, SmEdgeuse), SmSurface/SmCurve
 // (GetFace/GetEdge), SmBrep, SmBrepData and SmCurveClassification; those classes have
 // no Rust object type yet.
-// UNPORTED(curve.curve_p2): SmTol::IsDegenerate(const SmCurve*, SmExtent1d, ..),
-// SmTol::MapTo1d(SmTol3d&, double, const SmCurve&) need SmCurve::IsDegenerate /
-// Evaluate / GetNaturalInterval (SmTol::GetScaledZero(const SmCurve&) is
-// scaled_zero_of_curve since PR #136).
+// SmTol::IsDegenerate(const SmCurve*, SmExtent1d, ..) is is_degenerate_curve,
+// SmTol::MapTo1d(SmTol3d&, double, const SmCurve&) is map_to_1d_on_curve and
+// SmTol::GetScaledZero(const SmCurve&) is scaled_zero_of_curve (PR #136). The edge branch
+// of GetZoneTol3d(const SmObject*) for a curve owned by an edge is
+// UNPORTED(topology.edge): SmEdge::GetTolerance.
 // CO-PORTED in intersect.curve_class_p1: SmTol::MapTo2d(const SmTol3d&, double, const
 // SmCurve&, const SmSurface&) is surface::surface::p1::map_to_2d_on_curve (its UV-curve
 // and 3D branches; the SmCrvOnSurf branch is Unported there).
@@ -602,6 +605,75 @@ pub fn map_to_1d(tol: f64, deriv: Vec3, natural_interval: &Extent1d) -> f64 {
     })
 }
 
+/// `SmTol::MapTo1d(SmTol3d&, double, const SmCurve&)`: [`map_to_1d`] at the first
+/// derivative of `curve` at `param` (`Evaluate(param, 1, TRUE, ..)`, its status ignored
+/// upstream) and the curve's natural interval. `tol` is the value of an `SmTol3d`.
+///
+/// # Errors
+///
+/// Those of the curve evaluation (upstream ignores its status and then reads the unset
+/// derivative; [`SolidError::Unported`] always propagates).
+pub fn map_to_1d_on_curve(tol: f64, param: f64, curve: &Curve) -> Result<f64> {
+    // evaluate CurvePt
+    let pd = curve.evaluate(param, 1, true, true)?;
+    let deriv = pd.get(1).copied().ok_or(SolidError::InvalidInput {
+        operation: "geom::tol::map_to_1d_on_curve",
+        reason: "no first derivative",
+    })?;
+
+    // pass the call along
+    Ok(map_to_1d(tol, deriv, &curve.natural_interval()))
+}
+
+/// The `SmCurve` branch of `SmTol::GetZoneTol3d(const SmObject*)`: the tolerance of the
+/// curve's edge, else the system zone tolerance.
+///
+/// # Errors
+///
+/// [`SolidError::Unported`]: `SmEdge::GetTolerance` (`topology.edge`) for a curve that
+/// defines an edge's shape, and the owner chain of a generated curve or UV trim curve
+/// (whose owners are not reachable from a bare curve).
+pub fn zone_tol_3d_of_curve(k: &Kernel, curve: &Curve) -> Result<f64> {
+    let mut chain = false;
+    let edge = curve.edge(|_| {
+        chain = true;
+        None
+    })?;
+    if edge.is_some() {
+        // UNPORTED(topology.edge): SmEdge::GetTolerance
+        return Err(SolidError::unported(
+            "SmEdge::GetTolerance",
+            "topology.edge",
+        ));
+    }
+    if chain {
+        // UNPORTED(topology.edge): SmCurve::GetEdge through the owning curves and edge uses
+        return Err(SolidError::unported("SmCurve::GetEdge", "topology.edge"));
+    }
+    Ok(zone_tol_3d(k, SmallTopoType::NormalSize))
+}
+
+/// `SmTol::IsDegenerate(const SmCurve*, SmExtent1d, SmXSectTol3d*)`: the curve over
+/// `interval` is shorter than the intersection tolerance (`override_xsect_tol`, else
+/// twice-zone from [`zone_tol_3d_of_curve`]). A missing curve is degenerate.
+///
+/// # Errors
+///
+/// Those of [`zone_tol_3d_of_curve`] and [`Curve::is_degenerate`].
+pub fn is_degenerate_curve(
+    k: &Kernel,
+    curve: Option<&Curve>,
+    interval: &Extent1d,
+    override_xsect_tol: Option<f64>,
+) -> Result<bool> {
+    let Some(curve) = curve else {
+        return Ok(true);
+    };
+    let zone = zone_tol_3d_of_curve(k, curve)?;
+    let xsect = override_xsect_tol.unwrap_or_else(|| xsect_tol_3d_from_zones(k, zone, zone));
+    curve.is_degenerate(xsect, Some(interval))
+}
+
 // ---- scaled zeros ------------------------------------------------------------------
 
 /// The default scaled zero, `SM_EFF_ZERO` (`SmTol::GetScaledZero()`).
@@ -991,6 +1063,36 @@ impl<A: Ord + Copy, B: Ord + Copy> Relation<A, B> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_line(len: f64) -> Curve {
+        use crate::curve::line::{BoundedLineOptions, Line};
+        Curve::from(Line::bounded(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(len, 0.0, 0.0),
+            &Extent1d::from_min_max(0.0, 1.0),
+            &BoundedLineOptions::default(),
+        ))
+    }
+
+    #[test]
+    fn curve_tolerances() {
+        let k = Kernel::default();
+        let c = test_line(4.0);
+        // the first derivative of the bounded line is its (unit-parameter) vector
+        let t = map_to_1d_on_curve(1.0e-3, 0.5, &c).unwrap();
+        assert!((t - 1.0e-3 / 4.0).abs() < 1.0e-15);
+        let ivl = Extent1d::from_min_max(0.0, 1.0);
+        assert_eq!(is_degenerate_curve(&k, None, &ivl, None), Ok(true));
+        assert_eq!(is_degenerate_curve(&k, Some(&c), &ivl, None), Ok(false));
+        assert_eq!(
+            is_degenerate_curve(&k, Some(&test_line(1.0e-9)), &ivl, None),
+            Ok(true)
+        );
+        assert_eq!(
+            is_degenerate_curve(&k, Some(&c), &ivl, Some(10.0)),
+            Ok(true)
+        );
+    }
 
     #[test]
     fn scaled_zero_of_unbounded_volume() {

@@ -352,6 +352,7 @@ fn surface_drop_curve(
                 approx_tol,
                 keep_all,
                 creating_uv_trim_curve,
+                surface.owner(),
             )?;
             Ok((r.max_drop_to_surf, r.max_approx_dev, r.uv_curves))
         }

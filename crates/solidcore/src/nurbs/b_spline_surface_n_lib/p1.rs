@@ -217,7 +217,9 @@ struct DroppedCurves {
 
 /// `SmSurface::DropCurve(context, domain, curve, interval, tol, ..)` (virtual; the
 /// base surface is a B-spline surface, so the base body
-/// [`crate::intersect::surface_drop_lib::p3`]).
+/// [`crate::intersect::surface_drop_lib::p3`]). A bare [`BSplineSurface`] carries no
+/// owner (upstream's `m_pOwner`), so the surface runs unowned: a face-owned base surface
+/// would make the general drop return `Unported`, which this copy cannot reproduce.
 fn drop_curve(
     k: &Kernel,
     srf: &BSplineSurface,
