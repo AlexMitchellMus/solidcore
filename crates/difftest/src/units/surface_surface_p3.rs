@@ -322,7 +322,7 @@ fn rust_run(k: &Kernel, i: &Inputs) -> Result<Vec<f64>, Fail> {
     let mut o = Vec::new();
     match &i.op {
         OpIn::EvalGeometric { uv, fu, fv } => {
-            match stat(s.evaluate_geometric(&k, p2(*uv), side(*fu), side(*fv)))? {
+            match stat(s.evaluate_geometric(k, p2(*uv), side(*fu), side(*fv)))? {
                 Ok(g) => {
                     o.push(0.0);
                     push_geometric(&mut o, &g);
@@ -331,7 +331,7 @@ fn rust_run(k: &Kernel, i: &Inputs) -> Result<Vec<f64>, Fail> {
             }
         }
         OpIn::NormalSection { uv, fu, fv, dir } => {
-            match stat(s.evaluate_normal_section(&k, p2(*uv), side(*fu), side(*fv), v3(*dir)))? {
+            match stat(s.evaluate_normal_section(k, p2(*uv), side(*fu), side(*fv), v3(*dir)))? {
                 Ok(sec) => {
                     o.push(0.0);
                     pv(&mut o, sec.tangent);
@@ -388,16 +388,16 @@ fn rust_run(k: &Kernel, i: &Inputs) -> Result<Vec<f64>, Fail> {
             }
         }
         OpIn::FindPsNormal { p, sq_tol, pts } => {
-            run_enfo(&mut FindPsNormalEnfo::new(&k, v3(*p), &s, *sq_tol, SolverOperation::Minimize), 2, pts, &mut o)?;
+            run_enfo(&mut FindPsNormalEnfo::new(k, v3(*p), &s, *sq_tol, SolverOperation::Minimize), 2, pts, &mut o)?;
         }
         OpIn::SssIntersect { s2, s3, pts } => {
             let (s2, s3) = (surface_of(s2)?, surface_of(s3)?);
-            run_enfo(&mut SssIntersectEnfo::new(&k, &s, &s2, &s3, 0.0), 6, pts, &mut o)?;
+            run_enfo(&mut SssIntersectEnfo::new(k, &s, &s2, &s3, 0.0), 6, pts, &mut o)?;
         }
         OpIn::LocalPlane { other, dom1, dom2, tol, g1, g2, po, pn } => {
             let s2 = surface_of(other)?;
             match stat(s.local_plane_surface_intersect(
-                &k, &dom_of(*dom1),
+                k, &dom_of(*dom1),
                 &s2,
                 &dom_of(*dom2),
                 *tol,
@@ -420,7 +420,7 @@ fn rust_run(k: &Kernel, i: &Inputs) -> Result<Vec<f64>, Fail> {
             let s2 = surface_of(other)?;
             let vs = vecs3(vecs);
             match stat(s.local_surface_solve(
-                &k, &dom_of(*dom1),
+                k, &dom_of(*dom1),
                 &s2,
                 &dom_of(*dom2),
                 sop_of(*sop)?,
@@ -441,7 +441,7 @@ fn rust_run(k: &Kernel, i: &Inputs) -> Result<Vec<f64>, Fail> {
         OpIn::LocalSss { s2, s3, doms, g1, g2, g3 } => {
             let (s2, s3) = (surface_of(s2)?, surface_of(s3)?);
             match stat(s.local_surface_surface_intersect(
-                &k, &dom_of(doms[0]),
+                k, &dom_of(doms[0]),
                 &s2,
                 &dom_of(doms[1]),
                 &s3,

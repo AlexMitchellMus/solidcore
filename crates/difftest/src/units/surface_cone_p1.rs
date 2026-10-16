@@ -1071,9 +1071,14 @@ pub(super) fn common_cases(ctx: &CaseContext) -> Result<Vec<Case>, HarnessError>
         c.name = format!("common_cone_{}", c.name);
         c.inputs = serde_json::json!({ "common_cone": c.inputs });
     }
-    let subdomains: Vec<_> = cases.iter().filter(|c| c.inputs["common_cone"]["op"] == "inversion").cloned().map(|mut c| {
-        c.name.push_str("_subdomain"); c.inputs["common_subdomain"] = Value::Bool(true); c
-    }).collect();
+    let subdomains = cases.iter()
+        .filter(|c| c.inputs.get("common_cone").and_then(|v| v.get("op")).and_then(Value::as_str) == Some("inversion"))
+        .cloned().map(|mut c| {
+            c.name.push_str("_subdomain");
+            c.inputs.as_object_mut().ok_or_else(|| harness("common input object"))?
+                .insert("common_subdomain".into(), Value::Bool(true));
+            Ok(c)
+        }).collect::<Result<Vec<_>, HarnessError>>()?;
     cases.extend(subdomains);
     let mut database_cases = Vec::new();
     for (class, mode) in [
@@ -1086,11 +1091,11 @@ pub(super) fn common_cases(ctx: &CaseContext) -> Result<Vec<Case>, HarnessError>
                 serde_json::json!({"op":"to_step","u":0.25,"v":0.5}),
                 serde_json::json!({"op":"copy"})] {
                 let mut value = op;
-                value["cone"] = serde_json::json!({"mode":mode,"origin":[0.0,0.0,0.0],"x":[1.0,0.0,0.0],"y":[0.0,1.0,0.0]});
+                value.as_object_mut().ok_or_else(|| harness("database operation object"))?.insert("cone".into(), serde_json::json!({"mode":mode,"origin":[0.0,0.0,0.0],"x":[1.0,0.0,0.0],"y":[0.0,1.0,0.0]}));
                 let i: Inputs = serde_json::from_value(value.clone()).map_err(|e| harness(e.to_string()))?;
                 let data = ffi::serialize_cone(&ffi_cone(i.cone.as_ref().ok_or_else(|| harness("missing cone"))?), binary)
                     .map_err(|e| harness(e.to_string()))?;
-                if data.get(0) != Some(&SUCCESS) || data.get(1) != Some(&SUCCESS) {
+                if data.first() != Some(&SUCCESS) || data.get(1) != Some(&SUCCESS) {
                     return Err(harness("database fixture constructor/writer failed"));
                 }
                 let bytes: Vec<u8> = data.into_iter().skip(2).map(|v| v as u8).collect();
@@ -1123,8 +1128,8 @@ pub(super) fn common_cases(ctx: &CaseContext) -> Result<Vec<Case>, HarnessError>
             let mut case = case.clone();
             case.name = format!("{}_queries_{subdomain}", case.name);
             case.inputs.as_object_mut().ok_or_else(|| harness("query input object"))?.remove("common_lazy");
-            case.inputs["common_queries"] = Value::Bool(true);
-            case.inputs["common_subdomain"] = Value::Bool(subdomain);
+            case.inputs.as_object_mut().ok_or_else(|| harness("query input object"))?.insert("common_queries".into(), Value::Bool(true));
+            case.inputs.as_object_mut().ok_or_else(|| harness("query input object"))?.insert("common_subdomain".into(), Value::Bool(subdomain));
             queries.push(case);
         }
     }
@@ -1161,9 +1166,9 @@ pub(super) fn common_rust(value: Value, database: Option<&Value>, lazy: bool, su
     let mut out = vec![SUCCESS];
     let built = if let Some(database) = database {
         use solidcore::topology::database_io::{DatabaseReader, FileType};
-        let bytes: Vec<u8> = serde_json::from_value(database["bytes"].clone()).map_err(|e| harness(e.to_string()))?;
+        let bytes: Vec<u8> = serde_json::from_value(database.get("bytes").ok_or_else(|| harness("database bytes"))?.clone()).map_err(|e| harness(e.to_string()))?;
         let mut reader = DatabaseReader::new();
-        reader.open_for_read(bytes, if database["binary"] == true { FileType::Binary } else { FileType::Ascii });
+        reader.open_for_read(bytes, if database.get("binary").and_then(Value::as_bool).unwrap_or(false) { FileType::Binary } else { FileType::Ascii });
         let ty = if matches!(cone.mode, ModeIn::CylCanonical { .. }) { CYLINDER_TYPE } else { CONE_TYPE };
         Surface::read_from_db(&k, ty, &mut reader, 30)
     } else { rust_cone(&k, cone).map(Surface::from) };

@@ -5085,3 +5085,12 @@ ASCII/binary version-30 round trips, lazy `SmSurfaceEval` derivatives, inversion
 subdomains, degeneracy, normals and bounding boxes. Common fallible inversion
 compares UV/location only on success; direct cone part 1 retains its native
 failure-output comparisons. No comparison tolerance or absolute floor is changed.
+
+
+Validation configuration for #133: Apple Clang uses the shared Release/O2 kernel
+and O2 shims. GNU/Linux ARM64 uses the same pinned C++ kernel built Release/O2;
+its local shim build uses O0 to avoid costly optimization of copied private-helper
+translation units. Both retain `-ffp-contract=off -fno-fast-math`, and the Rust
+full-suite runner uses the difftest profile. The local-disk Linux source snapshot
+is synchronized by SHA-256 against the worktree's crate/harness/config inputs.
+No tolerance or floor was adjusted for either configuration.

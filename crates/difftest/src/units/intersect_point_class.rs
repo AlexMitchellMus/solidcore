@@ -899,7 +899,7 @@ fn rust_run(s: &Script) -> Result<Vec<f64>, Fail> {
                     }
                     match st(pc.merge_into_object(&k, v3(*p)))? {
                         Ok(m) => {
-                            o.extend([0.0, m.new_edges.len() as f64, m.new_vertices.len() as f64])
+                            o.extend([0.0, m.new_edges.len() as f64, m.new_vertices.len() as f64]);
                         }
                         Err(c) => o.extend([c, 0.0, 0.0]),
                     }

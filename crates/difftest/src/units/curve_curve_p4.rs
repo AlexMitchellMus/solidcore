@@ -748,9 +748,9 @@ fn rust(k: &Kernel, op: &OpIn) -> Result<Output, HarnessError> {
             let c = build(curve)?;
             let i = Extent1d::from_min_max(ivl[0], ivl[1]);
             let r = if *base {
-                is_closed_base(&k, &c, &i, *tol)
+                is_closed_base(k, &c, &i, *tol)
             } else {
-                c.is_closed(&k, &i, *tol)
+                c.is_closed(k, &i, *tol)
             };
             let r = tri!(o, r);
             o.extend([0.0, b(r)]);
@@ -764,9 +764,9 @@ fn rust(k: &Kernel, op: &OpIn) -> Result<Output, HarnessError> {
             let c = build(curve)?;
             let i = ivl.map(|v| Extent1d::from_min_max(v[0], v[1]));
             let r = if *base {
-                is_degenerate_base(&k, &c, *tol, i.as_ref())
+                is_degenerate_base(k, &c, *tol, i.as_ref())
             } else {
-                c.is_degenerate(&k, *tol, i.as_ref())
+                c.is_degenerate(k, *tol, i.as_ref())
             };
             let r = tri!(o, r);
             o.extend([0.0, b(r)]);
@@ -775,7 +775,7 @@ fn rust(k: &Kernel, op: &OpIn) -> Result<Output, HarnessError> {
             let c = build(curve)?;
             let bx = tri!(
                 o,
-                approximate_polar_box(&k, &c, &Extent1d::from_min_max(ivl[0], ivl[1]), *count)
+                approximate_polar_box(k, &c, &Extent1d::from_min_max(ivl[0], ivl[1]), *count)
             );
             o.push(0.0);
             o.push(f64::from(bx.state().code()));
@@ -847,7 +847,7 @@ fn rust(k: &Kernel, op: &OpIn) -> Result<Output, HarnessError> {
                 let nat = c.natural_interval();
                 o.extend([nat.min(), nat.max()]);
                 for t in [nat.min(), nat.max()] {
-                    let p = match c.evaluate_point(&k, t) {
+                    let p = match c.evaluate_point(k, t) {
                         Ok(p) => p,
                         Err(e) => match Fail::from(e) {
                             Fail::Deferred(d) => return Ok(*d),
@@ -876,7 +876,7 @@ fn rust(k: &Kernel, op: &OpIn) -> Result<Output, HarnessError> {
             sol.start.parameters[1] = s[1];
             sol.start.solution_value = *value;
             let r = filter_solution(
-                &k, &a,
+                k, &a,
                 &Extent1d::from_min_max(ivl1[0], ivl1[1]),
                 &bb,
                 &Extent1d::from_min_max(ivl2[0], ivl2[1]),
@@ -899,7 +899,7 @@ fn rust(k: &Kernel, op: &OpIn) -> Result<Output, HarnessError> {
         } => {
             let c = build(curve)?;
             let sop = SolverOperation::from_code(*sop).ok_or_else(|| harness("sop"))?;
-            let r = proj_dist(&k, &c, *t, v3(*p), v3(*n), *rev, v3(*d), sop);
+            let r = proj_dist(k, &c, *t, v3(*p), v3(*n), *rev, v3(*d), sop);
             // upstream returns a failing status as the distance
             let value = match r {
                 Ok(v) => v,
@@ -923,7 +923,7 @@ fn rust(k: &Kernel, op: &OpIn) -> Result<Output, HarnessError> {
             let prop = CurvePropertyType::from_code(*prop).ok_or_else(|| harness("prop"))?;
             let vs: Vec<Vec3> = vecs.iter().map(|x| v3(*x)).collect();
             let mut efo = CurvePropertyEfo::new(
-                &k, &c,
+                k, &c,
                 prop,
                 *val,
                 if vs.is_empty() { None } else { Some(&vs) },
@@ -943,7 +943,7 @@ fn rust(k: &Kernel, op: &OpIn) -> Result<Output, HarnessError> {
             let mut f = [0.0; 2];
             let mut m = Matrix::new(2, 2);
             let r = CcTangentIntEnfo::static_evaluate(
-                &k, &a,
+                k, &a,
                 &bb,
                 x,
                 &mut f,
@@ -967,7 +967,7 @@ fn rust(k: &Kernel, op: &OpIn) -> Result<Output, HarnessError> {
             jac,
         } => {
             let c = build(curve)?;
-            let mut e = CpDistAtEnfo::new(&k, &c, v3(*p), *dsq, *sqtol);
+            let mut e = CpDistAtEnfo::new(k, &c, v3(*p), *dsq, *sqtol);
             let mut f = [0.0; 4];
             let mut m = Matrix::new(4, 4);
             let r = e.evaluate(x, &mut f, if *jac { Some(&mut m) } else { None });
@@ -990,7 +990,7 @@ fn rust(k: &Kernel, op: &OpIn) -> Result<Output, HarnessError> {
             let a = build(c1)?;
             let bb = build(c2)?;
             let mut efo = FindCurveDistanceExtrema::new(
-                &k, &a,
+                k, &a,
                 &bb,
                 Extent1d::from_min_max(dom[0], dom[1]),
                 *tol,

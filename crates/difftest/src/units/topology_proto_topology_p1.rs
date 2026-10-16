@@ -3274,7 +3274,7 @@ fn run_proto(
                 }
             }
             op if (q::FIRST..=q::LAST).contains(&op) => {
-                super::topology_proto_topology_p2::run_op(&Kernel::default(), &mut r, &mut rd, op, &mut out, &mut status, &mut skip)?;
+                super::topology_proto_topology_p2::run_op(&mut r, &mut rd, op, &mut out, &mut status, &mut skip)?;
             }
             _ => return Err(harness("proto op").into()),
         }

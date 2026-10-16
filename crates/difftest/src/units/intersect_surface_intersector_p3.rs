@@ -1093,7 +1093,7 @@ fn run_op(k: &Kernel, run: &mut Run<'_>, si: &mut SurfaceIntersector<'_>, op: &O
             } else {
                 let r = match op {
                     OpIn::AddCurve { .. } => si.add_point_to_curve(id(*i)),
-                    OpIn::AddStart { .. } => si.add_start_point(&k, id(*i)),
+                    OpIn::AddStart { .. } => si.add_start_point(k, id(*i)),
                     _ => si.add_through_point(id(*i)),
                 };
                 st(o, r)?;
@@ -1194,7 +1194,7 @@ fn run_op(k: &Kernel, run: &mut Run<'_>, si: &mut SurfaceIntersector<'_>, op: &O
             };
             pt_of(si, s.curr)?;
             pt_of(si, s.next)?;
-            let r = si.split_span(&k, id(s.curr), id(s.next), s.delta, &opts);
+            let r = si.split_span(k, id(s.curr), id(s.next), s.delta, &opts);
             if let Some(new_id) = st(o, r)? {
                 let p = pt_of(si, new_id.index())?;
                 put_point(o, &p);

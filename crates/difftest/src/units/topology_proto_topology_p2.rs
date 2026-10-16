@@ -158,7 +158,7 @@ fn ed_tangent_ok(k: &solidcore::kernel::Kernel, r: &ProtoRun, ed: solidcore::top
 /// Runs one op of this unit (its code already read) against the port, as the shim's
 /// `run_p2_op` runs it against upstream.
 #[allow(clippy::too_many_lines)]
-pub(super) fn run_op(k: &solidcore::kernel::Kernel, 
+pub(super) fn run_op(
     r: &mut ProtoRun,
     rd: &mut Rd<'_>,
     op: i64,
@@ -313,12 +313,12 @@ pub(super) fn run_op(k: &solidcore::kernel::Kernel,
                     .unwrap_or_default();
                 let no = others.len();
                 if no >= 1 && (ne > 0 || no >= 2) {
-                    if ne > 0 && (zero_len(&ivl) || !pe_tangent_ok(k, r, e)?) {
+                    if ne > 0 && (zero_len(&ivl) || !pe_tangent_ok(&r.k, r, e)?) {
                         *skip = true;
                     }
                     for d in others {
                         let short = r.mgr.edge_def(d).is_some_and(|x| zero_len(&x.xsect_interval()));
-                        if short || !ed_tangent_ok(k, r, d)? {
+                        if short || !ed_tangent_ok(&r.k, r, d)? {
                             *skip = true;
                         }
                     }

@@ -1184,7 +1184,7 @@ fn gen_boundary_uv(rng: &mut Rng, s: &SrfIn) -> [f64; 2] {
                 uv = [
                     if rng.chance(0.7) { u0 } else { u1 },
                     if rng.chance(0.7) { v0 } else { v1 },
-                ]
+                ];
             }
         }
     }

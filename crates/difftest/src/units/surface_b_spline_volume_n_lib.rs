@@ -363,7 +363,7 @@ fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
                 params: vec![-7.0, 9.0],
                 conts: vec![ContinuityType::C0],
             };
-            match v.calculate_continuities_simple(&k, param, &mut d, *geom) {
+            match v.calculate_continuities_simple(k, param, &mut d, *geom) {
                 Ok(()) => o.push(0.0),
                 Err(e) => {
                     if let Some(d) = Output::unported(&e) {
@@ -378,7 +378,7 @@ fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
             let v = build(vol)?;
             let mut d = Discontinuities3d::new();
             d.set_unaligned();
-            let r = match v.has_discontinuities_simple(&k, given.then_some(&mut d), *geom) {
+            let r = match v.has_discontinuities_simple(k, given.then_some(&mut d), *geom) {
                 Ok(r) => r,
                 Err(e) => {
                     return Output::unported(&e)

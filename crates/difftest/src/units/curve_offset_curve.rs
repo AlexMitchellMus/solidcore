@@ -483,14 +483,14 @@ fn rust_op(k: &Kernel, i: &Inputs, o: &mut Vec<f64>) -> Result<(), SolidError> {
             left,
             nonzero,
         } => {
-            let v = c.evaluate(&k, *t, *n, *left, *nonzero)?;
+            let v = c.evaluate(k, *t, *n, *left, *nonzero)?;
             o.push(0.0);
             for x in v {
                 pv(o, x);
             }
         }
         OpIn::EvalPoint { t } => {
-            let p = c.evaluate_point(&k, *t)?;
+            let p = c.evaluate_point(k, *t)?;
             o.push(0.0);
             pv(o, p);
         }
@@ -508,7 +508,7 @@ fn rust_op(k: &Kernel, i: &Inputs, o: &mut Vec<f64>) -> Result<(), SolidError> {
             }
         }
         OpIn::Continuities { angle } => {
-            let (min, all) = c.calculate_continuities(&k, *angle)?;
+            let (min, all) = c.calculate_continuities(k, *angle)?;
             o.push(0.0);
             o.push(f64::from(min as i32));
             o.push(all.len() as f64);
@@ -545,11 +545,11 @@ fn rust_op(k: &Kernel, i: &Inputs, o: &mut Vec<f64>) -> Result<(), SolidError> {
         OpIn::Eq { this, copy, other } => {
             o.push(0.0);
             if *this {
-                o.push(b(c.approx_eq(&k, &c)?));
+                o.push(b(c.approx_eq(k, &c)?));
             } else if *copy {
                 let cp = c.copy(&Kernel::default())?;
-                o.push(b(c.approx_eq(&k, &cp)?));
-                o.push(b(cp.approx_eq(&k, &c)?));
+                o.push(b(c.approx_eq(k, &cp)?));
+                o.push(b(cp.approx_eq(k, &c)?));
             } else {
                 let s = other.as_ref().ok_or(SolidError::InvalidInput {
                     operation: "difftest",
@@ -558,8 +558,8 @@ fn rust_op(k: &Kernel, i: &Inputs, o: &mut Vec<f64>) -> Result<(), SolidError> {
                 let mut s = s.clone();
                 s.owns = false;
                 let c2 = build_offset(under, &s);
-                o.push(b(c.approx_eq(&k, &c2)?));
-                o.push(b(c2.approx_eq(&k, &c)?));
+                o.push(b(c.approx_eq(k, &c2)?));
+                o.push(b(c2.approx_eq(k, &c)?));
             }
         }
         OpIn::Copy { probes: ts } => {

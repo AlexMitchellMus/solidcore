@@ -362,8 +362,8 @@ fn rust_run(k: &Kernel, i: &Inputs) -> Result<Vec<f64>, Fail> {
     let mut o = Vec::new();
     match &i.op {
         OpIn::NormalEval { uv } => {
-            let mut e = SurfaceEval::with_uv(&k, Some(&s), uv[0], uv[1]);
-            match stat(e.normal(&k))? {
+            let mut e = SurfaceEval::with_uv(k, Some(&s), uv[0], uv[1]);
+            match stat(e.normal(k))? {
                 Ok(n) => {
                     o.push(0.0);
                     pv(&mut o, n);
@@ -383,15 +383,15 @@ fn rust_run(k: &Kernel, i: &Inputs) -> Result<Vec<f64>, Fail> {
             Err(c) => o.push(c),
         },
         OpIn::SectionEval { uv, dir } => {
-            let mut e = SurfaceEval::with_uv_and_sect_dir(&k, Some(&s), uv[0], uv[1], v3(*dir));
+            let mut e = SurfaceEval::with_uv_and_sect_dir(k, Some(&s), uv[0], uv[1], v3(*dir));
             match stat(e.eval())? {
                 Ok(()) => {
                     // upstream ignores the status of the normal and the section
-                    let n = match stat(e.normal(&k))? {
+                    let n = match stat(e.normal(k))? {
                         Ok(n) => n,
                         Err(_) => e.values()[2][2],
                     };
-                    let _ = stat(e.eval_normal_section(&k))?;
+                    let _ = stat(e.eval_normal_section(k))?;
                     let (t, k) = e.stored_section();
                     o.push(0.0);
                     pv(&mut o, n);
@@ -403,7 +403,7 @@ fn rust_run(k: &Kernel, i: &Inputs) -> Result<Vec<f64>, Fail> {
         }
         OpIn::OnNormal { dom, uv, p, deriv, tol } => {
             let d = dom.map(dom_of);
-            match stat(is_point_on_normal(&k, &s, d.as_ref(), p2(*uv), v3(*p), deriv.map(v3), *tol))? {
+            match stat(is_point_on_normal(k, &s, d.as_ref(), p2(*uv), v3(*p), deriv.map(v3), *tol))? {
                 Ok(r) => {
                     o.extend([0.0, b(r.from_left_u), b(r.from_left_v), b(r.good_point)]);
                     o.push(reason_code(r.reason));
@@ -417,7 +417,7 @@ fn rust_run(k: &Kernel, i: &Inputs) -> Result<Vec<f64>, Fail> {
                 Err(c) => o.push(c),
             }
         }
-        OpIn::PassSp { uv, p, tol } => match stat(pass_sp_convergence_test(&k, &s, p2(*uv), v3(*p), *tol))? {
+        OpIn::PassSp { uv, p, tol } => match stat(pass_sp_convergence_test(k, &s, p2(*uv), v3(*p), *tol))? {
             Ok(pass) => o.extend([0.0, b(pass)]),
             Err(c) => o.push(c),
         },
@@ -491,35 +491,35 @@ fn rust_run(k: &Kernel, i: &Inputs) -> Result<Vec<f64>, Fail> {
         }
         OpIn::CsIntersect { curve, pts } => {
             let c = curve_of(curve)?;
-            run_enfo(&mut CsIntersectEnfo::new(&k, &c, &s, 0.0), 3, pts, &mut o)?;
+            run_enfo(&mut CsIntersectEnfo::new(k, &c, &s, 0.0), 3, pts, &mut o)?;
         }
         OpIn::CsNormalize { curve, sop, vecs, pts } => {
             let c = curve_of(curve)?;
             let op = sop_of(*sop)?;
             let dim = if op == SolverOperation::Signed3dDirectedMinimize { 4 } else { 3 };
             let vs = vecs3(vecs);
-            run_enfo(&mut CsNormalizeEnfo::new(&k, &c, &s, op, 0.0, opt_vecs(&vs), 0.0), dim, pts, &mut o)?;
+            run_enfo(&mut CsNormalizeEnfo::new(k, &c, &s, op, 0.0, opt_vecs(&vs), 0.0), dim, pts, &mut o)?;
         }
         OpIn::SspIntersect { other, steepest, plane, pts } => {
             let s2 = surface_of(other)?;
             let pl = plane.map(|(po, pn)| Plane::from_normal(v3(po), v3(pn)));
-            run_enfo(&mut SspIntersectEnfo::new(&k, &s, &s2, *steepest, pl.as_ref(), 0.0), 4, pts, &mut o)?;
+            run_enfo(&mut SspIntersectEnfo::new(k, &s, &s2, *steepest, pl.as_ref(), 0.0), 4, pts, &mut o)?;
         }
         OpIn::SsiNormalize { other, n, d, pts } => {
             let s2 = surface_of(other)?;
-            run_enfo(&mut SsiNormalizeEnfo::new(&k, &s, &s2, 0.0, v3(*n), *d), 4, pts, &mut o)?;
+            run_enfo(&mut SsiNormalizeEnfo::new(k, &s, &s2, 0.0, v3(*n), *d), 4, pts, &mut o)?;
         }
         OpIn::SsNormalize { other, sop, vecs, pts } => {
             let s2 = surface_of(other)?;
             let op = sop_of(*sop)?;
             let dim = if op == SolverOperation::Signed3dDirectedMinimize { 5 } else { 4 };
             let vs = vecs3(vecs);
-            run_enfo(&mut SsNormalizeEnfo::new(&k, &s, &s2, op, opt_vecs(&vs), 0.0), dim, pts, &mut o)?;
+            run_enfo(&mut SsNormalizeEnfo::new(k, &s, &s2, op, opt_vecs(&vs), 0.0), dim, pts, &mut o)?;
         }
         OpIn::Classify { dom, curve, ivl, uv, t } => {
             let c = curve_of(curve)?;
             match stat(classify_curve_surface_xsect_point(
-                &k, &s,
+                k, &s,
                 &dom_of(*dom),
                 &c,
                 &Extent1d::from_min_max(ivl[0], ivl[1]),

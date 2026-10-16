@@ -2551,7 +2551,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/surface.cone_p1/review.json#66 (upstream review adversarial)",
-      "values_compared": 58
+      "values_compared": 2
     },
     {
       "max_rel_err": 0.0,
@@ -2991,7 +2991,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/surface.cone_p1/review.json#121 (upstream review adversarial)",
-      "values_compared": 58
+      "values_compared": 2
     },
     {
       "max_rel_err": 0.0,
@@ -3431,7 +3431,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/surface.cone_p1/review.json#176 (upstream review adversarial)",
-      "values_compared": 58
+      "values_compared": 2
     },
     {
       "max_rel_err": 0.0,
@@ -30618,7 +30618,7 @@
       "values_compared": 20
     },
     {
-      "max_rel_err": 0.0,
+      "max_rel_err": 1.1920456891792515e-16,
       "name": "review2_std_bnd_near_cyl_ep_0.25_0.999999",
       "outcome": "pass",
       "pass": true,
@@ -72930,7 +72930,7 @@
       "values_compared": 5
     },
     {
-      "max_rel_err": 0.0,
+      "max_rel_err": 1.1920456891792412e-16,
       "name": "r3_16955_ev_unbtiny_std_in_0.25_0.5_310101",
       "outcome": "pass",
       "pass": true,
@@ -158290,7 +158290,7 @@
       "values_compared": 8
     },
     {
-      "max_rel_err": 0.0,
+      "max_rel_err": 1.997194018673876e-15,
       "name": "gen0592",
       "outcome": "pass",
       "pass": true,
@@ -162674,7 +162674,7 @@
       "values_compared": 250
     },
     {
-      "max_rel_err": 0.0,
+      "max_rel_err": 2.365471415360535e-16,
       "name": "gen1140",
       "outcome": "pass",
       "pass": true,
@@ -164970,7 +164970,7 @@
       "values_compared": 5
     },
     {
-      "max_rel_err": 0.0,
+      "max_rel_err": 2.0125611729577195e-15,
       "name": "gen1427",
       "outcome": "pass",
       "pass": true,
@@ -165560,7 +165560,7 @@
   "cases_passed": 20694,
   "cases_total": 20694,
   "deferred_by_unit": {},
-  "max_rel_err": 0.0,
+  "max_rel_err": 2.0125611729577195e-15,
   "pass": true,
   "rel_tol": 1e-9,
   "seeds": 16,

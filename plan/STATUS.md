@@ -952,3 +952,38 @@ suite passes 173 units
 (97 green, 76 partial), with zero failures; the final API rerun and touched-unit
 perturbation also pass (6,463/6,463 detected). Committed reports total 435,272 cases:
 422,654 compared, 12,618 deferred, zero failed.
+
+
+## Kernel-aware Surface dispatch (2026-10-16, issue #76, draft PR #133)
+
+Common Surface evaluation and callbacks now retain the caller's Kernel. The context
+also follows implicit iso curves through generic Curve evaluation and its solvers;
+concrete B-spline/plane arithmetic is unchanged. SurfaceKind retains real Cone and
+Cylinder objects using the existing cone part 1 code. Common database reads,
+NURB/STEP evaluations, UV conversion, inversion subdomains, copies, adjustment and
+transform no longer discard their analytic class. Fallible copying/evaluation
+preflights 64-level geometry nesting; polymorphic reads balance the bounded reader
+counter even on errors. Successful null offsets remain representable by the
+`Result<Option<Surface>>` API.
+
+The Apple Clang native comparison passes cone part 1's 20,694 cases and the common
+unit's 16,615 compared cases, with zero failures and maximum relative error
+2.0125611729577195e-15. The common unit has 11 explicit deferrals: cone part 2 (10)
+and surface part 8 (1). Its 15,757 new Cone/Cylinder cases include 10,771 with numerical
+output beyond statuses and 4,986 status-only cases; guarded native recipes are
+excluded from that added coverage. Both units have no absolute floors. Primary
+sensitivity detects all 37,309 perturbations. The 16 database recipes compare both
+readers on identical native-written records; a native ASCII stream may round the
+original geometry, so serialization is not claimed to be lossless.
+
+Formatting, strict plain/C++ Clippy, 1,191 core tests, two native FFI contract tests
+and WASM pass. The GNU full-suite results will be recorded when its run completes.
+The GNU reference kernel uses Release/O2; local thin shims use O0 with
+`-ffp-contract=off -fno-fast-math`. Mac comparisons use O2 for both.
+
+This integration leaves offsets/rebuilds with #71, sphere with #100, surface part 11
+with #120 and cone intersections/dependency integrations with #131's owner. #71's
+head c9aa85de has 26 reported failures; no older pass certifies that head. Cone
+trim/fast-drop virtual callbacks and torus/extrusion, curve-on-surface and B-spline
+cache-storage adapters remain explicit gaps. No cone null-offset numerical result
+is certified by this PR.
