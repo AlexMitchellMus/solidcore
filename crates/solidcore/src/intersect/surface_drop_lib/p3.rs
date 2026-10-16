@@ -486,6 +486,7 @@ impl Surface {
         // Drop curve StartPoint to surface (SM_SO_MINIMIZE, all solutions)
         let mut solutions: SolutionArray<O> = this.global_point_solve(
             k,
+            fs.surface, // `this`'s handle when the caller gave a record (minimize ignores it)
             &s_uv_domain,
             SolverOperation::Minimize,
             start.crv_pd[0],
