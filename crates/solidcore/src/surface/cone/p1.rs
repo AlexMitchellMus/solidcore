@@ -1263,7 +1263,7 @@ impl Cone {
     ///
     /// `InvalidInput` without polar curve (upstream dereferences `NULL`); those of the
     /// polar conversion.
-    pub fn convert_uv_from_step_to_nurbs(&self, _k: &Kernel, step_uv: Point2) -> Result<Point2> {
+    pub fn convert_uv_from_step_to_nurbs(&self, k: &Kernel, step_uv: Point2) -> Result<Point2> {
         // convert sweep coordinate
         let circle = self
             .rev
@@ -1276,7 +1276,7 @@ impl Cone {
         let (x, _exact) = self
             .rev
             .polar
-            .convert_to_nurbs_parameter(_k, circle, step_uv.x, 0.0)?;
+            .convert_to_nurbs_parameter(k, circle, step_uv.x, 0.0)?;
         let mut nurbs_uv = Point2::new(x, 0.0);
 
         // get current STEP and NURB intervals switching on m_bSwapUV as needed

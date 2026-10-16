@@ -2181,7 +2181,6 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for SpGlobalSolver<'t, '_, O
     }
 
     fn local_solve(&mut self, _branch: &Branch) -> Result<bool> {
-        let _k = self.kernel;
         // UNPORTED(surface.surface_p8): SmSPGlobalSolver::LocalSolve
         Err(SolidError::unported(
             "SmSPGlobalSolver::LocalSolve",
@@ -2268,7 +2267,6 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for SsGlobalSolver<'t, '_, O
     }
 
     fn local_solve(&mut self, _branch: &Branch) -> Result<bool> {
-        let _k = self.kernel;
         // UNPORTED(surface.surface_p11): SmSSGlobalSolver::LocalSolve
         Err(SolidError::unported(
             "SmSSGlobalSolver::LocalSolve",

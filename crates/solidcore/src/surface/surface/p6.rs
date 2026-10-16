@@ -27,15 +27,15 @@
 //!   intersection", `SimpleCoincidenceChecker` `None` for "no coincidence" (the
 //!   solution is only written upstream when one is found), and
 //!   `ClassifyIntersectingRangeSolution` the degenerate flag with the tangent point it
-//!   writes (`None` when `rSolPoint` is left unmodified). `SmContext` arguments only
-//!   choose where upstream allocates and are dropped. `ClassifyIntersectingRangeSolution`'s
+//!   writes (`None` when `rSolPoint` is left unmodified). Allocation-only `SmContext` arguments are omitted; evaluation paths retain
+//!   the caller's Kernel, including boundary iso curves. `ClassifyIntersectingRangeSolution`'s
 //!   `dTol3d` and `sm_SCLocalSolve`'s `rdBestAnswerSoFarSq` are `NotUsed` upstream and
 //!   dropped.
 //! - **`sm_SCLocalSolve`** takes the data it reads from its tree nodes and Bezier patch
 //!   instead of the nodes ([`ScLocalSolveNodes`]): the original surface of the surface
 //!   node's cache (`sm_GetSurfaceToEvaluate`), the patch surface (`mBA_pSurface`) and
 //!   the nodes' boxes. Its boundary iso curves (`SmIsoCurve` over the evaluated
-//!   surface) exist for B-spline surfaces only.
+//!   surface) retain the concrete Surface kind.
 //! - **`SmSSGlobalSolver::IdenticalSolutions`** is the inherent
 //!   [`SsGlobalSolver::solutions_identical`] (the trait method of
 //!   [`GlobalSolve`](crate::geom::global_solver::GlobalSolve) calls it); a missing
@@ -45,8 +45,8 @@
 //!   `SmVector2d`/`SmVector3d` outputs it clears first, [`Vec3::UNDEF`] for default
 //!   constructed points); [`SolidError::Unported`] is still propagated.
 //! - **Iso curves.** `CreateIsoParametricCurve` is the B-spline, plane and surface of
-//!   revolution override (units `nurbs.b_spline_surface_p2`, `surface.plane_p1`,
-//!   `surface.surf_of_revolution_p1`); the base body (other kinds) belongs to
+//!   revolution and cone overrides (units `nurbs.b_spline_surface_p2`, `surface.plane_p1`,
+//!   `surface.surf_of_revolution_p1`, `surface.cone_p1`); the base body (other kinds) belongs to
 //!   `surface.surface_p5`. The plane's iso curve is its `SmLine`, the revolution's sweep
 //!   iso curve its `SmCircle`, so their own `IsDegenerate`, `GetKnots` and
 //!   `CalculateContinuities` overrides run.

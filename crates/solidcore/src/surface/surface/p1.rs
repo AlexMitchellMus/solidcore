@@ -1781,9 +1781,6 @@ impl Surface {
                 s.is_degenerate_curve(k, angle_tol_deg, uv_domain, opt_3d_tol)
             }
             // inherited from SmBSplineSurface
-            SurfaceKind::Cone(_) => {
-                base_is_degenerate_curve(k, self, angle_tol_deg, uv_domain, opt_3d_tol)
-            }
             SurfaceKind::SurfOfRevolution(s) => {
                 s.base()
                     .is_degenerate_curve(k, angle_tol_deg, uv_domain, opt_3d_tol)
@@ -1792,7 +1789,10 @@ impl Surface {
                 p.base_for_query()
                     .is_degenerate_curve(k, angle_tol_deg, uv_domain, opt_3d_tol)
             }
-            SurfaceKind::CurveBounded(_) | SurfaceKind::Step(_) | SurfaceKind::SrfInVolume(_) => {
+            SurfaceKind::Cone(_)
+            | SurfaceKind::CurveBounded(_)
+            | SurfaceKind::Step(_)
+            | SurfaceKind::SrfInVolume(_) => {
                 base_is_degenerate_curve(k, self, angle_tol_deg, uv_domain, opt_3d_tol)
             }
         }
@@ -2708,7 +2708,6 @@ impl<'s> FindSingularParamWithGivenTangentDir<'s> {
 
 impl EvalFunction for FindSingularParamWithGivenTangentDir<'_> {
     fn evaluate(&mut self, t: f64, out: &mut FunctionValue, _signal_errors: bool) -> Result<()> {
-        let _k = self.kernel;
         // init output
         out.f = 0.0;
         out.f_prime = 0.0;

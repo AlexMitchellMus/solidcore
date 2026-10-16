@@ -33,8 +33,9 @@
 //!   curves (dimension 3).
 //! - **Flags.** `m_bFromLeft` is a `bool` (upstream `SmBoolean`, `UNSURE` only in the
 //!   empty I/O constructor, whose state is never observable here). `SetContext` and the
-//!   `SmContext` arguments only choose where upstream allocates and are dropped, as is
-//!   `CalculateContinuities`' unused angle tolerance.
+//!   allocation-only `SmContext` arguments are omitted. Evaluation and continuity
+//!   queries retain the caller's Kernel through the concrete surface dispatch;
+//!   `CalculateContinuities`' unused angle tolerance is omitted.
 //! - **`CreateUVIsoLine`** keeps upstream's branches: a constant-`u` curve gets a line
 //!   at `x = iso` along `(0, 1, 0)` over the *u* interval of the domain; the second
 //!   branch repeats the `SM_SP_U` test, so every other parameter type is

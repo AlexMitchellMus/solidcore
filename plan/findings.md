@@ -5041,3 +5041,47 @@ mutated scales and accepted/reduced step counts are compared.
   UB-117 (`UpdateEdges` dereferences its optional calling definition), UB-118 (null and
   deleted definitions in the two `Resolve`s), WR-95 (`CombineProtoEdge` moves every other
   definition; confirmed by `edge_pe_combine_every_other_*`).
+
+
+## Kernel-aware common Surface integration (issue #76, PR #133)
+
+`SurfaceKind::Cone` retains the native cone/cylinder distinction and the existing
+`surface.cone_p1` implementation. Common reads, copies, NURB/STEP evaluation,
+normal/derivative helpers, UV conversion, STEP inversion (including the caller's
+subdomain), adjustment and transform dispatch through the concrete object.
+The common evaluation traits and callbacks borrow the caller's `Kernel`; implicit
+iso curves also carry it through `CurveEvaluate` and the curve solver callers.
+Production dispatch does not create a default kernel. The offset API returns
+`Result<Option<Surface>>`, preserving the representability of successful null
+analytic offsets; no cone offset implementation is imported or certified here.
+
+Remaining integration boundaries are explicit:
+
+- `surface.cone_p2` owns offsets and rebuilding analytic parameters after reverse /
+  UV swap. PR #71 remains independent. Its head `c9aa85de` has 26 reported failures;
+  older passing results do not certify that head.
+- Plane/cone and global cone intersections remain `surface.cone_p3` deferrals.
+  PR #131's owner continues its numerical work and dependency integrations.
+- Cone trimming and fast point dropping still need inherited revolution bodies
+  with the cone's virtual callbacks. These are dispatch gaps, not replacements by
+  a plain revolution or a B-spline. Their errors name the owning common unit.
+- Sphere (PR #100), the surface part 11 work (PR #120), torus and extrusion adapters
+  are not imported. Existing concrete readers may still defer when no SurfaceKind
+  adapter exists. Curve-on-surface and cache storage that specifically owns a
+  B-spline remains a separate adapter boundary.
+
+Resource handling: common polymorphic surface reads balance the reader's bounded
+nesting counter on ordinary errors. Fallible evaluation and copy entrypoints
+preflight owned geometry against the existing 64-level limit; derivative orders
+are checked by the concrete evaluator before rectangular output allocation.
+Constructor failures remain native statuses. Safe native database coverage writes
+records from guarded real Cone/Cylinder constructors before reading them through
+`SmSurface::ReadFromDB`; it does not parse arbitrary caller-controlled records in
+C++. Existing crash/undefined-input guards are retained, and guarded `SC_ERR_ARG`
+recipes are excluded from the newly added common numerical coverage.
+
+Native common tests reuse the cone part 1 constructor/operation corpus and add
+ASCII/binary version-30 round trips, lazy `SmSurfaceEval` derivatives, inversion
+subdomains, degeneracy, normals and bounding boxes. Common fallible inversion
+compares UV/location only on success; direct cone part 1 retains its native
+failure-output comparisons. No comparison tolerance or absolute floor is changed.

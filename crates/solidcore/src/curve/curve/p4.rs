@@ -1232,7 +1232,6 @@ impl<'a, C: CurveEvaluate + ?Sized> CurvePropertyEfo<'a, C> {
 impl<C: CurveEvaluate + ?Sized> EvalFunction for CurvePropertyEfo<'_, C> {
     // `signal_errors` only chooses whether upstream prints the error.
     fn evaluate(&mut self, t: f64, out: &mut FunctionValue, _signal_errors: bool) -> Result<()> {
-        let _k = self.kernel;
         let err = || SolidError::sm_err(OP_EFO);
 
         // init output

@@ -111,7 +111,6 @@ enum CurveIn {
     Line(LineIn),
 }
 
-
 // ---- C++ input --------------------------------------------------------------------
 
 /// `c` with a circle replaced by its inline B-spline.
@@ -176,7 +175,6 @@ fn curve_block(v: &mut Vec<f64>, c: &CurveIn) -> Result<(), HarnessError> {
     Ok(())
 }
 
-
 fn to_output(flat: &[f64]) -> Output {
     let status = flat.first().copied().unwrap_or(f64::NAN);
     let rest = flat.get(1..).unwrap_or(&[]).to_vec();
@@ -184,7 +182,6 @@ fn to_output(flat: &[f64]) -> Output {
         .ints("status", vec![status as i64])
         .values("out", rest)
 }
-
 
 // ---- Rust side --------------------------------------------------------------------
 
@@ -239,7 +236,6 @@ fn build(c: &CurveIn) -> Result<Curve, HarnessError> {
         CurveIn::Circle(_) => Err(harness("unresolved circle")),
     }
 }
-
 
 /// The `SmStatus` of a Rust error; `1007` for `InvalidInput`, `-1` for one upstream
 /// cannot return.
@@ -332,12 +328,9 @@ fn put_sol<O: Copy>(o: &mut Vec<f64>, s: &Solution<O>, id: impl Fn(Option<O>) ->
     }
 }
 
-
-
 fn ivl_of(i: [f64; 2]) -> Extent1d {
     Extent1d::from_min_max(i[0], i[1])
 }
-
 
 // ---- generation -------------------------------------------------------------------
 
@@ -459,7 +452,6 @@ fn gen_curve(rng: &mut Rng) -> CurveIn {
     resolve(&c).unwrap_or(c)
 }
 
-
 /// A curve that is closed (or nearly) over its natural interval.
 fn gen_closed_curve(rng: &mut Rng) -> CurveIn {
     match rng.below(3) {
@@ -507,7 +499,6 @@ fn range_of(c: &CurveIn) -> (f64, f64) {
         }
     }
 }
-
 
 /// An increasing interval of `c`: mostly its natural one or a sub-interval.
 fn gen_ivl(rng: &mut Rng, c: &CurveIn) -> [f64; 2] {
@@ -640,7 +631,6 @@ fn gen_tol(rng: &mut Rng) -> f64 {
     *rng.choose(&[1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0.5])
         .unwrap_or(&1e-5)
 }
-
 
 // ---- the op -----------------------------------------------------------------------
 
@@ -856,6 +846,7 @@ impl UnitDiff for Runner {
     }
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
+        let k = &Kernel::default();
         for _ in 0..64 {
             let op = gen_case(k, rng);
             let Ok((code, input)) = cpp_input(&op) else {
@@ -893,6 +884,7 @@ mod tests {
     /// Generated cases mostly run (pass or defer), not harness errors.
     #[test]
     fn generated_cases_run() {
+        let k = &Kernel::default();
         let mut rng = Rng::new(7);
         let mut stats = [0usize; 4];
         for _ in 0..300 {
@@ -904,7 +896,10 @@ mod tests {
                 Ok(_) => stats[1] += 1,
             }
         }
-        eprintln!("total {} ran {} deferred {} harness {}", stats[0], stats[1], stats[2], stats[3]);
+        eprintln!(
+            "total {} ran {} deferred {} harness {}",
+            stats[0], stats[1], stats[2], stats[3]
+        );
         assert!(stats[1] > 0);
     }
 }

@@ -38,18 +38,20 @@ use solidcore::geom::extent2d::Extent2d;
 use solidcore::geom::global_solver::SolutionRequested;
 use solidcore::geom::solution_array::{ObjectKind, Solution, SolutionArray, SolutionObject};
 use solidcore::kernel::Kernel;
-use solidcore::surface::surface::Surface;
 use solidcore::surface::surface::p1::StepSurface;
+use solidcore::surface::surface::Surface;
 use solidcore::surface::surface_point_solve::p1::ErrorNormType;
 use solidcore::surface::surface_point_solve::{SurfPtGlobalSolver, SurfPtSolveStepper};
 use solidcore_ffi::units::surface_surface_point_solve_p2::{self as ffi, Op, MAX_GRID, MAX_HITS};
 
-use super::surface_surface_cache_p1::{dom_of, flag, gen_sub_dom, harness, srf, status, v3, BssIn, SrfIn};
-use super::surface_surface_cache_p3::{push_surf, surf_domain, surf_size, surface_in, SurfIn};
 use super::surface_surf_of_revolution_p1::{
     ffi_surf as rev_ffi_surf, gen_surf as rev_gen_surf, rust_surf as rev_rust_surf,
     SurfIn as RevSurfIn,
 };
+use super::surface_surface_cache_p1::{
+    dom_of, flag, gen_sub_dom, harness, srf, status, v3, BssIn, SrfIn,
+};
+use super::surface_surface_cache_p3::{push_surf, surf_domain, surf_size, surface_in, SurfIn};
 use super::surface_surface_point_solve_p1::{
     gen_surface, gen_test, gen_uv, gen_uv_any, net_counts, p2, push2, solver_op, test_on_normal,
     wrapped_of, SOLVERS, SURFACE_SMS_POINTS,
@@ -996,8 +998,9 @@ fn upstream_cases(ctx: &CaseContext, id: &str) -> Result<Vec<Case>, HarnessError
 fn valid(i: &Inputs) -> bool {
     let (op, rest) = cpp_rest(i);
     match &i.surf {
-        AnySurf::Rev { rev } => rev_ffi_surf(rev)
-            .is_ok_and(|s| ffi::validate_rev(op, i.wrap, &s, &rest).is_ok()),
+        AnySurf::Rev { rev } => {
+            rev_ffi_surf(rev).is_ok_and(|s| ffi::validate_rev(op, i.wrap, &s, &rest).is_ok())
+        }
         AnySurf::Base(s) => cpp_head(i, s).is_ok_and(|mut input| {
             input.extend(rest);
             ffi::validate(op, &input).is_ok()
@@ -1035,6 +1038,7 @@ impl UnitDiff for Runner {
     }
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
+        let k = &Kernel::default();
         for _ in 0..64 {
             let Ok(i) = gen_case(k, rng) else {
                 continue;
@@ -1068,9 +1072,9 @@ impl UnitDiff for Runner {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::surface_surface_cache_p1::{default_form, InlineSrf};
     use super::super::surface_surface_point_solve_p1::gen_bilinear;
+    use super::*;
 
     #[test]
     fn op_codes_round_trip() {

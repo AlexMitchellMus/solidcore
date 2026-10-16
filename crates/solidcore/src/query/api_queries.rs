@@ -735,14 +735,14 @@ pub fn edge_parameter_range(brep: &Brep, id: EdgeId) -> Result<Extent1d> {
 /// first with strict distance comparisons, including parameters outside the edge
 /// interval. An ordinary evaluation failure falls through to interval containment.
 pub fn edge_classify_parameter(
-    _k: &Kernel,
+    k: &Kernel,
     brep: &Brep,
     id: EdgeId,
     parameter: f64,
 ) -> Result<PointClassType> {
     let e = brep.edge(id)?;
     let curve = e.curve.as_ref().ok_or(SolidError::sm_err(OP))?;
-    if let Some(point) = ignored(curve.evaluate_point(_k, parameter))? {
+    if let Some(point) = ignored(curve.evaluate_point(k, parameter))? {
         for v in [edge::start_vertex(brep, id)?, edge::end_vertex(brep, id)?]
             .into_iter()
             .flatten()

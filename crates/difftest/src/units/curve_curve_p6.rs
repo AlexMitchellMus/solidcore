@@ -1491,6 +1491,7 @@ impl UnitDiff for Runner {
     }
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
+        let k = &Kernel::default();
         for _ in 0..64 {
             let op = gen_case(k, rng);
             let Ok((code, input)) = cpp_input(&op) else {
@@ -1530,11 +1531,15 @@ mod tests {
     /// that can be ported now.
     #[test]
     fn generated_cases_are_diverse() {
+        let k = &Kernel::default();
         let mut rng = Rng::new(7);
         let mut stats: BTreeMap<String, [usize; 4]> = BTreeMap::new();
         for _ in 0..2000 {
             let op = gen_case(k, &mut rng);
-            let name = serde_json::to_value(&op).unwrap()["op"].as_str().unwrap().to_string();
+            let name = serde_json::to_value(&op).unwrap()["op"]
+                .as_str()
+                .unwrap()
+                .to_string();
             let out = rust(&op);
             let e = stats.entry(name).or_default();
             e[0] += 1;
@@ -1546,7 +1551,10 @@ mod tests {
             }
         }
         for (k, v) in &stats {
-            eprintln!("{k}: total {} ok {} err {} deferred/harness {}", v[0], v[1], v[2], v[3]);
+            eprintln!(
+                "{k}: total {} ok {} err {} deferred/harness {}",
+                v[0], v[1], v[2], v[3]
+            );
         }
         assert_eq!(stats.len(), 8);
     }

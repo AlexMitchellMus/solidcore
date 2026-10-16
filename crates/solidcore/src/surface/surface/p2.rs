@@ -613,8 +613,9 @@ impl Surface {
     ///
     /// # Errors
     ///
-    /// None for the ported kinds (the base default is `SM_ERR`).
+    /// An owned geometry chain deeper than 64; the base default is `SM_ERR`.
     pub fn copy(&self) -> Result<Self> {
+        self.check_evaluation_copy_depth(0)?;
         match &self.kind {
             SurfaceKind::BSpline(s) => Ok(Self::from(s.copy())),
             SurfaceKind::CurveBounded(_) | SurfaceKind::Step(_) => base_copy(),
@@ -631,6 +632,7 @@ impl Surface {
     ///
     /// Those of the kind's override (the base default is [`Surface::copy`]).
     pub fn copy_and_add_analytics(&self, k: &Kernel) -> Result<Self> {
+        self.check_evaluation_copy_depth(0)?;
         match &self.kind {
             SurfaceKind::BSpline(s) => s.copy_and_add_analytics(k),
             SurfaceKind::CurveBounded(_) | SurfaceKind::Step(_) | SurfaceKind::SrfInVolume(_) => {
@@ -672,7 +674,7 @@ impl Surface {
             SurfaceKind::Plane(s) => {
                 s.evaluate(uv, highest_u_deriv, highest_v_deriv, flags.only_upper_half)
             }
-            // (not overridden: the SmBSplineSurface evaluation)
+            // Preserve the cone's analytic position correction and inherited NURB derivatives.
             SurfaceKind::Cone(s) => Ok(s
                 .evaluate(k, uv, highest_u_deriv, highest_v_deriv, flags)?
                 .chunks(highest_v_deriv + 1)
@@ -1322,8 +1324,7 @@ impl Surface {
                 // SmSurfOfExtrusion::ReadFromDB reads the whole record.
                 let _surf = SurfOfExtrusion::read_from_db(k, db, version)?;
                 // DISPATCH GAP: the surface of extrusion is not a SurfaceKind yet (its
-                // SmSurface overrides need a Kernel the Surface dispatchers do not take;
-                // see plan/findings.md), so no Surface can hold it (no UNPORTED marker:
+                // SmSurface override adapters are not yet wired; see plan/findings.md), so no Surface can hold it (no UNPORTED marker:
                 // the reader is ported; the error names the extrusion's unit).
                 Err(SolidError::unported(
                     "SurfaceKind::SurfOfExtrusion",
@@ -1536,6 +1537,7 @@ impl Surface {
         } = r;
 
         let outer_loop_counts = trimming_tools::find_outer_loops(
+            k,
             curves,
             &mut ordered,
             &mut loop_counts,
@@ -4856,11 +4858,11 @@ mod kernel_dispatch_tests {
                 SurfaceKind::Cone(_)
             ));
             let mut lazy = SurfaceEval::with_uv(&kernel, Some(&surface), uv.x, uv.y);
-            assert!(core::ptr::eq(lazy.kernel, &kernel));
+            assert!(core::ptr::eq(lazy.kernel, core::ptr::from_ref(&kernel)));
             assert_eq!(lazy.pos().unwrap(), expected);
             let curve = Curve::from(Line::from_points(Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0), 3));
             let callback = CsIntersectEnfo::new(&kernel, &curve, &surface, 1e-12);
-            assert!(core::ptr::eq(callback.kernel, &kernel));
+            assert!(core::ptr::eq(callback.kernel, core::ptr::from_ref(&kernel)));
             let derivatives =
                 evaluate_1st_derivatives(&kernel, &surface, uv, Side::Left, Side::Left).unwrap();
             assert_eq!(derivatives.0, expected);
@@ -4911,6 +4913,14 @@ mod kernel_dispatch_tests {
         assert!(surface
             .evaluate_step_point(&kernel, Point2::new(0.5, 0.5))
             .is_err());
+        assert!(matches!(
+            surface.copy(),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        assert!(matches!(
+            surface.copy_and_add_analytics(&kernel),
+            Err(SolidError::InvalidInput { .. })
+        ));
         let mut reader = DatabaseReader::new();
         reader.open_for_read(b"2\n0\n0\n".to_vec(), FileType::Ascii);
         for _ in 0..128 {

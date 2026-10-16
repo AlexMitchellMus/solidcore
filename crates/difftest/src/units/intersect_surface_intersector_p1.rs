@@ -1019,7 +1019,9 @@ fn gen_plane(rng: &mut Rng, s: f64) -> SurfaceIn {
 fn clamped_knots(rng: &mut Rng, n: usize, p: usize, lo: f64, hi: f64) -> Vec<f64> {
     let interior = n - p - 1;
     let mut inner: Vec<f64> = (0..interior)
-        .map(|i| lo + (hi - lo) * (i as f64 + 1.0 + rng.uniform(-0.3, 0.3)) / (interior as f64 + 1.0))
+        .map(|i| {
+            lo + (hi - lo) * (i as f64 + 1.0 + rng.uniform(-0.3, 0.3)) / (interior as f64 + 1.0)
+        })
         .collect();
     inner.sort_by(f64::total_cmp);
     let mut k = vec![lo; p + 1];
@@ -1418,6 +1420,7 @@ fn gen_op(
 }
 
 fn gen_case(rng: &mut Rng) -> Option<Inputs> {
+    let k = &Kernel::default();
     let s = gen_scale(rng);
     let scenario = rng.below(10);
     let a = match scenario {
@@ -1468,20 +1471,40 @@ fn gen_case(rng: &mut Rng) -> Option<Inputs> {
             2 => 0.05,
             _ => 0.3,
         };
-        *d = [mag * (n[2] - n[0]) * ang.cos(), mag * (n[3] - n[1]) * ang.sin()];
+        *d = [
+            mag * (n[2] - n[0]) * ang.cos(),
+            mag * (n[3] - n[1]) * ang.sin(),
+        ];
     }
     if b.is_none() || rng.chance(0.3) {
         dir[1] = dir[0];
         if b.is_none() {
             let b0 = base[0];
-            return Some(build(rng, a, b, dom1, dom2, fillet, curves, &srfs, doms, [b0, b0], dir, s));
+            return Some(build(
+                k,
+                rng,
+                a,
+                b,
+                dom1,
+                dom2,
+                fillet,
+                curves,
+                &srfs,
+                doms,
+                [b0, b0],
+                dir,
+                s,
+            ));
         }
     }
-    Some(build(rng, a, b, dom1, dom2, fillet, curves, &srfs, doms, base, dir, s))
+    Some(build(
+        k, rng, a, b, dom1, dom2, fillet, curves, &srfs, doms, base, dir, s,
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
 fn build(
+    k: &Kernel,
     rng: &mut Rng,
     a: SurfaceIn,
     b: Option<SurfaceIn>,
