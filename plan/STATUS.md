@@ -1,6 +1,6 @@
 # solidcore status
 
-Last updated: 2026-10-16, `intersect.surface_drop_lib_p3` partial (PR #136; plan/modules.toml then lists 186 ported units, 99 green and 87 partial); before: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green); `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
+Last updated: 2026-10-16, `intersect.surface_drop_lib_p3` partial (PR #136; plan/modules.toml then lists 187 ported units, 99 green and 88 partial, with `heal.face_props` and `topology.proto_topology_p3` from main); before: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green); `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
 
 
 ## Integration update (2026-10-15, PR #119)
