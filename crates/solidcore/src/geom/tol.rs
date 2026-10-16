@@ -126,7 +126,7 @@ use crate::surface::volume::Volume;
 // overrides belong to SmVertex, SmEdge, SmFace, SmEdgeuse), SmSurface/SmCurve
 // (GetFace/GetEdge), SmBrep, SmBrepData and SmCurveClassification; those classes have
 // no Rust object type yet.
-// UNPORTED(curve.curve_p2): SmTol::IsDegenerate(const SmCurve*, SmExtent1d, ..) and
+// UNPORTED(curve.curve_p2): SmTol::IsDegenerate(const SmCurve*, SmExtent1d, ..),
 // SmTol::MapTo1d(SmTol3d&, double, const SmCurve&) need SmCurve::IsDegenerate /
 // Evaluate / GetNaturalInterval (SmTol::GetScaledZero(const SmCurve&) is
 // scaled_zero_of_curve since PR #136).
