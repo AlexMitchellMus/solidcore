@@ -972,21 +972,39 @@ unit's 16,615 compared cases, with zero failures and maximum relative error
 and surface part 8 (1). Its 15,757 new Cone/Cylinder cases include 10,771 with numerical
 output beyond statuses and 4,986 status-only cases; guarded native recipes are
 excluded from that added coverage. Both units have no absolute floors. Primary
-sensitivity detects all 37,309 perturbations. The 16 database recipes compare both
-readers on identical native-written records; a native ASCII stream may round the
-original geometry, so serialization is not claimed to be lossless.
+sensitivity detects all 37,309 perturbations. Another 32 manual lazy-evaluator
+apex/adjacent-float probes compare bit-identically (separate from default totals).
+The 16 database recipes compare both readers on identical native-written records;
+a native ASCII stream may round the original geometry, so serialization is not
+claimed to be lossless.
 
-Formatting, strict plain/C++ Clippy, 1,191 core tests, two native FFI contract tests
-and WASM pass. The GNU full-suite results will be recorded when its run completes.
-The full regression validation uses the fork's standard Ubuntu CI workflow
-(kernel/shims O2 and the normal difftest profile). Mac comparisons use O2 for
+[Final GNU/Linux validation](https://github.com/Karl-VonRichter/solidcore/actions/runs/38870779906) on code `ce56aae6`
+passes all 182 selected units: 99 green, 83 partial, 465,289 total cases,
+452,754 compared, 12,535 deferred and zero failed. Both primary units are
+bit-identical on GNU C++. Full sensitivity detects 452,672/452,672 perturbations;
+82 empty outputs are unperturbed and 12,535 cases are deferred. All affected
+units are included. No tolerance or absolute floor changed.
+
+Formatting, strict plain/C++ Clippy, 1,215 workspace tests (including 1,193 core),
+two native FFI contract tests (27 filtered), WASM, license/source checks and the
+locked publish dry-run pass. The committed default reports come from this run.
+Seven `topology.brep_data` cone/cylinder read deferrals now compare (2,331 passed,
+48 deferred of 2,379). The topology solver keeps its 2,396 passed / 33 deferred;
+12 old iso-curve deferrals now name `surface.surface_p2`'s `GetNaturalUVDomain` gap.
+
+GNU validation uses Release/O2 kernel and shims, the normal difftest profile and
+unchanged floating-point flags. Default and sensitivity run as independent
+processes after one build. The fork's validation tree differs from `ce56aae6`
+only in its workflow; final PR changes after that code commit are reports/docs.
+Canonical CI awaits maintainer approval. Mac comparisons also use O2 for
 kernel/shims. The local 4 GB Linux VM could not complete the full runner build
-under memory pressure; its temporary validation container was stopped.
+under memory pressure; its temporary validation container was removed.
 
-This integration leaves offsets/rebuilds with #71, sphere with #100 and cone intersections/dependency integrations with #131's owner.
+This integration leaves offsets/rebuilds with #71, sphere with #100 and cone
+intersections/dependency integrations with #131's owner.
 The merged #120 implementation is retained, with caller Kernel propagation through
-its new shared solver paths. #71's
-head c9aa85de has 26 reported failures; no older pass certifies that head. Cone
-trim/fast-drop virtual callbacks and torus/extrusion, curve-on-surface and B-spline
-cache-storage adapters remain explicit gaps. No cone null-offset numerical result
-is certified by this PR.
+its new shared solver paths. #71's head c9aa85de has 26 reported failures; no
+older pass certifies that head. Cone
+trim/fast-drop virtual callbacks, part 9 iso/tessellation, torus/extrusion,
+curve-on-surface and B-spline cache-storage adapters remain explicit gaps. No cone
+null-offset numerical result is certified by this PR.

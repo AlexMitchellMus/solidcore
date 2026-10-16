@@ -5065,6 +5065,11 @@ Remaining integration boundaries are explicit:
 - Cone trimming and fast point dropping still need inherited revolution bodies
   with the cone's virtual callbacks. These are dispatch gaps, not replacements by
   a plain revolution or a B-spline. Their errors name the owning common unit.
+- Part 9 iso/tessellation helpers still store B-spline objects and cannot retain
+  Cone/Cylinder iso/evaluation overrides. These now report an explicit
+  `surface.surface_p9` dispatch gap before constructing stand-ins. The existing
+  part 9 revolution fixtures do not certify real Cone/Cylinder dispatch; a core
+  contract assertion covers refusal for both concrete types.
 - Sphere (PR #100), torus and extrusion adapters are not imported.
   PR #120 has merged; its numerical implementation and subdivision bound are
   retained, with caller Kernel propagation through its new shared solver paths. Existing concrete readers may still defer when no SurfaceKind
@@ -5089,6 +5094,10 @@ ASCII/binary version-30 round trips, lazy `SmSurfaceEval` derivatives, inversion
 subdomains, degeneracy, normals and bounding boxes. Common fallible inversion
 compares UV/location only on success; direct cone part 1 retains its native
 failure-output comparisons. No comparison tolerance or absolute floor is changed.
+The seven `topology.brep_data` fixtures previously deferred on cone/cylinder
+records now compare: the five Defeature LShape I/II, Platte, defillet and
+flathead-screw-top files, plus OffsetBoxCylOnCorner edited/healed. That unit
+retains 48 independent offset/extrusion deferrals.
 An additional 32 manual lazy-evaluator apex probes pass bit-identically: canonical
 cone bot=2/top=0/height=3, identity placement, both swap/inside flags, angular
 parameters 0, 0.25, 0.5, 1 and axial parameters 1 and its preceding float
@@ -5102,10 +5111,33 @@ Karl's fork, with Release/O2 kernel, O2 shims, the difftest profile and unchange
 `-ffp-contract=off -fno-fast-math`. A local 4 GB Linux VM could not complete the
 full runner build under memory pressure (including an unoptimized driver/shim
 attempt); no full-suite pass is claimed for that abandoned local attempt. Its
-validation container was stopped without changing other containers or the VM's
+validation container was removed without changing other containers or the VM's
 configuration. Canonical CI requires maintainer approval, which this account
-cannot grant; the fork workflow adds report upload only, and its crate/harness
-sources match PR #133's validated source commit.
+cannot grant; the fork workflow adds report upload, full sensitivity and the native contract
+tests. Default and sensitivity checks run in independent processes after one
+standard optimized build, with unchanged per-process input/operation order and
+comparison policy. Its crate/harness sources match PR #133's source commit
+`ce56aae6`.
+After merging #120, the local C++ Clippy rerun could not write its query cache
+because the shared disk filled; only this worktree's disposable caches were
+removed. The hosted rerun passes C++ Clippy on the merged source. The merged
+local core tests (1,193) and wasm check pass.
+
+Final recertification: [GNU CI](https://github.com/Karl-VonRichter/solidcore/actions/runs/38870779906) validates code
+`ce56aae6`, including merged #120 and the explicit part 9 Cone/Cylinder refusal.
+The validation tree changes only the workflow. `--green` compares 452,754 of
+465,289 cases across 182 units (99 green, 83 partial), with 12,535 deferred and
+zero failed. Sensitivity detects all 452,672 perturbations; 82 empty outputs
+remain unperturbed (`geom.assert_array` 1, `nlib.srf_basic` 1,
+`geom.local_solve1d` 7, `nlib.basis_adv` 73), and deferrals are not perturbed.
+The two primary reports have max relative error zero and no absolute floors;
+all units retain their previous tolerance/floor policy. Workspace tests total
+1,215 passes (1,193 core); the two native contract tests pass with 27 filtered.
+Formatting, plain/C++ Clippy, wasm, deny and locked publish dry-run all pass.
+
+The topology solver's 12 previous `curve.iso_curve` deferrals now reach the
+explicit `SmSurface::GetNaturalUVDomain` gap in `surface.surface_p2`; 2,396 cases
+still compare and 33 defer. No additional unit is promoted by this integration.
 
 ## surface.surface_p11 (`LocalSurfaceIntersect`, `SmCSGlobalSolver` / `SmSSGlobalSolver::LocalSolve`, `IntersectSurfaceBoundaries`, `LiftCurve`, PR #120, 2026-10-15; partial)
 

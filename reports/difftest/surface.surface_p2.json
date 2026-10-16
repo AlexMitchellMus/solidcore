@@ -28078,7 +28078,7 @@
       "values_compared": 20
     },
     {
-      "max_rel_err": 1.1920456891792515e-16,
+      "max_rel_err": 0.0,
       "name": "common_cone_review2_std_bnd_near_cyl_ep_0.25_0.999999",
       "outcome": "pass",
       "pass": true,
@@ -58454,7 +58454,7 @@
       "values_compared": 5
     },
     {
-      "max_rel_err": 1.1920456891792412e-16,
+      "max_rel_err": 0.0,
       "name": "common_cone_r3_16955_ev_unbtiny_std_in_0.25_0.5_310101",
       "outcome": "pass",
       "pass": true,
@@ -95686,7 +95686,7 @@
       "values_compared": 8
     },
     {
-      "max_rel_err": 1.997194018673876e-15,
+      "max_rel_err": 0.0,
       "name": "common_cone_gen0592",
       "outcome": "pass",
       "pass": true,
@@ -98494,7 +98494,7 @@
       "values_compared": 250
     },
     {
-      "max_rel_err": 2.365471415360535e-16,
+      "max_rel_err": 0.0,
       "name": "common_cone_gen1140",
       "outcome": "pass",
       "pass": true,
@@ -99854,7 +99854,7 @@
       "values_compared": 5
     },
     {
-      "max_rel_err": 2.0125611729577195e-15,
+      "max_rel_err": 0.0,
       "name": "common_cone_gen1427",
       "outcome": "pass",
       "pass": true,
@@ -132350,7 +132350,7 @@
       "values_compared": 5
     },
     {
-      "max_rel_err": 2.365471415360535e-16,
+      "max_rel_err": 0.0,
       "name": "common_cone_gen1140_subdomain",
       "outcome": "pass",
       "pass": true,
@@ -132814,7 +132814,7 @@
       "values_compared": 20
     },
     {
-      "max_rel_err": 1.1920456891792515e-16,
+      "max_rel_err": 0.0,
       "name": "common_lazy_cylinder_false_false_0.5",
       "outcome": "pass",
       "pass": true,
@@ -132846,7 +132846,7 @@
       "values_compared": 20
     },
     {
-      "max_rel_err": 1.1920456891792515e-16,
+      "max_rel_err": 0.0,
       "name": "common_lazy_cylinder_false_true_0.5",
       "outcome": "pass",
       "pass": true,
@@ -132862,7 +132862,7 @@
       "values_compared": 20
     },
     {
-      "max_rel_err": 1.1920456891792515e-16,
+      "max_rel_err": 0.0,
       "name": "common_lazy_cylinder_true_false_0",
       "outcome": "pass",
       "pass": true,
@@ -132870,7 +132870,7 @@
       "values_compared": 20
     },
     {
-      "max_rel_err": 1.1920456891792515e-16,
+      "max_rel_err": 0.0,
       "name": "common_lazy_cylinder_true_false_0.25",
       "outcome": "pass",
       "pass": true,
@@ -132878,7 +132878,7 @@
       "values_compared": 20
     },
     {
-      "max_rel_err": 1.1920456891792515e-16,
+      "max_rel_err": 0.0,
       "name": "common_lazy_cylinder_true_false_0.5",
       "outcome": "pass",
       "pass": true,
@@ -132886,7 +132886,7 @@
       "values_compared": 20
     },
     {
-      "max_rel_err": 1.1920456891792515e-16,
+      "max_rel_err": 0.0,
       "name": "common_lazy_cylinder_true_false_1",
       "outcome": "pass",
       "pass": true,
@@ -132894,7 +132894,7 @@
       "values_compared": 20
     },
     {
-      "max_rel_err": 1.1920456891792515e-16,
+      "max_rel_err": 0.0,
       "name": "common_lazy_cylinder_true_true_0",
       "outcome": "pass",
       "pass": true,
@@ -132902,7 +132902,7 @@
       "values_compared": 20
     },
     {
-      "max_rel_err": 1.1920456891792515e-16,
+      "max_rel_err": 0.0,
       "name": "common_lazy_cylinder_true_true_0.25",
       "outcome": "pass",
       "pass": true,
@@ -132910,7 +132910,7 @@
       "values_compared": 20
     },
     {
-      "max_rel_err": 1.1920456891792515e-16,
+      "max_rel_err": 0.0,
       "name": "common_lazy_cylinder_true_true_0.5",
       "outcome": "pass",
       "pass": true,
@@ -132918,7 +132918,7 @@
       "values_compared": 20
     },
     {
-      "max_rel_err": 1.1920456891792515e-16,
+      "max_rel_err": 0.0,
       "name": "common_lazy_cylinder_true_true_1",
       "outcome": "pass",
       "pass": true,
@@ -133063,7 +133063,7 @@
     "surface.cone_p2": 10,
     "surface.surface_p8": 1
   },
-  "max_rel_err": 2.0125611729577195e-15,
+  "max_rel_err": 0.0,
   "pass": true,
   "rel_tol": 1e-9,
   "seeds": 16,
