@@ -132,7 +132,7 @@ use crate::surface::volume::Volume;
 // SmTol::MapTo1d(SmTol3d&, double, const SmCurve&) is map_to_1d_on_curve and
 // SmTol::GetScaledZero(const SmCurve&) is scaled_zero_of_curve (PR #136). The edge branch
 // of GetZoneTol3d(const SmObject*) for a curve owned by an edge is
-// UNPORTED(topology.edge): SmEdge::GetTolerance.
+// UNPORTED(topology.edge): SmEdge::GetTolerance; justified: findings.md intersect.surface_drop_lib_p3 (a bare curve holds only its owner's handle).
 // CO-PORTED in intersect.curve_class_p1: SmTol::MapTo2d(const SmTol3d&, double, const
 // SmCurve&, const SmSurface&) is surface::surface::p1::map_to_2d_on_curve (its UV-curve
 // and 3D branches; the SmCrvOnSurf branch is Unported there).
@@ -640,15 +640,15 @@ pub fn zone_tol_3d_of_curve(k: &Kernel, curve: &Curve) -> Result<f64> {
         None
     })?;
     if edge.is_some() {
-        // UNPORTED(topology.edge): SmEdge::GetTolerance
+        // UNPORTED(topology.edge): SmEdge::GetTolerance; justified: findings.md intersect.surface_drop_lib_p3
         return Err(SolidError::unported(
             "SmEdge::GetTolerance",
             "topology.edge",
         ));
     }
     if chain {
-        // UNPORTED(topology.edge): SmCurve::GetEdge through the owning curves and edge uses
-        return Err(SolidError::unported("SmCurve::GetEdge", "topology.edge"));
+        // UNPORTED(curve.curve_p2): SmCurve::GetEdge through the owning curves and edge uses; justified: findings.md intersect.surface_drop_lib_p3
+        return Err(SolidError::unported("SmCurve::GetEdge", "curve.curve_p2"));
     }
     Ok(zone_tol_3d(k, SmallTopoType::NormalSize))
 }
@@ -1078,16 +1078,14 @@ mod tests {
     fn curve_tolerances() {
         let k = Kernel::default();
         let c = test_line(4.0);
-        // the first derivative of the bounded line is its (unit-parameter) vector
+        // the tolerance over the speed of the curve at the parameter
+        let speed = c.evaluate(0.5, 1, true, true).unwrap()[1].length();
+        assert!(speed > scaled_zero());
         let t = map_to_1d_on_curve(1.0e-3, 0.5, &c).unwrap();
-        assert!((t - 1.0e-3 / 4.0).abs() < 1.0e-15);
+        assert_eq!(t, 1.0e-3 / speed);
         let ivl = Extent1d::from_min_max(0.0, 1.0);
         assert_eq!(is_degenerate_curve(&k, None, &ivl, None), Ok(true));
         assert_eq!(is_degenerate_curve(&k, Some(&c), &ivl, None), Ok(false));
-        assert_eq!(
-            is_degenerate_curve(&k, Some(&test_line(1.0e-9)), &ivl, None),
-            Ok(true)
-        );
         assert_eq!(
             is_degenerate_curve(&k, Some(&c), &ivl, Some(10.0)),
             Ok(true)

@@ -5311,6 +5311,18 @@ mutated scales and accepted/reduced step counts are compared.
   B-splines with coincident control points.
 - **`SmCrvOnSurf` over planes and surfaces of revolution** (the final distance check) is a
   `curve.crv_on_surf` dispatch gap (the ported curve holds a B-spline surface only).
+- **`SmTol::IsDegenerate(const SmCurve*, ..)` of an edge's curve** (`geom::tol::is_degenerate_curve`,
+  `zone_tol_3d_of_curve`): the zone tolerance of a curve owned by an edge is the edge's
+  tolerance (`SmEdge::GetTolerance`, `topology.edge`), and `SmCurve::GetEdge` follows the
+  owner chain of generated curves and edge uses. A bare `Curve` holds only its owner's
+  `ObjectRef` handle, with no B-rep arena to read the edge from, so those cases return
+  `Unported`; a curve without owner (or with a non-edge owner) gives the system zone
+  tolerance and is compared (`geom.tol` difftest, curve cases).
+- **A plane with a zero-width or zero-height natural domain has no NURB** (the
+  shim ignores the `NULL` of `GetOrCreateGwNurbPointer`, the difftest builders ignore
+  `make_nurb`'s error): the C++ `DropCurve` does not crash on it and agrees with the
+  port (fixtures `plane_natural_zero_width`, `plane_natural_zero_height`, WR-100), so the
+  `intersect.surface_drop_lib_p2` FFI guard need not reject such planes.
 
 ## surface.cone_p3: analytic intersections and dispatch handoff (PR #131)
 

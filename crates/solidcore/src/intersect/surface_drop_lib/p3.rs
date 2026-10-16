@@ -64,7 +64,7 @@
 //!   plan/upstream-issues.md HANG-16); deeper is
 //!   [`SolidError::NotConverged`]. No compared case reaches the second `GetNextPoint` of
 //!   a span yet (the offset surface defers first), so the bound, the span stack and
-//!   `sm_AddToCurve` are untested until surface.offset_surface lands.
+//!   `sm_AddToCurve` are untested until `surface.offset_surface` lands.
 //! - **Not ported here.** The `SM_DEBUG_CODE` blocks, the `SM_ASSERT`s and the
 //!   messages.
 
@@ -294,9 +294,8 @@ fn uv_curve_gap(
     approx_tol_3d: f64,
 ) -> Result<(f64, f64)> {
     let SurfaceKind::BSpline(bs) = surface.kind() else {
-        // UNPORTED(curve.crv_on_surf): SmCrvOnSurf over a non-B-spline SmSurface (dispatch
-        // gap: the ported curve holds a B-spline surface only) -- justified: findings.md
-        // intersect.surface_drop_lib_p3
+        // UNPORTED(curve.crv_on_surf): SmCrvOnSurf over a non-B-spline SmSurface; justified: findings.md intersect.surface_drop_lib_p3
+        // (dispatch gap: the ported curve holds a B-spline surface only)
         return Err(SolidError::unported(
             "SmSurface (non-B-spline) in SmCrvOnSurf",
             "curve.crv_on_surf",
