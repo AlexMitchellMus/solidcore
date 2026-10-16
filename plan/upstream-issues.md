@@ -1298,6 +1298,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** hang.
 - **Rust port:** The wrappers are stubs until `primitive.primitive_creation_p3` lands. The FFI rejects a negative distance with a full circle (B-spline, analytic, or an arc spanning 360 degrees); the generator sweeps circles over positive distances.
 
+#### HANG-16. `SmSurface::DropCurve` can subdivide the same span forever
+- **Location:** `source/SMLib/src/SmSurfaceDropLib.cpp:5637` `SmSurface::DropCurve`, the span stack loop: a span that fails `TestSpanAccuracy` is split at `(sStart.m_dT + sEnd.m_dT) / 2.0` (`:5937`) and the split point pushed (`:6014`); a failing span is only accepted once it is shorter than `sInterval.GetLength() / 8000.0` (`:5823`).
+- **What happens:** Nothing bounds the stack. When the interval is so short (or zero long) that `1/8000` of it is below one ulp of the span ends, a span of one ulp neither passes that test nor shrinks: the midpoint rounds to `sEnd.m_dT`, `GetNextPoint` succeeds there, and the same point is pushed again on every iteration, so the stack grows until memory runs out.
+- **Trigger:** A curve interval shorter than about `8000` ulps of its end parameters over a span that fails `TestSpanAccuracy` (or a zero interval with a non-positive tolerance, which then does not skip the span).
+- **How found:** read during porting.
+- **Confirmed:** no.
+- **Severity:** hang.
+- **Rust port:** `intersect::surface_drop_lib::p3` bounds the stack at `MAX_SPAN_DEPTH` (64) drop points and returns `SolidError::NotConverged` past it (exact arithmetic needs about 15). The FFI rejects intervals shorter than `1e-6 * max(1, |ends|)` and non-positive tolerances.
+
 ## Nondeterminism
 
 #### ND-1. `srand(time(NULL))` in face sampling and shell classification
@@ -2198,6 +2207,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes: the `closed3d` cases of `fixtures/topology.loopuse/tolerance_limit.json` set every edge tolerance to 0, 1e-15 or -1e-12 so that real end gaps exceed `XSectTol3d`; both sides still report those loops closed (with the largest gap seen, also when `bCheckAllGaps == FALSE` stops early).
 - **Severity:** wrong result.
 - **Rust port:** Reproduces it (`topology::loopuse::is_closed_3d`).
+
+#### WR-100. `SmSurface::DropCurve` tests the domain's u length for the v degeneracy
+- **Location:** `source/SMLib/src/SmSurfaceDropLib.cpp:4250` `SmSurface::DropCurve`: `bDegenSurfV = sUVDomain.XLength() < SM_EFF_ZERO` (the line above sets `bDegenSurfU` the same way).
+- **What happens:** A drop domain degenerate in v is not reported (`SM_ERR_DEGENERATE_SURFACE`, `SM_CTC_DEGENSURFACE_FAIL`) and the drop goes on; `m_bDegenSurfV` of the failure record copies the u test.
+- **Trigger:** Only a natural domain degenerate in v reaches it (a given domain shorter than `SM_EFF_ZERO` in either direction is replaced by the natural one), e.g. a plane built over a domain of zero height.
+- **How found:** read during porting.
+- **Confirmed:** no.
+- **Severity:** wrong result.
+- **Rust port:** Reproduces it (`Surface::drop_curve_base`).
 
 ### Healing
 

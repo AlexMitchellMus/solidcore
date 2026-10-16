@@ -89,10 +89,10 @@
 //! - **Unported callees.** `IsPlanar` of a curve-bounded surface (its base
 //!   `CalculateBoundingBox`, `surface.surface_p1`), `DropPoint` (`surface.surface_p5`),
 //!   the iso curves of `CreateNaturalUVTrimCurves` for kinds without a ported override
-//!   (`surface.surface_p5`), the general
-//!   `SmSurface::DropCurve` (`intersect.surface_drop_lib_p3`) and the general
+//!   (`surface.surface_p5`) and the general
 //!   `SmSurface::GlobalLineIntersect` (`surface.surface_p8`) return
-//!   [`SolidError::Unported`]. Statuses upstream ignores are propagated where
+//!   [`SolidError::Unported`]. The general `SmSurface::DropCurve`
+//!   ([`Surface::drop_curve_base`]) runs on a copy of the plane (no owner). Statuses upstream ignores are propagated where
 //!   upstream would go on with uninitialised values.
 
 use std::borrow::Cow;
@@ -1338,9 +1338,8 @@ impl Plane {
     ///
     /// # Errors
     ///
-    /// Those of the curve evaluations and constructions;
-    /// [`SolidError::Unported`] for the general `SmSurface::DropCurve`
-    /// (`intersect.surface_drop_lib_p3`).
+    /// Those of the curve evaluations and constructions and of the general
+    /// `SmSurface::DropCurve` ([`Surface::drop_curve_base`]).
     pub fn drop_curve(
         &self,
         k: &Kernel,
@@ -1457,7 +1456,7 @@ impl Plane {
         // when the curve is a BSpline Curve
         if curve.is_kind_of(BSplineCurve::TYPE) {
             let Some(b_spline) = b_spline_part(curve) else {
-                return surface_drop_curve();
+                return surface_drop_curve(k, self, uv_domain, curve, &ivl, approx_tol, keep_all);
             };
 
             // copy and trim the original crv to the given interval
@@ -1494,7 +1493,7 @@ impl Plane {
 
                 // if clamping moves the control point - give up - pass the call along
                 if dev_from_srf_nrm_line > approx_tol {
-                    return surface_drop_curve();
+                    return surface_drop_curve(k, self, uv_domain, curve, &ivl, approx_tol, keep_all);
                 }
 
                 // save the dropped control point
@@ -1528,7 +1527,7 @@ impl Plane {
         }
 
         // else pass the call along to the general DropCurve method
-        surface_drop_curve()
+        surface_drop_curve(k, self, uv_domain, curve, &ivl, approx_tol, keep_all)
     }
 
     // ---- coincidence ------------------------------------------------------------------
@@ -2126,13 +2125,26 @@ fn surface_drop_point(
     Ok((r.success, r.result_uv, r.gap))
 }
 
-/// The general `SmSurface::DropCurve`.
-fn surface_drop_curve() -> Result<PlaneDropCurve> {
-    // UNPORTED(intersect.surface_drop_lib_p3): SmSurface::DropCurve
-    Err(SolidError::unported(
-        "SmSurface::DropCurve",
-        "intersect.surface_drop_lib_p3",
-    ))
+/// The general `SmSurface::DropCurve(ctx, domain, curve, interval, tol, .., keep_all,
+/// NULL, ..)` on the plane (a copy: no owner).
+fn surface_drop_curve(
+    k: &Kernel,
+    plane: &Plane,
+    uv_domain: &Extent2d,
+    curve: &Curve,
+    interval: &Extent1d,
+    approx_tol: f64,
+    keep_all: bool,
+) -> Result<PlaneDropCurve> {
+    let r = Surface::from(plane.clone())
+        .drop_curve_base::<crate::surface::surface::p4::NoObject>(
+            k, uv_domain, curve, interval, approx_tol, keep_all, None,
+        )?;
+    Ok(PlaneDropCurve {
+        max_drop_to_surf: r.max_drop_to_surf,
+        max_approx_dev: r.max_approx_dev,
+        uv_curves: r.uv_curves.into_iter().map(Curve::from).collect(),
+    })
 }
 
 /// The general `SmSurface::GlobalLineIntersect` (through the surface cache).
