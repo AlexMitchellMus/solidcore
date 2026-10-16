@@ -755,7 +755,7 @@ fn rust_run(s: &Script) -> Result<Vec<f64>, Fail> {
                     if matches!(class, PointClassType::Edgeuse | PointClassType::Volume) {
                         return Err(rejected());
                     }
-                    match st(pc.find_obj_point_3d(&pool))? {
+                    match st(pc.find_obj_point_3d(&k, &pool))? {
                         Ok(p) => o.extend([0.0, p.x, p.y, p.z]),
                         Err(c) => o.push(c),
                     }
@@ -1074,7 +1074,7 @@ fn class_object_kind(class: i32) -> Option<usize> {
 }
 
 /// A point near the pool's first curve or plane, or anywhere.
-fn gen_point(rng: &mut Rng, objs: &[ObjIn]) -> [f64; 3] {
+fn gen_point(k: &Kernel, rng: &mut Rng, objs: &[ObjIn]) -> [f64; 3] {
     let near = |rng: &mut Rng, p: [f64; 3], d: f64| {
         let e = rp(rng, d);
         [p[0] + e[0], p[1] + e[1], p[2] + e[2]]
@@ -1084,7 +1084,7 @@ fn gen_point(rng: &mut Rng, objs: &[ObjIn]) -> [f64; 3] {
             if let Ok(curve) = build_curve(c) {
                 let ivl = curve.natural_interval();
                 let t = ivl.min() + (ivl.max() - ivl.min()) * rng.uniform(-0.1, 1.1);
-                if let Ok(p) = curve.evaluate_point(t) {
+                if let Ok(p) = curve.evaluate_point(k, t) {
                     let d = *rng.choose(&[0.0, 1e-9, 1e-6, 1e-4, 0.1, 2.0]).unwrap_or(&0.0);
                     return near(rng, [p.x, p.y, p.z], d);
                 }
@@ -1121,7 +1121,7 @@ fn gen_tol(rng: &mut Rng) -> f64 {
         .unwrap_or(&1e-5)
 }
 
-fn gen_op(rng: &mut Rng, objs: &[ObjIn], geometric: bool) -> OpIn {
+fn gen_op(k: &Kernel, rng: &mut Rng, objs: &[ObjIn], geometric: bool) -> OpIn {
     let t = rng.below(2) as usize;
     let topo: Vec<usize> = objs
         .iter()
@@ -1192,7 +1192,7 @@ fn gen_op(rng: &mut Rng, objs: &[ObjIn], geometric: bool) -> OpIn {
             17..=19 => OpIn::Combine { t },
             20..=22 => OpIn::Compute {
                 t,
-                p: gen_point(rng, objs),
+                p: gen_point(k, rng, objs),
             },
             23 => OpIn::Find { t },
             24 => {
@@ -1223,7 +1223,7 @@ fn gen_op(rng: &mut Rng, objs: &[ObjIn], geometric: bool) -> OpIn {
             }
             26 => OpIn::Merge {
                 t,
-                p: gen_point(rng, objs),
+                p: gen_point(k, rng, objs),
             },
             27 => OpIn::Brep { t },
             28 => {
@@ -1250,7 +1250,7 @@ fn gen_op(rng: &mut Rng, objs: &[ObjIn], geometric: bool) -> OpIn {
     }
 }
 
-fn gen_script(rng: &mut Rng) -> Script {
+fn gen_script(k: &Kernel, rng: &mut Rng) -> Script {
     let objects = gen_objects(rng);
     // most scripts stay on curves, surfaces and volumes (comparable now); some
     // exercise topology (deferred on the Rust side)
@@ -1265,7 +1265,7 @@ fn gen_script(rng: &mut Rng) -> Script {
         }
     }
     for _ in 0..n_ops {
-        ops.push(gen_op(rng, &objects, geometric));
+        ops.push(gen_op(k, rng, &objects, geometric));
     }
     Script {
         objects,
@@ -1281,7 +1281,7 @@ impl UnitDiff for Runner {
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
         for _ in 0..64 {
-            let s = gen_script(rng);
+            let s = gen_script(k, rng);
             let Ok(input) = cpp_input(&s) else {
                 continue;
             };

@@ -111,6 +111,7 @@ use super::p1::{
 };
 use super::p2::{derivative_limit, drop_vectors, normal_limit, SurfaceEvaluate};
 use super::{Surface, SurfaceKind};
+use crate::kernel::Kernel;
 
 const OP_DEGEN: &str = "surface::surface::p7::Surface::find_degen_param_for_direction";
 const OP_SEAM: &str = "surface::surface::p7::check_seam_drop";
@@ -147,13 +148,14 @@ const fn flags(u_side: Side, v_side: Side, non_zero_tangents: bool) -> EvaluateF
 /// `Evaluate1stDerivatives` whose status upstream ignores: the outputs are
 /// updated only on success.
 fn eval_1st_keep<S: SurfaceEvaluate + ?Sized>(
+    k: &Kernel,
     surface: &S,
     uv: Point2,
     u_side: Side,
     v_side: Side,
     out: &mut (Point3, Vec3, Vec3),
 ) -> Result<bool> {
-    match ignored(evaluate_1st_derivatives(surface, uv, u_side, v_side))? {
+    match ignored(evaluate_1st_derivatives(k, surface, uv, u_side, v_side))? {
         Some(v) => {
             *out = v;
             Ok(true)
@@ -175,6 +177,7 @@ fn eval_1st_keep<S: SurfaceEvaluate + ?Sized>(
 ///
 /// Only [`SolidError::Unported`] from the surface's evaluation.
 pub fn base_evaluate_normal<S: SurfaceEvaluate + ?Sized>(
+    k: &Kernel,
     surface: &S,
     uv: Point2,
     u_side: Side,
@@ -184,7 +187,7 @@ pub fn base_evaluate_normal<S: SurfaceEvaluate + ?Sized>(
     let mut d1 = (Vec3::UNDEF, Vec3::UNDEF, Vec3::UNDEF);
 
     // evaluate 1st derivatives at uv
-    let first_ok = eval_1st_keep(surface, uv, u_side, v_side, &mut d1)?;
+    let first_ok = eval_1st_keep(k, surface, uv, u_side, v_side, &mut d1)?;
     let (pnt, mut su, mut sv) = d1;
 
     let deriv_lim = derivative_limit(pnt);
@@ -262,7 +265,7 @@ pub fn base_evaluate_normal<S: SurfaceEvaluate + ?Sized>(
 
             // 1st derivatives at step point -- zero-corrected.
             let mut d = (pnt, su, sv);
-            if !eval_1st_keep(surface, suv, u_side, v_side, &mut d)? {
+            if !eval_1st_keep(k, surface, suv, u_side, v_side, &mut d)? {
                 step *= 10.0;
                 continue;
             }
@@ -288,7 +291,7 @@ pub fn base_evaluate_normal<S: SurfaceEvaluate + ?Sized>(
                 let suv2 = uv + 2.0 * step * step_uv;
 
                 let mut d2 = (pnt, su, sv);
-                if !eval_1st_keep(surface, suv2, u_side, v_side, &mut d2)? {
+                if !eval_1st_keep(k, surface, suv2, u_side, v_side, &mut d2)? {
                     // If the double-stepoff didn't work, just return the stepoff that did.
                     return Ok(normal);
                 }
@@ -324,7 +327,7 @@ pub fn base_evaluate_normal<S: SurfaceEvaluate + ?Sized>(
 
     // Use higher-order derivatives to see how the zero-derivative is changing.
     // Don't have it try to correct zero derivatives.
-    if let Some(m) = ignored(surface.evaluate(uv, 2, 2, flags(u_side, v_side, false)))? {
+    if let Some(m) = ignored(surface.evaluate(k, uv, 2, 2, flags(u_side, v_side, false)))? {
         // If we were able to get a good first deriv in the first call, use that.
         if len_su < 0.9 {
             su = at(&m, 1, 0)?;
@@ -457,7 +460,7 @@ pub fn base_evaluate_normal<S: SurfaceEvaluate + ?Sized>(
         // for every candidate small step point - get Normal from 1st derivatives
         for &suv in &uvs {
             let mut d = (pnt, su, sv);
-            if !eval_1st_keep(surface, suv, u_side, v_side, &mut d)? {
+            if !eval_1st_keep(k, surface, suv, u_side, v_side, &mut d)? {
                 continue;
             }
             (_, su, sv) = d;
@@ -501,6 +504,7 @@ pub fn base_evaluate_normal<S: SurfaceEvaluate + ?Sized>(
 /// [`SolidError::Unported`] from the surface's evaluation; those of
 /// `smgu_EvaluateCurveContinuity` (see the module docs).
 pub fn base_is_closed<S: SurfaceEvaluate + ?Sized>(
+    k: &Kernel,
     surface: &S,
     uv_domain: &Extent2d,
     param: SurfParamType,
@@ -571,6 +575,7 @@ pub fn base_is_closed<S: SurfaceEvaluate + ?Sized>(
             // evaluate isoParameter endPoints
             if want_continuity {
                 if let Some(d) = ignored(evaluate_2nd_derivatives(
+                    k,
                     surface,
                     uv_min,
                     Side::Left,
@@ -579,6 +584,7 @@ pub fn base_is_closed<S: SurfaceEvaluate + ?Sized>(
                     d2_min = d;
                 }
                 if let Some(d) = ignored(evaluate_2nd_derivatives(
+                    k,
                     surface,
                     uv_max,
                     Side::Left,
@@ -589,10 +595,10 @@ pub fn base_is_closed<S: SurfaceEvaluate + ?Sized>(
                 p_min = d2_min.point;
                 p_max = d2_max.point;
             } else {
-                if let Some(p) = ignored(surface.evaluate_point(uv_min))? {
+                if let Some(p) = ignored(surface.evaluate_point(k, uv_min))? {
                     p_min = p;
                 }
-                if let Some(p) = ignored(surface.evaluate_point(uv_max))? {
+                if let Some(p) = ignored(surface.evaluate_point(k, uv_max))? {
                     p_max = p;
                 }
             }
@@ -641,6 +647,7 @@ pub fn base_is_closed<S: SurfaceEvaluate + ?Sized>(
             if (min_continuity as i32) > (ContinuityType::Discontinuous as i32) {
                 // filter out very short curve passing as closed curves
                 if let Some(d) = ignored(evaluate_directional_derivs(
+                    k,
                     surface,
                     uv_mid,
                     uv_dir,
@@ -749,13 +756,20 @@ impl Surface {
     /// # Errors
     ///
     /// Only [`SolidError::Unported`].
-    pub fn evaluate_normal(&self, uv: Point2, u_side: Side, v_side: Side) -> Result<Vec3> {
+    pub fn evaluate_normal(
+        &self,
+        k: &Kernel,
+        uv: Point2,
+        u_side: Side,
+        v_side: Side,
+    ) -> Result<Vec3> {
         match self.kind() {
+            SurfaceKind::Cone(_) => base_evaluate_normal(k, self, uv, u_side, v_side),
             SurfaceKind::BSpline(_) | SurfaceKind::SurfOfRevolution(_) | SurfaceKind::Step(_) => {
-                base_evaluate_normal(self, uv, u_side, v_side)
+                base_evaluate_normal(k, self, uv, u_side, v_side)
             }
-            SurfaceKind::CurveBounded(s) => s.evaluate_normal(uv, u_side, v_side),
-            SurfaceKind::SrfInVolume(s) => s.evaluate_normal(uv, u_side, v_side),
+            SurfaceKind::CurveBounded(s) => s.evaluate_normal(k, uv, u_side, v_side),
+            SurfaceKind::SrfInVolume(s) => s.evaluate_normal(k, uv, u_side, v_side),
             SurfaceKind::Plane(p) => Ok(p.evaluate_normal()),
         }
     }
@@ -769,6 +783,7 @@ impl Surface {
     /// Those of [`base_is_closed`].
     pub fn is_closed(
         &self,
+        k: &Kernel,
         uv_domain: &Extent2d,
         param: SurfParamType,
         opt_tol: Option<f64>,
@@ -779,12 +794,14 @@ impl Surface {
                 let (closed, continuity) = p.is_closed();
                 Ok((closed, want_continuity.then_some(continuity)))
             }
-            SurfaceKind::BSpline(_)
+
+            SurfaceKind::Cone(_)
+            | SurfaceKind::BSpline(_)
             | SurfaceKind::CurveBounded(_)
             | SurfaceKind::SurfOfRevolution(_)
             | SurfaceKind::Step(_)
             | SurfaceKind::SrfInVolume(_) => {
-                base_is_closed(self, uv_domain, param, opt_tol, want_continuity)
+                base_is_closed(k, self, uv_domain, param, opt_tol, want_continuity)
             }
         }
     }
@@ -797,7 +814,7 @@ impl Surface {
     ///
     /// [`SolidError::Unported`] from the bounding box (the base
     /// `SmSurface::CalculateBoundingBox` of a curve-bounded surface).
-    pub fn is_planar(&self, tol_3d: f64) -> Result<Planar> {
+    pub fn is_planar(&self, k: &Kernel, tol_3d: f64) -> Result<Planar> {
         match self.kind() {
             SurfaceKind::Plane(p) => {
                 let (point, normal, deviation) = p.is_planar();
@@ -817,11 +834,14 @@ impl Surface {
                         "topology.face_p2",
                     ));
                 }
-                Ok(planar_of(s, &self.natural_uv_domain())?.is_planar(tol_3d))
+                Ok(planar_of(k, s, &self.natural_uv_domain())?.is_planar(tol_3d))
             }
             // SmSurfOfRevolution inherits SmBSplineSurface::CalculateBoundingBox
+            SurfaceKind::Cone(s) => {
+                Ok(planar_of(k, s.rev().base(), &self.natural_uv_domain())?.is_planar(tol_3d))
+            }
             SurfaceKind::SurfOfRevolution(s) => {
-                Ok(planar_of(s.base(), &self.natural_uv_domain())?.is_planar(tol_3d))
+                Ok(planar_of(k, s.base(), &self.natural_uv_domain())?.is_planar(tol_3d))
             }
             SurfaceKind::CurveBounded(_) | SurfaceKind::Step(_) | SurfaceKind::SrfInVolume(_) => {
                 // DISPATCH GAP: SmSurface::CalculateBoundingBox
@@ -864,7 +884,7 @@ impl Surface {
     /// Those of [`Surface::is_flat_corner`].
     pub fn flat_corners(
         &self,
-        k: &crate::kernel::Kernel,
+        k: &Kernel,
         angle_tol_deg: f64,
         want_points: bool,
     ) -> Result<FlatCorners> {
@@ -893,7 +913,7 @@ impl Surface {
             for ((c, bit), p) in corners.iter().zip(FLAT_CORNER_BITS).zip(pts.iter_mut()) {
                 rtn &= bit;
                 if rtn != 0 {
-                    if let Some(v) = ignored(self.evaluate_point(*c))? {
+                    if let Some(v) = ignored(self.evaluate_point(k, *c))? {
                         *p = v;
                     }
                 }
@@ -915,6 +935,7 @@ impl Surface {
     /// `surface.surface_p1`).
     pub fn find_degen_param_for_direction(
         &self,
+        k: &Kernel,
         uv: Point2,
         dir: Vec3,
         dir_from_pole: bool,
@@ -974,7 +995,7 @@ impl Surface {
             }
 
             // Evaluate target pos and tangents
-            let m = self.evaluate(test_uv, 1, 1, flags(Side::Left, Side::Left, true))?;
+            let m = self.evaluate(k, test_uv, 1, 1, flags(Side::Left, Side::Left, true))?;
 
             // save the nonSingular Unitized tangent
             let surf_dt = if singular_u {
@@ -1011,6 +1032,7 @@ impl Surface {
         // solve with NewtonRaphson iteration starting at the near best param, then
         // the best param
         let first = singular_param_solve(
+            k,
             self,
             uv,
             s_dir,
@@ -1026,6 +1048,7 @@ impl Surface {
         let mut found_param = near_best_param;
         if !found {
             if let Some((f, t)) = ignored(singular_param_solve(
+                k,
                 self,
                 uv,
                 s_dir,
@@ -1173,6 +1196,7 @@ impl Surface {
     /// (upstream dereferences `NULL`).
     pub fn local_curve_solve(
         &self,
+        k: &Kernel,
         uv_domain: &Extent2d,
         curve: &Curve,
         interval: &Extent1d,
@@ -1197,6 +1221,7 @@ impl Surface {
         }
 
         let Some(solution) = cs_normalize_local_solve(
+            k,
             self,
             curve,
             op,
@@ -1212,9 +1237,9 @@ impl Surface {
         let s0 = solution.first().copied().unwrap_or(0.0);
         let s1 = solution.get(1).copied().unwrap_or(0.0);
         let s2 = solution.get(2).copied().unwrap_or(0.0);
-        let p1 = curve.evaluate_point(s0)?;
+        let p1 = curve.evaluate_point(k, s0)?;
         let uv = Point2::new(s1, s2);
-        let p2 = self.evaluate_point(uv)?;
+        let p2 = self.evaluate_point(k, uv)?;
         let mut dist = p1.distance(p2);
         if signed {
             // Vector going from curve to surface
@@ -1250,7 +1275,7 @@ impl Surface {
     /// surface cache and the intersector.
     pub fn create_parallel_projection_curves(
         &self,
-        k: &crate::kernel::Kernel,
+        k: &Kernel,
         uv_domain: &Extent2d,
         curve: &BSplineCurve,
         projection_vector: Vec3,
@@ -1279,7 +1304,7 @@ impl Surface {
         cache.surface_continuity(uv_domain)?;
 
         // check state - internal curve continuities are better than C0 (only reported)
-        curve.calculate_continuities(CONTINUITY_ANGLE)?;
+        curve.calculate_continuities(k, CONTINUITY_ANGLE)?;
 
         // Select projection distance to be greater than max dist between curve and
         // surface
@@ -1342,13 +1367,13 @@ impl Surface {
 /// # Errors
 ///
 /// [`SolidError::Unported`] from the bounding box.
-pub fn b_spline_is_planar(s: &BSplineSurface, tol_3d: f64) -> Result<Planar> {
-    Ok(planar_of(s, &s.natural_uv_domain())?.is_planar(tol_3d))
+pub fn b_spline_is_planar(k: &Kernel, s: &BSplineSurface, tol_3d: f64) -> Result<Planar> {
+    Ok(planar_of(k, s, &s.natural_uv_domain())?.is_planar(tol_3d))
 }
 
 /// The pseudo box of a B-spline surface over `uv_domain`; a failed box is the default
 /// box, as upstream ignores the status.
-fn planar_of(s: &BSplineSurface, uv_domain: &Extent2d) -> Result<PseudoBox> {
+fn planar_of(k: &Kernel, s: &BSplineSurface, uv_domain: &Extent2d) -> Result<PseudoBox> {
     let req = BoundingBoxRequest {
         normal: false,
         pseudo: true,
@@ -1357,7 +1382,7 @@ fn planar_of(s: &BSplineSurface, uv_domain: &Extent2d) -> Result<PseudoBox> {
         polar_guess: None,
         expand_by_zone_tol: true,
     };
-    Ok(ignored(s.calculate_bounding_box(uv_domain, &req))?
+    Ok(ignored(s.calculate_bounding_box(k, uv_domain, &req))?
         .and_then(|b| b.pseudo)
         .unwrap_or_else(PseudoBox::new))
 }
@@ -1427,6 +1452,7 @@ fn pair_solve_best_answer_sq(
 ///
 /// Only [`SolidError::Unported`] (upstream ignores the evaluation statuses).
 pub fn approx_derivative_lengths<S: SurfaceEvaluate + ?Sized>(
+    k: &Kernel,
     surface: &S,
     uv_domain: &Extent2d,
 ) -> Result<Vec2> {
@@ -1440,7 +1466,7 @@ pub fn approx_derivative_lengths<S: SurfaceEvaluate + ?Sized>(
     for &si in &samples {
         for &sj in &samples {
             let uv = uv_domain.evaluate(si, sj);
-            eval_1st_keep(surface, uv, Side::Left, Side::Left, &mut d)?;
+            eval_1st_keep(k, surface, uv, Side::Left, Side::Left, &mut d)?;
             mag_u += d.1.length();
             mag_v += d.2.length();
         }
@@ -1472,6 +1498,7 @@ pub struct HigherOrderDerivs {
 ///
 /// Those of `Evaluate1stDerivatives`.
 pub fn compute_higher_order_derivs<S: SurfaceEvaluate + ?Sized>(
+    k: &Kernel,
     surface: &S,
     uv: Point2,
     g1: Vec2,
@@ -1490,11 +1517,11 @@ pub fn compute_higher_order_derivs<S: SurfaceEvaluate + ?Sized>(
     }
 
     // compute 1st derivatives and first directional derivative at target point
-    let (_, du, dv) = evaluate_1st_derivatives(surface, uv, Side::Left, Side::Left)?;
+    let (_, du, dv) = evaluate_1st_derivatives(k, surface, uv, Side::Left, Side::Left)?;
     let vec = du * g1.x + dv * g1.y;
 
     // compute 1st derivatives and first directional derivative at finite step point
-    let (_, dud, dvd) = evaluate_1st_derivatives(surface, uv1, Side::Left, Side::Left)?;
+    let (_, dud, dvd) = evaluate_1st_derivatives(k, surface, uv1, Side::Left, Side::Left)?;
     let vec_d1 = dud * g1.x + dvd * g1.y;
 
     // finite difference approx to 2nd directional derivative
@@ -1510,7 +1537,7 @@ pub fn compute_higher_order_derivs<S: SurfaceEvaluate + ?Sized>(
     // for 3rd and 4th order directional derivatives
     if want_g3 || want_g4 {
         let uv2 = uv1 + step * g1;
-        let (_, dud, dvd) = evaluate_1st_derivatives(surface, uv2, Side::Left, Side::Left)?;
+        let (_, dud, dvd) = evaluate_1st_derivatives(k, surface, uv2, Side::Left, Side::Left)?;
 
         // finite difference approximation to 3rd order directional derivative
         let vec_d2 = dud * g1.x + dvd * g1.y;
@@ -1522,7 +1549,7 @@ pub fn compute_higher_order_derivs<S: SurfaceEvaluate + ?Sized>(
 
         // get a 4th finite difference point
         let uv3 = uv2 + step * g1;
-        let (_, dud, dvd) = evaluate_1st_derivatives(surface, uv3, Side::Left, Side::Left)?;
+        let (_, dud, dvd) = evaluate_1st_derivatives(k, surface, uv3, Side::Left, Side::Left)?;
 
         // finite difference approximation to 4th order directional derivative
         let vec_d3 = dud * g1.x + dvd * g1.y;
@@ -1543,9 +1570,13 @@ pub fn compute_higher_order_derivs<S: SurfaceEvaluate + ?Sized>(
 /// # Errors
 ///
 /// Those of `Evaluate1stDerivatives`; the status of `Unitize` for a zero result.
-pub fn compute_inward_vector<S: SurfaceEvaluate + ?Sized>(surface: &S, uv: Point2) -> Result<Vec3> {
+pub fn compute_inward_vector<S: SurfaceEvaluate + ?Sized>(
+    k: &Kernel,
+    surface: &S,
+    uv: Point2,
+) -> Result<Vec3> {
     // Surface eval
-    let (_, du, dv) = evaluate_1st_derivatives(surface, uv, Side::Left, Side::Left)?;
+    let (_, du, dv) = evaluate_1st_derivatives(k, surface, uv, Side::Left, Side::Left)?;
 
     // towards midPoint UV vec
     let mid_uv = surface.natural_uv_domain().evaluate(0.5, 0.5);
@@ -1565,6 +1596,7 @@ pub fn compute_inward_vector<S: SurfaceEvaluate + ?Sized>(surface: &S, uv: Point
 ///
 /// Those of `Evaluate1stDerivatives`.
 pub fn drop_points_to_tangent_plane<S: SurfaceEvaluate + ?Sized>(
+    k: &Kernel,
     surface: &S,
     uv: Point2,
     u_side: Side,
@@ -1572,7 +1604,7 @@ pub fn drop_points_to_tangent_plane<S: SurfaceEvaluate + ?Sized>(
     points: &[Point3],
 ) -> Result<Vec<Point2>> {
     // get surface point and 1st derivs for input domain point.
-    let (pnt, du, dv) = evaluate_1st_derivatives(surface, uv, u_side, v_side)?;
+    let (pnt, du, dv) = evaluate_1st_derivatives(k, surface, uv, u_side, v_side)?;
 
     // no work - a 1st deriv is zero - set output = input and quit
     if du.length_squared() < EFF_ZERO_SQ || dv.length_squared() < EFF_ZERO_SQ {
@@ -1597,13 +1629,14 @@ pub fn drop_points_to_tangent_plane<S: SurfaceEvaluate + ?Sized>(
 ///
 /// Those of `Evaluate1stDerivatives` and `smsurf_DropVectors`.
 pub fn drop_vectors_at<S: SurfaceEvaluate + ?Sized>(
+    k: &Kernel,
     surface: &S,
     uv: Point2,
     u_side: Side,
     v_side: Side,
     vectors: &[Vec3],
 ) -> Result<Vec<Vec2>> {
-    let (_, du, dv) = evaluate_1st_derivatives(surface, uv, u_side, v_side)?;
+    let (_, du, dv) = evaluate_1st_derivatives(k, surface, uv, u_side, v_side)?;
 
     // pass the call along
     drop_vectors(du, dv, vectors)
@@ -1620,6 +1653,7 @@ pub fn drop_vectors_at<S: SurfaceEvaluate + ?Sized>(
 ///
 /// Only [`SolidError::Unported`] (upstream ignores the evaluation statuses).
 pub fn load_guesses(
+    k: &Kernel,
     surface: &Surface,
     uv_domain: &Extent2d,
     test_pnt: Point3,
@@ -1648,6 +1682,7 @@ pub fn load_guesses(
     let mut su = Vec3::UNDEF;
     let mut sv = Vec3::UNDEF;
     let mut ok = match ignored(evaluate_1st_derivatives(
+        k,
         surface,
         close_uv,
         Side::Left,
@@ -1660,7 +1695,7 @@ pub fn load_guesses(
         None => false,
     };
     if !ok {
-        if let Some(p) = ignored(surface.evaluate_point(close_uv))? {
+        if let Some(p) = ignored(surface.evaluate_point(k, close_uv))? {
             pt = p;
         }
     }
@@ -1703,6 +1738,7 @@ pub fn load_guesses(
             // skip grid points that don't evaluate to 2nd derivatives
             let mut uv = uv_domain.evaluate(prm_u, prm_v);
             ok = match ignored(evaluate_2nd_derivatives(
+                k,
                 surface,
                 uv,
                 Side::Left,
@@ -1760,6 +1796,7 @@ pub fn load_guesses(
 
             // evaluate and judge the New Point
             ok = match ignored(evaluate_1st_derivatives(
+                k,
                 surface,
                 uv,
                 Side::Left,
@@ -1772,7 +1809,7 @@ pub fn load_guesses(
                 None => false,
             };
             if !ok {
-                if let Some(p) = ignored(surface.evaluate_point(uv))? {
+                if let Some(p) = ignored(surface.evaluate_point(k, uv))? {
                     pt = p;
                 }
             }
@@ -1805,6 +1842,7 @@ pub fn load_guesses(
 ///
 /// Only [`SolidError::Unported`] (upstream ignores the evaluation statuses).
 pub fn pass_sc_convergence_test<S: SurfaceEvaluate + ?Sized>(
+    k: &Kernel,
     surface: &S,
     uv: Point2,
     curve: &Curve,
@@ -1812,12 +1850,12 @@ pub fn pass_sc_convergence_test<S: SurfaceEvaluate + ?Sized>(
 ) -> Result<bool> {
     // surface eval
     let mut d = (Vec3::UNDEF, Vec3::UNDEF, Vec3::UNDEF);
-    eval_1st_keep(surface, uv, Side::Left, Side::Left, &mut d)?;
+    eval_1st_keep(k, surface, uv, Side::Left, Side::Left, &mut d)?;
     let (pnt, mut du, mut dv) = d;
 
     // curve eval
     let mut pv = [Vec3::UNDEF, Vec3::UNDEF];
-    if let Some(v) = ignored(curve.evaluate(parameter, 1, true, true))? {
+    if let Some(v) = ignored(curve.evaluate(k, parameter, 1, true, true))? {
         for (dst, src) in pv.iter_mut().zip(v) {
             *dst = src;
         }
@@ -1862,6 +1900,7 @@ pub fn pass_sc_convergence_test<S: SurfaceEvaluate + ?Sized>(
 ///
 /// Only [`SolidError::Unported`] (upstream ignores the evaluation statuses).
 pub fn pass_ss_convergence_test<S1, S2>(
+    k: &Kernel,
     surface: &S1,
     uv: Point2,
     surface2: &S2,
@@ -1872,9 +1911,9 @@ where
     S2: SurfaceEvaluate + ?Sized,
 {
     let mut d1 = (Vec3::UNDEF, Vec3::UNDEF, Vec3::UNDEF);
-    eval_1st_keep(surface, uv, Side::Left, Side::Left, &mut d1)?;
+    eval_1st_keep(k, surface, uv, Side::Left, Side::Left, &mut d1)?;
     let mut d2 = (Vec3::UNDEF, Vec3::UNDEF, Vec3::UNDEF);
-    eval_1st_keep(surface2, uv2, Side::Left, Side::Left, &mut d2)?;
+    eval_1st_keep(k, surface2, uv2, Side::Left, Side::Left, &mut d2)?;
     let (pnt, mut du, mut dv) = d1;
     let (pnt2, mut du2, mut dv2) = d2;
     let mut diff = pnt - pnt2;
@@ -1908,6 +1947,7 @@ where
 /// `SM_ERR` at a pole or for a zero tangent of the other surface;
 /// [`SolidError::Unported`] on a seam (`SmSurface::EvaluateSTEP`).
 pub fn check_seam_drop<S: SurfaceEvaluate + ?Sized>(
+    k: &Kernel,
     this_surf: &Surface,
     this_uv: Point2,
     this_domain: &Extent2d,
@@ -1930,11 +1970,11 @@ pub fn check_seam_drop<S: SurfaceEvaluate + ?Sized>(
     // pOther point is dropped onto a seam in pThis (evaluated in its STEP
     // parameterisation). Upstream ignores the status: on failure sPtDer keeps its
     // default-constructed (undefined) vectors.
-    let pt_der = ignored(evaluate_step(this_surf, this_uv))?
+    let pt_der = ignored(evaluate_step(k, this_surf, this_uv))?
         .unwrap_or_else(|| vec![vec![Vec3::UNDEF; 2]; 2]);
 
     let mut d = (Vec3::UNDEF, Vec3::UNDEF, Vec3::UNDEF);
-    eval_1st_keep(other_surf, other_uv, Side::Left, Side::Left, &mut d)?;
+    eval_1st_keep(k, other_surf, other_uv, Side::Left, Side::Left, &mut d)?;
     let (_, other_u, other_v) = d;
 
     // Unitize them, so that dot-product comparisons mean direction only.
@@ -1989,6 +2029,7 @@ pub fn check_seam_drop<S: SurfaceEvaluate + ?Sized>(
 ///
 /// Only [`SolidError::Unported`] (upstream ignores the evaluation statuses).
 pub fn good_drop_result<S: SurfaceEvaluate + ?Sized>(
+    k: &Kernel,
     surface: &S,
     domain: &Extent2d,
     pt_to_drop: Point3,
@@ -2014,7 +2055,7 @@ pub fn good_drop_result<S: SurfaceEvaluate + ?Sized>(
 
     // Evaluate the error functions: how far from the surface normal.
     let mut d = (Vec3::UNDEF, Vec3::UNDEF, Vec3::UNDEF);
-    eval_1st_keep(surface, result_uv, Side::Left, Side::Left, &mut d)?;
+    eval_1st_keep(k, surface, result_uv, Side::Left, Side::Left, &mut d)?;
     let (srf_point, su, sv) = d;
     let su = su.unitize_or_z();
     let sv = sv.unitize_or_z();
@@ -2054,7 +2095,7 @@ pub fn good_drop_result<S: SurfaceEvaluate + ?Sized>(
     // One more: if the solution 3d point is farther than the guess (upstream's names
     // are swapped).
     let mut guess_3d = Vec3::UNDEF;
-    if let Some(p) = ignored(surface.evaluate_point(guess_uv))? {
+    if let Some(p) = ignored(surface.evaluate_point(k, guess_uv))? {
         guess_3d = p;
     }
     let dsq_guess = pt_to_drop.distance_squared(srf_point);
@@ -2073,6 +2114,9 @@ pub fn good_drop_result<S: SurfaceEvaluate + ?Sized>(
 /// fields are public.
 #[derive(Debug, Clone)]
 pub struct SpGlobalSolver<'t, 's, O> {
+    /// Caller context for virtual evaluations.
+    pub kernel: &'s Kernel,
+
     /// The `SmGlobalSolver` state.
     pub base: GlobalSolver<'t, O>,
     /// `m_pSurf`.
@@ -2137,6 +2181,7 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for SpGlobalSolver<'t, '_, O
     }
 
     fn local_solve(&mut self, _branch: &Branch) -> Result<bool> {
+        let _k = self.kernel;
         // UNPORTED(surface.surface_p8): SmSPGlobalSolver::LocalSolve
         Err(SolidError::unported(
             "SmSPGlobalSolver::LocalSolve",
@@ -2149,7 +2194,8 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for SpGlobalSolver<'t, '_, O
         sol1: &Solution<O>,
         sol2: &Solution<O>,
     ) -> Result<(SolutionPairType, Option<PreferredSolution>)> {
-        self.surface_identical_solutions(sol1, sol2)
+        let k = self.kernel;
+        self.surface_identical_solutions(k, sol1, sol2)
     }
 }
 
@@ -2168,7 +2214,7 @@ pub struct SsGlobalSolver<'t, 's, O> {
     /// `m_crUVDomain2`.
     pub uv_domain2: Extent2d,
     /// The kernel (upstream's `SmContext`), for the surfaces' seam tests.
-    pub kernel: &'s crate::kernel::Kernel,
+    pub kernel: &'s Kernel,
 }
 
 impl<O: SolutionObject> SsGlobalSolver<'_, '_, O> {
@@ -2222,6 +2268,7 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for SsGlobalSolver<'t, '_, O
     }
 
     fn local_solve(&mut self, _branch: &Branch) -> Result<bool> {
+        let _k = self.kernel;
         // UNPORTED(surface.surface_p11): SmSSGlobalSolver::LocalSolve
         Err(SolidError::unported(
             "SmSSGlobalSolver::LocalSolve",
@@ -2234,16 +2281,17 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for SsGlobalSolver<'t, '_, O
         sol1: &Solution<O>,
         sol2: &Solution<O>,
     ) -> Result<(SolutionPairType, Option<PreferredSolution>)> {
+        let k = self.kernel;
         // (surface::surface::p6)
-        self.solutions_identical(sol1, sol2)
+        self.solutions_identical(k, sol1, sol2)
     }
 }
 
 // ---- callees in units not ported yet -------------------------------------------------------
 
 /// `SmSurface::EvaluateSTEP(uv, 1, 1, TRUE, TRUE, TRUE, ..)`.
-fn evaluate_step(surface: &Surface, uv: Point2) -> Result<Vec<Vec<Vec3>>> {
-    surface.evaluate_step(uv, 1, 1, flags(Side::Left, Side::Left, true))
+fn evaluate_step(k: &Kernel, surface: &Surface, uv: Point2) -> Result<Vec<Vec<Vec3>>> {
+    surface.evaluate_step(k, uv, 1, 1, flags(Side::Left, Side::Left, true))
 }
 
 /// `sm_IsNodeValid`: false for a node known to lie outside its face.
@@ -2263,6 +2311,7 @@ fn is_node_valid<O>(_node: &crate::geom::tree::TreeNode<O>) -> Result<bool> {
 /// (`SmFindSingularParamWithGivenTangentDirEFO` with `SmLocalSolve1d::SolveIt` from
 /// `start`): `(found, t)`.
 fn singular_param_solve(
+    k: &Kernel,
     surface: &Surface,
     uv: Point2,
     dir: Vec3,
@@ -2273,6 +2322,7 @@ fn singular_param_solve(
 ) -> Result<(bool, f64)> {
     // set up NR solver (the EFO's tolerance is SM_EFF_ZERO, not used)
     let mut efo = super::p1::FindSingularParamWithGivenTangentDir::new(
+        k,
         surface,
         uv,
         dir,
@@ -2289,6 +2339,7 @@ fn singular_param_solve(
 /// evaluator tolerance `SM_EFF_ZERO^2`, no periodicity): the solution vector, `None`
 /// when not found.
 fn cs_normalize_local_solve(
+    k: &Kernel,
     surface: &Surface,
     curve: &Curve,
     op: SolverOperation,
@@ -2306,6 +2357,7 @@ fn cs_normalize_local_solve(
     // Do not do periodicity for this function. Local solvers should not cross seams.
     let periodicities = vec![false; guess.len()];
     let mut equations = CsNormalizeEnfo::new(
+        k,
         curve,
         surface,
         op,
@@ -2334,17 +2386,19 @@ mod tests {
 
     #[test]
     fn plane_normal_is_axis() {
+        let k = &Kernel::default();
         let s = plane();
         let n = s
-            .evaluate_normal(Point2::new(0.2, 0.3), Side::Left, Side::Left)
+            .evaluate_normal(k, Point2::new(0.2, 0.3), Side::Left, Side::Left)
             .unwrap();
         assert!((n.z - 1.0).abs() < 1e-12);
     }
 
     #[test]
     fn base_normal_of_plane_part() {
+        let k = &Kernel::default();
         let s = plane();
-        let n = base_evaluate_normal(&s, Point2::new(0.2, 0.3), Side::Left, Side::Left).unwrap();
+        let n = base_evaluate_normal(k, &s, Point2::new(0.2, 0.3), Side::Left, Side::Left).unwrap();
         assert!((n.z.abs() - 1.0).abs() < 1e-12);
     }
 
@@ -2364,9 +2418,10 @@ mod tests {
 
     #[test]
     fn inward_vector_points_to_middle() {
+        let k = &Kernel::default();
         let s = plane();
         let d = s.natural_uv_domain();
-        let v = compute_inward_vector(&s, d.min()).unwrap();
+        let v = compute_inward_vector(k, &s, d.min()).unwrap();
         assert!((v.length() - 1.0).abs() < 1e-12);
     }
 }

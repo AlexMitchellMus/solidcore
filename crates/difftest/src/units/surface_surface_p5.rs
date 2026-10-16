@@ -578,7 +578,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
                     o.extend([ivl.min(), ivl.max()]);
                     for n in 0..=8_u8 {
                         let t = ivl.evaluate(f64::from(n) / 8.0);
-                        pv(&mut o, must(r.curve.evaluate_point(t), "iso curve point")?);
+                        pv(&mut o, must(r.curve.evaluate_point(&k, t), "iso curve point")?);
                     }
                 }
                 Err(c) => o.push(c),
@@ -596,7 +596,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
             }
         }
         OpIn::Lps0 { dom, sop, p, guess } => {
-            match st(s.local_point_solve_0::<Obj>(&dom_of(*dom), sop_of(*sop)?, v3(*p), p2(*guess)))? {
+            match st(s.local_point_solve_0::<Obj>(&k, &dom_of(*dom), sop_of(*sop)?, v3(*p), p2(*guess)))? {
                 Ok(r) => {
                     o.extend([0.0, b(r.found)]);
                     if r.found {
@@ -625,7 +625,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
         OpIn::Lssi { dom, s2, dom2, s3, dom3, p, p2: g2 } => {
             let (s2, s3) = (surface_of(s2)?, surface_of(s3)?);
             match st(s.local_surface_surface_intersect_xyz::<Obj>(
-                &dom_of(*dom),
+                &k, &dom_of(*dom),
                 &s2,
                 &dom_of(*dom2),
                 &s3,
@@ -665,7 +665,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
                 Ok([cont_of(c[0])?, cont_of(c[1])?])
             };
             match st(filter_solution(
-                &s,
+                &k, &s,
                 &dom_of(*dom),
                 &curve_of(curve)?,
                 &Extent1d::from_min_max(ivl[0], ivl[1]),
@@ -726,7 +726,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
             let dom = s.natural_uv_domain();
             let (pair, pref) = match kind {
                 0 => must(
-                    SpGlobalSolver { base, surface: Some(&s), uv_domain: dom }
+                    SpGlobalSolver {kernel: &k,  base, surface: Some(&s), uv_domain: dom }
                         .identical_solutions(&sa, &sb),
                     "identical_solutions",
                 )?,
@@ -741,13 +741,13 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
                         ray_fire: false,
                         distance_tolerance: 0.0,
                         surface_cache: None,
-                        kernel: None,
+                        kernel: &k,
                     }
                     .identical_solutions(&sa, &sb),
                     "identical_solutions",
                 )?,
-                2 => must(cs_identical_solutions(&base, Some(&s), &sa, &sb), "identical_solutions")?,
-                _ => must(csi_identical_solutions(&base, Some(&s), &sa, &sb), "identical_solutions")?,
+                2 => must(cs_identical_solutions(&k, &base, Some(&s), &sa, &sb), "identical_solutions")?,
+                _ => must(csi_identical_solutions(&k, &base, Some(&s), &sa, &sb), "identical_solutions")?,
             };
             let which = match pref {
                 None => -1.0,
@@ -1029,10 +1029,10 @@ fn gen_curve(rng: &mut Rng) -> CrvIn {
     }
 }
 
-fn gen_point_near(rng: &mut Rng, s: &SrfIn) -> [f64; 3] {
+fn gen_point_near(k: &Kernel, rng: &mut Rng, s: &SrfIn) -> [f64; 3] {
     if let Ok(srf) = surface_of(s) {
         let uv = gen_uv(rng, s);
-        if let Ok(p) = srf.evaluate_point(p2(uv)) {
+        if let Ok(p) = srf.evaluate_point(k, p2(uv)) {
             let d = *rng.choose(&[0.0, 1e-9, 1e-4, 0.1, 1.0, 5.0]).unwrap_or(&0.1);
             let e = rng.point3(-d, d);
             return [p.x + e[0], p.y + e[1], p.z + e[2]];
@@ -1111,12 +1111,12 @@ fn gen_line(rng: &mut Rng) -> CrvIn {
 
 /// A point `offset` above or below a random interior point of the surface along its
 /// normal, where a plane's analytic drop stays inside the domain.
-fn gen_point_over(rng: &mut Rng, s: &SrfIn, offset: f64) -> Option<[f64; 3]> {
+fn gen_point_over(k: &Kernel, rng: &mut Rng, s: &SrfIn, offset: f64) -> Option<[f64; 3]> {
     let surface = surface_of(s).ok()?;
     let dom = surface.natural_uv_domain();
     let uv = dom.evaluate(rng.uniform(0.1, 0.9), rng.uniform(0.1, 0.9));
-    let p = surface.evaluate_point(uv).ok()?;
-    let n = surface.evaluate_normal(uv, Side::Left, Side::Left).ok()?;
+    let p = surface.evaluate_point(k, uv).ok()?;
+    let n = surface.evaluate_normal(k, uv, Side::Left, Side::Left).ok()?;
     let q = p + n * offset;
     Some([q.x, q.y, q.z])
 }
@@ -1135,7 +1135,7 @@ fn gen_maxdist(rng: &mut Rng, s: &SrfIn) -> OpIn {
 }
 
 #[allow(clippy::too_many_lines)] // one arm per op
-fn gen_op(rng: &mut Rng, s: &SrfIn) -> OpIn {
+fn gen_op(k: &Kernel, rng: &mut Rng, s: &SrfIn) -> OpIn {
     let nat = natural(s);
     if rng.chance(0.06) {
         return gen_maxdist(rng, s);
@@ -1174,13 +1174,13 @@ fn gen_op(rng: &mut Rng, s: &SrfIn) -> OpIn {
         34..=39 => OpIn::Lps {
             dom: gen_dom(rng, s),
             sop: gen_sop(rng, &[0, 3, 4, 5]),
-            p: gen_point_near(rng, s),
+            p: gen_point_near(k, rng, s),
             guess: uv,
         },
         40..=53 => OpIn::Lps0 {
             dom: gen_dom(rng, s),
             sop: if rng.chance(0.7) { 0 } else { gen_sop(rng, &[3, 4, 5]) },
-            p: gen_point_near(rng, s),
+            p: gen_point_near(k, rng, s),
             guess: uv,
         },
         54..=67 => OpIn::Drop {
@@ -1188,9 +1188,9 @@ fn gen_op(rng: &mut Rng, s: &SrfIn) -> OpIn {
             p: {
                 let off = rng.uniform(-2.0, 2.0);
                 (matches!(s, SrfIn::Plane { .. }) && rng.chance(0.7))
-                    .then(|| gen_point_over(rng, s, off))
+                    .then(|| gen_point_over(k, rng, s, off))
                     .flatten()
-                    .unwrap_or_else(|| gen_point_near(rng, s))
+                    .unwrap_or_else(|| gen_point_near(k, rng, s))
             },
             guess: rng.chance(0.5).then_some(uv),
             sop: gen_sop(rng, &[0, 3, 5]),
@@ -1203,8 +1203,8 @@ fn gen_op(rng: &mut Rng, s: &SrfIn) -> OpIn {
             dom2: [0.0, 0.0, 1.0, 1.0],
             s3: gen_surface(rng),
             dom3: [0.0, 0.0, 1.0, 1.0],
-            p: gen_point_near(rng, s),
-            p2: rng.chance(0.3).then(|| gen_point_near(rng, s)),
+            p: gen_point_near(k, rng, s),
+            p2: rng.chance(0.3).then(|| gen_point_near(k, rng, s)),
         },
         70 => OpIn::Cover {
             other: gen_surface(rng),
@@ -1236,7 +1236,7 @@ fn gen_op(rng: &mut Rng, s: &SrfIn) -> OpIn {
             dom: if rng.chance(0.6) { nat } else { gen_dom(rng, s) },
             uc: gen_conts(rng),
             vc: gen_conts(rng),
-            p: gen_point_near(rng, s),
+            p: gen_point_near(k, rng, s),
             tol: *rng.choose(&[1e-6, 1e-3, 0.1, 1.0]).unwrap_or(&1e-3),
             sop: gen_sop(rng, &[0, 3, 4, 5]),
             solve_surf: rng.chance(0.4),
@@ -1272,9 +1272,9 @@ fn gen_op(rng: &mut Rng, s: &SrfIn) -> OpIn {
     }
 }
 
-fn gen_case(rng: &mut Rng) -> Inputs {
+fn gen_case(k: &Kernel, rng: &mut Rng) -> Inputs {
     let surface = gen_surface(rng);
-    let op = gen_op(rng, &surface);
+    let op = gen_op(k, rng, &surface);
     // curve/plane gaps are the ones the harness can compare (planes drop analytically; the
     // other surfaces defer on the point solves, and a curve-bounded surface has no GetKnots here)
     if matches!(op, OpIn::MaxDist { .. }) {
@@ -1305,7 +1305,7 @@ impl UnitDiff for Runner {
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
         for _ in 0..64 {
-            let i = gen_case(rng);
+            let i = gen_case(k, rng);
             let Ok((op, input)) = cpp_input(&i) else {
                 continue;
             };

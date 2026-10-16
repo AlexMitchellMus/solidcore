@@ -363,13 +363,13 @@ fn rust_surface(spec: &SurfaceSpec) -> Result<Result<Surface, Deferred>, String>
 
 /// Samples a curve as the runner's `sample_curve` (failed evaluations skipped); an
 /// unported evaluation defers the case.
-fn sample(c: &Curve, n: i32) -> Result<(Vec<Vec3>, [f64; 2]), SolidError> {
+fn sample(k: &Kernel, c: &Curve, n: i32) -> Result<(Vec<Vec3>, [f64; 2]), SolidError> {
     let ivl = c.natural_interval();
     let (lo, hi) = (ivl.min(), ivl.max());
     let mut out = Vec::new();
     for i in 0..n {
         let t = lo + (hi - lo) * (f64::from(i) / f64::from(n - 1));
-        match c.evaluate_point(t) {
+        match c.evaluate_point(k, t) {
             Ok(p) => out.push(p),
             Err(e @ SolidError::Unported { .. }) => return Err(e),
             Err(_) => {}
@@ -447,7 +447,7 @@ pub fn run_rust(case: &SsiCase, tol: Option<f64>) -> Result<RawOutput, EngineFai
     for (i, c3) in x.curves_3d.iter().enumerate() {
         let ty = x.curve_types.get(i).map_or(-1, |t| *t as i64);
         let deviation = x.deviations.get(i).copied().unwrap_or(f64::NAN);
-        let (pts, ivl) = match sample(c3, N_SAMPLES) {
+        let (pts, ivl) = match sample(&k, c3, N_SAMPLES) {
             Ok(r) => r,
             Err(SolidError::Unported { upstream, unit }) => {
                 return Ok(deferred_output(case, tol, unit, upstream))
@@ -467,7 +467,7 @@ pub fn run_rust(case: &SsiCase, tol: Option<f64>) -> Result<RawOutput, EngineFai
             let Some(Some(uvc)) = uvlist.get(i) else {
                 continue;
             };
-            let (uv, _) = match sample(uvc, N_SAMPLES) {
+            let (uv, _) = match sample(&k, uvc, N_SAMPLES) {
                 Ok(r) => r,
                 Err(SolidError::Unported { upstream, unit }) => {
                     return Ok(deferred_output(case, tol, unit, upstream))
@@ -476,7 +476,7 @@ pub fn run_rust(case: &SsiCase, tol: Option<f64>) -> Result<RawOutput, EngineFai
             };
             let mut at = Vec::with_capacity(uv.len());
             for p in &uv {
-                match surf.evaluate_point(Point2::new(p.x, p.y)) {
+                match surf.evaluate_point(&k, Point2::new(p.x, p.y)) {
                     Ok(q) => at.push(to_p3(q)),
                     Err(SolidError::Unported { upstream, unit }) => {
                         return Ok(deferred_output(case, tol, unit, upstream))
