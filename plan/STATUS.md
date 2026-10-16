@@ -978,8 +978,10 @@ original geometry, so serialization is not claimed to be lossless.
 
 Formatting, strict plain/C++ Clippy, 1,191 core tests, two native FFI contract tests
 and WASM pass. The GNU full-suite results will be recorded when its run completes.
-The GNU reference kernel uses Release/O2; local thin shims use O0 with
-`-ffp-contract=off -fno-fast-math`. Mac comparisons use O2 for both.
+The full regression validation uses the fork's standard Ubuntu CI workflow
+(kernel/shims O2 and the normal difftest profile). Mac comparisons use O2 for
+kernel/shims. The local 4 GB Linux VM could not complete the full runner build
+under memory pressure; its temporary validation container was stopped.
 
 This integration leaves offsets/rebuilds with #71, sphere with #100, surface part 11
 with #120 and cone intersections/dependency integrations with #131's owner. #71's

@@ -5074,6 +5074,9 @@ Resource handling: common polymorphic surface reads balance the reader's bounded
 nesting counter on ordinary errors. Fallible evaluation and copy entrypoints
 preflight owned geometry against the existing 64-level limit; derivative orders
 are checked by the concrete evaluator before rectangular output allocation.
+Inherited `SplitAt` returns newly constructed B-spline results, as explicitly
+specified and implemented by `SmBSplineSurface::SplitAt` (`SmBSplineSurface.cpp`,
+5016–5076); the input's Cone/Cylinder kind is retained.
 Constructor failures remain native statuses. Safe native database coverage writes
 records from guarded real Cone/Cylinder constructors before reading them through
 `SmSurface::ReadFromDB`; it does not parse arbitrary caller-controlled records in
@@ -5088,9 +5091,12 @@ failure-output comparisons. No comparison tolerance or absolute floor is changed
 
 
 Validation configuration for #133: Apple Clang uses the shared Release/O2 kernel
-and O2 shims. GNU/Linux ARM64 uses the same pinned C++ kernel built Release/O2;
-its local shim build uses O0 to avoid costly optimization of copied private-helper
-translation units. Both retain `-ffp-contract=off -fno-fast-math`, and the Rust
-full-suite runner uses the difftest profile. The local-disk Linux source snapshot
-is synchronized by SHA-256 against the worktree's crate/harness/config inputs.
-No tolerance or floor was adjusted for either configuration.
+and O2 shims. The full regression gate uses the standard Ubuntu CI workflow on
+Karl's fork, with Release/O2 kernel, O2 shims, the difftest profile and unchanged
+`-ffp-contract=off -fno-fast-math`. A local 4 GB Linux VM could not complete the
+full runner build under memory pressure (including an unoptimized driver/shim
+attempt); no full-suite pass is claimed for that abandoned local attempt. Its
+validation container was stopped without changing other containers or the VM's
+configuration. Canonical CI requires maintainer approval, which this account
+cannot grant; the fork workflow adds report upload only, and its crate/harness
+sources match PR #133's validated source commit.
