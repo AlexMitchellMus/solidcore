@@ -26,7 +26,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use solidcore::curve::curve::Curve;
+use solidcore::curve::curve::{Curve, CurveKind};
 use solidcore::curve::ellipse::{Ellipse, EllipseOptions};
 use solidcore::curve::hermite_curve::HermiteCurve;
 use solidcore::curve::line::Line;
@@ -602,6 +602,19 @@ fn put_curve(o: &mut Vec<f64>, c: &BSplineCurve) -> solidcore::Result<()> {
     Ok(())
 }
 
+/// `put_curve` of a traced UV curve (`SmBSplineCurve*` upstream, an `SmLine` with its
+/// NURB made by `GetOrCreateGwNurbPointer`); `None` for a curve of no B-spline kind.
+fn put_uv_curve(o: &mut Vec<f64>, c: &Curve) -> Option<solidcore::Result<()>> {
+    Some(match c.kind() {
+        CurveKind::BSpline(b) => put_curve(o, b),
+        CurveKind::Line(l) => l.base_with_nurb().and_then(|b| put_curve(o, &b)),
+        CurveKind::Ellipse(e) => put_curve(o, e.base()),
+        CurveKind::Hyperbola(h) => put_curve(o, h.base()),
+        CurveKind::Parabola(p) => put_curve(o, p.base()),
+        _ => return None,
+    })
+}
+
 /// The `SmStatus` of a Rust error.
 fn status(e: &SolidError) -> f64 {
     match e {
@@ -918,7 +931,8 @@ fn run_op(k: &Kernel, i: &Inputs, o: &mut Vec<f64>) -> Result<(), Fail> {
                         r.uv_curves.len() as f64,
                     ]);
                     for cv in &r.uv_curves {
-                        st(put_curve(o, cv))?.map_err(|_| harness("trim curve data"))?;
+                        let put = put_uv_curve(o, cv).ok_or_else(|| harness("trim curve kind"))?;
+                        st(put)?.map_err(|_| harness("trim curve data"))?;
                     }
                 }
                 Err(code) => o.push(code),

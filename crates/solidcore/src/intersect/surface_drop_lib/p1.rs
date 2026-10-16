@@ -52,9 +52,11 @@
 //! - **`DropAndTrimCurve`.** The record's `pUVCurvesArg` (the caller's output array)
 //!   has no handle; it stays `None`. The surface and curve handles the record keeps
 //!   come with the record ([`DropFailRecord`]).
-//! - **`DropAndTrimCurve` UV curves.** `SM_CAST_PTR(SmBSplineCurve, ...)` keeps the
-//!   B-spline part of each traced UV curve; a traced curve of another kind (a null
-//!   cast upstream, added to `rUVCurves` as a null pointer) is `SM_ERR_NULL_POINTER`.
+//! - **`DropAndTrimCurve` UV curves.** `rUVCurves` (`SmBSplineCurve*`) holds each
+//!   traced UV curve as the object `DoTrace` made (an `SmLine` stays a line, keeping
+//!   its overrides), so [`DropAndTrim::uv_curves`] are [`Curve`]s of the B-spline
+//!   kinds; a traced curve of another kind (a null `SM_CAST_PTR(SmBSplineCurve, ...)`
+//!   upstream, added to `rUVCurves` as a null pointer) is `SM_ERR_NULL_POINTER`.
 //!   The surface cache `DoTrace` checks out is built fresh
 //!   ([`tracer_surface_cache`]).
 //! - **Not ported here.** The `SM_DEBUG_CODE` blocks, `Dump`, `Draw`,
@@ -910,8 +912,9 @@ pub struct DropAndTrim {
     pub max_drop_to_surf: f64,
     /// `rdMaxApproxDev`: the largest deviation from a surface normal line.
     pub max_approx_dev: f64,
-    /// `rUVCurves`: one UV trim curve per piece of the curve over the surface.
-    pub uv_curves: Vec<BSplineCurve>,
+    /// `rUVCurves`: one UV trim curve per piece of the curve over the surface, each
+    /// of a B-spline kind (`SmBSplineCurve` or a subclass such as `SmLine`).
+    pub uv_curves: Vec<Curve>,
 }
 
 /// The object handle of the surface cache `DoTrace` runs on (its solves keep no
@@ -958,16 +961,15 @@ fn drop_curve_trace(
     })
 }
 
-/// `SM_CAST_PTR(SmBSplineCurve, pCurve)`: the B-spline part of a curve of a
-/// B-spline-derived kind (a line's with its NURB made), `None` for other kinds (the
-/// cast is null).
-fn into_bspline(curve: Curve) -> Option<BSplineCurve> {
-    match curve.into_kind() {
-        CurveKind::BSpline(c) => Some(c),
-        CurveKind::Line(c) => c.base_with_nurb().ok().map(std::borrow::Cow::into_owned),
-        CurveKind::Ellipse(c) => Some(c.base().clone()),
-        CurveKind::Hyperbola(c) => Some(c.base().clone()),
-        CurveKind::Parabola(c) => Some(c.base().clone()),
+/// `SM_CAST_PTR(SmBSplineCurve, pCurve) != NULL`: the curve is of a B-spline kind
+/// (`SmBSplineCurve` or a subclass: line, ellipse, hyperbola, parabola).
+const fn is_bspline_kind(curve: &Curve) -> bool {
+    match curve.kind() {
+        CurveKind::BSpline(_)
+        | CurveKind::Line(_)
+        | CurveKind::Ellipse(_)
+        | CurveKind::Hyperbola(_)
+        | CurveKind::Parabola(_) => true,
         CurveKind::Hermite(_)
         | CurveKind::Conic(_)
         | CurveKind::Projected(_)
@@ -975,7 +977,7 @@ fn into_bspline(curve: Curve) -> Option<BSplineCurve> {
         | CurveKind::Offset(_)
         | CurveKind::CrvInVolume(_)
         | CurveKind::CrvOnSurf(_)
-        | CurveKind::Composite(_) => None,
+        | CurveKind::Composite(_) => false,
     }
 }
 
@@ -1062,8 +1064,10 @@ impl Surface {
                 continue;
             }
             // SM_CAST_PTR(SmBSplineCurve, sUVCurves[ii]): a null cast is not usable
-            let bsc = into_bspline(uv).ok_or_else(|| SolidError::null_pointer(OP_TRIM))?;
-            out.uv_curves.push(bsc);
+            if !is_bspline_kind(&uv) {
+                return Err(SolidError::null_pointer(OP_TRIM));
+            }
+            out.uv_curves.push(uv);
             out.max_drop_to_surf = max2(out.max_drop_to_surf, max_drop);
             out.max_approx_dev = max2(out.max_approx_dev, dev);
         }
