@@ -1,11 +1,11 @@
 # solidcore status
 
-Last updated: 2026-10-16, `intersect.surface_drop_lib_p3` partial (PR #136); 2026-10-15, `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
+Last updated: 2026-10-16, `intersect.surface_drop_lib_p3` partial (PR #136: 177 ported units, 98 green and 79 partial); before: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green); `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
 
 
 ## Integration update (2026-10-15, PR #119)
 
-The manifest now has 174 ported units: 97 green and 77 partial (with `intersect.surface_drop_lib_p3`, PR #136). `mass.integrator`
+The manifest now has 173 ported units: 97 green and 76 partial. `mass.integrator`
 has 1520 passing cases and eight explicit dependency deferrals out of 1528, with
 maximum relative error `4.979280456316938e-14` and no absolute floors. Review
 regressions cover circular holes, curved B-spline surfaces, rational edges and nested area strips; each Cash–Karp derivative array
@@ -16,6 +16,8 @@ Precise edge/face/B-rep properties and their API control flow use explicit calls
 for the remaining topology, bounding-box and offset dependencies. Detailed coverage
 and the scalar wrapper's failure-masking behavior are in `plan/findings.md`.
 
+
+Latest unit: `surface.cone_p3` ([PR #131](https://github.com/bherbruck/solidcore/pull/131)) adds analytic cone/cylinder plane sections and cone/cone intersections: 1308 differential cases, 1187 bit-identical passes, 121 dependency deferrals, zero failures. Ellipse trimming awaits `surface.cone_p2`; coincident boundaries now await the Cone/Cylinder `SurfaceKind` adapter in #76/#133, because #120 merged but its boundary API requires typed `Surface` operands. Shared cone/sphere enum dispatch remains coordinated in issue #76. Review follow-up narrows the native guard to exact cone dispatch, adds tolerance/constructor/flag regressions with native FFI safety tests validated locally.
 
 ## Handoff (2026-10-13): from one local swarm to pull requests
 
