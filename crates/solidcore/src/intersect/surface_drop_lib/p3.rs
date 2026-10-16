@@ -1239,8 +1239,11 @@ mod tests {
         assert_eq!(fail.closed_u, UNSURE);
     }
 
+    /// The start drops along the normal (a good first drop), but a point curve's
+    /// `GetNextPoint` never succeeds, so no curve is made (the C++ agrees: difftest
+    /// fixture `plane_point_above`).
     #[test]
-    fn point_off_the_plane_is_a_bad_first_drop() {
+    fn point_off_the_plane_gives_no_curve() {
         let k = Kernel::default();
         let mut fail: DropCurveFail<NoObject> = DropCurveFail::default();
         let out = plane()
@@ -1261,7 +1264,7 @@ mod tests {
         assert!(out.uv_curves.is_empty());
         assert_eq!(
             fail.create_path_type,
-            CreateUvTrimCurvePathType::FirstDropUncontainedFail
+            CreateUvTrimCurvePathType::DropStartPointFail
         );
         assert_eq!(fail.degen_curve, 1);
         assert_eq!(fail.srf_closure, SurfParamType::Neither);

@@ -531,7 +531,8 @@ fn fixtures() -> Vec<(String, Inputs)> {
                 [0.0, 1.0],
             ),
         ),
-        // a point curve above the square (first drop not good)
+        // a point curve above the square (a good first drop along the normal, then no
+        // next point: no curve)
         (
             "plane_point_above".to_owned(),
             fixture(
