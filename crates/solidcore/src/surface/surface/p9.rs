@@ -51,7 +51,15 @@ fn bss(surface: &Surface) -> Result<Cow<'_, BSplineSurface>> {
     match surface.kind() {
         SurfaceKind::BSpline(s) => Ok(Cow::Borrowed(s)),
         SurfaceKind::Plane(p) => Ok(p.base_for_query()),
-        SurfaceKind::Cone(s) => Ok(Cow::Borrowed(s.rev().base())),
+        SurfaceKind::Cone(_) => {
+            // DISPATCH GAP: these helpers still store BSplineCurve/BsplineSurface.
+            // A cone needs its own iso-curve and evaluation overrides retained.
+            // UNPORTED(surface.surface_p9): SmCone iso/tessellation callbacks
+            Err(SolidError::unported(
+                "SurfaceKind::Cone iso/tessellation callbacks",
+                "surface.surface_p9",
+            ))
+        }
         SurfaceKind::SurfOfRevolution(s) => Ok(Cow::Borrowed(s.base())),
         SurfaceKind::CurveBounded(_) | SurfaceKind::Step(_) | SurfaceKind::SrfInVolume(_) => {
             // `SmIsoCurve` holds B-spline surfaces only (plan/findings.md, surface.surface_p5)

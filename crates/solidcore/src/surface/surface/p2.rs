@@ -4936,6 +4936,17 @@ mod kernel_dispatch_tests {
                 Curve::from(iso).evaluate_point(&kernel, uv.y).unwrap(),
                 expected
             );
+            // Part 9's B-spline storage cannot retain analytic iso overrides yet.
+            let gap = surface
+                .create_iso_boundaries(&kernel, SurfParamType::U, 0.0)
+                .unwrap_err();
+            assert!(matches!(
+                gap,
+                SolidError::Unported {
+                    unit: "surface.surface_p9",
+                    ..
+                }
+            ));
             let step = StepSurface::new(surface, true);
             let step_uv = Point2::new(90.0, 1.0);
             assert_eq!(
