@@ -10,7 +10,6 @@
 //! | Rust                                  | Upstream                                  |
 //! |---------------------------------------|-------------------------------------------|
 //! | [`Surface::drop_curve_base`], [`DropCurveOut`] | `SmSurface::DropCurve` (the base body, called non-virtually) |
-//! | `curve_scaled_zero` (private)         | `SmTol::GetScaledZero(const SmCurve&)` (co-ported from `geom.tol`) |
 //!
 //! Deviations:
 //! - **Outputs.** `rdMaxDropToSurf`, `rdMaxApproxDev` and `rUVCurves` are returned in a
@@ -41,7 +40,7 @@
 //!   before the new curve is dereferenced (a degenerate natural domain makes it
 //!   `NULL`), and two curve `EvaluatePoint`s (the curve's scaled zero and the end gap
 //!   check) are read after an ignored failure (uninitialised points): here those
-//!   errors propagate.
+//!   errors propagate (plan/upstream-issues.md UB-129).
 //! - **`bDegenSurfV`** tests the domain's `XLength`, as upstream (plan/upstream-issues.md
 //!   WR-100).
 //! - **Temporary state.** The out-of-bounds convergence upstream enables on the surface
@@ -76,7 +75,7 @@ use crate::geom::extent2d::Extent2d;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::geom::point_set::PointContainment;
 use crate::geom::solution_array::{SolutionArray, SolutionObject};
-use crate::geom::tol::scaled_zero2;
+use crate::geom::tol::scaled_zero_of_curve;
 use crate::geom::vector2d::Point2;
 use crate::geom::vector3d::{Point3, Vec3};
 use crate::kernel::Kernel;
@@ -126,15 +125,6 @@ pub struct DropCurveOut {
     pub max_approx_dev: f64,
     /// `rUVCurves`: the UV curves (usually one; two for a curve along a seam).
     pub uv_curves: Vec<BSplineCurve>,
-}
-
-/// `SmTol::GetScaledZero(const SmCurve&)`: the scaled zero of the curve's mid point
-/// and of its approximate length (3 samples) over its natural interval.
-fn curve_scaled_zero(curve: &Curve) -> Result<f64> {
-    let ivl = curve.natural_interval();
-    let length = curve.approximate_length(&ivl, 3, false)?.0;
-    let pnt = curve.evaluate_point(ivl.evaluate(0.5))?;
-    Ok(scaled_zero2(&pnt, &length))
 }
 
 /// The status upstream stores for a failed `GetNextPoint` (see the module notes).
@@ -362,7 +352,7 @@ impl Surface {
 
         // locals
         let s_interval = *interval;
-        let curve_scaled_zero = curve_scaled_zero(curve)?;
+        let curve_scaled_zero = scaled_zero_of_curve(curve)?;
         let degen_curve = curve.is_degenerate(curve_scaled_zero, Some(interval))?;
         let mut start = DropPt::new(s_interval.min(), Some(degen_curve));
         let mut end = DropPt::new(s_interval.max(), Some(degen_curve));

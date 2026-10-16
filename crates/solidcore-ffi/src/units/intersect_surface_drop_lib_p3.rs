@@ -21,9 +21,13 @@
 //! [[`NO_SURFACE`]]. [`run`] accepts the surfaces and curves the p2 wrapper accepts,
 //! finite domains, a positive finite tolerance and an interval inside the curve's
 //! parameter range (B-spline knots, circle interval, `[0, 1]` for a line) that is at
-//! least `1e-6 * max(1, |ends|)` long: on shorter (or zero) intervals, or with a zero
-//! tolerance, upstream's span subdivision (`(start + end) / 2` rounding to `end`) can
-//! push the same span forever (the port bounds that depth, `MAX_SPAN_DEPTH`).
+//! least `1e-6 * max(1, |ends|)` long. The range is `SmCurve::IsDegenerate`'s asserted
+//! precondition (`SM_ASSERT(pInterval->IsContainedBy(GetNaturalInterval(), ..))`,
+//! compiled out), and past it that function reads the derivatives of `Evaluate` calls
+//! whose status it ignores. On shorter (or zero) intervals, or with a zero tolerance,
+//! upstream's span subdivision (`(start + end) / 2` rounding to `end`) can push the same
+//! span forever (plan/upstream-issues.md HANG-16; the port bounds that depth,
+//! `MAX_SPAN_DEPTH`).
 
 use crate::{call_with_buffer, FfiError};
 

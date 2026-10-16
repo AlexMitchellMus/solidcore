@@ -92,8 +92,9 @@
 //!   (`surface.surface_p5`) and the general
 //!   `SmSurface::GlobalLineIntersect` (`surface.surface_p8`) return
 //!   [`SolidError::Unported`]. The general `SmSurface::DropCurve`
-//!   ([`Surface::drop_curve_base`]) runs on a copy of the plane (no owner). Statuses upstream ignores are propagated where
-//!   upstream would go on with uninitialised values.
+//!   ([`Surface::drop_curve_base`]) runs on a copy of the plane (no owner). Statuses
+//!   upstream ignores are propagated where upstream would go on with uninitialised
+//!   values.
 
 use std::borrow::Cow;
 

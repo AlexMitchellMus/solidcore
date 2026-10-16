@@ -42,6 +42,7 @@
 //! | [`ScaledZero`] (`f64`, [`Vec2`], [`Vec3`], [`Extent1d`], `Extent2d`, [`Extent3d`], `PseudoBox`) | `SmTol::GetScaledZero(const double)`, `(const SmVector2d&)`, `(const SmVector3d&)`, `(const SmExtent1d&)`, `(const SmExtent2d&)` (impl in `geom::extent2d`), `(const SmExtent3d&)`, `(const SmPseudoBox&)` (impl in `geom::pseudo_box`) |
 //! | [`scaled_zero_of_equations`]           | `SmTol::GetScaledZero(const SmEvalNFunctionsObject&)` |
 //! | [`scaled_zero_of_volume`]              | `SmTol::GetScaledZero(const SmVolume&)`        |
+//! | [`scaled_zero_of_curve`]               | `SmTol::GetScaledZero(const SmCurve&)` (CO-PORTED by `intersect.surface_drop_lib_p3`) |
 //! | [`map_to_1d`]                          | `SmTol::MapTo1d(SmTol3d&, SmVector3d&, const SmExtent1d&)` |
 //! | [`scaled_zero_sq_of`], [`scaled_zero_sqrt_of`] | unary `GetScaledZeroSq<cA>`, `GetScaledZeroSqrt<cA>` |
 //! | [`scaled_zero2`], [`scaled_zero_sq2`], [`scaled_zero_sqrt2`] | binary `GetScaledZero<cA,cB>`, `...Sq`, `...Sqrt` |
@@ -93,6 +94,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::curve::curve::Curve;
 use crate::error::{Result, SolidError};
 use crate::geom::context::Context;
 use crate::geom::extent1d::Extent1d;
@@ -124,10 +126,10 @@ use crate::surface::volume::Volume;
 // overrides belong to SmVertex, SmEdge, SmFace, SmEdgeuse), SmSurface/SmCurve
 // (GetFace/GetEdge), SmBrep, SmBrepData and SmCurveClassification; those classes have
 // no Rust object type yet.
-// UNPORTED(curve.curve_p2): SmTol::IsDegenerate(const SmCurve*, SmExtent1d, ..),
-// SmTol::MapTo1d(SmTol3d&, double, const SmCurve&) and SmTol::GetScaledZero(const
-// SmCurve&) need SmCurve::IsDegenerate / Evaluate / GetNaturalInterval /
-// ApproximateLength.
+// UNPORTED(curve.curve_p2): SmTol::IsDegenerate(const SmCurve*, SmExtent1d, ..) and
+// SmTol::MapTo1d(SmTol3d&, double, const SmCurve&) need SmCurve::IsDegenerate /
+// Evaluate / GetNaturalInterval (SmTol::GetScaledZero(const SmCurve&) is
+// scaled_zero_of_curve since PR #136).
 // CO-PORTED in intersect.curve_class_p1: SmTol::MapTo2d(const SmTol3d&, double, const
 // SmCurve&, const SmSurface&) is surface::surface::p1::map_to_2d_on_curve (its UV-curve
 // and 3D branches; the SmCrvOnSurf branch is Unported there).
@@ -699,6 +701,20 @@ pub fn scaled_zero_of_volume(k: &Kernel, volume: &Volume) -> Result<f64> {
         return Ok(out_box.scaled_zero());
     }
     Ok(tol3d(100.0 * EFF_ZERO))
+}
+
+/// `SmTol::GetScaledZero(const SmCurve&)`: the binary scaled zero of the curve's mid
+/// point and its approximate length (3 samples) over its natural interval.
+///
+/// # Errors
+///
+/// Those of `ApproximateLength` and `EvaluatePoint` (upstream ignores the point's
+/// status and then reads an unset point; [`SolidError::Unported`] always propagates).
+pub fn scaled_zero_of_curve(curve: &Curve) -> Result<f64> {
+    let ivl = curve.natural_interval();
+    let length = curve.approximate_length(&ivl, 3, false)?.0;
+    let pnt = curve.evaluate_point(ivl.evaluate(0.5))?;
+    Ok(scaled_zero2(&pnt, &length))
 }
 
 /// Square of the scaled zero of `a` (unary `SmTol::GetScaledZeroSq<cA>`).

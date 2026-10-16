@@ -303,11 +303,11 @@ fn gen_uv(rng: &mut Rng, d: [f64; 4]) -> [f64; 2] {
     uv
 }
 
-/// Surface point, unit normal and first derivatives at `uv` (`None` when the surface
-/// cannot evaluate there).
 /// A surface point and its unit normal and first derivatives.
 type Frame = ([f64; 3], [f64; 3], [f64; 3], [f64; 3]);
 
+/// Surface point, unit normal and first derivatives at `uv` (`None` when the surface
+/// cannot evaluate there).
 fn frame(srf: &Surface, uv: [f64; 2]) -> Option<Frame> {
     let (p, su, sv) = srf
         .evaluate_1st_derivatives(Point2::new(uv[0], uv[1]), true, true)

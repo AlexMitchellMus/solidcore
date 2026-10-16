@@ -1054,6 +1054,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** crash/UB (needs a bad argument from the calling code).
 - **Rust port:** `heal::gap` returns `InvalidInput`.
 
+#### UB-129. `SmSurface::DropCurve` uses results whose status it ignores
+- **Location:** `source/SMLib/src/SmSurfaceDropLib.cpp:4590`-`4591` (`SmBSplineCurve::CreateLineSegment` of the pole line, status ignored, then `pUVTrimCurve->EditParameterization` on the pointer that stays `NULL` on a failure), `:5489` (`p3dCurve->EvaluatePoint(sInterval.GetMax(), sCurveEnd)`, status ignored, then `sCurveEnd` read), `:4232` (`SmTol::GetScaledZero(cr3dCurve)`, `SmTol.cpp:1400`, reads the point of an ignored `EvaluatePoint`) and `:4233` (`cr3dCurve.IsDegenerate(.., &crInterval)`, `SmCurve.cpp:14395`-`14427`: an interval outside the curve's natural interval breaks its `SM_ASSERT`, compiled out, and the derivatives of `Evaluate` calls with ignored statuses are read).
+- **What happens:** A failing callee leaves the output unset (a `NULL` curve pointer, an uninitialised point or derivative array) and the next statement uses it.
+- **Trigger:** `CreateLineSegment` fails only for coincident ends (a natural domain shorter than `SM_EFF_ZERO` in the pole direction, which the domain checks above nearly exclude); the `EvaluatePoint`s fail only for curve kinds whose point evaluation can fail (`SmBSplineCurve`, `SmLine` and `SmCircle` clamp or extend instead); `IsDegenerate` needs `crInterval` reaching outside the curve's parameter range.
+- **How found:** read during porting.
+- **Confirmed:** no.
+- **Severity:** crash/UB (needs a bad argument or a failing evaluator).
+- **Rust port:** `Surface::drop_curve_base` propagates those errors. The FFI rejects intervals outside the curve's parameter range.
+
 ### Topology
 
 #### UB-105. `SmVertex::GetMaxUpDimGap3d` adds to a NULL gap array
