@@ -4979,6 +4979,25 @@ mod kernel_dispatch_tests {
                 EvaluateFlags::default()
             )
             .is_err());
+        let mut bounded = surface.clone();
+        for _ in 0..70 {
+            bounded = Surface::from(CurveBoundedSurface::new(
+                bounded,
+                Vec::new(),
+                Vec::new(),
+                true,
+            ));
+        }
+        assert!(matches!(
+            bounded.evaluate_simple(
+                &kernel,
+                Point2::new(0.5, 0.5),
+                0,
+                0,
+                EvaluateFlags::default(),
+            ),
+            Err(SolidError::InvalidInput { .. })
+        ));
         for _ in 0..70 {
             surface = Surface::from(StepSurface::new(surface, true));
         }

@@ -1131,6 +1131,7 @@ impl Surface {
         highest_v_deriv: usize,
         flags: EvaluateFlags,
     ) -> Result<Vec<Vec<Vec3>>> {
+        self.check_evaluation_copy_depth(0)?;
         match self.kind() {
             SurfaceKind::BSpline(s) => s.evaluate_simple(
                 uv,

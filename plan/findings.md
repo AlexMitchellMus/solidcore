@@ -5446,3 +5446,8 @@ Apple build after their removal. The final GNU rerun is recorded below when
 complete. No #71/#100 numerical implementation is imported. Common intersection
 adapter errors now identify the remaining Surface integration rather than the
 already-partial cone numerical unit.
+
+The review also found `Surface::evaluate_simple` recursively delegates through
+curve-bounded bases without the preflight used by the other common evaluators.
+It now checks the same 64-level owned-geometry limit before dispatch; a 70-level
+curve-bounded regression verifies normal `InvalidInput` rather than recursion.
