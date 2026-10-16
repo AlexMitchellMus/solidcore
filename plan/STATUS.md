@@ -1010,3 +1010,29 @@ older pass certifies that head. Cone
 trim/fast-drop virtual callbacks, part 9 iso/tessellation, torus/extrusion,
 curve-on-surface and B-spline cache-storage adapters remain explicit gaps. No cone
 null-offset numerical result is certified by this PR.
+
+
+## Paused at user request (2026-10-16)
+
+Draft PR: https://github.com/bherbruck/solidcore/pull/133. Branch
+`t3/kernel-surface-dispatch`, latest implementation `8cb9ff44`, merged main
+through `8f6a9378` (#120/#131/#128/#142). No additional implementation should
+continue until requested. The active 185-unit GNU run 38889088718 was cancelled
+to pause work; it does not certify the final merged source.
+
+Completed on 8cb9ff44: fmt, strict plain/C++ Clippy, 1,230 workspace tests
+(1,208 core), WASM, license/source checks and publish dry-run. Native full gate,
+sensitivity and focused FFI tests still need to finish on this revision.
+
+Last completed full GNU validation is f804bc5f, run 38884360383: 183 units,
+99 green / 84 partial, 466,597 total cases, 453,941 compared, 12,656 deferred,
+zero failed; sensitivity 453,859 detected / 453,859 perturbed, 82 empty outputs
+unperturbed; 1,218 workspace tests and eight focused FFI tests pass. Reports
+for that run are retained in `/tmp/sc133-premerge-ci-reports`, with its log in
+`/tmp/sc133-premerge-ci.log`; they have not replaced newer main's reports.
+
+Resume by checking live claims and main, finishing the current revision's native
+gate/sensitivity/FFI checks, verifying all fixed tolerances and floor policies,
+then refreshing reports, modules, findings, STATUS and the draft description.
+Never hand-edit PROGRESS. Remaining cone_p2/sphere/analytic callback and storage
+adapter gaps are recorded above; do not duplicate their numerical owners.
