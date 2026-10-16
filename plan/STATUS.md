@@ -1,11 +1,11 @@
 # solidcore status
 
-Last updated: 2026-10-15, `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
+Last updated: 2026-10-16, `intersect.surface_drop_lib_p3` partial (PR #136); 2026-10-15, `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
 
 
 ## Integration update (2026-10-15, PR #119)
 
-The manifest now has 173 ported units: 97 green and 76 partial. `mass.integrator`
+The manifest now has 174 ported units: 97 green and 77 partial (with `intersect.surface_drop_lib_p3`, PR #136). `mass.integrator`
 has 1520 passing cases and eight explicit dependency deferrals out of 1528, with
 maximum relative error `4.979280456316938e-14` and no absolute floors. Review
 regressions cover circular holes, curved B-spline surfaces, rational edges and nested area strips; each Cash–Karp derivative array

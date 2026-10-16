@@ -1493,7 +1493,9 @@ impl Plane {
 
                 // if clamping moves the control point - give up - pass the call along
                 if dev_from_srf_nrm_line > approx_tol {
-                    return surface_drop_curve(k, self, uv_domain, curve, &ivl, approx_tol, keep_all);
+                    return surface_drop_curve(
+                        k, self, uv_domain, curve, &ivl, approx_tol, keep_all,
+                    );
                 }
 
                 // save the dropped control point
@@ -2136,10 +2138,9 @@ fn surface_drop_curve(
     approx_tol: f64,
     keep_all: bool,
 ) -> Result<PlaneDropCurve> {
-    let r = Surface::from(plane.clone())
-        .drop_curve_base::<crate::surface::surface::p4::NoObject>(
-            k, uv_domain, curve, interval, approx_tol, keep_all, None,
-        )?;
+    let r = Surface::from(plane.clone()).drop_curve_base::<crate::surface::surface::p4::NoObject>(
+        k, uv_domain, curve, interval, approx_tol, keep_all, None,
+    )?;
     Ok(PlaneDropCurve {
         max_drop_to_surf: r.max_drop_to_surf,
         max_approx_dev: r.max_approx_dev,

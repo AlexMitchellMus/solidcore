@@ -1726,7 +1726,16 @@ mod tests {
 
     #[test]
     fn corner_blend_needs_four_curves() {
-        let r = BSplineSurface::create_corner_blend(&crate::kernel::Kernel::default(), &[], &[], &[], &[], 1e-3, 0.1, true);
+        let r = BSplineSurface::create_corner_blend(
+            &crate::kernel::Kernel::default(),
+            &[],
+            &[],
+            &[],
+            &[],
+            1e-3,
+            0.1,
+            true,
+        );
         assert!(r.is_err());
     }
 

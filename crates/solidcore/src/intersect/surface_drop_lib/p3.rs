@@ -280,7 +280,9 @@ impl<O: SolutionObject> FailState<'_, O> {
 fn path_of<O>(record: &Option<DropFailRecord<'_, O>>) -> CreateUvTrimCurvePathType {
     record
         .as_ref()
-        .map_or(CreateUvTrimCurvePathType::Unknown, |r| r.fail.create_path_type)
+        .map_or(CreateUvTrimCurvePathType::Unknown, |r| {
+            r.fail.create_path_type
+        })
 }
 
 /// Sets the record's path type when it is still unknown.
@@ -645,7 +647,8 @@ impl Surface {
         }
 
         // Characterize DropPoint loc: eOnSeam
-        let (mut u_type, mut v_type) = srf_nat_domain.classify_point(start.uv_pd[0], uv_tol_x, Some(uv_tol_y));
+        let (mut u_type, mut v_type) =
+            srf_nat_domain.classify_point(start.uv_pd[0], uv_tol_x, Some(uv_tol_y));
         let on_end = |t: ExtentPointType| t == ExtentPointType::Start || t == ExtentPointType::End;
         let on_seam = if on_end(u_type) && closed_u && on_end(v_type) && closed_v {
             SurfParamType::Both
@@ -663,7 +666,8 @@ impl Surface {
             let n_orig_sols = solutions.len();
             for ii in 0..n_orig_sols {
                 start.uv_pd[0] = start_uv(&solutions, ii)?;
-                (u_type, v_type) = s_uv_domain.classify_point(start.uv_pd[0], uv_tol_x, Some(uv_tol_y));
+                (u_type, v_type) =
+                    s_uv_domain.classify_point(start.uv_pd[0], uv_tol_x, Some(uv_tol_y));
                 let mut poc_u = if on_seam == SurfParamType::U || on_seam == SurfParamType::Both {
                     start.is_moving_along_boundary(
                         this,
@@ -757,7 +761,13 @@ impl Surface {
             }
 
             // try the iso curve shortcut
-            let iso = this.drop_iso_curve(&s_uv_domain, curve, &s_interval, start.uv_pd[0], approx_tol_3d)?;
+            let iso = this.drop_iso_curve(
+                &s_uv_domain,
+                curve,
+                &s_interval,
+                start.uv_pd[0],
+                approx_tol_3d,
+            )?;
             start.drop_to_surf = iso.max_drop_to_surf;
             start.approx_dev = iso.max_approx_dev;
             if iso.successful {
@@ -1181,5 +1191,91 @@ impl Surface {
         );
         default_path(&mut record, CreateUvTrimCurvePathType::DropCurveOkay);
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::geom::vector2d::Vec2;
+    use crate::nurbs::crv_basic::Curve as NurbCurve;
+    use crate::nurbs::math::{CPoint, NOW};
+    use crate::surface::plane::Plane;
+    use crate::surface::surface::p2::DropCurveFail;
+    use crate::surface::surface::p4::NoObject;
+
+    fn plane() -> Surface {
+        Surface::from(Plane::new(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec2::new(1.0, 1.0),
+            &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+        ))
+    }
+
+    /// A degree 1 B-spline collapsed to the point `p`.
+    fn point_curve(p: Point3) -> Curve {
+        let pw = vec![
+            CPoint::new(p.x, p.y, p.z, NOW),
+            CPoint::new(p.x, p.y, p.z, NOW),
+        ];
+        let nurb = NurbCurve::new(pw, 1, vec![0.0, 0.0, 1.0, 1.0]).unwrap();
+        Curve::from(BSplineCurve::from_nurb(nurb, 3, false))
+    }
+
+    #[test]
+    fn uncontained_domain_is_recorded() {
+        let k = Kernel::default();
+        let mut fail: DropCurveFail<NoObject> = DropCurveFail::default();
+        let r = plane().drop_curve_base(
+            &k,
+            &Extent2d::from_bounds(-1.0, 0.0, 1.0, 1.0),
+            &point_curve(Point3::new(0.5, 0.5, 0.0)),
+            &Extent1d::from_min_max(0.0, 1.0),
+            1e-4,
+            true,
+            Some(DropFailRecord {
+                fail: &mut fail,
+                surface: None,
+                curve: None,
+            }),
+        );
+        assert!(matches!(r, Err(SolidError::Upstream { code: SM_ERR, .. })));
+        assert_eq!(fail.fail_status, SM_ERR_OUTSIDE_OF_DOMAIN);
+        assert_eq!(
+            fail.create_path_type,
+            CreateUvTrimCurvePathType::DropDomainUncontainedFail
+        );
+        assert_eq!(fail.drop_domain_is_contained, 0);
+        assert_eq!(fail.closed_u, UNSURE);
+    }
+
+    #[test]
+    fn point_off_the_plane_is_a_bad_first_drop() {
+        let k = Kernel::default();
+        let mut fail: DropCurveFail<NoObject> = DropCurveFail::default();
+        let out = plane()
+            .drop_curve_base(
+                &k,
+                &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+                &point_curve(Point3::new(0.5, 0.25, 0.5)),
+                &Extent1d::from_min_max(0.0, 1.0),
+                1e-4,
+                true,
+                Some(DropFailRecord {
+                    fail: &mut fail,
+                    surface: None,
+                    curve: None,
+                }),
+            )
+            .unwrap();
+        assert!(out.uv_curves.is_empty());
+        assert_eq!(
+            fail.create_path_type,
+            CreateUvTrimCurvePathType::FirstDropUncontainedFail
+        );
+        assert_eq!(fail.degen_curve, 1);
+        assert_eq!(fail.srf_closure, SurfParamType::Neither);
     }
 }

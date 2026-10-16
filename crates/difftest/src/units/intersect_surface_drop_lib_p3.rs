@@ -313,42 +313,40 @@ fn frame(srf: &Surface, uv: [f64; 2]) -> Option<([f64; 3], [f64; 3], [f64; 3], [
     Some((arr3(p), n, arr3(su), arr3(sv)))
 }
 
-/// A point curve at `p`: a very short line or a B-spline with (nearly) coincident
-/// control points; with its interval.
+/// A point curve at `p`: a B-spline whose control points coincide (or nearly: an
+/// `SmLine` between coincident points is a unit line, not a point); with its interval.
 fn point_curve(rng: &mut Rng, p: [f64; 3], s: f64) -> (CurveIn, [f64; 2]) {
-    let eps = pick(rng, &[1.0e-15, 1.0e-14, 1.0e-13], 1.0e-14) * s.max(1.0);
-    if rng.chance(0.5) {
-        let d = unit_dir(rng);
-        (
-            CurveIn::Line {
-                a: p,
-                b: add3(p, scale3(d, eps)),
-            },
-            [0.0, 1.0],
-        )
-    } else {
-        let n = 2 + rng.below(3) as usize;
-        let deg = (n - 1).min(1 + rng.below(2) as usize);
-        let cpts = (0..n)
-            .map(|i| {
-                let q = if i == 0 || rng.chance(0.5) {
-                    p
-                } else {
-                    add3(p, scale3(unit_dir(rng), eps))
-                };
-                [q[0], q[1], q[2], NOW]
-            })
-            .collect();
-        let t0 = pick(rng, &[0.0, -1.0, 2.0], 0.0);
-        let t1 = t0 + pick(rng, &[1.0, 0.5, 10.0], 1.0);
-        (
-            CurveIn::Bspline {
-                p: deg,
-                cpts,
-                knots: gen_knots(rng, n, deg, t0, t1),
-            },
-            [t0, t1],
-        )
+    let eps = pick(rng, &[0.0, 0.0, 1.0e-15, 1.0e-13, 1.0e-11], 0.0) * s.max(1.0);
+    let n = 2 + rng.below(3) as usize;
+    let deg = (n - 1).min(1 + rng.below(2) as usize);
+    let cpts = (0..n)
+        .map(|i| {
+            let q = if i == 0 || rng.chance(0.5) {
+                p
+            } else {
+                add3(p, scale3(unit_dir(rng), eps))
+            };
+            [q[0], q[1], q[2], NOW]
+        })
+        .collect();
+    let t0 = pick(rng, &[0.0, -1.0, 2.0], 0.0);
+    let t1 = t0 + pick(rng, &[1.0, 0.5, 10.0], 1.0);
+    (
+        CurveIn::Bspline {
+            p: deg,
+            cpts,
+            knots: gen_knots(rng, n, deg, t0, t1),
+        },
+        [t0, t1],
+    )
+}
+
+/// The point curve at `p` of the fixtures (degree 1, two equal control points).
+fn point_at(p: [f64; 3]) -> CurveIn {
+    CurveIn::Bspline {
+        p: 1,
+        cpts: vec![[p[0], p[1], p[2], NOW], [p[0], p[1], p[2], NOW]],
+        knots: vec![0.0, 0.0, 1.0, 1.0],
     }
 }
 
@@ -514,7 +512,6 @@ fn fixture(surface: SurfIn, curve: CurveIn, domain: [f64; 4], interval: [f64; 2]
 
 fn fixtures() -> Vec<(String, Inputs)> {
     let unit = [0.0, 0.0, 1.0, 1.0];
-    let tiny = 1.0e-14;
     let mut v = vec![
         // TestSmCreateRectangle shape: an edge of the unit square (deferred: offset)
         (
@@ -526,7 +523,7 @@ fn fixtures() -> Vec<(String, Inputs)> {
             "plane_point".to_owned(),
             fixture(
                 square_plane(),
-                line([0.5, 0.25, 0.0], [0.5 + tiny, 0.25, 0.0]),
+                point_at([0.5, 0.25, 0.0]),
                 unit,
                 [0.0, 1.0],
             ),
@@ -536,7 +533,7 @@ fn fixtures() -> Vec<(String, Inputs)> {
             "plane_point_above".to_owned(),
             fixture(
                 square_plane(),
-                line([0.5, 0.25, 0.5], [0.5 + tiny, 0.25, 0.5]),
+                point_at([0.5, 0.25, 0.5]),
                 unit,
                 [0.0, 1.0],
             ),
@@ -561,7 +558,7 @@ fn fixtures() -> Vec<(String, Inputs)> {
             "plane_degenerate_domain".to_owned(),
             fixture(
                 square_plane(),
-                line([0.5, 0.5, 0.0], [0.5 + tiny, 0.5, 0.0]),
+                point_at([0.5, 0.5, 0.0]),
                 [0.5, 0.0, 0.5, 1.0],
                 [0.0, 1.0],
             ),
@@ -576,7 +573,7 @@ fn fixtures() -> Vec<(String, Inputs)> {
         ("cylinder_seam", cylinder(), [1.0, 0.0, 1.0]),
         ("cylinder_corner", cylinder(), [1.0, 0.0, 0.0]),
     ] {
-        let curve = line(p, add3(p, [tiny, tiny, 0.0]));
+        let curve = point_at(p);
         v.push((
             name.to_owned(),
             Inputs {

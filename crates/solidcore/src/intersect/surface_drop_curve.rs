@@ -361,13 +361,7 @@ fn surface_drop_curve(
         | SurfaceKind::Step(_)
         | SurfaceKind::SrfInVolume(_) => {
             let r = surface.drop_curve_base::<NoObject>(
-                k,
-                uv_domain,
-                curve,
-                interval,
-                approx_tol,
-                keep_all,
-                None,
+                k, uv_domain, curve, interval, approx_tol, keep_all, None,
             )?;
             Ok((
                 r.max_drop_to_surf,

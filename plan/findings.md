@@ -2650,7 +2650,10 @@ behaviour worth knowing:
   constructor, on the *source*. The port makes it on a copy (`Plane::base_with_nurb`), so
   the source keeps none. Only `ToggleSwapUVBit` (which leaves the NURB alone) and
   `operator==` (which compares NURBs) can see the difference. The runner generates those
-  two only while both sides agree, and the adversarial fixtures (`zz_adv.json`) leave
+  two only while both sides agree (since PR #136 also after `DropCurve`, whose fallback
+  to the general `SmSurface::DropCurve` asks `GetNaturalUVDomain`: two generated cases
+  with a `ToggleSwapUVBit` after an uncontained-domain drop disagreed once the general
+  drop was wired), and the adversarial fixtures (`zz_adv.json`) leave
   out the sequences that observe it (`==` after `Copy`, `ToggleSwapUVBit` after
   `CreateIsoParametricCurve` or `CoincidenceCheck`). The shim copies planes without a NURB by rebuilding
   them from their analytic data, because its own copies would otherwise change plane A.
@@ -5041,3 +5044,22 @@ mutated scales and accepted/reduced step counts are compared.
   UB-117 (`UpdateEdges` dereferences its optional calling definition), UB-118 (null and
   deleted definitions in the two `Resolve`s), WR-95 (`CombineProtoEdge` moves every other
   definition; confirmed by `edge_pe_combine_every_other_*`).
+
+## intersect.surface_drop_lib_p3 (PR #136)
+
+- **Almost everything defers on the offset surface.** `SmSurface::DropCurve` drops the
+  start point with `SetProperties`, which drops every non-degenerate curve tangent (not
+  within 3 degrees of the normal) onto the `SmOffsetSurface` (`DropVectors`,
+  `EvaluateDirectionalDerivs`: `surface.offset_surface`, open PR #62). The comparable
+  paths are the early exits, a first drop off the surface with the tangent along the
+  normal, and point curves; a point curve's `GetNextPoint` never succeeds (its
+  `m_eDropDerivRtn` stays unset, so the status is `99999999` on both sides), so only a
+  point on a pole gives a curve (the pole line). The traced-curve paths compare once
+  PR #62 lands; re-run this unit then.
+- **`SmLine` between (nearly) coincident points is not a point curve.** The constructor
+  replaces a vector shorter than `SM_EFF_ZERO` by `(1, 0, 0)` with scale 1 and an empty
+  analytic domain, so over `[0, 1]` it is a unit line. The difftest builds point curves as
+  B-splines with coincident control points.
+- **`SmCrvOnSurf` over planes and surfaces of revolution** (the final distance check) is a
+  `curve.crv_on_surf` dispatch gap (the ported curve holds a B-spline surface only).
+

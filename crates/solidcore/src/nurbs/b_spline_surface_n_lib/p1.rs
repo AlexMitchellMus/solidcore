@@ -227,16 +227,15 @@ fn drop_curve(
     approx_tol: f64,
 ) -> Result<DroppedCurves> {
     let surface = crate::surface::surface::Surface::from(srf.clone_exact());
-    let out = surface
-        .drop_curve_base::<crate::surface::surface::p4::NoObject>(
-            k,
-            domain,
-            &crate::curve::curve::Curve::from(curve.clone()),
-            interval,
-            approx_tol,
-            true,
-            None,
-        )?;
+    let out = surface.drop_curve_base::<crate::surface::surface::p4::NoObject>(
+        k,
+        domain,
+        &crate::curve::curve::Curve::from(curve.clone()),
+        interval,
+        approx_tol,
+        true,
+        None,
+    )?;
     Ok(DroppedCurves {
         uv_curves: out.uv_curves,
     })
