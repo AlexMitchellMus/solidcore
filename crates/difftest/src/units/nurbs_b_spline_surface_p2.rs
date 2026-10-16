@@ -955,6 +955,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         ) => {
             let c = bsc_of(curve)?;
             BSplineSurface::create_surf_of_revolution(
+                &Kernel::default(),
                 &c,
                 Point3::new(origin[0], origin[1], origin[2]),
                 Vec3::new(axis[0], axis[1], axis[2]),
@@ -969,7 +970,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         }
         (OpIn::TrimPlane { c1, c2 }, None) => {
             let (a, b) = (bsc_of(c1)?, bsc_of(c2)?);
-            BSplineSurface::create_trimmed_plane_from_ruled(&a, &b).map(|r| {
+            BSplineSurface::create_trimmed_plane_from_ruled(&Kernel::default(), &a, &b).map(|r| {
                 o.push(r.trimming_curves.len() as f64);
                 o.push(1.0);
                 dump_state(&mut o, &r.plane);
