@@ -341,13 +341,16 @@ fn rust_surface(spec: &SurfaceSpec) -> Result<Result<Surface, Deferred>, String>
                 .map_err(|e| format!("nurbs: {e}"))?;
             Ok(Ok(Surface::from(BSplineSurface::from_nurb(sur, false))))
         }
-        // UNPORTED(surface.cone_p3): SmCylinder / SmCone are not Surface kinds yet, and their
-        // GlobalSurfaceIntersect override is SmCone::GlobalSurfaceIntersect
+        // UNPORTED(surface.surface_p2): common cone intersection adapters remain
+        // separate from the concrete numerical port and retained SurfaceKind.
         SurfaceSpec::Cylinder { .. } => deferred(
-            "surface.cone_p3",
-            "SmCylinder (SmCone::GlobalSurfaceIntersect)",
+            "surface.surface_p2",
+            "SmCylinder common intersection dispatch adapter",
         ),
-        SurfaceSpec::Cone { .. } => deferred("surface.cone_p3", "SmCone::GlobalSurfaceIntersect"),
+        SurfaceSpec::Cone { .. } => deferred(
+            "surface.surface_p2",
+            "SmCone common intersection dispatch adapter",
+        ),
         // UNPORTED(surface.sphere): SmSphere
         SurfaceSpec::Sphere { .. } => {
             deferred("surface.sphere", "SmSphere::GlobalSurfaceIntersect")

@@ -992,10 +992,10 @@ impl Surface {
                 [self.face()?.is_some(), false],
             ),
             SurfaceKind::Cone(_) => {
-                // UNPORTED(surface.cone_p3): SmCone::GlobalSurfaceIntersect / IntersectWithPlane
+                // UNPORTED(surface.surface_p2): common SmCone intersection adapter
                 Err(SolidError::unported(
-                    "SmCone::GlobalSurfaceIntersect / IntersectWithPlane",
-                    "surface.cone_p3",
+                    "SmCone common intersection dispatch adapter",
+                    "surface.surface_p2",
                 ))
             }
             SurfaceKind::SurfOfRevolution(s) => {
@@ -1418,10 +1418,10 @@ impl Surface {
                 ang_tol_rad,
             ),
             SurfaceKind::Cone(_) => {
-                // UNPORTED(surface.cone_p3): SmCone::GlobalSurfaceIntersect / IntersectWithPlane
+                // UNPORTED(surface.surface_p2): common SmCone intersection adapter
                 Err(SolidError::unported(
-                    "SmCone::GlobalSurfaceIntersect / IntersectWithPlane",
-                    "surface.cone_p3",
+                    "SmCone common intersection dispatch adapter",
+                    "surface.surface_p2",
                 ))
             }
             SurfaceKind::SurfOfRevolution(s) => s.global_surface_intersect(
