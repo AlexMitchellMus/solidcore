@@ -5431,7 +5431,7 @@ Strict C++-feature workspace Clippy also passes in the same disposable checkout
 with the runner-only profile override. No platform prerequisites enter this PR.
 
 
-### PR #133 port-pr-review follow-up (2026-10-16)
+## Kernel-aware Surface integration: PR #133 review follow-up (2026-10-16)
 
 The review reproduced five missing-Kernel compile errors in a temporary merge
 with main after #131 landed (bbox/degeneracy/curve point calls). This branch now
@@ -5451,3 +5451,14 @@ The review also found `Surface::evaluate_simple` recursively delegates through
 curve-bounded bases without the preflight used by the other common evaluators.
 It now checks the same 64-level owned-geometry limit before dispatch; a 70-level
 curve-bounded regression verifies normal `InvalidInput` rather than recursion.
+
+The new native common-API corpus uses the shim's default `SmContext`. A Rust
+regression uses zone tolerance 0.002 and checks that lazy/solver callbacks borrow
+the caller Kernel and generic iso/STEP evaluation retains it; custom native
+context settings are not differentially covered by this PR.
+
+Concrete cone part 3 tests use its typed intersection targets. Wrapped-other
+cone dispatch through `IntersectTarget::Surface` is not certified here; that
+helper currently reaches the supplied general callback rather than recognizing
+the new Cone variant as an analytic target. This remains part of the common
+intersection adapter handoff, along with the explicit Surface method stubs.
