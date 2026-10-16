@@ -192,11 +192,11 @@ struct FailState<'a, O> {
     uv_domain: Extent2d,
     interval: Extent1d,
     approx_tol_3d: f64,
-    keep_all: bool,
-    degen_curve: bool,
-    degen_surf_u: bool,
-    degen_surf_v: bool,
-    contained: bool,
+    keep_all: i32,
+    degen_curve: i32,
+    degen_surf_u: i32,
+    degen_surf_v: i32,
+    contained: i32,
     closed_u: i32,
     closed_v: i32,
     closure: SurfParamType,
@@ -247,11 +247,11 @@ impl<O: SolutionObject> FailState<'_, O> {
             max_drop_to_surf_arg: out.rd_max_drop,
             max_approx_dev: out.rd_max_dev,
             uv_curves_arg: None,
-            keep_all_drop_curves: sm_bool(self.keep_all),
-            degen_curve: sm_bool(self.degen_curve),
-            degen_surf_u: sm_bool(self.degen_surf_u),
-            degen_surf_v: sm_bool(self.degen_surf_v),
-            drop_domain_is_contained: sm_bool(self.contained),
+            keep_all_drop_curves: self.keep_all,
+            degen_curve: self.degen_curve,
+            degen_surf_u: self.degen_surf_u,
+            degen_surf_v: self.degen_surf_v,
+            drop_domain_is_contained: self.contained,
             max_drop_to_surf: out.max_drop,
             ..DropCurveFailArgs::default()
         };
@@ -277,12 +277,10 @@ impl<O: SolutionObject> FailState<'_, O> {
 }
 
 /// The current path type of the record (`pDropCurveFail->m_eCreatePathType`).
-fn path_of<O>(record: &Option<DropFailRecord<'_, O>>) -> CreateUvTrimCurvePathType {
-    record
-        .as_ref()
-        .map_or(CreateUvTrimCurvePathType::Unknown, |r| {
-            r.fail.create_path_type
-        })
+fn path_of<O>(record: Option<&DropFailRecord<'_, O>>) -> CreateUvTrimCurvePathType {
+    record.map_or(CreateUvTrimCurvePathType::Unknown, |r| {
+        r.fail.create_path_type
+    })
 }
 
 /// Sets the record's path type when it is still unknown.
@@ -385,11 +383,11 @@ impl Surface {
             uv_domain: *uv_domain,
             interval: *interval,
             approx_tol_3d,
-            keep_all: keep_all_drop_curves,
-            degen_curve,
-            degen_surf_u,
-            degen_surf_v,
-            contained,
+            keep_all: sm_bool(keep_all_drop_curves),
+            degen_curve: sm_bool(degen_curve),
+            degen_surf_u: sm_bool(degen_surf_u),
+            degen_surf_v: sm_bool(degen_surf_v),
+            contained: sm_bool(contained),
             closed_u: UNSURE,
             closed_v: UNSURE,
             closure: SurfParamType::Unknown,
@@ -947,7 +945,7 @@ impl Surface {
 
                     // still failing: give up on this start point
                     if ret_status != SM_SUCCESS {
-                        let path = path_of(&record);
+                        let path = path_of(record.as_ref());
                         fs.set(
                             &mut record,
                             3,
@@ -1173,7 +1171,7 @@ impl Surface {
         }
 
         // capture the output for debug and heal purposes
-        let path = path_of(&record);
+        let path = path_of(record.as_ref());
         fs.set(
             &mut record,
             4,

@@ -178,7 +178,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
     };
     let curve = rust_curve(&k, &i.curve)?;
     let mut fail: DropCurveFail<NoObject> = DropCurveFail::default();
-    let record = i.want_record.then(|| DropFailRecord {
+    let record = i.want_record.then_some(DropFailRecord {
         fail: &mut fail,
         surface: None,
         curve: None,
@@ -305,7 +305,10 @@ fn gen_uv(rng: &mut Rng, d: [f64; 4]) -> [f64; 2] {
 
 /// Surface point, unit normal and first derivatives at `uv` (`None` when the surface
 /// cannot evaluate there).
-fn frame(srf: &Surface, uv: [f64; 2]) -> Option<([f64; 3], [f64; 3], [f64; 3], [f64; 3])> {
+/// A surface point and its unit normal and first derivatives.
+type Frame = ([f64; 3], [f64; 3], [f64; 3], [f64; 3]);
+
+fn frame(srf: &Surface, uv: [f64; 2]) -> Option<Frame> {
     let (p, su, sv) = srf
         .evaluate_1st_derivatives(Point2::new(uv[0], uv[1]), true, true)
         .ok()?;
