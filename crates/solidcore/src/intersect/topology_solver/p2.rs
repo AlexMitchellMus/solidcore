@@ -404,6 +404,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 vectors.truncate(1);
             }
             surface.global_curve_solve(
+                ts.kernel,
                 &domain,
                 curve.curve,
                 &self.interval,
@@ -412,6 +413,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 best,
                 &vectors,
                 SolutionRequested::All,
+                [Some(curve.handle), Some(face_surface_handle)],
             )?
         };
         for found in solutions.as_slice() {
@@ -533,6 +535,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
             let a = ts.objects.surface(surface1)?;
             let b = ts.objects.surface(surface2)?;
             let solutions = a.global_surface_solve(
+                ts.kernel,
                 &ts.objects.face_uv_domain(face1)?,
                 b,
                 &ts.objects.face_uv_domain(face2)?,
@@ -541,6 +544,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 best,
                 &ts.base.opt_vectors,
                 ts.base.solution_requested,
+                [Some(surface1), Some(surface2)],
             )?;
             for found in solutions.as_slice() {
                 let mut solution = *found;

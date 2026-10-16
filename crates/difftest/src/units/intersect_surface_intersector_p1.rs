@@ -754,6 +754,7 @@ fn run_op(
                 .ok_or_else(|| harness("point type"))?;
             let prev_uv = prev.map(|pv| [p2(pv[0]), p2(pv[1])]);
             let r = si.refine_point(
+                k,
                 p2(*uv0),
                 p2(*uv1),
                 t,

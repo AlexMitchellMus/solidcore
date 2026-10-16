@@ -862,6 +862,7 @@ impl SurfaceIntersector<'_> {
         // Find surf/surf xSectPoint near the guess points (a failure is no answer)
         let refine = |do_boundary_testing: bool| -> Result<Option<[Point2; 2]>> {
             match self.refine_point(
+                k,
                 guess_uv0,
                 guess_uv1,
                 prev_tsp.point_type,

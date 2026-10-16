@@ -1076,6 +1076,7 @@ impl<'s, 't, O: SolutionObject + 't> AdvSurfaceIntersector<'s, 't, O> {
 
             // Get an intersection curve start point
             let (found_answer, start) = surface_local_surface_intersect(
+                k,
                 bss1,
                 &self.base.uv_domains[0],
                 bss2,

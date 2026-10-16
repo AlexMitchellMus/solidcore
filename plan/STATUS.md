@@ -1,6 +1,6 @@
 # solidcore status
 
-Last updated: 2026-10-15, `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
+Last updated: 2026-10-16, `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green); before: `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
 
 
 ## Integration update (2026-10-15, PR #119)
@@ -983,8 +983,9 @@ The full regression validation uses the fork's standard Ubuntu CI workflow
 kernel/shims. The local 4 GB Linux VM could not complete the full runner build
 under memory pressure; its temporary validation container was stopped.
 
-This integration leaves offsets/rebuilds with #71, sphere with #100, surface part 11
-with #120 and cone intersections/dependency integrations with #131's owner. #71's
+This integration leaves offsets/rebuilds with #71, sphere with #100 and cone intersections/dependency integrations with #131's owner.
+The merged #120 implementation is retained, with caller Kernel propagation through
+its new shared solver paths. #71's
 head c9aa85de has 26 reported failures; no older pass certifies that head. Cone
 trim/fast-drop virtual callbacks and torus/extrusion, curve-on-surface and B-spline
 cache-storage adapters remain explicit gaps. No cone null-offset numerical result

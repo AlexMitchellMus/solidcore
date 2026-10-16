@@ -5065,8 +5065,9 @@ Remaining integration boundaries are explicit:
 - Cone trimming and fast point dropping still need inherited revolution bodies
   with the cone's virtual callbacks. These are dispatch gaps, not replacements by
   a plain revolution or a B-spline. Their errors name the owning common unit.
-- Sphere (PR #100), the surface part 11 work (PR #120), torus and extrusion adapters
-  are not imported. Existing concrete readers may still defer when no SurfaceKind
+- Sphere (PR #100), torus and extrusion adapters are not imported.
+  PR #120 has merged; its numerical implementation and subdivision bound are
+  retained, with caller Kernel propagation through its new shared solver paths. Existing concrete readers may still defer when no SurfaceKind
   adapter exists. Curve-on-surface and cache storage that specifically owns a
   B-spline remains a separate adapter boundary.
 
@@ -5088,6 +5089,11 @@ ASCII/binary version-30 round trips, lazy `SmSurfaceEval` derivatives, inversion
 subdomains, degeneracy, normals and bounding boxes. Common fallible inversion
 compares UV/location only on success; direct cone part 1 retains its native
 failure-output comparisons. No comparison tolerance or absolute floor is changed.
+An additional 32 manual lazy-evaluator apex probes pass bit-identically: canonical
+cone bot=2/top=0/height=3, identity placement, both swap/inside flags, angular
+parameters 0, 0.25, 0.5, 1 and axial parameters 1 and its preceding float
+0.9999999999999999 (exchange coordinates when swapped). These probes use the
+common lazy adapter and are separate from the committed default case totals.
 
 
 Validation configuration for #133: Apple Clang uses the shared Release/O2 kernel
@@ -5100,3 +5106,62 @@ validation container was stopped without changing other containers or the VM's
 configuration. Canonical CI requires maintainer approval, which this account
 cannot grant; the fork workflow adds report upload only, and its crate/harness
 sources match PR #133's validated source commit.
+
+## surface.surface_p11 (`LocalSurfaceIntersect`, `SmCSGlobalSolver` / `SmSSGlobalSolver::LocalSolve`, `IntersectSurfaceBoundaries`, `LiftCurve`, PR #120, 2026-10-15; partial)
+
+- **Known disagreement (not generated): boundaries of an `SmPlane`.** In
+  `IntersectSurfaceBoundaries` the other surface's boundary curves come from
+  `CreateIsoBoundaries`; for an `SmPlane` upstream they are `SmLine`s (the plane's
+  `CreateIsoParametricCurve` override), while the port's `Surface::create_iso_boundaries`
+  (unit `surface.surface_p9`) returns `BSplineCurve`s. Copy, trim and evaluation then run
+  as B-splines: plane/plane cases differ near zero coordinates (e.g. `cpp=0`,
+  `rust=2.78e-17`, relative error 1; four of the first 600 generated cases with a plane as
+  the other surface). The generator therefore uses patches for the other surface (this
+  surface may be a plane). Fix belongs to `surface.surface_p9`: return the typed iso curve
+  (`SmLine` / `SmCircle`) from `create_iso_boundaries`.
+- **Global solves wired.** `Surface::global_curve_solve` / `global_surface_solve` (unit
+  `surface.surface_p7`) now take the kernel and the solution handles, build the surface
+  (and curve) caches for the solve (no cache store: `CacheMakeOrValidate`, unit
+  `surface.surface_p1`) and run `SmCSGlobalSolver` / `SmSSGlobalSolver` with the leaf
+  solves of this unit; the solvers borrow the caches (`CsGlobalSolver::curve` /
+  `surface_cache`, `SsGlobalSolver::caches`), as `SmLSIGlobalSolver` does.
+  `SmSSGlobalSolver::BranchMayContainAnswers` uses the caches' polar boxes when it has
+  them. `global_surface_solve_with` also returns the solution nodes' boxes and patch
+  domains (`SM_SR_NODES`, read by `SmSurfaceIntersector::FindInteriorCurves`, now wired).
+- **Unported callees** (deferred): `sm_IntersectSrfBndryCrv` and `sm_ExtractIsoCurve`
+  (`surface.surface_p8`; `LiftCurve` defers at its first call) and `LocalPointSolve`
+  through `DropPoint` of a B-spline in `IntersectSurfaceBoundaries`
+  (`surface.surface_point_solve_p3`). `SmSurface::LocalSurfaceSolve` is wired to unit
+  `surface.surface_p3` (merged).
+- **Dispatch gap: `LiftCurve` on a surface that is not a B-spline.** `SmCrvOnSurf` holds
+  any `SmSurface` upstream; the ported `CrvOnSurf` (unit `curve.crv_on_surf`) holds an
+  `SmBSplineSurface`, so `LiftCurve` of a plane, surface of revolution, curve-bounded,
+  in-volume or STEP surface returns `Unported` naming `curve.crv_on_surf` past the iso
+  curve test (as the `SmIsoCurve` gaps of parts 5, 6 and 9). Unreachable in the difftest
+  until `sm_ExtractIsoCurve` (`surface.surface_p8`) lands.
+- **Unbounded surface cache subdivision (fixed).** A difftest run of this unit with
+  `surface.surface_p7` reached 3.5 GB RSS within 84 s and aborted ("memory allocation of
+  3523215360 bytes failed": the `BezierPatch` array of a `SurfaceCache` growing past 2^21
+  patches in `SubdivideToTolerances`). The `surface.surface_p7` generator ran the Rust
+  side of each candidate case (now a real global solve) before its scale filter, so
+  extreme-scale surfaces were subdivided to the default tolerances into millions of
+  patches (upstream does the same, for minutes). Fixes: the generator checks both
+  surfaces' scales before the Rust run, and `SubdivideToTolerances` (unit
+  `surface.surface_cache_p3`) refuses to split once the tree holds
+  `MAX_SUBDIVISION_NODES` (2^20) nodes, with `InvalidInput` (a generated
+  `surface.surface_p1` `GetDomainWithContinuity` case at `1e-4` scale needs more than
+  2^18; no fixture comes near 2^20). Peak RSS of the `surface.surface_p7` run is now
+  about 80 MB.
+- **Global solve comparison.** The `surface.surface_p7` runner's `GlobalCurveSolve` and
+  `GlobalSurfaceSolve` cases compare the first 16 solutions (type, value, variables, end
+  parameters of a range), not only their count. Its generator covers minimize, maximize,
+  normalize and signed directed minimize curve solves and generated surface/surface solves
+  (a bumpy patch lifted 0.05..2 above a B-spline surface's control hull, so minimizing
+  never meets a continuum of zero distances; intersect for the `SM_SR_NODES` node pairs on
+  crossing surfaces). `SM_SO_3D_SIGNED_DIRECTED_MAXIMIZE` is not generated: it is not one
+  of the operations `sm_SCLocalSolve` accepts (its `SM_ASSERT`; the Rust side returns
+  `InvalidInput`, the release C++ carries on), and a trial of the generator with it gave
+  13 of 3660 `surface.surface_p7` cases that disagreed for exactly that reason.
+- **Upstream issues:** UB-121 (`IntersectSurfaceBoundaries` dereferences a NULL curve
+  array), WR-99 (`LocalSurfaceIntersect` boundary retries: `!bFoundSolution` binds to
+  the minimum test only; reproduced).

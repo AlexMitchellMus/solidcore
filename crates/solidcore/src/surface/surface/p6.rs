@@ -1841,7 +1841,7 @@ fn param_direction_ignored(k: &Kernel, surface: &Surface, uv: Point2, vec: Vec3)
 }
 
 /// `SmIsoCurve(*pSrfEval, dir, value, bFromLeft)` (input clamped) as a curve.
-fn boundary_iso_curve(
+pub(super) fn boundary_iso_curve(
     surface: &Surface,
     dir: SurfParamType,
     value: f64,
@@ -2181,6 +2181,7 @@ mod tests {
             uv_domain1: s1.natural_uv_domain(),
             uv_domain2: s2.natural_uv_domain(),
             kernel: &k,
+            caches: [None, None],
         };
         let mk = |a: f64| {
             let mut s: Solution<Obj> = Solution::new();
