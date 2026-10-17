@@ -1590,12 +1590,58 @@ fn c3_try_analytic(
     cx: &mut Cx<'_>,
     st: &mut CalcState,
 ) -> Result<bool> {
-    let _ = (ops, cx, st);
-    // P4-CHUNK(C3): SmFilletSolver.cpp:1955-2011
-    Err(SolidError::Unported {
-        upstream: "SmFilletSolver::CalcFilletGeom (p4 chunk C3 pending)",
-        unit: "blend.fillet_solver_p4",
-    })
+    use super::p1::test_analytic_surface;
+
+    // when building a fillet that can be analytic
+    if !ops.can_make_analytic() {
+        return Ok(false);
+    }
+
+    // get filletEdge->Surface1, then filletEdge->Surface2 (each NER)
+    let base1 = c3_bspline_base(&st.base_surfaces[0])?;
+    let base2 = c3_bspline_base(&st.base_surfaces[1])?;
+
+    // when both surfaces are analytic (planes or cones); `&&` short-circuits as
+    // upstream's does (the second test only runs when the first passes)
+    let both_analytic = test_analytic_surface(cx.k, base1)? && test_analytic_surface(cx.k, base2)?;
+    if !both_analytic {
+        return Ok(false);
+    }
+
+    // try making a cylindrical fillet to store in m_vFilletGeoms[0]; quit when this
+    // succeeds (a failure falls through, an unported callee does not)
+    match calc_cylinder_fillet_geom(ops, cx, &mut st.store, &st.tsect_pnts) {
+        Ok(()) => return Ok(true),
+        Err(e) if e.is_unported() => return Err(e),
+        Err(_) => {}
+    }
+
+    // try making a torus fillet to store in m_vFilletGeoms[0]; quit when this succeeds
+    match calc_torus_fillet_geom(ops, cx, &mut st.store, &st.tsect_pnts) {
+        Ok(()) => Ok(true),
+        Err(e) if e.is_unported() => Err(e),
+        Err(_) => Ok(false),
+    }
+}
+
+/// :1960-1977: `SM_CAST_PTR(SmBSplineSurface, pBaseSrf)`, else (another level of
+/// offset surface) `SM_CAST_PTR(SmBSplineSurface, pOffsetSurf->GetBaseSurface())`;
+/// `NER` when the base is not an offset surface or its base not a B-spline.
+fn c3_bspline_base(base: &Surface) -> Result<&Surface> {
+    if is_bspline_surface(base) {
+        return Ok(base);
+    }
+    // If the base surface is not an SmBSplineSurface, maybe it's another level of
+    // offset surface; check one more level.
+    let SurfaceKind::OffsetSurface(offset) = base.kind() else {
+        return Err(SolidError::null_pointer(OP));
+    };
+    let inner = offset.base_surface();
+    if is_bspline_surface(inner) {
+        Ok(inner)
+    } else {
+        Err(SolidError::null_pointer(OP))
+    }
 }
 
 /// :2028-2034: `st.trace.domains` = the base surfaces' natural domains after
@@ -1606,12 +1652,22 @@ fn c3_trace_setup(
     cx: &mut Cx<'_>,
     st: &mut CalcState,
 ) -> Result<[Surface; 2]> {
-    let _ = (ops, cx, st);
-    // P4-CHUNK(C3): SmFilletSolver.cpp:2028-2034
-    Err(SolidError::Unported {
-        upstream: "SmFilletSolver::CalcFilletGeom (p4 chunk C3 pending)",
-        unit: "blend.fillet_solver_p4",
-    })
+    // get fillet baseSurface domains
+    let mut domain1 = st.base_surfaces[0].natural_uv_domain();
+    let mut domain2 = st.base_surfaces[1].natural_uv_domain();
+
+    // extend baseSurface domains by m_dSurfaceExtensionFactor * rDomain.GetSize();
+    // don't extend in periodic directions nor through singular boundaries
+    ops.solver()
+        .setup_offset_extension(cx.k, &st.base_surfaces[0], &mut domain1)?;
+    ops.solver()
+        .setup_offset_extension(cx.k, &st.base_surfaces[1], &mut domain2)?;
+    st.trace.domains = [domain1, domain2];
+
+    // *pOffsetSrf1, *pOffsetSrf2 (copies the intersector borrows)
+    let surface1 = Surface::from(offset_surface(ops, 0)?.surface.clone());
+    let surface2 = Surface::from(offset_surface(ops, 1)?.surface.clone());
+    Ok([surface1, surface2])
 }
 
 /// :2037-2052: `SmFilletIntersector sFI(*pOffsetSrf1, sDomain1, *pOffsetSrf2,
@@ -1623,12 +1679,24 @@ fn c3_make_intersector<'s>(
     st: &CalcState,
     surfaces: &'s [Surface; 2],
 ) -> Result<TraceIntersector<'s>> {
-    let _ = (ops, cx, st, surfaces);
-    // P4-CHUNK(C3): SmFilletSolver.cpp:2037-2052
-    Err(SolidError::Unported {
-        upstream: "SmFilletSolver::CalcFilletGeom (p4 chunk C3 pending)",
-        unit: "blend.fillet_solver_p4",
-    })
+    let _ = cx;
+    let [surface1, surface2] = surfaces;
+    let [domain1, domain2] = &st.trace.domains;
+    // the solver (`*this`) is passed to each intersector call instead
+    let mut fi = TraceIntersector::new(surface1, domain1, surface2, domain2, None)?;
+
+    // If we need to trace beyond the end and we are tracing along an arc, put a stop
+    // tracing criterion to avoid possible infinite looping (`IsArc` only runs when an
+    // extension flag is set, as upstream's `&&`).
+    let solver = ops.solver();
+    if (solver.extend_after || solver.extend_before)
+        && st.edge_curve.is_arc(5, solver.approx_tol_3d)?.is_some()
+    {
+        // set max extension distance
+        let offset = offset_surface(ops, 0)?.offset_distance();
+        fi.base.base.set_extension_distance((5.0 * offset).abs());
+    }
+    Ok(fi)
 }
 
 /// :2054-2090: the trace locals (tolerances, `sDir = sPVSt[1]`); a TANGENT last point
@@ -1639,12 +1707,340 @@ fn c3_trace_start(
     cx: &mut Cx<'_>,
     st: &mut CalcState,
 ) -> Result<()> {
-    let _ = (ops, cx, st);
-    // P4-CHUNK(C3): SmFilletSolver.cpp:2054-2090
-    Err(SolidError::Unported {
-        upstream: "SmFilletSolver::CalcFilletGeom (p4 chunk C3 pending)",
-        unit: "blend.fillet_solver_p4",
-    })
+    use crate::intersect::surface_intersector::p1::IntersectionPointType;
+
+    let solver = ops.solver();
+    st.trace.approx_tol_3d = solver.this_approx_tol_3d();
+    st.trace.angle_tol = solver.this_ang_tol_rad();
+    // intersection trace start direction
+    st.trace.dir = st.pv_start[1];
+
+    // Check the last TsectPnt to see if it is degenerate (at a surf/surf tangency
+    // point). If so, reverse the tracing to avoid its early termination.
+    st.trace.reverse_tracing = false;
+    if let Some(&last) = st.tsect_pnts.last() {
+        if st.store.get(cx.fillets, last)?.point_type == IntersectionPointType::TangentPoint {
+            // sTsectPnts.ReverseArray(0, lTotalTsects)
+            st.tsect_pnts.reverse();
+            st.trace.dir = -st.pv_end[1];
+            st.trace.reverse_tracing = true;
+        }
+    }
+
+    st.trace.extend_before = solver.extend_before;
+    st.trace.extend_after = solver.extend_after;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests_c3 {
+    use super::*;
+    use crate::blend::fillet_custom_solver::{ConstantRadiusAssistedFs, SurfaceId};
+    use crate::curve::ellipse::{Ellipse, EllipseOptions};
+    use crate::curve::line::Line;
+    use crate::intersect::surface_intersector::p1::IntersectionPointType;
+    use crate::nurbs::b_spline_surface::BSplineSurface;
+    use crate::surface::offset_surface;
+
+    fn bilinear(p: [[f64; 3]; 4]) -> Surface {
+        let [a, b, c, d] = p.map(Vec3::from);
+        Surface::from(BSplineSurface::create_bilinear_surface(a, b, c, d).unwrap())
+    }
+
+    /// The plane z = 0 and the plane x = 0 over the unit square.
+    fn planes() -> (Surface, Surface) {
+        (
+            bilinear([
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ]),
+            bilinear([
+                [0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [0.0, 1.0, 1.0],
+            ]),
+        )
+    }
+
+    /// The planes of [`planes`] as `SmPlane`s (`sm_TestAnalyticSurface` accepts a
+    /// plane without the planarity test).
+    fn analytic_planes() -> (Surface, Surface) {
+        use crate::geom::vector2d::Vec2;
+        use crate::surface::plane::Plane;
+        let domain = planes().0.natural_uv_domain();
+        let plane = |x: [f64; 3], y: [f64; 3]| {
+            Surface::from(Plane::new(
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::from(x),
+                Vec3::from(y),
+                Vec2::new(1.0, 1.0),
+                &domain,
+            ))
+        };
+        (
+            plane([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
+            plane([0.0, 1.0, 0.0], [0.0, 0.0, 1.0]),
+        )
+    }
+
+    fn offset(k: &Kernel, d: f64, base: &Surface) -> Surface {
+        Surface::from(offset_surface::OffsetSurface::new(k, d, base.clone(), false, 0).unwrap())
+    }
+
+    fn solver(k: &Kernel, a: &Surface, b: &Surface) -> ConstantRadiusAssistedFs {
+        ConstantRadiusAssistedFs::from_parts(
+            0.001,
+            0.5,
+            0.03,
+            [0.25, 0.25],
+            [
+                Some(OffsetSurface::new(k, 0.25, a.clone(), SurfaceId::Free(0), 0).unwrap()),
+                Some(OffsetSurface::new(k, -0.25, b.clone(), SurfaceId::Free(1), 0).unwrap()),
+            ],
+            [1.0, -1.0],
+            [None, None],
+        )
+    }
+
+    fn state(curve: Curve, bases: [Surface; 2]) -> CalcState {
+        CalcState::new(
+            EdgeId::from_index(0),
+            curve,
+            Extent1d::from_min_max(0.0, 1.0),
+            [Vec3::new(0.0, 0.0, 0.0), Vec3::new(0.0, 1.0, 0.0)],
+            [Vec3::new(0.0, 1.0, 0.0), Vec3::new(0.0, 2.0, 0.0)],
+            bases,
+            FilletGeomId(0),
+            false,
+        )
+    }
+
+    fn line() -> Curve {
+        Curve::from(Line::from_points(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            3,
+        ))
+    }
+
+    fn arc(k: &Kernel) -> Curve {
+        Curve::from(
+            Ellipse::new_circle(
+                k,
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+                Extent1d::from_min_max(0.0, 90.0),
+                2.0,
+                &EllipseOptions::default(),
+            )
+            .unwrap(),
+        )
+    }
+
+    fn with_cx<R>(k: &Kernel, f: impl FnOnce(&mut Cx<'_>) -> R) -> R {
+        let mut target = Brep::new();
+        let mut fillets = FilletBrep::new();
+        let mut geoms: Vec<FilletGeomId> = Vec::new();
+        let mut cx = Cx {
+            k,
+            target: &mut target,
+            fillets: &mut fillets,
+            geoms: &mut geoms,
+        };
+        f(&mut cx)
+    }
+
+    #[test]
+    fn analytic_planes_reach_the_cylinder_stub() {
+        let k = Kernel::default();
+        let (a, b) = planes();
+        let mut fs = solver(&k, &a, &b);
+        let (pa, pb) = analytic_planes();
+        let mut st = state(line(), [pa, pb]);
+        let r = with_cx(&k, |cx| c3_try_analytic(&mut fs, cx, &mut st));
+        assert!(
+            matches!(
+                r,
+                Err(SolidError::Unported {
+                    unit: "blend.fillet_solver_p2",
+                    upstream: "SmFilletSolver::CalcCylinderFilletGeom",
+                })
+            ),
+            "{r:?}"
+        );
+    }
+
+    #[test]
+    fn analytic_needs_can_make_analytic() {
+        let k = Kernel::default();
+        let (a, b) = planes();
+        // the base solver: OffsetRadiiCanChange TRUE, so CanMakeAnalytic FALSE
+        let mut fs = solver(&k, &a, &b).solver;
+        let mut st = state(line(), [a, b]);
+        let r = with_cx(&k, |cx| c3_try_analytic(&mut fs, cx, &mut st));
+        assert!(matches!(r, Ok(false)));
+    }
+
+    #[test]
+    fn bspline_base_unwraps_one_offset_level() {
+        let k = Kernel::default();
+        let (a, _) = planes();
+        assert!(std::ptr::eq(
+            c3_bspline_base(&a).unwrap(),
+            std::ptr::from_ref(&a)
+        ));
+
+        let once = offset(&k, 0.5, &a);
+        let inner = c3_bspline_base(&once).unwrap();
+        assert!(matches!(inner.kind(), SurfaceKind::BSpline(_)));
+
+        let twice = offset(&k, 0.5, &once);
+        let e = c3_bspline_base(&twice).unwrap_err();
+        assert!(matches!(
+            e,
+            SolidError::Upstream {
+                code: crate::error::SM_ERR_NULL_POINTER,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn analytic_through_an_offset_base() {
+        let k = Kernel::default();
+        let (a, b) = planes();
+        let mut fs = solver(&k, &a, &b);
+        let (pa, pb) = analytic_planes();
+        let mut st = state(line(), [offset(&k, 0.5, &pa), pb]);
+        let r = with_cx(&k, |cx| c3_try_analytic(&mut fs, cx, &mut st));
+        assert!(matches!(
+            r,
+            Err(SolidError::Unported {
+                unit: "blend.fillet_solver_p2",
+                ..
+            })
+        ));
+
+        let (pa, pb) = analytic_planes();
+        let mut st = state(line(), [pa, offset(&k, 0.5, &offset(&k, 0.5, &pb))]);
+        let r = with_cx(&k, |cx| c3_try_analytic(&mut fs, cx, &mut st));
+        assert!(matches!(
+            r,
+            Err(SolidError::Upstream {
+                code: crate::error::SM_ERR_NULL_POINTER,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn trace_setup_extends_the_natural_domains() {
+        let k = Kernel::default();
+        let (a, b) = planes();
+        let mut fs = solver(&k, &a, &b);
+        let mut st = state(line(), [a.clone(), b.clone()]);
+        let surfaces = with_cx(&k, |cx| c3_trace_setup(&mut fs, cx, &mut st)).unwrap();
+
+        let mut d1 = a.natural_uv_domain();
+        let mut d2 = b.natural_uv_domain();
+        fs.solver.setup_offset_extension(&k, &a, &mut d1).unwrap();
+        fs.solver.setup_offset_extension(&k, &b, &mut d2).unwrap();
+        assert_eq!(st.trace.domains[0].min, d1.min);
+        assert_eq!(st.trace.domains[0].max, d1.max);
+        assert_eq!(st.trace.domains[1].min, d2.min);
+        assert_eq!(st.trace.domains[1].max, d2.max);
+        // the unit square grown by half its size at both ends
+        assert_eq!(d1.min, Point2::new(-0.5, -0.5));
+        assert_eq!(d1.max, Point2::new(1.5, 1.5));
+
+        for (s, d) in surfaces.iter().zip([0.25, -0.25]) {
+            let SurfaceKind::OffsetSurface(o) = s.kind() else {
+                panic!("not an offset surface");
+            };
+            assert_eq!(o.offset_distance(), d);
+        }
+    }
+
+    fn extension_distance(k: &Kernel, curve: Curve, before: bool, after: bool) -> f64 {
+        let (a, b) = planes();
+        let mut fs = solver(k, &a, &b);
+        fs.solver.extend_before = before;
+        fs.solver.extend_after = after;
+        let mut st = state(curve, [a, b]);
+        with_cx(k, |cx| {
+            let surfaces = c3_trace_setup(&mut fs, cx, &mut st).unwrap();
+            let fi = c3_make_intersector(&mut fs, cx, &st, &surfaces).unwrap();
+            fi.base.base.extension_distance
+        })
+    }
+
+    #[test]
+    fn extension_distance_only_for_an_extended_arc() {
+        let k = Kernel::default();
+        let default = extension_distance(&k, line(), false, false);
+        assert_eq!(extension_distance(&k, line(), true, true), default);
+        assert_eq!(extension_distance(&k, arc(&k), false, false), default);
+        assert_eq!(extension_distance(&k, arc(&k), true, false), 1.25);
+        assert_eq!(extension_distance(&k, arc(&k), false, true), 1.25);
+    }
+
+    fn traced(last: IntersectionPointType, before: bool, after: bool) -> (CalcState, Vec<TsRef>) {
+        let k = Kernel::default();
+        let (a, b) = planes();
+        let mut fs = solver(&k, &a, &b);
+        fs.solver.extend_before = before;
+        fs.solver.extend_after = after;
+        let mut st = state(line(), [a, b]);
+        let mut p = TsectPnt::new();
+        p.point_type = IntersectionPointType::Crossing;
+        let r0 = st.store.alloc(p.clone());
+        let r1 = st.store.alloc(p.clone());
+        p.point_type = last;
+        let r2 = st.store.alloc(p);
+        st.tsect_pnts = vec![r0, r1, r2];
+        with_cx(&k, |cx| c3_trace_start(&mut fs, cx, &mut st)).unwrap();
+        (st, vec![r0, r1, r2])
+    }
+
+    #[test]
+    fn trace_start_keeps_the_order_without_a_tangent_end() {
+        let (st, refs) = traced(IntersectionPointType::Crossing, true, false);
+        assert_eq!(st.tsect_pnts, refs);
+        assert!(!st.trace.reverse_tracing);
+        assert_eq!(st.trace.dir, st.pv_start[1]);
+        assert_eq!(st.trace.approx_tol_3d, 0.001);
+        assert_eq!(st.trace.angle_tol, 0.5);
+        assert!(st.trace.extend_before);
+        assert!(!st.trace.extend_after);
+    }
+
+    #[test]
+    fn trace_start_reverses_at_a_tangent_end() {
+        let (st, mut refs) = traced(IntersectionPointType::TangentPoint, false, true);
+        refs.reverse();
+        assert_eq!(st.tsect_pnts, refs);
+        assert!(st.trace.reverse_tracing);
+        assert_eq!(st.trace.dir, Vec3::new(0.0, -2.0, 0.0));
+        // the locals copy the solver's flags (C4 swaps them per pass)
+        assert!(!st.trace.extend_before);
+        assert!(st.trace.extend_after);
+    }
+
+    #[test]
+    fn trace_start_with_no_points() {
+        let k = Kernel::default();
+        let (a, b) = planes();
+        let mut fs = solver(&k, &a, &b);
+        let mut st = state(line(), [a, b]);
+        with_cx(&k, |cx| c3_trace_start(&mut fs, cx, &mut st)).unwrap();
+        assert!(st.tsect_pnts.is_empty());
+        assert!(!st.trace.reverse_tracing);
+        assert_eq!(st.trace.dir, st.pv_start[1]);
+    }
 }
 
 // P4-CHUNK(C3) END
