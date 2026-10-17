@@ -6759,3 +6759,23 @@ regression inputs below; 2000-seed sweep 2037 pass / 111 deferred / 0 failed / 1
   The fixture now calls the matching setter and preserves its ignored-error state;
   `reversed_interval_preserves_initial_extent` is the regression. No kernel
   tolerance or upstream interval implementation was changed.
+
+
+## blend.fillet_intersector (PR #179)
+
+- **FlushCurve with two or more points cannot run standalone in C++.** Past the span
+  equalisation it calls `SmFilletSolver::GetSelfIntersectionHandler`, which reads
+  `m_pExecutive` (never initialised by the `SmFilletSolver` constructor, only set inside an
+  `SmFilletExecutive`), then writes the rails of `GetLastFilletGeom()`, whose
+  `SmFilletGeom(solver)` constructor leaves `m_vRails` `NULL`. The FFI therefore rejects a
+  `FlushCurve` of more than one point; the Rust side stops earlier at the offset surface
+  evaluation (`surface.offset_surface`) and is covered by unit tests. The 0/1-point paths
+  (empty list `SM_ERR_NULL_POINTER`, boundary-touch flag, list cleared) are compared.
+- **Span tests over a plane are deferred.** `TestSpanAccuracy` / `ComputeNextPoint` map Hermite
+  UV spans through `SmCrvOnSurf`, whose Rust port holds a `BSplineSurface`; `SmPlane::Evaluate`
+  overrides the B-spline evaluation, so a plane is a dispatch gap (`curve.crv_on_surf`), not a
+  B-spline stand-in. B-spline surfaces run the full span test (mid-point solve included).
+- **Solver calls.** Everything behind `StepSolve`, `ComputePointValues`,
+  `ComputeSurfaceValues` and `PointOnPlaneSolve` defers until `blend.fillet_solver_p1..p4`
+  implement `FilletSolverOps`; the C++ side still runs these cases against a real
+  `SmConstantRadiusFS` (no crash in 6000 generated cases).
