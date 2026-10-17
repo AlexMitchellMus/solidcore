@@ -378,8 +378,8 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
 
             for ii in 0..c.curves_3d.len() {
                 let c3 = c.curves_3d.get(ii).copied().flatten();
-                let copy = Self::b_spline_copy(geometry, c3)?
-                    .ok_or(SolidError::sm_err(OP_REGISTER))?;
+                let copy =
+                    Self::b_spline_copy(geometry, c3)?.ok_or(SolidError::sm_err(OP_REGISTER))?;
                 if let Some(slot) = c.curves_3d.get_mut(ii) {
                     *slot = Some(copy);
                 }
@@ -473,6 +473,24 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         other_vertex: O,
     ) -> Result<SqueezeVertices<O>> {
         let mut out = SqueezeVertices::default();
+        self.check_for_squeeze_vertices_into(brep, brep_vertex, other_vertex, &mut out)?;
+        Ok(out)
+    }
+
+    /// [`TopologyIntersector::check_for_squeeze_vertices`] appending to the caller's
+    /// lists, as upstream's out-params: what was appended before a failure stays
+    /// appended (the second conflict check can fail after the first one appended).
+    ///
+    /// # Errors
+    ///
+    /// As [`TopologyIntersector::check_for_squeeze_vertices`].
+    pub fn check_for_squeeze_vertices_into(
+        &mut self,
+        brep: &mut impl IntersectorBrep<O>,
+        brep_vertex: O,
+        other_vertex: O,
+        out: &mut SqueezeVertices<O>,
+    ) -> Result<()> {
         // (the cbi breakpoints read both tolerances; SER(SM_SUCCESS) does nothing)
         tol_of(brep, brep_vertex)?;
         tol_of(brep, other_vertex)?;
@@ -538,7 +556,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
             out.deleted_vertices.push(brep_v);
         }
 
-        Ok(out)
+        Ok(())
     }
 
     /// `DeleteFaces(crFaces, pOptKeepAsWires)`: deletes the faces from their B-rep
@@ -917,9 +935,8 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                 // second list is read past its end)
                 let num_ccs = fi.cc1.len();
                 for kk in 0..num_ccs {
-                    let (cc1, cc2) = match (fi.cc1.get_mut(kk), fi.cc2.get_mut(kk)) {
-                        (Some(a), Some(b)) => (a, b),
-                        _ => return Err(dangling("classification lists differ")),
+                    let (Some(cc1), Some(cc2)) = (fi.cc1.get_mut(kk), fi.cc2.get_mut(kk)) else {
+                        return Err(dangling("classification lists differ"));
                     };
                     let num_ivls = cc1.size();
 
@@ -1000,12 +1017,19 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         // (the list is re-read after each split: splitting appends proto edges)
         let mut ii = 0usize;
         while ii < mgr.proto_edges().len() {
-            let pe1 = *mgr.proto_edges().get(ii).ok_or(dangling("proto edge list"))?;
+            let pe1 = *mgr
+                .proto_edges()
+                .get(ii)
+                .ok_or(dangling("proto edge list"))?;
             let mut jj = ii + 1;
             while jj < mgr.proto_edges().len() {
-                let pe2 = *mgr.proto_edges().get(jj).ok_or(dangling("proto edge list"))?;
+                let pe2 = *mgr
+                    .proto_edges()
+                    .get(jj)
+                    .ok_or(dangling("proto edge list"))?;
                 // (status unchecked)
-                if let Some(d) = ignore_soft(mgr.split_intersecting_proto_edges(k, brep, pe1, pe2))? {
+                if let Some(d) = ignore_soft(mgr.split_intersecting_proto_edges(k, brep, pe1, pe2))?
+                {
                     deleted.extend(d);
                 }
                 jj += 1;
@@ -1024,8 +1048,9 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
             let pes = mgr.proto_edges().to_vec();
             for pe in pes {
                 // a failure is FALSE (the SmBoolean function's error return)
-                let removed = ignore_soft(mgr.remove_coincident_no_edge_proto_vertex(k, brep, pe, pv))?
-                    .unwrap_or(false);
+                let removed =
+                    ignore_soft(mgr.remove_coincident_no_edge_proto_vertex(k, brep, pe, pv))?
+                        .unwrap_or(false);
                 if removed {
                     break;
                 }
@@ -1146,7 +1171,12 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
             if ci_b.start.point_class() != PointClassType::Unknown
                 && ci_o.start.point_class() != PointClassType::Unknown
             {
-                self.fixup_end_point_class_mates(curve_dim, &mut ci_b.start, &mut ci_o.start, curve_h);
+                self.fixup_end_point_class_mates(
+                    curve_dim,
+                    &mut ci_b.start,
+                    &mut ci_o.start,
+                    curve_h,
+                );
             }
 
             // check all mid points that classify to something
@@ -1267,10 +1297,18 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
 
         // update saved point data
         pc_b.set_t_param(param, false);
-        let dev_b = if success_b { dist_to_curve_b } else { pc_b.deviation() };
+        let dev_b = if success_b {
+            dist_to_curve_b
+        } else {
+            pc_b.deviation()
+        };
         pc_b.set_deviation(dev_b);
         pc_o.set_t_param(param, false);
-        let dev_o = if success_o { dist_to_curve_o } else { pc_o.deviation() };
+        let dev_o = if success_o {
+            dist_to_curve_o
+        } else {
+            pc_o.deviation()
+        };
         pc_o.set_deviation(dev_o);
 
         // propagate the persistent PtClassification data to the neighbor boundaries
@@ -1356,7 +1394,11 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                 let e2_box: Extent3d =
                     ignore_soft(brep.edge_bounding_box(k, e2))?.unwrap_or_default();
 
-                let this_tol = max3(self.this_approx_tol_3d, tol_of(brep, e1)?, tol_of(brep, e2)?);
+                let this_tol = max3(
+                    self.this_approx_tol_3d,
+                    tol_of(brep, e1)?,
+                    tol_of(brep, e2)?,
+                );
                 if e1_box.are_disjoint(&e2_box, this_tol) {
                     continue;
                 }
@@ -1393,7 +1435,8 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                 let dist_to_edge = split.dist_to_edge;
 
                 // We did a split.
-                out.min_unstitched_edge_gap = min2(out.min_unstitched_edge_gap, split.min_unstitched);
+                out.min_unstitched_edge_gap =
+                    min2(out.min_unstitched_edge_gap, split.min_unstitched);
                 out.max_edge_gap = max2(out.max_edge_gap, dist_to_edge);
 
                 // Add the vertices, split edge and the new edge to the output lists.
@@ -1550,7 +1593,13 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                     let crv_pt = eval_curve_point(brep, curve_h, edge_dom.evaluate(0.38))?;
                     // Allow any part of the Face: including Edges and Vertices
                     // (status unchecked).
-                    ignore_soft(face_point_3d_classify(f, crv_pt, edge_zone_tol, false, &mut pt_class))?;
+                    ignore_soft(face_point_3d_classify(
+                        f,
+                        crv_pt,
+                        edge_zone_tol,
+                        false,
+                        &mut pt_class,
+                    ))?;
                     if !matches!(
                         pt_class.point_class(),
                         PointClassType::Face | PointClassType::Edge | PointClassType::Vertex
@@ -1562,7 +1611,13 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                     }
 
                     let crv_pt = eval_curve_point(brep, curve_h, edge_dom.evaluate(0.71))?;
-                    ignore_soft(face_point_3d_classify(f, crv_pt, approx_tol, false, &mut pt_class))?;
+                    ignore_soft(face_point_3d_classify(
+                        f,
+                        crv_pt,
+                        approx_tol,
+                        false,
+                        &mut pt_class,
+                    ))?;
                     if !matches!(
                         pt_class.point_class(),
                         PointClassType::Face | PointClassType::Edge | PointClassType::Vertex
@@ -1629,9 +1684,10 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                             ne,
                         ) {
                             Ok(()) => out.imprinted_edges.push(e),
-                            Err(err @ (SolidError::Unported { .. } | SolidError::InvalidInput { .. })) => {
-                                return Err(err)
-                            }
+                            Err(
+                                err @ (SolidError::Unported { .. }
+                                | SolidError::InvalidInput { .. }),
+                            ) => return Err(err),
                             Err(_) => {
                                 if !ignore_problems {
                                     return Err(SolidError::sm_err(OP_EDGE_FACE_COIN));
