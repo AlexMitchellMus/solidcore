@@ -27,6 +27,24 @@ are also logged, one entry each, in `plan/upstream-issues.md` for the upstream m
   generated cases a runner actually produced. `nlib.knots` overrides `cases()` to always
   generate at least 1200.
 
+- **The shared B-rep import does not keep vertex-use order.** `topology_vertexuse::import`
+  (used by every runner that imports a real B-rep from `sc_topology_fixture.h`) lists each
+  vertex's uses in arena order, because the export does not carry the order. So
+  `topology::vertex::edges` / `vertexuses` on an imported B-rep can return a different order
+  from upstream's `SmVertex::GetEdges` / `GetVertexuses`. For `plane_square.smb`, vertices
+  1–3 come out reversed. Results that take "the first" edge or use of a vertex can disagree
+  for that reason alone. The `boolean.topology_intersector_p3` runner hit this in
+  `sm_MakeConsistentClassifications`; its shim exports each vertex's list order
+  (`VertexUses` op) and the runner reorders the imported lists. Exporting the order in the
+  shared fixture would fix every runner at once.
+- **Units that fail in a Debian bookworm / GCC 12 container, also on `main`.** Building the
+  reference in `rust:1.98.0-bookworm` (GCC 12.2) and running `--green` on `origin/main` at
+  `bc296e26` gives `heal.heal_data_p1` 2, `heal.heal_data_p2` 41, `heal.heal_data_p3` 2 and
+  `geom.hash_table` 435 failing cases. CI (and the PRs' own runs, with GCC 15) pass them.
+  Either the reference depends on the compiler beyond `-ffp-contract=off`, or something in
+  those runners is environment-dependent. Not investigated further. (Found while working on
+  `boolean.topology_intersector_p3`, 2026-10-17.)
+
 ## nlib.knots (green; no disagreements)
 
 2953 default cases and a 51,753-case run (`--seeds 50000`) all agree bit for bit with
@@ -6632,3 +6650,36 @@ independent p6 integration.
   (`ignore_soft`), so that `InvalidInput` is swallowed there and the split reports no new
   faces. It is unreachable today (`MergeInterval` makes no topology until
   `intersect.curve_class_p2`); that unit's porter must give the healer a typed resolver.
+
+## boolean.topology_intersector_p3 (`SmTopologyIntersector.cpp` part 3: `MergeCurveClasses`, `MergeCurveOnSurfaces`, `MergeCoincidentSurfaces`; PR #211, 2026-10-17; partial, no disagreements)
+
+- **Built on unmerged PRs.** Parts 1 and 2 (#146, #203) and `intersect.curve_class_p2` /
+  `_p4` (#85, #137) are merged into the branch. The constructor `MergeCurveOnSurfaces`
+  needs is part 4's `with_curve`, whose `ReSet` is part 2's. In the merged branch, part 4's
+  stubs for `ReSet`, `ConnectIntervals` and `GetMinUV` / `GetMaxUV` are wired to part 2.
+- **Wired stubs of partial units.** `sm_MakeConsistentClassifications` (`curve_class_p1`)
+  was a stub on `SmEdge::GetVertex` (`topology.edge`, already partial). It is now ported in
+  full, reaching the edges and vertices through `ClassGeometry::topology_entity` and the new
+  `ClassGeometry::topology_handle_in`. `curve_class_p7`'s `SmEdge::GetCurve` /
+  `GetInterval` and the edge-pair tolerance are wired the same way where classification
+  geometry is in scope. An adapter that cannot resolve a handle (no hooks, or a stand-in edge
+  without a B-rep, as in the `curve_class_p7` runner) keeps the previous `Unported` deferral,
+  so those runners' outcomes do not change.
+- **Guard exposed by the wiring.** With `ConnectIntervals` real, a squeeze can empty a
+  classification. `GetLoopCrossings` then reads `GetAt(0)` unchecked (undefined upstream).
+  The `curve_class_p4` shim now refuses that (the first loop's face has a surface, there are
+  loops and a curve, and the classification is empty), also for a degenerate curve, which
+  would return first.
+- **`CheckForSqueezeVertices` keeps partial appends.** Upstream can append in its first
+  conflict block and then return `SM_ERR` from the second; `MergeCurveClasses` continues with
+  those lists. Part 2 gained `check_for_squeeze_vertices_into`, which appends to the
+  caller's lists.
+- **Still deferred:**
+  - `SmFace::CalculateBoundingBox` / `Point3DClassify` (`query.face_p1`), reached by every
+    `MergeCoincidentSurfaces` and by a degenerate curve;
+  - the imprinting of `MergeInterval` (`curve_class_p6`);
+  - `CombineCoincidentVertices` (`topology.brep_p5`) when squeezing;
+  - `SmBrep::DeleteEdge` (`topology.brep_p4`) when repairing an edge relation;
+  - the remaining `topology.edge` / `topology.vertex` stubs of `curve_class_p7`, which are
+    in functions without classification geometry.
+

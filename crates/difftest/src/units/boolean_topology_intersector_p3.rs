@@ -60,6 +60,8 @@ use super::boolean_topology_intersector_p1::{
     NULL_DEREF, TI_HANDLE,
 };
 use super::topology_vertexuse::import;
+use crate::case::{CaseContext, CaseSource};
+use crate::runner::default_cases;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
 
 /// The difftest runner.
@@ -277,10 +279,11 @@ fn apply_vertex_use_order(
             let mut order = Vec::new();
             for _ in 0..k {
                 let u = next(&mut at)?;
-                if u < 0.0 {
-                    return Err(bad());
+                // (a use the export's walk never registered is not in the import either:
+                // the rest keep their relative order)
+                if u >= 0.0 {
+                    order.push(VertexuseId::from_index(u as u32));
                 }
-                order.push(VertexuseId::from_index(u as u32));
             }
             let id = VertexId::from_index(u32::try_from(v).map_err(|_| bad())?);
             let rec = b.vertex_mut(id).map_err(|e| harness(e.to_string()))?;
@@ -926,9 +929,129 @@ fn gen_inputs(rng: &mut Rng) -> Inputs {
     }
 }
 
+/// Generated cases at least.
+const MIN_GENERATED: usize = 256;
+
+/// Cases built in code: coincident edges of one file twice (with and without a
+/// conflicting earlier relation), the wire network, a null curve (refused), a
+/// classification pair at tiny tolerance and two coincident planar faces.
+fn edge_cases() -> Vec<(String, Value)> {
+    let mut out = Vec::new();
+    let mut add = |name: &str, i: Inputs| {
+        if let Ok(v) = serde_json::to_value(i) {
+            out.push((name.to_owned(), v));
+        }
+    };
+    let same = |f: &str| (file(f), Some(file(f)));
+    let on_edges = |e1: i64, e2: i64, tol: f64| MergeIn::CurveOnSurfaces {
+        s1: NULL_H,
+        s2: NULL_H,
+        tol,
+        curve: h(0, K_EDGE_CURVE, e1),
+        edge1: h(0, K_EDGE, e1),
+        edge2: h(1, K_EDGE, e2),
+    };
+    let base = |(brep_a, brep_b): (BrepIn, Option<BrepIn>), merge: MergeIn| Inputs {
+        brep_a,
+        brep_b,
+        approx: 1e-6,
+        ang: 0.01,
+        doing_fillets: false,
+        ignore_tangency: false,
+        relates: Vec::new(),
+        merge,
+    };
+    for e in 0..4 {
+        add(
+            &format!("square_coincident_edge_{e}"),
+            base(same("plane_square.smb"), on_edges(e, e, 1e-6)),
+        );
+    }
+    add(
+        "square_mismatched_edges",
+        base(same("plane_square.smb"), on_edges(0, 2, 1e-6)),
+    );
+    let mut conflict = base(same("plane_square.smb"), on_edges(1, 1, 1e-6));
+    conflict.relates = vec![[h(0, K_VERTEX, 1), h(1, K_VERTEX, 2)]];
+    add("square_conflicting_vertex_relation", conflict);
+    let mut edge_conflict = base(same("plane_square.smb"), on_edges(1, 1, 1e-6));
+    edge_conflict.relates = vec![[h(0, K_EDGE, 1), h(1, K_EDGE, 3)]];
+    add("square_conflicting_edge_relation", edge_conflict);
+    add(
+        "network_coincident_edge",
+        base((BrepIn::Network, Some(BrepIn::Network)), on_edges(2, 2, 1e-6)),
+    );
+    add(
+        "disk_null_curve_refused",
+        base(
+            same("disk.smb"),
+            MergeIn::CurveOnSurfaces {
+                s1: NULL_H,
+                s2: NULL_H,
+                tol: 1e-6,
+                curve: NULL_H,
+                edge1: h(0, K_EDGE, 0),
+                edge2: h(1, K_EDGE, 0),
+            },
+        ),
+    );
+    let pc = |cls: PointClassType, b: i64, kind: u8, s: i64| PcIn {
+        cls: i64::from(cls.code()),
+        h: h(b, kind, s),
+    };
+    let class = |b: i64, e: i64, tol: f64| ClassIn {
+        curve: h(b, K_EDGE_CURVE, e),
+        f0: 0.0,
+        f1: 1.0,
+        tol,
+        start: pc(PointClassType::Vertex, b, K_VERTEX, e),
+        mid: pc(PointClassType::Edge, b, K_EDGE, e),
+        end: pc(PointClassType::Vertex, b, K_VERTEX, e + 1),
+    };
+    add(
+        "square_classes_tiny_tolerance",
+        base(
+            same("plane_square.smb"),
+            MergeIn::CurveClasses {
+                merge_singularities: true,
+                c1: class(0, 1, 1e-12),
+                c2: class(1, 1, 1e-12),
+            },
+        ),
+    );
+    add(
+        "square_coincident_surfaces",
+        base(
+            same("plane_square.smb"),
+            MergeIn::CoincidentSurfaces {
+                s1: h(0, K_FACE_SURFACE, 0),
+                s2: h(1, K_FACE_SURFACE, 0),
+            },
+        ),
+    );
+    out
+}
+
 impl UnitDiff for Runner {
     fn id(&self) -> &'static str {
         "boolean.topology_intersector_p3"
+    }
+
+    fn cases(&self, ctx: &CaseContext) -> Result<Vec<Case>, HarnessError> {
+        let ctx = CaseContext {
+            seeds: ctx.seeds.max(MIN_GENERATED),
+            ..ctx.clone()
+        };
+        let mut cases = default_cases(self, &ctx)?;
+        for (name, inputs) in edge_cases() {
+            cases.push(Case {
+                unit: self.id().into(),
+                name,
+                source: CaseSource::Inline,
+                inputs,
+            });
+        }
+        Ok(cases)
     }
 
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {

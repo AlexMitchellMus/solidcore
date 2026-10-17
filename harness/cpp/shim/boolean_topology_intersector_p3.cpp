@@ -257,26 +257,37 @@ constexpr double NULL_DEREF = -2.0;
 
 bool edge_ok(const SmEdge* e) { return e != nullptr && e->GetCurve() != nullptr && e->GetVertex() != nullptr; }
 
-// Whether a classification's class object is what MergeCurveClasses and its fix-ups cast it
-// to: a vertex for SM_PC_VERTEX, an edge for SM_PC_EDGE, a face for SM_PC_FACE.
-bool pc_ok(const SmPointClassification& pc)
+// A classification spec MergeCurveClasses can run on: a curve (the constructor's ReSet
+// and the fix-ups dereference it) and class objects of the kinds their classes cast them
+// to. Checked before the classification is constructed.
+bool spec_ok(const ClassSpec& s)
 {
-    const SmObject* obj = pc.GetObject();
-    switch (pc.GetPointClass())
-    {
-    case SM_PC_VERTEX: return obj != nullptr && obj->IsKindOf(SmVertex_TYPE);
-    case SM_PC_EDGE: return obj != nullptr && obj->IsKindOf(SmEdge_TYPE) && edge_ok((const SmEdge*)obj);
-    case SM_PC_FACE: return obj != nullptr && obj->IsKindOf(SmFace_TYPE);
-    default: return true;
-    }
-}
-
-bool class_ok(const SmCurveClassification& cc)
-{
-    if (cc.GetCurve() == nullptr || cc.GetSize() < 1)
+    if (s.curve == nullptr)
         return false;
-    const SmCurveInterval& ivl = cc[0];
-    return pc_ok(ivl.m_vStart) && pc_ok(ivl.m_vMid) && pc_ok(ivl.m_vEnd);
+    // the raw class/object pairs: SetClassObject would turn a vertex, edge or face class
+    // without object into SM_PC_UNKNOWN with its parameter marked set, which the merge
+    // then mishandles (a crash), so those are refused here, as the Rust runner does
+    for (int k = 0; k < 3; k++)
+    {
+        const SmObject* obj = s.obj[k];
+        switch ((SmPointClassificationType)s.cls[k])
+        {
+        case SM_PC_VERTEX:
+            if (obj == nullptr || !obj->IsKindOf(SmVertex_TYPE))
+                return false;
+            break;
+        case SM_PC_EDGE:
+            if (obj == nullptr || !obj->IsKindOf(SmEdge_TYPE) || !edge_ok((const SmEdge*)obj))
+                return false;
+            break;
+        case SM_PC_FACE:
+            if (obj == nullptr || !obj->IsKindOf(SmFace_TYPE))
+                return false;
+            break;
+        default: break;
+        }
+    }
+    return true;
 }
 
 // The tolerance of a vertex, edge or face.
@@ -444,15 +455,15 @@ void run_merge(Rd& rd, Two& t, std::vector<double>& o)
         SmBoolean merge_sing = rd.flag();
         ClassSpec a = read_spec(rd, t);
         ClassSpec b = read_spec(rd, t);
-        SmCurveClassification cc1(a.curve, SmExtent1d(a.t0, a.t1), nullptr, a.tol);
-        SmCurveClassification cc2(b.curve, SmExtent1d(b.t0, b.t1), nullptr, b.tol);
-        set_classes(cc1, a);
-        set_classes(cc2, b);
-        if (!class_ok(cc1) || !class_ok(cc2))
+        if (!spec_ok(a) || !spec_ok(b))
         {
             o.push_back(NULL_DEREF);
             return;
         }
+        SmCurveClassification cc1(a.curve, SmExtent1d(a.t0, a.t1), nullptr, a.tol);
+        SmCurveClassification cc2(b.curve, SmExtent1d(b.t0, b.t1), nullptr, b.tol);
+        set_classes(cc1, a);
+        set_classes(cc2, b);
         SmBoolean deleted = FALSE;
         SmTArray<SmEdge*> del_e;
         SmTArray<SmVertex*> del_v;

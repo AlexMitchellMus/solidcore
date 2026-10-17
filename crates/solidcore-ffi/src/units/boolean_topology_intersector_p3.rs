@@ -14,12 +14,13 @@
 //! | [`Op`]   | after the blocks | outputs |
 //! |----------|------------------|---------|
 //! | `Export` |                  | as the p1 unit's `Export` |
-//! | `VertexUses` |              | per B-rep `-1` (absent) or `n_vertices (n vertexuse*)*`: each vertex's uses in its list order, as export indices (the shared export lists them in arena order) |
+//! | `VertexUses` |              | per B-rep `-1` (absent) or `n_vertices (n vertexuse*)*`: each vertex's uses in its list order, as export indices (`-1` for a use the export's walk does not register; the shared export lists them in arena order) |
 //! | `Run`    | `approx ang doing_fillets ignore_tangency n (h h)* merge args` | `status*` (one per pre-relation; `-2` for a null first object) `merge` then the merge's outputs |
 //!
 //! The intersector is made with both B-reps and the tolerances; `doing_fillets` and
-//! `ignore_tangency` set its public `m_bDoingFillets` / `m_bIgnoreTangency`; the
-//! `n` pairs are `Relate`d before the merge.
+//! `ignore_tangency` set its public `m_bDoingFillets` / `m_bIgnoreTangency` (`doing_fillets`
+//! must be `0`: the fillet path needs a fillet context, without which upstream crashes);
+//! the `n` pairs are `Relate`d before the merge.
 //!
 //! | merge | name | args | outputs |
 //! |-------|------|------|---------|
@@ -246,7 +247,12 @@ fn run_args(rd: &mut Reader<'_>, c: &Counts) -> Result<(), FfiError> {
     if approx < 0.0 || ang < 0.0 {
         return Err(bad("negative tolerance"));
     }
-    rd.flag()?;
+    // m_bDoingFillets: the fillet path gives the classifications fillet data that the merge
+    // reads as an SmFilletGeom context (set only by the fillet code); without one upstream
+    // crashes, so the harness runs without it
+    if rd.flag()? {
+        return Err(bad("doing_fillets needs a fillet context; not supported"));
+    }
     rd.flag()?;
     let n = rd.index(MAX_RELATES)?;
     for _ in 0..n {
