@@ -1310,6 +1310,19 @@ impl ProtoTopology<H> for Pool {
 /// The bare stand-ins' members (upstream `SmEdge::GetInterval`, `GetCurve`, `GetTolerance`
 /// of the stand-in objects the shim makes), and new curves appended to the pool.
 impl ProtoBrep<H> for Pool {
+    fn brep_squeeze_edge(
+        &mut self,
+        _k: &mut Kernel,
+        _brep: H,
+        _edge: H,
+        _survivor: H,
+    ) -> solidcore::Result<()> {
+        // the pool's bare stand-ins have no B-rep to edit
+        Err(SolidError::unported(
+            "SmBrep::SqueezeEdge (bare stand-ins without a B-rep)",
+            "harness:proto-pool-brep-edit",
+        ))
+    }
     fn edge_interval(&self, edge: H) -> Option<Extent1d> {
         match self.objs.get(edge.0) {
             Some(PObj::Edge { ivl, .. }) if self.live_h(edge) => Some(*ivl),
@@ -3956,7 +3969,11 @@ fn run_proto(
                     }
                     if !skip {
                         // (the shim's intersector relates nothing: GetOtherMate is always null)
-                        match st3(r.mgr.glue_coincident_brep_vertices(k, &r.pool, &|_| None))? {
+                        match st3(r.mgr.glue_coincident_brep_vertices(
+                            &mut r.k,
+                            &mut r.pool,
+                            &|_| None,
+                        ))? {
                             Ok(deleted) => {
                                 let ids = r.kill_curves(deleted);
                                 out.push(ids.len() as f64);
