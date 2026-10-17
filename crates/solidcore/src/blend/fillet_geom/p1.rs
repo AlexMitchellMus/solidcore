@@ -1052,7 +1052,7 @@ impl FilletGeom {
         let mut off_surfs = [None, None];
         for (slot, i) in off_surfs.iter_mut().zip(0..2usize) {
             if let Some((_, fs)) = solver {
-                if fs.surfaces.get(i).is_some_and(Option::is_some) {
+                if fs.solver.surface(i)?.is_some() {
                     // UNPORTED(surface.offset_surface): SmOffsetSurface::Copy
                     return Err(SolidError::unported(
                         "SmOffsetSurface::Copy",
@@ -1147,7 +1147,7 @@ impl FilletGeom {
 
     /// `GetOffsetSurface(lRailIndex)`: this geometry's offset surface for the rail,
     /// else the solver's (`SmFilletSolver::GetSurface`, read from the co-ported
-    /// [`ConstantRadiusAssistedFs::surfaces`] of `solver`).
+    /// [`ConstantRadiusAssistedFs::solver`] through `FilletSolver::surface`).
     ///
     /// # Errors
     ///
@@ -1167,7 +1167,7 @@ impl FilletGeom {
             return Ok(Some(s));
         }
         let fs = solver.ok_or_else(|| SolidError::null_pointer(OP_OFFSET))?;
-        Ok(fs.surfaces.get(rail_index).and_then(Option::as_ref))
+        Ok(fs.solver.surface(rail_index)?.map(|slot| &slot.surface))
     }
 
     /// `SetOffsetSurface(lWhichSrf, pNewOffSrf)`: replaces (deleting) the rail's offset
@@ -2453,7 +2453,7 @@ pub fn find_stepoff_uv(
     stepoff_dist: f64,
 ) -> Result<[Point2; 2]> {
     let mut uvs = [Point2::new(0.0, 0.0); 2];
-    for (slot, edgeuse) in uvs.iter_mut().zip(solver.edgeuses) {
+    for (slot, edgeuse) in uvs.iter_mut().zip(solver.solver.edgeuses) {
         let eu = edgeuse.ok_or_else(|| SolidError::null_pointer(OP_STEPOFF))?;
         let face = edgeuse_face(brep, eu)?.ok_or_else(|| SolidError::null_pointer(OP_STEPOFF))?;
         let surface =
@@ -2467,7 +2467,7 @@ pub fn find_stepoff_uv(
             stepoff_dist.abs(),
             &StepOffOptions::default(),
         )?;
-        let tol = solver.approx_tol_3d;
+        let tol = solver.solver.approx_tol_3d;
         // Make the surface think that it is a standalone surface.
         let solutions = surface.global_point_solve::<NoObject>(
             k,
@@ -3173,15 +3173,14 @@ fn drop_rail_onto_offset_surface(
     let solver = adjust_solver.ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?;
     // SmFilletSolver::GetSurface(k); NER(pOffsetSurf)
     let offset_surf = solver
-        .surfaces
-        .get_mut(rail_index)
-        .and_then(Option::as_mut)
+        .solver
+        .surface_mut(rail_index)?
         .ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?;
-    let orig_offset_dist = offset_surf.offset_distance;
-    offset_surf.set_offset_distance(0.0);
+    let orig_offset_dist = offset_surf.surface.offset_distance;
+    offset_surf.surface.set_offset_distance(0.0);
     // Drop the 3d curve onto the surface, then restore the offset distance
     // UNPORTED(intersect.surface_drop_lib_p3): SmSurface::DropCurve
-    offset_surf.set_offset_distance(orig_offset_dist);
+    offset_surf.surface.set_offset_distance(orig_offset_dist);
     Err(SolidError::unported(
         "SmSurface::DropCurve",
         "intersect.surface_drop_lib_p3",
@@ -3837,7 +3836,14 @@ mod tests {
             "{err:?}"
         );
         // the offset distance was zeroed for the drop and restored
-        assert_eq!(solver.surfaces[0].as_ref().unwrap().offset_distance, 0.25);
+        assert_eq!(
+            solver.solver.surfaces[0]
+                .as_ref()
+                .unwrap()
+                .surface
+                .offset_distance,
+            0.25
+        );
         // geometry 0's start row is now geometry 1's end row; its other rows are its own
         let near = |a: Point3, b: Point3| a.distance(b) < 1e-12;
         let s0 = fb.geom(g0).unwrap().fillet_surface().unwrap();
