@@ -48,6 +48,7 @@ bool integer(double x, int lo, int hi) { return std::isfinite(x) && x==std::floo
 SC_EXPORT int32_t sc_blend_fillet_solver_p5_eval(const double* in, int64_t n,
     double* out, int64_t cap, int64_t* len) {
     if (!in || n<6 || !len || cap<0 || (cap && !out)) return SC_ERR_ARG;
+    SC_TRY
     int64_t at=0;
     if(!integer(in[at],0,2)) return SC_ERR_ARG;
     int op=(int)in[at++];
@@ -74,7 +75,6 @@ SC_EXPORT int32_t sc_blend_fillet_solver_p5_eval(const double* in, int64_t n,
     // blend patches, missing classes and unsupported corners do not read it.
     if(op==0 && type!=SM_FG_BLENDS && r[0].n==1 && r[1].n==1 &&
        (r[0].cls[0]==SM_PC_UNKNOWN || r[1].cls[0]==SM_PC_UNKNOWN) && (corner==3 || corner==7)) return SC_ERR_ARG;
-    SC_TRY
     SmContext ctx;
     SmFilletExecutive exec(ctx);
     Corner c0(ctx,&exec,corner<0?0:corner), c1(ctx,&exec,1);

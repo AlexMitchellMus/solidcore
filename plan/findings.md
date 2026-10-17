@@ -6759,3 +6759,9 @@ regression inputs below; 2000-seed sweep 2037 pass / 111 deferred / 0 failed / 1
   The fixture now calls the matching setter and preserves its ignored-error state;
   `reversed_interval_preserves_initial_extent` is the regression. No kernel
   tolerance or upstream interval implementation was changed.
+- Native fixture parsing is inside the exception boundary, including its small
+  vector allocations. The standalone regression in
+  `harness/cpp/tests/blend_fillet_solver_p5_alloc.cpp` forces the first allocation
+  to throw: before this fix the exception escaped; afterwards the shim returns
+  `SC_ERR_EXCEPTION` (-1000). This test is linked separately so its allocator
+  override is never part of the FFI library.
