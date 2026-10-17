@@ -17,7 +17,7 @@ use solidcore::geom::object::ObjectRef;
 use solidcore::kernel::Kernel;
 use solidcore::topology::brep::p4::{self, DeleteEnv};
 use solidcore::topology::topology::Topology;
-use solidcore::topology::{ArenaId, Brep, EdgeId, FaceId, VertexId, VertexuseId};
+use solidcore::topology::{Brep, EdgeId, FaceId, VertexId, VertexuseId};
 use solidcore_ffi::units::topology_brep_p4::{self as ffi, Op, Request};
 use solidcore_ffi::units::topology_vertexuse::counts;
 use std::collections::BTreeMap;
