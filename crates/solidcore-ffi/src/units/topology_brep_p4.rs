@@ -44,6 +44,9 @@ pub enum Op {
     StitchFaces,
     /// `delete brep`.
     Destroy,
+    /// No operation: the records of the fixture B-rep as built (the Rust side checks
+    /// its imported model against them).
+    Check,
 }
 
 /// The request of [`eval`].
@@ -100,9 +103,10 @@ pub fn eval(path: &str, input: &[f64], r: Request) -> Result<Vec<f64>, FfiError>
         Op::ShrinkGeometry => 2,
         Op::StitchFaces => 3,
         Op::Destroy => 4,
+        Op::Check => 5,
     };
     let cpath = CString::new(path).map_err(|_| invalid("path"))?;
-    call_with_buffer(64, |buf, len| {
+    call_with_buffer(4096, |buf, len| {
         // SAFETY: the block was validated by the traverser export above, the indices are
         // in range of the B-rep it builds, and all buffers are owned here.
         unsafe {

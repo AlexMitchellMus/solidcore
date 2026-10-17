@@ -32,6 +32,12 @@
 //!   owner to the wrong kind (undefined behaviour), the port returns
 //!   [`SolidError::InvalidInput`]; `NER` checks return the `SM_ERR_NULL_POINTER`
 //!   status, as upstream.
+//! - **Surface swap.** `DeleteEdge` swaps the two faces' surfaces through
+//!   `SmFace::SetSurface` (ported in `topology.face_p1`, which moves an owned
+//!   `Surface`): the swap takes the surface out of the deleted face and hands the
+//!   replaced one back.
+//! - **`SmLockBrepBox`** is RAII upstream. `LockBrepBox::scoped` is the scope: it locks,
+//!   runs the body and unlocks once on every path out of it (`StitchFaces`).
 //! - **Notifications** go to the ported handlers (`SmEdge::Notify`,
 //!   `SmVertex::Notify`) with the caller's [`DeleteEnv`]; `SmBrep::Notify` (unit
 //!   `topology.brep_p2`) and `SmFace::Notify` (unit `topology.face_p3`) are not
@@ -63,6 +69,7 @@ use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::nurbs::knots::Side;
 use crate::topology::edge::{self, NotifyEnv};
 use crate::topology::edgeuse::p1 as eu1;
+use crate::topology::face::p1 as face1;
 use crate::topology::face::p2 as face2;
 use crate::topology::topology::Topology;
 use crate::topology::topology_traverser::{shell_traversal, Entity, Marks};
@@ -120,66 +127,12 @@ fn edgeuse_normalized_evaluate_uv(_b: &Brep, _eu: EdgeuseId, _t: f64) -> Result<
     ))
 }
 
-/// `SmFace::RemoveUVTrimCurves`.
-fn face_remove_uv_trim_curves(_b: &mut Brep, _f: FaceId) -> Result<()> {
-    // UNPORTED(topology.face_p1): SmFace::RemoveUVTrimCurves
-    Err(SolidError::unported(
-        "SmFace::RemoveUVTrimCurves",
-        "topology.face_p1",
-    ))
-}
-
-/// `SmFace::SetSurface` with the surface held by face `from` (`None`: no surface).
-fn face_set_surface(_b: &mut Brep, _f: FaceId, _from: Option<FaceId>) -> Result<()> {
-    // UNPORTED(topology.face_p1): SmFace::SetSurface
-    Err(SolidError::unported(
-        "SmFace::SetSurface",
-        "topology.face_p1",
-    ))
-}
-
-/// `SmFace::FlipFaceOrientation`.
-fn face_flip_orientation(_b: &mut Brep, _f: FaceId) -> Result<()> {
-    // UNPORTED(topology.face_p1): SmFace::FlipFaceOrientation
-    Err(SolidError::unported(
-        "SmFace::FlipFaceOrientation",
-        "topology.face_p1",
-    ))
-}
-
-/// `SmFace::RemoveLoop`.
-fn face_remove_loop(_b: &mut Brep, _f: FaceId, _l: Option<LoopId>) -> Result<()> {
-    // UNPORTED(topology.face_p1): SmFace::RemoveLoop
-    Err(SolidError::unported(
-        "SmFace::RemoveLoop",
-        "topology.face_p1",
-    ))
-}
-
-/// `SmFace::InsertLoop`.
-fn face_insert_loop(_b: &mut Brep, _f: FaceId, _l: LoopId) -> Result<()> {
-    // UNPORTED(topology.face_p1): SmFace::InsertLoop
-    Err(SolidError::unported(
-        "SmFace::InsertLoop",
-        "topology.face_p1",
-    ))
-}
-
 /// `SmFace::ComputeLoopOrientation(loop, orient)` (default domain and flags).
 fn face_compute_loop_orientation(_b: &Brep, _f: FaceId, _l: Option<LoopId>) -> Result<OrientType> {
     // UNPORTED(topology.face_p3): SmFace::ComputeLoopOrientation
     Err(SolidError::unported(
         "SmFace::ComputeLoopOrientation",
         "topology.face_p3",
-    ))
-}
-
-/// `SmFace::CalculateUVDomainFromUVTrimCurves(domain)` (default arguments).
-fn face_calculate_uv_domain_from_uv_trim_curves(_b: &Brep, _f: FaceId) -> Result<Extent2d> {
-    // UNPORTED(topology.face_p1): SmFace::CalculateUVDomainFromUVTrimCurves
-    Err(SolidError::unported(
-        "SmFace::CalculateUVDomainFromUVTrimCurves",
-        "topology.face_p1",
     ))
 }
 
@@ -294,13 +247,57 @@ fn brep_get_curves(_b: &Brep) -> Result<Vec<EdgeId>> {
     ))
 }
 
-/// `SmLockBrepBox::SmLockBrepBox(brep)`.
+/// `SmLockBrepBox::SmLockBrepBox(brep)`: locks the B-rep's bounding box
+/// (`SmBrep::LockBoundingBox`, unit `query.brep`, inlined into the constructor).
 fn lock_brep_box(_b: &Brep) -> Result<()> {
     // UNPORTED(topology.brep_p1): SmLockBrepBox::SmLockBrepBox
     Err(SolidError::unported(
         "SmLockBrepBox::SmLockBrepBox",
         "topology.brep_p1",
     ))
+}
+
+/// `SmLockBrepBox`: the scope guard of the B-rep's bounding box lock. Upstream
+/// `~SmLockBrepBox` unlocks it when the guard goes out of scope, so every return path
+/// of the scope unlocks exactly once.
+///
+/// The guard cannot hold the B-rep (the scope edits it) and so cannot unlock from
+/// `Drop`; [`LockBrepBox::scoped`] is the scope: it locks, runs the body and unlocks
+/// on the way out, whatever the body returned. [`LockBrepBox::unlock`] consumes the
+/// guard, so it unlocks once.
+#[derive(Debug)]
+struct LockBrepBox;
+
+impl LockBrepBox {
+    /// `SmLockBrepBox lockit(brep)`.
+    fn lock(b: &Brep) -> Result<Self> {
+        lock_brep_box(b)?;
+        Ok(Self)
+    }
+
+    /// `~SmLockBrepBox()`: unlocks (`SmBrep::UnLockBoundingBox`); the destructor
+    /// cannot fail, so the status is dropped.
+    fn unlock(self, b: &mut Brep) -> Result<()> {
+        let Self = self; // the guard ends here
+        ignore_status(unlock_bounding_box(b))
+    }
+
+    /// Runs `body` with the lock held and unlocks after it, on success and on error.
+    ///
+    /// [`SolidError::Unported`] outranks everything else: from the body it is the
+    /// result as is; from the unlock (not ported yet) it replaces the body's result,
+    /// which cannot be told to be upstream's without it. A lock that fails (while it
+    /// is not ported) never runs the body and has nothing to unlock.
+    fn scoped<T>(b: &mut Brep, body: impl FnOnce(&mut Brep) -> Result<T>) -> Result<T> {
+        let guard = Self::lock(b)?;
+        let result = body(b);
+        let unlocked = guard.unlock(b);
+        match (result, unlocked) {
+            (Err(e), _) if e.is_unported() => Err(e),
+            (_, Err(e)) => Err(e),
+            (result, Ok(())) => result,
+        }
+    }
 }
 
 /// `SmBrep::UnLockBoundingBox`.
@@ -313,6 +310,56 @@ fn unlock_bounding_box(_b: &mut Brep) -> Result<()> {
 }
 
 // ---- helpers -------------------------------------------------------------------------------
+
+/// `SmFace::CalculateUVDomainFromUVTrimCurves(domain)` with upstream's defaults
+/// (`bLimitDomain = TRUE`, no loop gap outputs): the domain it returns.
+fn face_calculate_uv_domain(k: &Kernel, b: &mut Brep, f: FaceId) -> Result<Extent2d> {
+    face1::calculate_uv_domain_from_uv_trim_curves(k, b, f, true, false, false).map(|o| o.domain)
+}
+
+/// `SmFace::RemoveLoop(pLoop)`. Upstream notifies the face and then dereferences the
+/// loop, so a null loop is the null-dereference error after the notification.
+fn face_remove_loop(b: &mut Brep, f: FaceId, l: Option<LoopId>) -> Result<()> {
+    if let Some(l) = l {
+        return face1::remove_loop(b, f, l);
+    }
+    ignore_status(face_notify(b, f, NotifyOperation::PreEdit))?;
+    Err(SolidError::invalid_input(
+        OP_DELETE_EDGE,
+        "null pointer dereference",
+    ))
+}
+
+/// The surface swap of `DeleteEdge`:
+/// `pSurfTmp = pSurvF->GetSurface(); pSurvF->SetSurface(pDelF->GetSurface());
+/// pDelF->SetSurface(pSurfTmp);`.
+///
+/// Surfaces are owned values here, so the swap takes the surface out of `del_f`, gives
+/// it to `surv_f` (`SetSurface` hands back the one it replaces, without deleting it)
+/// and gives that one to `del_f`. `SetSurface` is `void` upstream; the only failure
+/// the port can raise is [`SolidError::Unported`] from its notification. A face
+/// without a surface has none to hand over: upstream notifies and then dereferences
+/// the null surface.
+fn swap_face_surfaces(
+    b: &mut Brep,
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+    surv_f: FaceId,
+    del_f: FaceId,
+) -> Result<()> {
+    let del_surface = deref(b.face_mut(del_f)?.surface.take(), OP_DELETE_EDGE)?;
+    let surv_this = key_of(EntityRef::Face(surv_f));
+    let surv_old = face1::set_surface(b, surv_f, surv_this, del_surface, false)?;
+    let Some(surv_old) = surv_old else {
+        ignore_status(face_notify(b, del_f, NotifyOperation::ChangeGeometry))?;
+        return Err(SolidError::invalid_input(
+            OP_DELETE_EDGE,
+            "null pointer dereference",
+        ));
+    };
+    let del_this = key_of(EntityRef::Face(del_f));
+    face1::set_surface(b, del_f, del_this, surv_old, false)?;
+    Ok(())
+}
 
 /// A pointer upstream dereferences without a check.
 fn deref<T>(o: Option<T>, op: &'static str) -> Result<T> {
@@ -515,7 +562,7 @@ pub fn delete_edge(
     let eu_mate = deref(eu1::mate(b, eu)?, OP)?;
 
     if is_manifold {
-        delete_manifold_edge(b, e, eu, eu_mate, surface_to_keep)
+        delete_manifold_edge(b, env.key_of, e, eu, eu_mate, surface_to_keep)
     } else if edge::is_lamina(b, e)? {
         delete_lamina_edge(b, e, eu, eu_mate)
     } else {
@@ -526,6 +573,7 @@ pub fn delete_edge(
 /// The manifold branch of [`delete_edge`].
 fn delete_manifold_edge(
     b: &mut Brep,
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
     e: EdgeId,
     eu: EdgeuseId,
     eu_mate: EdgeuseId,
@@ -636,8 +684,8 @@ fn delete_manifold_edge(
     // Remove parameter space curves from both faces if they do not have the same
     // underlying surface
     if !split_loop && surface_of(b, face)? != surface_of(b, face_rad)? {
-        face_remove_uv_trim_curves(b, face)?;
-        face_remove_uv_trim_curves(b, face_rad)?;
+        face1::remove_uv_trim_curves(b, face)?;
+        face1::remove_uv_trim_curves(b, face_rad)?;
     }
 
     // When merging two faces - see if Face Surfaces need to be swapped
@@ -649,12 +697,9 @@ fn delete_manifold_edge(
                 // when DelF owns the surface to keep
                 if surface_of(b, df)? == Some(keep) {
                     // swap the surfaces between the faces
-                    let surf_tmp = surface_of(b, sf)?;
-                    let del_surf = surface_of(b, df)?;
-                    ignore_status(face_set_surface(b, sf, del_surf))?;
-                    ignore_status(face_set_surface(b, df, surf_tmp))?;
+                    swap_face_surfaces(b, key_of, sf, df)?;
                     if flip_face {
-                        ignore_status(face_flip_orientation(b, sf))?;
+                        ignore_status(face1::flip_face_orientation(b, sf))?;
                     }
                 }
                 // else: WARN (asked to keep a surface not used by the faces)
@@ -876,12 +921,12 @@ fn delete_manifold_edge(
 
     // move the remaining loops of the deleted face to the surviving face
     for move_loop in face2::loops(b, del_f, false, None)? {
-        face_remove_loop(b, del_f, Some(move_loop))?;
+        face1::remove_loop(b, del_f, move_loop)?;
         if !same_orientation_faces {
             let l_lu = deref(b.loop_(move_loop)?.loopuse, OP)?;
             b.loop_mut(move_loop)?.loopuse = loopuse::other_loopuse(b, l_lu)?;
         }
-        face_insert_loop(b, surv_f, move_loop)?;
+        face1::insert_loop(b, surv_f, move_loop)?;
     }
 
     let (fu_del, fu_del_mate) = face2::faceuses(b, del_f)?;
@@ -1289,34 +1334,34 @@ fn do_stitching(
 /// # Errors
 ///
 /// Those of the stitcher; [`SolidError::Unported`] while the bounding-box lock, the
-/// face queries and the stitcher are not ported.
+/// face queries and the stitcher are not ported. The lock is released on every path.
 pub fn stitch_faces(
     b: &mut Brep,
     xsect_tol_3d: f64,
     faces: Option<&[Option<FaceId>]>,
     allow_spine_edges: bool,
 ) -> Result<StitchOutcome> {
-    // lock brep bounding box, until goes out of scope
-    lock_brep_box(b)?;
-
-    let mut lists = None;
-    if let Some(faces) = faces {
-        let mut vertices = Vec::new();
-        let mut edges = Vec::new();
-        for f in faces.iter().flatten() {
-            vertices.extend(face_vertices(b, *f)?);
-            edges.extend(face_edges(b, *f)?);
+    // lock brep bounding box, until goes out of scope (every return below unlocks)
+    LockBrepBox::scoped(b, |b| {
+        let mut lists = None;
+        if let Some(faces) = faces {
+            let mut vertices = Vec::new();
+            let mut edges = Vec::new();
+            for f in faces.iter().flatten() {
+                vertices.extend(face_vertices(b, *f)?);
+                edges.extend(face_edges(b, *f)?);
+            }
+            lists = Some((vertices, edges));
         }
-        lists = Some((vertices, edges));
-    }
-    // pass the stitch call along (SER: its status is returned as is)
-    do_stitching(
-        b,
-        xsect_tol_3d,
-        allow_spine_edges,
-        lists.as_ref().map(|(v, _)| v.as_slice()),
-        lists.as_ref().map(|(_, e)| e.as_slice()),
-    )
+        // pass the stitch call along (SER: its status is returned as is)
+        do_stitching(
+            b,
+            xsect_tol_3d,
+            allow_spine_edges,
+            lists.as_ref().map(|(v, _)| v.as_slice()),
+            lists.as_ref().map(|(_, e)| e.as_slice()),
+        )
+    })
 }
 
 // ---- ShrinkGeometry ------------------------------------------------------------------------
@@ -1331,7 +1376,7 @@ pub fn stitch_faces(
 /// queries it uses are not ported.
 pub fn shrink_geometry(k: &Kernel, b: &mut Brep) -> Result<()> {
     for f in brep_get_faces(b)? {
-        let Some(face_domain) = ignored(face_calculate_uv_domain_from_uv_trim_curves(b, f))? else {
+        let Some(face_domain) = ignored(face_calculate_uv_domain(k, b, f))? else {
             continue;
         };
         let surf_domain = deref(face2::surface(b, f)?, OP_SHRINK)?.natural_uv_domain();
@@ -1357,15 +1402,18 @@ pub fn shrink_geometry(k: &Kernel, b: &mut Brep) -> Result<()> {
     for face in brep_get_surfaces(b)? {
         let mut face_domain = face2::uv_domain(b, face)?;
         let surf_domain = deref(face2::surface(b, face)?, OP_SHRINK)?.natural_uv_domain();
-        if let Ok(d) = surf_domain.intersect(&face_domain) {
-            face_domain = d;
-        }
+        // The status of `Intersect` is dropped upstream, but on disjoint domains it has
+        // `Init()`ed the result (SmExtent2d.cpp:414-418), and that undefined extent is
+        // the face domain from here on (`AreEqual`, `TrimWithDomain`, `SetUVDomain`).
+        face_domain = surf_domain
+            .intersect(&face_domain)
+            .unwrap_or_else(|_| Extent2d::new());
         if !surf_domain.are_equal(&face_domain, EFF_ZERO) {
             let mut dom = face_domain;
             if let Some(s) = b.face_mut(face)?.surface.as_mut() {
                 ignore_status(s.trim_with_domain(k, &mut dom))?;
             }
-            ignore_status(face_remove_uv_trim_curves(b, face))?;
+            ignore_status(face1::remove_uv_trim_curves(b, face))?;
         }
         face2::set_uv_domain(b, face, &face_domain)?;
     }
@@ -1451,4 +1499,29 @@ fn destroy_records(b: &mut Brep) -> Result<()> {
     }
 
     unlock_bounding_box(b)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lock_scope_does_not_run_the_body_when_the_lock_is_unported() {
+        let mut b = Brep::new();
+        let mut ran = false;
+        let r = LockBrepBox::scoped(&mut b, |_| {
+            ran = true;
+            Ok(())
+        });
+        assert!(matches!(r, Err(ref e) if e.is_unported()));
+        assert!(!ran);
+    }
+
+    #[test]
+    fn remove_loop_without_loop_notifies_first() {
+        // the notification (unported) comes before the null dereference upstream
+        let mut b = Brep::new();
+        let r = face_remove_loop(&mut b, FaceId::from_index(0), None);
+        assert!(matches!(r, Err(ref e) if e.is_unported()));
+    }
 }
