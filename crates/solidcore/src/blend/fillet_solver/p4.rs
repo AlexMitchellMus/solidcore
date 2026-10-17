@@ -763,12 +763,376 @@ fn c4_trace(
     st: &mut CalcState,
     fi: &mut TraceIntersector<'_>,
 ) -> Result<()> {
-    let _ = (ops, cx, st, fi);
-    // P4-CHUNK(C4): SmFilletSolver.cpp:2093-2467
-    Err(SolidError::Unported {
-        upstream: "SmFilletSolver::CalcFilletGeom (p4 chunk C4 pending)",
-        unit: "blend.fillet_solver_p4",
-    })
+    use super::p1::FilStatus;
+
+    // ULONG lMaxLoopCount = 10; ULONG lLoopCount = 0; (:2081-2082)
+    let max_loop_count: u32 = 10;
+    let mut loop_count: u32 = 0;
+
+    // while (!bFoundAllPoints): the flag starts FALSE, and the only assignment that
+    // can leave it TRUE is followed by the `break` at :2278.
+    loop {
+        loop_count += 1;
+        if loop_count > max_loop_count {
+            // Either too many self-intersections or other
+            // suspicious situations might have happened
+            ops.solver_mut().set_status(FilStatus::SurfTracingFailure);
+            crate::error::ignore_status(record_fillet_error(
+                ops,
+                cx,
+                &st.store,
+                &st.tsect_pnts,
+                FilletErrorType::BadInt,
+                C4_RADIUS_TOO_LARGE,
+            ))?;
+            // SER_MSG(SM_ERR, "CalcFilletGeom(): Ran into too many self-intersections ..")
+            return Err(SolidError::sm_err(OP));
+        }
+
+        // Determine the tracing direction. Every pass: this overwrites the recovery
+        // value of bExtendBefore set below, as upstream does.
+        if st.trace.reverse_tracing {
+            st.trace.extend_before = ops.solver().extend_after;
+            st.trace.extend_after = ops.solver().extend_before;
+        }
+
+        // Do the offset-surface intersection (FlushCurve fills the solver's last
+        // fillet geometry). Upstream writes through the point pointers in place:
+        // run on a snapshot and write it back whatever the outcome.
+        let args = PointIntersectionArgs {
+            extend_before: st.trace.extend_before,
+            extend_after: st.trace.extend_after,
+            start_dir: Some(st.trace.dir),
+            approx_tol_3d: st.trace.approx_tol_3d,
+            ang_tol_rad: st.trace.angle_tol,
+        };
+        let mut points = st.store.snapshot(cx.fillets, &st.tsect_pnts)?;
+        let stat = do_point_intersection(fi, ops, cx, &mut points, args);
+        if let Err(e) = stat.as_ref() {
+            if e.is_unported() {
+                return stat;
+            }
+        }
+        st.store.write_back(cx.fillets, &st.tsect_pnts, &points)?;
+
+        if stat.is_err() && ops.solver().status == FilStatus::Unprocessed {
+            ops.solver_mut().set_status(FilStatus::SurfTracingFailure);
+        }
+
+        // Check all points, after the first one, to make sure
+        // that they were properly processed by DoPointIntersection().
+        let Some(ii) = c4_first_missed_point(&st.store, cx.fillets, &st.tsect_pnts)? else {
+            // quit with success when all FoundPoints have been processed
+            break;
+        };
+        // bFoundAllPoints = FALSE: another iteration. On it, trace from that start
+        // point in both directions (RanIntoACusp fix).
+        st.trace.extend_before = true;
+        // remove the current 1st start point - we've tried walking from it
+        // (sTsectPnts.RemoveAt(0, ii)).
+        st.tsect_pnts.drain(..ii);
+
+        if fi.is_curr_fillet_touch_boundary() {
+            // traced the fillet to a surface natural boundary: assume there were no
+            // self intersections
+            fi.set_self_intersect(false);
+
+            // The newly created fillet touches the boundary edge of a base surface
+            // (typically a G1-closed base surface). Trace again to create another
+            // fillet.
+            if ops.solver().extend_after {
+                // Something strange happening, return ERROR
+                return Err(SolidError::sm_err(OP));
+            }
+
+            // no need to trace next start point in both directions
+            st.trace.extend_before = false;
+        } else {
+            // The newly created fillet did not trace to surface end - probably a
+            // surface cusp: step past where the solver stopped, insert a new TsectPnt
+            // and re-trace.
+            c4_cusp_recovery(ops, cx, st, fi)?;
+        }
+    }
+
+    Ok(())
+}
+
+/// The `RecordFilletError` message at :2103 and :2332.
+const C4_RADIUS_TOO_LARGE: &str = "Offset surface intersection failed, probably radius too large";
+
+/// :2242-2275: the index `ii >= 1` of the first point `DoPointIntersection` missed
+/// (`m_dCurveParameter < 0.0`), if any. The first point is never checked.
+fn c4_first_missed_point(
+    store: &TsectStore,
+    fillets: &FilletBrep,
+    refs: &[TsRef],
+) -> Result<Option<usize>> {
+    for (ii, r) in refs.iter().enumerate().skip(1) {
+        if store.get(fillets, *r)?.curve_parameter < 0.0 {
+            return Ok(Some(ii));
+        }
+    }
+    Ok(None)
+}
+
+/// :2384, `dNextT = dT + dSkipSize*(1.0+0.1*ii)`.
+fn c4_next_t(t: f64, skip_size: f64, ii: u32) -> f64 {
+    t + skip_size * (1.0 + 0.1 * f64::from(ii))
+}
+
+/// :2306-2466, the self-intersecting (cusp) branch of the trace loop: the end of the
+/// last centre line dropped onto the filleted edge, then up to twenty growing skips
+/// past it, each a guess point (`binormal_guess_point(.., half = false)`), `sDir`
+/// set to the edge-use tangent, and `sm_FindFilletTsectPnt` into one point allocated
+/// for the branch; the first success is put in front of `sTsectPnts` unless it lies
+/// on a centre line already traced.
+fn c4_cusp_recovery(
+    ops: &mut dyn FilletSolverOps,
+    cx: &mut Cx<'_>,
+    st: &mut CalcState,
+    fi: &mut TraceIntersector<'_>,
+) -> Result<()> {
+    use super::p1::FilStatus;
+    use crate::curve::curve::p1::GlobalPointSolveOptions;
+    use crate::geom::global_solver::{SolutionRequested, SolverOperation};
+
+    fi.set_self_intersect(true);
+
+    // pCenterLine = GetLastFilletGeom()->GetCenterLineCurve()
+    let last = cx.geoms.geometry_id(ops.solver().last_fillet_geom()?)?;
+    let end_pnt = match cx.fillets.geom(last)?.center_line_curve() {
+        // get centerline's endPoint - it's located very near a surface cusp
+        Some(center_line) => {
+            Some(center_line.evaluate_point(center_line.natural_interval().max())?)
+        }
+        None => None,
+    };
+    let Some(end_pnt) = end_pnt else {
+        // remember when none of fillet centerline curve has been stepped
+        ops.solver_mut().set_status(FilStatus::SurfTracingFailure);
+        crate::error::ignore_status(record_fillet_error(
+            ops,
+            cx,
+            &st.store,
+            &st.tsect_pnts,
+            FilletErrorType::BadInt,
+            C4_RADIUS_TOO_LARGE,
+        ))?;
+        return Err(SolidError::null_pointer(OP));
+    };
+
+    // find closest filletEdge point to centerline end
+    let solutions = st.edge_curve.global_point_solve::<NoObject>(
+        cx.k,
+        &st.ivl,
+        SolverOperation::Minimize,
+        end_pnt,
+        st.trace.approx_tol_3d,
+        SolutionRequested::Single,
+        &GlobalPointSolveOptions::default(),
+    )?;
+
+    // expect 1 solution (it might be before or after the cusp section)
+    if solutions.len() != 1 {
+        return Err(SolidError::sm_err(OP));
+    }
+
+    // dT = param at which last centerline step ran into trouble (probable cusp)
+    let t = solutions
+        .get(0)
+        .ok_or_else(|| SolidError::sm_err(OP))?
+        .start
+        .param(0)?;
+
+    // pick initial skip size
+    let mut skip_size = 0.1 * st.ivl.length();
+    if st.trace.reverse_tracing {
+        skip_size *= -1.0;
+    }
+
+    // an additional TsectPnt which may or may not be added to sTsectPnts (always
+    // kept in sDeletePnts)
+    let new_pnt = st.store.alloc(TsectPnt::new());
+
+    // for a sequence of bigger steps - try tracing the curve after the cusp region
+    for ii in 0..20_u32 {
+        let next_t = c4_next_t(t, skip_size, ii);
+        if !st.ivl.contains_value(next_t, 0.0) {
+            continue;
+        }
+
+        // Cross-sectional guess point from the surface offset (no 0.5 here, unlike
+        // the G1-knot points)
+        let [base1, base2] = &st.base_surfaces;
+        let (pt, tangent) = binormal_guess_point(ops, cx, base1, next_t, false)?;
+
+        // Adjust tracing direction
+        st.trace.dir = tangent;
+
+        // Solve the point on the cross-section plane
+        let found = find_fillet_tsect_pnt(
+            ops,
+            cx.k,
+            base1,
+            base2,
+            pt,
+            tangent,
+            st.store.get_mut(cx.fillets, new_pnt)?,
+        );
+        match found {
+            Ok(()) => {}
+            Err(e) if e.is_unported() => return Err(e),
+            Err(_) => continue,
+        }
+
+        // gather all fillet centerlines made so far
+        let mut curves: Vec<Curve> = Vec::new();
+        for id in fillet_geom_ids(ops, cx.geoms)? {
+            if let Some(center_line) = cx.fillets.geom(id)?.center_line_curve() {
+                curves.push(Curve::from(center_line.clone()));
+            }
+        }
+
+        // When new point is not on an existing centerline
+        if !fi.base.base.is_point_on_curve(cx.k, pt, &curves, None)? {
+            // use it to start the next segment of the fillet trace
+            st.tsect_pnts.insert(0, new_pnt);
+        }
+
+        // break from sequence of bigger steps until we are past the cusp
+        break;
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests_c4 {
+    use super::*;
+    use crate::curve::line::Line;
+    use crate::nurbs::b_spline_surface::BSplineSurface;
+
+    fn bilinear(p: [[f64; 3]; 4]) -> Surface {
+        let [a, b, c, d] = p.map(Vec3::from);
+        Surface::from(BSplineSurface::create_bilinear_surface(a, b, c, d).unwrap())
+    }
+
+    fn surfaces() -> [Surface; 2] {
+        [
+            bilinear([
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ]),
+            bilinear([
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 0.0, 1.0],
+            ]),
+        ]
+    }
+
+    fn state(params: &[f64]) -> CalcState {
+        let line = Line::from_points(Vec3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0), 3);
+        let pv = [Vec3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0)];
+        let mut st = CalcState::new(
+            EdgeId::from_index(0),
+            Curve::from(line),
+            Extent1d::from_min_max(0.0, 1.0),
+            pv,
+            pv,
+            surfaces(),
+            FilletGeomId(0),
+            false,
+        );
+        for &t in params {
+            let mut p = TsectPnt::new();
+            p.curve_parameter = t;
+            let r = st.store.alloc(p);
+            st.tsect_pnts.push(r);
+        }
+        st
+    }
+
+    #[test]
+    fn missed_point_skips_the_first_and_finds_the_first_negative() {
+        let fillets = FilletBrep::new();
+        let st = state(&[-1.0, 0.5, -BIG, 2.0, -3.0]);
+        assert_eq!(
+            c4_first_missed_point(&st.store, &fillets, &st.tsect_pnts).unwrap(),
+            Some(2)
+        );
+        let st = state(&[-1.0, 0.0, 2.0]);
+        assert_eq!(
+            c4_first_missed_point(&st.store, &fillets, &st.tsect_pnts).unwrap(),
+            None
+        );
+        let st = state(&[]);
+        assert_eq!(
+            c4_first_missed_point(&st.store, &fillets, &st.tsect_pnts).unwrap(),
+            None
+        );
+        // a dangling handle is reported, not skipped
+        assert!(
+            c4_first_missed_point(&st.store, &fillets, &[TsRef::Local(0), TsRef::Local(9)])
+                .is_err()
+        );
+    }
+
+    const BIG: f64 = crate::math::BIG_DOUBLE;
+
+    #[test]
+    fn next_t_keeps_the_upstream_operation_order() {
+        let (t, skip) = (0.3, -0.07);
+        for ii in 0..20_u32 {
+            let expected = t + skip * (1.0 + 0.1 * f64::from(ii));
+            assert_eq!(c4_next_t(t, skip, ii).to_bits(), expected.to_bits());
+        }
+        assert_eq!(c4_next_t(1.0, 0.5, 0), 1.5);
+    }
+
+    #[test]
+    fn trace_swaps_reversed_flags_then_propagates_the_dispatch_gap() {
+        let k = Kernel::default();
+        let mut solver = FilletSolver::new(1.0e-5, 0.01, 0.01);
+        solver.extend_before = true;
+        solver.extend_after = false;
+        let mut target = Brep::new();
+        let mut fillets = FilletBrep::new();
+        let mut geoms: Vec<FilletGeomId> = Vec::new();
+        let mut cx = Cx {
+            k: &k,
+            target: &mut target,
+            fillets: &mut fillets,
+            geoms: &mut geoms,
+        };
+        let mut st = state(&[0.0, -1.0, 1.0]);
+        st.trace.reverse_tracing = true;
+        st.trace.extend_before = true;
+        st.trace.extend_after = false;
+        let s = surfaces();
+        let d = Extent2d::from_bounds(-1.0, -1.0, 2.0, 2.0);
+        let mut fi: TraceIntersector<'_> =
+            FilletIntersector::new(&s[0], &d, &s[1], &d, None).unwrap();
+
+        let e = c4_trace(&mut solver, &mut cx, &mut st, &mut fi).unwrap_err();
+        match e {
+            SolidError::Unported { unit, .. } => {
+                assert_eq!(unit, "intersect.surface_intersector_p4");
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+        // bExtendBefore = m_bExtendAfter, bExtendAfter = m_bExtendBefore
+        assert!(!st.trace.extend_before);
+        assert!(st.trace.extend_after);
+        // an unported intersection is not a tracing failure, and nothing was removed
+        assert_eq!(solver.status, super::super::p1::FilStatus::Unprocessed);
+        assert_eq!(st.tsect_pnts.len(), 3);
+        assert!(!fi.self_intersect());
+    }
 }
 
 // P4-CHUNK(C4) END
