@@ -199,7 +199,14 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
                 0 => api::create_rectangle(&k, value(v, 7), value(v, 1), value(v, 2), &frame)
                     .map(|_| ()),
                 1 => api::create_circle(&k, value(v, 7), value(v, 1), &frame).map(|_| ()),
-                2 => primitive.create_box(&k, &mut brep, value(v, 1), value(v, 2), value(v, 3), &frame),
+                2 => primitive.create_box(
+                    &k,
+                    &mut brep,
+                    value(v, 1),
+                    value(v, 2),
+                    value(v, 3),
+                    &frame,
+                ),
                 3 => primitive.create_cylindrical_box(
                     &k,
                     &mut brep,

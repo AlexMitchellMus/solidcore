@@ -6767,8 +6767,10 @@ cone/sphere/torus, the protected curve linear sweep, pole-free sphere assembly,
 elliptic-ended cone and analytic rotational sweep. The planar boolean's validation
 and coverage passes are in `primitives.rs`; `boolean.rs` contains intersection,
 radial-sector relation, classification, copying-before-deletion and final
-stitch/removal control. The unavailable call adapters retain the supplied Kernel
-and geometry/domain parameters. Downstream continuation exists after each adapter,
+stitch/removal control. Face relations reuse the existing `boolean::topology_intersector::MateMap`
+rather than duplicating its storage/conflict rules. The unavailable call adapters
+retain the supplied Kernel, explicit intersection tolerances and geometry/domain
+parameters. Downstream continuation exists after each adapter,
 including static circle's edit reset and linear-sweep caps/stitch after cylinder
 or extrusion faces; those paths remain explicitly uncertified until dependencies
 are wired and compared.

@@ -242,7 +242,8 @@ mod tests {
     #[test]
     fn extension_preflight_only_rejects_the_undefined_stage() -> Result<(), FfiError> {
         let line = [0.0, 0.0, 0.0, 1e300, 1.0, 1.0, 0.0];
-        for (closed, periodic, rejected) in [(0.0, 0.0, false), (1.0, 1.0, false), (1.0, 0.0, true)] {
+        for (closed, periodic, rejected) in [(0.0, 0.0, false), (1.0, 1.0, false), (1.0, 0.0, true)]
+        {
             let mut data = vec![closed, periodic, 0.1, 1.0];
             data.extend(line);
             let result = eval(2, &data);

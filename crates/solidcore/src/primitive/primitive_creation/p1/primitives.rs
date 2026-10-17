@@ -130,6 +130,13 @@ fn cone_face(_k: &Kernel, _b: &mut Brep, _surface: &Cone, _domain: Extent2d) -> 
         "topology.brep_p8",
     ))
 }
+fn torus_face(_k: &Kernel, _b: &mut Brep, _surface: &Torus, _domain: Extent2d) -> Result<FaceId> {
+    // UNPORTED(topology.brep_p8): SmBrep::CreateFaceFromSurface
+    Err(SolidError::unported(
+        "SmBrep::CreateFaceFromSurface",
+        "topology.brep_p8",
+    ))
+}
 fn extrusion_face(
     _k: &Kernel,
     _b: &mut Brep,
@@ -229,12 +236,9 @@ fn analytic_face(k: &Kernel, b: &mut Brep, surface: AnalyticSurface) -> Result<F
             let domain = surface.natural_uv_domain();
             create_face_id(k, b, surface, domain)
         }
-        AnalyticSurface::Torus(_surface) => {
-            // UNPORTED(topology.brep_p8): SmBrep::CreateFaceFromSurface
-            Err(SolidError::unported(
-                "SmBrep::CreateFaceFromSurface",
-                "topology.brep_p8",
-            ))
+        AnalyticSurface::Torus(surface) => {
+            let domain = surface.base().base().natural_uv_domain();
+            torus_face(k, b, &surface, domain)
         }
     }
 }
@@ -287,7 +291,13 @@ pub fn create_circle(
     )?;
     brep.set_editing_enabled(true);
     let region = brep.infinite_region();
-    planar_face(k, &mut brep, region, vec![Curve::from(circle)], tolerance)?;
+    if let Err(error) = planar_face(k, &mut brep, region, vec![Curve::from(circle)], tolerance) {
+        return Err(if error.is_unported() {
+            error
+        } else {
+            SolidError::sm_err("primitive::primitive_creation::p1::create_circle")
+        });
+    }
     brep.set_editing_enabled(false);
     Ok(brep)
 }
@@ -523,12 +533,8 @@ impl PrimitiveCreation {
         let result = (|| {
             let torus =
                 Torus::create_canonical(k, frame, major, minor, TorusOptions::default(), None)?;
-            let _ = torus;
-            // UNPORTED(topology.brep_p8): SmBrep::CreateFaceFromSurface
-            Err(SolidError::unported(
-                "SmBrep::CreateFaceFromSurface",
-                "topology.brep_p8",
-            ))
+            let domain = torus.base().base().natural_uv_domain();
+            torus_face(k, brep, &torus, domain).map(|_| ())
         })();
         brep.set_editing_enabled(editing);
         result

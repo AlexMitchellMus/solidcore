@@ -330,7 +330,7 @@
       "name": "overflow_regression_427",
       "outcome": "rejected",
       "pass": false,
-      "rejected": "native curve construction rejected by harness",
+      "rejected": "native fixture preflight rejected undefined construction",
       "source": "fixture:fixtures/primitive.primitive_creation_p1/overflow.json#4",
       "values_compared": 0
     },
@@ -343,7 +343,7 @@
       "name": "overflow_regression_670",
       "outcome": "rejected",
       "pass": false,
-      "rejected": "native curve construction rejected by harness",
+      "rejected": "native fixture preflight rejected undefined construction",
       "source": "fixture:fixtures/primitive.primitive_creation_p1/overflow.json#5",
       "values_compared": 0
     },
@@ -356,7 +356,7 @@
       "name": "overflow_regression_689",
       "outcome": "rejected",
       "pass": false,
-      "rejected": "native curve construction rejected by harness",
+      "rejected": "native fixture preflight rejected undefined construction",
       "source": "fixture:fixtures/primitive.primitive_creation_p1/overflow.json#6",
       "values_compared": 0
     },
@@ -369,7 +369,7 @@
       "name": "overflow_regression_919",
       "outcome": "rejected",
       "pass": false,
-      "rejected": "native curve construction rejected by harness",
+      "rejected": "native fixture preflight rejected undefined construction",
       "source": "fixture:fixtures/primitive.primitive_creation_p1/overflow.json#7",
       "values_compared": 0
     },
@@ -694,7 +694,7 @@
       "name": "cylindrical_full_span_preflight",
       "outcome": "rejected",
       "pass": false,
-      "rejected": "native curve construction rejected by harness",
+      "rejected": "native fixture preflight rejected undefined construction",
       "source": "fixture:fixtures/primitive.primitive_creation_p1/primitives.json#31 (upstream source/SMLib/src/SmPrimitiveCreation.cpp:520; source/SMLib/src/SmCircle.cpp:88)",
       "values_compared": 0
     },

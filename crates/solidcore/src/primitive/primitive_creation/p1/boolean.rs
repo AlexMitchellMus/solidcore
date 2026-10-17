@@ -11,6 +11,7 @@
 //! the two consumed input slots become empty arenas. No recursion.
 
 use super::primitives::{detailed_face, stitch_faces, Boolean2d};
+use crate::boolean::topology_intersector::MateMap;
 use crate::error::{ignore_status, Result, SolidError};
 use crate::geom::context::{MarkLock, MarkType};
 use crate::kernel::Kernel;
@@ -19,33 +20,19 @@ use crate::topology::edge;
 use crate::topology::edgeuse::p1 as eu;
 use crate::topology::topology_traverser::{Entity, Marks};
 use crate::topology::{Brep, EdgeId, FaceId, VertexId};
-use std::collections::BTreeMap;
 
 #[derive(Default)]
 struct PlanarIntersections {
     edges: Vec<(EdgeId, EdgeId)>,
     vertices: Vec<(VertexId, VertexId)>,
-    to_other: BTreeMap<FaceId, FaceId>,
-    to_primary: BTreeMap<FaceId, FaceId>,
-}
-impl PlanarIntersections {
-    fn relate(&mut self, a: FaceId, b: FaceId) -> Result<()> {
-        if self.to_other.get(&a).is_some_and(|v| *v != b)
-            || self.to_primary.get(&b).is_some_and(|v| *v != a)
-        {
-            return Err(SolidError::sm_err(
-                "primitive::primitive_creation::p1::boolean_2d::relate",
-            ));
-        }
-        self.to_other.insert(a, b);
-        self.to_primary.insert(b, a);
-        Ok(())
-    }
+    faces: MateMap<FaceId>,
 }
 fn intersect_insert_relate(
     _k: &mut Kernel,
     _a: &mut Brep,
     _b: &mut Brep,
+    _approx_tolerance: f64,
+    _angle_radians: f64,
 ) -> Result<PlanarIntersections> {
     // UNPORTED(boolean.topology_intersector_p2): SmTopologyIntersector::IntersectInsertRelate
     Err(SolidError::unported(
@@ -82,7 +69,16 @@ pub(super) fn finish(
     result: &mut Option<Brep>,
     marks: (&mut Marks, &mut Marks),
 ) -> Result<()> {
-    let mut intersections = intersect_insert_relate(k, a, b)?;
+    let tolerance = crate::math::max2(a.tolerance(), b.tolerance());
+    // Preserve the constructor's explicit tolerances when wiring the pending
+    // edit adapter. Its output retains native common-edge/vertex visit order.
+    let mut intersections = intersect_insert_relate(
+        k,
+        a,
+        b,
+        tolerance / 2.0,
+        20.0 * core::f64::consts::PI / 180.0,
+    )?;
     let mut lock = MarkLock::new_pair(core::slice::from_mut(&mut k.context), 0, 0)?;
     let mark_a = lock.mark_type1();
     let mark_b = lock.mark_type2();
@@ -123,7 +119,7 @@ pub(super) fn finish(
                     let mate = eu::faceuse_face(b, faceuse)?
                         .ok_or_else(|| SolidError::null_pointer("primitive::boolean_2d"))?;
                     marks_b.mark(k, Entity::Face(mate), mark_b);
-                    ignore_status(intersections.relate(face, mate))?;
+                    ignore_status(intersections.faces.record(face, mate))?;
                 }
             }
             for edgeuse in edge::edgeuses(b, other, None, None)?.into_iter().step_by(2) {
@@ -151,13 +147,13 @@ pub(super) fn finish(
                     let mate = eu::faceuse_face(a, faceuse)?
                         .ok_or_else(|| SolidError::null_pointer("primitive::boolean_2d"))?;
                     marks_a.mark(k, Entity::Face(mate), mark_a);
-                    intersections.relate(mate, face)?;
+                    intersections.faces.record(mate, face)?;
                 }
             }
         }
         let mut delete = Vec::new();
         for face in crate::topology::brep::p1::faces(a, None)? {
-            let common = intersections.to_other.contains_key(&face);
+            let common = intersections.faces.other(face).is_some();
             if matches!(operation, Boolean2d::ExclusiveOr | Boolean2d::Difference) && common
                 || operation == Boolean2d::Intersection && !common
             {
@@ -170,7 +166,7 @@ pub(super) fn finish(
             if matches!(
                 operation,
                 Boolean2d::ExclusiveOr | Boolean2d::Union | Boolean2d::Merge
-            ) && !intersections.to_primary.contains_key(&face)
+            ) && intersections.faces.primary(face).is_none()
             {
                 let boundary = crate::topology::face::p2::create_curves_from_face(
                     k,
