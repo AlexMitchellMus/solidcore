@@ -15,7 +15,6 @@ use solidcore::blend::fillet_solver::p1::FilletSolver;
 use solidcore::blend::fillet_solver::p5::RolloverObjects;
 use solidcore::curve::{curve::Curve, line::Line};
 use solidcore::error::{EntityRef, Result as SolidResult, SolidError};
-use solidcore::geom::extent1d::Extent1d;
 use solidcore::intersect::curve_class::p1::CurveClassification;
 use solidcore::intersect::point_class::{ClassGeometry, PointClassType};
 use solidcore::kernel::Kernel;
@@ -328,7 +327,9 @@ fn run(i: &Inputs) -> Result<Output, HarnessError> {
             cc.set_size(&k, ivls.len()).map_err(harness)?;
             for (j, ivl) in ivls.iter().enumerate() {
                 let r = cc.at_mut(j).map_err(harness)?;
-                r.set_interval(&Extent1d::from_min_max(ivl.min, ivl.max));
+                // The native fixture ignores SetMinMax status; a negative interval
+                // leaves the default inside-out extent unchanged.
+                let _ = r.interval.set_min_max(ivl.min, ivl.max);
                 let object = match ivl.class {
                     101 => Some(EntityRef::Region(region)),
                     102 => face.map(EntityRef::Face),

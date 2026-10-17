@@ -3105,10 +3105,10 @@ soft_depends_on = ["curve.curve_p1", "geom.extent1d", "geom.tol", "geom.vector3d
 est_lines = 848
 layer = 50
 tests = ["SM_API_test:TestSmCircularFillet", "SM_API_test:TestSmChamferFillet", "SM_API_test:TestSmFilletEdges", "SM_API_test:TestSmFilletEdgesPerEdge", "SM_API_test:TestSmVariableRadiusFillet", "SM_API_test:TestSmSetBevelCorners"]
-status = "todo"
+status = "partial"
 claimed_by = ""
 claimed_at = ""
-notes = "2 fns; largest: SmFilletSolver::ProcessRollOver, SmFilletSolver::TestRollOver; cycle back-edges (call into later units; stub or co-port): blend.fillet_solver_p3(3), blend.fillet_geom_p2(2), blend.fillet_geom_p3(2), blend.fillet_geom_p5(2), blend.fillet_solver_p2(2), blend.fillet_executive_p1(1); unit-SCC #22 (220 units); 25 upstream test entry points reach this unit"
+notes = "PR #208: dependency-limited TestRollOver/ProcessRollOver; 86 cases, 78 passed / 0 failed / 6 deferred / 2 rejected, bit-identical. Compared: blend skip, missing classifications/corners, classified single-interval rails, unsupported full-rollover corners, empty solver list, ordered post-call classifications and adjusted corners. Nonempty TestRollOver defers on intersect.curve_class_p2::ReSet (1); multi/empty-interval process defers on topology.edgeuse_p3::EvaluateBinormal (5). No actual rollover repair compared; 2 incomplete full-rollover fixtures rejected by the fixture guard. Types reused from #192 and #147; fillet_geom_p1 shared-solver field/getter integration verified with both dependency runners. 2 fns; largest: SmFilletSolver::ProcessRollOver, SmFilletSolver::TestRollOver; cycle back-edges (call into later units; stub or co-port): blend.fillet_solver_p3(3), blend.fillet_geom_p2(2), blend.fillet_geom_p3(2), blend.fillet_geom_p5(2), blend.fillet_solver_p2(2), blend.fillet_executive_p1(1); unit-SCC #22 (220 units); 25 upstream test entry points reach this unit"
 
 [[unit]]
 id = "blend.fillet_standard_solver_p1"

@@ -6698,3 +6698,42 @@ regression inputs below; 2000-seed sweep 2037 pass / 111 deferred / 0 failed / 1
   (`ignore_soft`), so that `InvalidInput` is swallowed there and the split reports no new
   faces. It is unreachable today (`MergeInterval` makes no topology until
   `intersect.curve_class_p2`); that unit's porter must give the healer a typed resolver.
+
+## blend.fillet_solver_p5 — dependency-limited rollover (PR #208)
+
+- `ProcessRollOver` compares the blend early return, NER for missing rail
+  classifications/corners, two classified single-interval rails, and the rejection
+  of unsupported full-rollover corner types. Every compared case observes the
+  post-call geometry type, interval endpoints/classes and the ordered adjusted
+  corner list (including existing duplicates). Interval scale cases change stored
+  classification parameters; they do not establish large/small fillet geometry
+  coverage. Statuses/enums/counts/identities compare as integers.
+- `two_real_rails_classified_on_rectangle` constructs real `SmLine` rails inside a
+  real planar face. C++ finishes with `SM_SUCCESS` and one `SM_PC_FACE` interval on
+  each rail. Rust installs the first classification on its rail, then the actual
+  `query.face_p2::curve_on_classify` stops at `intersect.curve_class_p2::ReSet`.
+  This is deferred, not a comparison of the completed classifications. The native
+  target is exported/imported using the existing edgeuse graph format.
+- `multi_or_empty_intervals_2_1` (and the other non-[1,1] interval counts) reaches
+  `IsConvexRadialSector(10, TRUE, 0.0)`. Its wire edgeuse returns an upstream soft
+  binormal error (the Boolean SER returns true), then C++ returns
+  `SM_ERR_NULL_POINTER` for the absent fillet surface. Rust stops at the existing
+  `topology.edgeuse_p3::EvaluateBinormal` dependency. No analytic detection, splitting,
+  tangent/cliff repair, corner adjustment or surface rebuild is compared.
+- Supported full rollover needs real rail/face geometry that the process fixture
+  does not construct. Exactly that reachable incomplete-fixture branch is rejected
+  by both guards; blend/known-class/missing-class/unsupported-corner paths stay
+  accepted. These are fixture limitations, not claims that valid upstream full
+  rollover inputs are undefined. A Rust unit test checks lazy corner resolution,
+  resolver-error propagation, retained caller output and the p3 recovery deferral.
+- The API-level `TestSmCircularFillet`/`TestSmFilletEdges` inputs need the full fillet
+  executive and topology construction; this unit does not claim those end-to-end
+  fillet outputs. Solver and pseudo-B-rep records reuse PRs #192/#147. The latter's
+  shared-solver integration uses the base GetSurface path (including its existing
+  geometry-redirection boundary), not a second copy of solver data.
+- A guard-fuzz probe with rail 1 interval `[0, -1e300]` found a fixture-builder
+  mismatch: C++ `SetMinMax` rejects the assignment and preserves the default
+  inside-out extent, while the Rust fixture's two-end constructor reordered it.
+  The fixture now calls the matching setter and preserves its ignored-error state;
+  `reversed_interval_preserves_initial_extent` is the regression. No kernel
+  tolerance or upstream interval implementation was changed.

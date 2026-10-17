@@ -1977,6 +1977,36 @@
           ]
         ]
       }
+    },
+    {
+      "inputs": {
+        "adjusted": [
+          1,
+          0,
+          1
+        ],
+        "corner": 6,
+        "kind": 0,
+        "op": 0,
+        "rails": [
+          [
+            {
+              "class": 102,
+              "max": 1.0,
+              "min": 0.0
+            }
+          ],
+          [
+            {
+              "class": 100,
+              "max": -1e+300,
+              "min": 0.0
+            }
+          ]
+        ]
+      },
+      "name": "reversed_interval_preserves_initial_extent",
+      "upstream_ref": "source/SMLib/src/SmExtent1d.cpp:239"
     }
   ]
 }

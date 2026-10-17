@@ -285,7 +285,7 @@ mod tests {
                 .unwrap();
             fb.brep_mut().edge_mut(edge).unwrap().edgeuses.push(eu);
 
-            fb.insert_fillet_vertex(a, FilletVertex::new(k, Some(FilletCornerId(42))));
+            fb.insert_fillet_vertex(a, FilletVertex::new(k, Some(FilletCornerId(42 + i as u32))));
             let mut record = FilletEdge::with_corner(None);
             let mut cc = CurveClassification::new(k);
             cc.set_size(k, 1).unwrap();
