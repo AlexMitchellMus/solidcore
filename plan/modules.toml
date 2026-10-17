@@ -3094,7 +3094,7 @@ tests = ["prog_test:my_test_surface_closest_point", "prog_test:my_test_drop_poin
 status = "partial"
 claimed_by = ""
 claimed_at = ""
-notes = "12 fns; largest: SmFilletIntersector::ComputeNextPoint, SmFilletIntersector::FlushCurve, SmFilletIntersector::TestSpanAccuracy, sm_FlushCrv; cycle back-edges (call into later units; stub or co-port): blend.fillet_solver_p2(2), blend.fillet_solver_p4(2), blend.fillet_solver_p3(1); unit-SCC #22 (220 units); 317 upstream test entry points reach this unit; PARTIAL (PR #179): difftest cases=1213 passed=803 deferred=410 (blend.fillet_solver_p1 33, _p2 37, _p3 119, _p4 59, curve.crv_on_surf 162: SmCrvOnSurf over an SmPlane is a dispatch gap); FlushCurve of 2+ points is not run in C++ (dereferences the unset m_pExecutive and NULL fillet geometry rails) and is covered by unit tests only"
+notes = "12 fns; largest: SmFilletIntersector::ComputeNextPoint, SmFilletIntersector::FlushCurve, SmFilletIntersector::TestSpanAccuracy, sm_FlushCrv; cycle back-edges (call into later units; stub or co-port): blend.fillet_solver_p2(2), blend.fillet_solver_p4(2), blend.fillet_solver_p3(1); unit-SCC #22 (220 units); 317 upstream test entry points reach this unit; PARTIAL (PR #179): difftest cases=1213 passed=803 deferred=410 (blend.fillet_solver_p1 33, _p2 37, _p3 119, _p4 59, curve.crv_on_surf 162: SmCrvOnSurf over an SmPlane is a dispatch gap); with blend.fillet_solver_p4: cases=1213 passed=858 deferred=355 (blend.fillet_solver_p1 33, _p2 37, _p3 123, curve.crv_on_surf 162), the runner now writes the ComputePointValues/ComputePointValuesDelta arena point back as C++ does in place; FlushCurve of 2+ points is not run in C++ (dereferences the unset m_pExecutive and NULL fillet geometry rails) and is covered by unit tests only"
 
 [[unit]]
 id = "blend.fillet_solver_p5"
@@ -3175,10 +3175,10 @@ soft_depends_on = ["curve.curve_p1", "curve.curve_p4", "curve.curve_p5", "curve.
 est_lines = 1404
 layer = 51
 tests = ["prog_test:my_test_parallel_projection", "prog_test:my_test_tsurf_projection", "prog_test:my_test_surface_interface", "prog_test:my_test_ssi", "prog_test:my_test_tsurf_section", "prog_test:my_test_planar_section"]
-status = "todo"
+status = "partial"
 claimed_by = ""
 claimed_at = ""
-notes = "2 fns; largest: SmFilletSolver::CalcFilletGeom, SmFilletSolver::ComputePointValues; cycle back-edges (call into later units; stub or co-port): blend.fillet_solver_p2(3), blend.fillet_solver_p3(2), blend.fillet_geom_p3(1), blend.fillet_geom_p4(1), blend.fillet_geom_p5(1); unit-SCC #22 (220 units); 150 upstream test entry points reach this unit"
+notes = "2 fns; largest: SmFilletSolver::CalcFilletGeom, SmFilletSolver::ComputePointValues; cycle back-edges (call into later units; stub or co-port): blend.fillet_solver_p2(3), blend.fillet_solver_p3(2), blend.fillet_geom_p3(1), blend.fillet_geom_p4(1), blend.fillet_geom_p5(1); unit-SCC #22 (220 units); 150 upstream test entry points reach this unit; PARTIAL: difftest cases=633 passed=403 failed=0 deferred=230 (blend.fillet_solver_p3 194: StepSolve in the ComputePointValues finite-difference block and sm_FindFilletTsectPnt; topology.edgeuse_p3 36: EvaluateBinormal / GetOrCreateUVTrimCurve creation in CalcFilletGeom), bit-identical; CalcFilletGeom compared only on paths that stop before the first rail (no fillet executive in the harness); the trace, analytic and post-processing paths are unit-tested only (they stop at blend.fillet_solver_p2/_p3, blend.fillet_geom_p3/_p4/_p5, blend.fillet_executive_p1, topology.brep_p2 stubs); sFI.DoPointIntersection runs the SmFilletIntersector overrides through surface_intersector::p4::IntersectorVirtuals"
 
 [[unit]]
 id = "boolean.topology_intersector_p2"
