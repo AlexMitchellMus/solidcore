@@ -6511,7 +6511,7 @@ executable prefixes. The remaining P2-owned continuations are documented behind
 actual missing callees, not represented by fabricated topology copies or empty
 successful offset/shell geometry.
 
-- **Final integrated native evidence.** After merging upstream `dbf7753d`, the
+- **Final integrated native evidence.** After merging upstream `bc296e26`, the
   default unfiltered run completes with 294 cases (54 fixtures and 240 fixed-seed
   generated cases; default CLI seeds remain 16): 118 passed, 0 failed, 0 rejected,
   176 deferred. All 118 passes compare numerical values; maximum relative error
