@@ -12,7 +12,7 @@ use solidcore::blend::fillet_geom::p1::{
     FilletVertex,
 };
 use solidcore::blend::fillet_solver::p1::FilletSolver;
-use solidcore::blend::fillet_solver::p5::RolloverObjects;
+use solidcore::blend::fillet_solver::p5::{RolloverObjects, RolloverOwnership};
 use solidcore::curve::{curve::Curve, line::Line};
 use solidcore::error::{EntityRef, Result as SolidResult, SolidError};
 use solidcore::intersect::curve_class::p1::CurveClassification;
@@ -234,6 +234,28 @@ fn corner_type(code: i32) -> FilletCornerType {
         _ => FilletCornerType::Unknown,
     }
 }
+struct Ownership;
+impl RolloverOwnership for Ownership {
+    fn edge_owner(
+        &self,
+        _: EdgeId,
+    ) -> SolidResult<(
+        solidcore::geom::object::ObjectRef,
+        Option<solidcore::geom::object::ObjectRef>,
+    )> {
+        Err(SolidError::invalid_input(
+            "fixture",
+            "unexpected new curve owner",
+        ))
+    }
+    fn owner_changed(&mut self, _: solidcore::curve::curve::p2::OwnerChange) -> SolidResult<()> {
+        Err(SolidError::invalid_input(
+            "fixture",
+            "unexpected owner notification",
+        ))
+    }
+}
+
 fn run(i: &Inputs) -> Result<Output, HarnessError> {
     let k = Kernel::default();
     let mut solver = FilletSolver::new(1e-5, 1e-3, 1e-3);
@@ -364,6 +386,7 @@ fn run(i: &Inputs) -> Result<Output, HarnessError> {
             id,
             &|_| Ok(corner_type(i.corner)),
             &mut adjusted,
+            &mut Ownership,
         )
     } else {
         if i.op == 1 {
@@ -389,6 +412,7 @@ fn run(i: &Inputs) -> Result<Output, HarnessError> {
                 }
             },
             &mut adjusted,
+            &mut Ownership,
         )
     };
     if let Err(e) = &outcome {

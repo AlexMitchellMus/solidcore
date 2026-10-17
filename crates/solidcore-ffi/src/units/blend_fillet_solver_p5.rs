@@ -10,6 +10,10 @@
 //! check. Supported full rollover with an unknown midpoint needs real face/curve
 //! data and is rejected for this incomplete fixture only. `TestRollOver` op 2 builds
 //! real `SmLine` rails inside a real planar face; it is deferred by Rust's `ReSet`.
+//! Native fixture construction, evaluation and destruction run in a bounded Unix
+//! worker. A signal, destructor abort or stalled worker is a native exception,
+//! never an operation status or rejected fixture. No SMLib pointer crosses IPC.
+//! Unsupported platforms fail closed rather than executing SMLib in process.
 
 use crate::{call_with_buffer, FfiError};
 
@@ -85,6 +89,7 @@ pub fn validate(input: &[f64]) -> bool {
 ///
 /// # Errors
 /// `InvalidArgument` for an incomplete/unsafe fixture, or native shim failure.
+/// Native worker exceptions, signals, aborts and timeouts return `FfiError::Status(SC_ERR_EXCEPTION)`.
 pub fn eval(input: &[f64]) -> Result<Vec<f64>, FfiError> {
     if !validate(input) {
         return Err(FfiError::InvalidArgument("rollover fixture".into()));
@@ -146,5 +151,74 @@ mod tests {
         assert!(eval(&safe).is_ok());
         safe[4] = 1e300;
         assert!(eval(&safe).is_err());
+    }
+}
+
+#[cfg(test)]
+mod worker_tests {
+    use super::*;
+    const SAFE: [f64; 12] = [0., 0., -1., 0., 1., 0., 1., 102., 1., 0., 1., 103.];
+    #[test]
+    fn worker_protocol_honors_empty_and_short_output_buffers() {
+        let mut len = 0;
+        // SAFETY: input contains SAFE.len() initialized doubles. A null output
+        // with capacity zero is explicitly supported; len is writable.
+        let status = unsafe {
+            sys::sc_blend_fillet_solver_p5_eval(
+                SAFE.as_ptr(),
+                12,
+                std::ptr::null_mut(),
+                0,
+                &raw mut len,
+            )
+        };
+        assert_eq!(status, -1001);
+        assert_eq!(len, 11);
+        let mut out = [12345.; 10];
+        // SAFETY: the initialized input and output pointers match their lengths.
+        let status = unsafe {
+            sys::sc_blend_fillet_solver_p5_eval(
+                SAFE.as_ptr(),
+                12,
+                out.as_mut_ptr(),
+                10,
+                &raw mut len,
+            )
+        };
+        assert_eq!(status, -1001);
+        assert_eq!(out, [12345.; 10]);
+        assert_eq!(len, 11);
+        assert_eq!(eval(&SAFE).unwrap().len(), 11);
+    }
+    #[test]
+    fn native_parser_checks_truncated_layout_independently_of_rust_guard() {
+        let malformed = [0., 0., -1., 0., 1., 0.];
+        let mut out = [0.; 128];
+        let mut len = 0;
+        // SAFETY: these slices are valid; only the serialized layout is malformed.
+        let status = unsafe {
+            sys::sc_blend_fillet_solver_p5_eval(
+                malformed.as_ptr(),
+                6,
+                out.as_mut_ptr(),
+                128,
+                &raw mut len,
+            )
+        };
+        assert_eq!(status, -1002);
+    }
+    #[test]
+    fn repeated_concurrent_workers_return_identical_owned_snapshots() {
+        let expected = eval(&SAFE).unwrap();
+        std::thread::scope(|scope| {
+            for _ in 0..4 {
+                let expected = &expected;
+                scope.spawn(move || {
+                    for _ in 0..12 {
+                        assert_eq!(eval(&SAFE).unwrap(), *expected);
+                    }
+                });
+            }
+        });
     }
 }

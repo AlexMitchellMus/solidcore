@@ -2132,7 +2132,7 @@ fn ignore_non_unported<T>(r: Result<T>) -> Result<()> {
 /// upstream's solutions point at the target curve and the fillet surface, whose
 /// natural domains the solver reads back (`SmSolution::GetParameterInterval`).
 #[derive(Clone, Copy)]
-enum CliffHandle<'a> {
+pub(crate) enum CliffHandle<'a> {
     Curve(&'a Curve),
     Surface(&'a Surface),
 }
@@ -3133,7 +3133,7 @@ fn b_spline_net_mut(surface: &mut Surface) -> Option<&mut BSplineSurface> {
 /// notification clears each edge use's UV trim curve and drop-curve record and resets
 /// its cached edge/face gap (its mate's too) and the cached gaps of the edge's vertex
 /// uses; then the curve replaces the old one.
-fn set_rail_curve(brep: &mut Brep, rail: EdgeId, curve: Curve) -> Result<()> {
+pub(crate) fn set_rail_curve(brep: &mut Brep, rail: EdgeId, curve: Curve) -> Result<()> {
     for eu in edge_unit::edgeuses(brep, rail, None, None)? {
         let mate_eu = mate(brep, eu)?;
         let rec = brep.edgeuse_mut(eu)?;
