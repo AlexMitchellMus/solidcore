@@ -1020,9 +1020,14 @@ constructors, analytic rotational sweep, pole-free sphere assembly, elliptic-end
 cone and planar boolean control. Dependency PR #145 is merged into this branch;
 its B-rep state and ordered collections are reused.
 
-Default native differential result: 689 cases, 667 bit-identical passes, zero
-failures, 17 deferred and five native preflight rejections (UB-57 and the
+Default native differential result: 689 cases, 667 passes with zero relative
+error, zero failures, 17 deferred and five native preflight rejections (UB-57 and the
 two-point G1 fallback). Passing
 cases compare geometry helper outputs or real error/status/state records; primitive
 construction/topology mutations remain deferred and are not claimed as certified.
 See `plan/findings.md` for branch witnesses and the exact dependency breakdown.
+
+Validation: fmt, normal/native Clippy, 1,292 kernel tests, wasm32, four native FFI
+tests, all 667 perturbations detected and 1,000 fuzz mutations with zero
+differences/crashes/panics/timeouts. The full `--green` gate completes with
+202 units: 108 passed, 94 partial, zero failed.

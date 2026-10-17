@@ -6752,7 +6752,7 @@ B-spline stand-in.
 from the first 1,000-case fuzz run. Four profile placements now preserve the X
 axis already written/unitized by `MakeUnitOrthoVectors` before a later failure;
 its ignored status does not restore the old X axis. Their coordinates and
-derivatives compare bit-for-bit, including the `1e300` origins. Four extension
+derivatives agree in the differential comparison, including the `1e300` origins. Four extension
 cases reach a native G1 fallback that reads a nonexistent third control point
 of a two-point line after `N_VectorNormalize` fails. The shim preflights the exact
 join/closed/periodic extension sequence, rejects those four before UB and keeps
@@ -6789,3 +6789,9 @@ error zero: `sweep.api_brep` 573 cases / 306 pass / 267 deferred;
 `sweep.api_surfaces` 882 / 831 / 51; `topology.brep_p1` 2,343 / 1,717 / 626.
 The existing B-rep report retains its 60 status-only passing records; these are
 not added to the primitive unit's geometry-coverage claims.
+
+
+The full required `--green --no-report` run completed successfully on the
+integrated branch: **202 units, 108 passed, 94 partial, zero failed**. Partial
+units retain their dependency deferrals; this result does not promote them to
+green or certify their deferred mutations.
