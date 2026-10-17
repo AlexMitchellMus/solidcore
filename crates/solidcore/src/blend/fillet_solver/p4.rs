@@ -650,24 +650,345 @@ fn c2_sort_points(
     which_surf: usize,
     pass: &SurfPass,
 ) -> Result<()> {
-    let _ = (ops, cx, st, which_surf, pass);
-    // P4-CHUNK(C2): SmFilletSolver.cpp:1754-1858
-    Err(SolidError::Unported {
-        upstream: "SmFilletSolver::CalcFilletGeom (p4 chunk C2 pending)",
-        unit: "blend.fillet_solver_p4",
-    })
+    use crate::curve::curve::p1::GlobalPointSolveOptions;
+    use crate::geom::geom_utility::p1::line_closest_point;
+    use crate::geom::global_solver::{SolutionRequested, SolverOperation};
+    use crate::math::{BIG_DOUBLE, EFF_ZERO};
+
+    // UVPos(lWhichSurf) (upstream indexes past the pair for other values)
+    let srf = c2_srf_index(which_surf)?;
+    let approx_tol_3d = ops.solver().approx_tol_3d;
+
+    let d_scale = st.ivl.min().abs() + st.ivl.max().abs() + 1.0;
+    // sProjParams
+    let mut proj_params: Vec<f64> = Vec::new();
+    for &r in &pass.all {
+        let uv = st.store.get(cx.fillets, r)?.uv_pos(srf);
+        // SmPoint3d sUVPnt(sUV): z = 0
+        let uv_pnt = Point3::new(uv.x, uv.y, 0.0);
+
+        // skip points set to -SM_BIG_DOUBLE (upstream's comment says the sort marks
+        // them so, but the mark goes to m_dCurveParameter: kept as written)
+        if uv.x == -BIG_DOUBLE || uv.y == -BIG_DOUBLE {
+            continue;
+        }
+
+        // drop the UV point to pUVCurveFilletedEdge: dT = the drop parameter
+        let solutions = pass.uv_curve.global_point_solve::<NoObject>(
+            cx.k,
+            &st.ivl,
+            SolverOperation::Minimize,
+            uv_pnt,
+            approx_tol_3d,
+            SolutionRequested::Single,
+            &GlobalPointSolveOptions::default(),
+        )?;
+        if solutions.len() != 1 {
+            return Err(SolidError::sm_err(OP));
+        }
+        let mut t = solutions
+            .get(0)
+            .ok_or_else(|| SolidError::sm_err(OP))?
+            .start
+            .param(0)?;
+
+        // a drop to the edge's end point may lie beyond it (the edge needs extending):
+        // drop to the tangent extension line instead
+        if st.ivl.is_value_on_boundary(t, EFF_ZERO).0 {
+            let pv = pass.uv_curve.evaluate(t, 1, true, true)?;
+            let p0 = *pv
+                .first()
+                .ok_or_else(|| invalid("short curve evaluation"))?;
+            let p1 = *pv.get(1).ok_or_else(|| invalid("short curve evaluation"))?;
+            let adjustment = line_closest_point(p0, p1, uv_pnt);
+            t += adjustment;
+        }
+
+        // sort by dT values - don't insert points already present
+        if let Some(index) = c2_insert_index(&proj_params, t, d_scale) {
+            // sTsectPnts and sProjParams grow together from empty
+            if index > st.tsect_pnts.len() {
+                return Err(invalid("sorted intersection point index out of range"));
+            }
+            proj_params.insert(index, t);
+            st.store.get_mut(cx.fillets, r)?.curve_parameter = -BIG_DOUBLE;
+            st.tsect_pnts.insert(index, r);
+        }
+    }
+    Ok(())
+}
+
+/// `lWhichSurf` as a `UVPos` index.
+fn c2_srf_index(which_surf: usize) -> Result<crate::intersect::surface_intersector::p1::SrfIndex> {
+    use crate::intersect::surface_intersector::p1::SrfIndex;
+    match which_surf {
+        0 => Ok(SrfIndex::First),
+        1 => Ok(SrfIndex::Second),
+        _ => Err(invalid("surface index past the pair")),
+    }
+}
+
+/// The `kk` loop of :1830-1843: `None` when `t` is within `SM_EFF_ZERO_SQRT*dScale`
+/// of a parameter already present (the scan stops at the first entry that is either
+/// that close or greater than `t`), else the insert index.
+fn c2_insert_index(proj_params: &[f64], t: f64, d_scale: f64) -> Option<usize> {
+    use crate::math::EFF_ZERO_SQRT;
+    let mut index_of_insert = proj_params.len();
+    for (kk, &p) in proj_params.iter().enumerate() {
+        if (t - p).abs() < EFF_ZERO_SQRT * d_scale {
+            return None;
+        } else if t < p {
+            index_of_insert = kk;
+            break;
+        }
+    }
+    Some(index_of_insert)
+}
+
+/// `pOffsetSrf1->EvaluatePoint(uv, sPnt)` with its status ignored: a failed
+/// evaluation leaves the fresh `SmPoint3d` at `SM_UNDEF_DOUBLE` ([`Vec3::UNDEF`]);
+/// `Unported` still propagates. A missing `GetSurface(0)` (a `NULL` dereference
+/// upstream, ruled out by setup) is `invalid`, not ignored.
+fn c2_offset_point_ignored(ops: &mut dyn FilletSolverOps, uv: Point2) -> Result<Point3> {
+    let surface = offset_surface_mut(ops, 0)?;
+    Ok(crate::error::ignored(surface.surface.evaluate_point_extending(uv))?.unwrap_or(Vec3::UNDEF))
 }
 
 /// :1872-1920: `SM_ERR` without points; with more than two, drop the penultimate
 /// point when the last two are within `m_dThisApproxTol3d` on `GetSurface(0)` (UV of
 /// surface 0, statuses ignored), then the second when the first two are.
 fn c2_clean_ends(ops: &mut dyn FilletSolverOps, cx: &mut Cx<'_>, st: &mut CalcState) -> Result<()> {
-    let _ = (ops, cx, st);
-    // P4-CHUNK(C2): SmFilletSolver.cpp:1872-1920
-    Err(SolidError::Unported {
-        upstream: "SmFilletSolver::CalcFilletGeom (p4 chunk C2 pending)",
-        unit: "blend.fillet_solver_p4",
-    })
+    use crate::intersect::surface_intersector::p1::SrfIndex;
+
+    // check state
+    let mut total_tsects = st.tsect_pnts.len();
+    if total_tsects == 0 {
+        return Err(SolidError::sm_err(OP));
+    }
+    let approx_tol_3d = ops.solver().approx_tol_3d;
+
+    // the last two points very close to each other: remove the next to last one
+    if total_tsects > 2 {
+        let uv1 = st
+            .point(cx.fillets, total_tsects - 1)?
+            .uv_pos(SrfIndex::First);
+        let pnt1 = c2_offset_point_ignored(ops, uv1)?;
+        let uv2 = st
+            .point(cx.fillets, total_tsects - 2)?
+            .uv_pos(SrfIndex::First);
+        let pnt2 = c2_offset_point_ignored(ops, uv2)?;
+        let v = pnt1 - pnt2;
+        let len = v.length();
+
+        if len < approx_tol_3d {
+            // sTsectPnts[n-2] = sTsectPnts[n-1]; sTsectPnts.RemoveLast()
+            let last = st
+                .tsect_pnts
+                .pop()
+                .ok_or_else(|| invalid("intersection point index out of range"))?;
+            let penultimate = st
+                .tsect_pnts
+                .last_mut()
+                .ok_or_else(|| invalid("intersection point index out of range"))?;
+            *penultimate = last;
+            total_tsects -= 1;
+        }
+    }
+
+    // the first two points very close to each other: remove the second one
+    if total_tsects > 2 {
+        let uv1 = st.point(cx.fillets, 0)?.uv_pos(SrfIndex::First);
+        let pnt1 = c2_offset_point_ignored(ops, uv1)?;
+        let uv2 = st.point(cx.fillets, 1)?.uv_pos(SrfIndex::First);
+        let pnt2 = c2_offset_point_ignored(ops, uv2)?;
+        let v = pnt1 - pnt2;
+        let len = v.length();
+
+        if len < approx_tol_3d {
+            // sTsectPnts.RemoveAt(1) (more than two entries here)
+            st.tsect_pnts.remove(1);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests_c2 {
+    use super::*;
+    use crate::blend::fillet_custom_solver::{ConstantRadiusAssistedFs, SurfaceId};
+    use crate::geom::vector2d::Vec2;
+    use crate::intersect::surface_intersector::p1::SrfIndex;
+    use crate::math::BIG_DOUBLE;
+
+    /// The plane z = 0 over `[0,1]^2` (u along x, v along y).
+    fn plane() -> Surface {
+        Surface::from(crate::surface::plane::Plane::new(
+            Point3::new(0.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec2::new(1.0, 1.0),
+            &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+        ))
+    }
+
+    fn solver(k: &Kernel, tol: f64) -> ConstantRadiusAssistedFs {
+        let off =
+            |d: f64, id: u32| OffsetSurface::new(k, d, plane(), SurfaceId::Free(id), 0).unwrap();
+        ConstantRadiusAssistedFs::from_parts(
+            tol,
+            1e-3,
+            1e-6,
+            [0.25, 0.25],
+            [Some(off(0.25, 0)), Some(off(0.25, 1))],
+            [1.0, 1.0],
+            [None, None],
+        )
+    }
+
+    /// Setup state over the edge interval `[0,1]` with local points at `uvs` (UV of
+    /// both surfaces) in that order.
+    fn state(uvs: &[(f64, f64)]) -> (CalcState, Vec<TsRef>) {
+        let line = Curve::from(
+            BSplineCurve::create_line_segment(
+                3,
+                Point3::new(0.0, 0.0, 0.0),
+                Point3::new(1.0, 0.0, 0.0),
+            )
+            .unwrap(),
+        );
+        let mut st = CalcState::new(
+            EdgeId::from_index(0),
+            line,
+            Extent1d::from_min_max(0.0, 1.0),
+            [Vec3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0)],
+            [Vec3::new(1.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0)],
+            [plane(), plane()],
+            FilletGeomId(0),
+            false,
+        );
+        let refs = uvs
+            .iter()
+            .map(|&(u, v)| {
+                let mut p = TsectPnt::new();
+                *p.uv_pos_mut(SrfIndex::First) = Point2::new(u, v);
+                *p.uv_pos_mut(SrfIndex::Second) = Point2::new(u, v);
+                p.curve_parameter = 0.5;
+                st.store.alloc(p)
+            })
+            .collect();
+        (st, refs)
+    }
+
+    /// The UV trim curve of the edge: u from 0 to 1 at v = 0.5 (z = 0).
+    fn uv_line() -> Curve {
+        Curve::from(
+            BSplineCurve::create_line_segment(
+                3,
+                Point3::new(0.0, 0.5, 0.0),
+                Point3::new(1.0, 0.5, 0.0),
+            )
+            .unwrap(),
+        )
+    }
+
+    #[test]
+    fn insert_index_dedups_and_orders() {
+        let p = [0.1, 0.5, 0.9];
+        assert_eq!(c2_insert_index(&[], 0.3, 1.0), Some(0));
+        assert_eq!(c2_insert_index(&p, 0.0, 1.0), Some(0));
+        assert_eq!(c2_insert_index(&p, 0.3, 1.0), Some(1));
+        assert_eq!(c2_insert_index(&p, 0.95, 1.0), Some(3));
+        assert_eq!(c2_insert_index(&p, 0.5 + 0.5e-6, 1.0), None);
+        // the threshold scales with dScale
+        assert_eq!(c2_insert_index(&p, 0.5 + 2.0e-6, 1.0), Some(2));
+        assert_eq!(c2_insert_index(&p, 0.5 + 2.0e-6, 3.0), None);
+        // the scan stops at the first greater entry: no dedup against later ones
+        assert_eq!(c2_insert_index(&[0.2, 0.2], 0.1, 1.0), Some(0));
+    }
+
+    #[test]
+    fn sort_orders_dedups_marks_and_extends_past_the_end() {
+        let k = Kernel::default();
+        let mut fs = solver(&k, 1e-6);
+        let mut target = Brep::new();
+        let mut fillets = FilletBrep::new();
+        let mut geoms: Vec<FilletGeomId> = vec![FilletGeomId(0)];
+        let mut cx = Cx {
+            k: &k,
+            target: &mut target,
+            fillets: &mut fillets,
+            geoms: &mut geoms,
+        };
+        let (mut st, refs) = state(&[
+            (0.7, 0.4),
+            (-BIG_DOUBLE, 0.5), // skipped
+            (0.2, 0.6),
+            (0.2 + 1.0e-8, 0.5), // duplicate of the previous drop
+            (1.25, 0.5),         // beyond the edge end: tangent-line drop
+        ]);
+        let pass = SurfPass {
+            uv_curve: uv_line(),
+            all: refs.clone(),
+        };
+        c2_sort_points(&mut fs, &mut cx, &mut st, 1, &pass).unwrap();
+        assert_eq!(st.tsect_pnts, vec![refs[2], refs[0], refs[4]]);
+        for (i, r) in refs.iter().enumerate() {
+            let cp = st.store.get(cx.fillets, *r).unwrap().curve_parameter;
+            let marked = matches!(i, 0 | 2 | 4);
+            assert_eq!(cp, if marked { -BIG_DOUBLE } else { 0.5 }, "point {i}");
+        }
+        assert!(c2_sort_points(&mut fs, &mut cx, &mut st, 2, &pass).is_err());
+    }
+
+    #[test]
+    fn clean_ends_drops_close_end_points() {
+        let k = Kernel::default();
+        let mut fs = solver(&k, 1e-3);
+        let mut target = Brep::new();
+        let mut fillets = FilletBrep::new();
+        let mut geoms: Vec<FilletGeomId> = vec![FilletGeomId(0)];
+        let mut cx = Cx {
+            k: &k,
+            target: &mut target,
+            fillets: &mut fillets,
+            geoms: &mut geoms,
+        };
+
+        // no points
+        let (mut st, _) = state(&[]);
+        let e = c2_clean_ends(&mut fs, &mut cx, &mut st).unwrap_err();
+        assert!(matches!(e, SolidError::Upstream { .. }));
+
+        // two points are never pruned, however close
+        let (mut st, refs) = state(&[(0.5, 0.5), (0.5, 0.5)]);
+        st.tsect_pnts = refs.clone();
+        c2_clean_ends(&mut fs, &mut cx, &mut st).unwrap();
+        assert_eq!(st.tsect_pnts, refs);
+
+        // close at both ends: the penultimate goes (the last stays), then the second
+        let (mut st, refs) = state(&[
+            (0.1, 0.5),
+            (0.1, 0.5001),
+            (0.5, 0.5),
+            (0.9, 0.5001),
+            (0.9, 0.5),
+        ]);
+        st.tsect_pnts = refs.clone();
+        c2_clean_ends(&mut fs, &mut cx, &mut st).unwrap();
+        assert_eq!(st.tsect_pnts, vec![refs[0], refs[2], refs[4]]);
+
+        // three points, last two close: only the end test runs before n drops to 2
+        let (mut st, refs) = state(&[(0.1, 0.5), (0.1, 0.5001), (0.1, 0.5002)]);
+        st.tsect_pnts = refs.clone();
+        c2_clean_ends(&mut fs, &mut cx, &mut st).unwrap();
+        assert_eq!(st.tsect_pnts, vec![refs[0], refs[2]]);
+
+        // far apart: unchanged
+        let (mut st, refs) = state(&[(0.1, 0.5), (0.5, 0.5), (0.9, 0.5)]);
+        st.tsect_pnts = refs.clone();
+        c2_clean_ends(&mut fs, &mut cx, &mut st).unwrap();
+        assert_eq!(st.tsect_pnts, refs);
+    }
 }
 
 // P4-CHUNK(C2) END
