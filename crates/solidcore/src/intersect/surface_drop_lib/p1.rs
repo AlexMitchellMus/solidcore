@@ -21,7 +21,7 @@
 //! | [`stack_look`]                               | `sm_StackLook` (static)                          |
 //! | [`fix_boundary_curves`]                      | `sm_FixBoundaryCurves` (static)                  |
 //! | [`remove_duplicate_drop_point_solutions`]    | `sm_RemoveDuplicateDropPointSolutions` (static)  |
-//! | [`Surface::drop_and_trim_curve`], [`DropAndTrim`], [`DropFailRecord`] | `SmSurface::DropAndTrimCurve` |
+//! | [`Surface::drop_and_trim_curve`], [`Surface::drop_and_trim_curve_in`], [`DropAndTrim`], [`DropFailRecord`] | `SmSurface::DropAndTrimCurve` |
 //! | [`Surface::drop_iso_curve`], [`IsoDrop`]     | `SmSurface::DropIsoCurve`                        |
 //!
 //! Deviations:
@@ -57,7 +57,8 @@
 //!   its overrides), so [`DropAndTrim::uv_curves`] are [`Curve`]s of the B-spline
 //!   kinds; a traced curve of another kind (a null `SM_CAST_PTR(SmBSplineCurve, ...)`
 //!   upstream, added to `rUVCurves` as a null pointer) is `SM_ERR_NULL_POINTER`.
-//!   The surface cache `DoTrace` checks out is built fresh
+//!   The surface cache `DoTrace` checks out is the caller's when it passes one
+//!   ([`Surface::drop_and_trim_curve_in`]), else built fresh
 //!   ([`tracer_surface_cache`]).
 //! - **Not ported here.** The `SM_DEBUG_CODE` blocks, `Dump`, `Draw`,
 //!   `my_AssertAndDrawDropCurve` (graphics) and the `SM_ASSERT`s.
@@ -85,6 +86,7 @@ use crate::surface::surface::p2::{
 };
 use crate::surface::surface::p4::is_point_on_normal as is_point_on_normal_p4;
 use crate::surface::surface::Surface;
+use crate::surface::surface_cache::p1::SurfaceCache;
 
 /// `SM_BIG_ULONG` (`SmMath.h`): the unset `m_eDropDerivRtn`.
 pub const BIG_ULONG: i32 = 99_999_999;
@@ -938,9 +940,15 @@ struct Trace {
 /// `SmSurfaceDropCurve sDrop(this, domain, curve, interval);
 /// sDrop.SetCurveIsOnSurface(on_surface); sDrop.DoTrace(ctx, tol, NULL, NULL, ...)`
 /// on the surface's cache (`smsurf_GetSurfaceCache` inside `DoTrace`).
-fn drop_curve_trace(
+///
+/// `cache` is the surface's cache when the caller holds it (upstream's
+/// `smsurf_GetSurfaceCache` hands every caller the one cache of the surface); `None`
+/// builds one.
+#[allow(clippy::too_many_arguments)]
+fn drop_curve_trace<C: SolutionObject>(
     k: &Kernel,
     surface: &Surface,
+    cache: Option<&mut SurfaceCache<C>>,
     uv_domain: &Extent2d,
     curve: &Curve,
     interval: &Extent1d,
@@ -952,8 +960,12 @@ fn drop_curve_trace(
     drop.set_curve_is_on_surface(curve_is_on_surface);
 
     // get and checkout surface cache (NER)
-    let mut cache = tracer_surface_cache::<TraceCacheObj>(k, &drop.base)?;
-    let out = drop.drop_trace(k, &mut cache, approx_tol_3d, None)?;
+    let out = if let Some(cache) = cache {
+        drop.drop_trace(k, cache, approx_tol_3d, None)?
+    } else {
+        let mut cache = tracer_surface_cache::<TraceCacheObj>(k, &drop.base)?;
+        drop.drop_trace(k, &mut cache, approx_tol_3d, None)?
+    };
     Ok(Trace {
         uv_curves: out.uv_curves,
         max_drop_dists: out.max_drop_dists,
@@ -1026,6 +1038,40 @@ impl Surface {
         approx_tol_3d: f64,
         keep_all_drop_curves: bool,
         curve_is_on_surface: bool,
+        record: Option<DropFailRecord<'_, O>>,
+    ) -> Result<DropAndTrim> {
+        self.drop_and_trim_curve_in::<O, TraceCacheObj>(
+            k,
+            None,
+            uv_domain,
+            curve,
+            interval,
+            approx_tol_3d,
+            keep_all_drop_curves,
+            curve_is_on_surface,
+            record,
+        )
+    }
+
+    /// [`Surface::drop_and_trim_curve`] with the trace on `cache`, this surface's
+    /// cache when the caller holds it (upstream's `smsurf_GetSurfaceCache` inside
+    /// `DoTrace` hands every caller the one cache of the surface, with whatever tree
+    /// its holder set); `None` builds one.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Surface::drop_and_trim_curve`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn drop_and_trim_curve_in<O: SolutionObject, C: SolutionObject>(
+        &self,
+        k: &Kernel,
+        cache: Option<&mut SurfaceCache<C>>,
+        uv_domain: &Extent2d,
+        curve: &Curve,
+        interval: &Extent1d,
+        approx_tol_3d: f64,
+        keep_all_drop_curves: bool,
+        curve_is_on_surface: bool,
         mut record: Option<DropFailRecord<'_, O>>,
     ) -> Result<DropAndTrim> {
         // init outputs
@@ -1042,6 +1088,7 @@ impl Surface {
         let trace = drop_curve_trace(
             k,
             self,
+            cache,
             uv_domain,
             curve,
             interval,

@@ -7,7 +7,7 @@
 //! | Rust                                                  | Upstream                      |
 //! |-------------------------------------------------------|-------------------------------|
 //! | [`AdvSurfaceIntersector::do_intersection`], [`AdvSurfaceIntersector::do_intersection_with_caches`] | `DoIntersection` |
-//! | [`intersection_surface_caches`]                       | the `smsurf_GetSurfaceCache` / `GetTree` calls at the top of `DoIntersection` |
+//! | [`intersection_surface_caches`], [`IntersectionSurface`] | the `smsurf_GetSurfaceCache` / `GetTree` calls at the top of `DoIntersection` |
 //! | [`SurfaceIntersector::grazing_box_process`], [`GrazingBox`] | `GrazingBoxProcess`     |
 //!
 //! Deviations:
@@ -18,12 +18,10 @@
 //!   override finds the interior loops. It is therefore ported on
 //!   [`AdvSurfaceIntersector`] (on a plain `SmSurfaceIntersector` the base
 //!   `LocalSolve` stores node-only solutions whose box and domain values are never
-//!   set, a case no caller reaches). `TraceCurve` is part 4's, whose
-//!   `ComputePointValues` calls the basic `ComputeSingularityPoint`, not the advanced
-//!   override (DISPATCH GAP: a traced point with parallel normals is `SM_ERR` here;
-//!   upstream classifies it). No such point is reachable yet: every start point
-//!   comes through `SmSurface::GlobalCurveIntersect` (`surface.surface_p8`) or
-//!   `SmSurface::LocalSurfaceIntersect` (`surface.surface_p11`).
+//!   set, a case no caller reaches). `ComputePointValues` (part 2, called by
+//!   `FindBoundaryStartPoints` and part 4's `TraceCurve`) reaches the advanced
+//!   `ComputeSingularityPoint` override through the base's `advanced` flag, which
+//!   [`AdvSurfaceIntersector::new`] sets.
 //! - **Surface caches.** Rust surfaces keep no cache, so the caller hands the caches
 //!   in ([`intersection_surface_caches`] builds them as `smsurf_GetSurfaceCache` /
 //!   `GetTree` would; [`AdvSurfaceIntersector::do_intersection`] does both). One
@@ -66,9 +64,7 @@ use crate::geom::solution_array::{SolutionArray, SolutionObject};
 use crate::geom::tol::is_zero_to_tol;
 use crate::geom::vector2d::Point2;
 use crate::geom::vector3d::{Point3, Vec3};
-use crate::intersect::adv_surface_intersector::{
-    AdvSurfaceIntersector, InteriorCurves, NoSurfaceHandle,
-};
+use crate::intersect::adv_surface_intersector::{AdvSurfaceIntersector, InteriorCurves};
 use crate::kernel::Kernel;
 use crate::math::{BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQ};
 use crate::nurbs::b_spline_curve::BSplineCurve;
@@ -102,7 +98,9 @@ pub struct GrazingBox {
 /// `smsurf_GetSurfaceCache(m_cpSurface[i])` and its `GetTree()`, as `DoIntersection`
 /// fetches them: the cache of the first surface and, unless the intersector
 /// intersects a surface with itself, of the second, each with its decomposition tree
-/// built.
+/// built. `handles` name the two surfaces in their caches (upstream's caches and
+/// trees name their surface; the leaf solves of `GlobalCurveIntersect`, which runs on
+/// these caches, read it).
 ///
 /// # Errors
 ///
@@ -111,6 +109,7 @@ pub struct GrazingBox {
 pub fn intersection_surface_caches<O: Copy + PartialEq>(
     k: &Kernel,
     si: &SurfaceIntersector<'_>,
+    handles: [O; 2],
 ) -> Result<Vec<SurfaceCache<O>>> {
     let ner = |e: SolidError| {
         if e.is_unported() {
@@ -119,16 +118,32 @@ pub fn intersection_surface_caches<O: Copy + PartialEq>(
             SolidError::null_pointer(OP_CACHES)
         }
     };
-    let get = |s| -> Result<SurfaceCache<O>> {
-        let mut c = surface_cache::<O>(k, s, None).map_err(ner)?;
+    let [h1, h2] = handles;
+    let get = |s, h| -> Result<SurfaceCache<O>> {
+        let mut c = surface_cache::<O>(k, s, Some(h)).map_err(ner)?;
         c.get_tree(k).map_err(ner)?;
         Ok(c)
     };
-    let mut caches = vec![get(si.surface(SrfIndex::First))?];
+    let mut caches = vec![get(si.surface(SrfIndex::First), h1)?];
     if !si.doing_self_intersection {
-        caches.push(get(si.surface(SrfIndex::Second))?);
+        caches.push(get(si.surface(SrfIndex::Second), h2)?);
     }
     Ok(caches)
+}
+
+/// The surface handles of the caches [`do_intersection`] builds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntersectionSurface {
+    /// The first surface.
+    First,
+    /// The second surface.
+    Second,
+}
+
+impl SolutionObject for IntersectionSurface {
+    fn kind(&self) -> crate::geom::solution_array::ObjectKind {
+        crate::geom::solution_array::ObjectKind::Surface
+    }
 }
 
 impl SurfaceIntersector<'_> {
@@ -297,12 +312,16 @@ pub fn do_intersection(
     opt_approx_tol_3d: Option<f64>,
     opt_ang_tol_rad: Option<f64>,
 ) -> Result<SurfaceIntersection> {
-    let mut caches: Vec<SurfaceCache<NoSurfaceHandle>>;
-    let mut ssi: AdvSurfaceIntersector<'_, '_, NoSurfaceHandle> =
+    let mut caches: Vec<SurfaceCache<IntersectionSurface>>;
+    let mut ssi: AdvSurfaceIntersector<'_, '_, IntersectionSurface> =
         AdvSurfaceIntersector::new(surface1, uv_domain1, surface2, uv_domain2, false)?;
     ssi.base
         .set_use_surface_edges(use_surface_edges[0], use_surface_edges[1]);
-    caches = intersection_surface_caches(k, &ssi.base)?;
+    caches = intersection_surface_caches(
+        k,
+        &ssi.base,
+        [IntersectionSurface::First, IntersectionSurface::Second],
+    )?;
     ssi.do_intersection_with_caches(k, &mut caches, opt_approx_tol_3d, opt_ang_tol_rad)
 }
 
@@ -640,6 +659,7 @@ fn evaluate_1st_derivatives(surface: &Surface, uv: Point2) -> Result<(Point3, Ve
 mod tests {
     use super::*;
     use crate::error::SM_ERR_NULL_POINTER;
+    use crate::intersect::adv_surface_intersector::NoSurfaceHandle;
     use crate::surface::plane::Plane;
 
     fn plane(o: [f64; 3], x: [f64; 3], y: [f64; 3]) -> Surface {
