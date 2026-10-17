@@ -13,6 +13,10 @@
 //! | [`PrimitiveCreation::create_sphere`] | protected `CreateSphere` |
 //! | [`PrimitiveCreation::create_torus`] | protected `CreateTorus` |
 //! | [`PrimitiveCreation::boolean_2d`] | `Boolean2D` |
+//! | [`PrimitiveCreation::create_linear_sweep`] | protected curve `CreateLinearSweep` |
+//! | [`PrimitiveCreation::create_sphere_no_pole`] | `CreateSphereNoPole` |
+//! | [`PrimitiveCreation::create_cone_elliptic_ends`] | `CreateConeEllipticEnds` |
+//! | [`analytic_rotational_sweep`] | `sm_CreateAnalyticRotationalSweep` |
 //!
 //! Deviations: missing topology edits return Unported at their first call.
 //! Mutations after that call are deferred; no success is claimed for those paths.

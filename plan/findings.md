@@ -6774,3 +6774,18 @@ parameters. Downstream continuation exists after each adapter,
 including static circle's edit reset and linear-sweep caps/stitch after cylinder
 or extrusion faces; those paths remain explicitly uncertified until dependencies
 are wired and compared.
+
+
+**Final local checks.** Workspace fmt and Clippy pass; generated FFI/runner files
+also pass explicit rustfmt and native `cpp` Clippy. All 1,292 kernel tests, wasm32
+check and four native FFI tests pass. Perturbation detects all 667 compared cases
+(17 deferred, five rejected, no unperturbed case). The repeat 1,000-case FFI fuzz
+run reports 580 rejected layouts/constructions, 279 malformed records and 141
+executed comparisons: zero differences, crashes, panics or timeouts.
+
+
+Affected-unit reruns also pass their non-deferred gates with maximum relative
+error zero: `sweep.api_brep` 573 cases / 306 pass / 267 deferred;
+`sweep.api_surfaces` 882 / 831 / 51; `topology.brep_p1` 2,343 / 1,717 / 626.
+The existing B-rep report retains its 60 status-only passing records; these are
+not added to the primitive unit's geometry-coverage claims.
