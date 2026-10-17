@@ -28,7 +28,7 @@
 //!   after the call and the knots given. The Rust solver replays `SetExtensionFlags` (the
 //!   C++ override) and imports the rectangle exported by the shim.
 //!
-//! Deferred: everything until the chunks of this unit land (`p4 chunk Cn pending`), then the
+//! Deferred: the
 //! finite-difference cases on `StepSolve` (`blend.fillet_solver_p3`) and the `calc_geom`
 //! cases on the unported callees (`EvaluateBinormal` / `GetOrCreateUVTrimCurve` creation,
 //! `topology.edgeuse_p3`; `sm_FindFilletTsectPnt`, `blend.fillet_solver_p3`).
