@@ -301,6 +301,16 @@ impl OffsetExecutive {
         required(self.offset_brep.as_ref())
     }
 
+    /// Temporarily lends ownership to another executive part, without copying topology.
+    pub(super) fn take_offset_brep(&mut self) -> Option<Brep> {
+        self.offset_brep.take()
+    }
+
+    /// Original mapped uses in the relation's deterministic first-id order.
+    pub(super) fn mapped_original_edgeuses(&self) -> Vec<EdgeuseId> {
+        self.edgeuse_to_edgeuses.all_firsts()
+    }
+
     fn clear_relations(&mut self) {
         self.faceuse_to_faces.remove_all();
         self.edgeuse_to_edgeuses.remove_all();
