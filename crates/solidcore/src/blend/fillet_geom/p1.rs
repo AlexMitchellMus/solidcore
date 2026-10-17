@@ -2137,7 +2137,7 @@ fn ignore_non_unported<T>(r: Result<T>) -> Result<()> {
 /// upstream's solutions point at the target curve and the fillet surface, whose
 /// natural domains the solver reads back (`SmSolution::GetParameterInterval`).
 #[derive(Clone, Copy)]
-enum CliffHandle<'a> {
+pub(crate) enum CliffHandle<'a> {
     Curve(&'a Curve),
     Surface(&'a Surface),
 }

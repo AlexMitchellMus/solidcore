@@ -2,6 +2,7 @@
 // SmFilletSolver::ProcessRollOver / TestRollOver, source/SMLib/src/SmFilletSolver.cpp.
 // Layout and the intentionally incomplete recovery fixture are documented by the FFI.
 #include "sc_shim.h"
+#include "sc_rollover_worker.h"
 #include "sc_edgeuse_graph.h"
 #include "StdAfx.h"
 #include <SmContext.h>
@@ -45,9 +46,10 @@ struct Corner : SmFilletCorner {
 struct Rail { int n; std::vector<double> a,b; std::vector<int> cls; };
 bool integer(double x, int lo, int hi) { return std::isfinite(x) && x==std::floor(x) && x>=lo && x<=hi; }
 }
-SC_EXPORT int32_t sc_blend_fillet_solver_p5_eval(const double* in, int64_t n,
+static int32_t rollover_eval_in_process(const double* in, int64_t n,
     double* out, int64_t cap, int64_t* len) {
     if (!in || n<6 || !len || cap<0 || (cap && !out)) return SC_ERR_ARG;
+    SC_TRY
     int64_t at=0;
     if(!integer(in[at],0,2)) return SC_ERR_ARG;
     int op=(int)in[at++];
@@ -74,16 +76,17 @@ SC_EXPORT int32_t sc_blend_fillet_solver_p5_eval(const double* in, int64_t n,
     // blend patches, missing classes and unsupported corners do not read it.
     if(op==0 && type!=SM_FG_BLENDS && r[0].n==1 && r[1].n==1 &&
        (r[0].cls[0]==SM_PC_UNKNOWN || r[1].cls[0]==SM_PC_UNKNOWN) && (corner==3 || corner==7)) return SC_ERR_ARG;
-    SC_TRY
     SmContext ctx;
     SmFilletExecutive exec(ctx);
     Corner c0(ctx,&exec,corner<0?0:corner), c1(ctx,&exec,1);
+    std::unique_ptr<SmBrep> target;
     SmFilletBrep pseudo;
+    std::unique_ptr<SmFilletVertex> vertices[4];
+    std::unique_ptr<SmFilletEdge> owned_rails[2];
     Solver solver(ctx);
     SmFilletGeom* fg=solver.geom();
     fg->SetFilletGeomType((SmFilletGeomType)type);
     SmFilletEdge* rails[2]={NULL,NULL};
-    std::unique_ptr<SmBrep> target;
     SmFace* face=NULL;
     {
         target.reset(SmPrimitiveCreation::CreateRectangle(ctx, 1e-5, 1.0, 1.0, SmAxis2Placement()));
@@ -93,12 +96,16 @@ SC_EXPORT int32_t sc_blend_fillet_solver_p5_eval(const double* in, int64_t n,
         face=faces[0];
     }
     for(int i=0;i<2;i++) {
-        SmFilletVertex* v0=new (&pseudo) SmFilletVertex(corner<0?NULL:&c0);
-        SmFilletVertex* v1=new (&pseudo) SmFilletVertex();
+        vertices[2*i].reset(new (&pseudo) SmFilletVertex(corner<0?NULL:&c0));
+        vertices[2*i+1].reset(new (&pseudo) SmFilletVertex());
+        SmFilletVertex* v0=vertices[2*i].get();
+        SmFilletVertex* v1=vertices[2*i+1].get();
         SmStatus s=SmFilletEdge::MakeFilletEdge(&pseudo,v0,v1,rails[i]);
         if(s!=SM_SUCCESS || !rails[i]) return SC_ERR_ARG;
+        owned_rails[i].reset(rails[i]);
         fg->SetRail(i,rails[i]);
-        if(r[i].n>=0) {
+        // TestRollOver installs a fresh classification; do not leak a seeded one.
+        if(r[i].n>=0 && op!=2) {
             SmCurveClassification* cc=new (ctx) SmCurveClassification();
             cc->SetSize(r[i].n);
             for(int j=0;j<r[i].n;j++) {
@@ -120,6 +127,7 @@ SC_EXPORT int32_t sc_blend_fillet_solver_p5_eval(const double* in, int64_t n,
             s=SmLine::CreateLineSegment(ctx,3,SmPoint3d(.25,.25+.25*i,0),SmPoint3d(.75,.25+.25*i,0),line);
             if(s!=SM_SUCCESS || !line) return SC_ERR_ARG;
             rails[i]->SetCurve(line);
+            line->SetOwner(rails[i]);
             rails[i]->SetOriginalFace(face);
         }
     }
@@ -144,14 +152,30 @@ SC_EXPORT int32_t sc_blend_fillet_solver_p5_eval(const double* in, int64_t n,
     SC_CATCH
 }
 
-SC_EXPORT int32_t sc_blend_fillet_solver_p5_target(double* out, int64_t cap, int64_t* len) {
+static int32_t rollover_target_in_process(double* out, int64_t cap, int64_t* len) {
     if(!len || cap<0 || (cap && !out)) return SC_ERR_ARG;
     SC_TRY
-    const SmContext& ctx=the_context();
+    SmContext ctx;
     std::unique_ptr<SmBrep> target(SmPrimitiveCreation::CreateRectangle(ctx,1e-5,1.0,1.0,SmAxis2Placement()));
     if(!target) return SC_ERR_ARG;
     Graph graph; walk(target.get(),graph); std::vector<double> result={0.0};
     export_graph(target.get(),graph,result);
     return sc_copy_out(result.data(),(int64_t)result.size(),out,cap,len);
     SC_CATCH
+}
+
+// The safe C entry points contain native signals and noexcept-destructor aborts,
+// in addition to ordinary exceptions. Parsing/fixture allocations run only in the child.
+SC_EXPORT int32_t sc_blend_fillet_solver_p5_eval(const double* in, int64_t n,
+    double* out, int64_t cap, int64_t* len) {
+    if(!in || n<6 || !len || cap<0 || (cap && !out)) return SC_ERR_ARG;
+    return sc_rollover::isolated<128>([&](double* data,int64_t size,int64_t* used) {
+        return rollover_eval_in_process(in,n,data,size,used);
+    },out,cap,len);
+}
+SC_EXPORT int32_t sc_blend_fillet_solver_p5_target(double* out,int64_t cap,int64_t* len) {
+    if(!len || cap<0 || (cap && !out)) return SC_ERR_ARG;
+    return sc_rollover::isolated<4096>([](double* data,int64_t size,int64_t* used) {
+        return rollover_target_in_process(data,size,used);
+    },out,cap,len);
 }
