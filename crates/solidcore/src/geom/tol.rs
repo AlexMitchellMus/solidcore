@@ -651,8 +651,8 @@ pub fn zone_tol_3d_of_curve(k: &Kernel, curve: &Curve) -> Result<f64> {
         ));
     }
     if chain {
-        // UNPORTED(curve.curve_p2): SmCurve::GetEdge through the owning curves and edge uses; justified: findings.md intersect.surface_drop_lib_p3
-        return Err(SolidError::unported("SmCurve::GetEdge", "curve.curve_p2"));
+        // UNPORTED(topology.edge): SmCurve::GetEdge through the owning curves and edge uses (the owner-chain resolver needs the B-rep arena); justified: findings.md intersect.surface_drop_lib_p3
+        return Err(SolidError::unported("SmCurve::GetEdge", "topology.edge"));
     }
     Ok(zone_tol_3d(k, SmallTopoType::NormalSize))
 }

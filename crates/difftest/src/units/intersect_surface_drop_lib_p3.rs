@@ -390,6 +390,14 @@ fn curve_range(c: &CurveIn) -> [f64; 2] {
 }
 
 fn gen_tol(rng: &mut Rng, s: f64) -> f64 {
+    // SmApproxTol3d takes fabs and maps SM_USE_DEFAULT on entry (SmTol.cpp:109,
+    // SmTol.h:167-168): negative and default tolerances must run as |tol| / zone/2.
+    if rng.chance(0.05) {
+        return -pick(rng, &[1.0e-12, 1.0e-4, 5.0e-2, 1.0, 1.0e3], 1.0e-4) * s;
+    }
+    if rng.chance(0.03) {
+        return solidcore::geom::tol::USE_DEFAULT;
+    }
     if rng.chance(0.06) {
         // zero, tiny and huge
         return pick(rng, &[0.0, 1.0e-12, 10.0], 0.0) * s;
@@ -585,6 +593,35 @@ fn fixtures() -> Vec<(String, Inputs)> {
                 unit,
                 [0.0, 1.0],
             ),
+        ),
+        // negative and default tolerances run as |tol| / zone/2 (PR #136 review)
+        (
+            "plane_point_tol_neg1".to_owned(),
+            Inputs {
+                tol: -1.0,
+                ..fixture(square_plane(), point_at([0.5, 0.5, 0.1]), unit, [0.0, 1.0])
+            },
+        ),
+        (
+            "plane_point_tol_neg_small".to_owned(),
+            Inputs {
+                tol: -1.0e-4,
+                ..fixture(square_plane(), point_at([0.5, 0.5, 0.1]), unit, [0.0, 1.0])
+            },
+        ),
+        (
+            "plane_point_tol_pos1".to_owned(),
+            Inputs {
+                tol: 1.0,
+                ..fixture(square_plane(), point_at([0.5, 0.5, 0.1]), unit, [0.0, 1.0])
+            },
+        ),
+        (
+            "plane_point_tol_use_default".to_owned(),
+            Inputs {
+                tol: solidcore::geom::tol::USE_DEFAULT,
+                ..fixture(square_plane(), point_at([0.5, 0.5, 0.1]), unit, [0.0, 1.0])
+            },
         ),
         // a line along the normal of the square
         (

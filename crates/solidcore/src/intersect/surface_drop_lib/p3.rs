@@ -77,7 +77,7 @@ use crate::geom::extent2d::Extent2d;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::geom::point_set::PointContainment;
 use crate::geom::solution_array::{SolutionArray, SolutionObject};
-use crate::geom::tol::scaled_zero_of_curve;
+use crate::geom::tol::{approx_tol3d, scaled_zero_of_curve};
 use crate::geom::vector2d::Point2;
 use crate::geom::vector3d::{Point3, Vec3};
 use crate::kernel::Kernel;
@@ -134,6 +134,7 @@ fn status_of(e: &SolidError) -> i32 {
     match e {
         SolidError::Upstream { code, .. } => *code,
         SolidError::InvalidInput { .. } => SM_ERR_INVALID_INPUT,
+        SolidError::NotConverged { .. } => SM_ERR_NOT_CONVERGING,
         _ => SM_ERR,
     }
 }
@@ -342,6 +343,10 @@ impl Surface {
         keep_all_drop_curves: bool,
         mut record: Option<DropFailRecord<'_, O>>,
     ) -> Result<DropCurveOut> {
+        // `SmApproxTol3d sApproxTol3d`: the constructor maps SM_USE_DEFAULT to zone/2
+        // and stores fabs (SmTol.cpp:109, SmTol.h:167-168), so upstream runs with |tol|.
+        let approx_tol_3d = approx_tol3d(k, approx_tol_3d);
+
         // init output
         let mut out = DropCurveOut {
             max_drop_to_surf: 0.0,
@@ -1271,5 +1276,37 @@ mod tests {
         );
         assert_eq!(fail.degen_curve, 1);
         assert_eq!(fail.srf_closure, SurfParamType::Neither);
+    }
+
+    /// `SmApproxTol3d` takes `fabs` (and maps `SM_USE_DEFAULT`) on entry
+    /// (SmTol.cpp:109, SmTol.h:167-168): a negative tolerance runs as its absolute
+    /// value (review of PR #136).
+    #[test]
+    fn negative_tolerance_runs_as_its_absolute_value() {
+        let k = Kernel::default();
+        let run = |tol: f64| {
+            let mut fail: DropCurveFail<NoObject> = DropCurveFail::default();
+            let r = plane().drop_curve_base(
+                &k,
+                &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+                &point_curve(Point3::new(0.5, 0.5, 0.1)),
+                &Extent1d::from_min_max(0.0, 1.0),
+                tol,
+                true,
+                Some(DropFailRecord {
+                    fail: &mut fail,
+                    surface: None,
+                    curve: None,
+                }),
+            );
+            let o = r.map(|o| (o.uv_curves.len(), o.max_drop_to_surf, o.max_approx_dev));
+            (format!("{o:?}"), fail.fail_status, fail.create_path_type)
+        };
+        assert_eq!(run(-1.0), run(1.0));
+        assert_eq!(run(-1.0e-4), run(1.0e-4));
+        assert_eq!(
+            run(crate::geom::tol::USE_DEFAULT),
+            run(k.tolerances.zone_tol_3d / 2.0)
+        );
     }
 }

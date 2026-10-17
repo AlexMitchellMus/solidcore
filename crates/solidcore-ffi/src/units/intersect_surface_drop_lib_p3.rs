@@ -19,7 +19,8 @@
 //!
 //! A surface of revolution whose `CreateCanonical` fails makes the record
 //! [[`NO_SURFACE`]]. [`run`] accepts the surfaces and curves the p2 wrapper accepts,
-//! finite domains, any finite tolerance (zero and negative included) and any finite
+//! finite domains, any tolerance with `|tol| <= MAX_COORD` (1e9; zero, negative and
+//! `SM_USE_DEFAULT` included: `SmApproxTol3d` takes `fabs`) and any finite
 //! interval: zero-length, inverted (`SmExtent1d` swaps the ends) and outside the curve's
 //! parameter range (B-spline `Evaluate` clamps, a line and a circle extend, so the ignored
 //! `Evaluate`s of `SmCurve::IsDegenerate` never fail). It rejects only a non-degenerate
