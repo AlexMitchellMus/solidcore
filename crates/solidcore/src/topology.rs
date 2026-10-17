@@ -228,7 +228,7 @@ impl<I: ArenaId, T> Arena<I, T> {
     }
 
     /// Iterates `(id, item)` in insertion order, skipping removed items.
-    pub fn iter(&self) -> ArenaIter<'_, I, T> {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = (I, &T)> + DoubleEndedIterator + '_ {
         ArenaIter {
             inner: self.items.iter().enumerate(),
             remaining: self.live,
@@ -242,10 +242,10 @@ impl<I: ArenaId, T> Arena<I, T> {
     }
 }
 
-/// The iterator of [`Arena::iter`]: `(id, item)` in insertion order, skipping removed
-/// items.
+/// The iterator behind [`Arena::iter`]: `(id, item)` in insertion order, skipping
+/// removed items.
 #[derive(Debug, Clone)]
-pub struct ArenaIter<'a, I, T> {
+struct ArenaIter<'a, I, T> {
     inner: core::iter::Enumerate<core::slice::Iter<'a, Option<T>>>,
     remaining: usize,
     _id: PhantomData<fn() -> I>,
@@ -284,15 +284,6 @@ impl<I: ArenaId, T> DoubleEndedIterator for ArenaIter<'_, I, T> {
 }
 
 impl<I: ArenaId, T> ExactSizeIterator for ArenaIter<'_, I, T> {}
-
-impl<'a, I: ArenaId, T> IntoIterator for &'a Arena<I, T> {
-    type Item = (I, &'a T);
-    type IntoIter = ArenaIter<'a, I, T>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
 
 /// An `SmObject*` a topology record keeps but never dereferences (the surface,
 /// curve and B-rep pointers of an `SmDropCurveFail`): the object's kind and the
