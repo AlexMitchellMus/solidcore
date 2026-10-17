@@ -3208,21 +3208,325 @@ fn c6_compute_point_values(
     point: &mut TsectPnt,
     previous: Option<&TsectPnt>,
 ) -> Result<()> {
-    let _ = (
-        ops,
-        k,
-        uv_values,
-        uv_domain1,
-        uv_domain2,
-        curve_trace_direction,
-        point,
-        previous,
-    );
-    // P4-CHUNK(C6): SmFilletSolver.cpp:3544-3768
-    Err(SolidError::Unported {
-        upstream: "SmFilletSolver::ComputePointValues (p4 chunk C6 pending)",
-        unit: "blend.fillet_solver_p4",
-    })
+    use super::p1::compute_uv_vectors;
+    use crate::error::ignore_status;
+    use crate::intersect::surface_intersector::p1::{IntersectionPointType, SrfIndex};
+    use crate::math::EFF_ZERO_SQ;
+
+    // :3557 set the surface positions, tangents, normals and the tangent plane angle
+    FilletSolver::compute_surface_values(ops, uv_values, point)?;
+
+    // :3568 intersection curve tangent: (SrfNorm(0) * SrfNorm(1)) * dCurveTraceDirection
+    *point.crv_deriv_mut() = point
+        .srf_norm(SrfIndex::First)
+        .cross(point.srf_norm(SrfIndex::Second))
+        * curve_trace_direction;
+
+    // :3571 surfaces tangent to within tolerance
+    if point.crv_deriv().length_squared() < 10000.0 * EFF_ZERO_SQ {
+        point.point_type = IntersectionPointType::TangentPoint;
+        match previous {
+            // use the previous point's curve tangent
+            Some(prev) => *point.crv_deriv_mut() = prev.crv_deriv(),
+            None => return Ok(()),
+        }
+    }
+
+    // :3588 SER(CrvDeriv().Unitize())
+    c6_unitize(point.crv_deriv_mut())?;
+
+    // :3596 finite differences for variable radii or at a surface/surface tangency
+    if ops.offset_radii_can_change() || point.point_type == IntersectionPointType::TangentPoint {
+        // :3600
+        compute_uv_vectors(point)?;
+
+        // :3604 static double sdStaticStep = TANGENT ? 1e-3 : 1e-5 (latched once)
+        let mut step =
+            k.latch_fillet_point_step(if point.point_type == IntersectionPointType::TangentPoint {
+                1.0e-3
+            } else {
+                1.0e-5
+            });
+
+        // :3615 forward step
+        let (flags, mut step_forw) = step_solve(ops, k, point, step, uv_domain1, uv_domain2)?;
+        let mut found_forw = flags.found_answer;
+
+        // :3619 bigger step in the small-step case; upstream passes `dStep` again, not
+        // `dBigStep` (ported as written)
+        if !found_forw && step < 1.0e-4 {
+            let big_step = 1.0e-3;
+            let (flags, next) = step_solve(ops, k, point, step, uv_domain1, uv_domain2)?;
+            found_forw = flags.found_answer;
+            step_forw = next;
+            if found_forw {
+                step = big_step;
+            }
+        }
+
+        // :3629 surface points before the next StepSolve changes the offsets
+        let forw_pts = if found_forw {
+            let p0 = offset_evaluate_point(ops, 0, step_forw.uv_pos(SrfIndex::First))?;
+            let p1 = offset_evaluate_point(ops, 1, step_forw.uv_pos(SrfIndex::Second))?;
+            Some((p0, p1))
+        } else {
+            None
+        };
+
+        // :3640 backward step
+        step = -step;
+        let (flags, step_back) = step_solve(ops, k, point, step, uv_domain1, uv_domain2)?;
+        let found_back = flags.found_answer;
+
+        let back_pts = if found_back {
+            let p0 = offset_evaluate_point(ops, 0, step_back.uv_pos(SrfIndex::First))?;
+            let p1 = offset_evaluate_point(ops, 1, step_back.uv_pos(SrfIndex::Second))?;
+            Some((p0, p1))
+        } else {
+            None
+        };
+
+        // :3664 central difference, or one-sided at a domain end
+        let (step_pt_forw, step_pt_back) = match (forw_pts, back_pts) {
+            (Some((f0, f1)), Some((b0, b1))) => {
+                let fw = (f0 + f1) / 2.0;
+                let bk = (b0 + b1) / 2.0;
+                step *= 2.0; // 2.0 * dStep (multiplication commutes exactly)
+                (fw, bk)
+            }
+            (Some((f0, f1)), None) => ((f0 + f1) / 2.0, point.crv_pos()),
+            (None, Some((b0, b1))) => (point.crv_pos(), (b0 + b1) / 2.0),
+            (None, None) => return Err(SolidError::sm_err(OP)),
+        };
+
+        // :3685
+        step = step.abs();
+        let diff = step_pt_forw - step_pt_back;
+        *point.crv_deriv_mut() = diff / step;
+        c6_unitize(point.crv_deriv_mut())?;
+
+        // :3694 tangent case: orient by the cross product of the stepped-off normals
+        if point.point_type == IntersectionPointType::TangentPoint {
+            let at = if found_forw { &step_forw } else { &step_back };
+            let (uv0, uv1) = (at.uv_pos(SrfIndex::First), at.uv_pos(SrfIndex::Second));
+            let norm1 = offset_evaluate_normal(ops, 0, uv0)?;
+            let norm2 = offset_evaluate_normal(ops, 1, uv1)?;
+            let mut curve_direction = norm1.cross(norm2);
+            if curve_direction.length_squared() < EFF_ZERO_SQ {
+                return Err(SolidError::sm_err(OP));
+            }
+            curve_direction *= curve_trace_direction;
+            if curve_direction.dot(point.crv_deriv()) < 0.0 {
+                *point.crv_deriv_mut() = -point.crv_deriv();
+            }
+        }
+    }
+
+    // :3761
+    point.point_type = IntersectionPointType::Crossing;
+
+    // :3764 ComputeUVVectors, status ignored
+    ignore_status(compute_uv_vectors(point))?;
+
+    Ok(())
+}
+
+/// `SmVector3d::Unitize()` in place (`bSignalBadInput = TRUE`): a vector of squared
+/// length below `SM_EFF_ZERO_SQ` becomes `(0, 0, 1)` and the status is
+/// `SM_ERR_INVALID_INPUT`; otherwise the unit vector (unchanged when already within
+/// `SM_EFF_ZERO_SQ` of unit squared length).
+fn c6_unitize(v: &mut Vec3) -> Result<()> {
+    match v.unitize() {
+        Ok(u) => {
+            *v = u;
+            Ok(())
+        }
+        Err(e) => {
+            *v = Vec3::Z;
+            Err(e)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests_c6 {
+    use super::*;
+    use crate::blend::fillet_custom_solver::{ConstantRadiusAssistedFs, SurfaceId};
+    use crate::intersect::surface_intersector::p1::IntersectionPointType;
+    use crate::nurbs::b_spline_surface::BSplineSurface;
+
+    fn bilinear(p: [[f64; 3]; 4]) -> Surface {
+        let [a, b, c, d] = p.map(Vec3::from);
+        Surface::from(BSplineSurface::create_bilinear_surface(a, b, c, d).unwrap())
+    }
+
+    fn xy(z: f64) -> Surface {
+        bilinear([[0.0, 0.0, z], [1.0, 0.0, z], [0.0, 1.0, z], [1.0, 1.0, z]])
+    }
+
+    /// The XZ plane, `u` along z and `v` along x (normal +y).
+    fn xz() -> Surface {
+        bilinear([
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 1.0],
+        ])
+    }
+
+    fn solver(k: &Kernel, a: &Surface, b: &Surface) -> ConstantRadiusAssistedFs {
+        ConstantRadiusAssistedFs::from_parts(
+            0.001,
+            0.5,
+            0.03,
+            [0.25, 0.5],
+            [
+                Some(OffsetSurface::new(k, 0.25, a.clone(), SurfaceId::Free(0), 0).unwrap()),
+                Some(OffsetSurface::new(k, 0.5, b.clone(), SurfaceId::Free(1), 0).unwrap()),
+            ],
+            [1.0, 1.0],
+            [None, None],
+        )
+    }
+
+    /// Constant radius solver with `OffsetRadiiCanChange() == TRUE` (finite differences).
+    struct Variable(ConstantRadiusAssistedFs);
+
+    impl FilletSolverOps for Variable {
+        fn solver(&self) -> &FilletSolver {
+            &self.0.solver
+        }
+        fn solver_mut(&mut self) -> &mut FilletSolver {
+            &mut self.0.solver
+        }
+        fn setup_offset_values(
+            &mut self,
+            tsect: &TsectPnt,
+            offset_dist: Option<&mut f64>,
+        ) -> Result<()> {
+            FilletSolverOps::setup_offset_values(&mut self.0, tsect, offset_dist)
+        }
+    }
+
+    fn dom() -> Extent2d {
+        Extent2d::from_bounds(-1.0, -1.0, 2.0, 2.0)
+    }
+
+    fn run(
+        ops: &mut dyn FilletSolverOps,
+        k: &Kernel,
+        dir: f64,
+        point: &mut TsectPnt,
+        previous: Option<&TsectPnt>,
+    ) -> Result<()> {
+        let uv = [Point2::new(0.5, 0.25), Point2::new(0.25, 0.5)];
+        FilletSolver::compute_point_values(ops, k, uv, &dom(), &dom(), dir, point, previous)
+    }
+
+    #[test]
+    fn crossing_point_constant_radius() {
+        let k = Kernel::default();
+        let (a, b) = (xy(0.0), xz());
+        let mut fs = solver(&k, &a, &b);
+        for dir in [1.0, -1.0] {
+            let mut p = TsectPnt::new();
+            run(&mut fs, &k, dir, &mut p, None).unwrap();
+            assert_eq!(p.point_type, IntersectionPointType::Crossing);
+            // n0 = +z, n1 = +y: (z x y) * dir = -x * dir
+            assert_eq!(p.curve_pv[1], Vec3::new(-dir, 0.0, 0.0));
+            assert_eq!(p.curve_pv[0], p.surface_pv[0][0][0]);
+            // uv tangent on surface 0 (du = x) is (-dir, 0)
+            assert!((p.uv_curve_pv[0][1].x + dir).abs() < 1e-12);
+            assert!(p.uv_curve_pv[0][1].y.abs() < 1e-12);
+        }
+        // no finite differences: the step stays unlatched
+        assert_eq!(k.fillet_point_step.get(), None);
+    }
+
+    #[test]
+    fn tangent_without_previous_returns_early() {
+        let k = Kernel::default();
+        let (a, b) = (xy(0.0), xy(1.0));
+        let mut fs = solver(&k, &a, &b);
+        let mut p = TsectPnt::new();
+        run(&mut fs, &k, 1.0, &mut p, None).unwrap();
+        assert_eq!(p.point_type, IntersectionPointType::TangentPoint);
+        assert_eq!(p.curve_pv[1], Vec3::new(0.0, 0.0, 0.0));
+        assert_eq!(k.fillet_point_step.get(), None);
+    }
+
+    #[test]
+    fn tangent_with_zero_previous_derivative_fails_unitize() {
+        let k = Kernel::default();
+        let (a, b) = (xy(0.0), xy(1.0));
+        let mut fs = solver(&k, &a, &b);
+        let prev = TsectPnt::new();
+        let mut prev = prev;
+        *prev.crv_deriv_mut() = Vec3::new(0.0, 0.0, 0.0);
+        let mut p = TsectPnt::new();
+        let err = run(&mut fs, &k, 1.0, &mut p, Some(&prev)).unwrap_err();
+        assert!(matches!(err, SolidError::InvalidInput { .. }));
+        // upstream's Unitize leaves (0, 0, 1)
+        assert_eq!(p.curve_pv[1], Vec3::Z);
+        assert_eq!(p.point_type, IntersectionPointType::TangentPoint);
+    }
+
+    #[test]
+    fn tangent_with_previous_reaches_step_solve() {
+        let k = Kernel::default();
+        let (a, b) = (xy(0.0), xy(1.0));
+        let mut fs = solver(&k, &a, &b);
+        let mut prev = TsectPnt::new();
+        *prev.crv_deriv_mut() = Vec3::new(0.0, 3.0, 0.0);
+        let mut p = TsectPnt::new();
+        let err = run(&mut fs, &k, 1.0, &mut p, Some(&prev)).unwrap_err();
+        assert!(err.is_unported());
+        assert_eq!(p.curve_pv[1], Vec3::new(0.0, 1.0, 0.0));
+        // the tangent point latches the larger step
+        assert_eq!(k.fillet_point_step.get(), Some(1.0e-3));
+    }
+
+    #[test]
+    fn variable_radius_crossing_latches_small_step() {
+        let k = Kernel::default();
+        let (a, b) = (xy(0.0), xz());
+        let mut fs = Variable(solver(&k, &a, &b));
+        let mut p = TsectPnt::new();
+        let err = run(&mut fs, &k, 1.0, &mut p, None).unwrap_err();
+        assert!(err.is_unported());
+        assert_eq!(k.fillet_point_step.get(), Some(1.0e-5));
+        // an already latched step is kept
+        let k2 = Kernel::default();
+        k2.fillet_point_step.set(Some(7.0e-4));
+        let mut p = TsectPnt::new();
+        let _ = run(&mut fs, &k2, 1.0, &mut p, None);
+        assert_eq!(k2.fillet_point_step.get(), Some(7.0e-4));
+    }
+
+    #[test]
+    fn base_solver_setup_offset_values_fails() {
+        // SmFilletSolver::SetupOffsetValues (base) returns SM_ERR through
+        // ComputeSurfaceValues' SER
+        let k = Kernel::default();
+        let mut solver = FilletSolver::new(1.0e-5, 0.01, 0.01);
+        let mut p = TsectPnt::new();
+        let e = run(&mut solver, &k, 1.0, &mut p, None).unwrap_err();
+        assert!(!e.is_unported());
+        assert_eq!(e, SolidError::sm_err("blend::fillet_solver::p1"));
+    }
+
+    #[test]
+    fn unitize_matches_upstream_in_place() {
+        let mut v = Vec3::new(0.0, 3.0, 4.0);
+        c6_unitize(&mut v).unwrap();
+        assert_eq!(v, Vec3::new(0.0, 0.6, 0.8));
+        let mut z = Vec3::new(1e-13, 0.0, 0.0);
+        assert!(matches!(
+            c6_unitize(&mut z),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        assert_eq!(z, Vec3::Z);
+    }
 }
 
 // P4-CHUNK(C6) END
