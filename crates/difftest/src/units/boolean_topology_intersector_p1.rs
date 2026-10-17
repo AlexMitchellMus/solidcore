@@ -43,9 +43,9 @@
 //! intersections), the B-rep edits (`topology.brep_p3/p5/p7/p9`), `SmFace::GetEdges` /
 //! `GetVertices` / `GetBrep` (`topology.face_p4`), `SmFace::CalculateBoundingBox` and
 //! `Point3DClassify` (`query.face_p1`), `SmFace::FaceIntersect` (`topology.face_p3`),
-//! `SmSurface::GlobalCurveIntersect` / `CoincidenceCheck` (`surface.surface_p8`) and
-//! the manager's construction when the approximation tolerance is zero
-//! (`SmBrep::GetTolerance`, `topology.brep_p1`).
+//! `SmSurface::GlobalCurveIntersect` / `CoincidenceCheck` (`surface.surface_p8`).
+//! The manager's construction with a zero approximation tolerance runs upstream's
+//! B-rep fallback (`SmBrep::GetTolerance`, `SmBrep::GetMinEdgeBBoxSize`) on both B-reps.
 
 use std::collections::BTreeMap;
 
@@ -2554,16 +2554,10 @@ fn run_rust_script(i: &Inputs, p: Prepared) -> Result<Vec<f64>, Fail> {
                 override_tol,
             } => {
                 o.push(33.0);
-                // (brep_p2 #149: the constructor reads both B-reps when the tolerance is
-                // below SM_EFF_ZERO; a missing second B-rep is only read there, where
-                // upstream dereferences the null pointer)
-                let empty = Brep::new();
-                let b0 = two.breps[0].as_ref().unwrap_or(&empty);
-                let b1 = two.breps[1].as_ref().unwrap_or(&empty);
                 let mgr = ProtoTopologyManager::new(
                     &k,
-                    (brep_h(0), b0),
-                    (brep_h(1), b1),
+                    (brep_h(0), two.brep_r(brep_h(0))?),
+                    (brep_h(1), two.brep_r(brep_h(1))?),
                     TI_HANDLE,
                     ti.this_approx_tol_3d(),
                     *capture,
