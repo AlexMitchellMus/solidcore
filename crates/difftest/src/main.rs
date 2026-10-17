@@ -260,6 +260,7 @@ fn main() -> ExitCode {
 
     let mut failed = 0usize;
     let mut partial = 0usize;
+    let mut stale = 0usize;
     let mut setup_error = false;
     if args.baseline.is_some() && args.filter.is_some() {
         println!("difftest: --filter given, so the --baseline ratchet is skipped");
@@ -341,6 +342,24 @@ fn main() -> ExitCode {
             partial += 1;
         }
         if !args.no_report {
+            // The report about to be overwritten is normally the committed one.
+            let path = report_dir.join(format!("{id}.json"));
+            let old = std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|t| report::ReportCounts::parse(&t));
+            let now = report::ReportCounts::of(&res);
+            if let Some(old) = old.filter(|o| *o != now) {
+                stale += 1;
+                let (old, now) = (old.describe(), now.describe());
+                println!("  STALE-REPORT committed {old}, this run {now}");
+                if std::env::var_os("GITHUB_ACTIONS").is_some() {
+                    let rel = path.strip_prefix(&root).unwrap_or(&path).display();
+                    println!(
+                        "::warning file={rel}::committed report is stale (committed {old}, \
+                         this run {now}); regenerate and commit it"
+                    );
+                }
+            }
             match report::write_unit_report(&report_dir, &res) {
                 Ok(p) => println!(
                     "  report: {}",
@@ -379,6 +398,12 @@ fn main() -> ExitCode {
                 setup_error = true;
             }
         }
+    }
+    if stale > 0 {
+        println!(
+            "difftest: {stale} report(s) differed from this run (STALE-REPORT above); \
+             regenerate and commit them"
+        );
     }
     let dropped_note = if dropped > 0 {
         format!(", {dropped} dropped from --green")

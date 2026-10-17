@@ -165,6 +165,13 @@ checks, run on every unit that does not already fail, close that gap
 Reports record `exact_compared` (integer/topology comparisons) per case when
 nonzero, so the ratchet can tell integer-only cases that compared something.
 
+**Stale reports.** Before overwriting `reports/difftest/<unit>.json`, a run compares
+the counts recorded there (status, cases, passed, failed, deferred, rejected) with
+its own and prints `STALE-REPORT` when they differ. On GitHub Actions this is also a
+warning annotation on the file. A stale committed report makes the next PR's ratchet
+baseline weaker, so regenerate and commit it, also for units your change affected
+indirectly (e.g. by wiring a back-edge). It warns and does not fail.
+
 A legitimate regression (a wrong fixture removed, a case renamed) needs a waiver
 in `plan/difftest-waivers.toml`, reviewed with the PR:
 
