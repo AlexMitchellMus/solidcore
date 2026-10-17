@@ -2686,11 +2686,12 @@ mod tests {
             BSplineCurve::create_line_segment(2, Vec3::ZERO, Vec3::new(1.0, 1.0, 0.0)).unwrap(),
         );
         let uv = [Some(line)];
-        assert!(
-            create_curves_by_trimming(&k, &b, f, Some(1.0), None, Some(&uv), false, true)
-                .unwrap_err()
-                .is_unported()
-        );
+        // (with the classification constructor's ReSet ported, the face classification of
+        // a face without loops is reached and fails instead of deferring)
+        assert!(matches!(
+            create_curves_by_trimming(&k, &b, f, Some(1.0), None, Some(&uv), false, true),
+            Err(SolidError::Upstream { code: 1001, .. })
+        ));
         assert!(create_curves_by_trimming(&k, &b, f, None, None, None, true, false).is_err());
     }
 
