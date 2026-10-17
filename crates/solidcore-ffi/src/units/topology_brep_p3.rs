@@ -29,12 +29,16 @@
 //! B-rep blocks, indices inside the B-rep (it exports the B-rep once more to count),
 //! a null region only when the B-rep has an infinite region (`Wire`), the vertices
 //! the wire makers dereference, a 3D wire curve over a sub-interval of its range
-//! (`t0 < t1`), finite values.
+//! (`t0 < t1`), finite values no larger than [`MAX_GEOMETRY`] (larger geometry hangs
+//! the C++ in `SmCurve::GlobalCoincidenceChecker`, HANG-16).
 
 use crate::{call_with_buffer, FfiError};
 
 use super::topology_brep_p2 as p2;
 use super::topology_vertexuse::{self as vu, Reader};
+
+/// Largest magnitude of any input value (HANG-16).
+pub const MAX_GEOMETRY: f64 = 1.0e150;
 
 /// Largest vertex list of a `CopyVertices` or face list of an `Orient`.
 pub const MAX_LIST: usize = 32;
@@ -204,6 +208,17 @@ pub fn eval(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
     vu::brep_block(&mut rd, path)?;
     int(&mut rd, -1, 1)?;
     let head = input.get(..rd.at).ok_or_else(|| bad("input too short"))?;
+    // geometry beyond 1e150 overflows the squared distances of
+    // SmCurve::GlobalCoincidenceChecker, reached by the UV trim curve builds of
+    // OrientTrimmedSurfaces / TurnToNURBS, which then never returns (HANG-16, the
+    // bound blend.fillet_geom_p1 uses; main's HANG-10)
+    // (`-f64::MAX` is the non-rational weight `NOW`)
+    if input
+        .iter()
+        .any(|&x| x.is_finite() && x.abs() > MAX_GEOMETRY && x != -f64::MAX)
+    {
+        return Err(bad("geometry value beyond 1e150 (HANG-16)"));
+    }
     let export = p2::eval(p2::Op::Export, path, head)?;
     let Some(c) = vu::counts(&export) else {
         // the B-rep could not be built: every op reports the same failure

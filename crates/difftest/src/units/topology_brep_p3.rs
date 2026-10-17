@@ -868,3 +868,28 @@ impl UnitDiff for Runner {
         .ok()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Geometry beyond 1e150 hangs the C++ in `SmCurve::GlobalCoincidenceChecker`
+    /// (HANG-16; fuzz case 1124: one control point at z = 1e300, Orient by rays): the
+    /// FFI must reject it before calling in, and still accept the non-rational weight.
+    #[test]
+    fn huge_geometry_is_rejected() {
+        let case = |z: f64| -> Inputs {
+            let w = -f64::MAX;
+            let v = serde_json::json!({
+                "brep": {"kind": "face", "dom": [0.0, 0.0, 1.0, 1.0], "surface": {"bspline": {
+                    "net": [[[0, 0, 0, w], [0, 1, 0, w]], [[1, 0, 0, w], [1, 1, z, w]]],
+                    "p": 1, "q": 1, "u": [0, 0, 1, 1], "v": [0, 0, 1, 1]}}},
+                "op": "orient", "outward": false, "unify": false, "faces": null
+            });
+            serde_json::from_value(v).unwrap()
+        };
+        let err = run_cpp(&case(1e300)).unwrap_err().to_string();
+        assert!(err.contains("HANG-16"), "{err}");
+        assert!(run_cpp(&case(0.5)).is_ok());
+    }
+}
