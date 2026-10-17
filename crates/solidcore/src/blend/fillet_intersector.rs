@@ -24,7 +24,7 @@
 //! | [`FilletIntersector::set_self_intersect`]               | `SetSelfIntersect`                              |
 //! | [`FilletIntersector::is_kind_of`], [`TYPE`]             | `IsKindOf`, `SmFilletIntersector_TYPE`          |
 //! | [`FilletSolverOps`], [`StepSolve`] (CO-PORTED interface) | the `SmFilletSolver` virtuals and members these methods call |
-//! | `FilletSolverOps for ConstantRadiusAssistedFs` (CO-PORTED) | `SmFilletSolver::SetSurfacesToZeroOffset`, `ReloadSurfaceOffsets`; `ComputePointValues` delegates to [`FilletSolver::compute_point_values`] (unit `blend.fillet_solver_p4`) |
+//! | `FilletSolverOps for ConstantRadiusAssistedFs` (CO-PORTED) | `SmFilletSolver::SetSurfacesToZeroOffset`, `ReloadSurfaceOffsets`; `ComputePointValues` delegates to [`FilletSolver::compute_point_values`] (unit `blend.fillet_solver_p4`), `ComputeSurfaceValues` and `ComputeUVVectors` to those of unit `blend.fillet_solver_p1` |
 //! | [`FilStatus`] (CO-PORTED)                               | `SmFilStatus`                                   |
 //! | [`HandlingAlgorithmType`] (CO-PORTED)                   | `SmHandlingAlgorithmType`                       |
 //!
@@ -258,8 +258,10 @@ pub trait FilletSolverOps {
     }
 
     /// `StepSolve(rTsectPnt, dStepSize, crUVDomain1, crUVDomain2, rbFoundAnswer,
-    /// rbClipped, rbBoundaryHit, rNextTSP)`: the UV points of the next point, written
-    /// to `next`.
+    /// rbClipped, rbBoundaryHit, rNextTSP)`: the next point, written to `next` (its UV
+    /// points and whatever else the solver sets, such as `m_adUserDoubles`);
+    /// `step_size` is in/out (`double & rdStep`: shortened when the step is clipped to
+    /// the domains).
     ///
     /// # Errors
     ///
@@ -268,7 +270,7 @@ pub trait FilletSolverOps {
         &mut self,
         _k: &Kernel,
         _point: &TsectPnt,
-        _step_size: f64,
+        _step_size: &mut f64,
         _uv_domain1: &Extent2d,
         _uv_domain2: &Extent2d,
         _next: &mut TsectPnt,
@@ -524,7 +526,10 @@ pub trait FilletSolverOps {
 
 /// The constant-radius solver data: `ComputePointValues` is the `SmFilletSolver`
 /// base's ([`FilletSolver::compute_point_values`], over the solver's
-/// `SmConstantRadiusFS` virtuals); `SetSurfacesToZeroOffset` and
+/// `SmConstantRadiusFS` virtuals); `ComputeSurfaceValues` and `ComputeUVVectors` are
+/// the base's ([`FilletSolver::compute_surface_values`],
+/// [`compute_uv_vectors`](crate::blend::fillet_solver::p1::compute_uv_vectors));
+/// `SetSurfacesToZeroOffset` and
 /// `ReloadSurfaceOffsets` are the `SmFilletSolver` base's ([`FilletSolver`]);
 /// `GetSurface(rail)->Evaluate1stDerivatives` evaluates the rail's offset surface
 /// (on a copy: a base extension the evaluation makes is not kept); the solver has no
@@ -552,6 +557,19 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
             point,
             previous,
         )
+    }
+
+    fn compute_surface_values(
+        &mut self,
+        _k: &Kernel,
+        uv_values: [Point2; 2],
+        point: &mut TsectPnt,
+    ) -> Result<()> {
+        FilletSolver::compute_surface_values(self, uv_values, point)
+    }
+
+    fn compute_uv_vectors(&mut self, _k: &Kernel, point: &mut TsectPnt) -> Result<()> {
+        crate::blend::fillet_solver::p1::compute_uv_vectors(point)
     }
 
     fn set_surfaces_to_zero_offset(&mut self) -> Result<()> {
@@ -1087,11 +1105,14 @@ impl<'s, 't, O: SolutionObject + 't, G: Clone> FilletIntersector<'s, 't, O, G> {
             return Ok(out);
         }
 
+        // `dStepSize` is a by-value parameter that StepSolve may shorten (in/out)
+        let mut step_size = step_size;
+
         // solve for the next SmTsectPt - save step output values
         let step = keep_unported(solver.step_solve(
             k,
             tsect,
-            step_size,
+            &mut step_size,
             &si.uv_domains[0],
             &si.uv_domains[1],
             next_tsp,
@@ -1180,12 +1201,12 @@ impl<'s, 't, O: SolutionObject + 't, G: Clone> FilletIntersector<'s, 't, O, G> {
                 if start_uv_len > 3.0 * end_uv_len || end_uv_len > 3.0 * start_uv_len {
                     // Compute derivatives by making a small step
                     let mut small_step = TsectPnt::new();
-                    let d_step = 1.0e-5;
+                    let mut d_step = 1.0e-5;
                     let found_good = solver
                         .step_solve(
                             k,
                             tsect,
-                            d_step,
+                            &mut d_step,
                             &si.uv_domains[0],
                             &si.uv_domains[1],
                             &mut small_step,

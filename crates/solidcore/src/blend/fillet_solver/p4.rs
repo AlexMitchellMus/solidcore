@@ -36,7 +36,15 @@
 //!   runners seed it from the C++ process's value.
 //! - **Intersector.** `SmFilletIntersector sFI(*pOffsetSrf1, ..)` traces copies of the
 //!   solver's offset surfaces seen as [`Surface`]s (the intersector borrows its
-//!   surfaces while the solver stays mutable).
+//!   surfaces while the solver stays mutable). Upstream they are the solver's own
+//!   objects, so the zero offsets of `SetSurfacesToZeroOffset` (the rail span tests
+//!   and Hermite maps of `TestSpanAccuracy`, `ComputeNextPoint`, `FlushCurve`), the
+//!   restores of `ReloadSurfaceOffsets` and the per-point `SetupOffsetValues`
+//!   distances reach the intersector: the copies' distances (a `Cell` in
+//!   [`OffsetSurface`](crate::surface::offset_surface::OffsetSurface)) are set to the
+//!   solver's on entry to `DoPointIntersection` and after every solver call it makes
+//!   that may change them. A base extension the solver stores on its own surfaces is
+//!   rebuilt by the copies' evaluations instead.
 //! - **Unported callees** (each a private stub at the end of this file returning
 //!   [`SolidError::Unported`]): `CalcCylinderFilletGeom`, `CalcTorusFilletGeom`,
 //!   `RecordFilletError` (`blend.fillet_solver_p2`); `sm_FindFilletTsectPnt`,
@@ -1263,7 +1271,7 @@ fn c2_sort_points(
         // a drop to the edge's end point may lie beyond it (the edge needs extending):
         // drop to the tangent extension line instead
         if st.ivl.is_value_on_boundary(t, EFF_ZERO).0 {
-            let pv = pass.uv_curve.evaluate(t, 1, true, true)?;
+            let pv = pass.uv_curve.evaluate(t, 1, true, false)?;
             let p0 = *pv
                 .first()
                 .ok_or_else(|| invalid("short curve evaluation"))?;
@@ -1946,6 +1954,37 @@ mod tests_c3 {
             };
             assert_eq!(o.offset_distance(), d);
         }
+    }
+
+    /// Upstream's intersector evaluates the solver's own offset surfaces: the trace
+    /// copies follow every offset change the solver makes through the adapter.
+    #[test]
+    fn trace_copies_follow_the_solver_offsets() {
+        use crate::blend::fillet_intersector::FilletSolverOps as _;
+
+        let k = Kernel::default();
+        let (a, b) = planes();
+        let mut fs = solver(&k, &a, &b);
+        let mut st = state(line(), [a, b]);
+        let dist = |s: &Surface| match s.kind() {
+            SurfaceKind::OffsetSurface(o) => o.offset_distance(),
+            _ => panic!("not an offset surface"),
+        };
+        with_cx(&k, |cx| {
+            let surfaces = c3_trace_setup(&mut fs, cx, &mut st).unwrap();
+            let mut solver = IntersectorSolver {
+                ops: &mut fs,
+                trace: [&surfaces[0], &surfaces[1]],
+                fillets: &mut *cx.fillets,
+                geoms: &mut *cx.geoms,
+            };
+            solver.set_surfaces_to_zero_offset().unwrap();
+            assert_eq!(dist(&surfaces[0]), 0.0);
+            assert_eq!(dist(&surfaces[1]), 0.0);
+            solver.reload_surface_offsets().unwrap();
+            assert_eq!(dist(&surfaces[0]), 0.25);
+            assert_eq!(dist(&surfaces[1]), -0.25);
+        });
     }
 
     fn extension_distance(k: &Kernel, curve: Curve, before: bool, after: bool) -> f64 {
@@ -3198,17 +3237,33 @@ fn c6_compute_point_values(
                 1.0e-5
             });
 
-        // :3615 forward step
-        let (flags, mut step_forw) = step_solve(ops, k, point, step, uv_domain1, uv_domain2)?;
+        // :3615 forward step (StepSolve may shorten `dStep`, passed by reference)
+        let mut step_forw = TsectPnt::new();
+        let flags = step_solve(
+            ops,
+            k,
+            point,
+            &mut step,
+            uv_domain1,
+            uv_domain2,
+            &mut step_forw,
+        )?;
         let mut found_forw = flags.found_answer;
 
         // :3619 bigger step in the small-step case; upstream passes `dStep` again, not
-        // `dBigStep` (ported as written)
+        // `dBigStep` (ported as written), into the same `sStepForw`
         if !found_forw && step < 1.0e-4 {
             let big_step = 1.0e-3;
-            let (flags, next) = step_solve(ops, k, point, step, uv_domain1, uv_domain2)?;
+            let flags = step_solve(
+                ops,
+                k,
+                point,
+                &mut step,
+                uv_domain1,
+                uv_domain2,
+                &mut step_forw,
+            )?;
             found_forw = flags.found_answer;
-            step_forw = next;
             if found_forw {
                 step = big_step;
             }
@@ -3225,7 +3280,16 @@ fn c6_compute_point_values(
 
         // :3640 backward step
         step = -step;
-        let (flags, step_back) = step_solve(ops, k, point, step, uv_domain1, uv_domain2)?;
+        let mut step_back = TsectPnt::new();
+        let flags = step_solve(
+            ops,
+            k,
+            point,
+            &mut step,
+            uv_domain1,
+            uv_domain2,
+            &mut step_back,
+        )?;
         let found_back = flags.found_answer;
 
         let back_pts = if found_back {
@@ -3553,18 +3617,21 @@ fn find_fillet_tsect_pnt(
     ))
 }
 
-/// `StepSolve(rTsectPnt, dStepSize, crUVDomain1, crUVDomain2, rbFoundAnswer,
-/// rbClipped, rbBoundaryHit, rNextTSP)`: the flags and the next point (only its UV
-/// positions set; it starts as `SmTsectPnt()`). Changes the offset surfaces' offsets.
+/// `StepSolve(rTsectPnt, rdStep, crUVDomain1, crUVDomain2, rbFoundAnswer,
+/// rbClipped, rbBoundaryHit, rNextPoint)`: the flags; writes the next point into
+/// `next` (its UV positions, `m_adUserDoubles`, or all of it through
+/// `PointOnPlaneSolve`) and may shorten `step` (`double & rdStep`, in/out). Changes the
+/// offset surfaces' offsets.
 fn step_solve(
     ops: &mut dyn FilletSolverOps,
     k: &Kernel,
     point: &TsectPnt,
-    step_size: f64,
+    step: &mut f64,
     uv_domain1: &Extent2d,
     uv_domain2: &Extent2d,
-) -> Result<(StepSolveFlags, TsectPnt)> {
-    let _ = (ops, k, point, step_size, uv_domain1, uv_domain2);
+    next: &mut TsectPnt,
+) -> Result<StepSolveFlags> {
+    let _ = (ops, k, point, step, uv_domain1, uv_domain2, next);
     // UNPORTED(blend.fillet_solver_p3): SmFilletSolver::StepSolve
     Err(SolidError::unported(
         "SmFilletSolver::StepSolve",
@@ -3608,9 +3675,10 @@ fn calc_cross_section(cx: &mut Cx<'_>, edge: EdgeId) -> Result<()> {
 
 /// `SmEdgeuse::GetOrCreateUVTrimCurve(rpUVTrimCurve)` (defaults: no distances,
 /// `bUVSpaceOkay = TRUE`): a copy of the trim curve of the edge use or its mate
-/// (`GetUVTrimCurve`), failing with the edge use's drop-curve failure status when it
-/// has one; building a missing curve (`CreateUVTrimCurve`, which would attach it to
-/// `brep`) is unported.
+/// (`GetUVTrimCurve`), failing with this edge use's own drop-curve failure status
+/// when it has one (upstream reads `this->m_pDropCurveFail` directly, not the mate's
+/// record through `GetDropCurveFail`); building a missing curve (`CreateUVTrimCurve`,
+/// which would attach it to `brep`) is unported.
 fn get_or_create_uv_trim_curve(brep: &mut Brep, edgeuse: EdgeuseId) -> Result<Curve> {
     let (curve, _) = eu::uv_trim_curve(brep, edgeuse)?;
     let Some(curve) = curve.cloned() else {
@@ -3620,8 +3688,7 @@ fn get_or_create_uv_trim_curve(brep: &mut Brep, edgeuse: EdgeuseId) -> Result<Cu
             "topology.edgeuse_p3",
         ));
     };
-    let (fail, _) = eu::drop_curve_fail(brep, edgeuse)?;
-    if let Some(fail) = fail {
+    if let Some(fail) = brep.edgeuse(edgeuse)?.drop_curve_fail.as_deref() {
         if fail.fail_status != SM_SUCCESS {
             return Err(SolidError::Upstream {
                 operation: OP,
@@ -3695,6 +3762,7 @@ fn do_point_intersection(
     points: &mut [TsectPnt],
     args: PointIntersectionArgs,
 ) -> Result<()> {
+    use crate::intersect::surface_intersector::p1::SrfIndex;
     use crate::intersect::surface_intersector::p4::PointIntersectionOptions;
 
     let ids: Vec<_> = points
@@ -3710,8 +3778,16 @@ fn do_point_intersection(
         ang_tol_rad: Some(args.ang_tol_rad),
     };
     let k = cx.k;
+    let trace = [
+        fi.base.base.surface(SrfIndex::First),
+        fi.base.base.surface(SrfIndex::Second),
+    ];
+    // offsets the solver set since the last call (`DoPointIntersection` evaluates the
+    // surfaces before its first solver call)
+    sync_trace_offsets(&*ops, trace)?;
     let mut solver = IntersectorSolver {
         ops,
+        trace,
         fillets: &mut *cx.fillets,
         geoms: &mut *cx.geoms,
     };
@@ -3729,13 +3805,40 @@ fn do_point_intersection(
 struct IntersectorSolver<'b, 'c> {
     /// The solver (`this`).
     ops: &'b mut dyn FilletSolverOps,
+    /// The intersector's surfaces (copies of the solver's offset surfaces), kept at
+    /// the solver's offset distances by [`sync_trace_offsets`] after every call that
+    /// may set them.
+    trace: [&'b Surface; 2],
     /// The pseudo B-rep holding the fillet geometries and rails.
     fillets: &'b mut FilletBrep,
     /// `m_vFilletGeoms` handle resolution.
     geoms: &'b mut (dyn FilletGeomResolver + 'c),
 }
 
+/// Upstream's intersector evaluates the solver's own `SmOffsetSurface`s, so every
+/// `SetOffsetDistance` the solver makes (`SetSurfacesToZeroOffset`,
+/// `ReloadSurfaceOffsets`, `SetupOffsetValues` under `ComputePointValues`,
+/// `ComputeSurfaceValues`, `StepSolve`) changes the surfaces it traces; here the trace
+/// surfaces are copies, which take the solver's distances. A trace surface that is not
+/// an offset surface (only tests build one) has no distance to follow.
+fn sync_trace_offsets(ops: &dyn FilletSolverOps, trace: [&Surface; 2]) -> Result<()> {
+    for (rail, surface) in trace.into_iter().enumerate() {
+        if let SurfaceKind::OffsetSurface(copy) = surface.kind() {
+            copy.set_offset_distance(offset_surface(ops, rail)?.offset_distance());
+        }
+    }
+    Ok(())
+}
+
 impl IntersectorSolver<'_, '_> {
+    /// [`sync_trace_offsets`] after a solver call, whatever its result (a failing call
+    /// may have set distances before failing, and the intersector ignores some
+    /// failures).
+    fn synced<T>(&self, r: Result<T>) -> Result<T> {
+        sync_trace_offsets(&*self.ops, self.trace)?;
+        r
+    }
+
     /// The pseudo-B-rep geometry of a solver handle.
     fn geom_mut(
         &mut self,
@@ -3760,7 +3863,7 @@ impl crate::blend::fillet_intersector::FilletSolverOps for IntersectorSolver<'_,
         point: &mut TsectPnt,
         previous: Option<&TsectPnt>,
     ) -> Result<()> {
-        FilletSolver::compute_point_values(
+        let r = FilletSolver::compute_point_values(
             &mut *self.ops,
             k,
             uv_values,
@@ -3769,7 +3872,8 @@ impl crate::blend::fillet_intersector::FilletSolverOps for IntersectorSolver<'_,
             curve_trace_direction,
             point,
             previous,
-        )
+        );
+        self.synced(r)
     }
 
     /// [`FilletSolver::compute_surface_values`].
@@ -3779,7 +3883,8 @@ impl crate::blend::fillet_intersector::FilletSolverOps for IntersectorSolver<'_,
         uv_values: [Point2; 2],
         point: &mut TsectPnt,
     ) -> Result<()> {
-        FilletSolver::compute_surface_values(&mut *self.ops, uv_values, point)
+        let r = FilletSolver::compute_surface_values(&mut *self.ops, uv_values, point);
+        self.synced(r)
     }
 
     /// `ComputeUVVectors` (`super::p1::compute_uv_vectors`).
@@ -3787,33 +3892,37 @@ impl crate::blend::fillet_intersector::FilletSolverOps for IntersectorSolver<'_,
         super::p1::compute_uv_vectors(point)
     }
 
-    /// `StepSolve` (the stub of this file): it sets only the UV positions of the next
-    /// point.
+    /// `StepSolve` (the stub of this file), writing into `next` and `step_size` as
+    /// upstream writes `rNextTSP` and the caller's `dStepSize`.
     fn step_solve(
         &mut self,
         k: &Kernel,
         point: &TsectPnt,
-        step_size: f64,
+        step_size: &mut f64,
         uv_domain1: &Extent2d,
         uv_domain2: &Extent2d,
         next: &mut TsectPnt,
     ) -> Result<StepSolveFlags> {
-        use crate::intersect::surface_intersector::p1::SrfIndex;
-
-        let (flags, solved) =
-            step_solve(&mut *self.ops, k, point, step_size, uv_domain1, uv_domain2)?;
-        for s in [SrfIndex::First, SrfIndex::Second] {
-            *next.uv_pos_mut(s) = solved.uv_pos(s);
-        }
-        Ok(flags)
+        let r = step_solve(
+            &mut *self.ops,
+            k,
+            point,
+            step_size,
+            uv_domain1,
+            uv_domain2,
+            next,
+        );
+        self.synced(r)
     }
 
     fn set_surfaces_to_zero_offset(&mut self) -> Result<()> {
-        self.ops.solver_mut().set_surfaces_to_zero_offset()
+        let r = self.ops.solver_mut().set_surfaces_to_zero_offset();
+        self.synced(r)
     }
 
     fn reload_surface_offsets(&mut self) -> Result<()> {
-        self.ops.solver_mut().reload_surface_offsets()
+        let r = self.ops.solver_mut().reload_surface_offsets();
+        self.synced(r)
     }
 
     /// `GetSurface(rail)->Evaluate1stDerivatives(uv, TRUE, TRUE, ..)` on a copy of the

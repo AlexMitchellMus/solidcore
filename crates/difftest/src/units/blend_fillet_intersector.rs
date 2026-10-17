@@ -16,10 +16,15 @@
 //! `ComputePointValuesDelta`) write it back into the arena on the Rust side too, whatever
 //! the status, so the recorded arena matches the C++ in-place writes.
 //!
+//! `SmFilletSolver::ComputePointValues` keeps a process-wide `static double sdStaticStep`
+//! (ND-3): every op that may reach it seeds the case's [`Kernel::fillet_point_step`] with
+//! the C++ process's value (`blend_fillet_solver_p4::static_step`), as the
+//! `blend.fillet_solver_p4` runner does.
+//!
 //! Deferred cases: everything past the solver calls that are not ported
 //! (`SmFilletSolver::StepSolve` in `ComputeNextPoint` from a crossing point and in the
-//! finite-difference block of `ComputePointValues`, `ComputeSurfaceValues` in
-//! `ComputePointValuesDelta`, `PointOnPlaneSolve` in `EvaluateLawPoint`) and the span test past its angle check on a plane
+//! finite-difference block of `ComputePointValues`, `PointOnPlaneSolve` in
+//! `EvaluateLawPoint`) and the span test past its angle check on a plane
 //! (`SmCrvOnSurf` over an `SmPlane`, a dispatch gap of `curve.crv_on_surf`). `FlushCurve` of two
 //! or more points is not run: in C++ it dereferences the solver's unset executive and the
 //! fillet geometry's `NULL` rails (the Rust side stops earlier, at the offset surface
@@ -668,6 +673,17 @@ fn op_code(op: &OpIn) -> f64 {
 
 fn rust_record(i: &Inputs) -> Result<Vec<f64>, Fail> {
     let k = Kernel::default();
+    // `ComputePointValues`' function-static `sdStaticStep` is per process in C++ (latched
+    // by the first finite-difference point of any unit): an op that may reach it seeds
+    // the kernel's latch with the C++ value (the probe latches `1e-5` when nothing has).
+    if !matches!(
+        i.op,
+        OpIn::State | OpIn::Mid { .. } | OpIn::FlushCrv { .. } | OpIn::SetSelf { .. }
+    ) {
+        let step = solidcore_ffi::units::blend_fillet_solver_p4::static_step()
+            .map_err(|e| Fail::Harness(harness(format!("static step probe: {e}"))))?;
+        k.fillet_point_step.set(Some(step));
+    }
     let a = rust_surface(&i.a)?;
     let b = match &i.b {
         Some(b) => Some(rust_surface(b)?),

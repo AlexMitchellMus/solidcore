@@ -17,7 +17,7 @@
 //! | [`SecantConstantRadiusFs::load_initial_values`]   | `SmSecantConstantRadiusFS::LoadInitialValues`     |
 //! | [`SecantConstantRadiusFs::load_jacobian`]         | `SmSecantConstantRadiusFS::LoadJacobian`          |
 //! | [`ConstantRadiusAssistedFs`] (CO-PORTED)          | `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` over the `SmFilletSolver` base ([`FilletSolver`]) |
-//! | `impl FilletSolverOps` for both solvers            | their `LoadJacobian` / `LoadInitialValues` / `OffsetRadiiCanChange` overrides |
+//! | `impl FilletSolverOps` for both solvers            | their `LoadJacobian` / `LoadInitialValues` / `OffsetRadiiCanChange` overrides; the inherited `SmConstantRadiusFS::SetupOffsetValues` (delegated to the base) |
 //! | `impl FilletSolverOps for ConstantRadiusAssistedFs` (CO-PORTED) | `SmConstantRadiusFS::SetupOffsetValues`, `SmConstantRadiusFS::OffsetRadiiCanChange` (unit `blend.fillet_standard_solver_p1`) |
 //! | [`OffsetSurface`], [`SurfaceId`]                  | an `SmOffsetSurface*` rail surface (unit `surface.offset_surface`) and the identity of its base pointer |
 //! | [`JacobianLoad`], [`InitialValues`]               | the in/out arguments of `LoadJacobian`, `LoadInitialValues` |
@@ -167,7 +167,7 @@ impl OffsetSurface {
 
     /// `GetOffsetDistance`.
     #[must_use]
-    pub const fn offset_distance(&self) -> f64 {
+    pub fn offset_distance(&self) -> f64 {
         self.surface.offset_distance()
     }
 
@@ -1576,6 +1576,20 @@ macro_rules! fillet_solver_ops {
                 &mut self.base.solver
             }
 
+            /// `SmConstantRadiusFS::SetupOffsetValues` (inherited through
+            /// `SmConstantRadiusAssistedFS`).
+            fn setup_offset_values(
+                &mut self,
+                tsect: &TsectPnt,
+                offset_dist: Option<&mut f64>,
+            ) -> Result<()> {
+                <ConstantRadiusAssistedFs as FilletSolverOps>::setup_offset_values(
+                    &mut self.base,
+                    tsect,
+                    offset_dist,
+                )
+            }
+
             /// `SmConstantRadiusFS::OffsetRadiiCanChange`: `FALSE`.
             fn offset_radii_can_change(&self) -> bool {
                 false
@@ -1795,6 +1809,50 @@ mod tests {
         assert_eq!(fs.base.surface(0).expect("rail 0").offset_distance(), 2.0);
         assert_eq!(fs.base.surface(1).expect("rail 1").offset_distance(), 1.0);
         let _ = NurbCircleParam::Quadratic;
+    }
+
+    /// Both subclasses inherit `SmConstantRadiusFS::SetupOffsetValues`.
+    #[test]
+    fn subclasses_inherit_setup_offset_values() {
+        let k = Kernel::default();
+        let o = Vec3::new(0.0, 0.0, 0.0);
+        let (x, y, z) = (
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+        );
+        let base = || {
+            ConstantRadiusAssistedFs::from_parts(
+                1e-6,
+                0.5,
+                0.03,
+                [2.0, 1.0],
+                [
+                    Some(rail(&k, 0.0, plane(o, x, y), 0)),
+                    Some(rail(&k, 0.0, plane(o, y, z), 1)),
+                ],
+                [1.0, -1.0],
+                [None, None],
+            )
+        };
+        let check = |ops: &mut dyn FilletSolverOps| {
+            let mut d = 0.0;
+            ops.setup_offset_values(&TsectPnt::new(), Some(&mut d))
+                .expect("setup");
+            assert_eq!(d, 2.0);
+            let off = |i| {
+                ops.solver()
+                    .surface(i)
+                    .unwrap()
+                    .unwrap()
+                    .surface
+                    .offset_distance()
+            };
+            assert_eq!(off(0), 2.0);
+            assert_eq!(off(1), -1.0);
+        };
+        check(&mut EiffelTowerFs::new(base(), 0.3));
+        check(&mut SecantConstantRadiusFs::new(base(), 0.2));
     }
 
     #[test]
