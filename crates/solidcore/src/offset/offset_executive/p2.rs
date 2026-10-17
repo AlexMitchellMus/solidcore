@@ -346,7 +346,7 @@ impl OffsetExecutive {
         let _curves =
             face::create_curves_from_face(kernel, original, id, OrientType::Same, true, true)?;
         let source_surface = required(original.face(id)?.surface.as_ref(), OP_SOLID)?;
-        let _surface = source_surface.copy_and_add_analytics()?;
+        let _surface = source_surface.copy_and_add_analytics(kernel)?;
         let temporary = required(self.offset_brep(), OP_SOLID)?;
         infinite_region(temporary)?;
 
