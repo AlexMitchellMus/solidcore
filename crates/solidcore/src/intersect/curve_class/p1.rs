@@ -1725,7 +1725,9 @@ pub fn apply_point_solution<O, S: Copy>(
 /// vertices. The start is fixed before the end, which then sees the fixed interior.
 ///
 /// The edges and vertices are reached through [`ClassGeometry::topology_entity`] and
-/// [`ClassGeometry::topology_handle_in`].
+/// [`ClassGeometry::topology_handle_in`]; an edge or vertex the adapter cannot resolve
+/// (no topology hooks, or a stand-in without a B-rep) keeps the deferral the call had
+/// before it was wired ([`SolidError::Unported`], `topology.edge` / `topology.vertex`).
 ///
 /// # Errors
 ///
@@ -1766,11 +1768,11 @@ pub fn make_consistent_classifications<O: ClassObject>(
             let classify_vertex = end
                 .object()
                 .ok_or_else(|| unresolved("vertex class without vertex"))?;
-            let (eb, EntityRef::Edge(e)) = geometry
-                .topology_entity(classify_edge)
-                .ok_or_else(|| unresolved("edge handle cannot be resolved"))?
-            else {
-                return Err(unresolved("edge class object is not an edge"));
+            // (an adapter that cannot resolve the edge keeps the deferral this call had
+            // before it was wired)
+            let Some((eb, EntityRef::Edge(e))) = geometry.topology_entity(classify_edge) else {
+                // UNPORTED(topology.edge): an edge the adapter cannot resolve
+                return Err(SolidError::unported("SmEdge::GetVertex", "topology.edge"));
             };
             let v1 = crate::topology::edge::vertex(eb, e)?
                 .ok_or_else(|| unresolved("edge without vertex"))?;
@@ -1791,11 +1793,13 @@ pub fn make_consistent_classifications<O: ClassObject>(
 
             // Try 1 - Simple ClassifyEdge substitution: the first Edge attached to
             // ClassifyVertex within XSectTol3d at the interval's middle point
-            let (vb, EntityRef::Vertex(cv)) = geometry
-                .topology_entity(classify_vertex)
-                .ok_or_else(|| unresolved("vertex handle cannot be resolved"))?
+            let Some((vb, EntityRef::Vertex(cv))) = geometry.topology_entity(classify_vertex)
             else {
-                return Err(unresolved("vertex class object is not a vertex"));
+                // UNPORTED(topology.vertex): a vertex the adapter cannot resolve
+                return Err(SolidError::unported(
+                    "SmVertex::GetEdges",
+                    "topology.vertex",
+                ));
             };
             let t_mid = ivl.interval.evaluate(0.5);
             let mut fixed = None;
