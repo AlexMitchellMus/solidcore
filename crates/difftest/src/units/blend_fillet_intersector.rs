@@ -12,10 +12,14 @@
 //! op values only on success), reported as the values `rec`. A case whose Rust side reaches an
 //! unported unit is deferred as a whole.
 //!
+//! The ops that take an arena point by reference (`ComputePointValues`,
+//! `ComputePointValuesDelta`) write it back into the arena on the Rust side too, whatever
+//! the status, so the recorded arena matches the C++ in-place writes.
+//!
 //! Deferred cases: everything past the solver calls that are not ported
-//! (`SmFilletSolver::StepSolve` in `ComputeNextPoint` from a crossing point,
-//! `ComputeSurfaceValues` in `ComputePointValuesDelta`, `ComputePointValues`,
-//! `PointOnPlaneSolve` in `EvaluateLawPoint`) and the span test past its angle check on a plane
+//! (`SmFilletSolver::StepSolve` in `ComputeNextPoint` from a crossing point and in the
+//! finite-difference block of `ComputePointValues`, `ComputeSurfaceValues` in
+//! `ComputePointValuesDelta`, `PointOnPlaneSolve` in `EvaluateLawPoint`) and the span test past its angle check on a plane
 //! (`SmCrvOnSurf` over an `SmPlane`, a dispatch gap of `curve.crv_on_surf`). `FlushCurve` of two
 //! or more points is not run: in C++ it dereferences the solver's unset executive and the
 //! fillet geometry's `NULL` rails (the Rust side stops earlier, at the offset surface
@@ -508,6 +512,16 @@ fn id(i: usize) -> TsectId {
     TsectId(i)
 }
 
+/// Copies a point an op worked on back into the arena slot it was taken from (the C++ ops
+/// take the arena point by reference and write it in place).
+fn put_back(fi: &mut Fi<'_>, i: usize, p: TsectPnt) -> Result<(), Fail> {
+    *fi.base
+        .base
+        .point_mut(id(i))
+        .map_err(|e| Fail::Harness(harness(e.to_string())))? = p;
+    Ok(())
+}
+
 type Fi<'s> = FilletIntersector<'s, 'static, NoSurfaceHandle, ()>;
 
 #[allow(clippy::too_many_lines)]
@@ -587,6 +601,9 @@ fn run_op(
                 &mut pa,
                 &mut pb,
             );
+            // C++ writes both arena points in place, whatever the status
+            put_back(fi, *a, pa)?;
+            put_back(fi, *b, pb)?;
             st(o, r)?;
         }
         OpIn::Values { uv, a, prev } => {
@@ -596,6 +613,8 @@ fn run_op(
                 None => None,
             };
             let r = fi.compute_point_values(solver, k, uv.map(p2), &mut pa, pp.as_ref(), None);
+            // C++ writes the arena point in place, whatever the status
+            put_back(fi, *a, pa)?;
             st(o, r)?;
         }
         OpIn::Law {
