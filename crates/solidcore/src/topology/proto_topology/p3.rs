@@ -174,12 +174,14 @@ fn brep_glue_vertices<O>(_which: i32, _v1: O, _v2: O) -> Result<()> {
     ))
 }
 
-/// `SmBrep::SqueezeEdge` of B-rep `which`.
+/// `SmBrep::SqueezeEdge` of B-rep `which`. The function is ported
+/// (`topology::brep::p3::squeeze_edge`), but [`ProtoBrep`] has no hook to edit a
+/// B-rep through its handle yet.
 fn brep_squeeze_edge<O>(_which: i32, _edge: O, _vertex: O) -> Result<()> {
-    // UNPORTED(topology.brep_p3): SmBrep::SqueezeEdge
+    // UNPORTED(topology.proto_topology_p3): ProtoBrep hook for SmBrep::SqueezeEdge
     Err(SolidError::unported(
-        "SmBrep::SqueezeEdge",
-        "topology.brep_p3",
+        "ProtoBrep::squeeze_edge (SmBrep::SqueezeEdge)",
+        "topology.proto_topology_p3",
     ))
 }
 

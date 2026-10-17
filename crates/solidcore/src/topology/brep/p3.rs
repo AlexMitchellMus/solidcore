@@ -37,7 +37,7 @@
 //! - **Sliced curve copy.** `MakeWireEdge`/`MakeWireEdgeVertex` copy a curve that
 //!   already belongs to an edge with `new SmCurve(*pCurve)`, a base-class copy without
 //!   geometry; the port clones the curve with its geometry (`Curve`'s `Clone`, the
-//!   copy constructor of the curve kinds). Recorded as `WR-104` in
+//!   copy constructor of the curve kinds). Recorded as `WR-168` in
 //!   `plan/upstream-issues.md`; unreached today (both functions stop at
 //!   `topology.shell` first).
 //! - **Offset surfaces.** `TurnToNURBS` converts `SmOffsetSurface` faces; there is no
@@ -288,9 +288,16 @@ fn shell_transfer_children(b: &mut Brep, from: ShellId, to: ShellId) -> Result<(
     ))
 }
 
-/// `SmFace::Notify(operation, face, data2, data3)` (unit `topology.face_p3`).
-fn face_notify(b: &mut Brep, f: FaceId, operation: NotifyOperation) -> Result<()> {
-    let _ = (b, f, operation);
+/// `SmFace::Notify(operation, data1, data2, data3)` of face `f` (unit
+/// `topology.face_p3`).
+fn face_notify(
+    b: &mut Brep,
+    f: FaceId,
+    env: &mut NotifyEnv<'_>,
+    operation: NotifyOperation,
+    data: [Option<NotifyArg>; 3],
+) -> Result<()> {
+    let _ = (b, f, env, operation, data);
     // UNPORTED(topology.face_p3): SmFace::Notify
     Err(SolidError::unported("SmFace::Notify", "topology.face_p3"))
 }
@@ -320,9 +327,16 @@ fn make_shell_vertex(
     ))
 }
 
-/// `SmBrep::DeleteEdge(pEdge, NULL)` (unit `topology.brep_p4`).
-fn delete_edge(b: &mut Brep, e: EdgeId) -> Result<()> {
-    let _ = (b, e);
+/// `SmBrep::DeleteEdge(pEdge, pOptSurfaceToKeep)` (unit `topology.brep_p4`;
+/// `surface_to_keep` is `NULL`, the default, at every call here).
+fn delete_edge(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+    e: EdgeId,
+    surface_to_keep: Option<FaceId>,
+) -> Result<()> {
+    let _ = (k, b, env, e, surface_to_keep);
     // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge
     Err(SolidError::unported(
         "SmBrep::DeleteEdge",
@@ -331,8 +345,8 @@ fn delete_edge(b: &mut Brep, e: EdgeId) -> Result<()> {
 }
 
 /// `SmBrep::DeleteVertex(pVertex)` (unit `topology.brep_p4`).
-fn delete_vertex(b: &mut Brep, v: VertexId) -> Result<()> {
-    let _ = (b, v);
+fn delete_vertex(k: &mut Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>, v: VertexId) -> Result<()> {
+    let _ = (k, b, env, v);
     // UNPORTED(topology.brep_p4): SmBrep::DeleteVertex
     Err(SolidError::unported(
         "SmBrep::DeleteVertex",
@@ -340,9 +354,16 @@ fn delete_vertex(b: &mut Brep, v: VertexId) -> Result<()> {
     ))
 }
 
-/// `SmBrep::CalculateBoundingBox(rBox, TRUE)` (unit `query.brep`).
-fn brep_bounding_box(k: &Kernel, b: &Brep) -> Result<crate::geom::extent3d::Extent3d> {
-    let _ = (k, b);
+/// `SmBrep::CalculateBoundingBox(rBox, bApprox, bTight, bExpandByZoneTol3d)` (unit
+/// `query.brep`).
+fn brep_bounding_box(
+    k: &Kernel,
+    b: &Brep,
+    approx: bool,
+    tight: bool,
+    expand_by_zone_tol_3d: bool,
+) -> Result<crate::geom::extent3d::Extent3d> {
+    let _ = (k, b, approx, tight, expand_by_zone_tol_3d);
     // UNPORTED(query.brep): SmBrep::CalculateBoundingBox
     Err(SolidError::unported(
         "SmBrep::CalculateBoundingBox",
@@ -350,10 +371,18 @@ fn brep_bounding_box(k: &Kernel, b: &Brep) -> Result<crate::geom::extent3d::Exte
     ))
 }
 
-/// `SmEdgeuse::NormalizedEvaluate(t, TRUE, rPoint, &rTangent)` (unit
-/// `topology.edgeuse_p3`): the UV point and tangent at normalized parameter `t`.
-fn normalized_evaluate_uv(b: &Brep, eu: EdgeuseId, t: f64) -> Result<(Point3, Vec3)> {
-    let _ = (b, eu, t);
+/// `SmEdgeuse::NormalizedEvaluate(t, bParameterSpaceEval, rPoint, &rFirstDeriv,
+/// bOKToMakeUVTrimCurve)` (unit `topology.edgeuse_p3`): the point and first derivative
+/// at normalized parameter `t`.
+fn normalized_evaluate(
+    k: &Kernel,
+    b: &mut Brep,
+    eu: EdgeuseId,
+    t: f64,
+    parameter_space: bool,
+    ok_to_make_uv_trim_curve: bool,
+) -> Result<(Point3, Vec3)> {
+    let _ = (k, b, eu, t, parameter_space, ok_to_make_uv_trim_curve);
     // UNPORTED(topology.edgeuse_p3): SmEdgeuse::NormalizedEvaluate
     Err(SolidError::unported(
         "SmEdgeuse::NormalizedEvaluate",
@@ -417,8 +446,14 @@ fn faceuse_remove_loopuse(b: &mut Brep, fu: FaceuseId, lu: LoopuseId) -> Result<
 
 /// `delete pFace`: notifies its destruction (`SmFace::Notify`, unit `topology.face_p3`)
 /// and drops the surface it owns (the record leaves the B-rep's face list).
-fn destroy_face(b: &mut Brep, f: FaceId) -> Result<()> {
-    face_notify(b, f, NotifyOperation::Destruction)?;
+fn destroy_face(b: &mut Brep, env: &mut NotifyEnv<'_>, f: FaceId) -> Result<()> {
+    face_notify(
+        b,
+        f,
+        env,
+        NotifyOperation::Destruction,
+        [arg(EntityRef::Face(f)), None, None],
+    )?;
     b.remove_from_face_list(f);
     let face = b.face_mut(f)?;
     face.faceuse = None;
@@ -1304,7 +1339,13 @@ pub fn delete_face(
 
     // tell Brep it's about to change
     brep_notify(b, env, NotifyOperation::PreEdit, [brep_arg(b), None, None])?;
-    face_notify(b, f, NotifyOperation::PreEdit)?;
+    face_notify(
+        b,
+        f,
+        env,
+        NotifyOperation::PreEdit,
+        [arg(EntityRef::Face(f)), None, None],
+    )?;
     brep_notify(
         b,
         env,
@@ -1502,20 +1543,20 @@ pub fn delete_face(
     }
 
     // It's now OK to remove and delete the FaceToDelete
-    destroy_face(b, f)?;
+    destroy_face(b, env, f)?;
 
     if delete_edges_vertices {
         // delete every edge converted into a wire
         for e in new_wire_edges {
             deleted.push(EntityRef::Edge(e));
-            delete_edge(b, e)?;
+            delete_edge(k, b, env, e, None)?;
         }
 
         // remove vertices that have become shell vertices
         for v in orig_vertices {
             if vertex::is_shell_vertex(b, v)? {
                 deleted.push(EntityRef::Vertex(v));
-                delete_vertex(b, v)?;
+                delete_vertex(k, b, env, v)?;
             }
         }
     }
@@ -1956,7 +1997,7 @@ pub fn squeeze_edge(
     } else {
         // Not a wire edge: so it's in a Loop, on a Face.
         let mut lock = MarkLock::new(core::slice::from_mut(&mut k.context), 0, ALL_MARKS)?;
-        let res = squeeze_loops(b, &edgeuses, e, survivor);
+        let res = squeeze_loops(b, env, &edgeuses, e, survivor);
         lock.release(core::slice::from_mut(&mut k.context))?;
         res?;
     }
@@ -2029,13 +2070,20 @@ pub fn squeeze_edge(
 /// loop at `survivor`).
 fn squeeze_loops(
     b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
     edgeuses: &[EdgeuseId],
     e: EdgeId,
     survivor: VertexId,
 ) -> Result<()> {
     for &eu in edgeuses {
         if let Some(face) = eu1::face(b, eu)? {
-            face_notify(b, face, NotifyOperation::PreEdit)?;
+            face_notify(
+                b,
+                face,
+                env,
+                NotifyOperation::PreEdit,
+                [arg(EntityRef::Face(face)), brep_arg(b), None],
+            )?;
         }
 
         // remove UVTrimCurves
@@ -2468,7 +2516,7 @@ fn orient_ray_votes(
     let ray_vec = Vec3::new(1.23456, 2.34567, 3.45678).unitize()?;
 
     // Brep BoundingBox and BoundingSphere
-    let bbox = brep_bounding_box(k, b)?;
+    let bbox = brep_bounding_box(k, b, true, false, true)?;
     let radius = bbox.sphere_bound().radius;
 
     let fu = face2::upward_faceuse(b, face)?.ok_or(null_deref("face without face use"))?;
@@ -2509,7 +2557,7 @@ fn orient_ray_votes(
                 break;
             }
             // get edgeuse testPoint on the face.
-            let (pnt, tan) = normalized_evaluate_uv(b, eu, t)?;
+            let (pnt, tan) = normalized_evaluate(k, b, eu, t, true, true)?;
 
             // build temporary isoParam Curve through the testPoint
             let surface = b
@@ -2695,4 +2743,107 @@ fn brep_curve_solve(
     })();
     b.set_editing_enabled(editing);
     res
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn with_env<R>(f: impl FnOnce(&mut NotifyEnv<'_>) -> R) -> R {
+        let mut records = BTreeMap::new();
+        let mut attributes = crate::geom::attribute::AttributeStore::default();
+        let key_of = |e: EntityRef| {
+            arena_identity(match e {
+                EntityRef::Face(f) => CacheObject::Face(f),
+                EntityRef::Edge(x) => CacheObject::Edge(x),
+                EntityRef::Vertex(v) => CacheObject::Vertex(v),
+                _ => CacheObject::Brep,
+            })
+        };
+        let mut env = NotifyEnv {
+            records: &mut records,
+            attributes: &mut attributes,
+            context: None,
+            key_of: &key_of,
+        };
+        f(&mut env)
+    }
+
+    #[test]
+    fn api_copy_of_null_is_invalid_input() {
+        let mut k = Kernel::default();
+        let r = with_env(|env| api_brep_copy(&mut k, env, None));
+        assert!(matches!(
+            r,
+            Err(SolidError::Upstream {
+                code: SM_ERR_INVALID_INPUT,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn constructor_stops_at_the_void_flag() {
+        let mut k = Kernel::default();
+        let e = new_brep(&mut k, tol::USE_DEFAULT, tol::USE_DEFAULT).unwrap_err();
+        assert!(e.is_unported());
+    }
+
+    #[test]
+    fn delete_face_needs_editing_and_a_face_of_the_brep() {
+        let mut k = Kernel::default();
+        let mut b = Brep::new();
+        let s = b.add_shell().unwrap();
+        let f = b.add_face(s).unwrap();
+        let mut marks = Marks::default();
+        let r = with_env(|env| {
+            delete_face(
+                &mut k,
+                &mut b,
+                env,
+                &mut marks,
+                f,
+                DeleteFaceOptions::default(),
+            )
+        });
+        assert!(matches!(r, Err(SolidError::Upstream { code: 1001, .. })));
+        b.set_editing_enabled(true);
+        b.remove_from_face_list(f);
+        let r = with_env(|env| {
+            delete_face(
+                &mut k,
+                &mut b,
+                env,
+                &mut marks,
+                f,
+                DeleteFaceOptions::default(),
+            )
+        });
+        assert!(matches!(r, Err(SolidError::Upstream { code: 1001, .. })));
+        assert!(DeleteFaceOptions::default().do_region_nesting);
+    }
+
+    #[test]
+    fn turn_to_nurbs_of_an_empty_brep_is_a_no_op() {
+        let k = Kernel::default();
+        let mut b = Brep::new();
+        with_env(|env| turn_to_nurbs(&k, &mut b, env)).unwrap();
+        assert!(b.faces().is_empty());
+    }
+
+    #[test]
+    fn region_list_head_moves_on_removal() {
+        let mut b = Brep::new();
+        let r0 = b.add_region_record(Region::default()).unwrap();
+        let r1 = b.add_region_record(Region::default()).unwrap();
+        b.post_insert_region(r0).unwrap();
+        b.post_insert_region(r1).unwrap();
+        assert_eq!(b.region_list_head(), Some(r0));
+        b.remove_region_from_list(r0).unwrap();
+        assert_eq!(b.region_list_head(), Some(r1));
+        b.remove_region_from_list(r1).unwrap();
+        assert_eq!(b.region_list_head(), None);
+        assert!(p1::regions(&b, None).unwrap().is_empty());
+    }
 }

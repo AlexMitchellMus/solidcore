@@ -421,12 +421,14 @@ fn brep_glue_edges_general<O>(
     ))
 }
 
-/// `SmBrep::DeleteFace(pFace)`.
+/// `SmBrep::DeleteFace(pFace)` (defaults `FALSE, TRUE, NULL, NULL`). The function is
+/// ported (`topology::brep::p3::delete_face`), but [`IntersectorBrep`] has no hook to
+/// edit a B-rep through its handle yet.
 fn brep_delete_face<O>(_brep: O, _face: O) -> Result<()> {
-    // UNPORTED(topology.brep_p3): SmBrep::DeleteFace
+    // UNPORTED(boolean.topology_intersector_p1): IntersectorBrep hook for SmBrep::DeleteFace
     Err(SolidError::unported(
-        "SmBrep::DeleteFace",
-        "topology.brep_p3",
+        "IntersectorBrep::delete_face (SmBrep::DeleteFace)",
+        "boolean.topology_intersector_p1",
     ))
 }
 
