@@ -59,10 +59,6 @@
 //!   edge uses, the G1 knots and points, ten trace passes, twenty cusp skips, three
 //!   drop tolerances.
 
-// The skeleton's shared state and helpers are used as the chunks C1-C6 land; the
-// integrator of the last chunk removes this line (it then warns as unfulfilled).
-#![expect(dead_code, reason = "blend.fillet_solver_p4 chunks C1-C6 pending")]
-
 use super::p1::{FilletGeomRef, FilletSolver, FilletSolverOps};
 use crate::blend::fillet_custom_solver::OffsetSurface;
 use crate::blend::fillet_geom::p1::{FilletBrep, FilletErrorType, FilletGeomId, FilletGeomType};
@@ -229,8 +225,6 @@ struct Cx<'a> {
 #[derive(Debug, Clone)]
 struct CalcState {
     // ---- C1: setup (:1499-1553) ------------------------------------------------------
-    /// `pEdge = GetEdgeuse(0)->GetEdge()` (target B-rep).
-    edge: EdgeId,
     /// `pEdgeCurve`: the edge's curve (a kind derived from `SmBSplineCurve`, checked
     /// with [`bspline_curve_cast`]); virtual calls go through [`Curve`].
     edge_curve: Curve,
@@ -284,7 +278,6 @@ impl CalcState {
     /// The state after setup (:1499-1553): an empty point list, sorting on, and the
     /// trace locals at neutral values until C3 sets them.
     fn new(
-        edge: EdgeId,
         edge_curve: Curve,
         ivl: Extent1d,
         pv_start: [Vec3; 2],
@@ -295,7 +288,6 @@ impl CalcState {
     ) -> Self {
         let domain = base_surfaces[0].natural_uv_domain();
         Self {
-            edge,
             edge_curve,
             ivl,
             pv_start,
@@ -326,19 +318,6 @@ impl CalcState {
             .get(i)
             .ok_or_else(|| invalid("intersection point index out of range"))?;
         self.store.get(fillets, r)
-    }
-
-    /// `*sTsectPnts[i]`, for an in-place write.
-    fn point_mut<'a>(
-        &'a mut self,
-        fillets: &'a mut FilletBrep,
-        i: usize,
-    ) -> Result<&'a mut TsectPnt> {
-        let r = *self
-            .tsect_pnts
-            .get(i)
-            .ok_or_else(|| invalid("intersection point index out of range"))?;
-        self.store.get_mut(fillets, r)
     }
 }
 
@@ -651,7 +630,6 @@ fn c1_setup(ops: &mut dyn FilletSolverOps, cx: &mut Cx<'_>) -> Result<CalcState>
     let split_original_fillet = cx.fillets.geom(geom0)?.split_flag();
 
     Ok(CalcState::new(
-        edge,
         edge_curve,
         ivl,
         pv_start,
@@ -1447,7 +1425,6 @@ mod tests_c2 {
             .unwrap(),
         );
         let mut st = CalcState::new(
-            EdgeId::from_index(0),
             line,
             Extent1d::from_min_max(0.0, 1.0),
             [Vec3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0)],
@@ -1814,7 +1791,6 @@ mod tests_c3 {
 
     fn state(curve: Curve, bases: [Surface; 2]) -> CalcState {
         CalcState::new(
-            EdgeId::from_index(0),
             curve,
             Extent1d::from_min_max(0.0, 1.0),
             [Vec3::new(0.0, 0.0, 0.0), Vec3::new(0.0, 1.0, 0.0)],
@@ -2346,7 +2322,6 @@ mod tests_c4 {
         let line = Line::from_points(Vec3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0), 3);
         let pv = [Vec3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0)];
         let mut st = CalcState::new(
-            EdgeId::from_index(0),
             Curve::from(line),
             Extent1d::from_min_max(0.0, 1.0),
             pv,
@@ -2402,14 +2377,18 @@ mod tests_c4 {
     }
 
     #[test]
-    fn trace_swaps_reversed_flags_then_propagates_the_dispatch_gap() {
+    fn trace_swaps_reversed_flags_then_defers_in_cusp_recovery() {
+        use crate::blend::fillet_geom::p1::FilletGeom;
+
         let k = Kernel::default();
+        // FilletSolver::new holds one geometry handle (index 0)
         let mut solver = FilletSolver::new(1.0e-5, 0.01, 0.01);
         solver.extend_before = true;
         solver.extend_after = false;
         let mut target = Brep::new();
         let mut fillets = FilletBrep::new();
-        let mut geoms: Vec<FilletGeomId> = Vec::new();
+        let g = fillets.add_geom(FilletGeom::new(&k, None, FilletGeomType::Default).unwrap());
+        let mut geoms: Vec<FilletGeomId> = vec![g];
         let mut cx = Cx {
             k: &k,
             target: &mut target,
@@ -2425,20 +2404,27 @@ mod tests_c4 {
         let mut fi: TraceIntersector<'_> =
             FilletIntersector::new(&s[0], &d, &s[1], &d, None).unwrap();
 
+        // DoPointIntersection fails on these unprepared points (a tracing failure, not
+        // a return), point 1 stays missed, and the cusp recovery finds no centre line
+        // on the last geometry: RecordFilletError (blend.fillet_solver_p2) defers.
         let e = c4_trace(&mut solver, &mut cx, &mut st, &mut fi).unwrap_err();
         match e {
             SolidError::Unported { unit, .. } => {
-                assert_eq!(unit, "intersect.surface_intersector_p4");
+                assert_eq!(unit, "blend.fillet_solver_p2");
             }
             other => panic!("unexpected {other:?}"),
         }
-        // bExtendBefore = m_bExtendAfter, bExtendAfter = m_bExtendBefore
-        assert!(!st.trace.extend_before);
+        // bExtendBefore = m_bExtendAfter, then TRUE for the missed point;
+        // bExtendAfter = m_bExtendBefore
+        assert!(st.trace.extend_before);
         assert!(st.trace.extend_after);
-        // an unported intersection is not a tracing failure, and nothing was removed
-        assert_eq!(solver.status, super::super::p1::FilStatus::Unprocessed);
-        assert_eq!(st.tsect_pnts.len(), 3);
-        assert!(!fi.self_intersect());
+        assert_eq!(
+            solver.status,
+            super::super::p1::FilStatus::SurfTracingFailure
+        );
+        // RemoveAt(0, 1)
+        assert_eq!(st.tsect_pnts.len(), 2);
+        assert!(fi.self_intersect());
     }
 }
 
@@ -2575,7 +2561,7 @@ fn c5_split_rail(
 
     // Set NewRail->Curve = RailCurveCopy (TRUE = delete preExisting Edge->Curve;
     // side effect: the new rail's edge uses lose their UV trim curves)
-    c5_set_rail_curve(cx.fillets.brep_mut(), new_rail, new_rail_curve)?;
+    crate::blend::fillet_geom::p1::set_rail_curve(cx.fillets.brep_mut(), new_rail, new_rail_curve)?;
     // pNewRailCurve->SetOwner(pNewRail): owner identities are not modelled here
 
     // Set NewRail->UVTrimCurve = Rail->UVTrimCurveCopy
@@ -2634,7 +2620,7 @@ fn c5_split_rail(
 
     let new_vert = vertex_unit::edge_start_vertex(cx.fillets.brep(), new_rail)?
         .ok_or_else(|| invalid("split: new rail without start vertex"))?;
-    c5_set_vertex_point(cx.fillets.brep_mut(), new_vert, pnt)?;
+    cx.fillets.set_vertex_point(new_vert, pnt)?;
     cx.fillets
         .fillet_vertex_mut(new_vert)?
         .set_status(FilStatus::Processed);
@@ -2695,48 +2681,6 @@ fn c5_drop_split_param(
         return Err(SolidError::sm_err(OP));
     }
     Ok(split_at_param)
-}
-
-/// P4-SHARED-CANDIDATE (same body as the private `set_rail_curve` of
-/// `blend::fillet_geom::p1`): `SmEdge::SetCurve(pCurve, TRUE)` on a pseudo-B-rep rail.
-/// The `SM_NO_CHANGE_GEOMETRY` notification clears each edge use's UV trim curve and
-/// drop-curve record and resets its cached edge/face gap (its mate's too) and the
-/// cached gaps of the edge's vertex uses; then the curve replaces the old one.
-fn c5_set_rail_curve(brep: &mut Brep, rail: EdgeId, curve: Curve) -> Result<()> {
-    use crate::topology::edge as edge_unit;
-
-    for e_u in edge_unit::edgeuses(brep, rail, None, None)? {
-        let mate_eu = eu::mate(brep, e_u)?;
-        let rec = brep.edgeuse_mut(e_u)?;
-        rec.uv_trim_curve = None;
-        rec.drop_curve_fail = None;
-        rec.max_edge_face_gap.reset();
-        let vu = rec.vertexuse;
-        if let Some(m) = mate_eu {
-            brep.edgeuse_mut(m)?.max_edge_face_gap.reset();
-        }
-        if let Some(vu) = vu {
-            let vu = brep.vertexuse_mut(vu)?;
-            vu.vertex_edge_gap.reset();
-            vu.vertex_face_gap.reset();
-        }
-    }
-    brep.edge_mut(rail)?.curve = Some(curve);
-    Ok(())
-}
-
-/// P4-SHARED-CANDIDATE (same body as the private `FilletBrep::set_vertex_point` of
-/// `blend::fillet_geom::p1`): `SmVertex::SetPoint` on a pseudo-B-rep vertex. The
-/// `SM_NO_CHANGE_GEOMETRY` notification resets the cached gaps of every vertex use of
-/// the vertex, then the point is stored.
-fn c5_set_vertex_point(brep: &mut Brep, v: crate::topology::VertexId, point: Point3) -> Result<()> {
-    for vu in brep.vertex(v)?.vertexuses.clone() {
-        let vu = brep.vertexuse_mut(vu)?;
-        vu.vertex_edge_gap.reset();
-        vu.vertex_face_gap.reset();
-    }
-    brep.vertex_mut(v)?.point = point;
-    Ok(())
 }
 
 /// :2590-2627: `CalcCrossSection` of every `SM_FE_CROSS_SECTION` edge of the
@@ -2951,9 +2895,8 @@ mod tests_c5 {
             let mut target = Brep::new();
             let tv0 = target.add_vertex(Point3::new(0.0, 0.0, 0.0)).unwrap();
             let tv1 = target.add_vertex(Point3::new(1.0, 0.0, 0.0)).unwrap();
-            let edge = target.add_edge(tv0, tv1).unwrap();
+            target.add_edge(tv0, tv1).unwrap();
             let st = CalcState::new(
-                edge,
                 line(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0)),
                 Extent1d::from_raw(0.0, 1.0),
                 [Vec3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0)],
@@ -3691,11 +3634,10 @@ fn get_or_create_uv_trim_curve(brep: &mut Brep, edgeuse: EdgeuseId) -> Result<Cu
 }
 
 /// The outputs of `SmEdgeuse::EvaluateBinormal(t, FALSE, rPnt, rBinVec, &tangent,
-/// NULL, &uv)`.
+/// NULL, &uv)` that `CalcFilletGeom` reads (`rBinormalPoint` is overwritten by the
+/// guess-point evaluation before any read, so it is not returned).
 #[derive(Debug, Clone, Copy)]
 struct EdgeuseBinormal {
-    /// `rBinormalPoint`: the 3D point on the edge.
-    point: Point3,
     /// `rBinormalVec`: unit vector into the face.
     binormal: Vec3,
     /// `pOptTangent`: the (non-unit) edge-use tangent.
@@ -4118,25 +4060,5 @@ mod tests {
         assert_eq!(store.get(&fillets, b).unwrap().curve_parameter, 2.0);
         assert!(store.get(&fillets, TsRef::Local(2)).is_err());
         assert!(store.write_back(&mut fillets, &[a], &snap).is_err());
-    }
-
-    #[test]
-    fn placeholders_report_the_pending_chunk() {
-        let k = Kernel::default();
-        let mut solver = FilletSolver::new(1.0e-5, 0.01, 0.01);
-        let mut p = TsectPnt::new();
-        let d = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
-        let e = FilletSolver::compute_point_values(
-            &mut solver,
-            &k,
-            [Point2::new(0.0, 0.0); 2],
-            &d,
-            &d,
-            1.0,
-            &mut p,
-            None,
-        )
-        .unwrap_err();
-        assert!(e.is_unported());
     }
 }
