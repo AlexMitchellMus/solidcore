@@ -34,6 +34,7 @@
 //! | [`CurveClassification::topology_intersector`]          | `GetTopologyIntersector`                         |
 //! | [`CurveClassification::is_curve_current`]              | `GetIsCurveCurrent`                              |
 //! | [`CurveClassification::ignore_tangency`]               | `GetIgnoreTangency`                              |
+//! | [`CurveClassification::set_doing_cross_hatch`]         | `SetDoingCrossHatch`                             |
 //! | [`CurveClassification::doing_cross_hatch`]             | `GetDoingCrossHatch`                             |
 //! | [`CurveClassification::doing_fillets`]                 | `GetDoingFillets`                                |
 //! | [`CurveClassification::other_classification`]          | `GetOtherClassification`                         |
@@ -93,6 +94,8 @@
 //!   memory-management feature of `ReSet` (unit `intersect.curve_class_p2`) and are not
 //!   modelled. [`CurveClassification::set_size`] refuses more than [`MAX_INTERVALS`]
 //!   intervals instead of allocating without bound.
+//! - **Construction.** `with_curve_interval` initializes a single interval directly
+//!   for boundary APIs; it does not co-port part 2's `ReSet` implementation.
 //! - **Ownership of the curve.** `m_bIsCurveOwned` is kept as data; there is nothing to
 //!   delete when a handle is replaced.
 //! - **Undefined behaviour upstream** is an error here: `GetSubInterval`, `GetAt`,
@@ -510,6 +513,27 @@ impl<O: ClassObject> CurveClassification<O> {
         }
     }
 
+    /// Creates a classification with one unclassified interval for a curve.
+    /// This initializes the same interval and source-zone state required by the
+    /// boundary intersection APIs without invoking the separately owned `ReSet`.
+    #[must_use]
+    pub fn with_curve_interval(k: &Kernel, curve: O, interval: Extent1d, source_zone: f64) -> Self {
+        let mut result = Self::new(k);
+        result.set_curve(Some(curve), false);
+        result.set_src_zone_tol_3d(source_zone);
+        result.interval = interval;
+        result
+            .data
+            .push(CurveInterval::with_interval(k, &interval, Some(&result)));
+        result.allocated = true;
+        result
+    }
+
+    /// Sets the native cross-hatch tolerance mode (`SetDoingCrossHatch`).
+    pub fn set_doing_cross_hatch(&mut self, enabled: bool) {
+        self.doing_cross_hatch = enabled;
+    }
+
     // ---- simple data access --------------------------------------------------------
 
     /// The number of intervals (`GetSize`; the end-point count is one more).
@@ -522,6 +546,14 @@ impl<O: ClassObject> CurveClassification<O> {
     #[must_use]
     pub fn intervals(&self) -> &[CurveInterval<O>] {
         &self.data
+    }
+
+    /// Sets the complete classification domain (inline `SetInterval`).
+    ///
+    /// # Errors
+    /// Returns the interval validation error instead of ignoring an invalid domain.
+    pub fn set_interval(&mut self, interval: &Extent1d) -> Result<()> {
+        self.interval.set_min_max(interval.min(), interval.max())
     }
 
     /// The face classified against (`GetFace`).
@@ -1031,7 +1063,10 @@ impl<O: ClassObject> CurveClassification<O> {
     }
 
     /// The curve geometry, or an error for no curve.
-    fn curve_geometry<'g>(&self, geometry: &'g impl ClassGeometry<O>) -> Result<&'g Curve> {
+    pub(super) fn curve_geometry<'g>(
+        &self,
+        geometry: &'g impl ClassGeometry<O>,
+    ) -> Result<&'g Curve> {
         let c = self
             .curve
             .ok_or(SolidError::invalid_input(OP_CC, "no classification curve"))?;
@@ -2019,6 +2054,7 @@ fn surface_global_point_solve(
     let solutions = ignored(
         surface.global_point_solve::<crate::surface::surface::p4::NoObject>(
             k,
+            Some(crate::surface::surface::p4::NoObject),
             &surface.natural_uv_domain(),
             SolverOperation::Minimize,
             point,

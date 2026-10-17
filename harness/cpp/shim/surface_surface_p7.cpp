@@ -42,6 +42,11 @@
 
 #include <vector>
 
+#include "sc_sm.h"
+
+using sc::put_uv;
+using sc::put_vec;
+
 namespace sc_srf_p7
 {
 // clang-format off
@@ -586,19 +591,6 @@ struct Rd
 double st(SmStatus s) { return s == SM_SUCCESS ? 0.0 : (double)s; }
 double flg(SmBoolean b) { return b ? 1.0 : 0.0; }
 
-void put_vec(std::vector<double>& o, const SmVector3d& v)
-{
-    o.push_back(v.x);
-    o.push_back(v.y);
-    o.push_back(v.z);
-}
-
-void put_uv(std::vector<double>& o, const SmVector2d& v)
-{
-    o.push_back(v.x);
-    o.push_back(v.y);
-}
-
 // The first SOLS_OUT solutions of a global solve: type, value, variable count (at most
 // 4), the start parameters and, for a range, the end parameters (surface.surface_p11).
 const ULONG SOLS_OUT = 16;
@@ -890,6 +882,13 @@ void run(int32_t op, Rd& rd, std::vector<double>& o)
         SmStatus r = s->GlobalPointSolve_0(d, sop, p, tol, pt, req, sols);
         o.push_back(st(r));
         o.push_back((double)sols.GetSize());
+        if (r == SM_SUCCESS)
+            for (ULONG i = 0; i < sols.GetSize(); i++)
+            {
+                o.push_back(sols[i].m_vStart.m_dSolutionValue);
+                o.push_back(sols[i].m_vStart[0]);
+                o.push_back(sols[i].m_vStart[1]);
+            }
         break;
     }
     case OP_GCS:
