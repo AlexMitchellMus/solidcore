@@ -89,9 +89,10 @@
 //!   `topology.brep_p1`, `topology.brep_p2` and `topology.shell` are not ported yet, so
 //!   [`FilletBrep::new_fillet_edgeuse`] returns [`SolidError::Unported`].
 //!   `SmFilletGeom(pFilletSolver, eType)` copies the solver's offset surfaces with
-//!   `SmOffsetSurface::Copy` (`surface.offset_surface`): with a solver that has one,
-//!   [`FilletGeom::new`] returns [`SolidError::Unported`]; without a solver it is
-//!   complete. That constructor leaves `m_dOrientations` and `m_bCapped`
+//!   `SmOffsetSurface::Copy` in the kernel given (upstream's creation context); a copy
+//!   that fails leaves the slot `None` (upstream ignores the status and stores the
+//!   `NULL` cast), keeping the base identity (the copy shares upstream's base
+//!   pointer). That constructor leaves `m_dOrientations` and `m_bCapped`
 //!   uninitialised; they start as `0.0` and `false` here.
 //! - **Arguments.** Out-params become return values; `SmContext` arguments are the
 //!   [`Kernel`]; `int iDebugLevel` arguments and debug drawing are dropped.
@@ -167,7 +168,7 @@ use crate::blend::fillet_custom_solver::{ConstantRadiusAssistedFs, OffsetSurface
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::Curve;
 use crate::curve::hermite_curve::HermiteCurve;
-use crate::error::{EntityRef, Result, SolidError};
+use crate::error::{ignored, EntityRef, Result, SolidError};
 use crate::geom::context::MarkLock;
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
@@ -1043,23 +1044,27 @@ impl FilletGeom {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`]: copying a solver offset surface
-    /// (`SmOffsetSurface::Copy`, `surface.offset_surface`).
+    /// [`SolidError::Unported`] from copying a solver offset surface
+    /// (`SmOffsetSurface::Copy`); [`SolidError::InvalidInput`] from
+    /// `GetSurface` (never for rails 0 and 1).
     pub fn new(
+        k: &Kernel,
         solver: Option<(FilletSolverId, &ConstantRadiusAssistedFs)>,
         geom_type: FilletGeomType,
     ) -> Result<Self> {
         let mut off_surfs = [None, None];
         for (slot, i) in off_surfs.iter_mut().zip(0..2usize) {
             if let Some((_, fs)) = solver {
-                if fs.solver.surface(i)?.is_some() {
-                    // UNPORTED(surface.offset_surface): SmOffsetSurface::Copy
-                    return Err(SolidError::unported(
-                        "SmOffsetSurface::Copy",
-                        "surface.offset_surface",
-                    ));
-                }
-                *slot = None;
+                *slot = match fs.solver.surface(i)? {
+                    // SmOffsetSurface::Copy() returns an SmSurface*, not SmOffsetSurface*
+                    Some(off) => {
+                        ignored(off.surface.surface.copy(k))?.map(|surface| OffsetSurface {
+                            surface,
+                            base_id: off.surface.base_id,
+                        })
+                    }
+                    None => None,
+                };
             }
         }
         Ok(Self {
@@ -3176,7 +3181,7 @@ fn drop_rail_onto_offset_surface(
         .solver
         .surface_mut(rail_index)?
         .ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?;
-    let orig_offset_dist = offset_surf.surface.offset_distance;
+    let orig_offset_dist = offset_surf.surface.offset_distance();
     offset_surf.surface.set_offset_distance(0.0);
     // Drop the 3d curve onto the surface, then restore the offset distance
     // UNPORTED(intersect.surface_drop_lib_p3): SmSurface::DropCurve
@@ -3644,7 +3649,7 @@ mod tests {
             fb.insert_fillet_edgeuse(eu, FilletEdgeuse::default());
             fb.insert_fillet_vertexuse(vu, FilletVertexuse::new());
         }
-        let g = fb.add_geom(FilletGeom::new(None, FilletGeomType::Blends).unwrap());
+        let g = fb.add_geom(FilletGeom::new(&k, None, FilletGeomType::Blends).unwrap());
         fb.geom_mut(g).unwrap().set_rail(0, Some(e));
         fb.set_edgeuse_fillet_geom(eu1, Some(g)).unwrap();
         assert_eq!(fb.geom(g).unwrap().ref_eus, vec![eu1]);
@@ -3759,10 +3764,10 @@ mod tests {
             *rail = Some(e);
             rail0_uses.get_or_insert((eu, vu));
         }
-        let mut g0 = FilletGeom::new(None, FilletGeomType::Blends).unwrap();
+        let mut g0 = FilletGeom::new(k, None, FilletGeomType::Blends).unwrap();
         g0.fillet_surface = Some(cubic_strip(0.5));
         g0.rails = rails;
-        let mut g1 = FilletGeom::new(None, FilletGeomType::Blends).unwrap();
+        let mut g1 = FilletGeom::new(k, None, FilletGeomType::Blends).unwrap();
         g1.fillet_surface = Some(cubic_strip(0.0));
         let g0 = fb.add_geom(g0);
         let g1 = fb.add_geom(g1);
@@ -3802,11 +3807,9 @@ mod tests {
             1e-6,
             [0.25, 0.25],
             [
-                Some(OffsetSurface::new(
-                    0.25,
-                    cubic_strip(0.0),
-                    SurfaceId::Free(1),
-                )),
+                Some(
+                    OffsetSurface::new(&k, 0.25, cubic_strip(0.0), SurfaceId::Free(1), 0).unwrap(),
+                ),
                 None,
             ],
             [1.0, -1.0],
@@ -3841,7 +3844,7 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .surface
-                .offset_distance,
+                .offset_distance(),
             0.25
         );
         // geometry 0's start row is now geometry 1's end row; its other rows are its own

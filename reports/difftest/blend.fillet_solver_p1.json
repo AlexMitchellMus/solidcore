@@ -43,8 +43,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetSurface::Copy",
-        "unit": "surface.offset_surface"
+        "symbol": "SmFilletGeom::SetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0000",
@@ -247,8 +247,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetSurface::Copy",
-        "unit": "surface.offset_surface"
+        "symbol": "SmFilletGeom::SetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0025",
@@ -354,21 +354,17 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmOffsetSurface::Evaluate",
-        "unit": "surface.offset_surface"
-      },
       "max_rel_err": 0.0,
       "name": "gen0038",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561849588495854252",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
-        "symbol": "SmOffsetSurface::Copy",
-        "unit": "surface.offset_surface"
+        "symbol": "SmFilletGeom::SetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0039",
@@ -527,8 +523,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetSurface::Copy",
-        "unit": "surface.offset_surface"
+        "symbol": "SmFilletGeom::SetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0058",
@@ -811,8 +807,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetSurface::Copy",
-        "unit": "surface.offset_surface"
+        "symbol": "SmFilletGeom::SetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0092",
@@ -1163,8 +1159,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetSurface::Copy",
-        "unit": "surface.offset_surface"
+        "symbol": "SmFilletGeom::SetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0135",
@@ -1399,8 +1395,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetSurface::Copy",
-        "unit": "surface.offset_surface"
+        "symbol": "SmFilletGeom::SetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0163",
@@ -1566,16 +1562,12 @@
       "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmOffsetSurface::Evaluate",
-        "unit": "surface.offset_surface"
-      },
       "max_rel_err": 0.0,
       "name": "gen0183",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561849588495854397",
-      "values_compared": 0
+      "values_compared": 5
     },
     {
       "max_rel_err": 0.0,
@@ -1682,16 +1674,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmOffsetSurface::Evaluate",
-        "unit": "surface.offset_surface"
-      },
       "max_rel_err": 0.0,
       "name": "gen0197",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561849588495854411",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -1703,8 +1691,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetSurface::Copy",
-        "unit": "surface.offset_surface"
+        "symbol": "SmFilletGeom::SetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0199",
@@ -1978,16 +1966,12 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmOffsetSurface::Evaluate",
-        "unit": "surface.offset_surface"
-      },
       "max_rel_err": 0.0,
       "name": "gen0233",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561849588495854447",
-      "values_compared": 0
+      "values_compared": 5
     },
     {
       "max_rel_err": 0.0,
@@ -2006,16 +1990,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmOffsetSurface::Evaluate",
-        "unit": "surface.offset_surface"
-      },
       "max_rel_err": 0.0,
       "name": "gen0236",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561849588495854450",
-      "values_compared": 0
+      "values_compared": 5
     },
     {
       "max_rel_err": 0.0,
@@ -2051,8 +2031,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetSurface::Copy",
-        "unit": "surface.offset_surface"
+        "symbol": "SmFilletGeom::SetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0241",
@@ -2254,16 +2234,12 @@
       "values_compared": 17
     },
     {
-      "deferred": {
-        "symbol": "SmOffsetSurface::Evaluate",
-        "unit": "surface.offset_surface"
-      },
       "max_rel_err": 0.0,
       "name": "gen0265",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561849588495854479",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -2291,8 +2267,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetSurface::Copy",
-        "unit": "surface.offset_surface"
+        "symbol": "SmFilletGeom::SetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0269",
@@ -2446,21 +2422,17 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmOffsetSurface::Evaluate",
-        "unit": "surface.offset_surface"
-      },
       "max_rel_err": 0.0,
       "name": "gen0287",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561849588495854501",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "deferred": {
-        "symbol": "SmOffsetSurface::Copy",
-        "unit": "surface.offset_surface"
+        "symbol": "SmFilletGeom::SetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0288",
@@ -2679,8 +2651,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetSurface::Copy",
-        "unit": "surface.offset_surface"
+        "symbol": "SmFilletGeom::SetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0314",
@@ -2731,13 +2703,13 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 32,
+  "cases_deferred": 25,
   "cases_failed": 0,
-  "cases_passed": 293,
+  "cases_passed": 300,
   "cases_total": 325,
   "deferred_by_unit": {
+    "blend.fillet_geom_p1": 12,
     "surface.cone_p2": 7,
-    "surface.offset_surface": 19,
     "topology.brep_p1": 6
   },
   "max_rel_err": 0.0,

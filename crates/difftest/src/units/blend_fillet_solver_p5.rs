@@ -239,6 +239,7 @@ fn run(i: &Inputs) -> Result<Output, HarnessError> {
     let mut solver = FilletSolver::new(1e-5, 1e-3, 1e-3);
     let mut fb = FilletBrep::new();
     let mut geom = FilletGeom::new(
+        &k,
         None,
         FilletGeomType::from_code(i64::from(i.kind)).ok_or_else(|| harness("kind"))?,
     )

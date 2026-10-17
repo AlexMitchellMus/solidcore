@@ -232,7 +232,7 @@ impl FilletSolver {
             let (uv, _) = eu::uv_trim_curve(fillets.brep(), primary)?;
             let _uv_copy = uv.ok_or_else(|| SolidError::null_pointer(OP))?.copy(k)?;
         }
-        let _surface_copy = surface.copy()?;
+        let _surface_copy = surface.copy(k)?;
         let _ = (convex, analytic, adjusted_corners);
         if counts.contains(&0) {
             return Ok(());
@@ -263,7 +263,7 @@ mod tests {
     use crate::math::Vec3;
 
     fn classified_rails(k: &Kernel, fb: &mut FilletBrep) -> FilletGeomId {
-        let mut geom = FilletGeom::new(None, FilletGeomType::Default).unwrap();
+        let mut geom = FilletGeom::new(k, None, FilletGeomType::Default).unwrap();
         for i in 0..2 {
             let a = fb.brep_mut().add_vertex(Vec3::ZERO).unwrap();
             let b = fb.brep_mut().add_vertex(Vec3::X).unwrap();

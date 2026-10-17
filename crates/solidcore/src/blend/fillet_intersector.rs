@@ -91,6 +91,8 @@ use crate::kernel::Kernel;
 use crate::math::{max2, max4, min2, EFF_ZERO, EFF_ZERO_SQ};
 use crate::nurbs::b_spline_curve::{BSplineCurve, BSplineCurveForm, CanonicalData, KnotType};
 use crate::nurbs::b_spline_surface::BSplineSurface;
+use crate::nurbs::knots::Side;
+use crate::surface::surface::p1::evaluate_1st_derivatives;
 use crate::surface::surface::p2::{drop_vectors, TsectCurveType};
 use crate::surface::surface::{Surface, SurfaceKind};
 
@@ -506,29 +508,30 @@ pub trait FilletSolverOps {
     }
 }
 
-/// The co-ported constant-radius solver data: `SetSurfacesToZeroOffset` and
-/// `ReloadSurfaceOffsets` are ported (CO-PORTED from unit `blend.fillet_solver_p1`);
-/// the solver has no fillet geometries yet (handle `()`).
+/// The constant-radius solver data: `SetSurfacesToZeroOffset` and
+/// `ReloadSurfaceOffsets` are the `SmFilletSolver` base's ([`FilletSolver`](crate::blend::fillet_solver::p1::FilletSolver));
+/// `GetSurface(rail)->Evaluate1stDerivatives` evaluates the rail's offset surface
+/// (on a copy: a base extension the evaluation makes is not kept); the solver has no
+/// fillet geometries yet (handle `()`).
 impl FilletSolverOps for ConstantRadiusAssistedFs {
     type FilletGeom = ();
 
     fn set_surfaces_to_zero_offset(&mut self) -> Result<()> {
-        for (surface, saved) in self.surfaces.iter_mut().zip(self.saved_offsets.iter_mut()) {
-            if let Some(s) = surface {
-                *saved = s.offset_distance;
-                s.set_offset_distance(0.0);
-            }
-        }
-        Ok(())
+        self.solver.set_surfaces_to_zero_offset()
     }
 
     fn reload_surface_offsets(&mut self) -> Result<()> {
-        for (surface, saved) in self.surfaces.iter_mut().zip(self.saved_offsets.iter()) {
-            if let Some(s) = surface {
-                s.set_offset_distance(*saved);
-            }
-        }
-        Ok(())
+        self.solver.reload_surface_offsets()
+    }
+
+    fn rail_surface_evaluate_1st_derivatives(
+        &self,
+        rail: usize,
+        uv: Point2,
+    ) -> Result<(Point3, Vec3, Vec3)> {
+        let mut s = self.surface(rail)?.clone();
+        s.surface
+            .with_evaluator(|e| evaluate_1st_derivatives(e, uv, Side::Left, Side::Left))
     }
 }
 
@@ -1737,14 +1740,15 @@ mod tests {
     }
 
     fn solver(a: &Surface, b: &Surface) -> ConstantRadiusAssistedFs {
+        let k = Kernel::default();
         ConstantRadiusAssistedFs::from_parts(
             0.001,
             0.5,
             0.03,
             [1.0, 2.0],
             [
-                Some(OffsetSurface::new(1.0, a.clone(), SurfaceId::Free(0))),
-                Some(OffsetSurface::new(-2.0, b.clone(), SurfaceId::Free(1))),
+                Some(OffsetSurface::new(&k, 1.0, a.clone(), SurfaceId::Free(0), 0).unwrap()),
+                Some(OffsetSurface::new(&k, -2.0, b.clone(), SurfaceId::Free(1), 0).unwrap()),
             ],
             [1.0, -1.0],
             [None, None],
@@ -1830,7 +1834,7 @@ mod tests {
         assert!(fi
             .test_span_accuracy(&mut s, &Kernel::default(), p, z, None)
             .is_err());
-        assert_eq!(s.surfaces[0].as_ref().unwrap().offset_distance, 1.0);
+        assert_eq!(s.surface(0).unwrap().offset_distance(), 1.0);
     }
 
     #[test]
@@ -1858,9 +1862,9 @@ mod tests {
         assert!(r.found_good_point);
         assert!(r.deviation_found.is_none());
         // offsets restored
-        assert_eq!(s.surfaces[0].as_ref().unwrap().offset_distance, 1.0);
-        assert_eq!(s.surfaces[1].as_ref().unwrap().offset_distance, -2.0);
-        assert_eq!(s.saved_offsets, [1.0, -2.0]);
+        assert_eq!(s.surface(0).unwrap().offset_distance(), 1.0);
+        assert_eq!(s.surface(1).unwrap().offset_distance(), -2.0);
+        assert_eq!(s.solver.saved_offsets, [1.0, -2.0]);
     }
 
     #[test]

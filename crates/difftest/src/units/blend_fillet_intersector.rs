@@ -40,6 +40,7 @@ use solidcore::kernel::Kernel;
 use solidcore::nurbs::b_spline_surface::BSplineSurface;
 use solidcore::nurbs::math::CPoint;
 use solidcore::nurbs::srf_basic::Surface as NurbSurface;
+use solidcore::surface::offset_surface::SS_UNKNOWN;
 use solidcore::surface::plane::Plane;
 use solidcore::surface::surface::Surface;
 use solidcore::SolidError;
@@ -334,6 +335,15 @@ impl From<HarnessError> for Fail {
     fn from(e: HarnessError) -> Self {
         Fail::Harness(e)
     }
+}
+
+/// A rail offset as `SmConstantRadiusFS` builds it (default `lSingularities`,
+/// `SM_SS_UNKNOWN`); an unported singularity query defers the case.
+fn rail_offset(k: &Kernel, d: f64, base: Surface, id: SurfaceId) -> Result<OffsetSurface, Fail> {
+    OffsetSurface::new(k, d, base, id, SS_UNKNOWN).map_err(|e| match Output::unported(&e) {
+        Some(out) => Fail::Deferred(Box::new(out)),
+        None => Fail::Harness(HarnessError::new(e.to_string())),
+    })
 }
 
 /// The `SmStatus` of a Rust error; `1007` for `InvalidInput`, `-1` for one upstream
@@ -653,18 +663,19 @@ fn rust_record(i: &Inputs) -> Result<Vec<f64>, Fail> {
         s.tangency_tol,
         s.radii,
         [
-            Some(OffsetSurface::new(s.radii[0] * orient[0], a.clone(), SurfaceId::Free(0))),
-            Some(OffsetSurface::new(
+            Some(rail_offset(&k, s.radii[0] * orient[0], a.clone(), SurfaceId::Free(0))?),
+            Some(rail_offset(
+                &k,
                 s.radii[1] * orient[1],
                 bref.clone(),
                 SurfaceId::Free(u32::from(b.is_some())),
-            )),
+            )?),
         ],
         orient,
         [None, None],
     );
-    for srf in solver.surfaces.iter_mut().flatten() {
-        srf.set_allow_extension(true);
+    for slot in solver.solver.surfaces.iter_mut().flatten() {
+        slot.surface.set_allow_extension(true);
     }
 
     let mut fi: Fi<'_> = match FilletIntersector::new(&a, &ext(i.dom1), bref, &ext(i.dom2), None)
@@ -705,8 +716,8 @@ fn rust_record(i: &Inputs) -> Result<Vec<f64>, Fail> {
         flag(fi.is_kind_of(ADV_TYPE)),
         flag(fi.is_kind_of(7)),
     ]);
-    for srf in &solver.surfaces {
-        o.push(srf.as_ref().map_or(ffi::UNSET, |s| s.offset_distance));
+    for slot in &solver.solver.surfaces {
+        o.push(slot.as_ref().map_or(ffi::UNSET, |s| s.surface.offset_distance()));
     }
     o.push(si.curve_points().len() as f64);
     o.push(si.points().len() as f64);
