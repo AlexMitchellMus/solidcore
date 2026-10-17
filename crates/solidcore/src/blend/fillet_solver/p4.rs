@@ -602,12 +602,65 @@ fn binormal_guess_point(
 /// only, `NER`), interval and end-point derivatives, the base surfaces, geometry 0 and
 /// its split flag.
 fn c1_setup(ops: &mut dyn FilletSolverOps, cx: &mut Cx<'_>) -> Result<CalcState> {
-    let _ = (ops, cx);
-    // P4-CHUNK(C1): SmFilletSolver.cpp:1495-1553
-    Err(SolidError::Unported {
-        upstream: "SmFilletSolver::CalcFilletGeom (p4 chunk C1 pending)",
-        unit: "blend.fillet_solver_p4",
-    })
+    use crate::topology::edge as topo_edge;
+
+    // Set the extension flags for two ends of fillets
+    // extend ends when vertices are not blended and not degenerate
+    ops.set_extension_flags(cx.target)?;
+
+    // local to-be-filleted edge data
+    // GetEdgeuse(0) is dereferenced unchecked upstream
+    let eu0 = ops
+        .solver()
+        .edgeuse(0)?
+        .ok_or_else(|| invalid("no edge use 0"))?;
+    let edge = eu::edge(cx.target, eu0)?.ok_or_else(|| SolidError::null_pointer(OP))?;
+    // SM_CAST_PTR(SmBSplineCurve, pEdge->GetCurve()): NULL for a missing curve or a
+    // kind not derived from SmBSplineCurve
+    let edge_curve = match topo_edge::curve(cx.target, edge)? {
+        Some(c) if bspline_curve_cast(c).is_some() => c.clone(),
+        _ => return Err(SolidError::null_pointer(OP)),
+    };
+    let ivl = topo_edge::interval(cx.target, edge)?;
+
+    // evaluate curve end points
+    let pv_start = c1_pos_and_tangent(&edge_curve.evaluate(ivl.min(), 1, true, false)?)?;
+    let pv_end = c1_pos_and_tangent(&edge_curve.evaluate(ivl.max(), 1, true, false)?)?;
+
+    // get fillet offset and base surfaces (GetSurface(i) is dereferenced unchecked;
+    // an SmOffsetSurface always has its base, so the NER cannot fire)
+    let base1 = offset_surface(ops, 0)?.base_surface().clone();
+    let base2 = offset_surface(ops, 1)?.base_surface().clone();
+
+    // get fillet geometry pointer and locals (m_vFilletGeoms[0] of an empty array
+    // reads out of bounds upstream)
+    let geom0_ref = ops
+        .solver()
+        .fillet_geoms
+        .first()
+        .copied()
+        .ok_or_else(|| invalid("no fillet geometry"))?;
+    let geom0 = cx.geoms.geometry_id(geom0_ref)?;
+    let split_original_fillet = cx.fillets.geom(geom0)?.split_flag();
+
+    Ok(CalcState::new(
+        edge,
+        edge_curve,
+        ivl,
+        pv_start,
+        pv_end,
+        [base1, base2],
+        geom0,
+        split_original_fillet,
+    ))
+}
+
+/// The `aPointAndDerivatives[2]` of an `Evaluate(t, 1, ..)` call.
+fn c1_pos_and_tangent(pv: &[Vec3]) -> Result<[Vec3; 2]> {
+    match pv {
+        [p, d, ..] => Ok([*p, *d]),
+        _ => Err(invalid("short curve evaluation")),
+    }
 }
 
 /// :1587-1752, one pass of the `lWhichSurf` loop up to the sort: the UV trim curve
@@ -617,18 +670,548 @@ fn c1_setup(ops: &mut dyn FilletSolverOps, cx: &mut Cx<'_>) -> Result<CalcState>
 /// (`binormal_guess_point(.., half = true)`, `sm_FindFilletTsectPnt`, split capture);
 /// the rail-end points (`SM_FV_MATE` / `SM_FV_RAIL_X_EXTENDED_EDGEUSE` skipped,
 /// `SM_OT_SAME` in front, `smos_CleanUpNoise` written back into the vertex use).
+///
+/// As upstream, an error inside the G1-knot loop returns before the temporary split
+/// knot is removed from `m_vG1Knots`.
 fn c1_collect_points(
     ops: &mut dyn FilletSolverOps,
     cx: &mut Cx<'_>,
     st: &mut CalcState,
     which_surf: usize,
 ) -> Result<Option<SurfPass>> {
-    let _ = (ops, cx, st, which_surf);
-    // P4-CHUNK(C1): SmFilletSolver.cpp:1587-1752
-    Err(SolidError::Unported {
-        upstream: "SmFilletSolver::CalcFilletGeom (p4 chunk C1 pending)",
-        unit: "blend.fillet_solver_p4",
-    })
+    use crate::blend::fillet_geom::p1::{clean_up_noise, FilletVertexType};
+    use crate::intersect::surface_intersector::p1::SrfIndex;
+    use crate::math::EFF_ZERO;
+    use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+    use crate::topology::{edge as topo_edge, vertexuse as topo_vu};
+
+    // get edgeuse->UVTrimCurve marking a rail curve and bracketing sector to be filleted
+    let eu_filleted_edge = ops
+        .solver()
+        .edgeuse(which_surf)?
+        .ok_or_else(|| SolidError::null_pointer(OP))?;
+    let uv_curve = get_or_create_uv_trim_curve(cx.target, eu_filleted_edge)?;
+
+    // special case: don't sort SmTsectPnts on closed UVTrimCurves
+    if uv_curve.is_closed(&st.ivl, 0.0)? {
+        if which_surf == 0 {
+            // try the other one.
+            return Ok(None);
+        }
+        // both closed
+        st.do_sorting = false;
+    }
+
+    // array of all TsectPnts (including potential duplicates):
+    // from rail ends, and possibly G1 discontinuity points and split point.
+    let mut all: Vec<TsRef> = Vec::new();
+
+    // when asked to split the edge - find and save a split parameter
+    let mut split_param = st.ivl.evaluate(0.5);
+    let mut found_split_knot = false;
+    if st.split_original_fillet {
+        let total_g1_knots = ops.solver().g1_knots.len();
+        if total_g1_knots > 0 {
+            // Pick a middle G1 knot and split it right there
+            split_param = ops
+                .solver()
+                .g1_knots
+                .get(total_g1_knots / 2)
+                .copied()
+                .ok_or_else(|| invalid("G1 knot index out of range"))?;
+            found_split_knot = true;
+        } else {
+            ops.solver_mut().g1_knots.push(split_param);
+        }
+    }
+
+    // Now, compute 'through points' from all internal G1 knots
+    // (the size is re-read every iteration, as upstream's GetSize())
+    let mut k = 0;
+    while k < ops.solver().g1_knots.len() {
+        // get position and tangent at G1 knot (status checked, values unused)
+        let knot = ops
+            .solver()
+            .g1_knots
+            .get(k)
+            .copied()
+            .ok_or_else(|| invalid("G1 knot index out of range"))?;
+        st.edge_curve.evaluate(knot, 1, true, false)?;
+
+        // guess point: GetSurface(0) point nearest to the end of the binormal (half
+        // the second offset) dropped onto pBaseSrf1; tangent in edgeuse direction
+        let (pnt, tangent) = binormal_guess_point(ops, cx, &st.base_surfaces[0], knot, true)?;
+
+        // Build a SmTsectPnt for each to-be-filleted curve g1 points.
+        let mut new_pnt = TsectPnt::new();
+        match find_fillet_tsect_pnt(
+            ops,
+            cx.k,
+            &st.base_surfaces[0],
+            &st.base_surfaces[1],
+            pnt,
+            tangent,
+            &mut new_pnt,
+        ) {
+            Ok(()) => {}
+            Err(e) if e.is_unported() => return Err(e),
+            Err(_) => return Err(SolidError::sm_err(OP)),
+        }
+        // add new TsectPnt to sAllTsectPnts array (and sDeletePnts)
+        let new_ref = st.store.alloc(new_pnt);
+        all.push(new_ref);
+
+        // when splitting original fillet - save the appropriate TsectPnt
+        if st.split_original_fillet && (knot - split_param).abs() < EFF_ZERO {
+            st.split_tsect_pnt = Some(new_ref);
+        }
+        k += 1;
+    }
+
+    // restore G1Knots if a split param was added
+    if st.split_original_fillet && !found_split_knot {
+        ops.solver_mut().g1_knots.pop();
+    }
+
+    // Process rail_ends: rail[i]->edgeuse[jj]->FilletVertexuse->TsectPnt
+    let geom0 = st.geom0;
+    for which_rail in 0..2 {
+        let this_rail = cx
+            .fillets
+            .geom(geom0)?
+            .rail(which_rail)
+            .ok_or_else(|| SolidError::null_pointer(OP))?;
+        let fil_edgeuses = topo_edge::edgeuses(cx.fillets.brep(), this_rail, None, None)?;
+        if fil_edgeuses.len() != 2 {
+            return Err(SolidError::sm_err(OP));
+        }
+
+        // for both Rail->edgeuses
+        for &eu_rail in &fil_edgeuses {
+            // from edgeuse get FilletVertexuse and FilletVertex (unchecked casts and
+            // dereferences upstream)
+            let brep = cx.fillets.brep();
+            let vu = eu::vertexuse(brep, eu_rail)?
+                .ok_or_else(|| invalid("rail edge use without vertex use"))?;
+            let v = topo_vu::vertex(brep, vu)?
+                .ok_or_else(|| invalid("rail vertex use without vertex"))?;
+            let orientation = eu::orientation(brep, eu_rail)?;
+
+            // skip: mates just tag along with their mates, same param value.
+            let vertex_type = cx.fillets.fillet_vertex(v)?.fillet_vertex_type();
+            if vertex_type == FilletVertexType::Mate
+                || vertex_type == FilletVertexType::RailXExtendedEdgeuse
+            {
+                continue;
+            }
+
+            // fetch TsectPnt from SmFilletVertexuse (already computed)
+            let r = TsRef::Vertexuse(vu);
+            if orientation == OrientType::Same {
+                all.insert(0, r);
+            } else {
+                // SM_OT_OPPOSITE
+                all.push(r);
+            }
+
+            // for both components convert numbers like 1.1200000000007 to 1.12
+            let tsect = st.store.get_mut(cx.fillets, r)?;
+            for srf in [SrfIndex::First, SrfIndex::Second] {
+                let uv = tsect.uv_pos_mut(srf);
+                uv.x = clean_up_noise(uv.x);
+                uv.y = clean_up_noise(uv.y);
+            }
+        }
+    }
+
+    Ok(Some(SurfPass { uv_curve, all }))
+}
+
+#[cfg(test)]
+mod tests_c1 {
+    use super::*;
+    use crate::blend::fillet_custom_solver::SurfaceId;
+    use crate::blend::fillet_geom::p1::{
+        FilletGeom, FilletVertex, FilletVertexType, FilletVertexuse,
+    };
+    use crate::blend::fillet_solver::p1::OffsetSurfaceSlot;
+    use crate::curve::line::Line;
+    use crate::geom::vector2d::Vec2;
+    use crate::intersect::surface_intersector::p1::SrfIndex;
+    use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+    use crate::topology::{Edgeuse, Vertexuse};
+
+    /// A solver whose `SetExtensionFlags` is a no-op (the base one needs the
+    /// executive).
+    struct C1Ops(FilletSolver);
+
+    impl FilletSolverOps for C1Ops {
+        fn solver(&self) -> &FilletSolver {
+            &self.0
+        }
+        fn solver_mut(&mut self) -> &mut FilletSolver {
+            &mut self.0
+        }
+        fn set_extension_flags(&mut self, _b: &Brep) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    fn plane(z: f64) -> Surface {
+        Surface::from(crate::surface::plane::Plane::new(
+            Point3::new(0.0, 0.0, z),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec2::new(1.0, 1.0),
+            &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+        ))
+    }
+
+    fn line_curve(a: [f64; 3], b: [f64; 3], dim: u64) -> Curve {
+        Curve::from(Line::from_points(
+            Point3::new(a[0], a[1], a[2]),
+            Point3::new(b[0], b[1], b[2]),
+            dim,
+        ))
+    }
+
+    /// Target B-rep: one edge (curve `curve`, interval [0,1]) with two edge uses,
+    /// each with an open line as UV trim curve.
+    fn target(curve: Option<Curve>) -> (Brep, [EdgeuseId; 2]) {
+        let mut b = Brep::new();
+        let v0 = b.add_vertex(Point3::new(0.0, 0.0, 0.0)).unwrap();
+        let v1 = b.add_vertex(Point3::new(1.0, 0.0, 0.0)).unwrap();
+        let e = b.add_edge(v0, v1).unwrap();
+        b.edge_mut(e).unwrap().curve = curve;
+        b.edge_mut(e).unwrap().interval = Extent1d::from_min_max(0.0, 1.0);
+        let mut eus = Vec::new();
+        for o in [OrientType::Same, OrientType::Opposite] {
+            let eu = b
+                .add_edgeuse_record(Edgeuse {
+                    edge: Some(e),
+                    orientation: o,
+                    uv_trim_curve: Some(line_curve([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], 2)),
+                    ..Edgeuse::default()
+                })
+                .unwrap();
+            eus.push(eu);
+        }
+        b.edge_mut(e).unwrap().edgeuses.clone_from(&eus);
+        (b, [eus[0], eus[1]])
+    }
+
+    /// Pseudo B-rep with geometry 0 whose two rails each have two edge uses, the
+    /// vertex types and orientations given per rail edge use, and rail-end points with
+    /// noisy UVs (`base + 1e-13`).
+    fn fillets(
+        k: &Kernel,
+        spec: [[(FilletVertexType, OrientType, f64); 2]; 2],
+    ) -> (FilletBrep, FilletGeomId, Vec<VertexuseId>) {
+        let mut f = FilletBrep::new();
+        let mut geom = FilletGeom::new(k, None, FilletGeomType::Default).unwrap();
+        let mut vus = Vec::new();
+        for (rail_index, rail_spec) in spec.iter().enumerate() {
+            let va = f.brep_mut().add_vertex(Point3::new(0.0, 0.0, 0.0)).unwrap();
+            let vb = f.brep_mut().add_vertex(Point3::new(1.0, 0.0, 0.0)).unwrap();
+            let rail = f.new_fillet_edge(va, vb, None).unwrap();
+            let mut eus = Vec::new();
+            for (j, (vtype, orient, base)) in rail_spec.iter().enumerate() {
+                let v = if j == 0 { va } else { vb };
+                let vu = f
+                    .brep_mut()
+                    .add_vertexuse_record(Vertexuse {
+                        vertex: Some(v),
+                        ..Vertexuse::default()
+                    })
+                    .unwrap();
+                let eu = f
+                    .brep_mut()
+                    .add_edgeuse_record(Edgeuse {
+                        edge: Some(rail),
+                        orientation: *orient,
+                        vertexuse: Some(vu),
+                        ..Edgeuse::default()
+                    })
+                    .unwrap();
+                eus.push(eu);
+                let mut fv = FilletVertex::new(k, None);
+                fv.set_fillet_vertex_type(*vtype);
+                f.insert_fillet_vertex(v, fv);
+                let mut fvu = FilletVertexuse::new();
+                *fvu.tsect_pnt_mut().uv_pos_mut(SrfIndex::First) =
+                    Point2::new(base + 1.0e-13, base + 0.25);
+                *fvu.tsect_pnt_mut().uv_pos_mut(SrfIndex::Second) =
+                    Point2::new(base + 0.5 - 1.0e-13, 0.123_456_789);
+                f.insert_fillet_vertexuse(vu, fvu);
+                vus.push(vu);
+            }
+            f.brep_mut().edge_mut(rail).unwrap().edgeuses = eus;
+            geom.set_rail(rail_index, Some(rail));
+        }
+        let g = f.add_geom(geom);
+        (f, g, vus)
+    }
+
+    fn solver(k: &Kernel, eus: [EdgeuseId; 2]) -> C1Ops {
+        let mut s = FilletSolver::new(1.0e-5, 0.01, 0.01);
+        s.edgeuses = [Some(eus[0]), Some(eus[1])];
+        for (i, z) in [(0usize, 0.0), (1, 1.0)] {
+            let surface =
+                OffsetSurface::new(k, 0.5, plane(z), SurfaceId::Free(i as u32), 0).unwrap();
+            s.set_surface(
+                i,
+                Some(OffsetSurfaceSlot {
+                    key: i as u64,
+                    surface,
+                }),
+            )
+            .unwrap();
+        }
+        s.fillet_geoms.push(FilletGeomRef { index: 0 });
+        C1Ops(s)
+    }
+
+    const ROWS: [[(FilletVertexType, OrientType, f64); 2]; 2] = [
+        [
+            (FilletVertexType::Unknown, OrientType::Same, 1.0),
+            (FilletVertexType::Mate, OrientType::Opposite, 2.0),
+        ],
+        [
+            (
+                FilletVertexType::RailXExtendedEdgeuse,
+                OrientType::Same,
+                3.0,
+            ),
+            (FilletVertexType::Unknown, OrientType::Opposite, 4.0),
+        ],
+    ];
+
+    #[test]
+    fn setup_reads_edge_surfaces_and_geometry() {
+        let k = Kernel::default();
+        let (mut tb, eus) = target(Some(line_curve([0.0, 0.0, 0.0], [2.0, 0.0, 0.0], 3)));
+        let (mut fb, g, _) = fillets(&k, ROWS);
+        let mut ops = solver(&k, eus);
+        let mut geoms = vec![g];
+        let mut cx = Cx {
+            k: &k,
+            target: &mut tb,
+            fillets: &mut fb,
+            geoms: &mut geoms,
+        };
+        let st = c1_setup(&mut ops, &mut cx).unwrap();
+        assert_eq!(st.ivl.min(), 0.0);
+        assert_eq!(st.ivl.max(), 1.0);
+        assert_eq!(st.pv_start[0], Point3::new(0.0, 0.0, 0.0));
+        assert_eq!(st.pv_end[0], Point3::new(2.0, 0.0, 0.0));
+        assert_eq!(st.geom0, g);
+        assert!(!st.split_original_fillet);
+        assert!(st.do_sorting);
+        assert!(st.tsect_pnts.is_empty());
+    }
+
+    #[test]
+    fn setup_statuses() {
+        let k = Kernel::default();
+        let (mut fb, g, _) = fillets(&k, ROWS);
+        let mut geoms = vec![g];
+
+        // no edge curve: SM_ERR_NULL_POINTER
+        let (mut tb, eus) = target(None);
+        let mut ops = solver(&k, eus);
+        let mut cx = Cx {
+            k: &k,
+            target: &mut tb,
+            fillets: &mut fb,
+            geoms: &mut geoms,
+        };
+        let e = c1_setup(&mut ops, &mut cx).unwrap_err();
+        assert_eq!(e, SolidError::null_pointer(OP));
+
+        // no edge use 0: an upstream NULL dereference
+        ops.0.edgeuses = [None, None];
+        let e = c1_setup(&mut ops, &mut cx).unwrap_err();
+        assert!(matches!(e, SolidError::InvalidInput { .. }));
+
+        // the base SetExtensionFlags fails first (no vertex uses, no executive)
+        let mut base = solver(&k, eus).0;
+        assert!(c1_setup(&mut base, &mut cx).is_err());
+    }
+
+    #[test]
+    fn rail_ends_skip_mates_order_by_orientation_and_clean_noise() {
+        let k = Kernel::default();
+        let (mut tb, eus) = target(Some(line_curve([0.0, 0.0, 0.0], [2.0, 0.0, 0.0], 3)));
+        let (mut fb, g, vus) = fillets(&k, ROWS);
+        let mut ops = solver(&k, eus);
+        let mut geoms = vec![g];
+        let mut cx = Cx {
+            k: &k,
+            target: &mut tb,
+            fillets: &mut fb,
+            geoms: &mut geoms,
+        };
+        let mut st = c1_setup(&mut ops, &mut cx).unwrap();
+        let pass = c1_collect_points(&mut ops, &mut cx, &mut st, 0)
+            .unwrap()
+            .unwrap();
+        // rail 0: VU0 (SAME, front); VU1 mate skipped; rail 1: VU2 extended skipped,
+        // VU3 (OPPOSITE, back)
+        let order: Vec<TsRef> = vec![TsRef::Vertexuse(vus[0]), TsRef::Vertexuse(vus[3])];
+        assert_eq!(pass.all, order);
+        assert!(st.store.local.is_empty());
+        assert!(st.do_sorting);
+        // CleanUpNoise written into the vertex uses that were collected
+        let p0 = cx.fillets.fillet_vertexuse(vus[0]).unwrap().tsect_pnt();
+        assert_eq!(p0.uv_pos(SrfIndex::First), Point2::new(1.0, 1.25));
+        assert_eq!(p0.uv_pos(SrfIndex::Second), Point2::new(1.5, 0.123_456_789));
+        let p3 = cx.fillets.fillet_vertexuse(vus[3]).unwrap().tsect_pnt();
+        assert_eq!(p3.uv_pos(SrfIndex::First), Point2::new(4.0, 4.25));
+        // skipped ones untouched
+        let p1 = cx.fillets.fillet_vertexuse(vus[1]).unwrap().tsect_pnt();
+        assert_eq!(p1.uv_pos(SrfIndex::First).x, 2.0 + 1.0e-13);
+    }
+
+    #[test]
+    fn same_orientation_inserts_in_front() {
+        let k = Kernel::default();
+        let rows = [
+            [
+                (FilletVertexType::Unknown, OrientType::Opposite, 1.0),
+                (FilletVertexType::Unknown, OrientType::Same, 2.0),
+            ],
+            [
+                (FilletVertexType::Unknown, OrientType::Same, 3.0),
+                (FilletVertexType::Unknown, OrientType::Unknown, 4.0),
+            ],
+        ];
+        let (mut tb, eus) = target(Some(line_curve([0.0, 0.0, 0.0], [2.0, 0.0, 0.0], 3)));
+        let (mut fb, g, vus) = fillets(&k, rows);
+        let mut ops = solver(&k, eus);
+        let mut geoms = vec![g];
+        let mut cx = Cx {
+            k: &k,
+            target: &mut tb,
+            fillets: &mut fb,
+            geoms: &mut geoms,
+        };
+        let mut st = c1_setup(&mut ops, &mut cx).unwrap();
+        let pass = c1_collect_points(&mut ops, &mut cx, &mut st, 1)
+            .unwrap()
+            .unwrap();
+        let v = |i: usize| TsRef::Vertexuse(vus[i]);
+        assert_eq!(pass.all, vec![v(2), v(1), v(0), v(3)]);
+    }
+
+    #[test]
+    fn rail_with_wrong_edgeuse_count_is_sm_err() {
+        let k = Kernel::default();
+        let (mut tb, eus) = target(Some(line_curve([0.0, 0.0, 0.0], [2.0, 0.0, 0.0], 3)));
+        let (mut fb, g, _) = fillets(&k, ROWS);
+        let rail = fb.geom(g).unwrap().rail(1).unwrap();
+        fb.brep_mut().edge_mut(rail).unwrap().edgeuses.pop();
+        let mut ops = solver(&k, eus);
+        let mut geoms = vec![g];
+        let mut cx = Cx {
+            k: &k,
+            target: &mut tb,
+            fillets: &mut fb,
+            geoms: &mut geoms,
+        };
+        let mut st = c1_setup(&mut ops, &mut cx).unwrap();
+        let e = c1_collect_points(&mut ops, &mut cx, &mut st, 0).unwrap_err();
+        assert_eq!(e, SolidError::sm_err(OP));
+    }
+
+    #[test]
+    fn g1_knot_points_defer_and_split_knot_stays_on_error() {
+        let k = Kernel::default();
+        let (mut tb, eus) = target(Some(line_curve([0.0, 0.0, 0.0], [2.0, 0.0, 0.0], 3)));
+        let (mut fb, g, _) = fillets(&k, ROWS);
+        fb.geom_mut(g).unwrap().need_split = true;
+        let mut ops = solver(&k, eus);
+        let mut geoms = vec![g];
+        let mut cx = Cx {
+            k: &k,
+            target: &mut tb,
+            fillets: &mut fb,
+            geoms: &mut geoms,
+        };
+        let mut st = c1_setup(&mut ops, &mut cx).unwrap();
+        assert!(st.split_original_fillet);
+        // split without G1 knots: sIvl.Evaluate(0.5) is pushed, then the knot loop
+        // reaches the unported EvaluateBinormal and returns before RemoveLast
+        let e = c1_collect_points(&mut ops, &mut cx, &mut st, 0).unwrap_err();
+        assert!(e.is_unported());
+        assert_eq!(ops.0.g1_knots, vec![0.5]);
+        assert_eq!(st.split_tsect_pnt, None);
+    }
+
+    /// A closed degree-1 B-spline triangle over [0,1] in the UV plane.
+    fn closed_uv_curve() -> Curve {
+        use crate::nurbs::math::CPoint;
+        let pw = [
+            CPoint::new(0.0, 0.0, 0.0, 1.0),
+            CPoint::new(1.0, 0.0, 0.0, 1.0),
+            CPoint::new(1.0, 1.0, 0.0, 1.0),
+            CPoint::new(0.0, 0.0, 0.0, 1.0),
+        ];
+        let u = [0.0, 0.0, 1.0 / 3.0, 2.0 / 3.0, 1.0, 1.0];
+        Curve::from(BSplineCurve::from_data(2, 3, 5, 1, &pw, &u).unwrap())
+    }
+
+    #[test]
+    fn closed_trim_curves() {
+        let k = Kernel::default();
+        let (mut tb, eus) = target(Some(line_curve([0.0, 0.0, 0.0], [2.0, 0.0, 0.0], 3)));
+        for eu in eus {
+            tb.edgeuse_mut(eu).unwrap().uv_trim_curve = Some(closed_uv_curve());
+        }
+        let (mut fb, g, vus) = fillets(&k, ROWS);
+        let mut ops = solver(&k, eus);
+        let mut geoms = vec![g];
+        let mut cx = Cx {
+            k: &k,
+            target: &mut tb,
+            fillets: &mut fb,
+            geoms: &mut geoms,
+        };
+        let mut st = c1_setup(&mut ops, &mut cx).unwrap();
+        // pass 0 closed: continue (nothing collected, nothing cleaned)
+        assert!(c1_collect_points(&mut ops, &mut cx, &mut st, 0)
+            .unwrap()
+            .is_none());
+        assert!(st.do_sorting);
+        let p0 = cx.fillets.fillet_vertexuse(vus[0]).unwrap().tsect_pnt();
+        assert_eq!(p0.uv_pos(SrfIndex::First).x, 1.0 + 1.0e-13);
+        // pass 1 closed: no sorting, collection goes on
+        let pass = c1_collect_points(&mut ops, &mut cx, &mut st, 1)
+            .unwrap()
+            .unwrap();
+        assert!(!st.do_sorting);
+        assert_eq!(pass.all.len(), 2);
+    }
+
+    #[test]
+    fn missing_trim_curve_defers() {
+        let k = Kernel::default();
+        let (mut tb, eus) = target(Some(line_curve([0.0, 0.0, 0.0], [2.0, 0.0, 0.0], 3)));
+        for eu in eus {
+            tb.edgeuse_mut(eu).unwrap().uv_trim_curve = None;
+        }
+        let (mut fb, g, _) = fillets(&k, ROWS);
+        let mut ops = solver(&k, eus);
+        let mut geoms = vec![g];
+        let mut cx = Cx {
+            k: &k,
+            target: &mut tb,
+            fillets: &mut fb,
+            geoms: &mut geoms,
+        };
+        let mut st = c1_setup(&mut ops, &mut cx).unwrap();
+        let e = c1_collect_points(&mut ops, &mut cx, &mut st, 0).unwrap_err();
+        assert!(e.is_unported());
+    }
 }
 
 // P4-CHUNK(C1) END
