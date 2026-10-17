@@ -706,6 +706,31 @@ upstream `.smc` / `.sms` test files as scalar curve / surface functions, plus ed
   functions cannot be expressed. Storage upstream allocates with `malloc` is zero-filled.
 - No `UNPORTED(nlib.funcs_basic)` stubs existed to wire.
 
+### Allocation-safety follow-up (2026-10-17)
+
+`CurveFunction::size_arrays(&mut None, usize::MAX, 1, 0)` panicked with
+`capacity overflow`: the port used `vec![0.0; n.saturating_add(1)]` for new
+storage. `SurfaceFunction::size_arrays` had the same issue for all four storage
+indices, plus infallible cloning of the rows in its nested `vec!` expression.
+
+New storage now checks each index-to-length conversion and byte layout before
+allocating, including the complete surface grid's checked row/column product.
+Each allocation uses `try_reserve_exact` before zero-filling; failures return
+`SolidError::Nlib { code: NlibCode::Memory, .. }` at the sizing operation. The
+slot is inserted only after all allocations succeed. Existing-slot sizing
+retains the upstream `NL_STO_ERR` behavior and leaves the function unchanged
+on failure. This follows the memory-error path of `N_AllocReal1dArray` and
+`N_AllocReal2dArray` in `source/SMLib/src/NL_Util.cpp`.
+
+Rust regressions cover `usize::MAX` in every storage dimension, per-array byte
+layout overflow, whole-grid byte/count overflow, and existing-slot preservation.
+These unrepresentable sizes are Rust-only safety tests: they are not sent through
+the C++ shim or claimed as differential passes. The existing differential fixtures
+exercise normal allocation, resizing, accessors and evaluation; no FFI guard or
+numerical tolerance was changed. This handles representability/reservation failures;
+it does not impose an application memory quota or guarantee recovery from an OS
+out-of-memory kill after a successful reservation.
+
 ## nlib.basis_adv (green; no disagreements)
 
 1744 default cases (244 fixture + 1500 generated) and a 100,244-case run (`--seeds 100000`)
@@ -736,6 +761,16 @@ worth knowing:
   out-of-bounds reads past `U[m]` on unusual inputs and endless loop on NaN knots. The
   shim pads with `+inf`; the generator keeps to clamped vectors of degree >= 1.
 - No `UNPORTED(nlib.basis_adv)` stubs existed to wire.
+
+**Issue #182, arithmetic-overflow follow-up.** The Rust API accepts `usize`
+degrees and increments: `p = i64::MAX` panicked at the initial `p + 1` in
+`compatible_knot_array_mult` and `increase_knot_mult`, and `t = i64::MAX`
+panicked in the latter's multiplicity sum. Checked initial-index additions now
+return `InvalidInput`; an overflowing nonnegative multiplicity sum exceeds the
+degree and returns the existing `NL_KNT_ERR`. Three regression tests cover both
+initial-index sites and both sum additions (single and repeated inner knots).
+No floating-point formulas or comparison tolerances change. The separate 41
+fuzzed Rust/C++ disagreements reported in #182 remain unassessed by this fix.
 
 ## geom.grid (partial; no disagreements)
 
