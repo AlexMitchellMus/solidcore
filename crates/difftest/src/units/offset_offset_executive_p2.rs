@@ -19,7 +19,7 @@
 //! No topology clone stands in for the API shell's missing copy constructor.
 //!
 //! Exact current parity scope: member null (1006), API null (1007), and API shell
-//! invalid source/foreign/null selections (1007), including duplicate face-zero
+//! foreign/null selections (1007), including mixed/duplicate source-face-zero
 //! selections and independent arenas whose local face-zero ids collide. Compare
 //! all exposed executive scalar getters/flags, Boolean context before/after,
 //! ordered selector identities, input/result lifetime/ownership and presence.
@@ -44,13 +44,13 @@
 //! an output adapter is implemented, rather than guessing its missing metadata.
 //! Static/member shell lists currently support source faces only; nullable and
 //! foreign lists are exercised through the API's origin-qualified interface.
-//! Positive B-rep tolerances avoid the unported automatic SetTolerance path;
+//! Positive B-rep tolerances avoid the unported automatic `SetTolerance` path;
 //! member approximation tolerance still covers zero, negative and -1 sentinel.
 //! All numeric keys have ZERO absolute floor; signed-zero inputs are retained.
 //!
 //! This unit is necessarily PARTIAL: current positive geometry operations reach
 //! genuine missing manifold/copy/infinite-region/void/shrink/merge/stitch work.
-//! Empty rounded offset still calls ShrinkGeometry; static shell queries manifold
+//! Empty rounded offset still calls `ShrinkGeometry`; static shell queries manifold
 //! BEFORE its strict radius guard; valid API shell selections copy BEFORE shelling.
 //! Fixtures retain those native paths for future wiring, not manufactured success.
 //! Source test references are reductions of tests read at
@@ -293,7 +293,7 @@ impl Inputs {
 fn bad(message: impl Into<String>) -> HarnessError {
     HarnessError::new(message)
 }
-fn setup(error: SolidError) -> HarnessError {
+fn setup(error: impl core::fmt::Display) -> HarnessError {
     bad(format!("Rust input fixture: {error}"))
 }
 fn at<T>(slice: &[T], index: usize) -> HResult<&T> {
@@ -342,14 +342,7 @@ fn validate(input: &Inputs) -> HResult<()> {
             "static offset/shell dereferences null before validation",
         ));
     }
-    if input.operation == Operation::Extended || cfg.extend_convex {
-        finite(&[5.0
-            * if input.operation.member() {
-                cfg.member_distance
-            } else {
-                cfg.offset_distance.abs()
-            }])?;
-    }
+
     if input.faces.len() > ffi::MAX_SELECTIONS {
         return Err(bad("too many selected faces"));
     }
@@ -362,6 +355,24 @@ fn validate(input: &Inputs) -> HResult<()> {
         if index >= fixture.map_or(0, Fixture::face_count) {
             return Err(bad("selected face outside its origin fixture"));
         }
+    }
+    // Match the native/FFI guard: null member/API inputs and API-shell invalid
+    // origins return before extension arithmetic, but still validate every DTO.
+    let invalid_api_selection = input.operation == Operation::ApiShell
+        && input
+            .faces
+            .iter()
+            .any(|face| !matches!(face, Selection::Source(_)));
+    if input.source.is_some()
+        && !invalid_api_selection
+        && (input.operation == Operation::Extended || cfg.extend_convex)
+    {
+        let magnitude = if input.operation.member() {
+            cfg.member_distance
+        } else {
+            cfg.offset_distance.abs()
+        };
+        finite(&[5.0 * magnitude])?;
     }
     for fixture in input.source.iter().chain(&input.foreign) {
         match *fixture {
@@ -633,10 +644,10 @@ fn rectangular_face(
             let next = (index + 1) % 4;
             let &(edge, forward) = at(&edges, index)?;
             let start = *at(&vertices, if reverse { next } else { index })?;
-            let orientation = if forward != reverse {
-                OrientType::Same
-            } else {
+            let orientation = if forward == reverse {
                 OrientType::Opposite
+            } else {
+                OrientType::Same
             };
             let a = *at(&uv, if reverse { next } else { index })?;
             let b = *at(&uv, if reverse { index } else { next })?;
@@ -1300,7 +1311,7 @@ fn scalar_output(
     }
     output
 }
-fn unchanged(before: &Option<ffi::BrepSnapshot>, after: &Option<ffi::BrepSnapshot>) -> bool {
+fn unchanged(before: Option<&ffi::BrepSnapshot>, after: Option<&ffi::BrepSnapshot>) -> bool {
     match (before, after) {
         (None, None) => true,
         (Some(a), Some(b)) => {
@@ -1334,8 +1345,14 @@ fn native_output(input: &Inputs, snapshot: &ffi::Snapshot) -> HResult<Output> {
     .ints(
         "input.pure",
         vec![
-            i64::from(unchanged(&snapshot.source_before, &snapshot.source_after)),
-            i64::from(unchanged(&snapshot.foreign_before, &snapshot.foreign_after)),
+            i64::from(unchanged(
+                snapshot.source_before.as_ref(),
+                snapshot.source_after.as_ref(),
+            )),
+            i64::from(unchanged(
+                snapshot.foreign_before.as_ref(),
+                snapshot.foreign_after.as_ref(),
+            )),
         ],
     );
     for (key, fixture, block) in [
@@ -2017,6 +2034,46 @@ mod tests {
         input.operation = Operation::Solid;
         input.config.member_distance = -1.0;
         assert!(Runner.run_cpp(&case(&input)).is_err());
+    }
+
+    #[test]
+    fn irrelevant_extension_overflow_does_not_hide_native_early_returns() {
+        for operation in [
+            Operation::Solid,
+            Operation::Extended,
+            Operation::ApiShell,
+            Operation::ApiOffset,
+        ] {
+            let mut input = input(operation);
+            input.source = None;
+            input.config.member_distance = f64::MAX;
+            input.config.offset_distance = -f64::MAX;
+            input.config.extend_convex = true;
+            let case = case(&input);
+            assert_eq!(
+                Runner.run_rust(&case).unwrap(),
+                Runner.run_cpp(&case).unwrap()
+            );
+            input.config.member_distance = -1.0;
+            if operation.member() {
+                assert!(validate(&input).is_err());
+            }
+        }
+        let mut input = input(Operation::ApiShell);
+        input.source = Some(sheet([0.0; 3], 1.0, 0));
+        input.foreign = input.source.clone();
+        input.faces = vec![Selection::Foreign(0), Selection::Null];
+        input.config.extend_convex = true;
+        for distance in [-f64::MAX, f64::MAX] {
+            input.config.offset_distance = distance;
+            let case = case(&input);
+            assert_eq!(
+                Runner.run_rust(&case).unwrap(),
+                Runner.run_cpp(&case).unwrap()
+            );
+        }
+        input.faces.push(Selection::Source(usize::MAX));
+        assert!(validate(&input).is_err());
     }
 
     #[test]

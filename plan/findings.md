@@ -6481,6 +6481,95 @@ with owner-tagged `Unported` errors and documented continuations.
   this unit at position 196. The standalone offset run above passed the partial
   gate; no completed full-suite baseline pass is claimed.
 
+## offset.offset_executive_p2 (partial, draft PR #201, 2026-10-17)
+
+This PR is stacked on the still-open p1 PR #175 and must not merge before it.
+All six owned static/member/API entrypoints have real native dispatch and Rust
+executable prefixes. The remaining P2-owned continuations are documented behind
+actual missing callees, not represented by fabricated topology copies or empty
+successful offset/shell geometry.
+
+- **Final integrated native evidence.** After merging upstream `dbf7753d`, the
+  default unfiltered run completes with 294 cases (54 fixtures and 240 fixed-seed
+  generated cases; default CLI seeds remain 16): 118 passed, 0 failed, 0 rejected,
+  176 deferred. All 118 passes compare numerical values; maximum relative error
+  is zero, with the unchanged `1e-9` relative gate and no absolute floors.
+  Sensitivity detects all 118 perturbations. The standard generated report is
+  `reports/difftest/offset.offset_executive_p2.json`. These totals supersede the
+  earlier pre-guard run. Validation uses pinned upstream `c9c5979`, Rust 1.98.0
+  and GNU g++ 12.2.0 on Linux ARM64 in local Docker, with the user-approved six
+  Cargo jobs on the resized 12-CPU/16-GiB Colima VM; builds remain sequential
+  under `nice -n 10`, using the cached native reference.
+- **Exact certified scope.** Comparable operations are member null errors
+  (`1006`), API null errors (`1007`), and API-shell foreign/null selector errors
+  (`1007`), including mixed/duplicate source-face selections. Snapshots compare
+  exposed executive scalars/flags,
+  Boolean state, ordered selector origins (foreign face zero is not source face
+  zero), ownership/presence and input purity. Ordinary operation statuses are
+  integer observations, not harness errors or fixture rejections. The shim calls
+  each named upstream operation; it does not replay native results on the Rust
+  side. No successful constructive offset or shell result is certified.
+- **Geometry projection limits.** Wire inputs compare natural/trim intervals,
+  endpoint evaluations and vertex bounds; sheet inputs compare domains, analytic
+  kinds and evaluated points/normals. Boxes compare face/edge/vertex counts,
+  analytic kinds, vertex bounds, provenance and purity only. Full native-versus-
+  Rust traversal adjacency, stitched face correspondence, region metadata,
+  effective per-entity tolerances and arbitrary returned-shape equivalence are
+  not established. Both sides independently check that their full observable
+  input blocks/arenas remain unchanged on the compared early returns.
+- **Guards and ordering.** Public offsets remain signed (`fabs` plus `SetInset`);
+  internal member geometry magnitudes are nonnegative. Finite extreme distances
+  whose fivefold product overflows still reach native null/invalid-selection
+  early returns, which do not use that arithmetic. Other scalar/index/resource
+  guards remain active, including malformed selectors after the first invalid
+  API selector. Static null inputs stay rejected because upstream dereferences
+  them. Direct native and runner regressions exercise these distinctions.
+  `ShellBrep` still queries manifold status before its strict radius guard;
+  valid API shell selectors still require the real copy before shelling; empty
+  rounded offset still calls `ShrinkGeometry`, even when skip is requested.
+- **Measured dependency boundaries.** The final report records:
+
+  | Dependency | Cases | First missing call(s) |
+  |---|---:|---|
+  | `topology.brep_p2` | 58 | `SmBrep::IsManifoldSolid` |
+  | `topology.shell` | 44 | `SmRegion::IsVoid` |
+  | `topology.brep_p3` | 32 | `SmBrep::SmBrep` copy constructor |
+  | `topology.brep_p1` | 23 | `SmBrep::GetInfiniteRegion` |
+  | `topology.brep_p5` | 6 | `SmBrep::RemoveFaces` |
+  | `heal.stitch_p2` | 6 | three each at `StitchIntoShell` / `StitchIntoSolid` |
+  | `topology.edgeuse_p3` | 4 | `SmEdgeuse::NormalizedEvaluate` |
+  | `topology.brep_p4` | 3 | `SmBrep::ShrinkGeometry` |
+
+  No `UNPORTED(offset.offset_executive_p2)` back-edge callers were present to
+  wire. Completing dependencies requires implementing the documented P2
+  continuations as well as replacing boundary stubs. The runner deliberately
+  fails closed on newly reachable non-deferred results/temporaries until their
+  output adapter is extended; its constructive-coverage assertions must evolve
+  with that work.
+- **Native observer concurrency corrected before publication.** The adapter's
+  scoped allocation observer installs a stack callback on the process-global
+  API context. A p2-only mutex or serial tests would not prevent another wrapper
+  from using that context and having its live B-reps reclaimed by the observer.
+  One out-of-line recursive mutex now protects common `SC_TRY` entrypoints and
+  handwritten entrypoints through all native destruction, callback restoration
+  and catch cleanup. Deterministic probes check exclusion, nested shim calls and
+  exception release. A six-caller regression mixes p2 with independently compiled
+  `geom.object` box construction/destruction and forces p2 buffer retries.
+  Static cross-wrapper/lifetime review found no remaining blocker. The guard
+  serializes individual native exports, not unrelated retained-result protocols
+  such as SSI's pre-existing `intersect`/`take` pair.
+- **Broader integrated checks.** Formatting, C++-enabled workspace/all-target
+  Clippy with warnings denied, and `wasm32-unknown-unknown` checking pass.
+  All 1342 kernel tests pass. FFI tests: 92 passed, 1 existing subprocess-only
+  helper ignored, 0 failed. Runner library tests: 152 passed, 22 existing ignored,
+  0 failed, including 13 p2 runner tests. A default differential sweep of all
+  15 explicitly guarded units plus harness selftest, context/object and p1/p2
+  completes: 20 units, 6 green and 14 partial, zero failures. P1 remains
+  691 cases / 633 passed / 17 deferred / 41 rejected with
+  `max_rel_err=2.5139756042650037e-14`; its generated report is byte-identical to
+  the committed report. This is not a completed full `--green` baseline; the
+  earlier p1 attempt's 1200-second timeout remains documented above.
+
 ## topology.face_p1 (`SmFace.cpp` part 1: `MoveSeam`, `SplitAtSeam`, `CreateOrientedTrimBoundary`, `CalculateUVDomainFromUVTrimCurves`, ...; PR #148, 2026-10-16; partial, no disagreements)
 
 - **Mostly deferred by design.** Every mutating member starts with `SmFace::Notify`

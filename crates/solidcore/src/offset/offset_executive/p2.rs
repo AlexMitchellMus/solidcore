@@ -184,7 +184,7 @@ impl OffsetExecutive {
         &mut self,
         kernel: &mut Kernel,
         original: Option<&Brep>,
-        options: SolidOffsetOptions,
+        _options: SolidOffsetOptions,
     ) -> Result<Brep> {
         // cpp:411–418: dispatch must precede NER and the Boolean scope.
         if self.extend_convex_edges() {
@@ -212,8 +212,7 @@ impl OffsetExecutive {
             // MakeManifold. A successful MakeManifold labels every region by
             // GetInfiniteRegion equality; failure is ignored. Finally release the
             // temporary and return the real result. None may be replaced by an
-            // empty success here. Keep the option live at this continuation.
-            let _skip_stitch_merge = options.skip_stitch_merge;
+            // empty success here. `_options` is first used at that continuation.
             // UNPORTED(topology.brep_p4): SmBrep::ShrinkGeometry
             Err(SolidError::unported(
                 "SmBrep::ShrinkGeometry",
@@ -380,7 +379,8 @@ impl OffsetExecutive {
             faceuse = required(eu::faceuse_mate(original, faceuse)?, operation)?;
         }
         if self.inset() {
-            faceuse = required(eu::faceuse_mate(original, faceuse)?, operation)?;
+            // Validate the final mate now; geometry creation below is deferred.
+            required(eu::faceuse_mate(original, faceuse)?, operation)?;
         }
 
         // FaceuseOffset(context, selected faceuse, TRUE, surface, SSI data), using
@@ -390,7 +390,6 @@ impl OffsetExecutive {
         // merge_results, or >5 with extend_convex_edges. Then call p1
         // BuildOffsetOfFaceuse, preserving both surface and SSI data. Geometry
         // creation belongs to the open geometry-creation unit, not this prefix.
-        let _selected_faceuse = faceuse;
         // UNPORTED(offset.offset_geometry_creation): SmOffsetGeometryCreation::FaceuseOffset
         Err(SolidError::unported(
             "SmOffsetGeometryCreation::FaceuseOffset",
@@ -470,7 +469,7 @@ impl OffsetExecutive {
 pub fn api_shell_brep_full(
     _kernel: &mut Kernel,
     original: Option<BrepRef<'_, BrepId>>,
-    options: ShellOptions,
+    _options: ShellOptions,
     faces: &[Option<FaceKey>],
 ) -> Result<Brep> {
     let original = original.ok_or_else(|| invalid_input(OP_API_SHELL))?;
@@ -482,7 +481,7 @@ pub fn api_shell_brep_full(
     // run shell_brep on the private copy with options unchanged. Retained working
     // input is dropped by RAII on both success and failure. A transferred input
     // must never also be cleaned up, and a null successful result is SM_ERR.
-    let _forwarded_options = options;
+    // `_options` is forwarded only after the unavailable copy above succeeds.
     // UNPORTED(topology.brep_p3): SmBrep::SmBrep
     Err(SolidError::unported("SmBrep::SmBrep", "topology.brep_p3"))
 }
@@ -633,12 +632,14 @@ mod tests {
     }
 
     fn assert_status<T: core::fmt::Debug>(result: Result<T>, code: i32) {
-        assert!(matches!(result, Err(SolidError::Upstream { code: actual, .. }) if actual == code));
+        assert!(
+            matches!(result.unwrap_err(), SolidError::Upstream { code: actual, .. } if actual == code)
+        );
     }
 
     fn assert_dependency<T: core::fmt::Debug>(result: Result<T>, symbol: &str, owner: &str) {
         assert!(
-            matches!(result, Err(SolidError::Unported { upstream, unit }) if upstream == symbol && unit == owner)
+            matches!(result.unwrap_err(), SolidError::Unported { upstream, unit } if upstream == symbol && unit == owner)
         );
     }
 
