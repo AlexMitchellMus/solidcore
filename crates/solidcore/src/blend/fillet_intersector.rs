@@ -23,7 +23,7 @@
 //! | [`FilletIntersector::set_self_intersect`]               | `SetSelfIntersect`                              |
 //! | [`FilletIntersector::is_kind_of`], [`TYPE`]             | `IsKindOf`, `SmFilletIntersector_TYPE`          |
 //! | [`FilletSolverOps`], [`StepSolve`] (CO-PORTED interface) | the `SmFilletSolver` virtuals and members these methods call |
-//! | `FilletSolverOps for ConstantRadiusAssistedFs` (CO-PORTED) | `SmFilletSolver::SetSurfacesToZeroOffset`, `ReloadSurfaceOffsets` |
+//! | `FilletSolverOps for ConstantRadiusAssistedFs` (CO-PORTED) | `SmFilletSolver::SetSurfacesToZeroOffset`, `ReloadSurfaceOffsets`; `ComputePointValues` delegates to [`FilletSolver::compute_point_values`] (unit `blend.fillet_solver_p4`) |
 //! | [`FilStatus`] (CO-PORTED)                               | `SmFilStatus`                                   |
 //! | [`HandlingAlgorithmType`] (CO-PORTED)                   | `SmHandlingAlgorithmType`                       |
 //!
@@ -69,6 +69,7 @@
 //! - **Not ported.** `Dump` and the `SM_DEBUG_CODE` drawing blocks; `SM_ASSERT`s.
 
 use crate::blend::fillet_custom_solver::ConstantRadiusAssistedFs;
+use crate::blend::fillet_solver::p1::FilletSolver;
 use crate::curve::crv_on_surf::CrvOnSurf;
 use crate::curve::curve::p3::PointSolveOptions;
 use crate::curve::curve::Curve;
@@ -204,6 +205,9 @@ pub trait FilletSolverOps {
         _point: &mut TsectPnt,
         _previous: Option<&TsectPnt>,
     ) -> Result<()> {
+        // Solvers over the SmFilletSolver base override this with
+        // FilletSolver::compute_point_values (ConstantRadiusAssistedFs does); this
+        // default is only reached by a solver without that base.
         // UNPORTED(blend.fillet_solver_p4): SmFilletSolver::ComputePointValues
         Err(SolidError::unported(
             "SmFilletSolver::ComputePointValues",
@@ -508,13 +512,37 @@ pub trait FilletSolverOps {
     }
 }
 
-/// The constant-radius solver data: `SetSurfacesToZeroOffset` and
-/// `ReloadSurfaceOffsets` are the `SmFilletSolver` base's ([`FilletSolver`](crate::blend::fillet_solver::p1::FilletSolver));
+/// The constant-radius solver data: `ComputePointValues` is the `SmFilletSolver`
+/// base's ([`FilletSolver::compute_point_values`], over the solver's
+/// `SmConstantRadiusFS` virtuals); `SetSurfacesToZeroOffset` and
+/// `ReloadSurfaceOffsets` are the `SmFilletSolver` base's ([`FilletSolver`]);
 /// `GetSurface(rail)->Evaluate1stDerivatives` evaluates the rail's offset surface
 /// (on a copy: a base extension the evaluation makes is not kept); the solver has no
 /// fillet geometries yet (handle `()`).
 impl FilletSolverOps for ConstantRadiusAssistedFs {
     type FilletGeom = ();
+
+    fn compute_point_values(
+        &mut self,
+        k: &Kernel,
+        uv_values: [Point2; 2],
+        uv_domain1: &Extent2d,
+        uv_domain2: &Extent2d,
+        curve_trace_direction: f64,
+        point: &mut TsectPnt,
+        previous: Option<&TsectPnt>,
+    ) -> Result<()> {
+        FilletSolver::compute_point_values(
+            self,
+            k,
+            uv_values,
+            uv_domain1,
+            uv_domain2,
+            curve_trace_direction,
+            point,
+            previous,
+        )
+    }
 
     fn set_surfaces_to_zero_offset(&mut self) -> Result<()> {
         self.solver.set_surfaces_to_zero_offset()

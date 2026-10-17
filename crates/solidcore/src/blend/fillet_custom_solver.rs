@@ -18,6 +18,7 @@
 //! | [`SecantConstantRadiusFs::load_jacobian`]         | `SmSecantConstantRadiusFS::LoadJacobian`          |
 //! | [`ConstantRadiusAssistedFs`] (CO-PORTED)          | `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` over the `SmFilletSolver` base ([`FilletSolver`]) |
 //! | `impl FilletSolverOps` for both solvers            | their `LoadJacobian` / `LoadInitialValues` / `OffsetRadiiCanChange` overrides |
+//! | `impl FilletSolverOps for ConstantRadiusAssistedFs` (CO-PORTED) | `SmConstantRadiusFS::SetupOffsetValues`, `SmConstantRadiusFS::OffsetRadiiCanChange` (unit `blend.fillet_standard_solver_p1`) |
 //! | [`OffsetSurface`], [`SurfaceId`]                  | an `SmOffsetSurface*` rail surface (unit `surface.offset_surface`) and the identity of its base pointer |
 //! | [`JacobianLoad`], [`InitialValues`]               | the in/out arguments of `LoadJacobian`, `LoadInitialValues` |
 //!
@@ -1622,6 +1623,38 @@ macro_rules! fillet_solver_ops {
 
 fillet_solver_ops!(EiffelTowerFs);
 fillet_solver_ops!(SecantConstantRadiusFs);
+
+/// The `SmConstantRadiusFS` virtuals the fillet solver base calls (CO-PORTED from
+/// `blend.fillet_standard_solver_p1`): constant offsets, so no analytic restriction.
+impl FilletSolverOps for ConstantRadiusAssistedFs {
+    fn solver(&self) -> &FilletSolver {
+        &self.solver
+    }
+
+    fn solver_mut(&mut self) -> &mut FilletSolver {
+        &mut self.solver
+    }
+
+    /// `SmConstantRadiusFS::SetupOffsetValues(rTsectPnt, pOffsetDist)`: the radius of
+    /// surface 0 (`pOffsetDist`), and each offset surface's distance set to its radius
+    /// times its orientation.
+    fn setup_offset_values(
+        &mut self,
+        _tsect: &TsectPnt,
+        offset_dist: Option<&mut f64>,
+    ) -> Result<()> {
+        if let Some(d) = offset_dist {
+            *d = self.radius(0)?;
+        }
+        self.reset_offset(0)?;
+        self.reset_offset(1)
+    }
+
+    /// `SmConstantRadiusFS::OffsetRadiiCanChange`: `FALSE`.
+    fn offset_radii_can_change(&self) -> bool {
+        false
+    }
+}
 
 #[cfg(test)]
 mod tests {
