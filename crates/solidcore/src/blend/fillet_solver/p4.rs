@@ -789,12 +789,739 @@ fn c5_post_process(
     cx: &mut Cx<'_>,
     st: &mut CalcState,
 ) -> Result<()> {
-    let _ = (ops, cx, st);
-    // P4-CHUNK(C5): SmFilletSolver.cpp:2470-2671
-    Err(SolidError::Unported {
-        upstream: "SmFilletSolver::CalcFilletGeom (p4 chunk C5 pending)",
-        unit: "blend.fillet_solver_p4",
-    })
+    // when just one filletGeom was created (no selfIntersections), see if we are
+    // required to split FG
+    if ops.solver().fillet_geoms.len() == 1 && st.split_original_fillet {
+        c5_split_original_fillet(ops, cx, st)?;
+    }
+
+    // when more than one filletGeom was created (self intersections; also right
+    // after the split above, as upstream)
+    if ops.solver().fillet_geoms.len() > 1 {
+        c5_self_intersection_patches(ops, cx)?;
+    }
+
+    // when trace was reversed (due to endPoint degeneracies) - restore output trace
+    // directions
+    if st.trace.reverse_tracing {
+        c5_undo_reversal(ops, cx)?;
+    }
+
+    // all done
+    Ok(())
+}
+
+/// :2473-2587: `TopologySplit` of geometry 0, the new geometry's rails (copies of
+/// the old rails and their mate UV trim curves, trimmed at the split parameter), its
+/// start vertex, and the fillet surface split in two at the rail-0 parameter.
+fn c5_split_original_fillet(
+    ops: &mut dyn FilletSolverOps,
+    cx: &mut Cx<'_>,
+    st: &CalcState,
+) -> Result<()> {
+    use crate::nurbs::b_spline_surface::SurfParamType;
+
+    let geom0 = st.geom0;
+    let new_geom = topology_split(cx, geom0, FilletGeomType::Default)?;
+    add_fillet_geom(ops, &mut *cx.geoms, new_geom)?;
+    let mut split_at_param = 0.0;
+
+    // Setup rail curves for new FilletGeom
+    for mm in 0..2usize {
+        split_at_param = c5_split_rail(cx, st, new_geom, mm, split_at_param)?;
+    }
+
+    // Split fillet into two
+    let (sur_l, sur_r) = {
+        let fillet_surface = cx
+            .fillets
+            .geom(geom0)?
+            .fillet_surface()
+            .ok_or_else(|| SolidError::null_pointer(OP))?;
+        fillet_surface.split_at(cx.k, split_at_param, SurfParamType::U)?
+    };
+    // delete pFilletSurface; m_pFilletSurface = SM_CAST_PTR(SmBSplineSurface, ..)
+    cx.fillets
+        .geom_mut(geom0)?
+        .set_fillet_surface(c5_bspline_surface_cast(sur_l));
+    cx.fillets
+        .geom_mut(new_geom)?
+        .set_fillet_surface(c5_bspline_surface_cast(sur_r));
+    Ok(())
+}
+
+/// `SM_CAST_PTR(SmBSplineSurface, pSur)` of an owned surface: the surface when its kind
+/// derives from `SmBSplineSurface`, else `None` (the half is then lost, as upstream).
+fn c5_bspline_surface_cast(surface: Surface) -> Option<Surface> {
+    is_bspline_surface(&surface).then_some(surface)
+}
+
+/// One pass `mm` of :2481-2571: copies rail `mm` of geometry 0 and its mate UV trim
+/// curve onto the new geometry's rail, finds the split parameter on rail 0 (the
+/// `DropPoint` ladder; rail 1 reuses rail 0's parameter), trims both rails, and moves
+/// the new rail's start vertex to the split point. Returns `dSplitAtParam`.
+fn c5_split_rail(
+    cx: &mut Cx<'_>,
+    st: &CalcState,
+    new_geom: FilletGeomId,
+    mm: usize,
+    split_at_param: f64,
+) -> Result<f64> {
+    use crate::blend::fillet_geom::p1::{FilStatus, FilletEdgeType};
+    use crate::error::ignore_status;
+    use crate::intersect::surface_intersector::p1::SrfIndex;
+    use crate::nurbs::b_spline_curve_n_lib::TrimMode;
+    use crate::topology::{edge as edge_unit, vertex as vertex_unit, vertexuse as vu_unit};
+
+    let mut split_at_param = split_at_param;
+    let brep = cx.fillets.brep();
+    let rail = cx
+        .fillets
+        .geom(st.geom0)?
+        .rail(mm)
+        .ok_or_else(|| invalid("split: geometry 0 has no rail"))?;
+    let rail_curve = edge_unit::curve(brep, rail)?.ok_or_else(|| SolidError::null_pointer(OP))?;
+    let mut trim_ivl = rail_curve.natural_interval();
+    let mut new_trim_ivl = trim_ivl;
+    let prim_eu = eu::primary_edgeuse(brep, rail)?
+        .ok_or_else(|| invalid("split: rail without primary edge use"))?;
+    let mate_eu =
+        eu::mate(brep, prim_eu)?.ok_or_else(|| invalid("split: rail edge use without mate"))?;
+    let uv_curve =
+        eu::uv_trim_curve_pointer(brep, mate_eu)?.ok_or_else(|| SolidError::null_pointer(OP))?;
+    let new_rail = cx
+        .fillets
+        .geom(new_geom)?
+        .rail(mm)
+        .ok_or_else(|| invalid("split: new geometry has no rail"))?;
+    let new_prim_eu = eu::primary_edgeuse(brep, new_rail)?
+        .ok_or_else(|| invalid("split: new rail without primary edge use"))?;
+    let new_mate_eu = eu::mate(brep, new_prim_eu)?;
+
+    // Copy the original rail curve and UVTrimCurve
+    let new_rail_curve = rail_curve.copy(cx.k)?;
+    let new_rail_uv_curve = uv_curve.copy(cx.k)?;
+
+    // Set NewRail->Curve = RailCurveCopy (TRUE = delete preExisting Edge->Curve;
+    // side effect: the new rail's edge uses lose their UV trim curves)
+    c5_set_rail_curve(cx.fillets.brep_mut(), new_rail, new_rail_curve)?;
+    // pNewRailCurve->SetOwner(pNewRail): owner identities are not modelled here
+
+    // Set NewRail->UVTrimCurve = Rail->UVTrimCurveCopy
+    let new_mate_eu =
+        new_mate_eu.ok_or_else(|| invalid("split: new rail edge use without mate"))?;
+    cx.fillets
+        .set_edgeuse_uv_curve(new_mate_eu, Some(new_rail_uv_curve), true, true)?;
+
+    // SM_USE_OLDTOL
+    let rail_tol = edge_unit::tolerance(cx.fillets.brep(), rail)?;
+    edge_unit::set_tolerance(cx.fillets.brep_mut(), new_rail, rail_tol, true, true)?;
+
+    let split_ref = st
+        .split_tsect_pnt
+        .ok_or_else(|| invalid("split: pSplitTsectPnt is NULL"))?;
+    let split_pnt = st.store.get(cx.fillets, split_ref)?.clone();
+    let uv = split_pnt.uv_pos(if mm == 0 {
+        SrfIndex::First
+    } else {
+        SrfIndex::Second
+    });
+    let pnt = if mm == 0 {
+        let pnt = st.base_surfaces[0].evaluate_point(uv)?;
+        // Find the split-at parameter (i.e. -u) of the fillet
+        let rail_curve = edge_unit::curve(cx.fillets.brep(), rail)?
+            .ok_or_else(|| SolidError::null_pointer(OP))?;
+        split_at_param = c5_drop_split_param(
+            cx.k,
+            rail_curve,
+            &trim_ivl,
+            pnt,
+            st.trace.approx_tol_3d,
+            split_at_param,
+        )?;
+        pnt
+    } else {
+        st.base_surfaces[1].evaluate_point(uv)?
+    };
+
+    ignore_status(trim_ivl.set_min_max(trim_ivl.min(), split_at_param))?;
+    cx.fillets
+        .brep_mut()
+        .edge_mut(rail)?
+        .curve
+        .as_mut()
+        .ok_or_else(|| SolidError::null_pointer(OP))?
+        .trim(cx.k, &mut trim_ivl, TrimMode::Notify)?; // may snap sIvl by tol to existing knots
+    ignore_status(new_trim_ivl.set_min_max(split_at_param, new_trim_ivl.max()))?;
+    cx.fillets
+        .brep_mut()
+        .edge_mut(new_rail)?
+        .curve
+        .as_mut()
+        .ok_or_else(|| SolidError::null_pointer(OP))?
+        .trim(cx.k, &mut new_trim_ivl, TrimMode::Notify)?; // may snap sIvl by tol to existing knots
+
+    let new_vert = vertex_unit::edge_start_vertex(cx.fillets.brep(), new_rail)?
+        .ok_or_else(|| invalid("split: new rail without start vertex"))?;
+    c5_set_vertex_point(cx.fillets.brep_mut(), new_vert, pnt)?;
+    cx.fillets
+        .fillet_vertex_mut(new_vert)?
+        .set_status(FilStatus::Processed);
+    let vus = vertex_unit::vertexuses(cx.fillets.brep(), new_vert)?;
+    for vu in vus {
+        let b = cx.fillets.brep();
+        let vu_eu = vu_unit::edgeuse(b, vu)?
+            .ok_or_else(|| invalid("split: vertex use without edge use"))?;
+        let e = eu::edge(b, vu_eu)?.ok_or_else(|| invalid("split: edge use without edge"))?;
+        if cx.fillets.fillet_edge(e)?.fillet_edge_type() != FilletEdgeType::Rail {
+            continue;
+        }
+        cx.fillets
+            .fillet_vertexuse_mut(vu)?
+            .set_tsect_pnt(&split_pnt);
+    }
+    Ok(split_at_param)
+}
+
+/// :2520-2551: `pRailCurve->DropPoint(sTrimIvl, sPnt, NULL, dDroppingTol, NULL, ..)`
+/// (default `SM_SO_MINIMIZE`) with the dropping tolerance `tol`, then `10*tol`, then
+/// `20*tol` (the double loop counter runs 10, 20, 30; the tolerance is updated after
+/// each drop, so `30*tol` is never used). Returns the last dropped parameter
+/// (`dSplitAtParam`, which every drop writes); `SM_ERR` when no drop succeeds.
+fn c5_drop_split_param(
+    k: &Kernel,
+    rail_curve: &Curve,
+    trim_ivl: &Extent1d,
+    pnt: Point3,
+    approx_tol_3d: f64,
+    split_at_param: f64,
+) -> Result<f64> {
+    use crate::geom::global_solver::SolverOperation;
+
+    let mut split_at_param = split_at_param;
+    let mut dropping_tol = approx_tol_3d;
+    let mut success = false;
+    let mut scale = 10.0;
+    while scale < 39.0 {
+        let dropped = rail_curve.drop_point(
+            k,
+            trim_ivl,
+            pnt,
+            None,
+            dropping_tol,
+            None,
+            SolverOperation::Minimize,
+        )?;
+        success = dropped.success;
+        split_at_param = dropped.parameter;
+        dropping_tol = approx_tol_3d * scale;
+        if success {
+            break;
+        }
+        scale += 10.0;
+    }
+    if !success {
+        return Err(SolidError::sm_err(OP));
+    }
+    Ok(split_at_param)
+}
+
+/// P4-SHARED-CANDIDATE (same body as the private `set_rail_curve` of
+/// `blend::fillet_geom::p1`): `SmEdge::SetCurve(pCurve, TRUE)` on a pseudo-B-rep rail.
+/// The `SM_NO_CHANGE_GEOMETRY` notification clears each edge use's UV trim curve and
+/// drop-curve record and resets its cached edge/face gap (its mate's too) and the
+/// cached gaps of the edge's vertex uses; then the curve replaces the old one.
+fn c5_set_rail_curve(brep: &mut Brep, rail: EdgeId, curve: Curve) -> Result<()> {
+    use crate::topology::edge as edge_unit;
+
+    for e_u in edge_unit::edgeuses(brep, rail, None, None)? {
+        let mate_eu = eu::mate(brep, e_u)?;
+        let rec = brep.edgeuse_mut(e_u)?;
+        rec.uv_trim_curve = None;
+        rec.drop_curve_fail = None;
+        rec.max_edge_face_gap.reset();
+        let vu = rec.vertexuse;
+        if let Some(m) = mate_eu {
+            brep.edgeuse_mut(m)?.max_edge_face_gap.reset();
+        }
+        if let Some(vu) = vu {
+            let vu = brep.vertexuse_mut(vu)?;
+            vu.vertex_edge_gap.reset();
+            vu.vertex_face_gap.reset();
+        }
+    }
+    brep.edge_mut(rail)?.curve = Some(curve);
+    Ok(())
+}
+
+/// P4-SHARED-CANDIDATE (same body as the private `FilletBrep::set_vertex_point` of
+/// `blend::fillet_geom::p1`): `SmVertex::SetPoint` on a pseudo-B-rep vertex. The
+/// `SM_NO_CHANGE_GEOMETRY` notification resets the cached gaps of every vertex use of
+/// the vertex, then the point is stored.
+fn c5_set_vertex_point(brep: &mut Brep, v: crate::topology::VertexId, point: Point3) -> Result<()> {
+    for vu in brep.vertex(v)?.vertexuses.clone() {
+        let vu = brep.vertexuse_mut(vu)?;
+        vu.vertex_edge_gap.reset();
+        vu.vertex_face_gap.reset();
+    }
+    brep.vertex_mut(v)?.point = point;
+    Ok(())
+}
+
+/// :2590-2627: `CalcCrossSection` of every `SM_FE_CROSS_SECTION` edge of the
+/// `SM_FG_DEFAULT` geometries, then `CalcBlendingGeom` of the `SM_FG_BLENDS` ones.
+fn c5_self_intersection_patches(ops: &mut dyn FilletSolverOps, cx: &mut Cx<'_>) -> Result<()> {
+    use crate::blend::fillet_geom::p1::FilletEdgeType;
+
+    // Self-intersection cases
+    for g in fillet_geom_ids(ops, &*cx.geoms)? {
+        if cx.fillets.geom(g)?.fillet_geom_type() == FilletGeomType::Default {
+            // Calculate fillet edges of type SM_FE_CROSS_SECTION
+            let mut fg_edges = Vec::new();
+            cx.fillets.geom(g)?.fillet_edges(&mut fg_edges);
+            for e in fg_edges {
+                if cx.fillets.fillet_edge(e)?.fillet_edge_type() == FilletEdgeType::CrossSection {
+                    calc_cross_section(cx, e)?;
+                }
+            }
+        }
+    }
+
+    for g in fillet_geom_ids(ops, &*cx.geoms)? {
+        if cx.fillets.geom(g)?.fillet_geom_type() == FilletGeomType::Blends {
+            // Calculate the surface for blending patch
+            calc_blending_geom(cx, g)?;
+        }
+    }
+    Ok(())
+}
+
+/// :2630-2662: reverses every geometry's rails (3D curve, and the mate UV trim curve
+/// over the 3D curve's new interval), centre line and fillet surface (`Reverse(U)`).
+fn c5_undo_reversal(ops: &mut dyn FilletSolverOps, cx: &mut Cx<'_>) -> Result<()> {
+    use crate::error::ignore_status;
+    use crate::nurbs::b_spline_surface::SurfParamType;
+    use crate::topology::edge as edge_unit;
+
+    // Reverse the fillet surface & rails
+    for g in fillet_geom_ids(ops, &*cx.geoms)? {
+        for kk in 0..2usize {
+            let rail = cx
+                .fillets
+                .geom(g)?
+                .rail(kk)
+                .ok_or_else(|| invalid("reverse: geometry has no rail"))?;
+            let b = cx.fillets.brep();
+            if edge_unit::curve(b, rail)?
+                .and_then(bspline_curve_cast)
+                .is_none()
+            {
+                return Err(SolidError::null_pointer(OP));
+            }
+            let prim_eu = eu::primary_edgeuse(b, rail)?
+                .ok_or_else(|| invalid("reverse: rail without primary edge use"))?;
+            let mate_eu = eu::mate(b, prim_eu)?
+                .ok_or_else(|| invalid("reverse: rail edge use without mate"))?;
+            // pMateEU->GetOrCreateUVTrimCurve(pUVCurve): status ignored; the curve
+            // attached to the edge use or its mate is reversed in place
+            ignore_status(get_or_create_uv_trim_curve(cx.fillets.brep_mut(), mate_eu))?;
+            let (uv_curve, uv_owner) = eu::uv_trim_curve(cx.fillets.brep(), mate_eu)?;
+            let (Some(_), Some(uv_owner)) = (uv_curve, uv_owner) else {
+                return Err(SolidError::null_pointer(OP));
+            };
+            let k = cx.k;
+            let b = cx.fillets.brep_mut();
+            let curve_3d = b
+                .edge_mut(rail)?
+                .curve
+                .as_mut()
+                .ok_or_else(|| SolidError::null_pointer(OP))?;
+            let mut ivl1 = curve_3d.natural_interval();
+            ivl1 = curve_3d.reverse_parameterization(k, &ivl1)?;
+            let uv_curve = b
+                .edgeuse_mut(uv_owner)?
+                .uv_trim_curve
+                .as_mut()
+                .ok_or_else(|| SolidError::null_pointer(OP))?;
+            uv_curve.reverse_parameterization(k, &ivl1)?;
+        }
+
+        let k = cx.k;
+        let geom = cx.fillets.geom_mut(g)?;
+        if geom.center_line_curve.is_none() || geom.fillet_surface.is_none() {
+            return Err(SolidError::null_pointer(OP));
+        }
+        if let Some(center_line) = geom.center_line_curve.as_mut() {
+            let ivl2 = center_line.natural_interval();
+            center_line.reverse_parameterization(&ivl2)?;
+        }
+        if let Some(fillet_surf) = geom.fillet_surface.as_mut() {
+            fillet_surf.reverse(k, SurfParamType::U)?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests_c5 {
+    use super::*;
+    use crate::blend::fillet_geom::p1::{
+        FilletEdgeType, FilletEdgeuse, FilletGeom, FilletVertex, FilletVertexuse,
+    };
+    use crate::error::SM_ERR_NULL_POINTER;
+    use crate::nurbs::b_spline_surface::BSplineSurface;
+    use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+    use crate::nurbs::crv_basic::Curve as NurbCurve;
+    use crate::nurbs::math::{CPoint, NOW};
+    use crate::nurbs::srf_basic::Surface as NurbSurface;
+    use crate::topology::{Edgeuse, Vertexuse, VertexuseOwner};
+
+    fn line_bspline(a: Point3, b: Point3) -> BSplineCurve {
+        let nurb = NurbCurve::new(
+            vec![
+                CPoint::new(a.x, a.y, a.z, NOW),
+                CPoint::new(b.x, b.y, b.z, NOW),
+            ],
+            1,
+            vec![0.0, 0.0, 1.0, 1.0],
+        )
+        .unwrap();
+        BSplineCurve::from_nurb(nurb, 3, false)
+    }
+
+    fn line(a: Point3, b: Point3) -> Curve {
+        Curve::from(line_bspline(a, b))
+    }
+
+    /// A cubic-by-linear strip over `[0,1] x [0,1]`, x from 0 to 3, y from 0 to 2.
+    fn strip() -> Surface {
+        let net = (0..4)
+            .map(|i| {
+                let x = f64::from(i);
+                vec![CPoint::new(x, 0.0, 0.0, NOW), CPoint::new(x, 2.0, 0.0, NOW)]
+            })
+            .collect();
+        let nurb = NurbSurface::new(
+            net,
+            3,
+            1,
+            vec![0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
+            vec![0.0, 0.0, 1.0, 1.0],
+        )
+        .unwrap();
+        Surface::from(BSplineSurface::from_nurb(nurb, false))
+    }
+
+    /// A rail from `(0,y,0)` to `(1,y,0)` with two edge uses (same, opposite) and
+    /// their vertex uses; the mate of the primary edge use holds a UV trim curve.
+    /// Returns the rail and that mate.
+    fn add_rail(k: &Kernel, fb: &mut FilletBrep, y: f64) -> (EdgeId, EdgeuseId) {
+        let p0 = Point3::new(0.0, y, 0.0);
+        let p1 = Point3::new(1.0, y, 0.0);
+        let v0 = fb.brep_mut().add_vertex(p0).unwrap();
+        let v1 = fb.brep_mut().add_vertex(p1).unwrap();
+        fb.insert_fillet_vertex(v0, FilletVertex::new(k, None));
+        fb.insert_fillet_vertex(v1, FilletVertex::new(k, None));
+        let e = fb.new_fillet_edge(v0, v1, None).unwrap();
+        fb.fillet_edge_mut(e)
+            .unwrap()
+            .set_fillet_edge_type(FilletEdgeType::Rail);
+        let mut uses = Vec::new();
+        for (v, o) in [(v0, OrientType::Same), (v1, OrientType::Opposite)] {
+            let b = fb.brep_mut();
+            let e_u = b.add_edgeuse_record(Edgeuse::default()).unwrap();
+            let vu = b.add_vertexuse_record(Vertexuse::default()).unwrap();
+            b.edgeuse_mut(e_u).unwrap().edge = Some(e);
+            b.edgeuse_mut(e_u).unwrap().orientation = o;
+            b.edgeuse_mut(e_u).unwrap().vertexuse = Some(vu);
+            b.vertexuse_mut(vu).unwrap().vertex = Some(v);
+            b.vertexuse_mut(vu).unwrap().owner = VertexuseOwner::Edgeuse(Some(e_u));
+            b.vertex_mut(v).unwrap().vertexuses.push(vu);
+            b.edge_mut(e).unwrap().edgeuses.push(e_u);
+            fb.insert_fillet_edgeuse(e_u, FilletEdgeuse::default());
+            fb.insert_fillet_vertexuse(vu, FilletVertexuse::new());
+            uses.push(e_u);
+        }
+        fb.brep_mut().edge_mut(e).unwrap().curve = Some(line(p0, p1));
+        let mate_eu = eu::mate(fb.brep(), uses[0]).unwrap().unwrap();
+        assert_eq!(mate_eu, uses[1]);
+        fb.brep_mut().edgeuse_mut(mate_eu).unwrap().uv_trim_curve =
+            Some(line(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0)));
+        (e, mate_eu)
+    }
+
+    struct Fixture {
+        k: Kernel,
+        fb: FilletBrep,
+        g: FilletGeomId,
+        rails: [EdgeId; 2],
+        mates: [EdgeuseId; 2],
+        solver: FilletSolver,
+        geoms: Vec<FilletGeomId>,
+        target: Brep,
+        st: CalcState,
+    }
+
+    impl Fixture {
+        fn new() -> Self {
+            let k = Kernel::default();
+            let mut fb = FilletBrep::new();
+            let (r0, m0) = add_rail(&k, &mut fb, 0.0);
+            let (r1, m1) = add_rail(&k, &mut fb, 1.0);
+            let mut geom = FilletGeom::new(&k, None, FilletGeomType::Default).unwrap();
+            geom.rails = [Some(r0), Some(r1)];
+            geom.center_line_curve = Some(line_bspline(
+                Point3::new(0.0, 0.5, 0.5),
+                Point3::new(1.0, 0.5, 0.5),
+            ));
+            geom.fillet_surface = Some(strip());
+            let g = fb.add_geom(geom);
+
+            let mut target = Brep::new();
+            let tv0 = target.add_vertex(Point3::new(0.0, 0.0, 0.0)).unwrap();
+            let tv1 = target.add_vertex(Point3::new(1.0, 0.0, 0.0)).unwrap();
+            let edge = target.add_edge(tv0, tv1).unwrap();
+            let st = CalcState::new(
+                edge,
+                line(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0)),
+                Extent1d::from_raw(0.0, 1.0),
+                [Vec3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0)],
+                [Vec3::new(1.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0)],
+                [strip(), strip()],
+                g,
+                false,
+            );
+            let mut solver = FilletSolver::new(1.0e-5, 0.01, 0.01);
+            solver.fillet_geoms = vec![FilletGeomRef { index: 0 }];
+            Self {
+                k,
+                fb,
+                g,
+                rails: [r0, r1],
+                mates: [m0, m1],
+                solver,
+                geoms: vec![g],
+                target,
+                st,
+            }
+        }
+
+        fn run(&mut self) -> Result<()> {
+            let mut cx = Cx {
+                k: &self.k,
+                target: &mut self.target,
+                fillets: &mut self.fb,
+                geoms: &mut self.geoms,
+            };
+            c5_post_process(&mut self.solver, &mut cx, &mut self.st)
+        }
+
+        fn rail_start(&self, i: usize) -> Point3 {
+            let c = self
+                .fb
+                .brep()
+                .edge(self.rails[i])
+                .unwrap()
+                .curve
+                .as_ref()
+                .unwrap();
+            c.evaluate_point(c.natural_interval().min()).unwrap()
+        }
+
+        fn uv_start(&self, i: usize) -> Point3 {
+            let c = self
+                .fb
+                .brep()
+                .edgeuse(self.mates[i])
+                .unwrap()
+                .uv_trim_curve
+                .as_ref()
+                .unwrap();
+            c.evaluate_point(c.natural_interval().min()).unwrap()
+        }
+
+        fn centre_start(&self) -> Point3 {
+            let c = self.fb.geom(self.g).unwrap().center_line_curve().unwrap();
+            c.evaluate_point(c.natural_interval().min()).unwrap()
+        }
+
+        fn surface_at(&self, uv: Point2) -> Point3 {
+            self.fb
+                .geom(self.g)
+                .unwrap()
+                .fillet_surface()
+                .unwrap()
+                .evaluate_point(uv)
+                .unwrap()
+        }
+
+        /// A second geometry of `geom_type` in `m_vFilletGeoms`.
+        fn add_geom(&mut self, geom_type: FilletGeomType) -> FilletGeomId {
+            let g = self
+                .fb
+                .add_geom(FilletGeom::new(&self.k, None, geom_type).unwrap());
+            self.solver.fillet_geoms.push(FilletGeomRef {
+                index: self.geoms.len(),
+            });
+            self.geoms.push(g);
+            g
+        }
+    }
+
+    fn unported_unit(e: &SolidError) -> Option<&'static str> {
+        match e {
+            SolidError::Unported { unit, .. } => Some(unit),
+            _ => None,
+        }
+    }
+
+    fn assert_close(a: Point3, b: Point3) {
+        assert!((a - b).length() < 1.0e-12, "{a:?} != {b:?}");
+    }
+
+    #[test]
+    fn single_geometry_without_split_or_reversal_changes_nothing() {
+        let mut f = Fixture::new();
+        f.run().unwrap();
+        assert_close(f.rail_start(0), Point3::new(0.0, 0.0, 0.0));
+        assert_close(f.rail_start(1), Point3::new(0.0, 1.0, 0.0));
+        assert_close(f.uv_start(0), Point3::new(0.0, 0.0, 0.0));
+        assert_close(f.centre_start(), Point3::new(0.0, 0.5, 0.5));
+        assert_close(
+            f.surface_at(Point2::new(0.0, 0.25)),
+            Point3::new(0.0, 0.5, 0.0),
+        );
+        assert_eq!(f.solver.fillet_geoms.len(), 1);
+    }
+
+    #[test]
+    fn reversed_trace_reverses_rails_uv_curves_centre_line_and_surface() {
+        let mut f = Fixture::new();
+        f.st.trace.reverse_tracing = true;
+        f.run().unwrap();
+        for (i, y) in [(0, 0.0), (1, 1.0)] {
+            assert_close(f.rail_start(i), Point3::new(1.0, y, 0.0));
+            assert_close(f.uv_start(i), Point3::new(1.0, 0.0, 0.0));
+        }
+        assert_close(f.centre_start(), Point3::new(1.0, 0.5, 0.5));
+        assert_close(
+            f.surface_at(Point2::new(0.0, 0.25)),
+            Point3::new(3.0, 0.5, 0.0),
+        );
+    }
+
+    #[test]
+    fn reversed_trace_reverses_rails_before_the_centre_line_check() {
+        let mut f = Fixture::new();
+        f.st.trace.reverse_tracing = true;
+        f.fb.geom_mut(f.g).unwrap().center_line_curve = None;
+        let e = f.run().unwrap_err();
+        assert!(matches!(
+            e,
+            SolidError::Upstream {
+                code: SM_ERR_NULL_POINTER,
+                ..
+            }
+        ));
+        assert_close(f.rail_start(0), Point3::new(1.0, 0.0, 0.0));
+        assert_close(
+            f.surface_at(Point2::new(0.0, 0.25)),
+            Point3::new(0.0, 0.5, 0.0),
+        );
+    }
+
+    #[test]
+    fn reversed_trace_without_uv_trim_curve_defers_on_its_creation() {
+        let mut f = Fixture::new();
+        f.st.trace.reverse_tracing = true;
+        f.fb.brep_mut()
+            .edgeuse_mut(f.mates[0])
+            .unwrap()
+            .uv_trim_curve = None;
+        let e = f.run().unwrap_err();
+        assert_eq!(unported_unit(&e), Some("topology.edgeuse_p3"));
+    }
+
+    #[test]
+    fn reversed_trace_rejects_a_rail_curve_that_is_not_a_bspline() {
+        let mut f = Fixture::new();
+        f.st.trace.reverse_tracing = true;
+        f.fb.brep_mut().edge_mut(f.rails[1]).unwrap().curve = None;
+        let e = f.run().unwrap_err();
+        assert!(matches!(
+            e,
+            SolidError::Upstream {
+                code: SM_ERR_NULL_POINTER,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn split_flag_with_one_geometry_reaches_topology_split() {
+        let mut f = Fixture::new();
+        f.st.split_original_fillet = true;
+        let e = f.run().unwrap_err();
+        assert_eq!(unported_unit(&e), Some("blend.fillet_geom_p3"));
+    }
+
+    #[test]
+    fn split_flag_with_two_geometries_is_skipped() {
+        let mut f = Fixture::new();
+        f.st.split_original_fillet = true;
+        f.add_geom(FilletGeomType::Default);
+        f.run().unwrap();
+    }
+
+    #[test]
+    fn self_intersection_patches_cross_sections_then_blends() {
+        // default geometries without cross-section edges: nothing to do
+        let mut f = Fixture::new();
+        f.add_geom(FilletGeomType::Default);
+        f.run().unwrap();
+
+        // a blends geometry: CalcBlendingGeom
+        let mut f = Fixture::new();
+        f.add_geom(FilletGeomType::Blends);
+        let e = f.run().unwrap_err();
+        assert_eq!(unported_unit(&e), Some("blend.fillet_geom_p4"));
+
+        // a cross-section edge of a default geometry comes first: CalcCrossSection
+        let mut f = Fixture::new();
+        f.add_geom(FilletGeomType::Blends);
+        let rail = f.rails[0];
+        f.fb.fillet_edge_mut(rail)
+            .unwrap()
+            .set_fillet_edge_type(FilletEdgeType::CrossSection);
+        f.fb.geom_mut(f.g).unwrap().edges.push(rail);
+        let e = f.run().unwrap_err();
+        assert_eq!(unported_unit(&e), Some("blend.fillet_geom_p5"));
+
+        // a cross-section edge of a blends geometry is not calculated
+        let mut f = Fixture::new();
+        let g2 = f.add_geom(FilletGeomType::CliffRollover);
+        let rail = f.rails[0];
+        f.fb.fillet_edge_mut(rail)
+            .unwrap()
+            .set_fillet_edge_type(FilletEdgeType::CrossSection);
+        f.fb.geom_mut(g2).unwrap().edges.push(rail);
+        f.run().unwrap();
+    }
+
+    #[test]
+    fn drop_ladder_returns_the_rail_parameter() {
+        let k = Kernel::default();
+        let rail = line(Point3::new(0.0, 0.0, 0.0), Point3::new(4.0, 0.0, 0.0));
+        let ivl = rail.natural_interval();
+        let t =
+            c5_drop_split_param(&k, &rail, &ivl, Point3::new(1.0, 0.5, 0.0), 1.0e-5, 0.0).unwrap();
+        assert!((t - 0.25).abs() < 1.0e-12, "{t}");
+    }
+
+    #[test]
+    fn bspline_surface_cast_keeps_bspline_kinds() {
+        assert!(c5_bspline_surface_cast(strip()).is_some());
+    }
 }
 
 // P4-CHUNK(C5) END
