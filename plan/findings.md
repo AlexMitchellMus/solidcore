@@ -6853,8 +6853,8 @@ successful offset/shell geometry.
   Static cross-wrapper/lifetime review found no remaining blocker. The guard
   serializes individual native exports, not unrelated retained-result protocols
   such as SSI's pre-existing `intersect`/`take` pair.
-- **Broader integrated checks.** Formatting, C++-enabled workspace/all-target
-  Clippy with warnings denied, and `wasm32-unknown-unknown` checking pass.
+- **Initial broader integrated checks.** Formatting, C++-enabled workspace/all-target
+  Clippy with warnings denied, and `wasm32-unknown-unknown` checking passed.
   All 1342 kernel tests pass. FFI tests: 92 passed, 1 existing subprocess-only
   helper ignored, 0 failed. Runner library tests: 152 passed, 22 existing ignored,
   0 failed, including 13 p2 runner tests. A default differential sweep of all
@@ -6864,6 +6864,17 @@ successful offset/shell geometry.
   `max_rel_err=2.5139756042650037e-14`; its generated report is byte-identical to
   the committed report. This is not a completed full `--green` baseline; the
   earlier p1 attempt's 1200-second timeout remains documented above.
+- **P1 non-blocking follow-ups carried forward (2026-10-18).** After merging
+  p1's reviewed changes and upstream through `59d486b4`, formatting, C++-enabled
+  all-target workspace Clippy and wasm checking pass. All 60 offset kernel tests,
+  35 offset runner tests, 28 offset FFI tests and two native-guard probes pass,
+  including concurrent observer isolation. P1 now compares 675 of 693 cases,
+  with 17 deferred, one explicit constructor rejection and zero failures; the
+  updated report matches the one committed through p1. P2 remains 118 passed /
+  176 deferred / zero failures across 294 cases, its report is byte-identical,
+  and sensitivity still detects 118/118 perturbations. No constructive scope is
+  promoted. The separate upstream reader-test baseline failure is documented in
+  p1's follow-up notes above; no current full kernel or `--green` pass is claimed.
 
 ## topology.face_p1 (`SmFace.cpp` part 1: `MoveSeam`, `SplitAtSeam`, `CreateOrientedTrimBoundary`, `CalculateUVDomainFromUVTrimCurves`, ...; PR #148, 2026-10-16; partial, no disagreements)
 
