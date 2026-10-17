@@ -285,6 +285,15 @@ impl<I: ArenaId, T> DoubleEndedIterator for ArenaIter<'_, I, T> {
 
 impl<I: ArenaId, T> ExactSizeIterator for ArenaIter<'_, I, T> {}
 
+impl<'a, I: ArenaId, T> IntoIterator for &'a Arena<I, T> {
+    type Item = (I, &'a T);
+    type IntoIter = ArenaIter<'a, I, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 /// An `SmObject*` a topology record keeps but never dereferences (the surface,
 /// curve and B-rep pointers of an `SmDropCurveFail`): the object's kind and the
 /// identity it is attributed and notified under.

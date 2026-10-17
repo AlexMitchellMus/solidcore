@@ -21,7 +21,7 @@
 //!   an owner's list are the list edits of the arena model: the id leaves / joins the
 //!   owner's `Vec` (`PostInsert` appends) and the member's back link is cleared / set.
 //!   A `Remove` whose member is not owned by the owner is `SM_ERR` with nothing
-//!   changed, as upstream; DeleteEdge and DeleteVertex ignore that status, as upstream.
+//!   changed, as upstream; `DeleteEdge` and `DeleteVertex` ignore that status, as upstream.
 //!   The B-rep's face, edge and vertex lists are the arenas, so `m_p*ListHead->Remove`
 //!   and the following `delete` are one record removal.
 //! - **Surface identity.** Upstream compares `SmSurface*` pointers. As in
