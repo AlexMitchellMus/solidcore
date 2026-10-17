@@ -44,10 +44,17 @@
 //!   (`blend.fillet_geom_p3`); `SmFilletGeom::CalcBlendingGeom`
 //!   (`blend.fillet_geom_p4`); `SmFilletEdge::CalcCrossSection`
 //!   (`blend.fillet_geom_p5`); `SmEdgeuse::EvaluateBinormal` and the creating path of
-//!   `SmEdgeuse::GetOrCreateUVTrimCurve` (`topology.edgeuse_p3`). DISPATCH GAP: the
-//!   base `SmSurfaceIntersector::DoPointIntersection` does not dispatch to the
-//!   `SmFilletIntersector` overrides (`intersect.surface_intersector_p4`), so the trace
-//!   returns [`SolidError::Unported`] there.
+//!   `SmEdgeuse::GetOrCreateUVTrimCurve` (`topology.edgeuse_p3`).
+//! - **`sFI.DoPointIntersection`** is [`FilletIntersector::do_point_intersection`]
+//!   (the base driver with the `SmFilletIntersector` overrides) on a copy of the
+//!   points in the intersector's arena, copied back afterwards. The intersector sees
+//!   this solver through a private adapter implementing the intersector's
+//!   `FilletSolverOps`; of its writes into the fillet geometry, the rail curve's
+//!   `SmEdge::SetCurve` (B-rep notification, `topology.brep_p2`) is unported, and
+//!   `FlushCurve` stops before it at the unported self-intersection handler
+//!   (`blend.fillet_executive_p1`). `m_pEndPoint` keeps pointing at the previous
+//!   call's point when a call does not set it (upstream: the caller's live point;
+//!   here: the arena copy).
 //! - **Iteration.** No recursion. Loops are bounded: two surfaces, two rails of two
 //!   edge uses, the G1 knots and points, ten trace passes, twenty cusp skips, three
 //!   drop tolerances.
@@ -1037,21 +1044,345 @@ struct PointIntersectionArgs {
 /// `sFI.DoPointIntersection(..)` over `points` (a snapshot of `sTsectPnts`, written
 /// in place as upstream writes through the pointers; the curve outputs are unused by
 /// `CalcFilletGeom`; `FlushCurve` fills the solver's last fillet geometry).
+///
+/// The points are copied into the intersector's point arena, the inherited driver
+/// runs with the `SmFilletIntersector` overrides
+/// ([`FilletIntersector::do_point_intersection`], stepping through this solver as
+/// [`IntersectorSolver`]), and every point is copied back whatever the result (the
+/// error is returned after the copy). `points` is a slice (a `&mut Vec` snapshot
+/// coerces to it).
 fn do_point_intersection(
     fi: &mut TraceIntersector<'_>,
     ops: &mut dyn FilletSolverOps,
     cx: &mut Cx<'_>,
-    points: &mut Vec<TsectPnt>,
+    points: &mut [TsectPnt],
     args: PointIntersectionArgs,
 ) -> Result<()> {
-    let _ = (fi, ops, cx, points, args);
-    // DISPATCH GAP (intersect.surface_intersector_p4): SmSurfaceIntersector::DoPointIntersection
-    // runs the basic intersector's ComputeNextPoint / FlushCurve / ComputePointValues /
-    // TestSpanAccuracy; the SmFilletIntersector overrides need a dispatch hook there.
-    Err(SolidError::unported(
-        "SmSurfaceIntersector::DoPointIntersection (SmFilletIntersector dispatch)",
-        "intersect.surface_intersector_p4",
-    ))
+    use crate::intersect::surface_intersector::p4::PointIntersectionOptions;
+
+    let ids: Vec<_> = points
+        .iter()
+        .map(|p| fi.base.base.alloc_point(p.clone()))
+        .collect();
+    let opts = PointIntersectionOptions {
+        extend_before_start: args.extend_before,
+        extend_after_end: args.extend_after,
+        start_direction: args.start_dir,
+        end_direction: None,
+        approx_tol_3d: Some(args.approx_tol_3d),
+        ang_tol_rad: Some(args.ang_tol_rad),
+    };
+    let k = cx.k;
+    let mut solver = IntersectorSolver {
+        ops,
+        fillets: &mut *cx.fillets,
+        geoms: &mut *cx.geoms,
+    };
+    let r = fi.do_point_intersection(&mut solver, k, &ids, &opts);
+    for (p, &id) in points.iter_mut().zip(&ids) {
+        p.clone_from(fi.base.base.point(id)?);
+    }
+    r.map(|_| ())
+}
+
+/// The solver `*this` as `SmFilletIntersector` uses it (`m_rFilletSolver`): the
+/// fillet intersector's [`FilletSolverOps`](crate::blend::fillet_intersector::FilletSolverOps)
+/// over this solver's virtuals, with the pseudo B-rep and the geometry handles for
+/// `FlushCurve`'s writes into the fillet geometry.
+struct IntersectorSolver<'b, 'c> {
+    /// The solver (`this`).
+    ops: &'b mut dyn FilletSolverOps,
+    /// The pseudo B-rep holding the fillet geometries and rails.
+    fillets: &'b mut FilletBrep,
+    /// `m_vFilletGeoms` handle resolution.
+    geoms: &'b mut (dyn FilletGeomResolver + 'c),
+}
+
+impl IntersectorSolver<'_, '_> {
+    /// The pseudo-B-rep geometry of a solver handle.
+    fn geom_mut(
+        &mut self,
+        geom: FilletGeomRef,
+    ) -> Result<&mut crate::blend::fillet_geom::p1::FilletGeom> {
+        let id = self.geoms.geometry_id(geom)?;
+        self.fillets.geom_mut(id)
+    }
+}
+
+impl crate::blend::fillet_intersector::FilletSolverOps for IntersectorSolver<'_, '_> {
+    type FilletGeom = FilletGeomRef;
+
+    /// [`FilletSolver::compute_point_values`].
+    fn compute_point_values(
+        &mut self,
+        k: &Kernel,
+        uv_values: [Point2; 2],
+        uv_domain1: &Extent2d,
+        uv_domain2: &Extent2d,
+        curve_trace_direction: f64,
+        point: &mut TsectPnt,
+        previous: Option<&TsectPnt>,
+    ) -> Result<()> {
+        FilletSolver::compute_point_values(
+            &mut *self.ops,
+            k,
+            uv_values,
+            uv_domain1,
+            uv_domain2,
+            curve_trace_direction,
+            point,
+            previous,
+        )
+    }
+
+    /// [`FilletSolver::compute_surface_values`].
+    fn compute_surface_values(
+        &mut self,
+        _k: &Kernel,
+        uv_values: [Point2; 2],
+        point: &mut TsectPnt,
+    ) -> Result<()> {
+        FilletSolver::compute_surface_values(&mut *self.ops, uv_values, point)
+    }
+
+    /// `ComputeUVVectors` (`super::p1::compute_uv_vectors`).
+    fn compute_uv_vectors(&mut self, _k: &Kernel, point: &mut TsectPnt) -> Result<()> {
+        super::p1::compute_uv_vectors(point)
+    }
+
+    /// `StepSolve` (the stub of this file): it sets only the UV positions of the next
+    /// point.
+    fn step_solve(
+        &mut self,
+        k: &Kernel,
+        point: &TsectPnt,
+        step_size: f64,
+        uv_domain1: &Extent2d,
+        uv_domain2: &Extent2d,
+        next: &mut TsectPnt,
+    ) -> Result<StepSolveFlags> {
+        use crate::intersect::surface_intersector::p1::SrfIndex;
+
+        let (flags, solved) =
+            step_solve(&mut *self.ops, k, point, step_size, uv_domain1, uv_domain2)?;
+        for s in [SrfIndex::First, SrfIndex::Second] {
+            *next.uv_pos_mut(s) = solved.uv_pos(s);
+        }
+        Ok(flags)
+    }
+
+    fn set_surfaces_to_zero_offset(&mut self) -> Result<()> {
+        self.ops.solver_mut().set_surfaces_to_zero_offset()
+    }
+
+    fn reload_surface_offsets(&mut self) -> Result<()> {
+        self.ops.solver_mut().reload_surface_offsets()
+    }
+
+    /// `GetSurface(rail)->Evaluate1stDerivatives(uv, TRUE, TRUE, ..)` on a copy of the
+    /// offset surface (a base extension the evaluation makes is not kept), as
+    /// `ComputeSurfaceValues` evaluates it.
+    fn rail_surface_evaluate_1st_derivatives(
+        &self,
+        rail: usize,
+        uv: Point2,
+    ) -> Result<(Point3, Vec3, Vec3)> {
+        let mut s = offset_surface(&*self.ops, rail)?.clone();
+        s.surface.with_evaluator(|e| {
+            crate::surface::surface::p1::evaluate_1st_derivatives(e, uv, Side::Left, Side::Left)
+        })
+    }
+
+    /// `SetStatus` (the intersector's co-ported `SmFilStatus` mapped onto the
+    /// solver's, value for value).
+    fn set_status(&mut self, status: crate::blend::fillet_intersector::FilStatus) -> Result<()> {
+        use super::p1::FilStatus as S;
+        use crate::blend::fillet_intersector::FilStatus as I;
+
+        let status = match status {
+            I::Unprocessed => S::Unprocessed,
+            I::Processed => S::Processed,
+            I::Failure => S::Failure,
+            I::SurfIntFailure => S::SurfIntFailure,
+            I::EndPntDropFailure => S::EndPntDropFailure,
+            I::ToBeSqueezed => S::ToBeSqueezed,
+            I::CubicRailRailInterpolate => S::CubicRailRailInterpolate,
+            I::NoIntRailEu => S::NoIntRailEu,
+            I::SolverNotConverge => S::SolverNotConverge,
+            I::ToBeDeleted => S::ToBeDeleted,
+            I::SurfTracingFailure => S::SurfTracingFailure,
+            I::SelfIntHandlingFailure => S::SelfIntHandlingFailure,
+            I::SurfSkinningFailure => S::SurfSkinningFailure,
+        };
+        self.ops.solver_mut().set_status(status);
+        Ok(())
+    }
+
+    fn last_fillet_geom(&self) -> Result<FilletGeomRef> {
+        self.ops.solver().last_fillet_geom()
+    }
+
+    /// `GetSelfIntersectionHandler()`: the solver's executive handler, which fails
+    /// without an executive and is unported with one.
+    fn self_intersection_handler(
+        &self,
+    ) -> Result<Option<crate::blend::fillet_intersector::HandlingAlgorithmType>> {
+        self.ops.solver().self_intersection_handler()?;
+        // UNPORTED(blend.fillet_executive_p1): SmSelfIntersectionHandler::GetAlgorithmType
+        Err(SolidError::unported(
+            "SmSelfIntersectionHandler::GetAlgorithmType",
+            "blend.fillet_executive_p1",
+        ))
+    }
+
+    fn has_surface_generator(&self) -> Result<bool> {
+        Ok(self.ops.solver().fsg.is_some())
+    }
+
+    /// `m_pFSG->CreateSurface(*this, ..)`: the generator reads only the solver's
+    /// `GetThisApproxTol3d()`.
+    fn create_fillet_surface(
+        &mut self,
+        k: &Kernel,
+        _center_line: &mut BSplineCurve,
+        curve1: &mut BSplineCurve,
+        curve2: &mut BSplineCurve,
+        points: &[TsectPnt],
+        _uv1: &mut BSplineCurve,
+        _uv2: &mut BSplineCurve,
+    ) -> Result<Option<crate::nurbs::b_spline_surface::BSplineSurface>> {
+        let solver = self.ops.solver();
+        let fsg = solver
+            .fsg
+            .as_ref()
+            .ok_or_else(|| invalid("no fillet surface generator"))?;
+        fsg.create_surface(k, solver.approx_tol_3d, curve1, curve2, points)
+            .map(Some)
+    }
+
+    fn set_fillet_surface(
+        &mut self,
+        geom: &FilletGeomRef,
+        surface: Option<crate::nurbs::b_spline_surface::BSplineSurface>,
+    ) -> Result<()> {
+        self.geom_mut(*geom)?
+            .set_fillet_surface(surface.map(Surface::from));
+        Ok(())
+    }
+
+    fn set_center_line_curve(
+        &mut self,
+        geom: &FilletGeomRef,
+        center_line: BSplineCurve,
+    ) -> Result<()> {
+        self.geom_mut(*geom)?.center_line_curve = Some(center_line);
+        Ok(())
+    }
+
+    /// `pRail->SetCurve(curve, TRUE)`: `SmEdge::SetCurve` notifies the B-rep of the
+    /// geometry change.
+    fn set_rail_curve(
+        &mut self,
+        geom: &FilletGeomRef,
+        rail: usize,
+        curve: BSplineCurve,
+    ) -> Result<()> {
+        let _ = (geom, rail, curve);
+        // UNPORTED(topology.brep_p2): SmBrep::Notify
+        Err(SolidError::unported("SmBrep::Notify", "topology.brep_p2"))
+    }
+
+    /// `pRail->GetPrimaryEdgeuse()->GetMate()->SetUVCurve(uv, TRUE)` (a missing rail,
+    /// edge use or mate is a `NULL` dereference upstream).
+    fn set_rail_mate_uv_curve(
+        &mut self,
+        geom: &FilletGeomRef,
+        rail: usize,
+        uv_curve: BSplineCurve,
+    ) -> Result<()> {
+        let rail_edge = self
+            .geom_mut(*geom)?
+            .rail(rail)
+            .ok_or_else(|| invalid("fillet geometry without the rail"))?;
+        let brep = self.fillets.brep();
+        let primary = eu::primary_edgeuse(brep, rail_edge)?
+            .ok_or_else(|| invalid("rail without an edge use"))?;
+        let mate =
+            eu::mate(brep, primary)?.ok_or_else(|| invalid("rail edge use without a mate"))?;
+        self.fillets
+            .set_edgeuse_uv_curve(mate, Some(Curve::from(uv_curve)), true, true)
+    }
+}
+
+#[cfg(test)]
+mod c7_tests {
+    use super::*;
+    use crate::intersect::surface_intersector::p1::IntersectionPointType;
+    use crate::nurbs::b_spline_surface::BSplineSurface;
+
+    fn bilinear(p: [[f64; 3]; 4]) -> Surface {
+        let [a, b, c, d] = p.map(Vec3::from);
+        Surface::from(BSplineSurface::create_bilinear_surface(a, b, c, d).unwrap())
+    }
+
+    #[test]
+    fn point_intersection_runs_the_fillet_driver_and_copies_back() {
+        let k = Kernel::default();
+        let surfaces = [
+            bilinear([
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ]),
+            bilinear([
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 0.0, 1.0],
+            ]),
+        ];
+        let d = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
+        let mut fi: TraceIntersector<'_> =
+            FilletIntersector::new(&surfaces[0], &d, &surfaces[1], &d, None).unwrap();
+        let mut solver = FilletSolver::new(1.0e-5, 0.01, 0.01);
+        let mut target = Brep::new();
+        let mut fillets = FilletBrep::new();
+        let mut geoms: Vec<FilletGeomId> = Vec::new();
+        let mut cx = Cx {
+            k: &k,
+            target: &mut target,
+            fillets: &mut fillets,
+            geoms: &mut geoms,
+        };
+        let mut points = vec![TsectPnt::new(), TsectPnt::new()];
+        points[0].curve_parameter = 5.0;
+        points[0].point_type = IntersectionPointType::Crossing;
+        let args = PointIntersectionArgs {
+            extend_before: false,
+            extend_after: false,
+            start_dir: Some(Vec3::new(1.0, 0.0, 0.0)),
+            approx_tol_3d: 1.0e-3,
+            ang_tol_rad: 0.1,
+        };
+        let e =
+            do_point_intersection(&mut fi, &mut solver, &mut cx, &mut points, args).unwrap_err();
+        // the base solver cannot evaluate the first point (no surfaces / chunk C6),
+        // which the fillet ComputePointValues reports; no dispatch gap any more
+        assert!(!matches!(
+            e,
+            SolidError::Unported {
+                unit: "intersect.surface_intersector_p4",
+                ..
+            }
+        ));
+        // DoPointIntersection's writes to the first point came back
+        assert_eq!(points[0].curve_parameter, -1.0);
+        assert_eq!(points[0].point_type, IntersectionPointType::Unknown);
+        assert_eq!(points[1].curve_parameter, 0.0);
+        assert_eq!(fi.base.base.this_approx_tol_3d, 1.0e-3);
+        assert_eq!(fi.base.base.this_ang_tol_rad, 0.1);
+    }
 }
 
 #[cfg(test)]
