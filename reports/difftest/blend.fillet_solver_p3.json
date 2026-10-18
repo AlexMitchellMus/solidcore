@@ -222,7 +222,7 @@
       "values_compared": 15
     },
     {
-      "max_rel_err": 3.8106264961975617e-16,
+      "max_rel_err": 1.83666324250374e-16,
       "name": "gen0027",
       "outcome": "pass",
       "pass": true,
@@ -326,7 +326,7 @@
       "values_compared": 1
     },
     {
-      "max_rel_err": 8.091533315856288e-16,
+      "max_rel_err": 4.854919989513774e-16,
       "name": "gen0040",
       "outcome": "pass",
       "pass": true,
@@ -1010,7 +1010,7 @@
       "values_compared": 15
     },
     {
-      "max_rel_err": 3.2200651023113064e-16,
+      "max_rel_err": 1.790075035524966e-16,
       "name": "gen0122",
       "outcome": "pass",
       "pass": true,
@@ -1394,7 +1394,7 @@
       "values_compared": 15
     },
     {
-      "max_rel_err": 2.5661614909735357e-16,
+      "max_rel_err": 1.840510629740166e-16,
       "name": "gen0169",
       "outcome": "pass",
       "pass": true,
@@ -2158,7 +2158,7 @@
       "values_compared": 15
     },
     {
-      "max_rel_err": 3.857289154210571e-16,
+      "max_rel_err": 1.779691249721029e-16,
       "name": "gen0262",
       "outcome": "pass",
       "pass": true,
@@ -2222,7 +2222,7 @@
       "values_compared": 15
     },
     {
-      "max_rel_err": 4.727024548599964e-16,
+      "max_rel_err": 3.1639414100614544e-16,
       "name": "gen0270",
       "outcome": "pass",
       "pass": true,
@@ -2350,7 +2350,7 @@
       "values_compared": 15
     },
     {
-      "max_rel_err": 3.545873011298949e-16,
+      "max_rel_err": 0.0,
       "name": "gen0286",
       "outcome": "pass",
       "pass": true,
@@ -2546,7 +2546,7 @@
       "values_compared": 15
     },
     {
-      "max_rel_err": 3.8214995314525673e-16,
+      "max_rel_err": 1.30661103383138e-16,
       "name": "gen0310",
       "outcome": "pass",
       "pass": true,
@@ -2702,7 +2702,7 @@
       "values_compared": 1
     },
     {
-      "max_rel_err": 1.589939944923733e-15,
+      "max_rel_err": 1.8011683050692552e-15,
       "name": "gen0328",
       "outcome": "pass",
       "pass": true,
@@ -2770,7 +2770,7 @@
       "values_compared": 0
     },
     {
-      "max_rel_err": 1.8348514688765862e-16,
+      "max_rel_err": 3.6697029377531723e-16,
       "name": "gen0336",
       "outcome": "pass",
       "pass": true,
@@ -2970,7 +2970,7 @@
       "values_compared": 15
     },
     {
-      "max_rel_err": 7.49172535938461e-16,
+      "max_rel_err": 2.497241786461537e-16,
       "name": "gen0360",
       "outcome": "pass",
       "pass": true,
@@ -3298,7 +3298,7 @@
   "deferred_by_unit": {
     "blend.fillet_solver_p2": 22
   },
-  "max_rel_err": 1.589939944923733e-15,
+  "max_rel_err": 1.8011683050692552e-15,
   "pass": true,
   "rel_tol": 1e-9,
   "seeds": 16,

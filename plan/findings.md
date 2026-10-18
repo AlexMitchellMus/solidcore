@@ -7555,14 +7555,10 @@ Both are fuzz "differs" notes (no crash, no panic); the unit's cases and `--pert
 ## blend.fillet_solver_p3 (`SmFilletSolver.cpp` part 3: `StepSolve`, `SplitAndTrimFilletSurface`, `ProcessFullRollOver`, ...; PR #236, 2026-10-18; partial, no disagreements)
 
 Built on the open dependency PRs #147 (`blend.fillet_geom_p1`) and #192
-(`blend.fillet_solver_p1`), merged into the branch. The two disagreed with each other and
-with main's `surface.offset_surface` port (`fillet_geom_p1` read the custom solver's
-co-ported fields, #192's runner used the co-ported `OffsetSurface`); the branch carries the
-reconciliation #212 made for the same pair (`FilletSolver` accessors, `OffsetSurface::new(k,
-d, base, id, SS_UNKNOWN)`, mutable `LoadInitialValues` surface). With it the three affected
-difftests have 0 failures (`fillet_solver_p1` 282/47 deferred, `fillet_geom_p1` 429/19,
-`fillet_custom_solver` 401/47). Whichever of #147/#192 lands second must carry the same
-changes.
+(`blend.fillet_solver_p1`, head `7a93010b`), merged into the branch; #192 carries its own
+reconciliation with main's `surface.offset_surface`. With both, the affected difftests have
+0 failures (`fillet_solver_p1` 280 passed / 53 deferred, `fillet_geom_p1` 429/19,
+`fillet_custom_solver` 401/47).
 
 - **`StepSolve` difftest.** Every library solver belongs to an unported unit, so the shim
   derives a deterministic `SmFilletSolver` (the offset/offset intersection as
