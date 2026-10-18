@@ -17,7 +17,7 @@
 //! | [`SecantConstantRadiusFs::load_initial_values`]   | `SmSecantConstantRadiusFS::LoadInitialValues`     |
 //! | [`SecantConstantRadiusFs::load_jacobian`]         | `SmSecantConstantRadiusFS::LoadJacobian`          |
 //! | [`ConstantRadiusAssistedFs`] (CO-PORTED)          | `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` over the `SmFilletSolver` base ([`FilletSolver`]) |
-//! | `impl FilletSolverOps` for both solvers            | their `LoadJacobian` / `LoadInitialValues` overrides; the inherited `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` overrides (`GetJacobianSize`, `SetupOffsetValues`, `OffsetRadiiCanChange`, `GetType`, `IsKindOf`) return [`SolidError::Unported`] (units `blend.fillet_standard_solver_p1` / `_p2`) |
+//! | `impl FilletSolverOps` for both solvers            | their `LoadJacobian` / `LoadInitialValues` overrides; the inherited `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` overrides (`GetJacobianSize`, `SetupOffsetValues`, `OffsetRadiiCanChange`, `GetType`, `IsKindOf`, `GetSolverType`) return [`SolidError::Unported`] (units `blend.fillet_standard_solver_p1` / `_p2`) |
 //! | [`OffsetSurface`], [`SurfaceId`]                  | an `SmOffsetSurface*` rail surface (unit `surface.offset_surface`) and the identity of its base pointer |
 //! | [`JacobianLoad`], [`InitialValues`]               | the in/out arguments of `LoadJacobian`, `LoadInitialValues` |
 //!
@@ -66,7 +66,9 @@
 //!   evaluations use the real offset port; point solvers and default singularity
 //!   construction propagate the errors of their surface dispatchers.
 
-use crate::blend::fillet_solver::p1::{FilletSolver, FilletSolverOps, OffsetSurfaceSlot};
+use crate::blend::fillet_solver::p1::{
+    FilletSolver, FilletSolverOps, FilletSolverType, OffsetSurfaceSlot,
+};
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::p5::is_arc_base;
 use crate::curve::curve::Curve;
@@ -1626,6 +1628,16 @@ macro_rules! fillet_solver_ops {
                 Err(SolidError::unported(
                     "SmConstantRadiusAssistedFS::IsKindOf",
                     "blend.fillet_standard_solver_p2",
+                ))
+            }
+
+            /// `SmConstantRadiusAssistedFS::GetSolverType` (`SmFilletStandardSolver.h`,
+            /// unit `blend.fillet_standard_solver_p1`, not ported).
+            fn solver_type(&self) -> Result<FilletSolverType> {
+                // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusAssistedFS::GetSolverType
+                Err(SolidError::unported(
+                    "SmConstantRadiusAssistedFS::GetSolverType",
+                    "blend.fillet_standard_solver_p1",
                 ))
             }
 

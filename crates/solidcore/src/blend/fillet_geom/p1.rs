@@ -1596,7 +1596,7 @@ impl FilletBrep {
 
     /// `SmVertex::SetPoint`: `Notify(SM_NO_CHANGE_GEOMETRY)` resets the cached gaps of
     /// every vertex use of the vertex, then the point is stored.
-    fn set_vertex_point(&mut self, v: VertexId, point: Point3) -> Result<()> {
+    pub fn set_vertex_point(&mut self, v: VertexId, point: Point3) -> Result<()> {
         for vu in self.brep.vertex(v)?.vertexuses.clone() {
             let vu = self.brep.vertexuse_mut(vu)?;
             vu.vertex_edge_gap.reset();
@@ -2873,7 +2873,8 @@ pub fn create_cubic_rail_rail_interpolant(
 ) -> Result<BSplineCurve> {
     const OP: &str = "blend::fillet_geom::p1::create_cubic_rail_rail_interpolant";
     let solver_edgeuse = |fs: &ConstantRadiusAssistedFs, i: usize| {
-        fs.solver.edgeuses
+        fs.solver
+            .edgeuses
             .get(i)
             .copied()
             .flatten()
@@ -4051,7 +4052,14 @@ mod tests {
             "{err:?}"
         );
         // the offset distance was zeroed for the drop and restored
-        assert_eq!(solver.solver.surfaces[0].as_ref().unwrap().surface.offset_distance(), 0.25);
+        assert_eq!(
+            solver.solver.surfaces[0]
+                .as_ref()
+                .unwrap()
+                .surface
+                .offset_distance(),
+            0.25
+        );
         // geometry 0's start row is now geometry 1's end row; its other rows are its own
         let near = |a: Point3, b: Point3| a.distance(b) < 1e-12;
         let s0 = fb.geom(g0).unwrap().fillet_surface().unwrap();
