@@ -19,7 +19,7 @@
 //! a first drop off the surface), degenerate (point) curves anywhere on the surface
 //! (interior, boundaries, seams, poles: the pole line), curves along the surface
 //! normal, and the traced curves on B-spline surfaces (the offset surface tangent drops,
-//! the span subdivision stack, `AddToCurve`, the CrvOnSurf gap).
+//! the span subdivision stack, `AddToCurve`, the `CrvOnSurf` gap).
 //!
 //! At least [`MIN_GENERATED`] generated cases run.
 
