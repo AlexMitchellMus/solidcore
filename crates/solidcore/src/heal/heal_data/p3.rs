@@ -23,7 +23,8 @@
 //! Mutating callees not yet ported return `Unported`, including when C++ ignores
 //! their status; no successful mutation is simulated. Removed/added identities
 //! are returned by the mutation adapters rather than accumulated by a temporary context
-//! callback. Recursive target catch-up is limited to 32 nested updates (upstream
+//! callback; the ported edits (`SqueezeEdge`, `DeleteFace`) run under a real
+//! `SmTrackTopologyChanges` on a context of their own (`tracked_edit`). Recursive target catch-up is limited to 32 nested updates (upstream
 //! has no bound); temporary counters and healer state are restored on every exit.
 //! Ordinary statuses from nested `HealTgts` are ignored as upstream, but unported
 //! calls and invalid memory accesses propagate. Bare/SE mutation statuses are
@@ -465,57 +466,115 @@ fn combine_vertices(_b: &mut Brep, _a: VertexId, _d: VertexId) -> Result<Changes
         "topology.brep_p5",
     ))
 }
-/// A notification environment for the B-rep edits. It has no context: the healer's
-/// tracker (`SmTrackTopologyChanges`) is a context callback whose `Execute` is not
-/// ported (`topology::topology::TopologyChangeCallback`), so the edit wrappers
-/// derive the tracker's lists from the edit's notifications instead
-/// ([`squeeze_edge`], [`delete_face`]); nothing here reads the records or attributes.
-/// Each entity is notified under its arena kind and index.
-fn edit_env<R>(f: impl FnOnce(&mut NotifyEnv<'_>) -> R) -> R {
+/// The kinds [`tracked_edit`] notifies entities under, with their `GetType` codes.
+const EDIT_KINDS: [i64; 11] = [
+    16011, // SmBrep_TYPE
+    16012, // SmRegion_TYPE
+    16013, // SmShell_TYPE
+    16022, // SmFaceuse_TYPE
+    16002, // SmFace_TYPE
+    16004, // SmLoopuse_TYPE
+    16003, // SmLoop_TYPE
+    16005, // SmEdgeuse_TYPE
+    16016, // SmEdge_TYPE
+    16006, // SmVertexuse_TYPE
+    16021, // SmVertex_TYPE
+];
+
+/// The identity [`tracked_edit`] notifies `e` under: its type code and
+/// `(kind << 32) | index`.
+fn edit_key(e: EntityRef) -> ObjectRef {
+    let (kind, i): (usize, u32) = match e {
+        EntityRef::Brep(_) => (0, 0),
+        EntityRef::Region(x) => (1, x.index()),
+        EntityRef::Shell(x) => (2, x.index()),
+        EntityRef::Faceuse(x) => (3, x.index()),
+        EntityRef::Face(x) => (4, x.index()),
+        EntityRef::Loopuse(x) => (5, x.index()),
+        EntityRef::Loop(x) => (6, x.index()),
+        EntityRef::Edgeuse(x) => (7, x.index()),
+        EntityRef::Edge(x) => (8, x.index()),
+        EntityRef::Vertexuse(x) => (9, x.index()),
+        EntityRef::Vertex(x) => (10, x.index()),
+    };
+    ObjectRef {
+        type_code: EDIT_KINDS.get(kind).copied().unwrap_or(0),
+        key: ObjectKey(((kind as u64) << 32) | u64::from(i)),
+    }
+}
+
+/// The face, edge or vertex [`edit_key`] made `key` for (the only kinds the tracker
+/// records).
+fn edit_entity(key: ObjectKey) -> Option<EntityRef> {
+    let i = u32::try_from(key.0 & 0xffff_ffff).ok()?;
+    match key.0 >> 32 {
+        4 => Some(EntityRef::Face(FaceId::from_index(i))),
+        8 => Some(EntityRef::Edge(EdgeId::from_index(i))),
+        10 => Some(EntityRef::Vertex(VertexId::from_index(i))),
+        _ => None,
+    }
+}
+
+/// Tracker key of the edit trackers (one at a time).
+const EDIT_TRACKER: u64 = 0x4845_414c; // "HEAL"
+
+/// Runs the B-rep edit `edit` under a topology tracker, as the healer's loops do
+/// (`SmTrackTopologyChanges sTopologyChanges(m_pBrep, TRUE)`, SmHealData.cpp:3341 and
+/// the later loops), and returns its result with what the tracker recorded
+/// (`SmTopologyChangeCallback::Execute`, `topology::topology`): the removed and the
+/// added faces, edges and vertices. The edit also borrows the kernel (mark locks),
+/// so the kernel context's notify callbacks are lent to a context of their own for
+/// the edit's notifications and given back afterwards; a callback already installed
+/// there (an outer tracker) keeps the edit's notifications, and the tracker then
+/// records nothing, as upstream. Notification records and attributes are scratch:
+/// nothing in the healer reads them. A failed edit still reports what was tracked
+/// before it failed (callers that ignore its status keep those changes).
+fn tracked_edit<R>(
+    k: &mut Kernel,
+    edit: impl FnOnce(&mut Kernel, &mut NotifyEnv<'_>) -> Result<R>,
+) -> (Result<R>, Changes) {
+    let mut ctx = crate::geom::context::Context::default();
+    let (user, sys) = k.context.take_notify_callbacks();
+    ctx.set_user_notify_callback(user);
+    ctx.set_sys_notify_callback(sys);
+    // (the tracker reads its B-rep only to tell it from null)
+    let tracker = TrackTopologyChanges::new(
+        Some(crate::topology::BrepId::from_index(0)),
+        EDIT_TRACKER,
+        true,
+        Some(&mut ctx),
+    );
     let mut records = std::collections::BTreeMap::new();
     let mut attributes = crate::geom::attribute::AttributeStore::default();
-    let key_of = |e: EntityRef| {
-        let (kind, i) = match e {
-            EntityRef::Brep(_) => (0u64, 0),
-            EntityRef::Region(x) => (1, x.index()),
-            EntityRef::Shell(x) => (2, x.index()),
-            EntityRef::Faceuse(x) => (3, x.index()),
-            EntityRef::Face(x) => (4, x.index()),
-            EntityRef::Loopuse(x) => (5, x.index()),
-            EntityRef::Loop(x) => (6, x.index()),
-            EntityRef::Edgeuse(x) => (7, x.index()),
-            EntityRef::Edge(x) => (8, x.index()),
-            EntityRef::Vertexuse(x) => (9, x.index()),
-            EntityRef::Vertex(x) => (10, x.index()),
+    let r = {
+        let mut env = NotifyEnv {
+            records: &mut records,
+            attributes: &mut attributes,
+            context: Some(&mut ctx),
+            key_of: &edit_key,
         };
-        ObjectRef {
-            type_code: 0,
-            key: ObjectKey((kind << 32) | u64::from(i)),
-        }
+        edit(k, &mut env)
     };
-    let mut env = NotifyEnv {
-        records: &mut records,
-        attributes: &mut attributes,
-        context: None,
-        key_of: &key_of,
+    let changes = Changes {
+        removed: tracker
+            .rm_list()
+            .into_iter()
+            .filter_map(edit_entity)
+            .collect(),
+        added: tracker.add_list().into_iter().map(edit_entity).collect(),
     };
-    f(&mut env)
+    tracker.finish(Some(&mut ctx));
+    let (user, sys) = ctx.take_notify_callbacks();
+    k.context.set_user_notify_callback(user);
+    k.context.set_sys_notify_callback(sys);
+    (r, changes)
 }
-/// `SqueezeEdge(e, survivor)` and what the tracker records of it
-/// (`SmTopologyChangeCallback::Execute` on its faces, edges and vertices): the edge's
-/// `SM_NO_RM_FROM_BREP` removes it; `SM_NO_MERGE_IN_BREP(survivor, deleted vertex)`
-/// removes both vertices and adds the survivor back. (`SM_NO_PRE_EDIT` and the
-/// destructions of objects never added record nothing.)
+/// `SqueezeEdge(e, survivor)` under the edit tracker ([`tracked_edit`]).
 fn squeeze_edge(k: &mut Kernel, b: &mut Brep, e: EdgeId, survivor: VertexId) -> Result<Changes> {
-    // (read before the edit; only a completed squeeze reports it)
-    let del_vertex = edge::other_vertex(b, e, Some(survivor)).ok().flatten();
-    edit_env(|env| crate::topology::brep::p3::squeeze_edge(k, b, env, e, survivor))?;
-    let mut removed = vec![EntityRef::Edge(e), EntityRef::Vertex(survivor)];
-    removed.extend(del_vertex.map(EntityRef::Vertex));
-    Ok(Changes {
-        removed,
-        added: vec![Some(EntityRef::Vertex(survivor))],
-    })
+    let (r, changes) = tracked_edit(k, |k, env| {
+        crate::topology::brep::p3::squeeze_edge(k, b, env, e, survivor)
+    });
+    r.map(|()| changes)
 }
 fn delete_edge(_b: &mut Brep, _e: EdgeId) -> Result<Changes> {
     // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge
@@ -586,10 +645,10 @@ impl<O: LoopObject> HealData<O> {
                         .vertex
                         .ok_or_else(|| invalid("vertex loop without vertex"))?;
                     let new_surface = ignore_soft(surface.copy_and_add_analytics())?;
-                    let deleted = ignore_soft(delete_face(k, b, f, true, Some(old_region)))?
-                        .unwrap_or_default();
-                    let vertex_deleted = deleted.removed.contains(&EntityRef::Vertex(old_vertex));
-                    changes.append(deleted);
+                    let (deleted, edits) = delete_face(k, b, f, true, Some(old_region));
+                    changes.append(edits);
+                    let deleted = ignore_soft(deleted)?.unwrap_or_default();
+                    let vertex_deleted = deleted.contains(&EntityRef::Vertex(old_vertex));
                     // A failed copy/create has no returned face to dereference.
                     let Some(new_surface) = new_surface else {
                         continue;
@@ -618,9 +677,9 @@ impl<O: LoopObject> HealData<O> {
                         }
                     }
                 } else {
-                    changes.append(
-                        ignore_soft(delete_face(k, b, f, false, None))?.unwrap_or_default(),
-                    );
+                    let (deleted, edits) = delete_face(k, b, f, false, None);
+                    changes.append(edits);
+                    ignore_soft(deleted)?;
                 }
             } else {
                 let (new_edges, deleted_edges, edits) =
@@ -996,31 +1055,24 @@ fn face_region(b: &Brep, f: FaceId) -> Result<RegionId> {
         .region
         .ok_or_else(|| invalid("shell without region"))
 }
-/// `DeleteFace(f, TRUE, nest_regions, &deleted, keep)` and what the tracker records of
-/// it: the face's `SM_NO_RM_FROM_BREP`, then the removal of each deleted edge and
-/// vertex (`pOptDeletedEdgesVertices`, in deletion order), which callers also read as
-/// the deleted list (`sDelObjs`). The region merge notifies regions, which the
-/// tracker ignores.
+/// `DeleteFace(f, TRUE, nest_regions, &deleted, keep)` under the edit tracker
+/// ([`tracked_edit`]): the deleted edges and vertices (`pOptDeletedEdgesVertices`,
+/// which `FixDegenFaces` reads as `sDelObjs`) or the status, and the tracked changes.
 fn delete_face(
     k: &mut Kernel,
     b: &mut Brep,
     f: FaceId,
     nest_regions: bool,
     keep: Option<RegionId>,
-) -> Result<Changes> {
+) -> (Result<Vec<EntityRef>>, Changes) {
     let opts = crate::topology::brep::p3::DeleteFaceOptions {
         delete_edges_vertices: true,
         do_region_nesting: nest_regions,
         region_to_keep: keep,
     };
     let mut marks = Marks::default();
-    let deleted =
-        edit_env(|env| crate::topology::brep::p3::delete_face(k, b, env, &mut marks, f, opts))?;
-    let mut removed = vec![EntityRef::Face(f)];
-    removed.extend(deleted);
-    Ok(Changes {
-        removed,
-        added: Vec::new(),
+    tracked_edit(k, |k, env| {
+        crate::topology::brep::p3::delete_face(k, b, env, &mut marks, f, opts)
     })
 }
 fn create_face_from_surface(_b: &mut Brep, _r: RegionId, _s: Surface) -> Result<(FaceId, Changes)> {

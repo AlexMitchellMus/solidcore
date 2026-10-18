@@ -1055,6 +1055,15 @@ worth knowing:
   faces, edges and vertices, so with the bare `SmTopology` objects in the difftest
   the C++ lists stay empty too. A future unit that needs real change tracking has to
   port `Execute` (it walks surface/curve owners and edgeuse edges).
+  **Correction (topology.brep_p3, PR #204):** "belongs to no unit" only means the
+  call graph does not follow `SmObject::Notify`'s virtual dispatch to the context's
+  system callback. `SmHealData` installs `SmTrackTopologyChanges(m_pBrep, TRUE)`
+  around its edits (SmHealData.cpp:3341 and later), so every heal edit reaches
+  `Execute`. It is now CO-PORTED with `AddUnique` and `Remove` into
+  `topology::topology::TopologyChangeCallback`, and heal_data_p3's ported edits
+  (`SqueezeEdge`, `DeleteFace`) run under such a tracker. The owner walk reads an
+  owner table (`TrackTopologyChanges::set_owner`), because an `ObjectRef` carries no
+  owner.
 - **Starting a tracker twice leaves its callback installed after it dies.** The
   second `StartTracking` sees the tracker's own callback in the slot and stores it in
   `m_pLastNotifyCallback`; `StopTracking` (and so the destructor) then does nothing,

@@ -140,6 +140,10 @@ pub const ALL_MARKS: i32 = MarkType::AllMarks as i32;
 /// Index of `SM_MT_MARKIO` in the mark arrays (the `default:` mark upstream).
 const MARK_IO: usize = 3;
 
+/// An installed notify callback, or none (what [`Context::take_notify_callbacks`]
+/// hands out).
+pub type BoxedCallback = Option<Box<dyn NotifyCallback>>;
+
 /// Receiver of topology-change notifications (`SmNotifyCallback`).
 pub trait NotifyCallback: std::fmt::Debug + Send {
     /// `SmNotifyCallback::Execute`: called once for every [`object::notify`] of an
@@ -268,6 +272,16 @@ impl Context {
     /// in debug builds when one is already set).
     pub fn set_sys_notify_callback(&mut self, callback: Option<Box<dyn NotifyCallback>>) {
         self.sys_notify_callback = callback;
+    }
+
+    /// Takes the user and the system notify callbacks out, leaving none installed,
+    /// so that a caller can lend them to another context for a while (no upstream
+    /// counterpart: a context reached through `GetContext` cannot be borrowed twice).
+    pub fn take_notify_callbacks(&mut self) -> (BoxedCallback, BoxedCallback) {
+        (
+            self.user_notify_callback.take(),
+            self.sys_notify_callback.take(),
+        )
     }
 
     /// The context's model size estimate, or the system one when it is

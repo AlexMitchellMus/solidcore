@@ -315,24 +315,25 @@ fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
 
 // ---- Rust side ----------------------------------------------------------------------------
 
-/// The identity each entity is notified and attributed under.
+/// The identity each entity is notified and attributed under: its type code and
+/// `(kind << 32) | (1 + index)`, so records of different kinds never share a key.
 fn key_of(e: EntityRef) -> ObjectRef {
-    let (type_code, i) = match e {
-        EntityRef::Region(x) => (16012, x.index()),
-        EntityRef::Shell(x) => (16013, x.index()),
-        EntityRef::Faceuse(x) => (16022, x.index()),
-        EntityRef::Face(x) => (16002, x.index()),
-        EntityRef::Loopuse(x) => (16004, x.index()),
-        EntityRef::Loop(x) => (16003, x.index()),
-        EntityRef::Edgeuse(x) => (16005, x.index()),
-        EntityRef::Edge(x) => (16016, x.index()),
-        EntityRef::Vertexuse(x) => (16006, x.index()),
-        EntityRef::Vertex(x) => (16021, x.index()),
-        EntityRef::Brep(_) => (16999, 0),
+    let (kind, type_code, i) = match e {
+        EntityRef::Region(x) => (1u64, 16012, x.index()),
+        EntityRef::Shell(x) => (2, 16013, x.index()),
+        EntityRef::Faceuse(x) => (3, 16022, x.index()),
+        EntityRef::Face(x) => (4, 16002, x.index()),
+        EntityRef::Loopuse(x) => (5, 16004, x.index()),
+        EntityRef::Loop(x) => (6, 16003, x.index()),
+        EntityRef::Edgeuse(x) => (7, 16005, x.index()),
+        EntityRef::Edge(x) => (8, 16016, x.index()),
+        EntityRef::Vertexuse(x) => (9, 16006, x.index()),
+        EntityRef::Vertex(x) => (10, 16021, x.index()),
+        EntityRef::Brep(_) => (11, 16999, 0),
     };
     ObjectRef {
         type_code,
-        key: ObjectKey(1 + u64::from(i)),
+        key: ObjectKey((kind << 32) | (1 + u64::from(i))),
     }
 }
 
@@ -916,6 +917,63 @@ impl UnitDiff for Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Classifies the passing cases of the committed report by op and C++ status
+    /// (`out[0]` the build status, `out[1]` the op's), the split the PR and the
+    /// plan notes quote. Run from the repository with the C++ reference:
+    /// `cargo test --profile difftest -p difftest --features cpp classify_passes --
+    /// --ignored --nocapture`.
+    #[test]
+    #[ignore = "needs the C++ reference and reports/difftest/topology.brep_p3.json"]
+    fn classify_passes() {
+        std::env::set_current_dir("../..").unwrap();
+        let r: Value = serde_json::from_str(
+            &std::fs::read_to_string("reports/difftest/topology.brep_p3.json").unwrap(),
+        )
+        .unwrap();
+        let mut counts = BTreeMap::<String, usize>::new();
+        for c in r["cases"].as_array().unwrap() {
+            if c["outcome"] != "pass" {
+                continue;
+            }
+            let src = c["source"].as_str().unwrap();
+            let v: Value = if let Some(seed) = src.strip_prefix("generated:seed=") {
+                let mut rng = Rng::new(seed.parse().unwrap());
+                Runner.generate(&mut rng).unwrap()
+            } else {
+                let f = src
+                    .strip_prefix("fixture:")
+                    .unwrap()
+                    .split(' ')
+                    .next()
+                    .unwrap();
+                let (file, idx) = f.split_once('#').unwrap();
+                let j: Value =
+                    serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
+                j["cases"][idx.parse::<usize>().unwrap()]["inputs"].clone()
+            };
+            let op = v["op"].as_str().unwrap().to_string();
+            let i: Inputs = serde_json::from_value(v.clone()).unwrap();
+            let o = run_cpp(&i).unwrap();
+            let out = o.values.get("out").cloned().unwrap_or_default();
+            let st = (out.first().copied(), out.get(1).copied());
+            let extra = match (&i.op, st) {
+                (OpIn::Orient { unify, faces, .. }, (Some(0.0), Some(0.0))) => format!(
+                    " unify={unify} swaplist={}",
+                    faces.as_ref().map_or(-1, |f| f.len() as i64)
+                ),
+                (OpIn::CopyVertices { vertices }, _) => format!(" n={}", vertices.len()),
+                (OpIn::Squeeze { which, .. }, _) => format!(" which={which}"),
+                (OpIn::DeleteFace { .. }, _) => format!(" editing={}", i.editing),
+                _ => String::new(),
+            };
+            let key = format!("{op} {st:?} err={:?}{extra}", o.error);
+            *counts.entry(key).or_default() += 1;
+        }
+        for (k, n) in counts {
+            println!("CLASS {n} {k}");
+        }
+    }
 
     /// Geometry beyond 1e150 hangs the C++ in `SmCurve::GlobalCoincidenceChecker`
     /// (HANG-16; fuzz case 1124: one control point at z = 1e300, Orient by rays): the

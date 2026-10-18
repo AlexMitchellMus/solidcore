@@ -109,11 +109,16 @@ const fn ser() -> SolidError {
 }
 
 /// A call whose status upstream does not check (no `SER`, or a `void` `Notify`): only
-/// [`SolidError::Unported`] and the [`SolidError::InvalidInput`] of a null pointer
-/// upstream dereferences propagate.
+/// [`SolidError::Unported`], the [`SolidError::InvalidInput`] of a null pointer
+/// upstream dereferences and the [`SolidError::NotFound`] of a dangling id (a freed
+/// pointer upstream) propagate.
 fn ignore_soft<T>(r: Result<T>) -> Result<()> {
     match r {
-        Err(e @ (SolidError::Unported { .. } | SolidError::InvalidInput { .. })) => Err(e),
+        Err(
+            e @ (SolidError::Unported { .. }
+            | SolidError::InvalidInput { .. }
+            | SolidError::NotFound { .. }),
+        ) => Err(e),
         Ok(_) | Err(_) => Ok(()),
     }
 }
