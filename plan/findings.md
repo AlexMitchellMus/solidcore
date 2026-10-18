@@ -6873,8 +6873,19 @@ successful offset/shell geometry.
   updated report matches the one committed through p1. P2 remains 118 passed /
   176 deferred / zero failures across 294 cases, its report is byte-identical,
   and sensitivity still detects 118/118 perturbations. No constructive scope is
-  promoted. The separate upstream reader-test baseline failure is documented in
-  p1's follow-up notes above; no current full kernel or `--green` pass is claimed.
+  promoted. At that stage the separate upstream reader-test baseline failure
+  documented in p1's notes prevented a full kernel pass; see the resolution below.
+- **Reader CI fix synchronized from green p1 (2026-10-18).** Merged p1 head
+  `ca0862c8`, including the upstream #221 correction to the offset/sphere reader
+  regression. The formerly failing test now passes, and the full local workspace
+  test run is green, including all 1377 kernel tests. Formatting, C++-enabled
+  workspace/all-target Clippy, wasm, 28 offset FFI tests and two native-guard
+  probes also pass. P1 and p2 default differential reports remain byte-identical
+  to their committed reports (675 / 17 / 1 and 118 / 176 / 0 passed / deferred /
+  rejected, respectively), with zero failures; p2 sensitivity remains 118/118.
+  This resolves the stale unit-test failure without changing offset numerics,
+  tolerances or scope. A full local native `--green` run is not claimed; fresh
+  p2 GitHub CI is triggered by the synchronization push.
 
 ## topology.face_p1 (`SmFace.cpp` part 1: `MoveSeam`, `SplitAtSeam`, `CreateOrientedTrimBoundary`, `CalculateUVDomainFromUVTrimCurves`, ...; PR #148, 2026-10-16; partial, no disagreements)
 
