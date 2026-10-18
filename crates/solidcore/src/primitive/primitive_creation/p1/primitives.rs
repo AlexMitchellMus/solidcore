@@ -39,6 +39,7 @@ use crate::nurbs::b_spline_surface::p1::BSplineSurface;
 use crate::nurbs::b_spline_surface::p1::SurfParamType;
 use crate::surface::cone::p1::Cone;
 use crate::surface::plane::p1::Plane;
+use crate::surface::sphere::Sphere;
 use crate::surface::surface::Surface;
 use crate::surface::torus::{Torus, TorusOptions};
 use crate::topology::{Brep, FaceId, RegionId};
@@ -228,7 +229,7 @@ fn transform_brep(_k: &Kernel, _b: &mut Brep, _placement: &Axis2Placement) -> Re
 
 enum AnalyticSurface {
     Cone(Cone),
-    Sphere(Surface),
+    Sphere(Sphere),
     Torus(Torus),
 }
 fn analytic_face(k: &Kernel, b: &mut Brep, surface: AnalyticSurface) -> Result<FaceId> {
@@ -237,8 +238,8 @@ fn analytic_face(k: &Kernel, b: &mut Brep, surface: AnalyticSurface) -> Result<F
             cone_face(k, b, &surface, surface.rev.base().natural_uv_domain())
         }
         AnalyticSurface::Sphere(surface) => {
-            let domain = surface.natural_uv_domain();
-            create_face_id(k, b, surface, domain)
+            let domain = surface.base().base().natural_uv_domain();
+            sphere_face(k, b, &surface, domain)
         }
         AnalyticSurface::Torus(surface) => {
             let domain = surface.base().base().natural_uv_domain();
@@ -247,11 +248,15 @@ fn analytic_face(k: &Kernel, b: &mut Brep, surface: AnalyticSurface) -> Result<F
     }
 }
 
-fn sphere_surface(_k: &Kernel, _frame: &Axis2Placement, _radius: f64) -> Result<Surface> {
-    // UNPORTED(surface.sphere): SmSphere::CreateCanonical
+fn sphere_surface(k: &Kernel, frame: &Axis2Placement, radius: f64) -> Result<Sphere> {
+    Sphere::create_canonical(k, frame, radius)
+}
+
+fn sphere_face(_k: &Kernel, _b: &mut Brep, _surface: &Sphere, _domain: Extent2d) -> Result<FaceId> {
+    // UNPORTED(topology.brep_p8): SmBrep::CreateFaceFromSurface
     Err(SolidError::unported(
-        "SmSphere::CreateCanonical",
-        "surface.sphere",
+        "SmBrep::CreateFaceFromSurface",
+        "topology.brep_p8",
     ))
 }
 
@@ -269,7 +274,7 @@ pub fn create_rectangle(
     let p01 = p00 + frame.y_axis() * height;
     let p11 = p10 + p01 - p00;
     let base = BSplineSurface::create_bilinear_surface(p00, p10, p01, p11)?;
-    let plane = Surface::from(base).copy_and_add_analytics()?;
+    let plane = Surface::from(base).copy_and_add_analytics(k)?;
     let mut brep = new_brep(k)?;
     let domain = plane.natural_uv_domain();
     ignore_status(create_face(k, &mut brep, plane, domain))?;
@@ -514,8 +519,8 @@ impl PrimitiveCreation {
         brep.set_editing_enabled(true);
         let result = (|| {
             let surface = sphere_surface(k, frame, radius)?;
-            let domain = surface.natural_uv_domain();
-            create_face(k, brep, surface, domain)
+            let domain = surface.base().base().natural_uv_domain();
+            sphere_face(k, brep, &surface, domain).map(|_| ())
         })();
         brep.set_editing_enabled(editing);
         result
@@ -579,7 +584,7 @@ impl PrimitiveCreation {
                 .surface
                 .as_ref()
                 .ok_or_else(|| SolidError::null_pointer(op))?
-                .is_planar(tolerance)?;
+                .is_planar(k, tolerance)?;
             if !first_plane.is_planar {
                 return Err(SolidError::invalid_input(op, "non-planar first surface"));
             }
@@ -593,7 +598,7 @@ impl PrimitiveCreation {
                         .surface
                         .as_ref()
                         .ok_or_else(|| SolidError::null_pointer(op))?
-                        .is_planar(tolerance)?;
+                        .is_planar(k, tolerance)?;
                     if !other.is_planar {
                         return Err(SolidError::invalid_input(op, "non-planar surface"));
                     }

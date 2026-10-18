@@ -446,28 +446,34 @@ pub fn vertices(b: &Brep, attribute: Option<&AttributeFilter<'_>>) -> Result<Vec
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`]: `SmRegion::GetShells` is unit `topology.shell`; a B-rep
-/// without regions returns the empty list, as upstream (the per-region loop never runs).
-///
-/// Takes `&Kernel` until `topology.shell` lands: upstream opens `SmNewMarkAndLock` on the
-/// context here, so that port widens this (and `boolean::merge::p1::boolean_post_process`)
-/// to `&mut Kernel`.
+/// Invalid region or shell references and unavailable context marks.
 pub fn shells(
-    k: &Kernel,
+    k: &mut Kernel,
     b: &Brep,
     attribute: Option<&AttributeFilter<'_>>,
 ) -> Result<Vec<ShellId>> {
-    let _ = (k, attribute);
-    // get regions
     let regions = regions(b, None)?;
-    if regions.is_empty() {
-        return Ok(Vec::new());
-    }
-    // UNPORTED(topology.shell): SmRegion::GetShells
-    Err(SolidError::unported(
-        "SmRegion::GetShells",
-        "topology.shell",
-    ))
+    crate::geom::context::with_mark_lock(k, crate::geom::context::ALL_MARKS, |k, mark| {
+        let mut marks = Marks::default();
+        let mut out = Vec::new();
+        for region in regions {
+            let region_shells = b.region(region)?.get_shells(
+                attribute.map(|filter| filter.attribute_id),
+                |shell, _| {
+                    Ok(attribute.is_none_or(|filter| filter.matches(EntityRef::Shell(shell))))
+                },
+            )?;
+            for shell in region_shells {
+                b.shell(shell)?;
+                if marks.is_marked(k, Entity::Shell(shell), mark) {
+                    continue;
+                }
+                marks.mark(k, Entity::Shell(shell), mark);
+                out.push(shell);
+            }
+        }
+        Ok(out)
+    })?
 }
 
 /// `GetWireEdges`: the wire edges of [`edges`] (`SmEdge::IsWire`).
@@ -2682,9 +2688,20 @@ mod tests {
     fn region_list_rotates_to_head() {
         let mut b = Brep::new();
         let r: Vec<RegionId> = (0..3)
-            .map(|_| b.add_region_record(Region { in_brep: true }).unwrap())
+            .map(|_| {
+                b.add_region_record(Region {
+                    in_brep: true,
+                    ..Region::default()
+                })
+                .unwrap()
+            })
             .collect();
-        let off = b.add_region_record(Region { in_brep: false }).unwrap();
+        let off = b
+            .add_region_record(Region {
+                in_brep: false,
+                ..Region::default()
+            })
+            .unwrap();
         assert_eq!(regions(&b, None).unwrap(), r);
         b.set_region_list_head(Some(r[1]));
         assert_eq!(regions(&b, None).unwrap(), vec![r[1], r[2], r[0]]);

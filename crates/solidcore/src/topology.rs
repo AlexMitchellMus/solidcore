@@ -45,6 +45,7 @@ pub mod edgeuse;
 pub mod face;
 pub mod loopuse;
 pub mod proto_topology;
+pub mod shell;
 #[allow(clippy::module_inception)]
 pub mod topology;
 pub mod topology_traverser;
@@ -357,14 +358,22 @@ pub struct Shell {
     pub faces: Vec<FaceId>,
     /// `m_pListOwner` (CO-PORTED): the region owning the shell (`GetRegion`).
     pub region: Option<RegionId>,
+    /// Native `m_tShellType`, independent of the list head during construction.
+    pub shell_type: shell::ShellType,
+    /// Native list members in head-first circular traversal order.
+    pub members: shell::ShellMembers,
 }
 
 /// A region (`SmRegion`, CO-PORTED minimal record).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Region {
     /// `m_pListOwner != NULL`: the region is on the B-rep's region list, so
     /// `GetBrep` reaches the B-rep.
     pub in_brep: bool,
+    /// Native region shell list, in traversal order from its head.
+    pub shells: Vec<ShellId>,
+    /// Native `SmBoolean` `m_bIsVoidFlag` (0 at construction; 2 is `UNSURE`).
+    pub is_void: i32,
 }
 
 /// One use of a face (`SmFaceuse`): the face seen from one side.
@@ -381,6 +390,9 @@ pub struct Faceuse {
     pub orientation: OrientType,
     /// `m_pList`: the loop uses, outer loop use first.
     pub loopuses: Vec<LoopuseId>,
+    /// Literal sibling links when present, even if the owner has no list head.
+    /// `None` uses the owner's canonical face-use vector during construction.
+    pub sibling_links: Option<shell::FaceuseSiblingLinks>,
 }
 
 /// What a loop use starts from (`m_tLoopuseType` and `m_pEUorVU`).

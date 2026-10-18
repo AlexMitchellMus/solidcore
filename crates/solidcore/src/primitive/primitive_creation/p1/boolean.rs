@@ -109,7 +109,7 @@ pub(super) fn finish(
                     k,
                     b,
                     other,
-                    a,
+                    Some(a),
                     edgeuse,
                     None,
                     OrientType::Same,
@@ -133,7 +133,7 @@ pub(super) fn finish(
                     k,
                     a,
                     primary,
-                    b,
+                    Some(b),
                     edgeuse,
                     None,
                     OrientType::Same,
@@ -182,7 +182,7 @@ pub(super) fn finish(
                     .as_ref()
                     .ok_or_else(|| SolidError::null_pointer("primitive::boolean_2d"))?;
                 let surface = if original.owner().is_some() {
-                    original.copy()?
+                    original.copy(k)?
                 } else {
                     original.clone_for_evaluation()?
                 };

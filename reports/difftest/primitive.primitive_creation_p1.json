@@ -451,8 +451,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere::CreateCanonical",
-        "unit": "surface.sphere"
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
       },
       "max_rel_err": 0.0,
       "name": "primitive_5",
@@ -784,8 +784,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere::CreateCanonical",
-        "unit": "surface.sphere"
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
       },
       "max_rel_err": 0.0,
       "name": "rotate_half_sphere",
@@ -5614,10 +5614,9 @@
   "cases_rejected": 5,
   "cases_total": 689,
   "deferred_by_unit": {
-    "surface.sphere": 2,
     "topology.brep_p3": 5,
     "topology.brep_p7": 1,
-    "topology.brep_p8": 9
+    "topology.brep_p8": 11
   },
   "max_rel_err": 0.0,
   "pass": true,

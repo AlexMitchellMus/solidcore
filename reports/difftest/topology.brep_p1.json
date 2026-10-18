@@ -154,16 +154,12 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_line_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/constructed.json#19 (upstream TestFiles/pt_TestFiles/constructed (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -475,16 +471,12 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_cubic_sub_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/constructed.json#56 (upstream TestFiles/pt_TestFiles/constructed (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -800,16 +792,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "face_plane_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/constructed.json#93 (upstream TestFiles/pt_TestFiles/constructed (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -1132,16 +1120,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "face_bspline_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/constructed.json#130 (upstream TestFiles/pt_TestFiles/constructed (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -1464,16 +1448,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "face_bspline_sub_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/constructed.json#167 (upstream TestFiles/pt_TestFiles/constructed (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -1792,16 +1772,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "network_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/constructed.json#204 (upstream TestFiles/pt_TestFiles/constructed (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -2121,16 +2097,12 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "Mouse_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#9 (upstream TestFiles/pt_TestFiles/Mouse.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -3311,8 +3283,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::NormalizedEvaluate",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "Mouse_heal",
@@ -3406,16 +3378,12 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "Endcap_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#148 (upstream TestFiles/pt_TestFiles/Endcap.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -4543,8 +4511,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::NormalizedEvaluate",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_heal",
@@ -4642,16 +4610,12 @@
       "values_compared": 17
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#287 (upstream TestFiles/pt_TestFiles/box_with_large_fillet.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -5788,8 +5752,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::NormalizedEvaluate",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_heal",
@@ -5891,16 +5855,12 @@
       "values_compared": 4
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "cone_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#426 (upstream TestFiles/pt_TestFiles/cone.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -7078,8 +7038,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::NormalizedEvaluate",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "cone_heal",
@@ -7177,16 +7137,12 @@
       "values_compared": 4
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "disk_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#565 (upstream TestFiles/pt_TestFiles/disk.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -8322,8 +8278,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::NormalizedEvaluate",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "disk_heal",
@@ -8417,16 +8373,12 @@
       "values_compared": 24
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "ellips_ts2_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#704 (upstream TestFiles/pt_TestFiles/ellips_ts2.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -9546,8 +9498,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::NormalizedEvaluate",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "ellips_ts2_heal",
@@ -9637,16 +9589,12 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "plane_circ_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#843 (upstream TestFiles/pt_TestFiles/plane_circ.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -10786,8 +10734,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::NormalizedEvaluate",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ_heal",
@@ -10881,16 +10829,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "plane_square_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#982 (upstream TestFiles/pt_TestFiles/plane_square.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -12022,8 +11966,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::NormalizedEvaluate",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "plane_square_heal",
@@ -12121,16 +12065,12 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "sphere_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1121 (upstream TestFiles/pt_TestFiles/sphere.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -13303,8 +13243,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::NormalizedEvaluate",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "sphere_heal",
@@ -13406,16 +13346,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "surf_extrude_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1260 (upstream TestFiles/pt_TestFiles/surf_extrude.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -14591,8 +14527,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::NormalizedEvaluate",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_extrude_heal",
@@ -14694,16 +14630,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1399 (upstream TestFiles/pt_TestFiles/surf_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -15879,8 +15811,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::NormalizedEvaluate",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_heal",
@@ -15982,16 +15914,12 @@
       "values_compared": 4
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1538 (upstream TestFiles/pt_TestFiles/surf_sphere150.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -17163,8 +17091,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::NormalizedEvaluate",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_heal",
@@ -17266,16 +17194,12 @@
       "values_compared": 4
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "torus_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1677 (upstream TestFiles/pt_TestFiles/torus.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -18460,8 +18384,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::NormalizedEvaluate",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "torus_heal",
@@ -18563,16 +18487,12 @@
       "values_compared": 4
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "toruswvy_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1816 (upstream TestFiles/pt_TestFiles/toruswvy.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -19757,8 +19677,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::NormalizedEvaluate",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_heal",
@@ -19860,16 +19780,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::GetShells",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "vase_rev_lists_9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1955 (upstream TestFiles/pt_TestFiles/vase_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -21040,8 +20956,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::NormalizedEvaluate",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_heal",
@@ -21311,9 +21227,9 @@
     }
   ],
   "cases_both_errored": 60,
-  "cases_deferred": 626,
+  "cases_deferred": 605,
   "cases_failed": 0,
-  "cases_passed": 1717,
+  "cases_passed": 1738,
   "cases_total": 2343,
   "deferred_by_unit": {
     "curve.crv_on_surf": 4,
@@ -21321,11 +21237,11 @@
     "query.brep": 71,
     "query.face_p2": 9,
     "surface.surface_cache_p1": 3,
-    "topology.edgeuse_p3": 93,
+    "topology.edgeuse_p3": 78,
     "topology.face_p1": 16,
-    "topology.face_p2": 44,
+    "topology.face_p2": 59,
     "topology.face_p3": 18,
-    "topology.shell": 151
+    "topology.shell": 130
   },
   "max_rel_err": 0.0,
   "pass": true,
