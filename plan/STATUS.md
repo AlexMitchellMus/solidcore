@@ -1,6 +1,6 @@
 # solidcore status
 
-Last updated: 2026-10-16, PR #127 (`sweep.trans_sweep_geometry` partial: 719 bit-identical passes, 50 deferred on `surface.cone_p2`, 19 rejected native fixtures). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
+Last updated: 2026-10-17, PR #213 (`primitive.primitive_creation_p1` partial: 661 bit-identical passes, 17 dependency deferrals, one UB-57 construction preflight rejection). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
 Latest topology integration: `topology.brep_p6` partial (PR #169, after its dependency #154: 498 cases, 450 pass, 48 deferred, 0 failed; 206 units, 113 green and 93 partial); before: `topology.shell` partial (PR #154, continuing @0xlillith's PR #80: 192 ported units, 109 green and 83 partial); before: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green); before: `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
 
@@ -1014,3 +1014,22 @@ adapters.
 Review verification: the extended 256-seed run has 380 cases, 291 bit-identical
 passes, zero failures and 89 query deferrals. Perturbation detects every compared
 case (108/108 default, 291/291 extended).
+
+## primitive.primitive_creation_p1 — PR #213 (2026-10-17)
+
+Partial port of the primitive state/maps, pivot and planar-path helpers, primitive
+constructors, analytic rotational sweep, pole-free sphere assembly, elliptic-ended
+cone and planar boolean control. Dependency PR #145 is merged into this branch;
+its B-rep state and ordered collections are reused.
+
+Default native differential result: 689 cases, 667 passes with zero relative
+error, zero failures, 17 deferred and five native preflight rejections (UB-57 and the
+two-point G1 fallback). Passing
+cases compare geometry helper outputs or real error/status/state records; primitive
+construction/topology mutations remain deferred and are not claimed as certified.
+See `plan/findings.md` for branch witnesses and the exact dependency breakdown.
+
+Validation: fmt, normal/native Clippy, 1,292 kernel tests, wasm32, four native FFI
+tests, all 667 perturbations detected and 1,000 fuzz mutations with zero
+differences/crashes/panics/timeouts. The full `--green` gate completes with
+202 units: 108 passed, 94 partial, zero failed.

@@ -41,7 +41,7 @@
 //! `SmOwningTopology::Remove` / `PostInsert` of a face use are CO-PORTED on the
 //! typed face-use list (`move_faceuse`; unit `topology.proto_topology_p1` works on
 //! object-key records). `SmBrep::GetEdges` without a filter (unit `topology.brep_p1`)
-//! is CO-PORTED as `brep_get_edges`: the B-rep's edge arena in insertion order
+//! is CO-PORTED as `brep_get_edges`: the B-rep's explicit edge list in traversal order
 //! (`m_pEdgeListHead`).
 //! `TransferChildrenTo` ignores the status of `Remove`/`PostInsert` (`SE(...)`) and goes on;
 //! here a face use whose owner is not the source (or a `Remove` that cannot find it)
@@ -486,13 +486,10 @@ pub fn wire_edges(kernel: &mut Kernel, brep: &Brep, id: ShellId) -> Result<Vec<E
     Ok(output)
 }
 
-/// CO-PORT of `SmBrep::GetEdges` without a filter (unit `topology.brep_p1`): the
-/// B-rep's edges in `m_pEdgeListHead` order. The shared arena model keeps edges in
-/// that insertion order, so this equals the edge arena, provided the importer
-/// registered `GetEdges` first (every C++ fixture walk feeding this unit does).
-/// Replace with the owner's port when `topology.brep_p1` lands.
+/// `SmBrep::GetEdges` without a filter (unit `topology.brep_p1`), preserving
+/// the explicit `m_pEdgeListHead` order, including reordered or detached records.
 pub(crate) fn brep_get_edges(brep: &Brep) -> Vec<EdgeId> {
-    brep.edges().ids().collect()
+    brep.edge_list().to_vec()
 }
 
 /// `pRegion->Remove(pShell)` (`SmOwningTopology::Remove`, inline in

@@ -466,12 +466,12 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         let chord_tol = opts.chord_height_tolerance;
         let chord_height_squared = chord_tol * chord_tol;
         let ang_tol_deg = opts.ang_tol_rad * 180.0 / PI;
-        // SmTol::GetZoneTol3d(m_cpSurface): GetFace() ? its tolerance : the system's
+        // SmTol::GetZoneTol3d(m_cpSurface): GetFace() ? its tolerance : the system's.
         let zone_tol = if self.surface().face()?.is_some() {
-            // UNPORTED(topology.brep_p1): SmTol::GetZoneTol3d(const SmObject*)
+            // UNPORTED(surface.surface_cache_p2): SmTol::GetZoneTol3d(const SmObject*) needs the owning B-rep.
             return Err(SolidError::unported(
                 "SmTol::GetZoneTol3d(const SmObject*)",
-                "topology.brep_p1",
+                "surface.surface_cache_p2",
             ));
         } else {
             zone_tol_3d(k, SmallTopoType::NormalSize)
