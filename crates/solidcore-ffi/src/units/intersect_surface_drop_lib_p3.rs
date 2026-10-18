@@ -27,7 +27,9 @@
 //! interval of length `L` with `L / 8000 <= 2 ulp(max |end|)`: there upstream's span
 //! subdivision (`(start + end) / 2`) cannot shrink a failing span to `L / 8000` and loops
 //! forever (plan/upstream-issues.md HANG-31; the port bounds that depth,
-//! `MAX_SPAN_DEPTH`).
+//! `MAX_SPAN_DEPTH`). It also rejects a B-spline surface whose first non-zero v knot span
+//! is below `SM_EFF_ZERO * (1 + max |v knot|)` when the UV domain overlaps the v range:
+//! building its surface cache crashes upstream (plan/upstream-issues.md UB-182).
 
 use crate::{call_with_buffer, FfiError};
 
@@ -80,6 +82,30 @@ fn finite(x: f64) -> Result<f64, FfiError> {
     }
 }
 
+/// UB-182: building the surface cache of a B-spline surface crashes upstream
+/// (`sm_DecomposeSrf`) when the first non-zero v knot span is below about
+/// `SM_EFF_ZERO * (1 + max |v knot|)` and the UV domain overlaps the surface's v range
+/// (measured: `0,0,0,d,1,1,1` with `d < 2e-12`; `5 + d` below ~7e-12; `100 + d` below
+/// ~1.02e-10; a tiny span at the end, in the interior or in u does not crash).
+fn check_first_v_span(surface: &SurfaceIn, domain: [f64; 4]) -> Result<(), FfiError> {
+    let SurfaceIn::BSpline { q, v, .. } = surface else {
+        return Ok(());
+    };
+    let (Some(&first), Some(&last), Some(&a), Some(&b)) =
+        (v.first(), v.last(), v.get(*q), v.get(q + 1))
+    else {
+        return Ok(());
+    };
+    let span = b - a;
+    let limit = 1.0e-12 * (1.0 + first.abs().max(last.abs()));
+    let [_, dv0, _, dv1] = domain;
+    let overlaps = dv0.min(dv1) <= last && dv0.max(dv1) >= first;
+    if span > 0.0 && span < limit && overlaps {
+        return Err(bad("first v knot span too short for the surface cache (UB-182)"));
+    }
+    Ok(())
+}
+
 /// Encodes `d` as the shim's input.
 ///
 /// # Errors
@@ -92,6 +118,7 @@ pub fn encode(d: &Drop) -> Result<Vec<f64>, FfiError> {
     for &x in &d.domain {
         v.push(finite(x)?);
     }
+    check_first_v_span(&d.surface, d.domain)?;
     let [i0, i1] = d.interval;
     finite(i0)?;
     finite(i1)?;
@@ -160,6 +187,36 @@ mod tests {
             keep_all: true,
             want_record: true,
         }
+    }
+
+    fn bspline_with_v(v: [f64; 7], domain: [f64; 4]) -> Drop {
+        let row = vec![[0.0, 0.0, 0.0, NOW]; 4];
+        let mut d = drop_with([0.0, 1.0], 1.0e-4);
+        d.surface = SurfaceIn::BSpline {
+            p: 1,
+            q: 2,
+            net: vec![row.clone(), row],
+            u: vec![0.0, 0.0, 1.0, 1.0],
+            v: v.to_vec(),
+        };
+        d.domain = domain;
+        d
+    }
+
+    #[test]
+    fn guard_rejects_only_the_crashing_first_v_span() {
+        let dom = [0.0, 0.0, 1.0, 1.0];
+        // UB-182: first span below `1e-12 * (1 + max |knot|)` with an overlapping domain
+        assert!(encode(&bspline_with_v([0.0, 0.0, 0.0, 1.0e-300, 1.0, 1.0, 1.0], dom)).is_err());
+        assert!(encode(&bspline_with_v([0.0, 0.0, 0.0, 1.9e-12, 1.0, 1.0, 1.0], dom)).is_err());
+        assert!(encode(&bspline_with_v([5.0, 5.0, 5.0, 5.0 + 5.0e-12, 6.0, 6.0, 6.0], [0.0, 5.0, 1.0, 6.0])).is_err());
+        // accepted: at the limit, above it, a domain disjoint from the v range, a tiny
+        // span at the end, an exactly equal knot (multiplicity)
+        assert!(encode(&bspline_with_v([0.0, 0.0, 0.0, 2.0e-12, 1.0, 1.0, 1.0], dom)).is_ok());
+        assert!(encode(&bspline_with_v([5.0, 5.0, 5.0, 5.0 + 1.0e-11, 6.0, 6.0, 6.0], [0.0, 5.0, 1.0, 6.0])).is_ok());
+        assert!(encode(&bspline_with_v([5.0, 5.0, 5.0, 5.0 + 5.0e-12, 6.0, 6.0, 6.0], dom)).is_ok());
+        assert!(encode(&bspline_with_v([0.0, 0.0, 0.0, 1.0 - 1.0e-13, 1.0, 1.0, 1.0], dom)).is_ok());
+        assert!(encode(&bspline_with_v([0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0], dom)).is_ok());
     }
 
     #[test]
