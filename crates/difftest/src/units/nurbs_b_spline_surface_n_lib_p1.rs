@@ -18,10 +18,9 @@
 //! `patch<i>_*`: `flags`, `dims`, `cpts`, `u`, `v`), curve states, points,
 //! derivatives, knots.
 //!
-//! Cases whose Rust side reaches an unported `SmSurface` method are deferred:
-//! every `CreateExtendedSurface` (`IsSingularity`, `surface.surface_p5`; `IsClosed`,
-//! `surface.surface_p7`) and `sm_CreateNonRationalCurve` of a rational curve with a
-//! base surface (`DropCurve`, `intersect.surface_drop_lib_p3`). Every run has at least
+//! Cases whose Rust side reaches an unported `SmSurface` method are deferred (none
+//! now: `CreateExtendedSurface` and `sm_CreateNonRationalCurve`'s `DropCurve`, unit
+//! `intersect.surface_drop_lib_p3`, are ported). Every run has at least
 //! [`MIN_GENERATED`] generated cases.
 
 use serde::{Deserialize, Serialize};

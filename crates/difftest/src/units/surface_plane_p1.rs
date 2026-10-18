@@ -12,8 +12,8 @@
 //!
 //! Deferred cases: `CoincidenceCheck` with a surface that is not a plane
 //! (`SmSurface::IsPlanar`, `surface.surface_p7`), `DropCurve` falling back to the
-//! general `SmSurface::DropCurve` (`intersect.surface_drop_lib_p3`) and
-//! `GlobalLineIntersect` of a line in the plane meeting the domain in one line
+//! general `SmSurface::DropCurve` (ported, `intersect.surface_drop_lib_p3`) where that
+//! reaches a unit not ported yet, and `GlobalLineIntersect` of a line in the plane meeting the domain in one line
 //! parameter (`SmSurface::GlobalLineIntersect`, `surface.surface_p8`).
 
 use serde::{Deserialize, Serialize};

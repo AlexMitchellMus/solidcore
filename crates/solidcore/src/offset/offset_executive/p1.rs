@@ -2059,7 +2059,7 @@ mod tests {
     }
 
     #[test]
-    fn face_prefix_preserves_unported_uv_evaluation_before_domain_boolean() {
+    fn face_prefix_drops_uv_trim_curve_before_domain_boolean() {
         let kernel = Kernel::default();
         let mut executive = executive();
         let (mut original, _, face, _) = excess_face_fixture();
@@ -2068,12 +2068,19 @@ mod tests {
         executive.set_offset_brep(Brep::new());
         let mut offset = Some(plane(1.0));
         // Since topology.edgeuse_p3 (#117) builds the UV trim curve, the face prefix
-        // reaches the plane's DropCurve before the domain boolean.
-        assert_dependency(
-            executive.build_offset_of_faceuse(&kernel, &mut original, faceuse, &mut offset),
-            "SmSurface::DropCurve",
-            "intersect.surface_drop_lib_p3",
-        );
+        // runs the plane's DropCurve (wired by intersect.surface_drop_lib_p3, #136)
+        // before the domain boolean; the fixture's edge use then has no vertex use to
+        // set the curve on.
+        match executive
+            .build_offset_of_faceuse(&kernel, &mut original, faceuse, &mut offset)
+            .unwrap_err()
+        {
+            SolidError::InvalidInput { operation, reason } => {
+                assert_eq!(operation, "topology::edgeuse::p1");
+                assert!(reason.starts_with("SetUVTrimCurve"), "{reason}");
+            }
+            other => panic!("expected SetUVTrimCurve to fail, got {other:?}"),
+        }
     }
 
     #[test]

@@ -13,15 +13,13 @@
 //! A case is one drop; both sides produce the record documented in the ffi module,
 //! compared as the values `rec`.
 //!
-//! Deferred cases: every drop whose `SetProperties` reaches a non-degenerate curve
-//! tangent that is not within 3 degrees of the surface normal evaluates the offset
-//! surface (`surface.offset_surface`), so most curves that run along the surface are
-//! deferred; drops that finish on a surface that is not a B-spline surface need the
-//! curve on that surface (`curve.crv_on_surf`, dispatch gap). The cases that compare
-//! are the early exits (degenerate or uncontained domains, a first drop off the
-//! surface with the tangent along the normal), degenerate (point) curves anywhere on
-//! the surface (interior, boundaries, seams, poles: the pole line), and curves along the
-//! surface normal.
+//! Deferred cases: drops that finish on a surface that is not a B-spline surface need
+//! the curve on that surface for the final gap measure (`curve.crv_on_surf`, dispatch
+//! gap). Everything else compares: the early exits (degenerate or uncontained domains,
+//! a first drop off the surface), degenerate (point) curves anywhere on the surface
+//! (interior, boundaries, seams, poles: the pole line), curves along the surface
+//! normal, and the traced curves on B-spline surfaces (the offset surface tangent drops,
+//! the span subdivision stack, `AddToCurve`, the CrvOnSurf gap).
 //!
 //! At least [`MIN_GENERATED`] generated cases run.
 
@@ -31,7 +29,7 @@ use serde_json::Value;
 use solidcore::geom::extent1d::Extent1d;
 use solidcore::geom::vector2d::Point2;
 use solidcore::geom::vector3d::Vec3;
-use solidcore::intersect::surface_drop_lib::p1::DropFailRecord;
+use solidcore::intersect::surface_drop_lib::p1::{DropFailRecord, SM_SUCCESS};
 use solidcore::kernel::Kernel;
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::nurbs::b_spline_surface::SurfParamType;
@@ -110,9 +108,9 @@ fn param_code(p: SurfParamType) -> f64 {
     }
 }
 
-/// A status record value: `0` for `SM_SUCCESS`.
+/// A status record value: `0` for `SM_SUCCESS` (1000), as the shim's `st`.
 fn code(c: i32) -> f64 {
-    if c == 0 {
+    if c == SM_SUCCESS {
         0.0
     } else {
         f64::from(c)

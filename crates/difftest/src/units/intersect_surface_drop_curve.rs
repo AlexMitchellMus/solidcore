@@ -486,7 +486,22 @@ fn put_acc(o: &mut Vec<f64>, a: &TraceOutput) {
     put_doubles(o, &a.deviations);
 }
 
+/// The start list value when a start point is also on the curve list (the shim's
+/// `SHARED_START_LIST`): upstream's intrusive start list then walks the curve ring
+/// (`DoTrace`'s `TraceCurve2` appends the start node it traces to `m_vCurvePoints`,
+/// `plan/upstream-issues.md` WR-182), which the port's id lists do not model.
+const SHARED_START_LIST: f64 = -3.0;
+
 fn put_start_points(o: &mut Vec<f64>, t: &SurfaceDropCurve<'_>) -> Result<(), Fail> {
+    if t
+        .base
+        .start_points
+        .iter()
+        .any(|id| t.base.curve_points.contains(id))
+    {
+        o.push(SHARED_START_LIST);
+        return Ok(());
+    }
     o.push(t.base.start_points.len() as f64);
     for &id in &t.base.start_points {
         let p = t
