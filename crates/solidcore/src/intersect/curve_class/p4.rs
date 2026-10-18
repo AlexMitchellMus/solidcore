@@ -419,19 +419,24 @@ fn edgeuse_orientation<O: ClassObject, G: ClassGeometry<O>>(
     eu1::orientation(b, eu)
 }
 
-/// `SmEdgeuse::EvaluateBinormal(param, TRUE, ...)` (unit `topology.edgeuse_p3`, through the
-/// stub in `topology::edge`).
+/// `SmEdgeuse::EvaluateBinormal(param, TRUE, ...)` (unit `topology.edgeuse_p3`).
+/// `topology::edgeuse::p3::evaluate_binormal` is ported but takes the kernel and a
+/// mutable B-rep (it can build a missing UV trim curve), while this part reaches the
+/// B-rep read-only through [`ClassGeometry::topology_entity`]; until that is bridged (a
+/// snapshot, or a mutable hook) the call stays deferred, as it was through the former
+/// stub in `topology::edge`.
 fn edgeuse_evaluate_binormal<O: ClassObject, G: ClassGeometry<O>>(
     geometry: &G,
     edgeuse: O,
     param: f64,
 ) -> Result<Binormal> {
-    let (b, eu) = edgeuse_id(geometry, edgeuse, OP_CROSS)?;
-    let r = topo_edge::evaluate_binormal(b, eu, param, true)?;
-    Ok(Binormal {
-        point: r.point,
-        binormal: r.binormal,
-    })
+    let (_b, _eu) = edgeuse_id(geometry, edgeuse, OP_CROSS)?;
+    let _ = param;
+    // UNPORTED(topology.edgeuse_p3): SmEdgeuse::EvaluateBinormal (needs &mut Brep, see above)
+    Err(SolidError::unported(
+        "SmEdgeuse::EvaluateBinormal",
+        "topology.edgeuse_p3",
+    ))
 }
 
 /// `SmVertex::GetVertexusesOfFace(face, vertexuses, faceuse)` (unit `topology.vertex`).
