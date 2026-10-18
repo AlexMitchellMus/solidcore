@@ -39,16 +39,30 @@
 //!   (the cache answers as the loop classification does); its status is ignored as
 //!   upstream ignores it ([`SolidError::Unported`], `InvalidInput` and `NotFound`
 //!   propagate). A range whose `sm_FaceClassifyUVLine` returns no interval reads
-//!   `sCC[0]` of an empty array upstream; the port returns `InvalidInput`.
+//!   `sCC[0]` of an empty array upstream (`plan/upstream-issues.md` UB-180); the port
+//!   returns `InvalidInput`.
 //! - **`FindVertexSector`** returns [`VertexSector`]. The out-of-scope `sSurfDomain` of
 //!   the 3D branch is reproduced: it is the natural UV domain only on the pass that first
 //!   fetches the poles, and an empty extent on later passes, as upstream (a block-local
-//!   `SmExtent2d` declared in the loop). The seam curves of the closure checks are built
+//!   `SmExtent2d` declared in the loop; WR-177). The seam curves of the closure checks are built
 //!   once and dropped at the end (`SmObjDelete`). Statuses upstream ignores
 //!   (`NormalizedEvaluate` of the CW neighbour, `DropPoint`, the curve `Evaluate`) are
 //!   ignored, keeping [`SolidError::Unported`]; a failed `SER` returns its error.
 //! - **`HasSeamProblem`** returns [`SeamCheck`]. Its stage-2 face properties branch
-//!   returns `SM_SUCCESS` (`0`, `FALSE`) as upstream does, whatever the properties found.
+//!   returns `SM_SUCCESS` (`1000`) as its `SmBoolean`, so `has_problem` is `true` there
+//!   whatever the properties found, as upstream (WR-176).
+//! - **Face tolerance.** `SmTol::GetZoneTol3d` of a face-owned surface is the face's
+//!   `GetTolerance`, which the surface layer cannot reach (`topology.face_p2` stubs
+//!   there). `FindVertexSector` passes the face's tolerance explicitly to `IsOnSeam`
+//!   and to the pole search of `GetSingularities` / `IsSingularity`; the surface calls
+//!   without such an argument (`IsClosed`, `IsPeriodic`, the line intersection) still
+//!   return [`SolidError::Unported`] for a face-owned surface.
+//! - **`HasSeamProblem` and `SetProps_Stage2`** call each other upstream. Without stage 2
+//!   face properties the port runs [`FaceProps::set_props_stage2_with`] with this
+//!   function (and the caller's classification objects) as its seam call, passing the
+//!   properties' closed flags (an `UNSURE` flag reads as `TRUE`) and the properties
+//!   themselves, as `SetProps_Stage2` does. The seam curves are temporaries of the
+//!   caller's handle type ([`ClassObject::temporary`]).
 //! - **Unported callees.** `sm_FaceClassifyUVLine` and `SmFace::SectorClassifyCurveOn`
 //!   (`query.face_p3`), `SmCurveClassification::GetLoopCrossings`
 //!   (`intersect.curve_class_p4`) return [`SolidError::Unported`]; the code after them is
@@ -59,32 +73,34 @@ use crate::curve::curve::Curve;
 use crate::error::{EntityRef, Result, SolidError};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
-use crate::geom::solution_array::{SolutionArray, SolutionObject, SolutionType};
-use crate::geom::vector2d::Point2;
 use crate::geom::geom_utility::p2::ContinuityType;
+use crate::geom::global_solver::SolverOperation;
 use crate::geom::object::ObjectRef;
+use crate::geom::solution_array::{SolutionArray, SolutionObject, SolutionType};
+use crate::geom::tol::{self, SmallTopoType};
+use crate::geom::vector2d::Point2;
 use crate::heal::face_props::{FaceProps, HealerOpType, LoopObject, PropStage, Tri};
 use crate::intersect::curve_class::p1::{CrvDirOnFaceType, CurveClassification, CurveInterval};
 use crate::intersect::point_class::{
     ClassGeometry, ClassObject, ClassObjectKind, PointClassType, PointClassification,
 };
-use crate::surface::trim_srf_cache::TrimSrfCache;
-use crate::surface::volume::Volume;
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3};
-use crate::geom::global_solver::SolverOperation;
-use crate::geom::tol::{self, SmallTopoType};
 use crate::math::{BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT};
 use crate::nurbs::b_spline_surface::p1::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
-use crate::topology::face::p1::SeamProblem;
-use crate::topology::face::p2::review_start_and_stop_on_seam_crv_classifies;
-use crate::query::face::p2::{curve_on_classify, point_classify, CurveOnClassifyObjects, PointClassifyOptions};
+use crate::query::face::p2::{
+    curve_on_classify, point_classify, CurveOnClassifyObjects, PointClassifyOptions,
+};
 use crate::surface::surface::p5::{SS_NONE, SS_UMAX, SS_UMIN, SS_VMAX, SS_VMIN};
 use crate::surface::surface::{Surface, SurfaceKind};
-use crate::topology::edgeuse::p3::{self as eu3, BinormalOptions};
+use crate::surface::trim_srf_cache::TrimSrfCache;
+use crate::surface::volume::Volume;
 use crate::topology::edge;
 use crate::topology::edgeuse::p1 as eu1;
+use crate::topology::edgeuse::p3::{self as eu3, BinormalOptions};
+use crate::topology::face::p1::SeamProblem;
+use crate::topology::face::p2::review_start_and_stop_on_seam_crv_classifies;
 use crate::topology::loopuse::{self, AttributeFilter};
 use crate::topology::vertex;
 use crate::topology::vertexuse;
@@ -269,7 +285,10 @@ fn faceuse_face(b: &Brep, fu: crate::topology::FaceuseId) -> Result<Option<FaceI
 }
 
 /// The shell of a face use, which upstream dereferences.
-fn faceuse_shell(b: &Brep, fu: Option<crate::topology::FaceuseId>) -> Result<crate::topology::ShellId> {
+fn faceuse_shell(
+    b: &Brep,
+    fu: Option<crate::topology::FaceuseId>,
+) -> Result<crate::topology::ShellId> {
     let fu = fu.ok_or_else(|| null("IsConnectedTo: face without face use"))?;
     b.faceuse(fu)?
         .shell
@@ -349,12 +368,21 @@ fn face_classify_uv_line(
     _tol: f64,
 ) -> Result<UvLineIntervals> {
     // UNPORTED(query.face_p3): sm_FaceClassifyUVLine
-    Err(SolidError::unported("sm_FaceClassifyUVLine", "query.face_p3"))
+    Err(SolidError::unported(
+        "sm_FaceClassifyUVLine",
+        "query.face_p3",
+    ))
 }
 
 /// The class of the UV point `uv` of face `f` (`SmFace::PointClassify(uv, tol, true,
 /// true, pc)` into a classification of tolerance `tol`, status ignored).
-fn classify_uv_point(k: &Kernel, b: &mut Brep, f: FaceId, uv: Point2, tol: f64) -> Result<PointClassType> {
+fn classify_uv_point(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    uv: Point2,
+    tol: f64,
+) -> Result<PointClassType> {
     let mut pc = PointClassification::new(tol);
     let opts = PointClassifyOptions {
         src_zone_tol_3d: tol,
@@ -607,7 +635,10 @@ fn sector_classify_curve_on(
     _uv_space_okay: bool,
 ) -> Result<(bool, bool, ClassifyProblem)> {
     // UNPORTED(query.face_p3): SmFace::SectorClassifyCurveOn
-    Err(SolidError::unported("SmFace::SectorClassifyCurveOn", "query.face_p3"))
+    Err(SolidError::unported(
+        "SmFace::SectorClassifyCurveOn",
+        "query.face_p3",
+    ))
 }
 
 /// `smos_Min(a, b)`: `a < b ? a : b`.
@@ -641,14 +672,22 @@ fn surface_zone_tol_3d(k: &Kernel, b: &Brep, f: FaceId, surface: &Surface) -> Re
 /// `GetSingularities(&poles)` of the face's surface (status ignored, keeping
 /// [`SolidError::Unported`]): the singular sides and the four pole points (undefined
 /// where not singular). A face-owned surface takes its tolerance from the face.
-fn surface_singularities(k: &Kernel, b: &Brep, f: FaceId, surface: &Surface) -> Result<(u64, [Point3; 4])> {
+fn surface_singularities(
+    k: &Kernel,
+    b: &Brep,
+    f: FaceId,
+    surface: &Surface,
+) -> Result<(u64, [Point3; 4])> {
     let r = if surface.face()?.is_some() {
         surface.get_singularities_of_face(k, super::p2::tolerance(b, f)?, true, false)
     } else {
         surface.get_singularities(k, true, false)
     };
     match r {
-        Ok(s) => Ok((u64::from(s.singular), s.pole_points.unwrap_or([Vec3::UNDEF; 4]))),
+        Ok(s) => Ok((
+            u64::from(s.singular),
+            s.pole_points.unwrap_or([Vec3::UNDEF; 4]),
+        )),
         Err(e) if e.is_unported() => Err(e),
         // a failing evaluation inside it leaves its initial outputs (SM_SS_NONE)
         Err(_) => Ok((SS_NONE, [Vec3::UNDEF; 4])),
@@ -674,7 +713,13 @@ fn surface_is_singularity(
 }
 
 /// `NormalizedEvaluate(t, TRUE, rPnt, NULL, bUVSpaceOkay)`'s UV point.
-fn eu_uv_at(k: &Kernel, b: &mut Brep, eu: EdgeuseId, t: f64, uv_space_okay: bool) -> Result<Point2> {
+fn eu_uv_at(
+    k: &Kernel,
+    b: &mut Brep,
+    eu: EdgeuseId,
+    t: f64,
+    uv_space_okay: bool,
+) -> Result<Point2> {
     let p = eu3::normalized_evaluate(k, b, eu, t, true, false, uv_space_okay)?.point;
     Ok(Point2::new(p.x, p.y))
 }
@@ -689,10 +734,18 @@ struct Closure {
 }
 
 fn closure_of(k: &Kernel, surface: &Surface, uv_domain: &Extent2d) -> Result<Closure> {
-    let closed_u = surface.is_closed(uv_domain, SurfParamType::U, None, false)?.0;
-    let closed_v = surface.is_closed(uv_domain, SurfParamType::V, None, false)?.0;
-    let seam_u = surface.create_seam_curve(k, SurfParamType::U, closed_u)?.map(Curve::from);
-    let seam_v = surface.create_seam_curve(k, SurfParamType::V, closed_v)?.map(Curve::from);
+    let closed_u = surface
+        .is_closed(uv_domain, SurfParamType::U, None, false)?
+        .0;
+    let closed_v = surface
+        .is_closed(uv_domain, SurfParamType::V, None, false)?
+        .0;
+    let seam_u = surface
+        .create_seam_curve(k, SurfParamType::U, closed_u)?
+        .map(Curve::from);
+    let seam_v = surface
+        .create_seam_curve(k, SurfParamType::V, closed_v)?
+        .map(Curve::from);
     Ok(Closure {
         closed_u,
         closed_v,
@@ -704,9 +757,23 @@ fn closure_of(k: &Kernel, surface: &Surface, uv_domain: &Extent2d) -> Result<Clo
 /// `pSeam->DropPoint(natural interval, point, NULL, tol, NULL, bSuccess, t, rdDist,
 /// SM_SO_MINIMIZE)`'s distance (status ignored: `dist` stays as it was), upstream
 /// dereferencing a null seam curve.
-fn seam_distance(k: &Kernel, seam: Option<&Curve>, point: Point3, tol: f64, dist: f64) -> Result<f64> {
+fn seam_distance(
+    k: &Kernel,
+    seam: Option<&Curve>,
+    point: Point3,
+    tol: f64,
+    dist: f64,
+) -> Result<f64> {
     let seam = seam.ok_or_else(|| null("FindVertexSector: closed surface without seam curve"))?;
-    match seam.drop_point(k, &seam.natural_interval(), point, None, tol, None, SolverOperation::Minimize) {
+    match seam.drop_point(
+        k,
+        &seam.natural_interval(),
+        point,
+        None,
+        tol,
+        None,
+        SolverOperation::Minimize,
+    ) {
         Ok(d) => Ok(d.distance),
         Err(e) if must_propagate(&e) => Err(e),
         Err(_) => Ok(dist),
@@ -738,7 +805,12 @@ fn face_surface(b: &Brep, f: FaceId) -> Result<Surface> {
 /// errors of the evaluations upstream checks (`SER`); [`SolidError::Unported`]
 /// (module docs).
 #[allow(clippy::too_many_lines)]
-pub fn find_vertex_sector(k: &Kernel, b: &mut Brep, f: FaceId, args: FindVertexSectorArgs<'_>) -> Result<VertexSector> {
+pub fn find_vertex_sector(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    args: FindVertexSectorArgs<'_>,
+) -> Result<VertexSector> {
     let FindVertexSectorArgs {
         vertex: v,
         curve: curve_3d,
@@ -755,7 +827,9 @@ pub fn find_vertex_sector(k: &Kernel, b: &mut Brep, f: FaceId, args: FindVertexS
     let lifted;
     let curve: &Curve = if curve_3d.dim() == 2 {
         let SurfaceKind::BSpline(s) = face_surface(b, f)?.kind().clone() else {
-            return Err(null("FindVertexSector: a curve on a surface needs a B-spline surface"));
+            return Err(null(
+                "FindVertexSector: a curve on a surface needs a B-spline surface",
+            ));
         };
         lifted = Curve::from(CrvOnSurf::new(k, curve_3d.clone(), s, None, 0)?);
         &lifted
@@ -794,7 +868,9 @@ pub fn find_vertex_sector(k: &Kernel, b: &mut Brep, f: FaceId, args: FindVertexS
     // low work: one sector on upward face and (no need to validate, or a strut, or a
     // loop vertexuse) - use single sector as the classification
     if test_vu.len() == 1
-        && (!validate_sector || vertexuse::is_strut_vertexuse(b, first)? || vertexuse::is_loop_vertexuse(b, first)?)
+        && (!validate_sector
+            || vertexuse::is_strut_vertexuse(b, first)?
+            || vertexuse::is_loop_vertexuse(b, first)?)
     {
         out.vertexuse = Some(first);
         return Ok(out);
@@ -830,14 +906,19 @@ pub fn find_vertex_sector(k: &Kernel, b: &mut Brep, f: FaceId, args: FindVertexS
         }
 
         // else Vertexuse is an EdgeVertexuse - get Edgeuse and its locals for this vertex
-        let eu1 = vertexuse::edgeuse(b, vu)?.ok_or_else(|| null("FindVertexSector: vertex use without edge use"))?;
+        let eu1 = vertexuse::edgeuse(b, vu)?
+            .ok_or_else(|| null("FindVertexSector: vertex use without edge use"))?;
         let e1 = b
             .edgeuse(eu1)?
             .edge
             .ok_or_else(|| null("FindVertexSector: edge use without edge"))?;
         let eu1_same = b.edgeuse(eu1)?.orientation == OrientType::Same;
         let e1_interval = b.edge(e1)?.interval;
-        let eu1_param = if eu1_same { e1_interval.min() } else { e1_interval.max() };
+        let eu1_param = if eu1_same {
+            e1_interval.min()
+        } else {
+            e1_interval.max()
+        };
         let has_uv_trim_curve = eu1::uv_trim_curve(b, eu1)?.0.is_some();
         let mut on_singularity = false;
         let on_seam;
@@ -853,7 +934,11 @@ pub fn find_vertex_sector(k: &Kernel, b: &mut Brep, f: FaceId, args: FindVertexS
             eu1_uv = eu_uv_at(k, b, eu1, 0.0, uv_space_okay)?;
 
             // get UVDist to 3DCurve->UVPoint
-            dist_uv = if uv_curve.is_some() { vertex_uv.distance(eu1_uv) } else { 0.0 };
+            dist_uv = if uv_curve.is_some() {
+                vertex_uv.distance(eu1_uv)
+            } else {
+                0.0
+            };
 
             // If uv dist is large, check for closed Edge in 3d, running from seam to seam.
             if dist_uv > test_dist_uv {
@@ -862,7 +947,11 @@ pub fn find_vertex_sector(k: &Kernel, b: &mut Brep, f: FaceId, args: FindVertexS
                 if surface.is_on_seam(k, eu1_uv, Some(tol))?.on_seam {
                     // Evaluate at other end of pEU1.
                     let eu1_uv2 = eu_uv_at(k, b, eu1, 1.0, uv_space_okay)?;
-                    let dist_uv2 = if uv_curve.is_some() { vertex_uv.distance(eu1_uv2) } else { 0.0 };
+                    let dist_uv2 = if uv_curve.is_some() {
+                        vertex_uv.distance(eu1_uv2)
+                    } else {
+                        0.0
+                    };
                     if dist_uv2 < test_dist_uv {
                         eu1_uv = eu1_uv2;
                         dist_uv = dist_uv2;
@@ -942,11 +1031,13 @@ pub fn find_vertex_sector(k: &Kernel, b: &mut Brep, f: FaceId, args: FindVertexS
             if c.closed_v {
                 dist_v = seam_distance(k, c.seam_v.as_ref(), vertex_point, xsect_tol_3d, dist_v)?;
             }
-            on_seam = (c.closed_u && dist_u < xsect_tol_3d) || (c.closed_v && dist_v < xsect_tol_3d);
+            on_seam =
+                (c.closed_u && dist_u < xsect_tol_3d) || (c.closed_v && dist_v < xsect_tol_3d);
         } // end find bIsOnSingularity with 3d checks
 
         // get this loop's Edgeuse->neighbor and its param for this vertex
-        let eu_cw = eu1::cw_edgeuse(b, eu1)?.ok_or_else(|| null("FindVertexSector: edge use without CW edge use"))?;
+        let eu_cw = eu1::cw_edgeuse(b, eu1)?
+            .ok_or_else(|| null("FindVertexSector: edge use without CW edge use"))?;
         let e_cw = b
             .edgeuse(eu_cw)?
             .edge
@@ -976,8 +1067,10 @@ pub fn find_vertex_sector(k: &Kernel, b: &mut Brep, f: FaceId, args: FindVertexS
             if uv_domain.is_point_on_boundary(eu1_uv, EFF_ZERO_SQRT).0
                 && dist_uv > test_dist_uv
                 && (!on_singularity
-                    || (sing_dir == SurfParamType::V && (vertex_uv.x - eu1_uv.x).abs() > 100.0 * EFF_ZERO_SQRT)
-                    || (sing_dir == SurfParamType::U && (vertex_uv.y - eu1_uv.y).abs() > 100.0 * EFF_ZERO_SQRT))
+                    || (sing_dir == SurfParamType::V
+                        && (vertex_uv.x - eu1_uv.x).abs() > 100.0 * EFF_ZERO_SQRT)
+                    || (sing_dir == SurfParamType::U
+                        && (vertex_uv.y - eu1_uv.y).abs() > 100.0 * EFF_ZERO_SQRT))
                 && (!on_seam || (!missing_seam_u && !missing_seam_v))
             {
                 continue;
@@ -996,14 +1089,23 @@ pub fn find_vertex_sector(k: &Kernel, b: &mut Brep, f: FaceId, args: FindVertexS
             // when the face has seams - it's possible to look at the wrong vertexuse
             if c.closed_u || c.closed_v {
                 // get associated edgeuse/face plane orientation in the tangent and binormal vectors
-                let bn = eu3::evaluate_binormal(k, b, eu1, eu1_param, !uv_space_okay, &BinormalOptions::default())?;
+                let bn = eu3::evaluate_binormal(
+                    k,
+                    b,
+                    eu1,
+                    eu1_param,
+                    !uv_space_okay,
+                    &BinormalOptions::default(),
+                )?;
 
                 // get the curve tangent at the vertex parameter (status ignored upstream,
                 // which then reads the tangent uninitialised)
                 let pv = match curve.evaluate(param_at_vertex, 1, true, true) {
                     Ok(pv) => pv,
                     Err(e) if must_propagate(&e) => return Err(e),
-                    Err(_) => return Err(null("FindVertexSector: curve tangent left uninitialised")),
+                    Err(_) => {
+                        return Err(null("FindVertexSector: curve tangent left uninitialised"))
+                    }
                 };
                 let tangent = pv
                     .get(1)
@@ -1104,7 +1206,9 @@ impl<M: ClassGeometry<O>, O: ClassObject> ClassGeometry<O> for WithSeam<'_, M, O
     }
 }
 
-impl<M: CurveOnClassifyObjects<O>, O: ClassObject> CurveOnClassifyObjects<O> for WithSeam<'_, M, O> {
+impl<M: CurveOnClassifyObjects<O>, O: ClassObject> CurveOnClassifyObjects<O>
+    for WithSeam<'_, M, O>
+{
     fn face(&self, f: FaceId) -> O {
         self.inner.face(f)
     }
@@ -1246,8 +1350,9 @@ fn classify_seam<O: LoopObject, M: CurveOnClassifyObjects<O>>(
     let interval = seam.natural_interval();
     let seam = Curve::from(seam);
     let temp = |i: usize| -> Result<O> {
-        O::temporary(i, ClassObjectKind::Curve)
-            .ok_or_else(|| null("HasSeamProblem: classification handles cannot name the seam curve"))
+        O::temporary(i, ClassObjectKind::Curve).ok_or_else(|| {
+            null("HasSeamProblem: classification handles cannot name the seam curve")
+        })
     };
     let (seam_h, seam_uv_h) = (temp(SEAM_CURVE_TEMP)?, temp(SEAM_UV_CURVE_TEMP)?);
     let objects = WithSeam {
@@ -1257,7 +1362,8 @@ fn classify_seam<O: LoopObject, M: CurveOnClassifyObjects<O>>(
     };
 
     // build Seam classification object (owning the curve, edge not modified)
-    let mut class = CurveClassification::with_curve_interval(k, seam_h, interval, surface_zone_tol_3d);
+    let mut class =
+        CurveClassification::with_curve_interval(k, seam_h, interval, surface_zone_tol_3d);
     class.set_uv_curve1(Some(seam_uv_h));
     class.set_surface1(objects.face_surface(f));
     class.set_is_curve_owned(true);
@@ -1295,8 +1401,8 @@ fn classify_seam<O: LoopObject, M: CurveOnClassifyObjects<O>>(
 /// surface whose seam does not meet any loop but the other seam enters the face has
 /// that seam missing (the torus case). Without stage 2 face properties
 /// (`opts.face_props` below `PropStage::Stage2A`), `SetProps_Stage2` runs instead
-/// (which calls back here) and its results are returned with `has_problem` `false` (the
-/// `SM_SUCCESS` upstream returns as `SmBoolean`).
+/// (which calls back here) and its results are returned with `has_problem` `true` (the
+/// `SM_SUCCESS`, `1000`, upstream returns as `SmBoolean`).
 ///
 /// `objects` names the face's topology and geometry in the classifications, as for
 /// [`curve_on_classify`]; the seam curves are its temporaries 0 and 1
@@ -1343,7 +1449,9 @@ pub fn has_seam_problem<O: LoopObject, M: CurveOnClassifyObjects<O>>(
 
     // classify periodic surface and prepare for upcoming classifications
     let uv_domain = surface.natural_uv_domain();
-    let closed_c1 = |closed: Tri, val: ContinuityType| closed != Tri::False && val as i32 >= ContinuityType::C1 as i32;
+    let closed_c1 = |closed: Tri, val: ContinuityType| {
+        closed != Tri::False && val as i32 >= ContinuityType::C1 as i32
+    };
     let periodic_u = match (opt_periodic_u, face_props.as_deref()) {
         (Some(p), _) => p,
         (None, Some(fp)) => closed_c1(fp.closed_u, fp.closed_val_u),
@@ -1386,8 +1494,42 @@ pub fn has_seam_problem<O: LoopObject, M: CurveOnClassifyObjects<O>>(
     if props.prop_stage < PropStage::Stage2A {
         // run FaceProps->SetProps_Stage2: This is a recursive call after which
         // HasSeamProblem has already run
-        let index = if props.face_index == crate::heal::face_props::UNDEF_ULONG { 0 } else { props.face_index };
-        props.set_props_stage2(k, b, f, index, HealerOpType::All)?;
+        let index = if props.face_index == crate::heal::face_props::UNDEF_ULONG {
+            0
+        } else {
+            props.face_index
+        };
+        props.set_props_stage2_with(
+            k,
+            b,
+            f,
+            index,
+            HealerOpType::All,
+            &mut |k, b, f, cu, cv, p| {
+                // HasSeamProblem(*m_pCrvClassU, *m_pCrvClassV, .., FALSE, &m_bClosedU,
+                // &m_bClosedV, this): an UNSURE closed flag reads as TRUE
+                let (closed_u, closed_v) = (p.closed_u != Tri::False, p.closed_v != Tri::False);
+                let check = has_seam_problem(
+                    k,
+                    b,
+                    f,
+                    objects,
+                    HasSeamProblemOptions {
+                        outer_loop_only: false,
+                        periodic_u: Some(closed_u),
+                        periodic_v: Some(closed_v),
+                        face_props: Some(p),
+                    },
+                )?;
+                *cu = check.class_u;
+                *cv = check.class_v;
+                Ok(crate::heal::face_props::SeamProblem {
+                    crossed: check.problem.crossed,
+                    missing: check.problem.missing,
+                    near_miss: check.problem.near_miss,
+                })
+            },
+        )?;
 
         // set output and return
         out.class_u = props
@@ -1404,7 +1546,8 @@ pub fn has_seam_problem<O: LoopObject, M: CurveOnClassifyObjects<O>>(
             near_miss: props.bad_near_miss_seam_dir,
         };
 
-        // all done: upstream returns SM_SUCCESS (FALSE)
+        // all done: upstream returns SM_SUCCESS (1000) as the SmBoolean result
+        out.has_problem = true;
         return Ok(out);
     }
 
@@ -1456,13 +1599,23 @@ pub fn has_seam_problem<O: LoopObject, M: CurveOnClassifyObjects<O>>(
     // NonIntersecting Seam may be Missing
     if periodic_u && periodic_v {
         let this = objects.face(f);
-        if no_xsect_seam_u && props.done_touch_list_v.first().is_some_and(|t| t.loop_dir == CrvDirOnFaceType::In) {
+        if no_xsect_seam_u
+            && props
+                .done_touch_list_v
+                .first()
+                .is_some_and(|t| t.loop_dir == CrvDirOnFaceType::In)
+        {
             missing_u = true;
             mark_in_face(&mut out.class_u, this)?;
             crossed_u = true;
             crossed_v = true;
         }
-        if no_xsect_seam_v && props.done_touch_list_u.first().is_some_and(|t| t.loop_dir == CrvDirOnFaceType::In) {
+        if no_xsect_seam_v
+            && props
+                .done_touch_list_u
+                .first()
+                .is_some_and(|t| t.loop_dir == CrvDirOnFaceType::In)
+        {
             missing_v = true;
             mark_in_face(&mut out.class_v, this)?;
             crossed_u = true;

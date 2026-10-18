@@ -172,7 +172,7 @@ void fp4_brep_op(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
         for (ULONG i = 0; i < tgts.GetSize(); i++)
         {
             SmLoopuse* lu = tgts[i]->GetLoopuse();
-            if (tgt_only && (lu == nullptr || (lu->GetFaceuse() != f->GetUpwardFaceuse() && lu->GetOtherLoopuse() == nullptr)))
+            if (tgt_only && f->GetUpwardFaceuse() != nullptr && (lu == nullptr || (lu->GetFaceuse() != f->GetUpwardFaceuse() && lu->GetOtherLoopuse() == nullptr)))
             {
                 o.push_back(FP4_NULL_DEREF);
                 return;
