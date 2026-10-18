@@ -7590,3 +7590,51 @@ max_rel_err 0. Deferrals are now topology.brep_p3 (5), topology.brep_p7 (1) and
 topology.brep_p8 (11). This does not certify primitive topology or the deferred
 sphere face construction. Refreshed integration counts and dependency breakdowns
 for the affected units are in `plan/modules.toml` and `reports/difftest/`.
+
+
+## sweep.topology_sweep (PR #222; partial)
+
+- **Observed differential coverage.** 55 named fixtures plus 512 generated scripts:
+  551 pass, 16 deferred, zero failures and zero rejected native setups. All four maps
+  are compared after each script (counts, membership and values for all 65 keys),
+  including null entries, first vertex images, overwritten edge images and stale
+  reverse entries. Callback status/keep decision and map mutations, options,
+  repetitions (all 64 bits) and eight integer fields of each edge tag compare exactly.
+  The two identity namespaces on the Rust side correspond to distinct native objects;
+  this is not evidence of copying real cross-B-rep topology. Floating-point helper
+  coordinates/transforms are not emitted by this runner; helper status agreement
+  does not extend to their unobserved geometry values. The report's `values_compared`
+  counts floats only; the `state` integer arrays are nevertheless compared exactly.
+- **Deferred and unexecuted paths.** Three selected-vertex root sweeps stop in Rust
+  at `SmBrep::GetInfiniteRegion` (`topology.brep_p1`); 13 helper sweeps stop at
+  `SmBrep::MakeShellVertex` (`topology.brep_p9`). C++ execution beyond those points
+  is not a parity pass. The full edge/face construction, profile loop mapping,
+  silhouette/HCR flow, back-face move, stitch, merge and recursive wire sweep bodies
+  are ported through their final returns, but no native differential evidence is
+  claimed for those tails. Missing calls have default `Unported` implementations
+  in `SweepAccess`. It requires caller-owned context, B-rep, key/attribute, mark and
+  lifecycle resolution; this PR does not provide a production store/adapter for it.
+  Existing faithful face/edge/vertex geometry and traversal helpers are reused.
+  The plan's rectangle/polygon test entry points are indirect callers, not direct
+  topology-sweep fixture replays.
+- **Safety deviations and limits.** Execution rejects repetitions above 4096 before
+  mutating context; the option itself retains the full unsigned upstream value.
+  A soft `CollectFaces` failure that did not mark its start face returns an error
+  instead of retrying forever. Temporary scene, wire and merge objects are cleaned
+  on Result errors; partial marks/output are preserved when a soft failure made
+  progress. Context flags restore in reverse construction order, including aliased
+  contexts and failure to obtain the second mutable context. These are safe Rust
+  unit regressions with a service double, not native topology comparisons.
+- **Consuming union ownership.** `SmMerge::ManifoldBoolean` with default
+  `m_bKeepOtherBrep=FALSE` deletes the source on success (`SmMerge.cpp`, final cleanup).
+  `SmTopologySweep::DoSweep` retains `pWireBrep` outside its repetition loop. The Rust
+  port clears the handle after successful union and releases only live owned wire
+  temporaries on early errors; otherwise adding cleanup would double-delete the
+  consumed object, and retaining the handle could reuse it on a later repetition.
+  A two-repetition Rust regression makes the second pass have silhouettes but no
+  wires, and rejects any access to the consumed source. No native reproducer of the
+  upstream stale-pointer scenario has been run; do not call it a confirmed C++ crash.
+- **Harness stress.** Perturbation detects all 551 comparable scripts. The 20,000
+  mutated-input campaign has 7,389 executed, 3,817 rejected and 8,794 malformed cases:
+  zero differing results, crashes, panics or timeouts. This covers the bounded script
+  API, not the dependency-blocked construction paths or a general crash guarantee.

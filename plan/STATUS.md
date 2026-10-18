@@ -1,5 +1,9 @@
 # solidcore status
 
+Last updated: 2026-10-18, PR #222 (`sweep.topology_sweep` partial: 551 exact integer state passes, 16 deferred, 0 rejected). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
+
+Latest port: `sweep.topology_sweep` ([PR #222](https://github.com/tangency-labs/solidcore/pull/222)) implements the complete sweep orchestration through an explicit `SweepAccess` service boundary. The 567-case gate compares maps, stitch-callback decisions, options and edge-profile tags; topology creation and whole-B-rep/HCR/merge/stitch paths await dependencies and are not claimed as differential coverage. Safety regression tests cover failed traversal progress, temporary ownership, context restoration and consuming union across repetitions. A concrete production access adapter remains integration work; see `plan/findings.md`.
+
 Last updated: 2026-10-17, PR #213 (`primitive.primitive_creation_p1` partial: 661 bit-identical passes, 17 dependency deferrals, one UB-57 construction preflight rejection). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
 Latest topology integration: `topology.brep_p6` partial (PR #169, after its dependency #154: 498 cases, 450 pass, 48 deferred, 0 failed; 206 units, 113 green and 93 partial); before: `topology.shell` partial (PR #154, continuing @0xlillith's PR #80: 192 ported units, 109 green and 83 partial); before: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green); before: `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
