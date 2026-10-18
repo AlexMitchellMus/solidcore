@@ -11,8 +11,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "boolean_box_minus_sphere",
@@ -23,8 +23,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "boolean_box_sphere_op0",
@@ -35,8 +35,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "boolean_box_sphere_op1",
@@ -47,8 +47,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "boolean_box_sphere_op2",
@@ -59,8 +59,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "boolean_box_sphere_op3",
@@ -71,8 +71,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "boolean_box_sphere_op4",
@@ -83,8 +83,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "boolean_box_sphere_op5",
@@ -95,8 +95,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "boolean_box_sphere_op6",
@@ -107,8 +107,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "boolean_box_sphere_op7",
@@ -119,8 +119,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "boolean_box_sphere_op8",
@@ -131,8 +131,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "boolean_box_sphere_op10",
@@ -143,8 +143,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "with_options_difference",
@@ -163,8 +163,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "with_options_keep_other",
@@ -175,8 +175,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "with_options_cookie_cutter",
@@ -331,8 +331,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "census_difference_cavity",
@@ -343,8 +343,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "census_union_disjoint",
@@ -355,8 +355,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "intersection_overlap",
@@ -367,8 +367,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "merge_nested",
@@ -495,8 +495,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0001",
@@ -507,8 +507,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0002",
@@ -531,8 +531,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0004",
@@ -543,8 +543,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0005",
@@ -619,8 +619,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0013",
@@ -631,8 +631,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0014",
@@ -643,8 +643,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0015",
@@ -663,8 +663,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0017",
@@ -715,8 +715,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0023",
@@ -763,8 +763,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0028",
@@ -815,8 +815,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0033",
@@ -827,8 +827,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0034",
@@ -839,8 +839,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0035",
@@ -851,8 +851,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0036",
@@ -863,8 +863,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0037",
@@ -931,8 +931,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0044",
@@ -959,8 +959,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0047",
@@ -971,8 +971,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0048",
@@ -983,8 +983,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0049",
@@ -995,8 +995,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0050",
@@ -1007,8 +1007,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0051",
@@ -1043,8 +1043,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0055",
@@ -1063,8 +1063,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0057",
@@ -1087,8 +1087,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0059",
@@ -1099,8 +1099,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0060",
@@ -1199,8 +1199,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0071",
@@ -1211,8 +1211,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0072",
@@ -1275,8 +1275,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0078",
@@ -1303,8 +1303,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0081",
@@ -1323,8 +1323,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0083",
@@ -1351,8 +1351,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0086",
@@ -1395,8 +1395,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0091",
@@ -1407,8 +1407,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0092",
@@ -1419,8 +1419,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0093",
@@ -1527,8 +1527,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0105",
@@ -1587,8 +1587,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0111",
@@ -1767,8 +1767,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0130",
@@ -1807,8 +1807,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0134",
@@ -1911,8 +1911,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0145",
@@ -1959,8 +1959,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0150",
@@ -1987,8 +1987,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0153",
@@ -1999,8 +1999,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0154",
@@ -2011,8 +2011,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0155",
@@ -2039,8 +2039,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0158",
@@ -2067,8 +2067,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0161",
@@ -2079,8 +2079,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0162",
@@ -2131,8 +2131,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0168",
@@ -2195,8 +2195,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0175",
@@ -2207,8 +2207,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0176",
@@ -2243,8 +2243,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0180",
@@ -2255,8 +2255,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0181",
@@ -2359,8 +2359,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0192",
@@ -2407,8 +2407,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0197",
@@ -2447,8 +2447,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0201",
@@ -2531,8 +2531,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0210",
@@ -2591,8 +2591,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0216",
@@ -2611,8 +2611,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0218",
@@ -2635,8 +2635,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0220",
@@ -2647,8 +2647,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0221",
@@ -2659,8 +2659,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0222",
@@ -2767,8 +2767,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0233",
@@ -2779,8 +2779,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0234",
@@ -2831,8 +2831,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::GetMinEdgeBBoxSize",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0239",
@@ -2848,8 +2848,8 @@
   "cases_passed": 142,
   "cases_total": 284,
   "deferred_by_unit": {
-    "boolean.merge_p2": 81,
-    "boolean.merge_p3": 61
+    "boolean.merge_p3": 61,
+    "topology.brep_p2": 81
   },
   "max_rel_err": 0.0,
   "pass": true,

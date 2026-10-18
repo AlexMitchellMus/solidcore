@@ -1353,6 +1353,24 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** crash / out-of-range read.
 - **Rust port:** Kernel topology mutation remains deferred. Both the safe FFI validator and the C++ shim require equally sized partners for op 3 with fillets. Six `rejected_fillets_*` fixtures check rejection; 660 isolated probes independently exercise both guards at first and last indices of 1/2/3/32 intervals. Valid equal-sized pairs and non-fillet calls remain accepted.
 
+#### UB-177. `SmMerge::MergeAddedTopology` uses a vertex listed twice after gluing deletes it
+- **Location:** `source/SMLib/src/SmMerge.cpp:5304`, `SmMerge::MergeAddedTopology` (`sAddedVerts = *pMergeVerts` is copied without `AddUnique`); `SmStitch::StitchVertexPairs` (`source/SMLib/src/SmStitch.cpp`).
+- **What happens:** A caller-supplied vertex list is used as given. `StitchVertexPairs` glues the first copy of a duplicated added vertex to a master vertex, deletes it and nulls that one slot; the second slot still holds the deleted vertex, which the stitch then dereferences.
+- **Trigger:** `MergeAddedTopology` with a vertex twice in `pMergeVerts`, within the stitch tolerance (4x the approximation tolerance) of a vertex of the rest of the B-rep: e.g. the ASCII `plane_square.smb` with vertices `[0, 0]`, no faces or edges, tolerance 10.
+- **How found:** adversarial / edge-case fixture: run through the `boolean.merge_p2` shim with its duplicate guard relaxed, the C++ reference segfaults (exit 139); the same request without the duplicate succeeds.
+- **Confirmed:** yes (reference build).
+- **Severity:** crash/UB (use after free).
+- **Rust port:** The FFI guard refuses any entity listed twice in a `MergeAddedTopology` list; the port follows upstream.
+
+#### UB-178. `SmApiStitch(pBrep, pFaceToStitch)` builds its `SmMerge` with a null other B-rep and a zero tolerance
+- **Location:** `source/SM_API/src/SmApiBrep.cpp:1183`, `SmApiStitch(SmBrep*, SmFace*)`: `SmMerge sMerge(*pContext, pBrep, NULL)`; `source/SMLib/src/SmMerge.cpp:72`, `SmMerge::SmMerge` (`pOtherBrep->GetMinEdgeBBoxSize`).
+- **What happens:** The constructor's tolerance argument defaults to `0`, and a tolerance below `SM_EFF_ZERO` is computed from both B-reps' minimum edge sizes and tolerances. Its comment says the other B-rep "can now be Null, for the Stitch methods", but the computation dereferences it unconditionally, so this overload of `SmApiStitch` crashes on every call that passes its null checks.
+- **Trigger:** Any `SmApiStitch(pBrep, pFace)` with non-null arguments; directly, `SmMerge(ctx, pBrep, NULL)` (or any tolerance below `SM_EFF_ZERO`) on e.g. the ASCII `plane_square.smb`.
+- **How found:** adversarial / edge-case fixture: the `boolean.merge_p2` constructor case with a null other B-rep and tolerance `0`, run with the shim guard relaxed, segfaults the C++ reference (exit 139).
+- **Confirmed:** yes (reference build).
+- **Severity:** crash/UB (null dereference).
+- **Rust port:** `MergeState::with_breps` returns `SolidError::InvalidInput` for a computed tolerance without other B-rep (after the unported `GetMinEdgeBBoxSize` of the primary); the FFI guard refuses the input.
+
 ### Healer target management
 
 #### UB-163. Uncached healer props removal leaves targets that resize into NULL props holes
@@ -1849,6 +1867,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** wrong result (the intended recovery is dead code).
 - **Cause:** `s2ndUVCurves.Add(pNewUVTrimCurve)` where `sUVCurves.Add(...)` was meant.
 - **Rust port:** Reproduces it (`topology::edgeuse::p3::create_uv_trim_curve` builds the joined curve into the discarded second-half array and reports the recovery path).
+
+#### WR-175. `SmMerge::MergeAddedTopology`'s declared defaults shift into the wrong flags
+- **Location:** `source/SMLib/inc/SmMerge.h:357` (declaration) against `source/SMLib/src/SmMerge.cpp:5304` (definition), `SmMerge::MergeAddedTopology`.
+- **What happens:** The declaration puts `bDoGluing = TRUE` ninth, followed by `bMakingManifoldSolid = FALSE`, `bFastEdgeCompare = TRUE`, `bDoRegionNesting = TRUE`, `bIgnoreProblems = TRUE`. The definition takes the four flags ninth to twelfth and the unused gluing flag last. A call relying on the defaults therefore runs with making-manifold-solid `TRUE` and fast edge compare `FALSE`, the opposite of what the declaration documents.
+- **Trigger:** Any call that omits the trailing arguments. Both upstream callers (`MergeAddedFace`, `SmFeatureExecutive`) pass all four flags explicitly, so they are not affected.
+- **How found:** read during porting (`boolean.merge_p2`).
+- **Confirmed:** no (no upstream caller uses the defaults).
+- **Severity:** wrong result (latent).
+- **Rust port:** `MergeAddedOptions::default()` is what the declared defaults actually pass, `(TRUE, FALSE, TRUE, TRUE)`; `MERGE_ADDED_FACE_OPTIONS` is `MergeAddedFace`'s explicit `(FALSE, TRUE, TRUE, TRUE)`.
 
 ### NLib
 
