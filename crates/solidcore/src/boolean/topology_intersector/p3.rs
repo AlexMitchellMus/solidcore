@@ -140,13 +140,14 @@ pub trait IntersectorBrepP3<O>: IntersectorBrep<O> {
     fn faceuse_face(&self, faceuse: O) -> Result<Option<O>>;
     /// `SmEdge::FindRadialSector(pClassifyEU, NULL, eRequiredOrientation, rpRadialEU,
     /// rpCoincidentFU)` (`topology::edge::find_radial_sector_between`): the radial edge
-    /// use and the coincident face use found, over all regions.
+    /// use and the coincident face use found, over all regions. Mutable: the
+    /// classification may build missing UV trim curves.
     ///
     /// # Errors
     ///
     /// Those of `find_radial_sector` (`SM_ERR` when no sector is unique).
     fn edge_find_radial_sector(
-        &self,
+        &mut self,
         k: &Kernel,
         edge: O,
         classify_edgeuse: O,

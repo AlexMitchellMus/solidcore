@@ -764,7 +764,7 @@ impl IntersectorBrepP3<H> for Two {
     }
 
     fn edge_find_radial_sector(
-        &self,
+        &mut self,
         k: &Kernel,
         edge: H,
         classify_edgeuse: H,
@@ -773,18 +773,27 @@ impl IntersectorBrepP3<H> for Two {
         if classify_edgeuse.kind != K_EDGEUSE {
             return Err(invalid("not an edge use"));
         }
-        let b = self.brep_r(edge)?;
-        let other = self.brep_r(classify_edgeuse)?;
-        let s = ed::find_radial_sector_between(
-            k,
-            b,
-            eid(edge),
-            other,
-            EdgeuseId::from_index(classify_edgeuse.i),
-            None,
-            required_orientation,
-            None,
-        )?;
+        let eu = EdgeuseId::from_index(classify_edgeuse.i);
+        let s = if edge.b == classify_edgeuse.b {
+            let b = self.brep_m(edge)?;
+            ed::find_radial_sector_between(k, b, eid(edge), None, eu, None, required_orientation, None)?
+        } else {
+            // the edge and the classified edge use in the two different B-reps
+            let [a, o] = &mut self.breps;
+            let (b, other) = if edge.b == 0 { (a, o) } else { (o, a) };
+            let b = b.as_mut().ok_or_else(|| invalid("handle names an absent B-rep"))?;
+            let other = other.as_mut().ok_or_else(|| invalid("handle names an absent B-rep"))?;
+            ed::find_radial_sector_between(
+                k,
+                b,
+                eid(edge),
+                Some(other),
+                eu,
+                None,
+                required_orientation,
+                None,
+            )?
+        };
         Ok((
             s.radial_edgeuse.map(|eu| hd(edge.b, K_EDGEUSE, eu.index())),
             s.coincident_faceuse.map(|fu| hd(edge.b, K_FACEUSE, fu.index())),

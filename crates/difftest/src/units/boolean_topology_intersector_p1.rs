@@ -749,7 +749,7 @@ fn vertexuse_ref(vu: VertexuseId) -> ObjectRef {
 /// The two B-reps, the registered curves (kind 5) and the port's curve copies (kind
 /// 7).
 pub(super) struct Two {
-    breps: [Option<Brep>; 2],
+    pub(super) breps: [Option<Brep>; 2],
     curves: Vec<SmCurve>,
     extra: Vec<SmCurve>,
     editing: [bool; 2],
