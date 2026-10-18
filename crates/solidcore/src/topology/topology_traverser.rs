@@ -22,8 +22,9 @@
 //! arrays where early returns preserve optional arrays upstream. Shell ownership
 //! moves through `topology::shell` (`transfer_children`, `move_faceuse`: the
 //! `Remove` / `PostInsert` statuses that `FaceuseShellReplacement` ignores cannot
-//! fail on a consistent B-rep, so an inconsistent one is an error); ray
-//! intersections wait for `topology.face_p4`. Existing co-ported accessors are reused.
+//! fail on a consistent B-rep, so an inconsistent one is an error). The ray/face
+//! intersections (`SmFace::GlobalLineIntersect`) classify on a copy of the B-rep.
+//! Existing co-ported accessors are reused.
 
 use std::collections::BTreeMap;
 
@@ -99,22 +100,13 @@ fn check_mark(mark: MarkType) -> Result<()> {
 }
 
 /// `SmFace::GetEdges(defaults)`: append each loop's unique edges, including repeats
-/// between loops. Existing loop-use iteration is cycle-bounded.
+/// between loops ([`crate::topology::face::p4::edges`]).
+///
+/// # Errors
+///
+/// Those of [`crate::topology::face::p4::edges`].
 pub fn face_edges(b: &Brep, f: FaceId) -> Result<Vec<EdgeId>> {
-    let mut out = Vec::new();
-    if let Some(fu) = b.face(f)?.faceuse {
-        for &lu in &b.faceuse(fu)?.loopuses {
-            let mut local = Vec::new();
-            for e in eu::loopuse_edgeuses(b, lu)? {
-                let id = required(b.edgeuse(e)?.edge)?;
-                if !local.contains(&id) {
-                    local.push(id);
-                }
-            }
-            out.extend(local);
-        }
-    }
-    Ok(out)
+    crate::topology::face::p4::edges(b, f, None, false, None)
 }
 
 fn edge_vertices(b: &Brep, e: EdgeId) -> Result<(VertexId, VertexId)> {
@@ -467,22 +459,61 @@ pub fn shell_traversal(
     Ok(())
 }
 
+/// The surface of a ray's target face as the solutions' object (upstream's surface
+/// pointer), answering its natural domain.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct RaySurface(crate::geom::extent2d::Extent2d);
+
+impl crate::geom::solution_array::SolutionObject for RaySurface {
+    fn kind(&self) -> crate::geom::solution_array::ObjectKind {
+        crate::geom::solution_array::ObjectKind::Surface
+    }
+    fn natural_uv_domain(&self) -> Option<crate::geom::extent2d::Extent2d> {
+        Some(self.0)
+    }
+}
+
+/// `pTargetFace->GlobalLineIntersect(GetUVDomain(), origin, direction, NULL, FALSE,
+/// GetTolerance(), sols)`: the line parameter of each solution. The face
+/// classification runs on a copy of the B-rep (its lazy cache updates are dropped).
 fn line_parameters(
-    _k: &Kernel,
-    _b: &Brep,
-    _f: FaceId,
-    _origin: Vec3,
-    _direction: Vec3,
+    k: &Kernel,
+    b: &Brep,
+    f: FaceId,
+    origin: Vec3,
+    direction: Vec3,
 ) -> Result<Vec<f64>> {
-    // UNPORTED(topology.face_p4): SmFace::GlobalLineIntersect
-    Err(SolidError::unported(
-        "SmFace::GlobalLineIntersect",
-        "topology.face_p4",
-    ))
+    let face = b.face(f)?;
+    let (uv_domain, tol) = (face.uv_domain, face.tolerance);
+    let surface = RaySurface(
+        face.surface
+            .as_ref()
+            .ok_or_else(|| SolidError::invalid_input(OP, "ray target face without surface"))?
+            .natural_uv_domain(),
+    );
+    let mut scratch = b.clone();
+    let solutions = crate::topology::face::p4::global_line_intersect(
+        k,
+        &mut scratch,
+        f,
+        surface,
+        &uv_domain,
+        origin,
+        direction,
+        None,
+        false,
+        tol,
+    )?;
+    Ok(solutions
+        .as_slice()
+        .iter()
+        .map(|s| s.start.parameters[0])
+        .collect())
 }
 
 /// Classify a closed shell by parity of forward and backward ray intersections.
-/// Errors propagate from face sampling; intersections await `topology.face_p4`.
+/// Errors propagate from face sampling and the ray/face intersections (whose other
+/// failures skip the face, as upstream).
 /// An empty or inconclusive set returns the upstream `SM_ERR`.
 pub fn is_inner_shell(k: &mut Kernel, b: &Brep, faceuses: &[FaceuseId]) -> Result<bool> {
     if faceuses.is_empty() {

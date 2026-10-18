@@ -459,9 +459,7 @@ fn face_bounding_box(b: &Brep, f: FaceId) -> Result<Extent3d> {
 }
 
 fn face_edges(b: &Brep, f: FaceId) -> Result<Vec<EdgeId>> {
-    b.face(f)?;
-    // UNPORTED(topology.face_p4): SmFace::GetEdges
-    Err(SolidError::unported("SmFace::GetEdges", "topology.face_p4"))
+    crate::topology::face::p4::edges(b, f, None, false, None)
 }
 
 /// Builds a new cache for `SmSAGObject::CacheMakeOrValidate`. The source geometry

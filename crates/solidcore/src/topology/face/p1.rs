@@ -184,33 +184,23 @@ fn create_uv_trim_curves(_k: &Kernel, _b: &mut Brep, _f: FaceId) -> Result<()> {
 }
 
 /// `SmFace::GetUpwardLoopuses(rLoopuses)` (default arguments).
-fn upward_loopuses(_b: &Brep, _f: FaceId) -> Result<Vec<LoopuseId>> {
-    // UNPORTED(topology.face_p4): SmFace::GetUpwardLoopuses
-    Err(SolidError::unported(
-        "SmFace::GetUpwardLoopuses",
-        "topology.face_p4",
-    ))
+fn upward_loopuses(b: &Brep, f: FaceId) -> Result<Vec<LoopuseId>> {
+    super::p4::upward_loopuses(b, f, false, None)
 }
 
 /// `SmFace::GetUpwardVertexuses(rVertexuses)` (default arguments).
-fn upward_vertexuses(_b: &Brep, _f: FaceId) -> Result<Vec<VertexuseId>> {
-    // UNPORTED(topology.face_p4): SmFace::GetUpwardVertexuses
-    Err(SolidError::unported(
-        "SmFace::GetUpwardVertexuses",
-        "topology.face_p4",
-    ))
+fn upward_vertexuses(b: &Brep, f: FaceId) -> Result<Vec<VertexuseId>> {
+    super::p4::upward_vertexuses(b, f, false, None)
 }
 
 /// `SmFace::GetEdges(rEdges)` (default arguments).
-fn face_edges(_b: &Brep, _f: FaceId) -> Result<Vec<EdgeId>> {
-    // UNPORTED(topology.face_p4): SmFace::GetEdges
-    Err(SolidError::unported("SmFace::GetEdges", "topology.face_p4"))
+fn face_edges(b: &Brep, f: FaceId) -> Result<Vec<EdgeId>> {
+    super::p4::edges(b, f, None, false, None)
 }
 
 /// `SmFace::GetBrep() != NULL`.
-fn has_brep(_b: &Brep, _f: FaceId) -> Result<bool> {
-    // UNPORTED(topology.face_p4): SmFace::GetBrep
-    Err(SolidError::unported("SmFace::GetBrep", "topology.face_p4"))
+fn has_brep(b: &Brep, f: FaceId) -> Result<bool> {
+    Ok(super::p4::brep(b, f)?.is_some())
 }
 
 /// The seam problem of a face (`HasSeamProblem`'s enum outputs; `SM_SP_*` values).
@@ -2072,7 +2062,8 @@ mod tests {
         props.bad_missing_seam_dir = SurfParamType::Neither;
         let s = split_at_seam(&k, &mut b, f, &mut cu, &mut cv, p, Some(&props), &|_| None).unwrap();
         assert_eq!(s, SeamSplit::default());
-        // a problem reported by the face properties reaches the unported loop walk
+        // a problem reported by the face properties walks the face's loop uses: a plane
+        // face has nothing to move
         props.bad_crossed_seam_dir = SurfParamType::U;
         let e = move_seam(
             &k,
@@ -2087,7 +2078,10 @@ mod tests {
             &NoGeometry,
             &|_| None,
         );
-        assert!(e.unwrap_err().is_unported());
+        let r = e.unwrap();
+        assert_eq!(r.u, FixSeamPlanType::NoChanges);
+        assert_eq!(r.v, FixSeamPlanType::NoChanges);
+        assert_eq!(r.split, SeamSplit::default());
     }
 
     #[test]

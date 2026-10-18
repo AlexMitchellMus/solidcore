@@ -297,9 +297,8 @@ fn face_flip_face_orientation(b: &mut Brep, f: FaceId) -> Result<()> {
 }
 
 /// `SmFace::GetEdges` (unit `topology.face_p4`).
-fn face_edges(_b: &Brep, _f: FaceId) -> Result<Vec<EdgeId>> {
-    // UNPORTED(topology.face_p4): SmFace::GetEdges
-    Err(SolidError::unported("SmFace::GetEdges", "topology.face_p4"))
+fn face_edges(b: &Brep, f: FaceId) -> Result<Vec<EdgeId>> {
+    crate::topology::face::p4::edges(b, f, None, false, None)
 }
 
 /// The classification object of the seam classifications `SplitAtSeams` passes on: the
