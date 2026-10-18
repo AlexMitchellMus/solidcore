@@ -898,9 +898,9 @@ pub fn merge_brep(
             .as_ref()
             .ok_or(null_deref("face without surface"))?;
         let mut new_surface = if add_analytics {
-            face_surf.copy_and_add_analytics()?
+            face_surf.copy_and_add_analytics(k)?
         } else {
-            face_surf.copy()?
+            face_surf.copy(k)?
         };
         *new_surface.owner_mut() = Some(arena_identity(CacheObject::Face(new_f)));
         let (rect, dom, ftol) = (
@@ -1483,7 +1483,7 @@ pub fn delete_face(
         let os = other_shell.ok_or(null_deref("face use without shell"))?;
 
         // Transfer all stuff from other shell to shell
-        tt::remove_shell(b, os, shell)?;
+        tt::remove_shell(k, b, os, shell)?;
 
         // Now pOtherShell should be empty - remove it from region and delete it.
         let surviving = eu1::shell_region(b, shell)?.ok_or(null_deref("shell without region"))?;
@@ -1878,6 +1878,7 @@ const fn edge_type_code() -> i64 {
 /// `topology.shell`); those of the curve evaluation and the tolerance refresh.
 #[allow(clippy::too_many_arguments)]
 pub fn make_wire_edge(
+    k: &mut Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
     region: Option<RegionId>,
@@ -1891,7 +1892,7 @@ pub fn make_wire_edge(
     let region = region_or_infinite(b, region);
 
     // make new edge connected to vertices and region
-    let e = p2::make_edge_topology(b, region, start, end)?;
+    let e = p2::make_edge_topology(k, b, region, start, end)?;
 
     // Set edge parameters
     let t = b.tolerance();
@@ -2525,14 +2526,14 @@ fn orient_body(
             // collect all connected upward faceuses
             up
         };
-        eu1::faceuse_collect_adjacent(b, start, &mut faceuses, None)?;
+        eu1::faceuse_collect_adjacent(k, b, start, &mut faceuses, None)?;
 
         // if we get too many faceuses, use a geometric contraint to pick off fewer
         let remaining = faces.len().wrapping_sub(faceuses_processed);
         if faceuses.len() > remaining {
             let angle = crate::math::PI * (11.0 / 12.0);
             faceuses.clear();
-            eu1::faceuse_collect_adjacent(b, start, &mut faceuses, Some(angle))?;
+            eu1::faceuse_collect_adjacent(k, b, start, &mut faceuses, Some(angle))?;
             if faceuses.len() > remaining {
                 return Err(SolidError::Upstream {
                     operation: OP,

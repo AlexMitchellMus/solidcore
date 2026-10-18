@@ -43,7 +43,7 @@ use solidcore::surface::surface_cache::p1::SurfaceCacheOptions;
 use solidcore::surface::trim_srf_cache::TrimSrfCache;
 use solidcore::topology::brep::p1 as bp1;
 use solidcore::topology::brep::p2 as bp2;
-use solidcore::topology::brep_cache::{BrepCache, BrepObjects, CacheObject};
+use solidcore::topology::brep_cache::{BrepCache, CacheObject};
 use solidcore::topology::edge::NotifyEnv;
 use solidcore::topology::topology_traverser::Marks;
 use solidcore::topology::{
@@ -523,6 +523,76 @@ fn idx<I>(o: Option<I>, f: impl Fn(I) -> u32) -> f64 {
     o.map_or(-1.0, |x| f64::from(f(x)))
 }
 
+/// The shim's `topology_summary` of the B-rep after a Make op: per region (`GetRegions`)
+/// its shells (`GetShells`) as `kind ref`, per vertex (`GetVertices`) its vertex-use
+/// count, per edge (`GetEdges`) the vertices and shells of its primary edge use and
+/// that use's mate (shells by position in the region-major list, `-1` none).
+fn topology_summary(b: &Brep, o: &mut Vec<f64>) -> Result<(), Fail> {
+    let h = |e: SolidError| Fail::Harness(harness(e.to_string()));
+    let regions = bp1::regions(b, None).map_err(h)?;
+    let vertices = bp1::vertices(b, None).map_err(h)?;
+    let edges = bp1::edges(b, None).map_err(h)?;
+    let pos = |v: &[u32], x: Option<u32>| {
+        x.and_then(|x| v.iter().position(|&y| y == x))
+            .map_or(-1.0, |i| i as f64)
+    };
+    let vidx: Vec<u32> = vertices.iter().map(|v| v.index()).collect();
+    let eidx: Vec<u32> = edges.iter().map(|e| e.index()).collect();
+    let mut all: Vec<u32> = Vec::new();
+    o.push(regions.len() as f64);
+    for r in regions {
+        let shells = b
+            .region(r)
+            .map_err(h)?
+            .get_shells(None, |_, _| Ok(true))
+            .map_err(h)?;
+        o.push(shells.len() as f64);
+        for s in shells {
+            all.push(s.index());
+            let shell = b.shell(s).map_err(h)?;
+            if shell.is_vertex_shell() {
+                let v = shell.vertex(b).map_err(h)?;
+                o.extend([1.0, pos(&vidx, v.map(VertexId::index))]);
+            } else if shell.is_wire_shell() {
+                let e = shell.wire_edge(b).map_err(h)?;
+                o.extend([2.0, pos(&eidx, e.map(EdgeId::index))]);
+            } else {
+                o.extend([if shell.is_faceuse_shell() { 3.0 } else { 0.0 }, -1.0]);
+            }
+        }
+    }
+    o.push(vertices.len() as f64);
+    for v in vertices {
+        o.push(b.vertex(v).map_err(h)?.vertexuses.len() as f64);
+    }
+    o.push(edges.len() as f64);
+    for e in edges {
+        let p = solidcore::topology::edgeuse::p1::primary_edgeuse(b, e).map_err(h)?;
+        let m = match p {
+            Some(p) => solidcore::topology::edgeuse::p1::mate(b, p).map_err(h)?,
+            None => None,
+        };
+        for eu in [p, m] {
+            let v = match eu {
+                Some(eu) => match b.edgeuse(eu).map_err(h)?.vertexuse {
+                    Some(vu) => b.vertexuse(vu).map_err(h)?.vertex.map(VertexId::index),
+                    None => None,
+                },
+                None => None,
+            };
+            o.push(pos(&vidx, v));
+        }
+        for eu in [p, m] {
+            let s = match eu {
+                Some(eu) => solidcore::topology::edgeuse::p1::shell(b, eu).map_err(h)?,
+                None => None,
+            };
+            o.push(pos(&all, s.map(ShellId::index)));
+        }
+    }
+    Ok(())
+}
+
 fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: Op, a: &[f64]) -> Result<Vec<f64>, Fail> {
     let mut out = vec![0.0];
     let arg = |i: usize| -> Result<f64, Fail> {
@@ -583,9 +653,10 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: Op, a: &[f64]) -> Result<Vec<f6
             let s = match arg(0)? as u8 {
                 0 => status(bp2::make_shell_vertex_topology(b, region))?.0,
                 1 => status(bp2::make_edge_vertex_topology(b, region, v1))?.0,
-                _ => status(bp2::make_edge_topology(b, region, v1, v2))?.0,
+                _ => status(bp2::make_edge_topology(k, b, region, v1, v2))?.0,
             };
             out.push(s);
+            topology_summary(b, &mut out)?;
         }
         Op::Sector => {
             // the curve block: dim n p m cpts(4 * (n + 1)) knots(m + 1)
@@ -741,15 +812,19 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: Op, a: &[f64]) -> Result<Vec<f6
             let cache = must(BrepCache::new(solidcore::geom::a_object::BREP_TYPE))?;
             let keys = |o: CacheObject| solidcore::topology::brep_cache::arena_identity(o);
             let owners = |_: ObjectRef| None;
-            let objects = BrepObjects {
-                brep: b,
-                brep_id: BrepId::from_index(0),
-                cache: &cache,
-                keys: &keys,
-                owner_of: &owners,
-            };
             let kk: &Kernel = k;
-            let (s, r) = status(bp2::ray_fire(kk, b, &objects, start, dir, tol, limit))?;
+            let (s, r) = status(bp2::ray_fire(
+                kk,
+                b,
+                BrepId::from_index(0),
+                &cache,
+                &keys,
+                &owners,
+                start,
+                dir,
+                tol,
+                limit,
+            ))?;
             out.push(s);
             out.push(idx(r.as_ref().and_then(|x| x.region), RegionId::index));
             out.push(r.map_or(f64::from(PointClassType::Unknown as i32), |x| {
@@ -1165,22 +1240,66 @@ mod tests {
         }
     }
 
+    /// The fixture's gap initialisation never returns on a u-degree-2, three-span face
+    /// whose corner sits at `5e156` (HANG-28, `--fuzz` case fuzz00497): the FFI refuses
+    /// degree >= 2 faces with a corner past `2e156` under `init_gaps`, and nothing else.
+    #[test]
+    fn gap_initialisation_refuses_a_huge_curved_corner() {
+        let now = -f64::MAX;
+        let case = |p: u8, z: f64, gaps: bool| -> Inputs {
+            let n: u32 = if p == 2 { 5 } else { 4 };
+            let u: Vec<f64> = if p == 2 {
+                vec![0.0, 0.0, 0.0, 0.33, 0.66, 1.0, 1.0, 1.0]
+            } else {
+                vec![0.0, 0.0, 0.33, 0.66, 1.0, 1.0]
+            };
+            let mut net: Vec<Vec<[f64; 4]>> = (0..n)
+                .map(|a| {
+                    (0..2)
+                        .map(|b| [f64::from(a), f64::from(b), 0.0, now])
+                        .collect()
+                })
+                .collect();
+            net.last_mut().unwrap()[1][2] = z;
+            let v = serde_json::json!({
+                "brep": {"kind": "face", "dom": [0, 0, 1, 1], "surface": {"bspline": {
+                    "form": 0, "oob": false, "p": p, "q": 1, "u": u, "v": [0, 0, 1, 1],
+                    "net": net}}},
+                "init_gaps": gaps, "op": "query", "which": 5
+            });
+            serde_json::from_value(v).unwrap()
+        };
+        for z in [5e156, 1e300] {
+            let err = run_cpp(&case(2, z, true)).unwrap_err().to_string();
+            assert!(
+                err.contains("face too large for the gap initialisation"),
+                "{z}: {err}"
+            );
+        }
+        for (p, z, gaps) in [(2, 2e156, true), (2, 1e300, false), (1, 1e300, true)] {
+            let c = run_cpp(&case(p, z, gaps)).unwrap();
+            let r = run_rust(&case(p, z, gaps)).unwrap();
+            assert_eq!(format!("{c:?}"), format!("{r:?}"), "{p} {z} {gaps}");
+        }
+    }
+
     /// A mating surface so far from the lamina edge that the squared distance overflows
     /// makes upstream's `dMaxDist` infinite, and `CreateExtendedSurface` then halves an
     /// infinite distance forever (HANG-9; `--fuzz` cases fuzz00745 / 01418 / 01659): the
     /// FFI's `MateProbe` refuses exactly the non-finite extension distances.
     #[test]
     fn mate_rejects_a_non_finite_extension_distance() {
-        let case = |z: f64, ext: f64| -> Inputs {
+        let case_ed = |z: f64, ext: f64, editing: i64| -> Inputs {
             let v = serde_json::json!({
                 "brep": {"kind": "face", "surface": {"plane": {"o": [0, 0, 0], "n": [0, 0, 1]}},
                          "dom": [0, 0, 10, 10]},
-                "editing": 1, "op": "mate", "edge": 0,
+                "editing": editing, "op": "mate", "edge": 0,
                 "surface": {"plane": {"o": [0, 0, z], "n": [0, 0, 1]}},
                 "ext": ext, "uv_ext": 10.0
             });
             serde_json::from_value(v).unwrap()
         };
+        let case = |z: f64, ext: f64| case_ed(z, ext, 1);
         for (z, ext) in [
             (1e300, 1.5),
             (-1e300, 1.5),
@@ -1202,6 +1321,13 @@ mod tests {
             (0.0, 1e300),
         ] {
             assert!(run_cpp(&case(z, ext)).is_ok(), "{z} {ext}");
+        }
+        // Mate returns before the extension when editing is off (SmBrep.cpp:22166):
+        // the guard must not refuse it, and the early status is compared.
+        for z in [1e300, -1e300, 1e160] {
+            let c = run_cpp(&case_ed(z, 1.5, 0)).unwrap();
+            let r = run_rust(&case_ed(z, 1.5, 0)).unwrap();
+            assert_eq!(format!("{c:?}"), format!("{r:?}"), "{z}");
         }
     }
 }

@@ -13,7 +13,7 @@
 //! | [`HealData::fix_move_seam`] | `SmHealData::Fix_MoveSeam` |
 //! | [`HealData::fix_split_edges_at_seam`] | `SmHealData::Fix_SplitEdgesAtSeam` |
 //! | [`HealData::fix_split_face_at_seams`] | `SmHealData::Fix_SplitFaceAtSeams` |
-//! | `live` (private co-port) | `SmBrep::IsLiveTopologyMember` |
+//! | calls `topology::brep::p1::is_live_topology_member` (unit `topology.brep_p1`; it replaced the private co-port `live`) | `SmBrep::IsLiveTopologyMember` |
 //!
 //! Deviations: topology and props are arena ids as in [`super::p2`]. The B-rep and
 //! kernel are explicit arguments. Tracker object keys are resolved by the caller,
@@ -40,6 +40,7 @@ use crate::geom::attribute::ObjectKey;
 use crate::geom::context::{MarkLock, ALL_MARKS};
 use crate::heal::face_props::{HealerOpType, LoopObject};
 use crate::kernel::Kernel;
+use crate::topology::brep::p1 as bp1;
 use crate::topology::topology::TrackTopologyChanges;
 use crate::topology::topology_traverser::{Entity, Marks};
 use crate::topology::{edge, Brep, EdgeId, FaceId, VertexId};
@@ -78,22 +79,6 @@ fn ignore_status(r: Result<()>) -> Result<()> {
     match r {
         Ok(()) | Err(SolidError::Upstream { .. } | SolidError::Nlib { .. }) => Ok(()),
         Err(e) => Err(e),
-    }
-}
-
-fn live(b: &Brep, e: EntityRef) -> bool {
-    match e {
-        EntityRef::Vertex(x) => b.vertex(x).is_ok(),
-        EntityRef::Edge(x) => b.edge(x).is_ok(),
-        EntityRef::Face(x) => b.face(x).is_ok(),
-        EntityRef::Region(x) => b.region(x).is_ok(),
-        EntityRef::Shell(x) => b.shell(x).is_ok(),
-        EntityRef::Faceuse(x) => b.faceuse(x).is_ok(),
-        EntityRef::Loop(x) => b.loop_(x).is_ok(),
-        EntityRef::Loopuse(x) => b.loopuse(x).is_ok(),
-        EntityRef::Edgeuse(x) => b.edgeuse(x).is_ok(),
-        EntityRef::Vertexuse(x) => b.vertexuse(x).is_ok(),
-        EntityRef::Brep(_) => true,
     }
 }
 
@@ -190,7 +175,7 @@ impl<O: LoopObject> HealData<O> {
         self.old_edge_cnt = self.tgt_edges.len();
         self.old_vertex_cnt = self.tgt_vertices.len();
         for &e in added.iter().flatten() {
-            if !live(b, e) {
+            if !bp1::is_live_topology_member(b, Some(e)) {
                 continue;
             }
             match e {
@@ -342,10 +327,23 @@ impl<O: LoopObject> HealData<O> {
             FixSplitedgeAtseam,
             self.fix_split_edges_at_seam(k, b, marks, lock, HealerOpType::FixSplitedgeAtseam)
         );
-        step!(
-            FixBadsheets,
-            self.fix_bad_sheets(k, b, marks, lock, HealerOpType::FixBadsheets)
-        );
+        step!(FixBadsheets, {
+            // The heal path carries no attribute state at any level (no AttributeStore,
+            // no SmTopology records), so SmSAGObject attribute propagation during
+            // healing is not modelled anywhere in heal: the region split's
+            // SmBrep::Notify runs on default region records and an empty store. Thread
+            // an env from heal_targets once heal gains an AttributeStore
+            // (plan/findings.md, heal.heal_data_p3).
+            let mut state = crate::topology::brep::p2::RegionNotifyState::new(b);
+            self.fix_bad_sheets(
+                k,
+                b,
+                marks,
+                &mut state.env(),
+                lock,
+                HealerOpType::FixBadsheets,
+            )
+        });
         step!(
             CacheFaceprops3,
             self.cache_face_props_stage3(k, b, HealerOpType::CacheFaceprops3)
@@ -610,7 +608,7 @@ impl<O: LoopObject> HealData<O> {
             let Some(f) = p.face else {
                 continue; // IsLiveTopologyMember(NULL) is false upstream.
             };
-            if !live(b, EntityRef::Face(f)) {
+            if !bp1::is_live_topology_member(b, Some(EntityRef::Face(f))) {
                 continue;
             }
             let mut edges = face_edges(b, f)?;
@@ -644,7 +642,7 @@ impl<O: LoopObject> HealData<O> {
                         .vertexuse(vu)?
                         .vertex
                         .ok_or_else(|| invalid("vertex loop without vertex"))?;
-                    let new_surface = ignore_soft(surface.copy_and_add_analytics())?;
+                    let new_surface = ignore_soft(surface.copy_and_add_analytics(k))?;
                     let (deleted, edits) = delete_face(k, b, f, true, Some(old_region));
                     changes.append(edits);
                     let deleted = ignore_soft(deleted)?.unwrap_or_default();
@@ -827,7 +825,9 @@ impl<O: LoopObject> HealData<O> {
             let Some(f) = p.face else {
                 continue; // IsLiveTopologyMember(NULL) is false upstream.
             };
-            if !live(b, EntityRef::Face(f)) || p.bad_crossed_seam.is_false() {
+            if !bp1::is_live_topology_member(b, Some(EntityRef::Face(f)))
+                || p.bad_crossed_seam.is_false()
+            {
                 continue;
             }
             if classification_has_dead_topology(b, p.crv_class_u.as_ref())?
@@ -952,7 +952,9 @@ impl<O: LoopObject> HealData<O> {
             let Some(f) = p.face else {
                 continue; // IsLiveTopologyMember(NULL) is false upstream.
             };
-            if !live(b, EntityRef::Face(f)) || p.bad_missing_seam.is_false() {
+            if !bp1::is_live_topology_member(b, Some(EntityRef::Face(f)))
+                || p.bad_missing_seam.is_false()
+            {
                 continue;
             }
             if classification_has_dead_topology(b, p.crv_class_u.as_ref())?

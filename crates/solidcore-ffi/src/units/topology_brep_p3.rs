@@ -35,7 +35,7 @@
 use crate::{call_with_buffer, FfiError};
 
 use super::topology_brep_p2 as p2;
-use super::topology_vertexuse::{self as vu, Reader};
+use super::topology_vertexuse as vu;
 
 /// Largest magnitude of any input value (HANG-16).
 pub const MAX_GEOMETRY: f64 = 1.0e150;
@@ -75,6 +75,19 @@ mod sys {
 
 fn bad(msg: impl Into<String>) -> FfiError {
     FfiError::InvalidArgument(msg.into())
+}
+
+crate::reader::unit_reader!(vu::MAX_COORD);
+
+impl Reader<'_> {
+    /// An index below `count` (as `topology_vertexuse`'s reader).
+    fn below(&mut self, count: usize) -> Result<usize, FfiError> {
+        let i = self.index(usize::MAX >> 12)?;
+        if i >= count {
+            return Err(bad(format!("index {i} out of range ({count})")));
+        }
+        Ok(i)
+    }
 }
 
 fn int(rd: &mut Reader<'_>, lo: i64, hi: i64) -> Result<i64, FfiError> {
@@ -135,7 +148,8 @@ fn args(op: Op, rd: &mut Reader<'_>, c: &[usize; 10], has_infinite: bool) -> Res
                 return Err(bad("wire curve must be 3D"));
             }
             rd.at -= 1;
-            let (a, b) = vu::curve(rd)?;
+            let ((a, b), at) = vu::curve_at(rd.input, rd.at)?;
+            rd.at = at;
             let t0 = rd.finite()?;
             let t1 = rd.finite()?;
             if !(a <= t0 && t0 < t1 && t1 <= b) {
@@ -190,7 +204,7 @@ fn raw(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
 /// [`FfiError::InvalidArgument`] for a malformed input; [`FfiError::Status`] for a shim
 /// failure.
 pub fn eval(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
-    let mut rd = Reader { input, at: 0 };
+    let mut rd = Reader::new(input);
     match op {
         Op::Construct => {
             rd.finite()?;
@@ -205,7 +219,7 @@ pub fn eval(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
         }
         _ => {}
     }
-    vu::brep_block(&mut rd, path)?;
+    rd.at = vu::brep_block_at(input, path)?;
     int(&mut rd, -1, 1)?;
     let head = input.get(..rd.at).ok_or_else(|| bad("input too short"))?;
     // geometry beyond 1e150 overflows the squared distances of

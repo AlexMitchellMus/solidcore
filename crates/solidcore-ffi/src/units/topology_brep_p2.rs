@@ -18,7 +18,7 @@
 //! | `Query`    | `which`    | `0`: `n eu*` (`GetEdgeuses`), `1`: `n v*` (`GetShellVertices`), `2` `IsManifoldSolid`, `3` `IsSheet`, `4` `IsOrientedSheet`, `5`: `size edge` (`GetMinEdgeBBoxSize`) |
 //! | `SetTol`   | `tol only_larger cascade` | `brep_tol`, every face, edge and vertex tolerance |
 //! | `Rebuild`  |            | `status`, per edge use whether it has a UV trim curve, every edge tolerance |
-//! | `Make`     | `which region v1 v2` (`0` `MakeShellVertexTopology`, `1` `MakeEdgeVertexTopology`, `2` `MakeEdgeTopology`; region `-1` null) | `status` |
+//! | `Make`     | `which region v1 v2` (`0` `MakeShellVertexTopology`, `1` `MakeEdgeVertexTopology`, `2` `MakeEdgeTopology`; region `-1` null) | `status`, then the topology read back through fresh list queries: `n_regions`, per region `n_shells` and per shell `kind ref` (`1` vertex shell and its vertex, `2` wire shell and its first wire edge, `3` face-use shell, `0` unknown; ref `-1`), `n_vertices` and per vertex its vertex-use count, `n_edges` and per edge `start end shell shell` (the vertices and shells of the primary edge use and its mate; shells by position in the region-major shell list) |
 //! | `Sector`   | `curve t0 t1 orient class type index t u v` | `status region` (`LocalCurveSector`) |
 //! | `Merge`    | `face tol n curve*` | `status new_faces edges` (`MergeCurvesOnSurface`) |
 //! | `Mate`     | `edge surface ext_factor uv_factor` | `status` (`MateLaminaEdgeToSurface`) |
@@ -27,7 +27,7 @@
 //! | `Swap`     |            | `status` (`SwapUV`) |
 //! | `Replace`  | `face surface keep create` (`keep`: `0` delete, `1` deleted list, `2` keep) | `status modified` (`ReplaceSurface`) |
 //! | `RayFire`  | `P V tol has_limit limit` | `status region class` (`RayFire`) |
-//! | `MateProbe` | as `Mate` | `status max_dist`: `MateLaminaEdgeToSurface`'s `dMaxDist` (`SmBrep.cpp:22200-22229`), nothing changed |
+//! | `MateProbe` | as `Mate` | `status max_dist`: `MateLaminaEdgeToSurface`'s `dMaxDist` (`SmBrep.cpp:22200-22229`) after replaying its early returns (`:22166-22195`, status `SM_ERR` when one is taken), nothing changed |
 //!
 //! [`eval`] accepts only what upstream handles without undefined behaviour: valid
 //! B-rep blocks, indices inside the B-rep (it exports the B-rep once more to count),
@@ -39,16 +39,43 @@
 //! `0 / 0`, a NaN parameter for the curve evaluator); a `Mate` extension factor must not
 //! be negative (a negative extension distance hangs the C++ in `N_SrfExtendByDist`,
 //! `plan/upstream-issues.md` HANG-18), and a `Mate` is refused when the `MateProbe`
-//! distance is at least `SM_EFF_ZERO` and its product with the factor is not finite
+//! distance is at least `SM_EFF_ZERO` and its product with the factor is not finite, i.e.
+//! only when upstream would get past its early returns and extend
 //! (an edge whose squared distance to the mating surface overflows: `dMaxDist` is
-//! infinite and `CreateExtendedSurface` never stops halving, HANG-9); a reference `type -1` is not accepted (the null
+//! infinite and `CreateExtendedSurface` never stops halving, HANG-9); a B-spline face of degree
+//! at least 2 with `init_gaps` set is refused when a corner control point coordinate
+//! exceeds `2e156` (the fixture's `GetVertexFaceGap` never returns, HANG-28); a reference `type -1` is not accepted (the null
 //! reference is `-1 -1`). `Merge` and `Mate` with editing enabled run the whole upstream
 //! algorithm: the callers keep their curves short of the tolerance (`Merge`) and pick
 //! lamina edges of upstream files (`Mate`).
 
 use crate::{call_with_buffer, FfiError};
 
-use super::topology_vertexuse::{self as vu, Reader};
+use super::topology_vertexuse as vu;
+
+crate::reader::unit_reader!(vu::MAX_COORD);
+
+impl Reader<'_> {
+    /// An index below `count` (as `topology_vertexuse`'s reader).
+    fn below(&mut self, count: usize) -> Result<usize, FfiError> {
+        let i = self.index(usize::MAX >> 12)?;
+        if i >= count {
+            return Err(bad(format!("index {i} out of range ({count})")));
+        }
+        Ok(i)
+    }
+
+    /// A `topology_vertexuse` block read by `read` (`vu::curve_at`, `vu::surface_at`)
+    /// from the current position, which moves past it.
+    fn block<T>(
+        &mut self,
+        read: impl FnOnce(&[f64], usize) -> Result<(T, usize), FfiError>,
+    ) -> Result<T, FfiError> {
+        let (v, at) = read(self.input, self.at)?;
+        self.at = at;
+        Ok(v)
+    }
+}
 
 /// Largest number of curves of a `Merge`.
 pub const MAX_CURVES: usize = 8;
@@ -182,7 +209,7 @@ fn args(op: Op, rd: &mut Reader<'_>, c: &[usize; 10], has_infinite: bool) -> Res
                 return Err(bad("sector curve must be 3D"));
             }
             rd.at -= 1;
-            vu::curve(rd)?;
+            rd.block(vu::curve_at)?;
             let t0 = rd.finite()?;
             let t1 = rd.finite()?;
             if t0 >= t1 {
@@ -212,12 +239,12 @@ fn args(op: Op, rd: &mut Reader<'_>, c: &[usize; 10], has_infinite: bool) -> Res
                     return Err(bad("merge curves must be 3D"));
                 }
                 rd.at -= 1;
-                vu::curve(rd)?;
+                rd.block(vu::curve_at)?;
             }
         }
         Op::Mate | Op::MateProbe => {
             rd.below(n_e)?;
-            vu::surface(rd)?;
+            rd.block(vu::surface_at)?;
             // a negative factor is a negative extension distance for
             // CreateExtendedSurface, which never returns (N_SrfExtendByDist; HANG-18)
             if rd.finite()? < 0.0 {
@@ -233,7 +260,7 @@ fn args(op: Op, rd: &mut Reader<'_>, c: &[usize; 10], has_infinite: bool) -> Res
         }
         Op::Replace => {
             rd.below(n_f)?;
-            vu::surface(rd)?;
+            rd.block(vu::surface_at)?;
             rd.index(2)?;
             rd.flag()?;
         }
@@ -277,10 +304,11 @@ fn raw(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
 /// [`FfiError::InvalidArgument`] for a malformed input; [`FfiError::Status`] for a shim
 /// failure.
 pub fn eval(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
-    let mut rd = Reader { input, at: 0 };
-    vu::brep_block(&mut rd, path)?;
+    let mut rd = Reader::new(input);
+    rd.at = vu::brep_block_at(input, path)?;
     int(&mut rd, -1, 1)?;
     let head = input.get(..rd.at).ok_or_else(|| bad("input too short"))?;
+    gap_guard(head)?;
     let export = raw(Op::Export, path, head)?;
     if op == Op::Export {
         rd.done()?;
@@ -300,9 +328,49 @@ pub fn eval(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
     raw(op, path, input)
 }
 
+/// Largest corner control point coordinate of a degree >= 2 B-spline face the fixture's
+/// gap initialisation is run on (`plan/upstream-issues.md` HANG-28): with a corner
+/// (a vertex position) at `5e156`, `SmVertexuse::GetVertexFaceGap` never returns on a
+/// u-degree-2 surface of three spans, and returns at `2e156`. Planes, degree-1 surfaces,
+/// interior control points and single- or two-span biquadratic patches return even at
+/// `1e300`; without a debugger on the pod the exact condition is not pinned down, so
+/// every degree >= 2 face with a huge corner is refused.
+const MAX_GAP_COORD: f64 = 2e156;
+
+/// Refuses a B-spline face block (`kind 2`, surface kind `0`) with `init_gaps` set, a
+/// degree of at least 2 in u or v and a corner control point coordinate above
+/// [`MAX_GAP_COORD`]. `head` is the validated B-rep block plus `editing`, so `init_gaps`
+/// is its second-to-last value.
+fn gap_guard(head: &[f64]) -> Result<(), FfiError> {
+    let init_gaps = head.len().checked_sub(2).and_then(|i| head.get(i)) == Some(&1.0);
+    if head.first() != Some(&2.0) || head.get(1) != Some(&0.0) || !init_gaps {
+        return Ok(());
+    }
+    let (Some(&n), Some(&m), Some(&p), Some(&q)) =
+        (head.get(4), head.get(5), head.get(6), head.get(7))
+    else {
+        return Err(bad("surface header too short"));
+    };
+    if p < 2.0 && q < 2.0 {
+        return Ok(());
+    }
+    let (n, m) = (n as usize, m as usize);
+    for (a, b) in [(0, 0), (0, m), (n, 0), (n, m)] {
+        let at = 10 + 4 * (a * (m + 1) + b);
+        let pt = head
+            .get(at..at + 3)
+            .ok_or_else(|| bad("surface net too short"))?;
+        if pt.iter().any(|&c| c != f64::MAX && c.abs() > MAX_GAP_COORD) {
+            return Err(bad("face too large for the gap initialisation"));
+        }
+    }
+    Ok(())
+}
+
 /// Refuses a `Mate` whose extension distance `dMaxDist * dSurfaceExtensionFactor`
-/// would not be finite (upstream returns before extending when `dMaxDist <
-/// SM_EFF_ZERO` or the distance computation fails, so those run).
+/// would not be finite (upstream returns before extending when editing is off, the
+/// edge or a neighbour is not lamina/seam, the copy or distance computation fails, or
+/// `dMaxDist < SM_EFF_ZERO`, so those run and their statuses are compared).
 fn mate_guard(path: &str, input: &[f64]) -> Result<(), FfiError> {
     let probe = raw(Op::MateProbe, path, input)?;
     let (Some(&status), Some(&max_dist)) = (probe.get(1), probe.get(2)) else {

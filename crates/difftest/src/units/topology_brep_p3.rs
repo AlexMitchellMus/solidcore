@@ -643,7 +643,7 @@ fn run_rust_op(
             };
             let s = if which == 0 {
                 status(bp3::make_wire_edge(
-                    b, &mut env, region, v1, v2, &crv, &ivl, orient,
+                    k, b, &mut env, region, v1, v2, &crv, &ivl, orient,
                 ))?
                 .0
             } else {
