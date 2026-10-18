@@ -7651,7 +7651,7 @@ one repetition call p1, rotations at least 359.99999 degrees dispatch to full
 rotation before the capped-repetition check. The temporary doing-boolean state
 is restored on errors; upstream editing-state side effects are preserved.
 
-The initial native gate is 287 cases / 280 pass / 0 fail / 6 deferred / 1 rejected,
+The final native gate is 287 cases / 280 pass / 0 fail / 6 deferred / 1 rejected,
 maximum relative error zero, with no absolute floors. Of the passes, 216 compare
 190 values including a constructed ruled surface, 55 compare 110 values including
 helper mutations before an error, and 9 compare six status/state/output-count
@@ -7695,3 +7695,14 @@ creates an extra shell vertex outside its queried pool, whereas Rust used pool
 vertex 0. The fixture now uses the corresponding extra vertex; map count and
 pool-key membership are compared separately. Other inherited, unrelated adapters
 in dependency PRs are not claimed as implemented by this unit.
+
+Final PR #233 validation: formatting, workspace Clippy, native-feature Clippy,
+1,377 kernel tests, wasm32 and the native FFI guard regression pass. All five
+affected differential units pass with explicit deferrals: p3 280/6/1 rejected,
+p1 667/17/5 rejected, topology sweep 553/14, B-rep sweep API 306/267 and surface
+sweep API 831/51 (pass/deferred counts). Perturbation detects 280/280 comparable
+p3 cases. The 300-mutation campaign executes 78 cases, rejects 164 and classifies
+58 as malformed, with zero differences, crashes, panics or timeouts. This is
+bounded harness coverage, not certification of the deferred construction paths.
+
+The full `--green --no-report` gate completes with 210 units: 113 passed, 97 partial, 0 failed.

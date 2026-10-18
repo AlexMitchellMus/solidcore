@@ -1,8 +1,10 @@
 # solidcore status
 
-Last updated: 2026-10-18, PR #222 (`sweep.topology_sweep` partial: 551 exact integer state passes, 16 deferred, 0 rejected). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
+Last updated: 2026-10-18, PR #233 (`primitive.primitive_creation_p3` partial: 280 bit-identical passes, 6 deferred, 1 UB-78 rejection). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
-Latest port: `sweep.topology_sweep` ([PR #222](https://github.com/tangency-labs/solidcore/pull/222)) implements the complete sweep orchestration through an explicit `SweepAccess` service boundary. The 567-case gate compares maps, stitch-callback decisions, options and edge-profile tags; topology creation and whole-B-rep/HCR/merge/stitch paths await dependencies and are not claimed as differential coverage. Safety regression tests cover failed traversal progress, temporary ownership, context restoration and consuming union across repetitions. A concrete production access adapter remains integration work; see `plan/findings.md`.
+Latest port: `primitive.primitive_creation_p3` ([PR #233](https://github.com/tangency-labs/solidcore/pull/233)) implements all eight owned functions through `PrimitiveAccess`/`SweepAccess`. Native comparisons certify the ruled-surface helper and early/empty entry paths; successful construction and topology tails await dependencies and a concrete adapter. See the final validation entry below.
+
+Previous port integration: `sweep.topology_sweep` ([PR #222](https://github.com/tangency-labs/solidcore/pull/222)) implements the complete sweep orchestration through an explicit `SweepAccess` service boundary. The 567-case gate compares maps, stitch-callback decisions, options and edge-profile tags; topology creation and whole-B-rep/HCR/merge/stitch paths await dependencies and are not claimed as differential coverage. Safety regression tests cover failed traversal progress, temporary ownership, context restoration and consuming union across repetitions. A concrete production access adapter remains integration work; see `plan/findings.md`.
 
 Last updated: 2026-10-17, PR #213 (`primitive.primitive_creation_p1` partial: 661 bit-identical passes, 17 dependency deferrals, one UB-57 construction preflight rejection). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
@@ -1039,7 +1041,14 @@ differences/crashes/panics/timeouts. The full `--green` gate completes with
 202 units: 108 passed, 94 partial, zero failed.
 
 PR #233 (`primitive.primitive_creation_p3`): eight owned functions implemented;
-initial differential gate 287 cases, 280 exact passes, 6 construction deferrals,
+final differential gate 287 cases, 280 exact passes, 6 construction deferrals,
 one UB-78 rejection. Full topology paths require the documented PrimitiveAccess
-adapter and dependencies. Final integration checks are in progress; per-branch
+adapter and dependencies. All five affected units pass with their explicit
+remaining deferrals; topology-sweep integration increases its passes from 551 to
+553 (14 remaining deferrals). Formatting, workspace/native Clippy, 1,377 kernel
+tests, wasm32 and the native FFI guard regression pass. Perturbation detects all
+280 comparable p3 cases. The 300-mutation campaign has 78 executed, 164 rejected
+and 58 malformed cases, with zero differences/crashes/panics/timeouts. Per-branch
 coverage and limitations are in the fixture README and `plan/findings.md`.
+
+The full `--green --no-report` gate completes with 210 units: 113 passed, 97 partial, 0 failed.

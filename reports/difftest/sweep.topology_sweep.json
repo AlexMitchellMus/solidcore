@@ -454,21 +454,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::GetInfiniteRegion",
-        "unit": "topology.brep_p1"
-      },
       "max_rel_err": 0.0,
       "name": "selected_do_sweep_kind0_deferred",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/sweep.topology_sweep/cases.json#50",
       "values_compared": 0
     },
     {
       "deferred": {
-        "symbol": "SmBrep::GetInfiniteRegion",
-        "unit": "topology.brep_p1"
+        "symbol": "SmBrep::MakeShellVertex",
+        "unit": "topology.brep_p9"
       },
       "max_rel_err": 0.0,
       "name": "selected_do_sweep_kind1_deferred",
@@ -478,14 +474,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::GetInfiniteRegion",
-        "unit": "topology.brep_p1"
-      },
       "max_rel_err": 0.0,
       "name": "selected_do_sweep_kind2_deferred",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/sweep.topology_sweep/cases.json#52",
       "values_compared": 0
     },
@@ -4603,13 +4595,12 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 16,
+  "cases_deferred": 14,
   "cases_failed": 0,
-  "cases_passed": 551,
+  "cases_passed": 553,
   "cases_total": 567,
   "deferred_by_unit": {
-    "topology.brep_p1": 3,
-    "topology.brep_p9": 13
+    "topology.brep_p9": 14
   },
   "max_rel_err": 0.0,
   "pass": true,
