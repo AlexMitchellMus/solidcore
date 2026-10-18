@@ -14,7 +14,10 @@
 //! Entity selectors are taken modulo the matching entity count (`-1` selects null);
 //! an op that needs an entity the B-rep lacks is skipped on both sides (`no target`).
 //! `Merge` / `CopyVertices` target a second build of the same B-rep (a second import
-//! on the Rust side).
+//! on the Rust side), whose objects the Rust side notifies under identities of their
+//! own ([`source_key_of`]). `DeleteFace` always passes a deleted list
+//! (`pOptDeletedEdgesVertices`); the header default `NULL` only skips its `Add`s and
+//! is not compared.
 
 use std::collections::BTreeMap;
 
@@ -333,6 +336,16 @@ fn key_of(e: EntityRef) -> ObjectRef {
     }
 }
 
+/// The identity of the source B-rep's entities in a copy or merge into another B-rep
+/// (its ids overlap the destination's, which are notified under [`key_of`]).
+fn source_key_of(e: EntityRef) -> ObjectRef {
+    let r = key_of(e);
+    ObjectRef {
+        type_code: r.type_code,
+        key: ObjectKey(r.key.0 | (1 << 40)),
+    }
+}
+
 /// The Rust B-rep of the case (with the shim's extras restored).
 fn rust_brep(path: &str, h: &[f64], c: &[usize; 10]) -> Result<Brep, HarnessError> {
     let export = ffi2::eval(ffi2::Op::Export, path, h).map_err(|e| ffi_err(&e))?;
@@ -546,15 +559,24 @@ fn run_rust_op(
             put_counts(&mut out, &nb)?;
         }
         OpIn::ApiCopyNull => {
-            let (s, _) = status(bp3::api_brep_copy(k, &mut env, None))?;
+            let (s, _) = status(bp3::api_brep_copy(k, &mut env, None, &source_key_of))?;
             out.push(s);
         }
         OpIn::Copy { analytics, api } => {
             let src: &Brep = b;
             let r = if *api {
-                bp3::api_brep_copy(k, &mut env, Some(src))
+                bp3::api_brep_copy(k, &mut env, Some(src), &source_key_of)
             } else {
-                bp3::copy_brep(k, &mut env, src, None, None, true, *analytics)
+                bp3::copy_brep(
+                    k,
+                    &mut env,
+                    src,
+                    &source_key_of,
+                    None,
+                    None,
+                    true,
+                    *analytics,
+                )
             };
             let c = must(r)?;
             out.push(0.0);
@@ -566,7 +588,14 @@ fn run_rust_op(
             let dst = second.ok_or_else(|| Fail::Harness(harness("no second B-rep")))?;
             let kk: &Kernel = k;
             let (s, _) = status(bp3::merge_brep(
-                kk, &mut env, dst, b, None, None, *analytics,
+                kk,
+                &mut env,
+                dst,
+                b,
+                &source_key_of,
+                None,
+                None,
+                *analytics,
             ))?;
             out.push(s);
             put_counts(&mut out, dst)?;
@@ -577,7 +606,7 @@ fn run_rust_op(
             let vs: Vec<VertexId> = (0..n)
                 .map(|j| arg(1 + j).map(|x| VertexId::from_index(x as u32)))
                 .collect::<Result<_, _>>()?;
-            let (s, r) = status(bp3::copy_vertices(b, &vs, dst, &mut env))?;
+            let (s, r) = status(bp3::copy_vertices(b, &vs, dst, &mut env, &source_key_of))?;
             out.push(s);
             out.push(r.map_or(0.0, |x| x.len() as f64));
             put_counts(&mut out, dst)?;
@@ -857,7 +886,22 @@ impl UnitDiff for Runner {
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
         let brep = gen_brep(rng);
-        let (op, editing) = gen_op(rng);
+        // (no face op on a B-rep without faces, the wire edge and the network: it would
+        // be skipped on both sides and compare nothing)
+        let has_faces = matches!(brep, BrepIn::File { .. } | BrepIn::Face { .. });
+        let mut gen = gen_op(rng);
+        for _ in 0..64 {
+            let needs_face = match &gen.0 {
+                OpIn::DeleteFace { .. } => true,
+                OpIn::Orient { faces: Some(f), .. } => !f.is_empty(),
+                _ => false,
+            };
+            if has_faces || !needs_face {
+                break;
+            }
+            gen = gen_op(rng);
+        }
+        let (op, editing) = gen;
         serde_json::to_value(Inputs {
             brep,
             validate_only: rng.chance(0.2),

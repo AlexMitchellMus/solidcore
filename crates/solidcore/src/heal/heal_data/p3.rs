@@ -465,13 +465,33 @@ fn combine_vertices(_b: &mut Brep, _a: VertexId, _d: VertexId) -> Result<Changes
         "topology.brep_p5",
     ))
 }
-/// A notification environment for the B-rep edits (no attributes, no context).
+/// A notification environment for the B-rep edits. It has no context: the healer's
+/// tracker (`SmTrackTopologyChanges`) is a context callback whose `Execute` is not
+/// ported (`topology::topology::TopologyChangeCallback`), so the edit wrappers
+/// derive the tracker's lists from the edit's notifications instead
+/// ([`squeeze_edge`], [`delete_face`]); nothing here reads the records or attributes.
+/// Each entity is notified under its arena kind and index.
 fn edit_env<R>(f: impl FnOnce(&mut NotifyEnv<'_>) -> R) -> R {
     let mut records = std::collections::BTreeMap::new();
     let mut attributes = crate::geom::attribute::AttributeStore::default();
-    let key_of = |e: EntityRef| ObjectRef {
-        type_code: 0,
-        key: ObjectKey(crate::topology::trimming_tools::topo_key(e).0),
+    let key_of = |e: EntityRef| {
+        let (kind, i) = match e {
+            EntityRef::Brep(_) => (0u64, 0),
+            EntityRef::Region(x) => (1, x.index()),
+            EntityRef::Shell(x) => (2, x.index()),
+            EntityRef::Faceuse(x) => (3, x.index()),
+            EntityRef::Face(x) => (4, x.index()),
+            EntityRef::Loopuse(x) => (5, x.index()),
+            EntityRef::Loop(x) => (6, x.index()),
+            EntityRef::Edgeuse(x) => (7, x.index()),
+            EntityRef::Edge(x) => (8, x.index()),
+            EntityRef::Vertexuse(x) => (9, x.index()),
+            EntityRef::Vertex(x) => (10, x.index()),
+        };
+        ObjectRef {
+            type_code: 0,
+            key: ObjectKey((kind << 32) | u64::from(i)),
+        }
     };
     let mut env = NotifyEnv {
         records: &mut records,
@@ -481,14 +501,21 @@ fn edit_env<R>(f: impl FnOnce(&mut NotifyEnv<'_>) -> R) -> R {
     };
     f(&mut env)
 }
-/// The `Changes` the healer's topology tracker records for a completed B-rep edit.
-fn tracked_changes(symbol: &'static str) -> Result<Changes> {
-    // UNPORTED(heal.heal_data_p3): SmTrackTopologyChanges callback lists of a B-rep edit
-    Err(SolidError::unported(symbol, "heal.heal_data_p3"))
-}
+/// `SqueezeEdge(e, survivor)` and what the tracker records of it
+/// (`SmTopologyChangeCallback::Execute` on its faces, edges and vertices): the edge's
+/// `SM_NO_RM_FROM_BREP` removes it; `SM_NO_MERGE_IN_BREP(survivor, deleted vertex)`
+/// removes both vertices and adds the survivor back. (`SM_NO_PRE_EDIT` and the
+/// destructions of objects never added record nothing.)
 fn squeeze_edge(k: &mut Kernel, b: &mut Brep, e: EdgeId, survivor: VertexId) -> Result<Changes> {
+    // (read before the edit; only a completed squeeze reports it)
+    let del_vertex = edge::other_vertex(b, e, Some(survivor)).ok().flatten();
     edit_env(|env| crate::topology::brep::p3::squeeze_edge(k, b, env, e, survivor))?;
-    tracked_changes("SmTrackTopologyChanges (SmBrep::SqueezeEdge)")
+    let mut removed = vec![EntityRef::Edge(e), EntityRef::Vertex(survivor)];
+    removed.extend(del_vertex.map(EntityRef::Vertex));
+    Ok(Changes {
+        removed,
+        added: vec![Some(EntityRef::Vertex(survivor))],
+    })
 }
 fn delete_edge(_b: &mut Brep, _e: EdgeId) -> Result<Changes> {
     // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge
@@ -969,7 +996,11 @@ fn face_region(b: &Brep, f: FaceId) -> Result<RegionId> {
         .region
         .ok_or_else(|| invalid("shell without region"))
 }
-/// `DeleteFace(f, TRUE, nest_regions, &deleted, keep)`.
+/// `DeleteFace(f, TRUE, nest_regions, &deleted, keep)` and what the tracker records of
+/// it: the face's `SM_NO_RM_FROM_BREP`, then the removal of each deleted edge and
+/// vertex (`pOptDeletedEdgesVertices`, in deletion order), which callers also read as
+/// the deleted list (`sDelObjs`). The region merge notifies regions, which the
+/// tracker ignores.
 fn delete_face(
     k: &mut Kernel,
     b: &mut Brep,
@@ -983,8 +1014,14 @@ fn delete_face(
         region_to_keep: keep,
     };
     let mut marks = Marks::default();
-    edit_env(|env| crate::topology::brep::p3::delete_face(k, b, env, &mut marks, f, opts))?;
-    tracked_changes("SmTrackTopologyChanges (SmBrep::DeleteFace)")
+    let deleted =
+        edit_env(|env| crate::topology::brep::p3::delete_face(k, b, env, &mut marks, f, opts))?;
+    let mut removed = vec![EntityRef::Face(f)];
+    removed.extend(deleted);
+    Ok(Changes {
+        removed,
+        added: Vec::new(),
+    })
 }
 fn create_face_from_surface(_b: &mut Brep, _r: RegionId, _s: Surface) -> Result<(FaceId, Changes)> {
     // UNPORTED(topology.brep_p8): SmBrep::CreateFaceInRegionFromSurface

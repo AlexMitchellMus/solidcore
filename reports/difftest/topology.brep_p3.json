@@ -1870,7 +1870,7 @@
       "name": "delface_Mouse_e0_d0",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#0 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#0 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -1878,7 +1878,7 @@
       "name": "delface_Mouse_e0_d1",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#1 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#1 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -1886,7 +1886,7 @@
       "name": "delface_Mouse_e0_nonest",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#2 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#2 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -1898,7 +1898,7 @@
       "name": "delface_Mouse_e1_d0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#3 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#3 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -1910,7 +1910,7 @@
       "name": "delface_Mouse_e1_d1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#4 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#4 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion's DeleteFace(face, TRUE, TRUE) with editing on, here on face 0 of Mouse.smb))",
       "values_compared": 0
     },
     {
@@ -1922,7 +1922,7 @@
       "name": "delface_Mouse_e1_nonest",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#5 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#5 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -1994,7 +1994,7 @@
       "name": "delface_Endcap_e0_d0",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#12 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#12 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2002,7 +2002,7 @@
       "name": "delface_Endcap_e0_d1",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#13 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#13 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2010,7 +2010,7 @@
       "name": "delface_Endcap_e0_nonest",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#14 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#14 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2022,7 +2022,7 @@
       "name": "delface_Endcap_e1_d0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#15 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#15 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -2034,7 +2034,7 @@
       "name": "delface_Endcap_e1_d1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#16 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#16 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion's DeleteFace(face, TRUE, TRUE) with editing on, here on face 0 of Endcap.smb))",
       "values_compared": 0
     },
     {
@@ -2046,7 +2046,7 @@
       "name": "delface_Endcap_e1_nonest",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#17 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#17 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -2102,7 +2102,7 @@
       "name": "delface_box_with_large_fillet_e0_d0",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#24 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#24 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2110,7 +2110,7 @@
       "name": "delface_box_with_large_fillet_e0_d1",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#25 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#25 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2118,7 +2118,7 @@
       "name": "delface_box_with_large_fillet_e0_nonest",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#26 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#26 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2130,7 +2130,7 @@
       "name": "delface_box_with_large_fillet_e1_d0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#27 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#27 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -2142,7 +2142,7 @@
       "name": "delface_box_with_large_fillet_e1_d1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#28 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#28 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion's DeleteFace(face, TRUE, TRUE) with editing on, here on face 0 of box_with_large_fillet.smb))",
       "values_compared": 0
     },
     {
@@ -2154,7 +2154,7 @@
       "name": "delface_box_with_large_fillet_e1_nonest",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#29 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#29 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -2230,7 +2230,7 @@
       "name": "delface_cone_e0_d0",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#36 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#36 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2238,7 +2238,7 @@
       "name": "delface_cone_e0_d1",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#37 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#37 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2246,7 +2246,7 @@
       "name": "delface_cone_e0_nonest",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#38 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#38 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2258,7 +2258,7 @@
       "name": "delface_cone_e1_d0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#39 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#39 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -2270,7 +2270,7 @@
       "name": "delface_cone_e1_d1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#40 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#40 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion's DeleteFace(face, TRUE, TRUE) with editing on, here on face 0 of cone.smb))",
       "values_compared": 0
     },
     {
@@ -2282,7 +2282,7 @@
       "name": "delface_cone_e1_nonest",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#41 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#41 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -2350,7 +2350,7 @@
       "name": "delface_disk_e0_d0",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#48 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#48 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2358,7 +2358,7 @@
       "name": "delface_disk_e0_d1",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#49 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#49 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2366,7 +2366,7 @@
       "name": "delface_disk_e0_nonest",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#50 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#50 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2378,7 +2378,7 @@
       "name": "delface_disk_e1_d0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#51 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#51 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -2390,7 +2390,7 @@
       "name": "delface_disk_e1_d1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#52 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#52 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion's DeleteFace(face, TRUE, TRUE) with editing on, here on face 0 of disk.smb))",
       "values_compared": 0
     },
     {
@@ -2402,7 +2402,7 @@
       "name": "delface_disk_e1_nonest",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#53 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#53 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -2482,7 +2482,7 @@
       "name": "delface_ellips_ts2_e0_d0",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#60 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#60 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2490,7 +2490,7 @@
       "name": "delface_ellips_ts2_e0_d1",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#61 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#61 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2498,7 +2498,7 @@
       "name": "delface_ellips_ts2_e0_nonest",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#62 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#62 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2510,7 +2510,7 @@
       "name": "delface_ellips_ts2_e1_d0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#63 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#63 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -2522,7 +2522,7 @@
       "name": "delface_ellips_ts2_e1_d1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#64 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#64 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion's DeleteFace(face, TRUE, TRUE) with editing on, here on face 0 of ellips_ts2.smb))",
       "values_compared": 0
     },
     {
@@ -2534,7 +2534,7 @@
       "name": "delface_ellips_ts2_e1_nonest",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#65 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#65 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -2610,7 +2610,7 @@
       "name": "delface_plane_circ_e0_d0",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#72 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#72 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2618,7 +2618,7 @@
       "name": "delface_plane_circ_e0_d1",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#73 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#73 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2626,7 +2626,7 @@
       "name": "delface_plane_circ_e0_nonest",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#74 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#74 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2638,7 +2638,7 @@
       "name": "delface_plane_circ_e1_d0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#75 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#75 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -2650,7 +2650,7 @@
       "name": "delface_plane_circ_e1_d1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#76 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#76 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion's DeleteFace(face, TRUE, TRUE) with editing on, here on face 0 of plane_circ.smb))",
       "values_compared": 0
     },
     {
@@ -2662,7 +2662,7 @@
       "name": "delface_plane_circ_e1_nonest",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#77 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#77 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -2718,7 +2718,7 @@
       "name": "delface_plane_square_e0_d0",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#84 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#84 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2726,7 +2726,7 @@
       "name": "delface_plane_square_e0_d1",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#85 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#85 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2734,7 +2734,7 @@
       "name": "delface_plane_square_e0_nonest",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#86 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#86 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2746,7 +2746,7 @@
       "name": "delface_plane_square_e1_d0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#87 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#87 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -2758,7 +2758,7 @@
       "name": "delface_plane_square_e1_d1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#88 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#88 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion's DeleteFace(face, TRUE, TRUE) with editing on, here on face 0 of plane_square.smb))",
       "values_compared": 0
     },
     {
@@ -2770,7 +2770,7 @@
       "name": "delface_plane_square_e1_nonest",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#89 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#89 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -2846,7 +2846,7 @@
       "name": "delface_sphere_e0_d0",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#96 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#96 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2854,7 +2854,7 @@
       "name": "delface_sphere_e0_d1",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#97 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#97 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2862,7 +2862,7 @@
       "name": "delface_sphere_e0_nonest",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#98 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#98 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2874,7 +2874,7 @@
       "name": "delface_sphere_e1_d0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#99 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#99 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -2886,7 +2886,7 @@
       "name": "delface_sphere_e1_d1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#100 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#100 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion's DeleteFace(face, TRUE, TRUE) with editing on, here on face 0 of sphere.smb))",
       "values_compared": 0
     },
     {
@@ -2898,7 +2898,7 @@
       "name": "delface_sphere_e1_nonest",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#101 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#101 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -2978,7 +2978,7 @@
       "name": "delface_surf_extrude_e0_d0",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#108 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#108 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2986,7 +2986,7 @@
       "name": "delface_surf_extrude_e0_d1",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#109 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#109 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -2994,7 +2994,7 @@
       "name": "delface_surf_extrude_e0_nonest",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#110 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#110 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -3006,7 +3006,7 @@
       "name": "delface_surf_extrude_e1_d0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#111 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#111 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -3018,7 +3018,7 @@
       "name": "delface_surf_extrude_e1_d1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#112 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#112 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion's DeleteFace(face, TRUE, TRUE) with editing on, here on face 0 of surf_extrude.smb))",
       "values_compared": 0
     },
     {
@@ -3030,7 +3030,7 @@
       "name": "delface_surf_extrude_e1_nonest",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#113 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#113 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -3106,7 +3106,7 @@
       "name": "delface_surf_rev_e0_d0",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#120 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#120 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -3114,7 +3114,7 @@
       "name": "delface_surf_rev_e0_d1",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#121 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#121 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -3122,7 +3122,7 @@
       "name": "delface_surf_rev_e0_nonest",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#122 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#122 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -3134,7 +3134,7 @@
       "name": "delface_surf_rev_e1_d0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#123 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#123 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -3146,7 +3146,7 @@
       "name": "delface_surf_rev_e1_d1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#124 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#124 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion's DeleteFace(face, TRUE, TRUE) with editing on, here on face 0 of surf_rev.smb))",
       "values_compared": 0
     },
     {
@@ -3158,7 +3158,7 @@
       "name": "delface_surf_rev_e1_nonest",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#125 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#125 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -3234,7 +3234,7 @@
       "name": "delface_surf_sphere150_e0_d0",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#132 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#132 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -3242,7 +3242,7 @@
       "name": "delface_surf_sphere150_e0_d1",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#133 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#133 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -3250,7 +3250,7 @@
       "name": "delface_surf_sphere150_e0_nonest",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#134 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#134 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -3262,7 +3262,7 @@
       "name": "delface_surf_sphere150_e1_d0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#135 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#135 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -3274,7 +3274,7 @@
       "name": "delface_surf_sphere150_e1_d1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#136 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#136 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion's DeleteFace(face, TRUE, TRUE) with editing on, here on face 0 of surf_sphere150.smb))",
       "values_compared": 0
     },
     {
@@ -3286,7 +3286,7 @@
       "name": "delface_surf_sphere150_e1_nonest",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#137 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#137 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -3366,7 +3366,7 @@
       "name": "delface_torus_e0_d0",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#144 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#144 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -3374,7 +3374,7 @@
       "name": "delface_torus_e0_d1",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#145 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#145 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -3382,7 +3382,7 @@
       "name": "delface_torus_e0_nonest",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#146 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#146 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -3394,7 +3394,7 @@
       "name": "delface_torus_e1_d0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#147 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#147 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -3406,7 +3406,7 @@
       "name": "delface_torus_e1_d1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#148 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#148 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion's DeleteFace(face, TRUE, TRUE) with editing on, here on face 0 of torus.smb))",
       "values_compared": 0
     },
     {
@@ -3418,7 +3418,7 @@
       "name": "delface_torus_e1_nonest",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#149 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#149 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -3474,7 +3474,7 @@
       "name": "delface_toruswvy_e0_d0",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#156 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#156 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -3482,7 +3482,7 @@
       "name": "delface_toruswvy_e0_d1",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#157 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#157 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -3490,7 +3490,7 @@
       "name": "delface_toruswvy_e0_nonest",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#158 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#158 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -3502,7 +3502,7 @@
       "name": "delface_toruswvy_e1_d0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#159 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#159 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -3514,7 +3514,7 @@
       "name": "delface_toruswvy_e1_d1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#160 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#160 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion's DeleteFace(face, TRUE, TRUE) with editing on, here on face 0 of toruswvy.smb))",
       "values_compared": 0
     },
     {
@@ -3526,7 +3526,7 @@
       "name": "delface_toruswvy_e1_nonest",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#161 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#161 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -3582,7 +3582,7 @@
       "name": "delface_vase_rev_e0_d0",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#168 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#168 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -3590,7 +3590,7 @@
       "name": "delface_vase_rev_e0_d1",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#169 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#169 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -3598,7 +3598,7 @@
       "name": "delface_vase_rev_e0_nonest",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#170 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#170 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 7
     },
     {
@@ -3610,7 +3610,7 @@
       "name": "delface_vase_rev_e1_d0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#171 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#171 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -3622,7 +3622,7 @@
       "name": "delface_vase_rev_e1_d1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#172 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#172 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion's DeleteFace(face, TRUE, TRUE) with editing on, here on face 0 of vase_rev.smb))",
       "values_compared": 0
     },
     {
@@ -3634,7 +3634,7 @@
       "name": "delface_vase_rev_e1_nonest",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#173 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#173 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
       "values_compared": 0
     },
     {
@@ -3698,60 +3698,6 @@
       "values_compared": 6
     },
     {
-      "both_errored": true,
-      "max_rel_err": 0.0,
-      "name": "delface_net_e0_d0",
-      "outcome": "pass",
-      "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#180 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
-      "values_compared": 0
-    },
-    {
-      "both_errored": true,
-      "max_rel_err": 0.0,
-      "name": "delface_net_e0_d1",
-      "outcome": "pass",
-      "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#181 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
-      "values_compared": 0
-    },
-    {
-      "both_errored": true,
-      "max_rel_err": 0.0,
-      "name": "delface_net_e0_nonest",
-      "outcome": "pass",
-      "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#182 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
-      "values_compared": 0
-    },
-    {
-      "both_errored": true,
-      "max_rel_err": 0.0,
-      "name": "delface_net_e1_d0",
-      "outcome": "pass",
-      "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#183 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
-      "values_compared": 0
-    },
-    {
-      "both_errored": true,
-      "max_rel_err": 0.0,
-      "name": "delface_net_e1_d1",
-      "outcome": "pass",
-      "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#184 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
-      "values_compared": 0
-    },
-    {
-      "both_errored": true,
-      "max_rel_err": 0.0,
-      "name": "delface_net_e1_nonest",
-      "outcome": "pass",
-      "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#185 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion))",
-      "values_compared": 0
-    },
-    {
       "deferred": {
         "symbol": "SmShell::GetList",
         "unit": "topology.shell"
@@ -3760,7 +3706,7 @@
       "name": "squeeze_net_e0_w0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#186 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#180 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
       "values_compared": 0
     },
     {
@@ -3772,7 +3718,7 @@
       "name": "squeeze_net_e1_w0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#187 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#181 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
       "values_compared": 0
     },
     {
@@ -3784,7 +3730,7 @@
       "name": "squeeze_net_e0_w1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#188 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#182 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
       "values_compared": 0
     },
     {
@@ -3796,7 +3742,7 @@
       "name": "squeeze_net_e1_w1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#189 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#183 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
       "values_compared": 0
     },
     {
@@ -3808,7 +3754,7 @@
       "name": "squeeze_net_e0_w2",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#190 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#184 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
       "values_compared": 0
     },
     {
@@ -3820,7 +3766,7 @@
       "name": "squeeze_net_e1_w2",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#191 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#185 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
       "values_compared": 0
     },
     {
@@ -3832,7 +3778,7 @@
       "name": "wire_net_w0_r-1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#192 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#186 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
       "values_compared": 0
     },
     {
@@ -3844,7 +3790,7 @@
       "name": "wire_net_w0_r0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#193 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#187 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
       "values_compared": 0
     },
     {
@@ -3856,7 +3802,7 @@
       "name": "wire_net_w0_r1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#194 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#188 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
       "values_compared": 0
     },
     {
@@ -3868,7 +3814,7 @@
       "name": "wire_net_w1_r-1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#195 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#189 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
       "values_compared": 0
     },
     {
@@ -3880,7 +3826,7 @@
       "name": "wire_net_w1_r0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#196 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#190 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
       "values_compared": 0
     },
     {
@@ -3892,7 +3838,7 @@
       "name": "wire_net_w1_r1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#197 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#191 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
       "values_compared": 0
     },
     {
@@ -3904,7 +3850,7 @@
       "name": "wire_plane_square_w0_r-1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#198 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#192 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
       "values_compared": 0
     },
     {
@@ -3916,7 +3862,7 @@
       "name": "wire_plane_square_w0_r0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#199 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#193 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
       "values_compared": 0
     },
     {
@@ -3928,7 +3874,7 @@
       "name": "wire_plane_square_w0_r1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#200 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#194 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
       "values_compared": 0
     },
     {
@@ -3940,7 +3886,7 @@
       "name": "wire_plane_square_w1_r-1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#201 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#195 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
       "values_compared": 0
     },
     {
@@ -3952,7 +3898,7 @@
       "name": "wire_plane_square_w1_r0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#202 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#196 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
       "values_compared": 0
     },
     {
@@ -3964,7 +3910,7 @@
       "name": "wire_plane_square_w1_r1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#203 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#197 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
       "values_compared": 0
     },
     {
@@ -3976,7 +3922,7 @@
       "name": "wire_sphere_w0_r-1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#204 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#198 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
       "values_compared": 0
     },
     {
@@ -3988,7 +3934,7 @@
       "name": "wire_sphere_w0_r0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#205 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#199 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
       "values_compared": 0
     },
     {
@@ -4000,7 +3946,7 @@
       "name": "wire_sphere_w0_r1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#206 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#200 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
       "values_compared": 0
     },
     {
@@ -4012,7 +3958,7 @@
       "name": "wire_sphere_w1_r-1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#207 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#201 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
       "values_compared": 0
     },
     {
@@ -4024,7 +3970,7 @@
       "name": "wire_sphere_w1_r0",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#208 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#202 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
       "values_compared": 0
     },
     {
@@ -4036,7 +3982,7 @@
       "name": "wire_sphere_w1_r1",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/topology.brep_p3/edit.json#209 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
+      "source": "fixture:fixtures/topology.brep_p3/edit.json#203 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
       "values_compared": 0
     },
     {
@@ -4972,20 +4918,11 @@
       "values_compared": 3
     },
     {
-      "both_errored": true,
-      "max_rel_err": 0.0,
-      "name": "orient_net_swap0",
-      "outcome": "pass",
-      "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/orient.json#94 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 0
-    },
-    {
       "max_rel_err": 0.0,
       "name": "orient_net_swapnone",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/topology.brep_p3/orient.json#95 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
+      "source": "fixture:fixtures/topology.brep_p3/orient.json#94 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
       "values_compared": 3
     },
     {
@@ -5473,11 +5410,14 @@
       "values_compared": 0
     },
     {
-      "both_errored": true,
+      "deferred": {
+        "symbol": "SmShell::GetList",
+        "unit": "topology.shell"
+      },
       "max_rel_err": 0.0,
       "name": "gen0044",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=16427433955023119109",
       "values_compared": 0
     },
@@ -5686,11 +5626,14 @@
       "values_compared": 6
     },
     {
-      "both_errored": true,
+      "deferred": {
+        "symbol": "SmBrep::MakeShellVertex",
+        "unit": "topology.brep_p9"
+      },
       "max_rel_err": 0.0,
       "name": "gen0066",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=16427433955023119131",
       "values_compared": 0
     },
@@ -5923,11 +5866,14 @@
       "values_compared": 0
     },
     {
-      "both_errored": true,
+      "deferred": {
+        "symbol": "SmRegion::SetIsVoid",
+        "unit": "topology.shell"
+      },
       "max_rel_err": 0.0,
       "name": "gen0089",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=16427433955023119154",
       "values_compared": 0
     },
@@ -6204,11 +6150,14 @@
       "values_compared": 0
     },
     {
-      "both_errored": true,
+      "deferred": {
+        "symbol": "SmRegion::m_bIsVoidFlag",
+        "unit": "topology.shell"
+      },
       "max_rel_err": 0.0,
       "name": "gen0116",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=16427433955023119181",
       "values_compared": 0
     },
@@ -6241,11 +6190,14 @@
       "values_compared": 7
     },
     {
-      "both_errored": true,
+      "deferred": {
+        "symbol": "SmShell::GetList",
+        "unit": "topology.shell"
+      },
       "max_rel_err": 0.0,
       "name": "gen0120",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=16427433955023119185",
       "values_compared": 0
     },
@@ -6654,11 +6606,14 @@
       "values_compared": 37
     },
     {
-      "both_errored": true,
+      "deferred": {
+        "symbol": "SmShell::IsVertexShell",
+        "unit": "topology.shell"
+      },
       "max_rel_err": 0.0,
       "name": "gen0160",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=16427433955023119225",
       "values_compared": 0
     },
@@ -7123,11 +7078,14 @@
       "values_compared": 0
     },
     {
-      "both_errored": true,
+      "deferred": {
+        "symbol": "SmRegion::m_bIsVoidFlag",
+        "unit": "topology.shell"
+      },
       "max_rel_err": 0.0,
       "name": "gen0203",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=16427433955023119268",
       "values_compared": 0
     },
@@ -7160,13 +7118,12 @@
       "values_compared": 7
     },
     {
-      "both_errored": true,
       "max_rel_err": 0.0,
       "name": "gen0207",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119272",
-      "values_compared": 0
+      "values_compared": 92
     },
     {
       "max_rel_err": 0.0,
@@ -7301,20 +7258,22 @@
       "values_compared": 3
     },
     {
-      "both_errored": true,
       "max_rel_err": 0.0,
       "name": "gen0221",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119286",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
-      "both_errored": true,
+      "deferred": {
+        "symbol": "SmBrep::MakeShellVertex",
+        "unit": "topology.brep_p9"
+      },
       "max_rel_err": 0.0,
       "name": "gen0222",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=16427433955023119287",
       "values_compared": 0
     },
@@ -7411,11 +7370,14 @@
       "values_compared": 0
     },
     {
-      "both_errored": true,
+      "deferred": {
+        "symbol": "SmRegion::m_bIsVoidFlag",
+        "unit": "topology.shell"
+      },
       "max_rel_err": 0.0,
       "name": "gen0231",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=16427433955023119296",
       "values_compared": 0
     },
@@ -7532,11 +7494,14 @@
       "values_compared": 0
     },
     {
-      "both_errored": true,
+      "deferred": {
+        "symbol": "SmBrep::MakeShellVertex",
+        "unit": "topology.brep_p9"
+      },
       "max_rel_err": 0.0,
       "name": "gen0242",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=16427433955023119307",
       "values_compared": 0
     },
@@ -8025,11 +7990,14 @@
       "values_compared": 3
     },
     {
-      "both_errored": true,
+      "deferred": {
+        "symbol": "SmRegion::m_bIsVoidFlag",
+        "unit": "topology.shell"
+      },
       "max_rel_err": 0.0,
       "name": "gen0290",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=16427433955023119355",
       "values_compared": 0
     },
@@ -8502,13 +8470,12 @@
       "values_compared": 0
     },
     {
-      "both_errored": true,
       "max_rel_err": 0.0,
       "name": "gen0335",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119400",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -8727,20 +8694,26 @@
       "values_compared": 0
     },
     {
-      "both_errored": true,
+      "deferred": {
+        "symbol": "SmShell::GetList",
+        "unit": "topology.shell"
+      },
       "max_rel_err": 0.0,
       "name": "gen0356",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=16427433955023119421",
       "values_compared": 0
     },
     {
-      "both_errored": true,
+      "deferred": {
+        "symbol": "SmShell::IsVertexShell",
+        "unit": "topology.shell"
+      },
       "max_rel_err": 0.0,
       "name": "gen0357",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=16427433955023119422",
       "values_compared": 0
     },
@@ -8965,13 +8938,12 @@
       "values_compared": 0
     },
     {
-      "both_errored": true,
       "max_rel_err": 0.0,
       "name": "gen0378",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119443",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -8990,13 +8962,12 @@
       "values_compared": 7
     },
     {
-      "both_errored": true,
       "max_rel_err": 0.0,
       "name": "gen0381",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119446",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -9199,17 +9170,17 @@
       "values_compared": 0
     }
   ],
-  "cases_both_errored": 25,
-  "cases_deferred": 545,
+  "cases_both_errored": 0,
+  "cases_deferred": 558,
   "cases_failed": 0,
-  "cases_passed": 329,
-  "cases_total": 874,
+  "cases_passed": 309,
+  "cases_total": 867,
   "deferred_by_unit": {
     "query.brep": 49,
-    "topology.brep_p9": 38,
+    "topology.brep_p9": 41,
     "topology.face_p3": 161,
     "topology.face_p4": 39,
-    "topology.shell": 258
+    "topology.shell": 268
   },
   "max_rel_err": 0.0,
   "pass": true,

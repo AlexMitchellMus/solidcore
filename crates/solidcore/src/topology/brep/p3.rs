@@ -46,6 +46,17 @@
 //! - **Edge use marks.** `SqueezeEdge` marks the squeezed edge uses (and their radial
 //!   partners, which are squeezed too); upstream never reads those marks (the check is
 //!   commented out) and deletes the edge uses, so the port does not record them.
+//! - **Mark locks.** `SmNewMarkAndLock` is released by its destructor, which cannot
+//!   fail; the port releases it explicitly and reports a release failure (a mark
+//!   bookkeeping fault) as an error. An `OrientTrimmedSurfaces` that fails returns no
+//!   `rbMaybeNotClosedSolid` (upstream may have set it before the failure).
+//! - **Use notifications.** As elsewhere in the crate, the destructors and
+//!   constructors of uses, loops, shells and regions do not notify
+//!   (`SM_NO_DESTRUCTION` / `SM_NO_CONSTRUCTION` at `SmObject` level; `new_brep`'s own
+//!   construction is reported); faces, edges and vertices do.
+//! - **Notification identities.** The ids of two B-reps overlap, so `MergeBrep`,
+//!   `CopyVertices` and the copy constructors take the notification identity of the
+//!   source B-rep's objects (`source_key`) beside `env.key_of` for the destination's.
 //! - **No recursion.** Every loop is bounded by its input lists; `DeleteFace`'s shell
 //!   split loop removes at least one vertex per pass.
 
@@ -70,6 +81,7 @@ use crate::topology::face::p1 as face1;
 use crate::topology::face::p2 as face2;
 use crate::topology::loopuse as lu1;
 use crate::topology::proto_topology::p1::CopyBrepMap;
+use crate::topology::topology as topo;
 use crate::topology::topology_traverser::{self as tt, Entity, Marks};
 use crate::topology::{
     vertex, vertexuse, Brep, EdgeId, EdgeuseId, EdgeuseOwner, FaceId, FaceuseId, LoopuseId,
@@ -94,6 +106,16 @@ const fn ner() -> SolidError {
 /// `SER_MSG(SM_ERR, ..)` / `SER(SM_ERR)`.
 const fn ser() -> SolidError {
     SolidError::sm_err(OP)
+}
+
+/// A call whose status upstream does not check (no `SER`, or a `void` `Notify`): only
+/// [`SolidError::Unported`] and the [`SolidError::InvalidInput`] of a null pointer
+/// upstream dereferences propagate.
+fn ignore_soft<T>(r: Result<T>) -> Result<()> {
+    match r {
+        Err(e @ (SolidError::Unported { .. } | SolidError::InvalidInput { .. })) => Err(e),
+        Ok(_) | Err(_) => Ok(()),
+    }
 }
 
 // ---- the B-rep's own lists (SmOwningTopology::Remove on its list heads) ------------------
@@ -444,17 +466,18 @@ fn faceuse_remove_loopuse(b: &mut Brep, fu: FaceuseId, lu: LoopuseId) -> Result<
     Ok(())
 }
 
-/// `delete pFace`: notifies its destruction (`SmFace::Notify`, unit `topology.face_p3`)
-/// and drops the surface it owns (the record leaves the B-rep's face list).
+/// `m_pFaceListHead->Remove(pFace); delete pFace`: takes the face off the B-rep's face
+/// list, notifies its destruction (`~SmFace`: `SmFace::Notify`, unit
+/// `topology.face_p3`) and drops the surface it owns.
 fn destroy_face(b: &mut Brep, env: &mut NotifyEnv<'_>, f: FaceId) -> Result<()> {
-    face_notify(
+    b.remove_from_face_list(f);
+    ignore_soft(face_notify(
         b,
         f,
         env,
         NotifyOperation::Destruction,
         [arg(EntityRef::Face(f)), None, None],
-    )?;
-    b.remove_from_face_list(f);
+    ))?;
     let face = b.face_mut(f)?;
     face.faceuse = None;
     let owned = face
@@ -515,7 +538,8 @@ pub fn new_brep(
 /// flags, tolerance, size estimate and ratio, and a copy of its topology and geometry
 /// ([`merge_brep`]; `add_analytics`, upstream default `TRUE`, recognises analytic
 /// surfaces). `copy_map` gets copy to source, `reverse_map` source to copy.
-/// `copy_attributes` (default `TRUE`) is unused upstream.
+/// `copy_attributes` (default `TRUE`) is unused upstream. `env` notifies the copy's
+/// objects under `env.key_of`, `source_key` is the identity of `src`'s.
 ///
 /// # Errors
 ///
@@ -526,6 +550,7 @@ pub fn copy_brep(
     k: &mut Kernel,
     env: &mut NotifyEnv<'_>,
     src: &Brep,
+    source_key: &dyn Fn(EntityRef) -> ObjectRef,
     copy_map: Option<&mut CopyBrepMap<EntityRef>>,
     reverse_map: Option<&mut CopyBrepMap<EntityRef>>,
     copy_attributes: bool,
@@ -548,14 +573,23 @@ pub fn copy_brep(
     b.tolerance = src.tolerance;
 
     // do the actual copying (SE: the status is not acted on)
-    if let Err(e) = merge_brep(k, env, &mut b, src, copy_map, reverse_map, add_analytics) {
+    if let Err(e) = merge_brep(
+        k,
+        env,
+        &mut b,
+        src,
+        source_key,
+        copy_map,
+        reverse_map,
+        add_analytics,
+    ) {
         if e.is_unported() {
             return Err(e);
         }
     }
 
     // inform the public about the construction and the copy
-    brep_notify(
+    ignore_soft(brep_notify(
         &b,
         env,
         NotifyOperation::Construction,
@@ -564,17 +598,23 @@ pub fn copy_brep(
             Some(NotifyArg::Object(p2::brep_ref(src))),
             None,
         ],
-    )?;
+    ))?;
     Ok(b)
 }
 
 /// `SmApiBrepCopy`: a copy of `brep` that preserves its surface types (the copy
-/// constructor without maps, `bAddAnalytics = FALSE`).
+/// constructor without maps, `bAddAnalytics = FALSE`). `source_key` is the
+/// notification identity of `brep`'s objects (see [`copy_brep`]).
 ///
 /// # Errors
 ///
 /// `SM_ERR_INVALID_INPUT` for no B-rep; those of [`copy_brep`].
-pub fn api_brep_copy(k: &mut Kernel, env: &mut NotifyEnv<'_>, brep: Option<&Brep>) -> Result<Brep> {
+pub fn api_brep_copy(
+    k: &mut Kernel,
+    env: &mut NotifyEnv<'_>,
+    brep: Option<&Brep>,
+    source_key: &dyn Fn(EntityRef) -> ObjectRef,
+) -> Result<Brep> {
     let Some(brep) = brep else {
         return Err(SolidError::Upstream {
             operation: OP,
@@ -582,12 +622,14 @@ pub fn api_brep_copy(k: &mut Kernel, env: &mut NotifyEnv<'_>, brep: Option<&Brep
             entity: None,
         });
     };
-    copy_brep(k, env, brep, None, None, true, false)
+    copy_brep(k, env, brep, source_key, None, None, true, false)
 }
 
 /// `CopyVertices`: copies each vertex of `src` into `dest` as a shell vertex of its
-/// infinite region at the same point, reporting each copy (`SM_NO_COPY`). Returns the
-/// new vertices (`pNewVertices`).
+/// infinite region at the same point, reporting each copy (`SM_NO_COPY`, which carries
+/// the flags, user values and attributes to the copy). Returns the new vertices
+/// (`pNewVertices`). `env` notifies `dest`'s objects under `env.key_of`; `source_key`
+/// is the identity of `src`'s (the two B-reps' ids overlap).
 ///
 /// # Errors
 ///
@@ -598,6 +640,7 @@ pub fn copy_vertices(
     vertices: &[VertexId],
     dest: &mut Brep,
     env: &mut NotifyEnv<'_>,
+    source_key: &dyn Fn(EntityRef) -> ObjectRef,
 ) -> Result<Vec<VertexId>> {
     let mut out = Vec::new();
     // for every vertex - copy as Shell vertex
@@ -609,22 +652,50 @@ pub fn copy_vertices(
         let (_, new_v) = make_shell_vertex(dest, inf, coords)?;
 
         // inform the public - propogate attributes and report copy
-        let this = (env.key_of)(EntityRef::Vertex(v));
+        let this = source_key(EntityRef::Vertex(v));
         let to = (env.key_of)(EntityRef::Vertex(new_v));
-        object::notify(
-            env.context.as_deref_mut(),
-            NotifyOperation::Copy,
+        notify_copy(
+            env,
             this,
             Some(to),
             Some(p2::brep_ref(dest)),
             Some(p2::brep_ref(src)),
-        );
+        )?;
         out.push(new_v);
     }
     Ok(out)
 }
 
 // ---- MergeBrep ----------------------------------------------------------------------------------
+
+/// `pFrom->Notify(SM_NO_COPY, pTo, data2, data3)`: every topology `Notify` override
+/// (`SmFace::Notify` of `topology.face_p3` included) passes a copy straight to
+/// `SmTopology::Notify`, which carries the flags and user values of `this` to `to`
+/// (resetting its marks) and then the attributes and callbacks (`SmAObject`).
+/// `Notify` is `void`: only the errors of [`ignore_soft`] propagate.
+fn notify_copy(
+    env: &mut NotifyEnv<'_>,
+    this: ObjectRef,
+    to: Option<ObjectRef>,
+    data2: Option<ObjectRef>,
+    data3: Option<ObjectRef>,
+) -> Result<()> {
+    // (a new object's SmTopology constructor makes its record; an object the caller
+    // keeps no record for has the constructor's values)
+    for key in core::iter::once(this.key).chain(to.map(|t| t.key)) {
+        env.records.entry(key).or_default();
+    }
+    ignore_soft(topo::notify(
+        &mut *env.records,
+        &mut *env.attributes,
+        env.context.as_deref_mut(),
+        NotifyOperation::Copy,
+        this,
+        to,
+        data2,
+        data3,
+    ))
+}
 
 /// The copy recorded for `from` cast to the expected kind.
 fn mapped<T>(
@@ -684,24 +755,27 @@ const fn as_faceuse(e: EntityRef) -> Option<FaceuseId> {
 /// `CopyAndAddAnalytics` when `add_analytics` (upstream default `TRUE`), else with
 /// `Copy`. Every new object is reported (`SM_NO_COPY`) once the graph is complete.
 /// `copy_map` gets copy to source, `reverse_map` source to copy (`sm_SetObjectMap`).
+/// `env` notifies `b`'s objects under `env.key_of`; `source_key` is the identity of
+/// `other`'s (the two B-reps' ids overlap).
 ///
 /// # Errors
 ///
 /// [`SolidError::Unported`] for any B-rep with a region: the region void flag and
 /// shell lists are unit `topology.shell`; those of the geometry copies (`SER`);
-/// [`SolidError::NotFound`] / [`SolidError::InvalidInput`] for a dangling id or a
-/// null pointer upstream dereferences.
-#[allow(clippy::too_many_lines)]
+/// `SM_ERR_NULL_POINTER` for a UV trim curve that is not a kind of `SmBSplineCurve`
+/// (`NER` after `SM_CAST_PTR`); [`SolidError::NotFound`] / [`SolidError::InvalidInput`]
+/// for a dangling id or a null pointer upstream dereferences.
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 pub fn merge_brep(
     k: &Kernel,
     env: &mut NotifyEnv<'_>,
     b: &mut Brep,
     other: &Brep,
+    source_key: &dyn Fn(EntityRef) -> ObjectRef,
     mut copy_map: Option<&mut CopyBrepMap<EntityRef>>,
     mut reverse_map: Option<&mut CopyBrepMap<EntityRef>>,
     add_analytics: bool,
 ) -> Result<()> {
-    let _ = k;
     let mut map = p1::ObjectMap::new();
     let set = |orig: EntityRef,
                copy: EntityRef,
@@ -988,7 +1062,14 @@ pub fn merge_brep(
                 }
             };
             let uv = match &src_eu.uv_trim_curve {
-                Some(c) => Some(c.copy(k)?),
+                Some(c) => {
+                    let new_curve = c.copy(k)?;
+                    // m_pUVTrimCurve = SM_CAST_PTR(SmBSplineCurve, pNewCurve); NER(..)
+                    if curve_bspline_base(&new_curve).is_none() {
+                        return Err(ner());
+                    }
+                    Some(new_curve)
+                }
                 None => None,
             };
             let orientation = src_eu.orientation;
@@ -1104,6 +1185,11 @@ pub fn merge_brep(
             .faceuse(fu1)?
             .mate
             .ok_or(null_deref("face use without mate"))?;
+        let new_face = mapped(EntityRef::Face(f), &map, |x| match x {
+            EntityRef::Face(x) => Some(x),
+            _ => None,
+        })
+        .ok_or(null_deref("unmapped face"))?;
         for (from, to) in [
             (fu1, mapped(EntityRef::Faceuse(fu1), &map, as_faceuse)),
             (fu2, mapped(EntityRef::Faceuse(fu2), &map, as_faceuse)),
@@ -1116,6 +1202,12 @@ pub fn merge_brep(
                 .and_then(|s| mapped(EntityRef::Shell(s), &map, as_shell));
             b.faceuse_mut(to)?.shell = shell;
             copy_faceuse_links(b, to, other, from, &map)?;
+            // (the face record's shell: GetShell is the primary face use's list owner)
+            if b.face(new_face)?.faceuse == Some(to) {
+                if let Some(s) = shell {
+                    b.face_mut(new_face)?.shell = s;
+                }
+            }
         }
 
         // for every loop
@@ -1191,17 +1283,10 @@ pub fn merge_brep(
     }
 
     // Third pass of copying: Notify on all new topology.
+    // (SM_NO_GET_BREP(..) is ((SmObject*)(0)) in the pinned SmTypes.h)
     let copy_notify = |env: &mut NotifyEnv<'_>, from: EntityRef, to: Option<EntityRef>| {
-        let this = (env.key_of)(from);
         let to = to.map(|t| (env.key_of)(t));
-        object::notify(
-            env.context.as_deref_mut(),
-            NotifyOperation::Copy,
-            this,
-            to,
-            Some(p2::brep_ref(b)),
-            Some(p2::brep_ref(other)),
-        );
+        notify_copy(env, source_key(from), to, None, None)
     };
     for &r in &regions {
         for s in region_shells(other, r)? {
@@ -1209,13 +1294,13 @@ pub fn merge_brep(
                 env,
                 EntityRef::Shell(s),
                 p1::get_object_map(EntityRef::Shell(s), &map),
-            );
+            )?;
         }
         copy_notify(
             env,
             EntityRef::Region(r),
             p1::get_object_map(EntityRef::Region(r), &map),
-        );
+        )?;
     }
     for &f in &faces {
         let fu1 = other
@@ -1240,7 +1325,7 @@ pub fn merge_brep(
                 EntityRef::Loopuse(lu1_),
                 EntityRef::Loopuse(lu2_),
             ] {
-                copy_notify(env, x, p1::get_object_map(x, &map));
+                copy_notify(env, x, p1::get_object_map(x, &map))?;
             }
         }
         for x in [
@@ -1248,24 +1333,24 @@ pub fn merge_brep(
             EntityRef::Faceuse(fu1),
             EntityRef::Faceuse(fu2),
         ] {
-            copy_notify(env, x, p1::get_object_map(x, &map));
+            copy_notify(env, x, p1::get_object_map(x, &map))?;
         }
     }
     for &e in &edges {
         for eu in edge::edgeuses(other, e, None, None)? {
             let x = EntityRef::Edgeuse(eu);
-            copy_notify(env, x, p1::get_object_map(x, &map));
+            copy_notify(env, x, p1::get_object_map(x, &map))?;
         }
         let x = EntityRef::Edge(e);
-        copy_notify(env, x, p1::get_object_map(x, &map));
+        copy_notify(env, x, p1::get_object_map(x, &map))?;
     }
     for &v in &vertices {
         for vu in vertex::vertexuses(other, v)? {
             let x = EntityRef::Vertexuse(vu);
-            copy_notify(env, x, p1::get_object_map(x, &map));
+            copy_notify(env, x, p1::get_object_map(x, &map))?;
         }
         let x = EntityRef::Vertex(v);
-        copy_notify(env, x, p1::get_object_map(x, &map));
+        copy_notify(env, x, p1::get_object_map(x, &map))?;
     }
     Ok(())
 }
@@ -1338,20 +1423,25 @@ pub fn delete_face(
     }
 
     // tell Brep it's about to change
-    brep_notify(b, env, NotifyOperation::PreEdit, [brep_arg(b), None, None])?;
-    face_notify(
+    ignore_soft(brep_notify(
+        b,
+        env,
+        NotifyOperation::PreEdit,
+        [brep_arg(b), None, None],
+    ))?;
+    ignore_soft(face_notify(
         b,
         f,
         env,
         NotifyOperation::PreEdit,
         [arg(EntityRef::Face(f)), None, None],
-    )?;
-    brep_notify(
+    ))?;
+    ignore_soft(brep_notify(
         b,
         env,
         NotifyOperation::RmFromBrep,
         [arg(EntityRef::Face(f)), brep_arg(b), None],
-    )?;
+    ))?;
 
     // Get all vertices for later new shell detection
     let mut verts: Vec<Option<VertexId>> = face_vertices(b, f)?.into_iter().map(Some).collect();
@@ -1396,19 +1486,19 @@ pub fn delete_face(
         if surviving == del_region {
             return Err(ser()); // Should not happen
         }
-        region_remove_shell(b, del_region, os)?;
+        ignore_soft(region_remove_shell(b, del_region, os))?;
         other_shell = None;
         for s in region_shells(b, del_region)? {
-            region_remove_shell(b, del_region, s)?;
-            region_post_insert_shell(b, surviving, s)?;
+            ignore_soft(region_remove_shell(b, del_region, s))?;
+            ignore_soft(region_post_insert_shell(b, surviving, s))?;
         }
         if Some(del_region) == b.infinite_region() {
             b.set_infinite_region(Some(surviving));
-            region_set_is_void(b, surviving, true)?;
+            ignore_soft(region_set_is_void(b, surviving, true))?;
         }
 
         // allow attributes to propagate and inform the public of Region merges
-        brep_notify(
+        ignore_soft(brep_notify(
             b,
             env,
             NotifyOperation::MergeInBrep,
@@ -1417,10 +1507,10 @@ pub fn delete_face(
                 arg(EntityRef::Region(del_region)),
                 brep_arg(b),
             ],
-        )?;
+        ))?;
 
         // Remove and Delete the DelRegion
-        b.remove_region_from_list(del_region)?;
+        ignore_soft(b.remove_region_from_list(del_region))?;
     }
 
     let mut new_wire_edges: Vec<EdgeId> = Vec::new();
@@ -1478,7 +1568,14 @@ pub fn delete_face(
                         r.cw = None;
                     }
                     // TRUE = delete existing UVTrimCurve
-                    eu1::set_uv_trim_curve(b, eu, eu1::UvTrimCurveArg::Null, 0.0, true, None)?;
+                    ignore_soft(eu1::set_uv_trim_curve(
+                        b,
+                        eu,
+                        eu1::UvTrimCurveArg::Null,
+                        0.0,
+                        true,
+                        None,
+                    ))?;
 
                     // remember the chanded edges
                     new_wire_edges.push(e);
@@ -1509,9 +1606,9 @@ pub fn delete_face(
     }
 
     // Take care of face and faceuses - remove from lists
-    shell_remove_faceuse(b, shell, fu)?;
+    ignore_soft(shell_remove_faceuse(b, shell, fu))?;
     if let Some(os) = other_shell {
-        shell_remove_faceuse(b, os, other_fu)?;
+        ignore_soft(shell_remove_faceuse(b, os, other_fu))?;
     }
 
     // Don't allow stale pointers to remain in the Faces.
@@ -1521,7 +1618,6 @@ pub fn delete_face(
         }
     }
 
-    let mut shell_alive = true;
     if do_region_nesting {
         // If there are no vertices and no edges then the entire shell goes away.
         let mut vertex_count = verts.len();
@@ -1536,7 +1632,6 @@ pub fn delete_face(
             &mut verts,
             &mut vertex_count,
             new_shell_vertex_count,
-            &mut shell_alive,
         );
         lock.release(core::slice::from_mut(&mut k.context))?;
         res?;
@@ -1549,18 +1644,17 @@ pub fn delete_face(
         // delete every edge converted into a wire
         for e in new_wire_edges {
             deleted.push(EntityRef::Edge(e));
-            delete_edge(k, b, env, e, None)?;
+            ignore_soft(delete_edge(k, b, env, e, None))?;
         }
 
         // remove vertices that have become shell vertices
         for v in orig_vertices {
             if vertex::is_shell_vertex(b, v)? {
                 deleted.push(EntityRef::Vertex(v));
-                delete_vertex(k, b, env, v)?;
+                ignore_soft(delete_vertex(k, b, env, v))?;
             }
         }
     }
-    let _ = shell_alive;
     Ok(deleted)
 }
 
@@ -1578,14 +1672,12 @@ fn delete_face_nesting(
     verts: &mut [Option<VertexId>],
     vertex_count: &mut usize,
     new_shell_vertex_count: usize,
-    shell_alive: &mut bool,
 ) -> Result<()> {
     // (unsigned counts upstream)
     let remaining = |c: usize| c.wrapping_sub(new_shell_vertex_count);
     if any_edgeuse.is_none() && remaining(*vertex_count) == 0 {
         let r = eu1::shell_region(b, shell)?.ok_or(null_deref("shell without region"))?;
-        region_remove_shell(b, r, shell)?;
-        *shell_alive = false;
+        ignore_soft(region_remove_shell(b, r, shell))?;
     } else {
         // See if shell is now a wire shell - if it is point it to an edgeuse
         if shell_list_size(b, shell)? == 0 {
@@ -1647,7 +1739,7 @@ fn delete_face_nesting(
             ..crate::topology::Shell::default()
         })?;
         last_new_shell = Some(new_shell);
-        region_post_insert_shell(b, r, new_shell)?;
+        ignore_soft(region_post_insert_shell(b, r, new_shell))?;
         let mut faceuses = Vec::new();
         let mut edgeuses = Vec::new();
         tt::shell_traversal(
@@ -1688,8 +1780,8 @@ fn delete_face_nesting(
 
         // Transfer faceuses from the old shell to the new shell
         for &x in &faceuses {
-            shell_remove_faceuse(b, shell, x)?;
-            shell_post_insert_faceuse(b, new_shell, x)?;
+            ignore_soft(shell_remove_faceuse(b, shell, x))?;
+            ignore_soft(shell_post_insert_faceuse(b, new_shell, x))?;
             b.faceuse_mut(x)?.shell = Some(new_shell);
         }
     }
@@ -1713,8 +1805,8 @@ fn delete_face_nesting(
     // pLastNewShell
     let last = last_new_shell.ok_or(null_deref("no new shell"))?;
     let r = eu1::shell_region(b, shell)?.ok_or(null_deref("shell without region"))?;
-    shell_transfer_children(b, last, shell)?;
-    region_remove_shell(b, r, last)?;
+    ignore_soft(shell_transfer_children(b, last, shell))?;
+    ignore_soft(region_remove_shell(b, r, last))?;
     Ok(())
 }
 
@@ -1818,12 +1910,12 @@ pub fn make_wire_edge(
     }
 
     // Notify of construction of new edge
-    brep_notify(
+    ignore_soft(brep_notify(
         b,
         env,
         NotifyOperation::AddToBrep,
         [arg(EntityRef::Edge(e)), brep_arg(b), None],
-    )?;
+    ))?;
     Ok(e)
 }
 
@@ -1880,18 +1972,18 @@ pub fn make_wire_edge_vertex(
     vertex::refresh_tolerance(b, v, false)?;
 
     // Notify of construction of new edge and vertex
-    brep_notify(
+    ignore_soft(brep_notify(
         b,
         env,
         NotifyOperation::AddToBrep,
         [arg(EntityRef::Vertex(v)), brep_arg(b), None],
-    )?;
-    brep_notify(
+    ))?;
+    ignore_soft(brep_notify(
         b,
         env,
         NotifyOperation::AddToBrep,
         [arg(EntityRef::Edge(e)), brep_arg(b), None],
-    )?;
+    ))?;
     Ok((e, v))
 }
 
@@ -1932,18 +2024,23 @@ pub fn squeeze_edge(
     }
 
     // notify Brep and edge they are about to be modified
-    brep_notify(b, env, NotifyOperation::PreEdit, [brep_arg(b), None, None])?;
+    ignore_soft(brep_notify(
+        b,
+        env,
+        NotifyOperation::PreEdit,
+        [brep_arg(b), None, None],
+    ))?;
     let eref = (env.key_of)(EntityRef::Edge(e));
     let bref = p2::brep_ref(b);
-    edge::notify(
+    ignore_soft(edge::notify(
         b,
         e,
         env,
         NotifyOperation::PreEdit,
         [Some(eref), Some(bref), None],
-    )?;
+    ))?;
     let cref = b.edge(e)?.curve.as_ref().map(|_| curve_ref(env, e));
-    brep_notify(
+    ignore_soft(brep_notify(
         b,
         env,
         NotifyOperation::RmFromBrep,
@@ -1952,7 +2049,7 @@ pub fn squeeze_edge(
             brep_arg(b),
             cref.map(NotifyArg::Object),
         ],
-    )?;
+    ))?;
 
     // locals - vertex to delete, edge->edgeuses
     let del_vertex =
@@ -2004,13 +2101,15 @@ pub fn squeeze_edge(
 
     // Remove and destroy all squeezeEdge->edgeuses and corresponding vertexuses.
     for &eu in &edgeuses {
-        let (vu, v) = eu_vertex(b, eu)?;
+        // (dereferenced unchecked upstream)
+        let vu = eu1::vertexuse(b, eu)?.ok_or(null_deref("edge use without vertex use"))?;
+        let v = vertexuse::vertex(b, vu)?.ok_or(null_deref("vertex use without vertex"))?;
         edge_remove_edgeuse(b, e, eu)?;
         vertex_remove_vertexuse(b, v, vu)?;
     }
 
     // inform public two vertices are being merged into one
-    brep_notify(
+    ignore_soft(brep_notify(
         b,
         env,
         NotifyOperation::MergeInBrep,
@@ -2019,7 +2118,7 @@ pub fn squeeze_edge(
             arg(EntityRef::Vertex(del_vertex)),
             brep_arg(b),
         ],
-    )?;
+    ))?;
 
     // Move all deleteVertex->vertexuses to survivingVertex.
     for vu in vertex::vertexuses(b, del_vertex)? {
@@ -2031,7 +2130,8 @@ pub fn squeeze_edge(
     // Delete squeezeEdge and deleteVertex now that they are removed from the topology
     // graph.
     let vref = (env.key_of)(EntityRef::Vertex(del_vertex));
-    vertex::notify(
+    let key_of = env.key_of;
+    ignore_soft(vertex::notify(
         b,
         del_vertex,
         &mut *env.records,
@@ -2040,19 +2140,16 @@ pub fn squeeze_edge(
         NotifyOperation::Destruction,
         vref,
         [Some(vref), None, None],
-        &|vu| ObjectRef {
-            type_code: 0,
-            key: crate::geom::attribute::ObjectKey(u64::from(vu.index())),
-        },
-    )?;
+        &|vu| key_of(EntityRef::Vertexuse(vu)),
+    ))?;
     b.remove_from_vertex_list(del_vertex);
-    edge::notify(
+    ignore_soft(edge::notify(
         b,
         e,
         env,
         NotifyOperation::Destruction,
         [Some(eref), None, None],
-    )?;
+    ))?;
     let owned = b
         .edge(e)?
         .curve
@@ -2077,13 +2174,13 @@ fn squeeze_loops(
 ) -> Result<()> {
     for &eu in edgeuses {
         if let Some(face) = eu1::face(b, eu)? {
-            face_notify(
+            ignore_soft(face_notify(
                 b,
                 face,
                 env,
                 NotifyOperation::PreEdit,
                 [arg(EntityRef::Face(face)), brep_arg(b), None],
-            )?;
+            ))?;
         }
 
         // remove UVTrimCurves
@@ -2143,7 +2240,12 @@ const fn as_bspline_surface(s: &Surface) -> Option<&BSplineSurface> {
 /// face with an analytic surface; those of the curve lift / approximation;
 /// `SM_ERR_NULL_POINTER` when a curve could not be made a B-spline (`NER`).
 pub fn turn_to_nurbs(k: &Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Result<()> {
-    brep_notify(b, env, NotifyOperation::PreEdit, [brep_arg(b), None, None])?;
+    ignore_soft(brep_notify(
+        b,
+        env,
+        NotifyOperation::PreEdit,
+        [brep_arg(b), None, None],
+    ))?;
 
     // for every Brep->Surface (GetSurfaces, then the surface's face)
     let faces: Vec<FaceId> = p1::faces(b, None)?
@@ -2164,7 +2266,8 @@ pub fn turn_to_nurbs(k: &Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Resul
             .as_ref()
             .ok_or(null_deref("face without surface"))?;
         let Some(bss) = as_bspline_surface(surface) else {
-            // not an SmOffsetSurface (no such kind yet): skip
+            // not an SmOffsetSurface (no such kind on this branch yet): skip
+            // UNPORTED(surface.offset_surface): SmOffsetSurface (TurnToNURBS' offset arm)
             continue;
         };
         if surface.type_code() == BSplineSurface::TYPE {
@@ -2204,6 +2307,10 @@ pub fn turn_to_nurbs(k: &Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Resul
 
         // LiftCurve is pCurve is an SmCrvOnSurf (status ignored)
         if let CurveKind::CrvOnSurf(cos) = curve.kind() {
+            // (`*SM_CAST_PTR(SmBSplineCurve, GetUVCurve())`: dereferenced unchecked)
+            if curve_bspline_base(cos.uv_curve()).is_none() {
+                return Err(null_deref("curve on surface without a B-spline UV curve"));
+            }
             let base = Surface::from(cos.surface().copy());
             let ivl = b.edge(e)?.interval;
             match base.lift_curve(
@@ -2375,7 +2482,8 @@ fn orient_body(
 
         // If this face needs swapping, do it. Aids in bookkeeping later.
         if in_swap(face) {
-            face1::swap_uv(k, b, face)?;
+            // (no SER upstream)
+            ignore_soft(face1::swap_uv(k, b, face))?;
         }
 
         let (reverse_votes, same_votes) = if just_unify_normals {
@@ -2474,7 +2582,12 @@ fn orient_body(
     }
 
     // SwapUV on faces to be reversed
-    brep_notify(b, env, NotifyOperation::PreEdit, [brep_arg(b), None, None])?;
+    ignore_soft(brep_notify(
+        b,
+        env,
+        NotifyOperation::PreEdit,
+        [brep_arg(b), None, None],
+    ))?;
     for f in swap_faces {
         face1::swap_uv(k, b, f)?;
     }
@@ -2771,9 +2884,40 @@ mod tests {
     }
 
     #[test]
+    fn copy_notification_carries_flags_to_the_copy() {
+        use crate::geom::attribute::ObjectKey;
+        let from = ObjectRef {
+            type_code: vertex::TYPE,
+            key: ObjectKey(1),
+        };
+        let to = ObjectRef {
+            type_code: vertex::TYPE,
+            key: ObjectKey(2),
+        };
+        let mut records = BTreeMap::new();
+        let mut src = topo::Topology::new();
+        src.set_all_flags(5);
+        records.insert(from.key, src);
+        let mut attributes = crate::geom::attribute::AttributeStore::default();
+        let key_of = |_: EntityRef| to;
+        let mut env = NotifyEnv {
+            records: &mut records,
+            attributes: &mut attributes,
+            context: None,
+            key_of: &key_of,
+        };
+        notify_copy(&mut env, from, Some(to), None, None).unwrap();
+        let copy = records[&to.key];
+        assert_eq!(copy.all_flags(), 5);
+    }
+
+    #[test]
     fn api_copy_of_null_is_invalid_input() {
         let mut k = Kernel::default();
-        let r = with_env(|env| api_brep_copy(&mut k, env, None));
+        let r = with_env(|env| {
+            let key = env.key_of;
+            api_brep_copy(&mut k, env, None, key)
+        });
         assert!(matches!(
             r,
             Err(SolidError::Upstream {

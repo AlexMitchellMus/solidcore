@@ -27,7 +27,9 @@
 //! uses, no B-rep, vertices at the origin. Deferred: point classifications on topology
 //! objects (their `SmVertex::GetPoint`, `SmEdge::GetCurve`, `SmFace::GetSurface`, ...
 //! in `intersect.point_class`), `SmBrep::Transform`, and the manager's fallback
-//! tolerance.
+//! tolerance. `ProtoBrep::brep_squeeze_edge` (`SmBrep::SqueezeEdge`) defers under
+//! `harness:proto-pool-brep-edit`: the pool's stand-ins have no B-rep to edit, so that
+//! is a gap of this harness, not of a plan unit (no case reaches it).
 
 use std::collections::BTreeMap;
 

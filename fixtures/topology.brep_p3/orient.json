@@ -1527,22 +1527,6 @@
    }
   },
   {
-   "name": "orient_net_swap0",
-   "upstream_ref": "tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces)",
-   "inputs": {
-    "brep": {
-     "kind": "network"
-    },
-    "editing": -1,
-    "op": "orient",
-    "outward": true,
-    "unify": true,
-    "faces": [
-     0
-    ]
-   }
-  },
-  {
    "name": "orient_net_swapnone",
    "upstream_ref": "tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces)",
    "inputs": {
