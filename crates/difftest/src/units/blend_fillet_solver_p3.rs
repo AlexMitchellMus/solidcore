@@ -220,12 +220,16 @@ impl FilletSolverOps for HarnessSolver {
         }
         if let Some(j) = jacobian.as_deref_mut() {
             if *ne + 2 < j.num_rows() && *np + 1 < j.num_columns() && o1 + 1 < j.num_columns() {
-                let (pu, pv, qu, qv) = ([pu.x, pu.y, pu.z], [pv.x, pv.y, pv.z], [qu.x, qu.y, qu.z], [qv.x, qv.y, qv.z]);
-                for i in 0..3 {
-                    set_j(j, *ne + i, o1, pu[i]);
-                    set_j(j, *ne + i, o1 + 1, pv[i]);
-                    set_j(j, *ne + i, *np, -qu[i]);
-                    set_j(j, *ne + i, *np + 1, -qv[i]);
+                let cols = [
+                    ([pu.x, pu.y, pu.z], o1, 1.0),
+                    ([pv.x, pv.y, pv.z], o1 + 1, 1.0),
+                    ([qu.x, qu.y, qu.z], *np, -1.0),
+                    ([qv.x, qv.y, qv.z], *np + 1, -1.0),
+                ];
+                for (vals, col, sign) in cols {
+                    for (i, v) in vals.into_iter().enumerate() {
+                        set_j(j, *ne + i, col, if sign < 0.0 { -v } else { v });
+                    }
                 }
             }
         }
@@ -247,7 +251,7 @@ impl FilletSolverOps for HarnessSolver {
             if let Some(slot) = f.get_mut(*ne) {
                 *slot = v;
             }
-            if let Some(j) = jacobian.as_deref_mut() {
+            if let Some(j) = jacobian {
                 set_j(j, *ne, *np, 1.0);
             }
             if v.abs() > big {
@@ -323,9 +327,9 @@ fn rust_step(i: &StepIn) -> Result<Output, HarnessError> {
         init_fail: i.init_fail,
     };
     fs.base.orientations = i.orient;
-    for (rail, srf) in [&i.s0, &i.s1].into_iter().enumerate() {
+    for (rail, (srf, orient)) in [&i.s0, &i.s1].into_iter().zip(i.orient).enumerate() {
         let base = surface_of(srf)?;
-        let d = i.radius * i.orient[rail];
+        let d = i.radius * orient;
         let mut s = match OffsetSurface::new(&k, d, base, SurfaceId::Free(rail as u32), SS_UNKNOWN) {
             Ok(s) => s,
             Err(e) => return Output::unported(&e).ok_or_else(|| harness(format!("offset surface: {e}"))),
@@ -399,7 +403,7 @@ fn knots(n: usize, p: usize) -> Vec<f64> {
     for i in 1..spans {
         u.push(i as f64 / spans as f64);
     }
-    u.extend(std::iter::repeat(1.0).take(p + 1));
+    u.extend(std::iter::repeat_n(1.0, p + 1));
     u
 }
 
@@ -433,7 +437,7 @@ fn patch(
         .map(|i| {
             (0..=m)
                 .map(|j| {
-                    let (s, t) = (gu[i], gv[j]);
+                    let (s, t) = (gu.get(i).copied().unwrap_or(0.0), gv.get(j).copied().unwrap_or(0.0));
                     let lift = if i > 0 && i < n && j > 0 && j < m && bump != 0.0 {
                         rng.uniform(-bump, bump)
                     } else {
