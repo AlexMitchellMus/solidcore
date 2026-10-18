@@ -226,7 +226,7 @@
       "name": "merge_added_face_stitch_api",
       "outcome": "deferred",
       "pass": false,
-      "source": "fixture:fixtures/boolean.merge_p2/cases.json#23 (upstream source/SM_API/src/SmApiBrep.cpp:1185 (SmApiStitch(pBrep, pFace), here with a positive tolerance; see UB-178))",
+      "source": "fixture:fixtures/boolean.merge_p2/cases.json#23 (upstream source/SM_API/src/SmApiBrep.cpp:1185 (SmApiStitch(pBrep, pFace), here with a positive tolerance; see UB-181))",
       "values_compared": 0
     },
     {

@@ -7011,9 +7011,9 @@ independent p6 integration.
   to copy, so the runner registers a fresh `Topology` record for every vertex, edge
   and face of both operands (the flags themselves are not compared).
 - **Guards.** Two inputs crash the reference build and are refused by the FFI
-  wrapper: a computed tolerance with a null other B-rep (UB-178, which makes
+  wrapper: a computed tolerance with a null other B-rep (UB-181, which makes
   `SmApiStitch(pBrep, pFace)` crash on every call) and an entity listed twice in a
-  `MergeAddedTopology` list once stitching glues it (UB-177). Non-finite tolerances
+  `MergeAddedTopology` list once stitching glues it (UB-180). Non-finite tolerances
   and angles were probed on every fixture kind and run, so they are not refused.
 - **Upstream defaults.** `MergeAddedTopology`'s header and definition disagree on the
   position of `bDoGluing` (WR-175); `MergeAddedOptions::default` is the effective

@@ -16,14 +16,14 @@
 //!
 //! Guards (each input upstream would dereference null or use after free):
 //! - a computed tolerance (`dApproxTol3d < SM_EFF_ZERO`) without other B-rep
-//!   (`pOtherBrep->GetMinEdgeBBoxSize`; UB-178, segfaults the reference build);
+//!   (`pOtherBrep->GetMinEdgeBBoxSize`; UB-181, segfaults the reference build);
 //! - `MakeFaceuse` of a null face use (`pFaceuseToMakeInBrep->GetMate()`);
 //! - mates that are not one-to-one per kind (`Relate` conflicts; the fixture only);
 //! - `MergeAddedTopology` / `MergeAddedFace` with another B-rep (they merge within
 //!   the primary one) or a computed tolerance (with no other B-rep, as above);
 //! - an entity listed twice in a `MergeAddedTopology` list: once `StitchVertexPairs`
 //!   glues one copy of a duplicated vertex and deletes it, the other entry is a
-//!   dangling pointer (UB-177 in `plan/upstream-issues.md`; segfaults the reference
+//!   dangling pointer (UB-180 in `plan/upstream-issues.md`; segfaults the reference
 //!   build). Non-finite tolerances and angles run (probed on every fixture kind).
 
 use super::boolean_merge_p5::{export, Operand};

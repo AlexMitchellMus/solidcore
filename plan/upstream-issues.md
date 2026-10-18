@@ -1353,7 +1353,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** crash / out-of-range read.
 - **Rust port:** Kernel topology mutation remains deferred. Both the safe FFI validator and the C++ shim require equally sized partners for op 3 with fillets. Six `rejected_fillets_*` fixtures check rejection; 660 isolated probes independently exercise both guards at first and last indices of 1/2/3/32 intervals. Valid equal-sized pairs and non-fillet calls remain accepted.
 
-#### UB-177. `SmMerge::MergeAddedTopology` uses a vertex listed twice after gluing deletes it
+#### UB-180. `SmMerge::MergeAddedTopology` uses a vertex listed twice after gluing deletes it
 - **Location:** `source/SMLib/src/SmMerge.cpp:5304`, `SmMerge::MergeAddedTopology` (`sAddedVerts = *pMergeVerts` is copied without `AddUnique`); `SmStitch::StitchVertexPairs` (`source/SMLib/src/SmStitch.cpp`).
 - **What happens:** A caller-supplied vertex list is used as given. `StitchVertexPairs` glues the first copy of a duplicated added vertex to a master vertex, deletes it and nulls that one slot; the second slot still holds the deleted vertex, which the stitch then dereferences.
 - **Trigger:** `MergeAddedTopology` with a vertex twice in `pMergeVerts`, within the stitch tolerance (4x the approximation tolerance) of a vertex of the rest of the B-rep: e.g. the ASCII `plane_square.smb` with vertices `[0, 0]`, no faces or edges, tolerance 10.
@@ -1362,7 +1362,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** crash/UB (use after free).
 - **Rust port:** The FFI guard refuses any entity listed twice in a `MergeAddedTopology` list; the port follows upstream.
 
-#### UB-178. `SmApiStitch(pBrep, pFaceToStitch)` builds its `SmMerge` with a null other B-rep and a zero tolerance
+#### UB-181. `SmApiStitch(pBrep, pFaceToStitch)` builds its `SmMerge` with a null other B-rep and a zero tolerance
 - **Location:** `source/SM_API/src/SmApiBrep.cpp:1183`, `SmApiStitch(SmBrep*, SmFace*)`: `SmMerge sMerge(*pContext, pBrep, NULL)`; `source/SMLib/src/SmMerge.cpp:72`, `SmMerge::SmMerge` (`pOtherBrep->GetMinEdgeBBoxSize`).
 - **What happens:** The constructor's tolerance argument defaults to `0`, and a tolerance below `SM_EFF_ZERO` is computed from both B-reps' minimum edge sizes and tolerances. Its comment says the other B-rep "can now be Null, for the Stitch methods", but the computation dereferences it unconditionally, so this overload of `SmApiStitch` crashes on every call that passes its null checks.
 - **Trigger:** Any `SmApiStitch(pBrep, pFace)` with non-null arguments; directly, `SmMerge(ctx, pBrep, NULL)` (or any tolerance below `SM_EFF_ZERO`) on e.g. the ASCII `plane_square.smb`.
