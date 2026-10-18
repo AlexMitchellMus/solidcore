@@ -20,6 +20,8 @@
 //! `FaceKey`/`BrepRef` handles, with caller-unique `BrepId`s, not local face ids alone.
 //! Static entry points take non-null references/owned values (null is undefined
 //! upstream); member null is native 1006, API null/invalid selection is native 1007.
+//! Offset/member inputs are mutable so existing queries can populate lazy UV trim
+//! geometry in the same arena; this adds no constructive capability or topology copy.
 //! Arena order replaces owning face-list order, as in p1. Empty temporary allocation
 //! and tolerance assignment use the existing `Brep` skeleton; its absent editing flag
 //! is not simulated. Region void flags, infinite-region lookup, topology copies,
@@ -104,7 +106,12 @@ impl ShellOutcome {
 ///
 /// Only ordinary inner failures collapse to native `SM_ERR` (1001).
 /// [`SolidError::Unported`] propagates so missing dependencies remain deferred.
-pub fn offset_brep(kernel: &mut Kernel, original: &Brep, options: OffsetOptions) -> Result<Brep> {
+/// Mutable input permits lazy UV trim geometry updates in the caller's arena.
+pub fn offset_brep(
+    kernel: &mut Kernel,
+    original: &mut Brep,
+    options: OffsetOptions,
+) -> Result<Brep> {
     let mut executive = configured_executive(original, options);
     collapse_offset_status(executive.do_solid_offset(
         kernel,
@@ -119,10 +126,11 @@ impl OffsetExecutive {
     ///
     /// The manifold query deliberately precedes the strict distance guard. No
     /// caller-visible input is discarded on an early error. Unlike static offset,
-    /// ordinary inner errors are returned unchanged.
+    /// ordinary inner errors are returned unchanged. The owned input is borrowed
+    /// mutably for lazy UV trim geometry; any retained input keeps those updates.
     pub fn shell_brep(
         kernel: &mut Kernel,
-        original: Brep,
+        mut original: Brep,
         options: ShellOptions,
         faces: &[FaceId],
     ) -> ShellOutcome {
@@ -135,7 +143,7 @@ impl OffsetExecutive {
 
             // cpp:217–251: the helper's scope drops any separately retained
             // executive temporary before querying the result's manifold status.
-            let mut shell = run_shell_offset(kernel, &original, options, faces)?;
+            let mut shell = run_shell_offset(kernel, &mut original, options, faces)?;
             if !brep_is_manifold_solid(&shell)? && !options.create_offset_solid {
                 return Ok(shell);
             }
@@ -180,10 +188,12 @@ impl OffsetExecutive {
     /// context flag is untouched, and `skip_stitch_merge` is not examined. Otherwise
     /// the flag is true throughout the operation and restored on every result.
     /// Even an empty input reaches `SmBrep::ShrinkGeometry`, before the skip flag.
+    /// Mutable input allows copied-face queries to create lazy UV trim geometry in
+    /// the original arena; the constructive prefix remains partial.
     pub fn do_solid_offset(
         &mut self,
         kernel: &mut Kernel,
-        original: Option<&Brep>,
+        original: Option<&mut Brep>,
         _options: SolidOffsetOptions,
     ) -> Result<Brep> {
         // cpp:411–418: dispatch must precede NER and the Boolean scope.
@@ -193,7 +203,8 @@ impl OffsetExecutive {
         let original = required(original, OP_SOLID)?;
         with_doing_boolean(kernel, |kernel| {
             self.allocate_offset_brep();
-            for (id, _) in original.faces().iter() {
+            let faces: Vec<_> = original.faces().iter().map(|(id, _)| id).collect();
+            for id in faces {
                 if self.shell_faces().contains(&id) {
                     self.copy_shell_face_prefix(kernel, original, id)?;
                 } else {
@@ -226,14 +237,17 @@ impl OffsetExecutive {
     /// Unlike rounded offset, this does not set `doing_boolean`. Empty inputs still
     /// claim/release a traversal mark, remove excess faces when requested and call
     /// p1's real `piecewise_merge`; they never bypass stitching with an empty result.
+    /// Mutable input keeps lazy UV trim geometry from copied-face and tangency
+    /// queries in the original arena, without adding constructive capability.
     pub fn do_extended_offset(
         &mut self,
         kernel: &mut Kernel,
-        original: Option<&Brep>,
+        original: Option<&mut Brep>,
     ) -> Result<Brep> {
         let original = required(original, OP_EXTENDED)?;
         self.allocate_offset_brep();
-        for (id, _) in original.faces().iter() {
+        let faces: Vec<_> = original.faces().iter().map(|(id, _)| id).collect();
+        for id in faces {
             if self.shell_faces().contains(&id) {
                 self.copy_shell_face_prefix(kernel, original, id)?;
             } else {
@@ -258,6 +272,7 @@ impl OffsetExecutive {
                         continue;
                     };
                     if eu2::is_tangent_sector(
+                        kernel,
                         original,
                         edgeuse,
                         self.tangency_tol_degrees(),
@@ -341,7 +356,12 @@ impl OffsetExecutive {
         self.set_offset_brep(temporary);
     }
 
-    fn copy_shell_face_prefix(&self, kernel: &Kernel, original: &Brep, id: FaceId) -> Result<()> {
+    fn copy_shell_face_prefix(
+        &self,
+        kernel: &Kernel,
+        original: &mut Brep,
+        id: FaceId,
+    ) -> Result<()> {
         // Both the 3D and UV outputs are requested, in this order, upstream.
         let _curves =
             face::create_curves_from_face(kernel, original, id, OrientType::Same, true, true)?;
@@ -487,10 +507,11 @@ pub fn api_shell_brep_full(
 }
 
 /// Full-offset API: guard native null with 1007, then call the static executive.
-/// Unlike the shell API this wrapper does not make a topology copy.
+/// Unlike the shell API this wrapper does not make a topology copy; lazy UV trim
+/// geometry updates require mutable access to the caller's original arena.
 pub fn api_offset_brep_full(
     kernel: &mut Kernel,
-    original: Option<&Brep>,
+    original: Option<&mut Brep>,
     options: OffsetOptions,
 ) -> Result<Brep> {
     let original = original.ok_or_else(|| invalid_input(OP_API_OFFSET))?;
@@ -522,7 +543,7 @@ fn configured_shell_executive(
 
 fn run_shell_offset(
     kernel: &mut Kernel,
-    original: &Brep,
+    original: &mut Brep,
     options: ShellOptions,
     faces: &[FaceId],
 ) -> Result<Brep> {
@@ -645,13 +666,19 @@ mod tests {
 
     fn one_face(surface: bool) -> (Brep, FaceId) {
         let mut brep = Brep::new();
-        let region = brep.add_region_record(Region { in_brep: true }).unwrap();
+        let region = brep
+            .add_region_record(Region {
+                in_brep: true,
+                ..Region::default()
+            })
+            .unwrap();
         let shell = brep
             .add_shell_record(Shell {
                 region: Some(region),
                 ..Shell::default()
             })
             .unwrap();
+        brep.region_mut(region).unwrap().shells.push(shell);
         let face = brep.add_face(shell).unwrap();
         let first = brep
             .add_faceuse_record(Faceuse {
@@ -685,6 +712,17 @@ mod tests {
             brep,
             handle: BrepId::from_index(id),
         }
+    }
+
+    #[test]
+    fn one_face_links_region_and_shell_without_inferring_void_flag() {
+        let (brep, face) = one_face(false);
+        let shell = brep.face(face).unwrap().shell;
+        let region = brep.shell(shell).unwrap().region.unwrap();
+        let region = brep.region(region).unwrap();
+        assert!(region.in_brep);
+        assert_eq!(region.shells.as_slice(), &[shell]);
+        assert_eq!(region.is_void, Region::default().is_void);
     }
 
     #[test]
@@ -766,11 +804,11 @@ mod tests {
         // Exercise exactly the post-query shell helper: the real public shell
         // entry point must still defer at IsManifoldSolid before reaching it.
         assert_status(
-            run_shell_offset(&mut kernel, &original, ShellOptions::default(), &[]),
+            run_shell_offset(&mut kernel, &mut original, ShellOptions::default(), &[]),
             SM_ERR_NULL_POINTER,
         );
         assert_status(
-            offset_brep(&mut kernel, &original, OffsetOptions::default()),
+            offset_brep(&mut kernel, &mut original, OffsetOptions::default()),
             SM_ERR,
         );
         assert!(!kernel.context.doing_boolean());
@@ -814,7 +852,7 @@ mod tests {
 
     #[test]
     fn extended_dispatch_ignores_skip_and_never_enters_boolean_scope() {
-        let (original, _) = one_face(false);
+        let (mut original, _) = one_face(false);
         for previous in [false, true] {
             for skip_stitch_merge in [false, true] {
                 let mut kernel = Kernel::default();
@@ -824,7 +862,7 @@ mod tests {
                 assert_dependency(
                     exec.do_solid_offset(
                         &mut kernel,
-                        Some(&original),
+                        Some(&mut original),
                         SolidOffsetOptions { skip_stitch_merge },
                     ),
                     "SmRegion::IsVoid",
@@ -865,13 +903,17 @@ mod tests {
 
     #[test]
     fn rounded_face_offset_stops_at_real_infinite_region_before_geometry_creation() {
-        let (original, _) = one_face(false);
+        let (mut original, _) = one_face(false);
         let mut kernel = Kernel::default();
         for inset in [false, true] {
             let mut exec = executive();
             exec.set_inset(inset);
             assert_dependency(
-                exec.do_solid_offset(&mut kernel, Some(&original), SolidOffsetOptions::default()),
+                exec.do_solid_offset(
+                    &mut kernel,
+                    Some(&mut original),
+                    SolidOffsetOptions::default(),
+                ),
                 "SmBrep::GetInfiniteRegion",
                 "topology.brep_p1",
             );
@@ -891,7 +933,11 @@ mod tests {
             exec.set_extend_convex_edges(extended);
             exec.set_shell_faces(&[second]);
             assert_dependency(
-                exec.do_solid_offset(&mut kernel, Some(&original), SolidOffsetOptions::default()),
+                exec.do_solid_offset(
+                    &mut kernel,
+                    Some(&mut original),
+                    SolidOffsetOptions::default(),
+                ),
                 if extended {
                     "SmRegion::IsVoid"
                 } else {
@@ -909,7 +955,11 @@ mod tests {
             // The first face's copy prefix reaches its missing surface before
             // even inspecting the malformed second face's absent faceuse.
             assert_status(
-                exec.do_solid_offset(&mut kernel, Some(&original), SolidOffsetOptions::default()),
+                exec.do_solid_offset(
+                    &mut kernel,
+                    Some(&mut original),
+                    SolidOffsetOptions::default(),
+                ),
                 SM_ERR_NULL_POINTER,
             );
         }
@@ -917,7 +967,7 @@ mod tests {
 
     #[test]
     fn empty_solid_always_shrinks_before_skip_or_merge() {
-        let original = Brep::new();
+        let mut original = Brep::new();
         for previous in [false, true] {
             for skip_stitch_merge in [false, true] {
                 for merge in [false, true] {
@@ -929,7 +979,7 @@ mod tests {
                     assert_dependency(
                         exec.do_solid_offset(
                             &mut kernel,
-                            Some(&original),
+                            Some(&mut original),
                             SolidOffsetOptions { skip_stitch_merge },
                         ),
                         "SmBrep::ShrinkGeometry",
@@ -949,24 +999,32 @@ mod tests {
     fn copied_face_requests_real_curves_and_surface_before_infinite_region() {
         let mut kernel = Kernel::default();
         for extended in [false, true] {
-            let (original, face) = one_face(false);
+            let (mut original, face) = one_face(false);
             let mut exec = executive();
             exec.set_shell_faces(&[face, face]);
             exec.set_extend_convex_edges(extended);
             assert_status(
-                exec.do_solid_offset(&mut kernel, Some(&original), SolidOffsetOptions::default()),
+                exec.do_solid_offset(
+                    &mut kernel,
+                    Some(&mut original),
+                    SolidOffsetOptions::default(),
+                ),
                 SM_ERR_NULL_POINTER,
             );
             assert_eq!(exec.shell_faces(), &[face, face]);
             assert!(!kernel.context.doing_boolean());
         }
         for extended in [false, true] {
-            let (original, face) = one_face(true);
+            let (mut original, face) = one_face(true);
             let mut exec = executive();
             exec.set_shell_faces(&[face]);
             exec.set_extend_convex_edges(extended);
             assert_dependency(
-                exec.do_solid_offset(&mut kernel, Some(&original), SolidOffsetOptions::default()),
+                exec.do_solid_offset(
+                    &mut kernel,
+                    Some(&mut original),
+                    SolidOffsetOptions::default(),
+                ),
                 "SmBrep::GetInfiniteRegion",
                 "topology.brep_p1",
             );
@@ -976,7 +1034,7 @@ mod tests {
 
     #[test]
     fn empty_extended_uses_p1_stitch_choice_and_releases_its_mark_on_error() {
-        let original = Brep::new();
+        let mut original = Brep::new();
         for create_solid in [false, true] {
             for previous in [false, true] {
                 let mut kernel = Kernel::default();
@@ -984,7 +1042,7 @@ mod tests {
                 let mut exec = executive();
                 exec.set_create_offset_solid(create_solid);
                 assert_dependency(
-                    exec.do_extended_offset(&mut kernel, Some(&original)),
+                    exec.do_extended_offset(&mut kernel, Some(&mut original)),
                     if create_solid {
                         "SmStitch::StitchIntoShell"
                     } else {
@@ -1002,13 +1060,13 @@ mod tests {
 
     #[test]
     fn extended_scope_preserves_an_outer_mark_lock_and_releases_its_own() {
-        let original = Brep::new();
+        let mut original = Brep::new();
         let mut kernel = Kernel::default();
         let mut outer =
             MarkLock::new(std::slice::from_mut(&mut kernel.context), 0, ALL_MARKS).unwrap();
         assert_eq!(outer.mark_type(), MarkType::Mark);
         assert_dependency(
-            executive().do_extended_offset(&mut kernel, Some(&original)),
+            executive().do_extended_offset(&mut kernel, Some(&mut original)),
             "SmStitch::StitchIntoSolid",
             "heal.stitch_p2",
         );
@@ -1023,14 +1081,14 @@ mod tests {
 
     #[test]
     fn stale_mapped_edgeuse_is_not_silently_skipped_on_the_empty_extended_path() {
-        let original = Brep::new();
+        let mut original = Brep::new();
         for extended in [false, true] {
             let mut kernel = Kernel::default();
             let mut exec = executive();
             exec.set_extend_convex_edges(extended);
             let missing = EdgeuseId::from_index(9);
             exec.relate_edgeuses(missing, EdgeuseId::from_index(4));
-            let result = exec.do_extended_offset(&mut kernel, Some(&original));
+            let result = exec.do_extended_offset(&mut kernel, Some(&mut original));
             assert!(matches!(
                 result,
                 Err(SolidError::NotFound { entity: EntityRef::Edgeuse(id), .. })
@@ -1044,12 +1102,12 @@ mod tests {
 
     #[test]
     fn empty_extended_merge_reaches_remove_faces_even_without_candidate_faces() {
-        let original = Brep::new();
+        let mut original = Brep::new();
         let mut kernel = Kernel::default();
         let mut exec = executive();
         exec.set_merge_results(true);
         assert_dependency(
-            exec.do_extended_offset(&mut kernel, Some(&original)),
+            exec.do_extended_offset(&mut kernel, Some(&mut original)),
             "SmBrep::RemoveFaces",
             "topology.brep_p5",
         );
@@ -1060,13 +1118,13 @@ mod tests {
 
     #[test]
     fn nonempty_shell_list_skips_remove_faces_but_not_piecewise_merge_shrink() {
-        let original = Brep::new();
+        let mut original = Brep::new();
         let mut kernel = Kernel::default();
         let mut exec = executive();
         exec.set_merge_results(true);
         exec.set_shell_faces(&[FaceId::from_index(0)]);
         assert_dependency(
-            exec.do_extended_offset(&mut kernel, Some(&original)),
+            exec.do_extended_offset(&mut kernel, Some(&mut original)),
             "SmBrep::ShrinkGeometry",
             "topology.brep_p4",
         );
@@ -1102,7 +1160,7 @@ mod tests {
         original.add_face(shell).unwrap(); // native invalid/dereferenced faceuse
         let mut kernel = Kernel::default();
         assert_status(
-            offset_brep(&mut kernel, &original, OffsetOptions::default()),
+            offset_brep(&mut kernel, &mut original, OffsetOptions::default()),
             SM_ERR,
         );
         assert!(!kernel.context.doing_boolean());
@@ -1110,7 +1168,7 @@ mod tests {
 
     #[test]
     fn static_and_api_offset_flags_select_the_real_empty_extended_path() {
-        let original = Brep::new();
+        let mut original = Brep::new();
         for extended in [false, true] {
             let mut kernel = Kernel::default();
             let options = OffsetOptions {
@@ -1119,7 +1177,7 @@ mod tests {
                 merge_results: false,
             };
             assert_dependency(
-                api_offset_brep_full(&mut kernel, Some(&original), options),
+                api_offset_brep_full(&mut kernel, Some(&mut original), options),
                 if extended {
                     "SmStitch::StitchIntoSolid"
                 } else {
@@ -1299,8 +1357,11 @@ mod tests {
             let mut kernel = Kernel::default();
             kernel.context.set_doing_boolean(previous);
             let mut exec = executive();
-            let result =
-                exec.do_solid_offset(&mut kernel, Some(&original), SolidOffsetOptions::default());
+            let result = exec.do_solid_offset(
+                &mut kernel,
+                Some(&mut original),
+                SolidOffsetOptions::default(),
+            );
             assert!(matches!(
                 result,
                 Err(SolidError::NotFound {

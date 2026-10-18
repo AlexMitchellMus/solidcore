@@ -551,11 +551,14 @@ fn add_use(
     Ok(use_id)
 }
 fn add_shell(brep: &mut Brep, region: solidcore::topology::RegionId) -> HResult<ShellId> {
-    brep.add_shell_record(Shell {
-        region: Some(region),
-        ..Shell::default()
-    })
-    .map_err(setup)
+    let shell = brep
+        .add_shell_record(Shell {
+            region: Some(region),
+            ..Shell::default()
+        })
+        .map_err(setup)?;
+    brep.region_mut(region).map_err(setup)?.shells.push(shell);
+    Ok(shell)
 }
 
 // Rectangular typed input scaffold, adapted from p1's face_with_edges, with a
@@ -687,7 +690,10 @@ fn build(fixture: &Fixture, tolerance: f64) -> HResult<Brep> {
     brep.set_tolerance(tolerance);
     // Actual typed region identity, NOT an invented IsVoid or infinite-region flag.
     let region = brep
-        .add_region_record(Region { in_brep: true })
+        .add_region_record(Region {
+            in_brep: true,
+            ..Region::default()
+        })
         .map_err(setup)?;
     match *fixture {
         Fixture::Empty => {}
@@ -811,7 +817,10 @@ fn build_box(
         vertices.push(add_vertex(brep, v3(point))?);
     }
     let inside = brep
-        .add_region_record(Region { in_brep: true })
+        .add_region_record(Region {
+            in_brep: true,
+            ..Region::default()
+        })
         .map_err(setup)?;
     let shells = [add_shell(brep, region)?, add_shell(brep, inside)?];
     let mut edges: Vec<(usize, usize, EdgeId)> = Vec::new();
@@ -1451,7 +1460,7 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
         Operation::StaticOffset => p2::offset_brep(
             &mut kernel,
             source
-                .as_ref()
+                .as_mut()
                 .ok_or_else(|| bad("static offset null source"))?,
             input.config.offset(),
         ),
@@ -1474,7 +1483,7 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
             .ok_or_else(|| bad("missing Rust executive"))?
             .do_solid_offset(
                 &mut kernel,
-                source.as_ref(),
+                source.as_mut(),
                 SolidOffsetOptions {
                     skip_stitch_merge: input.config.skip_stitch_merge,
                 },
@@ -1482,7 +1491,7 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
         Operation::Extended => exec
             .as_mut()
             .ok_or_else(|| bad("missing Rust executive"))?
-            .do_extended_offset(&mut kernel, source.as_ref()),
+            .do_extended_offset(&mut kernel, source.as_mut()),
         Operation::ApiShell => p2::api_shell_brep_full(
             &mut kernel,
             source.as_ref().map(|brep| BrepRef {
@@ -1493,7 +1502,7 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
             &keys,
         ),
         Operation::ApiOffset => {
-            p2::api_offset_brep_full(&mut kernel, source.as_ref(), input.config.offset())
+            p2::api_offset_brep_full(&mut kernel, source.as_mut(), input.config.offset())
         }
     };
     let (status, result) = operation(result)?;
@@ -1856,6 +1865,41 @@ mod tests {
             serde_json::json!({"origin":"null", "index":0})
         )
         .is_err());
+    }
+
+    #[test]
+    fn fixtures_link_regions_and_shells_without_inferring_void_flags() {
+        for (fixture, regions, shells) in [
+            (Fixture::Empty, 1, 0),
+            (wire([0.0; 3], 1.0), 1, 1),
+            (sheet([0.0; 3], 1.0, 0), 1, 1),
+            (
+                Fixture::Box {
+                    origin: [0.0; 3],
+                    size: [10.0; 3],
+                },
+                2,
+                2,
+            ),
+        ] {
+            let brep = build(&fixture, 1e-6).unwrap();
+            assert_eq!(brep.regions().len(), regions);
+            assert_eq!(brep.shells().len(), shells);
+            for (region_id, region) in brep.regions().iter() {
+                assert!(region.in_brep);
+                assert_eq!(region.is_void, Region::default().is_void);
+                for &shell in &region.shells {
+                    assert_eq!(brep.shell(shell).unwrap().region, Some(region_id));
+                }
+            }
+            for (shell_id, shell) in brep.shells().iter() {
+                let region = brep.region(shell.region.unwrap()).unwrap();
+                assert_eq!(
+                    region.shells.iter().filter(|&&id| id == shell_id).count(),
+                    1
+                );
+            }
+        }
     }
 
     #[test]

@@ -7218,23 +7218,25 @@ with owner-tagged `Unported` errors and documented continuations.
   on the host bind mount versus 5.38 seconds on the Linux volumes; this is a
   warmed FFI rebuild measurement, not an end-to-end cold-suite speedup.
 
-## offset.offset_executive_p2 (partial, draft PR #201, 2026-10-17)
+## offset.offset_executive_p2 (partial, PR #201, 2026-10-17)
 
-This PR is stacked on the still-open p1 PR #175 and must not merge before it.
+The prerequisite p1 PR #175 merged on 2026-10-18; its reviewed changes and current
+main through `3604a8dc` are integrated here.
 All six owned static/member/API entrypoints have real native dispatch and Rust
 executable prefixes. The remaining P2-owned continuations are documented behind
 actual missing callees, not represented by fabricated topology copies or empty
 successful offset/shell geometry.
 
-- **Final integrated native evidence.** After merging upstream `bc296e26`, the
-  default unfiltered run completes with 294 cases (54 fixtures and 240 fixed-seed
-  generated cases; default CLI seeds remain 16): 118 passed, 0 failed, 0 rejected,
+- **Final integrated native evidence.** After merging p1 `7408ca0e` and upstream
+  main `3604a8dc`, the default unfiltered run completes with 294 cases (54 fixtures
+  and 240 fixed-seed generated cases; default CLI seeds remain 16): 118 passed,
+  0 failed, 0 rejected,
   176 deferred. All 118 passes compare numerical values; maximum relative error
   is zero, with the unchanged `1e-9` relative gate and no absolute floors.
   Sensitivity detects all 118 perturbations. The standard generated report is
   `reports/difftest/offset.offset_executive_p2.json`. These totals supersede the
   earlier pre-guard run. Validation uses pinned upstream `c9c5979`, Rust 1.98.0
-  and GNU g++ 12.2.0 on Linux ARM64 in local Docker, with the user-approved six
+  and GNU g++ 12.2.0 on Linux ARM64 in local Docker, with the user-approved ten
   Cargo jobs on the resized 12-CPU/16-GiB Colima VM; builds remain sequential
   under `nice -n 10`, using the cached native reference.
 - **Exact certified scope.** Comparable operations are member null errors
@@ -7271,10 +7273,9 @@ successful offset/shell geometry.
   | `topology.brep_p2` | 58 | `SmBrep::IsManifoldSolid` |
   | `topology.shell` | 44 | `SmRegion::IsVoid` |
   | `topology.brep_p3` | 32 | `SmBrep::SmBrep` copy constructor |
-  | `topology.brep_p1` | 23 | `SmBrep::GetInfiniteRegion` |
+  | `topology.brep_p1` | 27 | `SmBrep::GetInfiniteRegion` |
   | `topology.brep_p5` | 6 | `SmBrep::RemoveFaces` |
   | `heal.stitch_p2` | 6 | three each at `StitchIntoShell` / `StitchIntoSolid` |
-  | `topology.edgeuse_p3` | 4 | `SmEdgeuse::NormalizedEvaluate` |
   | `topology.brep_p4` | 3 | `SmBrep::ShrinkGeometry` |
 
   No `UNPORTED(offset.offset_executive_p2)` back-edge callers were present to
@@ -7328,6 +7329,36 @@ successful offset/shell geometry.
   This resolves the stale unit-test failure without changing offset numerics,
   tolerances or scope. A full local native `--green` run is not claimed; fresh
   p2 GitHub CI is triggered by the synchronization push.
+- **Merged-main CI compatibility fix (2026-10-18).** CI run `39085584151`
+  compiled its synthetic merge with newer main and failed with `E0063`: p2's
+  `Region` test literal lacked the newly introduced `shells` and `is_void` fields.
+  The C++-only runner contained two more stale literals. All three now preserve
+  `in_brep: true` and use the constructor defaults; fixture shells are linked
+  reciprocally from their regions. Regression tests cover the kernel fixture and
+  empty/wire/sheet/box runner fixtures without inferring void/infinite-region
+  identity or claiming full shell-member traversal parity.
+  Main also made face-curve/tangency queries mutable for lazy UV trim geometry.
+  The p2 offset/member APIs and runner now borrow the same original arena mutably,
+  forward the caller's kernel and collect face IDs in arena order before traversal;
+  no topology clone, replacement arena or constructive result is fabricated.
+  API-shell selection validation remains immutable. Existing before/after purity
+  and origin-qualified selection comparisons remain intact.
+  Validation on merged main `3604a8dc`: formatting, workspace/all-target Clippy
+  both with and without C++, all workspace tests (including 1389 kernel tests,
+  using the optimized profile with debug assertions and overflow checks retained),
+  and wasm checking pass. C++-enabled library tests pass: FFI 104 passed / 1 ignored;
+  runner 159 passed / 23 ignored. P1's report is byte-identical (675 passed,
+  17 deferred, 1 rejected); p2 remains 118 passed / 176 deferred / zero failures
+  across 294 cases. Four generated cases (`gen0022`, `gen0023`, `gen0223`,
+  `gen0232`) now advance from `SmEdgeuse::NormalizedEvaluate` to
+  `SmBrep::GetInfiniteRegion`; the report and dependency table above reflect that
+  progress, not newly certified constructive geometry. Sensitivity detects all
+  675 p1 and 118 p2 perturbations. A separate native sweep of `harness.selftest`,
+  `topology.edgeuse_p2`, `topology.edgeuse_p3`, `topology.face_p2` and
+  `topology.shell` also passes at each unit's documented green/partial scope:
+  13003 cases, zero failures. Builds use ten jobs and persistent Linux-native
+  caches in the resized local Docker VM. A full local native `--green` sweep is
+  not claimed; the push triggers fresh full GitHub CI on this merged tree.
 
 ## topology.face_p1 (`SmFace.cpp` part 1: `MoveSeam`, `SplitAtSeam`, `CreateOrientedTrimBoundary`, `CalculateUVDomainFromUVTrimCurves`, ...; PR #148, 2026-10-16; partial, no disagreements)
 
