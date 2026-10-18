@@ -7536,3 +7536,44 @@ has no pseudo-B-rep model yet (PR #147 adds `FilletBrep`), so these calls are
 an unported `SmFilletGeom` / `SmFilletVertex` call in the same function, so no difftest
 case reaches them; wire them to the pseudo-B-rep's records when `blend.fillet_geom_p1`
 lands. No disagreement.
+
+## blend.fillet_solver_p3 (`SmFilletSolver.cpp` part 3: `StepSolve`, `SplitAndTrimFilletSurface`, `ProcessFullRollOver`, ...; PR #236, 2026-10-18; partial, no disagreements)
+
+Built on the open dependency PRs #147 (`blend.fillet_geom_p1`) and #192
+(`blend.fillet_solver_p1`), merged into the branch. The two disagreed with each other and
+with main's `surface.offset_surface` port (`fillet_geom_p1` read the custom solver's
+co-ported fields, #192's runner used the co-ported `OffsetSurface`); the branch carries the
+reconciliation #212 made for the same pair (`FilletSolver` accessors, `OffsetSurface::new(k,
+d, base, id, SS_UNKNOWN)`, mutable `LoadInitialValues` surface). With it the three affected
+difftests have 0 failures (`fillet_solver_p1` 282/47 deferred, `fillet_geom_p1` 429/19,
+`fillet_custom_solver` 401/47). Whichever of #147/#192 lands second must carry the same
+changes.
+
+- **`StepSolve` difftest.** Every library solver belongs to an unported unit, so the shim
+  derives a deterministic `SmFilletSolver` (the offset/offset intersection as
+  `LoadJacobian`, a configurable `GetSolverType`, `SetupOffsetValues` from a radius, an
+  optional extra unknown, a failing `LoadInitialValues`), mirrored by the runner. Cases step
+  along floor/wall fillets (20 to 160 degrees, scales `1e-3`..`1e3`, flat and bumped
+  B-splines) inside the domains, across boundaries (iso-curve intersection, clipped radius
+  solve of a constant-distance solver), from boundaries, with zero/tiny/reversed steps,
+  extended domains and offsets on the wrong side. The constant-radius-assisted clipped
+  branch defers at `PointOnPlaneSolve` (`blend.fillet_solver_p2`). The variable-radius
+  branch casts to `SmVariableRadiusFS`: the FFI guard rejects that solver type and the
+  Rust side returns `Unported(blend.fillet_standard_solver_p1)`.
+- **New virtuals.** `FilletSolverOps` gains `solver_type` (`GetSolverType`, pure virtual
+  upstream; default `SM_FS_UNKNOWN`, the custom solvers' `SmConstantRadiusAssistedFS`
+  override is `Unported(blend.fillet_standard_solver_p1)`) and `constant_distance` (the
+  `SmConstantDistanceFS::GetDistance` read of `SmFindClippedRadiusEFO`, default `Unported`).
+  `FilletBrep::set_vertex_point` (`SmVertex::SetPoint` on a fillet vertex) is public.
+- **Kernel-tested only.** `GetOtherFilletCorner` (needs `GetFilletCorner`, p2),
+  `sm_FindFilletTsectPnt` (defers at `PointOnPlaneSolve` after both drops),
+  `SplitAndTrimFilletSurface` (no-overlap deletion compares; an overlap reaches
+  `SplitFilletGeom`, whose geometry calls are p1 stubs), `sm_RefineRailCurveClassification`
+  and `sm_CalcRailXEdge` (defer at `RailEdgeuseIntersect`, p2) and `ProcessFullRollOver`
+  (defers at `sm_SplitRail`'s fillet geometry calls, then `CreateCliffRollOverSideFG`, p2,
+  and `TrimCliffRails`, `blend.fillet_geom_p5`). A native fixture for them needs the
+  executive's pseudo B-rep and real fillet geometries; once p2 lands they should get
+  difftest cases. Upstream index defects found while porting: UB-175, UB-176.
+- **For #208 (`blend.fillet_solver_p5`).** Its `ProcessRollOver` calls
+  `is_convex_radial_sector(.., 10, true, 0.0)`; upstream calls `IsConvexRadialSector(10)`,
+  whose `bOptStepOff` defaults to `FALSE` (`SmEdgeuse.h:356`, `SmFilletSolver.cpp:7260`).
