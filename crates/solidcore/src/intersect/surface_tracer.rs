@@ -1659,6 +1659,7 @@ fn surface_drop_curve(
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
         | SurfaceKind::Step(_)
+        | SurfaceKind::OffsetSurface(_)
         | SurfaceKind::SrfInVolume(_) => {
             let r = surface.drop_curve_base::<crate::surface::surface::p4::NoObject>(
                 k, uv_domain, curve, interval, approx_tol, true, None,

@@ -186,6 +186,7 @@ fn is_singularity(k: &Kernel, surface: &Surface, uv: Point2) -> Result<(bool, Su
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
         | SurfaceKind::Step(_)
+        | SurfaceKind::OffsetSurface(_)
         | SurfaceKind::SrfInVolume(_) => {
             let s = surface.is_singularity(k, uv, EFF_ZERO, false)?;
             Ok((s.singular, s.direction))
@@ -259,6 +260,7 @@ fn is_on_seam(k: &Kernel, surface: &Surface, uv: Point2) -> Result<Option<Vec<Po
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
         | SurfaceKind::Step(_)
+        | SurfaceKind::OffsetSurface(_)
         | SurfaceKind::SrfInVolume(_) => {
             let info = surface.is_on_seam(k, uv, None)?;
             Ok(info.on_seam.then_some(info.cross_seam_uvs))
@@ -288,8 +290,11 @@ fn create_iso_parametric_curve(
         SurfaceKind::SurfOfRevolution(s) => {
             Ok(s.create_iso_parametric_curve(k, param, value, None)?.curve)
         }
-        SurfaceKind::CurveBounded(_) | SurfaceKind::Step(_) | SurfaceKind::SrfInVolume(_) => {
-            // the SmSurface body
+        SurfaceKind::CurveBounded(_)
+        | SurfaceKind::Step(_)
+        | SurfaceKind::OffsetSurface(_)
+        | SurfaceKind::SrfInVolume(_) => {
+            // the SmSurface body (SmOffsetSurface does not override it)
             Ok(surface
                 .create_iso_parametric_curve(k, param, value, approx_tol, None, false)?
                 .curve)
@@ -361,6 +366,7 @@ fn surface_drop_curve(
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
         | SurfaceKind::Step(_)
+        | SurfaceKind::OffsetSurface(_)
         | SurfaceKind::SrfInVolume(_) => {
             let r = surface.drop_curve_base::<NoObject>(
                 k, uv_domain, curve, interval, approx_tol, keep_all, None,

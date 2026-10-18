@@ -201,7 +201,8 @@ fn surface_drop_curve(
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SrfInVolume(_)
         | SurfaceKind::SurfOfRevolution(_)
-        | SurfaceKind::Step(_) => {
+        | SurfaceKind::Step(_)
+        | SurfaceKind::OffsetSurface(_) => {
             let d = surface
                 .drop_curve_base::<NoObject>(k, domain, curve, interval, tol, keep_all, None)?;
             Ok((

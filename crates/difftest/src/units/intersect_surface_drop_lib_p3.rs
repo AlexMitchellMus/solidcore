@@ -355,7 +355,7 @@ fn point_at(p: [f64; 3]) -> CurveIn {
 
 /// The curve's whole parameter range or a random part of it, an interval overhanging the
 /// range, one entirely past its end, a zero-length or inverted one, or one just above the
-/// ffi guard's length bound (HANG-16).
+/// ffi guard's length bound (HANG-31).
 fn gen_interval(rng: &mut Rng, range: [f64; 2]) -> [f64; 2] {
     let w = range[1] - range[0];
     let a = range[0] + rng.uniform(0.0, 0.4) * w;

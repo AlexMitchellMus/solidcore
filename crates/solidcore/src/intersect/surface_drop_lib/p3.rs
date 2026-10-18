@@ -61,7 +61,7 @@
 //! - **Bounded subdivision.** The span stack of the subdivision loop is at most
 //!   [`MAX_SPAN_DEPTH`] drop points deep (upstream fixtures reach about 15: a span
 //!   passes once shorter than `1/8000` of the interval; upstream is unbounded,
-//!   plan/upstream-issues.md HANG-16); deeper is
+//!   plan/upstream-issues.md HANG-31); deeper is
 //!   [`SolidError::NotConverged`]. No compared case reaches the second `GetNextPoint` of
 //!   a span yet (the offset surface defers first), so the bound, the span stack and
 //!   `sm_AddToCurve` are untested until `surface.offset_surface` lands.
