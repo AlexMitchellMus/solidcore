@@ -44,7 +44,8 @@
 //! (an edge whose squared distance to the mating surface overflows: `dMaxDist` is
 //! infinite and `CreateExtendedSurface` never stops halving, HANG-9); a B-spline face of degree
 //! at least 2 with `init_gaps` set is refused when a corner control point coordinate
-//! exceeds `2e156` (the fixture's `GetVertexFaceGap` never returns, HANG-28); a reference `type -1` is not accepted (the null
+//! exceeds `1e154` (the fixture's `GetVertexFaceGap` slows down from `1e155` and
+//! stops returning around `1e156`, HANG-28); a reference `type -1` is not accepted (the null
 //! reference is `-1 -1`). `Merge` and `Mate` with editing enabled run the whole upstream
 //! algorithm: the callers keep their curves short of the tolerance (`Merge`) and pick
 //! lamina edges of upstream files (`Mate`).
@@ -328,19 +329,45 @@ pub fn eval(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
     raw(op, path, input)
 }
 
-/// Largest corner control point coordinate of a degree >= 2 B-spline face the fixture's
-/// gap initialisation is run on (`plan/upstream-issues.md` HANG-28): with a corner
-/// (a vertex position) at `5e156`, `SmVertexuse::GetVertexFaceGap` never returns on a
-/// u-degree-2 surface of three spans, and returns at `2e156`. Planes, degree-1 surfaces,
-/// interior control points and single- or two-span biquadratic patches return even at
-/// `1e300`; without a debugger on the pod the exact condition is not pinned down, so
-/// every degree >= 2 face with a huge corner is refused.
-const MAX_GAP_COORD: f64 = 2e156;
+/// Largest corner control point coordinate of a degree >= 2 B-spline face the fixture's gap
+/// initialisation is run on (`plan/upstream-issues.md` HANG-28). With a corner (a vertex
+/// position) far out, `SmVertexuse::GetVertexFaceGap` slows down and then stops returning.
+/// Measured on the pod with 30 s timeouts (u-degree 2 and 3, 3 and 6 spans, v-degree 1 and
+/// 2, the last corner raised on x, y and z): every shape returns in at most 0.09 s up to
+/// `1.34e154` (about `sqrt(f64::MAX)`, where squared coordinates overflow); from `1e155`
+/// the v-degree-1 shapes take 0.3-1.1 s; at `1e156` six do not return within 30 s (five on
+/// x or y, one on z) and at `1.9e156` nine (every v-degree-1 shape but the six-span
+/// u-degree-3 one); the review of d12f88e9 saw 103-114 s on z and no return within 120 s on
+/// x. The bound keeps a margin below that slow band (the first bound, `2e156`, was inside
+/// it). Planes, degree-1 surfaces and interior control points return even at `1e300`, and
+/// the v-degree-2 shapes measured stay fast at `1.9e156`; the exact loop is not pinned down
+/// (the pod cannot ptrace), so every degree >= 2 face with a corner past the bound is
+/// refused.
+const MAX_GAP_COORD: f64 = 1e154;
+
+/// [`MAX_GAP_COORD`] for a rational net, applied both to the stored (homogeneous) corner
+/// coordinate `w c` and to the Cartesian one `c`. Measured on the pod with 30 s timeouts
+/// (u-degree 2 / 3, 3 / 6 spans, v-degree 1 / 2, x, y and z, corner weights `1e-3` to
+/// `1e3`, the other weights `1e-3`, `1` and `1e3`): a rational corner with a large
+/// coordinate costs a bounded 0.6-3.9 s on x (at `1e100` as at `1e151`; y and z stay below
+/// 0.1 s), while a stored coordinate past `sqrt(f64::MAX)` can stop returning (Cartesian
+/// `9.9e153` with weight 10, stored `9.9e154`, on y). The other weights do not change
+/// either. The `1e3` factor below [`MAX_GAP_COORD`] is the margin.
+const MAX_GAP_COORD_RATIONAL: f64 = 1e151;
+
+/// The weight of a non-rational control point (`NOW`, as `topology_vertexuse` reads it).
+const NOW: f64 = -f64::MAX;
 
 /// Refuses a B-spline face block (`kind 2`, surface kind `0`) with `init_gaps` set, a
-/// degree of at least 2 in u or v and a corner control point coordinate above
-/// [`MAX_GAP_COORD`]. `head` is the validated B-rep block plus `editing`, so `init_gaps`
-/// is its second-to-last value.
+/// degree of at least 2 in u or v and a corner too far out: a non-rational corner
+/// coordinate above [`MAX_GAP_COORD`], or for a rational net a corner whose stored
+/// (homogeneous) or Cartesian coordinate is above [`MAX_GAP_COORD_RATIONAL`]. The net is
+/// homogeneous (`w x, w y, w z, w`; `w = NOW` for a non-rational net) and the corner
+/// control point is the vertex position, so a small weight moves the vertex out (`1e154`
+/// stored with `w = 1e-3` is a vertex at `1e157`, which does not return) and a large one
+/// moves the stored value out; `|w c| <= R` and `|c| <= R` is `|w c| <= R * min(1, w)`.
+/// `head` is the validated B-rep block plus `editing`, so `init_gaps` is its
+/// second-to-last value.
 fn gap_guard(head: &[f64]) -> Result<(), FfiError> {
     let init_gaps = head.len().checked_sub(2).and_then(|i| head.get(i)) == Some(&1.0);
     if head.first() != Some(&2.0) || head.get(1) != Some(&0.0) || !init_gaps {
@@ -357,10 +384,16 @@ fn gap_guard(head: &[f64]) -> Result<(), FfiError> {
     let (n, m) = (n as usize, m as usize);
     for (a, b) in [(0, 0), (0, m), (n, 0), (n, m)] {
         let at = 10 + 4 * (a * (m + 1) + b);
-        let pt = head
-            .get(at..at + 3)
-            .ok_or_else(|| bad("surface net too short"))?;
-        if pt.iter().any(|&c| c != f64::MAX && c.abs() > MAX_GAP_COORD) {
+        let (Some(xyz), Some(&w)) = (head.get(at..at + 3), head.get(at + 3)) else {
+            return Err(bad("surface net too short"));
+        };
+        // the reader bounds a rational weight to [1e-3, 1e3]
+        let bound = if w == NOW {
+            MAX_GAP_COORD
+        } else {
+            MAX_GAP_COORD_RATIONAL * w.min(1.0)
+        };
+        if xyz.iter().any(|&c| c != f64::MAX && c.abs() > bound) {
             return Err(bad("face too large for the gap initialisation"));
         }
     }

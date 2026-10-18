@@ -1240,9 +1240,11 @@ mod tests {
         }
     }
 
-    /// The fixture's gap initialisation never returns on a u-degree-2, three-span face
-    /// whose corner sits at `5e156` (HANG-28, `--fuzz` case fuzz00497): the FFI refuses
-    /// degree >= 2 faces with a corner past `2e156` under `init_gaps`, and nothing else.
+    /// The fixture's gap initialisation slows down from a corner at `1e155` and stops
+    /// returning around `1e156` on a u-degree-2, three-span face (HANG-28, `--fuzz` case
+    /// fuzz00497): the FFI refuses degree >= 2 faces with a corner past `1e154` under
+    /// `init_gaps`, and nothing else. The compared control at the bound returns in about
+    /// 0.01 s. A rational corner is bounded at `1e151`, stored and Cartesian (stored / w).
     #[test]
     fn gap_initialisation_refuses_a_huge_curved_corner() {
         let now = -f64::MAX;
@@ -1269,17 +1271,52 @@ mod tests {
             });
             serde_json::from_value(v).unwrap()
         };
-        for z in [5e156, 1e300] {
+        for z in [2e154, 1e156, 5e156, 1e300] {
             let err = run_cpp(&case(2, z, true)).unwrap_err().to_string();
             assert!(
                 err.contains("face too large for the gap initialisation"),
                 "{z}: {err}"
             );
         }
-        for (p, z, gaps) in [(2, 2e156, true), (2, 1e300, false), (1, 1e300, true)] {
+        for (p, z, gaps) in [(2, 1e154, true), (2, 1e300, false), (1, 1e300, true)] {
             let c = run_cpp(&case(p, z, gaps)).unwrap();
             let r = run_rust(&case(p, z, gaps)).unwrap();
             assert_eq!(format!("{c:?}"), format!("{r:?}"), "{p} {z} {gaps}");
+        }
+        // a rational net is homogeneous (w x, w y, w z, w), bounded at 1e151 on both the
+        // stored and the Cartesian corner: the stored x of 1e154 with weight 1e-3 is a
+        // vertex at x = 1e157 (no return) and a stored 1e152 with weight 1e3 is past the
+        // stored bound, both refused; a stored 1e140 with weight 1e3 is compared
+        let rational = |x: f64, w: f64| -> Inputs {
+            let mut v = serde_json::to_value(case(2, 0.0, true)).unwrap();
+            let net = v["brep"]["surface"]["bspline"]["net"]
+                .as_array_mut()
+                .unwrap();
+            for row in net.iter_mut() {
+                for pt in row.as_array_mut().unwrap() {
+                    pt[3] = serde_json::json!(1.0);
+                }
+            }
+            let corner = &mut net.last_mut().unwrap()[1];
+            corner[0] = serde_json::json!(x);
+            // homogeneous: the stored y is w * 1, so the corner's Cartesian y stays 1
+            corner[1] = serde_json::json!(w);
+            corner[3] = serde_json::json!(w);
+            serde_json::from_value(v).unwrap()
+        };
+        for (x, w) in [(1e154, 1e-3), (1e152, 1e3), (2e151, 1.0)] {
+            let err = run_cpp(&rational(x, w)).unwrap_err().to_string();
+            assert!(
+                err.contains("face too large for the gap initialisation"),
+                "{x} {w}: {err}"
+            );
+        }
+        // compared inside the bound and exactly at it (inclusive): stored 1e151 with
+        // w = 1, stored 1e148 with w = 1e-3 (a vertex at 1e151)
+        for (x, w) in [(1e140, 1e3), (1e151, 1.0), (1e148, 1e-3)] {
+            let c = run_cpp(&rational(x, w)).unwrap();
+            let r = run_rust(&rational(x, w)).unwrap();
+            assert_eq!(format!("{c:?}"), format!("{r:?}"), "{x} {w}");
         }
     }
 
