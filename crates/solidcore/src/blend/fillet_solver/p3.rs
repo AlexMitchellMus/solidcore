@@ -1450,3 +1450,487 @@ impl FilletSolver {
         unported_on::<_, ()>(geom, "SmFilletGeom::TrimCliffRails", "blend.fillet_geom_p5")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::blend::fillet_custom_solver::{
+        InitialValues, JacobianLoad, OffsetSurface, SurfaceId,
+    };
+    use crate::blend::fillet_geom::p1::FilletGeom;
+    use crate::blend::fillet_solver::p1::OffsetSurfaceSlot;
+    use crate::nurbs::b_spline_curve::BSplineCurve;
+    use crate::nurbs::b_spline_surface::BSplineSurface;
+    use crate::nurbs::math::{CPoint, NOW};
+    use crate::nurbs::srf_basic::Surface as NlSurface;
+    use crate::surface::offset_surface::SS_UNKNOWN;
+    use crate::surface::surface::p1::evaluate_1st_derivatives;
+    use crate::surface::volume::Volume;
+
+    /// `origin + u du + v dv` over `[0, 1]^2`.
+    fn patch(origin: [f64; 3], du: [f64; 3], dv: [f64; 3]) -> Surface {
+        let pt = |s: f64, t: f64| {
+            CPoint::new(
+                origin[0] + s * du[0] + t * dv[0],
+                origin[1] + s * du[1] + t * dv[1],
+                origin[2] + s * du[2] + t * dv[2],
+                NOW,
+            )
+        };
+        let net = vec![
+            vec![pt(0.0, 0.0), pt(0.0, 1.0)],
+            vec![pt(1.0, 0.0), pt(1.0, 1.0)],
+        ];
+        let nl = NlSurface::new(
+            net,
+            1,
+            1,
+            vec![0.0, 0.0, 1.0, 1.0],
+            vec![0.0, 0.0, 1.0, 1.0],
+        )
+        .expect("patch");
+        Surface::from(BSplineSurface::from_nurb(nl, false))
+    }
+
+    const L: f64 = 2.0;
+    const R: f64 = 0.2;
+
+    /// The floor `(u L, v L, 0)` and the wall `(0, u L, v L)` (normals +z, +x).
+    fn floor_and_wall() -> (Surface, Surface) {
+        (
+            patch([0.0; 3], [L, 0.0, 0.0], [0.0, L, 0.0]),
+            patch([0.0; 3], [0.0, L, 0.0], [0.0, 0.0, L]),
+        )
+    }
+
+    /// The runner's harness solver: offsets `R`, the offset/offset intersection.
+    struct TestSolver {
+        base: FilletSolver,
+        ty: FilletSolverType,
+    }
+
+    impl TestSolver {
+        fn new(ty: FilletSolverType) -> Self {
+            let k = Kernel::default();
+            let (s0, s1) = floor_and_wall();
+            let mut base = FilletSolver::new(1e-6, 0.1, 0.01);
+            for (i, s) in [s0, s1].into_iter().enumerate() {
+                let off = OffsetSurface::new(&k, R, s, SurfaceId::Free(i as u32), SS_UNKNOWN)
+                    .expect("offset");
+                base.set_surface(
+                    i,
+                    Some(OffsetSurfaceSlot {
+                        key: i as u64,
+                        surface: off,
+                    }),
+                )
+                .expect("set");
+            }
+            Self { base, ty }
+        }
+    }
+
+    impl FilletSolverOps for TestSolver {
+        fn solver(&self) -> &FilletSolver {
+            &self.base
+        }
+        fn solver_mut(&mut self) -> &mut FilletSolver {
+            &mut self.base
+        }
+        fn solver_type(&self) -> Result<FilletSolverType> {
+            Ok(self.ty)
+        }
+        fn constant_distance(&self) -> Result<f64> {
+            Ok(R * 2.0f64.sqrt())
+        }
+        fn jacobian_size(&self) -> Result<usize> {
+            Ok(4)
+        }
+        fn setup_offset_values(&mut self, _t: &TsectPnt, d: Option<&mut f64>) -> Result<()> {
+            for s in self.base.surfaces.iter_mut().flatten() {
+                s.surface.set_offset_distance(R);
+            }
+            if let Some(d) = d {
+                *d = R;
+            }
+            Ok(())
+        }
+        fn load_initial_values(
+            &mut self,
+            _k: &Kernel,
+            _brep: Option<&Brep>,
+            _do2: bool,
+            _rail: usize,
+            _s1: &mut OffsetSurface,
+            _i1: usize,
+            _ext: &mut ExtentNd,
+            _per: &mut Vec<bool>,
+            _guess: &mut Vec<f64>,
+        ) -> Result<Option<InitialValues>> {
+            Ok(None)
+        }
+        fn load_jacobian(
+            &mut self,
+            ne: &mut usize,
+            np: &mut usize,
+            load: &mut JacobianLoad<'_>,
+            f: &mut [f64],
+            jacobian: Option<&mut Matrix>,
+        ) -> Result<bool> {
+            let x = load.x;
+            let eval = |i: usize, uv: Point2| {
+                let mut s = self.base.surfaces[i].as_ref().unwrap().surface.clone();
+                s.surface
+                    .with_evaluator(|e| evaluate_1st_derivatives(e, uv, Side::Left, Side::Left))
+            };
+            let o1 = load.surf1_offset;
+            let (p, pu, pv) = eval(0, Point2::new(x[o1], x[o1 + 1]))?;
+            let (q, qu, qv) = eval(1, Point2::new(x[*np], x[*np + 1]))?;
+            let d = p - q;
+            f[*ne] = d.x;
+            f[*ne + 1] = d.y;
+            f[*ne + 2] = d.z;
+            if let Some(j) = jacobian {
+                for (i, (a, b, c, e)) in [
+                    (pu.x, pv.x, qu.x, qv.x),
+                    (pu.y, pv.y, qu.y, qv.y),
+                    (pu.z, pv.z, qu.z, qv.z),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    j.set_at(*ne + i, o1, a)?;
+                    j.set_at(*ne + i, o1 + 1, b)?;
+                    j.set_at(*ne + i, *np, -c)?;
+                    j.set_at(*ne + i, *np + 1, -e)?;
+                }
+            }
+            load.surf2_offset = *np;
+            *ne += 3;
+            *np += 2;
+            Ok(d.length() < 1e-12)
+        }
+    }
+
+    /// The centre-line point at `y` (tangent +y).
+    fn centre_point(y: f64) -> TsectPnt {
+        let mut t = TsectPnt::new();
+        *t.uv_pos_mut(SrfIndex::First) = Point2::new(R / L, y / L);
+        *t.uv_pos_mut(SrfIndex::Second) = Point2::new(y / L, R / L);
+        *t.uv_deriv_mut(SrfIndex::First) = Point2::new(0.0, 1.0 / L);
+        *t.uv_deriv_mut(SrfIndex::Second) = Point2::new(1.0 / L, 0.0);
+        *t.crv_pos_mut() = Vec3::new(R, y, R);
+        *t.crv_deriv_mut() = Vec3::new(0.0, 1.0, 0.0);
+        t
+    }
+
+    fn unit_domain() -> Extent2d {
+        Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0)
+    }
+
+    fn step(
+        ty: FilletSolverType,
+        y: f64,
+        mut step: f64,
+    ) -> (Result<StepSolveOutcome>, f64, TsectPnt) {
+        let k = Kernel::default();
+        let mut fs = TestSolver::new(ty);
+        let mut next = TsectPnt::new();
+        let r = FilletSolver::step_solve(
+            &mut fs,
+            &k,
+            None,
+            &centre_point(y),
+            &mut step,
+            &unit_domain(),
+            &unit_domain(),
+            &mut next,
+        );
+        (r, step, next)
+    }
+
+    #[test]
+    fn step_solve_steps_along_the_centre_line() {
+        let (r, s, next) = step(FilletSolverType::ConstRadius, 0.5, 0.3);
+        let out = r.unwrap();
+        assert!(
+            out.found_good_point && !out.clipped && !out.boundary_hit,
+            "{out:?}"
+        );
+        assert_eq!(s, 0.3);
+        let uv0 = next.uv_pos(SrfIndex::First);
+        let uv1 = next.uv_pos(SrfIndex::Second);
+        assert!(
+            (uv0.x - R / L).abs() < 1e-9 && (uv0.y - 0.8 / L).abs() < 1e-9,
+            "{uv0:?}"
+        );
+        assert!(
+            (uv1.x - 0.8 / L).abs() < 1e-9 && (uv1.y - R / L).abs() < 1e-9,
+            "{uv1:?}"
+        );
+    }
+
+    #[test]
+    fn step_solve_zero_step_hits_the_boundary() {
+        let (r, _, _) = step(FilletSolverType::ConstRadius, 0.5, 0.0);
+        let out = r.unwrap();
+        assert!(out.boundary_hit && !out.found_good_point);
+    }
+
+    #[test]
+    fn step_solve_clipped_step_ends_on_the_domain_boundary() {
+        for ty in [
+            FilletSolverType::Unknown,
+            FilletSolverType::ConstRadius,
+            FilletSolverType::ConstDist,
+        ] {
+            let (r, s, next) = step(ty, 1.8, 0.5);
+            let out = r.unwrap();
+            assert!(out.found_good_point && out.clipped, "{ty:?} {out:?}");
+            assert!(
+                (next.uv_pos(SrfIndex::First).y - 1.0).abs() < 1e-9,
+                "{ty:?}"
+            );
+            assert!((s - 0.2).abs() < 1e-6, "{ty:?} step {s}");
+        }
+    }
+
+    #[test]
+    fn step_solve_defers_where_upstream_casts_or_plane_solves() {
+        let (r, _, _) = step(FilletSolverType::VariableRadius, 1.8, 0.5);
+        assert!(
+            matches!(
+                r,
+                Err(SolidError::Unported {
+                    unit: "blend.fillet_standard_solver_p1",
+                    ..
+                })
+            ),
+            "{r:?}"
+        );
+        let (r, _, _) = step(FilletSolverType::ConstRadiusAssisted, 1.8, 0.5);
+        assert!(
+            matches!(
+                r,
+                Err(SolidError::Unported {
+                    unit: "blend.fillet_solver_p2",
+                    ..
+                })
+            ),
+            "{r:?}"
+        );
+    }
+
+    #[test]
+    fn find_fillet_tsect_pnt_defers_at_the_plane_solve() {
+        let k = Kernel::default();
+        let mut fs = TestSolver::new(FilletSolverType::ConstRadius);
+        let (s0, s1) = floor_and_wall();
+        let mut t = TsectPnt::new();
+        let r = find_fillet_tsect_pnt(
+            &mut fs,
+            &k,
+            &s0,
+            &s1,
+            Vec3::new(R, 1.0, R),
+            Vec3::new(0.0, 1.0, 0.0),
+            &mut t,
+        );
+        assert!(
+            matches!(
+                r,
+                Err(SolidError::Unported {
+                    unit: "blend.fillet_solver_p2",
+                    ..
+                })
+            ),
+            "{r:?}"
+        );
+    }
+
+    #[test]
+    fn other_fillet_corner_defers() {
+        let fs = FilletSolver::new(1e-6, 0.1, 0.01);
+        assert!(fs.other_fillet_corner(None).is_err_and(|e| e.is_unported()));
+    }
+
+    /// Resolves every handle to the one rail curve.
+    struct OneCurve(Curve);
+
+    impl ClassGeometry<EntityRef> for OneCurve {
+        fn curve(&self, _o: EntityRef) -> Option<&Curve> {
+            Some(&self.0)
+        }
+        fn surface(&self, _o: EntityRef) -> Option<&Surface> {
+            None
+        }
+        fn volume(&self, _o: EntityRef) -> Option<&Volume> {
+            None
+        }
+        fn point(&self, _o: EntityRef) -> Option<Point3> {
+            None
+        }
+    }
+
+    fn line(a: [f64; 3], b: [f64; 3]) -> Curve {
+        Curve::from(
+            BSplineCurve::create_line_segment(3, Vec3::from_array(a), Vec3::from_array(b))
+                .expect("line"),
+        )
+    }
+
+    /// A geometry with two rails classified by `classes` (`(t0, t1, mid class)` each).
+    fn geometry_with_rails(
+        k: &Kernel,
+        classes: [&[(f64, f64, PointClassType)]; 2],
+    ) -> (FilletBrep, FilletGeomId, Curve) {
+        let mut fb = FilletBrep::new();
+        let curve = line([0.0; 3], [1.0, 0.0, 0.0]);
+        let mut geom = FilletGeom::new(k, None, FilletGeomType::Default).expect("geom");
+        geom.fillet_surface = Some(patch([0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]));
+        for (which, cls) in classes.into_iter().enumerate() {
+            let v0 = fb.brep_mut().add_vertex(Vec3::new(0.0, 0.0, 0.0)).unwrap();
+            let v1 = fb.brep_mut().add_vertex(Vec3::new(1.0, 0.0, 0.0)).unwrap();
+            let rail = fb.new_fillet_edge(v0, v1, None).unwrap();
+            fb.brep_mut().edge_mut(rail).unwrap().curve = Some(curve.clone());
+            let mut cc = CurveClassification::with_curve_interval(
+                k,
+                EntityRef::Edge(rail),
+                Extent1d::from_min_max(0.0, 1.0),
+                1e-6,
+            );
+            cc.set_size(k, cls.len()).unwrap();
+            for (i, &(t0, t1, mid)) in cls.iter().enumerate() {
+                let ci = cc.at_mut(i).unwrap();
+                ci.set_interval(&Extent1d::from_min_max(t0, t1));
+                ci.mid.set_class_object(mid, Some(EntityRef::Edge(rail)));
+            }
+            fb.fillet_edge_mut(rail).unwrap().curve_class = Some(cc);
+            geom.set_rail(which, Some(rail));
+        }
+        let g = fb.add_geom(geom);
+        (fb, g, curve)
+    }
+
+    #[test]
+    fn split_and_trim_deletes_a_surface_without_overlapping_good_intervals() {
+        let k = Kernel::default();
+        let face = PointClassType::Face;
+        let out = PointClassType::Nothing;
+        let (mut fb, g, curve) = geometry_with_rails(
+            &k,
+            [
+                &[(0.0, 0.4, face), (0.4, 1.0, out)],
+                &[(0.0, 0.5, out), (0.5, 1.0, face)],
+            ],
+        );
+        let mut fs = FilletSolver::new(1e-6, 0.1, 0.01);
+        fs.split_and_trim_fillet_surface(
+            &k,
+            &mut fb,
+            &OneCurve(curve),
+            &|_| Ok(g),
+            0,
+            BoundaryTrimmingType::Minimal,
+        )
+        .unwrap();
+        assert!(fb.geom(g).unwrap().fillet_surface.is_none());
+    }
+
+    #[test]
+    fn split_and_trim_splits_overlapping_good_intervals() {
+        let k = Kernel::default();
+        let face = PointClassType::Face;
+        let (mut fb, g, curve) = geometry_with_rails(
+            &k,
+            [&[(0.0, 0.6, face)], &[(0.2, 1.0, PointClassType::Edge)]],
+        );
+        let mut fs = FilletSolver::new(1e-6, 0.1, 0.01);
+        let r = fs.split_and_trim_fillet_surface(
+            &k,
+            &mut fb,
+            &OneCurve(curve),
+            &|_| Ok(g),
+            0,
+            BoundaryTrimmingType::Maximal,
+        );
+        // SplitFilletGeom stops at the geometry's rail vertices
+        assert!(matches!(r, Err(SolidError::Unported { .. })), "{r:?}");
+        assert!(fb.geom(g).unwrap().fillet_surface.is_some());
+    }
+
+    #[test]
+    fn split_and_trim_needs_rail_classifications() {
+        let k = Kernel::default();
+        let (mut fb, g, curve) = geometry_with_rails(&k, [&[], &[]]);
+        let rail = fb.geom(g).unwrap().rail(1).unwrap();
+        fb.fillet_edge_mut(rail).unwrap().curve_class = None;
+        let mut fs = FilletSolver::new(1e-6, 0.1, 0.01);
+        let r = fs.split_and_trim_fillet_surface(
+            &k,
+            &mut fb,
+            &OneCurve(curve),
+            &|_| Ok(g),
+            0,
+            BoundaryTrimmingType::None,
+        );
+        assert!(matches!(r, Err(SolidError::Upstream { .. })), "{r:?}");
+    }
+
+    #[test]
+    fn refine_rail_curve_classification_reports_unrefinable_intervals() {
+        let k = Kernel::default();
+        let face = PointClassType::Face;
+        let (fb, g, _) = geometry_with_rails(
+            &k,
+            [
+                &[(0.0, 0.3, face), (0.3, 0.31, face), (0.31, 1.0, face)],
+                &[],
+            ],
+        );
+        let rail = fb.geom(g).unwrap().rail(0).unwrap();
+        let mut cc = fb.fillet_edge(rail).unwrap().curve_class.clone().unwrap();
+        let mut fs = FilletSolver::new(1e-6, 0.1, 0.01);
+        let target = Brep::new();
+        // interval 1 does not classify to an edge at either end; interval 3 is the
+        // interval count
+        let r = refine_rail_curve_classification(
+            &mut fs,
+            &k,
+            &target,
+            &fb,
+            0,
+            &[1, 2, 2],
+            rail,
+            &mut cc,
+        );
+        assert!(matches!(r, Err(SolidError::Upstream { .. })), "{r:?}");
+        assert_eq!(cc.size(), 3);
+    }
+
+    #[test]
+    fn calc_rail_x_edge_needs_an_edge_use_on_the_rail_face() {
+        let k = Kernel::default();
+        let (mut fb, g, _) = geometry_with_rails(&k, [&[], &[]]);
+        let rail = fb.geom(g).unwrap().rail(0).unwrap();
+        let v = fb.brep_mut().add_vertex(Vec3::new(0.0, 0.0, 0.0)).unwrap();
+        let mut target = Brep::new();
+        let a = target.add_vertex(Vec3::new(0.0, 0.0, 0.0)).unwrap();
+        let b = target.add_vertex(Vec3::new(1.0, 0.0, 0.0)).unwrap();
+        let side = target.add_edge(a, b).unwrap();
+        let mut fs = FilletSolver::new(1e-6, 0.1, 0.01);
+        let r = calc_rail_x_edge(&mut fs, &k, &target, &mut fb, v, g, 0, rail, side, None);
+        assert!(matches!(r, Err(SolidError::Upstream { .. })), "{r:?}");
+    }
+
+    #[test]
+    fn process_full_roll_over_needs_the_solver_edge_use() {
+        let k = Kernel::default();
+        let (mut fb, g, _) = geometry_with_rails(&k, [&[], &[]]);
+        let mut fs = FilletSolver::new(1e-6, 0.1, 0.01);
+        let fg = fs.fillet_geoms()[0];
+        let mut target = Brep::new();
+        let r = fs.process_full_roll_over(&k, &mut target, &mut fb, &|_| Ok(g), fg, 0);
+        assert!(matches!(r, Err(SolidError::InvalidInput { .. })), "{r:?}");
+    }
+}
