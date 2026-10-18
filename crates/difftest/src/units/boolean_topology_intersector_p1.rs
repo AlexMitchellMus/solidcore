@@ -907,7 +907,9 @@ impl ProtoBrep<H> for Two {
             return Err(invalid("edge or vertex is not in the B-rep"));
         }
         let b = self.brep_m(brep)?;
-        with_edit_env(|env| bp3::squeeze_edge(k, b, env, eid(edge), vid(survivor)))
+        with_edit_env(b, |b, env| {
+            bp3::squeeze_edge(k, b, env, eid(edge), vid(survivor))
+        })
     }
     fn edge_interval(&self, edge: H) -> Option<Extent1d> {
         ed::interval(self.brep(edge)?, eid(edge)).ok()
@@ -1227,7 +1229,7 @@ impl IntersectorBrep<H> for Two {
         let slot = usize::try_from(brep.b).map_err(|_| invalid("bad B-rep"))?;
         let editing = self.editing.get(slot).copied().unwrap_or(false);
         let b = self.brep_m(brep)?;
-        with_edit_env(|env| {
+        with_edit_env(b, |b, env| {
             // the adapter keeps `m_bEditingEnabled` beside the B-rep
             let old = b.editing_enabled();
             b.set_editing_enabled(editing);
@@ -1248,8 +1250,13 @@ impl IntersectorBrep<H> for Two {
 
 /// A notification environment for the B-rep edits of the hooks (no attributes or
 /// context: the intersector cases compare no attributes). Each entity is notified
-/// under its arena kind and index, which identify it within the edited B-rep.
-fn with_edit_env<R>(f: impl FnOnce(&mut solidcore::topology::edge::NotifyEnv<'_>) -> R) -> R {
+/// under its arena kind and index, which identify it within the edited B-rep, and
+/// every object of `b` has its default `SmTopology` record (as each C++ object does;
+/// `SmTopology::Notify` reads the records a notification names).
+fn with_edit_env<R>(
+    b: &mut Brep,
+    f: impl FnOnce(&mut Brep, &mut solidcore::topology::edge::NotifyEnv<'_>) -> R,
+) -> R {
     let mut records = BTreeMap::new();
     let mut attributes = AttributeStore::default();
     let key_of = |e: EntityRef| {
@@ -1271,13 +1278,14 @@ fn with_edit_env<R>(f: impl FnOnce(&mut solidcore::topology::edge::NotifyEnv<'_>
             key: ObjectKey((kind << 32) | u64::from(i)),
         }
     };
+    bp3::seed_topology_records(&mut records, b, &key_of);
     let mut env = solidcore::topology::edge::NotifyEnv {
         records: &mut records,
         attributes: &mut attributes,
         context: None,
         key_of: &key_of,
     };
-    f(&mut env)
+    f(b, &mut env)
 }
 
 impl TopologyObjects<H> for Two {

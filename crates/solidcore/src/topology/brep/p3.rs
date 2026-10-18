@@ -18,6 +18,7 @@
 //! | [`orient_trimmed_surfaces`]     | `SmBrep::OrientTrimmedSurfaces`                  |
 //! | [`squeeze_edge`]                | `SmBrep::SqueezeEdge`                            |
 //! | [`turn_to_nurbs`]               | `SmBrep::TurnToNURBS`                            |
+//! | [`seed_topology_records`]       | (the `SmTopology` members every object carries; for callers of the edits) |
 //! | `Brep::remove_from_*_list` (crate) | `SmOwningTopology::Remove` on the B-rep's list heads (and `~SmTopology`) |
 //!
 //! Deviations: out-params become return values; `rpNewEdge`/`rpNewVertex` are only
@@ -58,15 +59,24 @@
 //! - **Notification identities.** The ids of two B-reps overlap, so `MergeBrep`,
 //!   `CopyVertices` and the copy constructors take the notification identity of the
 //!   source B-rep's objects (`source_key`) beside `env.key_of` for the destination's.
+//! - **Copied shell lists.** `MergeBrep`'s second pass copies `pS->m_pList` through the
+//!   copy map and `m_lListSize` verbatim; the arena's size is recomputed from the
+//!   members ([`shell::shell_list_size`]), and a face-use list's other members are the
+//!   mapped members in order (upstream links them through the copied `m_pNext` /
+//!   `m_pLast`), so every member must be mapped (`NER` otherwise). Every face use of
+//!   the source is copied, so both agree on every reachable path.
 //! - **No recursion.** Every loop is bounded by its input lists; `DeleteFace`'s shell
 //!   split loop removes at least one vertex per pass.
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 
 use crate::curve::curve::{Curve, CurveKind};
 use crate::error::{EntityRef, Result, SolidError, SM_ERR_INVALID_INPUT};
+use crate::geom::attribute::ObjectKey;
 use crate::geom::context::{MarkLock, MarkType, ALL_MARKS};
 use crate::geom::extent1d::Extent1d;
+use crate::geom::extent3d::Extent3d;
 use crate::geom::geom_utility::p2::ContinuityType;
 use crate::geom::object::{self, NotifyOperation, ObjectRef};
 use crate::geom::tol::{self, SmallTopoType};
@@ -324,7 +334,7 @@ fn brep_bounding_box(
     approx: bool,
     tight: bool,
     expand_by_zone_tol_3d: bool,
-) -> Result<crate::geom::extent3d::Extent3d> {
+) -> Result<Extent3d> {
     let _ = (k, b, approx, tight, expand_by_zone_tol_3d);
     // UNPORTED(query.brep): SmBrep::CalculateBoundingBox
     Err(SolidError::unported(
@@ -438,8 +448,8 @@ fn destroy_face(b: &mut Brep, env: &mut NotifyEnv<'_>, f: FaceId) -> Result<()> 
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`]: making the infinite region void is
-/// `SmRegion::SetIsVoid` (`topology.shell`).
+/// Those of the B-rep's region list (a corrupt list); the construction notification's
+/// status is not checked, as upstream.
 pub fn new_brep(
     k: &mut Kernel,
     model_size_estimate: f64,
@@ -538,6 +548,34 @@ pub fn copy_brep(
         ],
     ))?;
     Ok(b)
+}
+
+/// A default `SmTopology` record (flags, user value, marks) for every object of `b`
+/// that has none yet, under `key_of`, and for the B-rep itself ([`p2::brep_ref`]).
+/// Every C++ topology object carries these fields; the arena keeps them in the
+/// caller's [`NotifyEnv::records`], which `SmTopology::Notify` reads for every object a
+/// notification names (e.g. both vertices of `SqueezeEdge`'s `SM_NO_MERGE_IN_BREP`).
+/// A caller seeds them before an edit, as a B-rep built upstream already has them.
+pub fn seed_topology_records(
+    records: &mut BTreeMap<ObjectKey, topo::Topology>,
+    b: &Brep,
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+) {
+    let mut all = Vec::new();
+    all.extend(b.regions().iter().map(|(x, _)| EntityRef::Region(x)));
+    all.extend(b.shells().iter().map(|(x, _)| EntityRef::Shell(x)));
+    all.extend(b.faceuses().iter().map(|(x, _)| EntityRef::Faceuse(x)));
+    all.extend(b.faces().iter().map(|(x, _)| EntityRef::Face(x)));
+    all.extend(b.loopuses().iter().map(|(x, _)| EntityRef::Loopuse(x)));
+    all.extend(b.loops().iter().map(|(x, _)| EntityRef::Loop(x)));
+    all.extend(b.edgeuses().iter().map(|(x, _)| EntityRef::Edgeuse(x)));
+    all.extend(b.edges().iter().map(|(x, _)| EntityRef::Edge(x)));
+    all.extend(b.vertexuses().iter().map(|(x, _)| EntityRef::Vertexuse(x)));
+    all.extend(b.vertices().iter().map(|(x, _)| EntityRef::Vertex(x)));
+    for e in all {
+        records.entry(key_of(e).key).or_default();
+    }
+    records.entry(p2::brep_ref(b).key).or_default();
 }
 
 /// `SmApiBrepCopy`: a copy of `brep` that preserves its surface types (the copy
@@ -698,8 +736,8 @@ const fn as_faceuse(e: EntityRef) -> Option<FaceuseId> {
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`] for any B-rep with a region: the region void flag and
-/// shell lists are unit `topology.shell`; those of the geometry copies (`SER`);
+/// [`SolidError::Unported`] from the geometry copies (`SmCone::IsNurbSurfaceCone`,
+/// `surface.cone_p2`, when analytics are added) and those of the copies (`SER`);
 /// `SM_ERR_NULL_POINTER` for a UV trim curve that is not a kind of `SmBSplineCurve`
 /// (`NER` after `SM_CAST_PTR`); [`SolidError::NotFound`] / [`SolidError::InvalidInput`]
 /// for a dangling id or a null pointer upstream dereferences.
@@ -1343,8 +1381,7 @@ impl Default for DeleteFaceOptions {
 /// inconsistent; `SM_ERR_NULL_POINTER` for a missing face use, shell, edge use mate,
 /// vertex use or vertex (`NER`); [`SolidError::Unported`] for every face in the
 /// B-rep: `SmFace::Notify` (`topology.face_p3`), then `SmFace::GetVertices`
-/// (`topology.face_p4`), the shell and region lists (`topology.shell`),
-/// `DeleteEdge`/`DeleteVertex` (`topology.brep_p4`).
+/// (`topology.face_p4`), `DeleteEdge`/`DeleteVertex` (`topology.brep_p4`).
 #[allow(clippy::too_many_lines)]
 pub fn delete_face(
     k: &mut Kernel,
@@ -1569,6 +1606,9 @@ pub fn delete_face(
         }
     }
 
+    // delete pFU; delete pOtherFU
+    delete_faceuses(b, [fu, other_fu])?;
+
     if do_region_nesting {
         // If there are no vertices and no edges then the entire shell goes away.
         let mut vertex_count = verts.len();
@@ -1764,6 +1804,24 @@ fn delete_face_nesting(
     Ok(())
 }
 
+/// `delete pFU` for each face use (the arena keeps the record): `SmTopology`'s destructor
+/// removes a member still in its owner's list (`m_pListOwner->Remove(this)`, status
+/// ignored). After region nesting merged the two shells, the mate face use is in the
+/// surviving shell, which upstream's explicit `Remove`s no longer reach.
+///
+/// # Errors
+///
+/// [`SolidError::NotFound`] for a dangling id; the corrupt-list errors of
+/// [`shell::shell_remove_faceuse`].
+fn delete_faceuses(b: &mut Brep, faceuses: [FaceuseId; 2]) -> Result<()> {
+    for x in faceuses {
+        if let Some(owner) = eu1::faceuse_shell(b, x)? {
+            ignore_soft(shell::shell_remove_faceuse(b, owner, x))?;
+        }
+    }
+    Ok(())
+}
+
 // ---- wire edges -------------------------------------------------------------------------------
 
 /// The curve the new wire edge gets: `curve` itself when no edge owns it, else a copy
@@ -1773,9 +1831,24 @@ fn wire_curve(curve: &Curve) -> Curve {
     curve.clone()
 }
 
-/// The identity of an edge's curve for notifications (its owner when owned).
-fn curve_ref(env: &NotifyEnv<'_>, e: EdgeId) -> ObjectRef {
-    (env.key_of)(EntityRef::Edge(e))
+/// Bit that turns an edge's notification key into its curve's (see [`curve_ref`]).
+const CURVE_KEY_BIT: u64 = 1 << 56;
+
+/// The identity of edge `e`'s curve for notifications: the curve object upstream
+/// passes (`m_pCurve`), not the edge, so a callback (the tracker's `Execute`) sees
+/// geometry: the curve's type code (a B-spline when the edge has none yet) and the
+/// edge's key with [`CURVE_KEY_BIT`] set.
+fn curve_ref(b: &Brep, env: &NotifyEnv<'_>, e: EdgeId) -> ObjectRef {
+    let type_code = b
+        .edge(e)
+        .ok()
+        .and_then(|x| x.curve.as_ref())
+        .map_or(BSplineCurve::TYPE, Curve::type_code);
+    let edge = (env.key_of)(EntityRef::Edge(e));
+    ObjectRef {
+        type_code,
+        key: ObjectKey(edge.key.0 | CURVE_KEY_BIT),
+    }
 }
 
 /// Binds `curve` (owned by nobody, or copied) to the new edge `e` (`SetCurve(.., FALSE)`
@@ -1790,7 +1863,10 @@ fn bind_wire_curve(b: &mut Brep, env: &mut NotifyEnv<'_>, e: EdgeId, curve: &Cur
         curve.clone()
     };
     let _ = new_curve.set_owner(None, None);
-    let new_ref = curve_ref(env, e);
+    let new_ref = ObjectRef {
+        type_code: new_curve.type_code(),
+        ..curve_ref(b, env, e)
+    };
     edge::set_curve(
         b,
         e,
@@ -1823,8 +1899,8 @@ const fn edge_type_code() -> i64 {
 ///
 /// # Errors
 ///
-/// Those of [`p2::make_edge_topology`] ([`SolidError::Unported`] for the shell lists,
-/// `topology.shell`); those of the curve evaluation and the tolerance refresh.
+/// Those of [`p2::make_edge_topology`], of the curve evaluation and of the tolerance
+/// refresh.
 #[allow(clippy::too_many_arguments)]
 pub fn make_wire_edge(
     k: &mut Kernel,
@@ -1881,8 +1957,7 @@ pub fn make_wire_edge(
 ///
 /// # Errors
 ///
-/// Those of [`p2::make_edge_vertex_topology`] ([`SolidError::Unported`] for the shell
-/// lists, `topology.shell`); those of the tolerance refresh.
+/// Those of [`p2::make_edge_vertex_topology`] and of the tolerance refresh.
 #[allow(clippy::too_many_arguments)]
 pub fn make_wire_edge_vertex(
     b: &mut Brep,
@@ -1955,7 +2030,7 @@ pub fn make_wire_edge_vertex(
 /// `SM_ERR` when `survivor` is not a vertex of `e`, `e` is closed, or a wire edge's
 /// other vertex has fewer than two edges (or that edge fewer than two uses);
 /// [`SolidError::Unported`]: `SmFace::Notify` (`topology.face_p3`) for an edge in a
-/// face, the shell list (`topology.shell`) for a wire edge.
+/// face; `InvalidInput` for a corrupt shell list.
 #[allow(clippy::too_many_lines)]
 pub fn squeeze_edge(
     k: &mut Kernel,
@@ -1994,7 +2069,7 @@ pub fn squeeze_edge(
         NotifyOperation::PreEdit,
         [Some(eref), Some(bref), None],
     ))?;
-    let cref = b.edge(e)?.curve.as_ref().map(|_| curve_ref(env, e));
+    let cref = b.edge(e)?.curve.as_ref().map(|_| curve_ref(b, env, e));
     ignore_soft(brep_notify(
         b,
         env,
@@ -2175,6 +2250,35 @@ fn squeeze_loops(
 // ---- TurnToNURBS --------------------------------------------------------------------------------
 
 /// Whether `s` is a kind of `SmBSplineSurface` (`SM_CAST_PTR(SmBSplineSurface, ..)`).
+/// The B-spline part of a B-spline kind surface with its NURB
+/// (`GetOrCreateGwNurbPointer`, which calls the kind's virtual `MakeNurb` when the
+/// NURB is missing): borrowed when present, else made on a copy (upstream caches it
+/// on the surface; nothing observable differs). A `MakeNurb` that fails leaves the
+/// NULL NURB, as upstream's ignored status does; `None` for another kind.
+///
+/// # Errors
+///
+/// [`SolidError::Unported`] from a surface of revolution's `MakeNurb`.
+fn with_nurb<'a>(k: &Kernel, s: &'a Surface) -> Result<Option<Cow<'a, BSplineSurface>>> {
+    Ok(match s.kind() {
+        SurfaceKind::BSpline(x) => Some(Cow::Borrowed(x)),
+        SurfaceKind::Plane(x) => Some(x.base_for_query()),
+        SurfaceKind::SurfOfRevolution(x) => {
+            if x.base().gw_nurb().is_some() {
+                Some(Cow::Borrowed(x.base()))
+            } else {
+                let mut tmp = x.as_ref().clone();
+                match tmp.make_nurb(k) {
+                    Err(e) if e.is_unported() => return Err(e),
+                    Ok(()) | Err(_) => {}
+                }
+                Some(Cow::Owned(tmp.base().clone()))
+            }
+        }
+        _ => None,
+    })
+}
+
 const fn as_bspline_surface(s: &Surface) -> Option<&BSplineSurface> {
     match s.kind() {
         SurfaceKind::BSpline(x) => Some(x),
@@ -2225,7 +2329,7 @@ pub fn turn_to_nurbs(k: &Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Resul
             .surface
             .as_ref()
             .ok_or(null_deref("face without surface"))?;
-        let Some(bss) = as_bspline_surface(surface) else {
+        let Some(_) = as_bspline_surface(surface) else {
             if surface.type_code() != OFFSET_SURFACE_TYPE {
                 continue;
             }
@@ -2233,17 +2337,9 @@ pub fn turn_to_nurbs(k: &Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Resul
                 return Err(ner());
             };
 
-            // it is an offset surface
-            let base = offset.base_surface();
-            if as_bspline_surface(base).is_none() {
-                return Err(ner());
-            }
-            // (ApproximateOffsetSurface's GetOrCreateGwNurbPointer: a plane's NURB is
-            // made when missing; a failure leaves the NULL NURB, NER there)
-            let base = match base.kind() {
-                SurfaceKind::Plane(x) => x.base_for_query(),
-                _ => Cow::Borrowed(as_bspline_surface(base).ok_or_else(ner)?),
-            };
+            // it is an offset surface (ApproximateOffsetSurface's
+            // GetOrCreateGwNurbPointer makes a missing NURB; NER there without one)
+            let base = with_nurb(k, offset.base_surface())?.ok_or_else(ner)?;
 
             // offset tolerance should be quite large compared to brep tol
             let approx_tol_3d = b.tolerance() * 10.0;
@@ -2266,9 +2362,14 @@ pub fn turn_to_nurbs(k: &Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Resul
             // first extend the new surface in all directions by a small amount
             let new_surface = Surface::from(new_bss);
             let domain = new_surface.natural_uv_domain();
-            let boxes =
-                new_surface.calculate_bounding_box(k, &domain, [true, false, false], true)?;
-            let srf_bbox = boxes.normal_box.ok_or_else(ner)?;
+            // (status not checked upstream: a failed call leaves the Init() box, whose
+            // size clamps to 1.0 below)
+            let srf_bbox =
+                match new_surface.calculate_bounding_box(k, &domain, [true, false, false], true) {
+                    Ok(boxes) => boxes.normal_box.unwrap_or_else(Extent3d::new),
+                    Err(e) if e.is_unported() => return Err(e),
+                    Err(_) => Extent3d::new(),
+                };
             let mut size = srf_bbox.size().length();
             if size >= 1.0e15 || size <= 0.0 {
                 size = 1.0;
@@ -2293,7 +2394,9 @@ pub fn turn_to_nurbs(k: &Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Resul
         if surface.type_code() == BSplineSurface::TYPE {
             continue;
         }
-        let new_bss = Surface::from(bss.clone());
+        // new SmBSplineSurface(*pBSS): the copy constructor's GetOrCreateGwNurbPointer
+        // makes a missing NURB first
+        let new_bss = Surface::from(with_nurb(k, surface)?.ok_or_else(ner)?.into_owned());
         let face_ref = (env.key_of)(EntityRef::Face(f));
         p2::replace_surface(k, b, f, new_bss, face_ref, OldSurface::Delete, true)?;
     }
@@ -2366,7 +2469,11 @@ pub fn turn_to_nurbs(k: &Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Resul
         let bsc = bsc.ok_or_else(ner)?;
 
         // Update the edge: drop the old curve (TRUE = delete preExisting Curve)
-        let r = curve_ref(env, e);
+        let old_ref = curve_ref(b, env, e);
+        let r = ObjectRef {
+            type_code: bsc.type_code(),
+            ..old_ref
+        };
         edge::set_curve(
             b,
             e,
@@ -2376,7 +2483,7 @@ pub fn turn_to_nurbs(k: &Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Resul
                 ..SetCurveOptions::default()
             },
             env,
-            [None, Some(r)],
+            [None, Some(old_ref)],
         )?;
         let mut new_curve = bsc;
         let _ = new_curve.set_owner(None, None);
@@ -2855,7 +2962,7 @@ fn brep_curve_solve(
                 curve: line,
                 handle: CacheObject::Other(ObjectRef {
                     type_code: BSplineCurve::TYPE,
-                    key: crate::geom::attribute::ObjectKey(0),
+                    key: ObjectKey(0),
                 }),
             },
             &line.natural_interval(),
@@ -2882,6 +2989,72 @@ fn brep_curve_solve(
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    /// `TurnToNURBS`' copy of a B-spline kind surface (`new SmBSplineSurface(*pBSS)`)
+    /// and its offset arm's `ApproximateOffsetSurface` read the NURB through
+    /// `GetOrCreateGwNurbPointer`: a bounded plane built without `MakeNurb` gets its
+    /// NURB and domain, not the empty B-spline part.
+    #[test]
+    fn lazy_plane_gets_its_nurb_before_the_copy() {
+        use crate::geom::extent2d::Extent2d;
+        use crate::geom::vector2d::Vec2;
+        use crate::surface::plane::Plane;
+        let k = Kernel::default();
+        let dom = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
+        let plane = Plane::new(Vec3::ZERO, Vec3::X, Vec3::Y, Vec2::new(1.0, 1.0), &dom);
+        let s = Surface::from(plane);
+        let SurfaceKind::Plane(p) = s.kind() else {
+            panic!("not a plane")
+        };
+        assert!(p.base().gw_nurb().is_none());
+        let with = with_nurb(&k, &s).unwrap().unwrap();
+        assert!(with.gw_nurb().is_some());
+        let d = with.natural_uv_domain();
+        assert!(d.max().x > d.min().x && d.max().y > d.min().y);
+        // another kind has no B-spline part
+        assert!(with_nurb(&k, &Surface::from(BSplineSurface::new()))
+            .unwrap()
+            .is_some());
+    }
+
+    /// `DeleteFace` after region nesting merged the face's two shells: upstream's
+    /// explicit `Remove` takes off only `pFU` (`pOtherShell` is gone), and `delete
+    /// pOtherFU`'s destructor removes the mate from the surviving shell. A closed
+    /// six-face block's two merged six-member lists keep 10 members, not 11.
+    #[test]
+    fn deleted_faceuses_leave_the_merged_shell() {
+        use crate::topology::Faceuse;
+        let mut b = Brep::new();
+        let s = b
+            .add_shell_record(crate::topology::Shell::default())
+            .unwrap();
+        let fus: Vec<FaceuseId> = (0..12)
+            .map(|_| {
+                b.add_faceuse_record(Faceuse {
+                    shell: Some(s),
+                    ..Faceuse::default()
+                })
+                .unwrap()
+            })
+            .collect();
+        {
+            let sh = b.shell_mut(s).unwrap();
+            sh.shell_type = ShellType::Faceuse;
+            sh.members = ShellMembers::Faceuses(fus.clone());
+        }
+        // the deleted face's use (from the first list) and its mate (from the second)
+        let (fu, other_fu) = (fus[0], fus[6]);
+        ignore_soft(shell::shell_remove_faceuse(&mut b, s, fu)).unwrap();
+        assert_eq!(b.shell(s).unwrap().get_faceuses().unwrap().len(), 11);
+        delete_faceuses(&mut b, [fu, other_fu]).unwrap();
+        let left = b.shell(s).unwrap().get_faceuses().unwrap();
+        assert_eq!(left.len(), 10);
+        assert!(!left.contains(&fu) && !left.contains(&other_fu));
+        assert_eq!(b.faceuse(other_fu).unwrap().shell, None);
+        // nothing left to unlink: a second pass is a no-op
+        delete_faceuses(&mut b, [fu, other_fu]).unwrap();
+        assert_eq!(b.shell(s).unwrap().get_faceuses().unwrap().len(), 10);
+    }
 
     fn with_env<R>(f: impl FnOnce(&mut NotifyEnv<'_>) -> R) -> R {
         let mut records = BTreeMap::new();

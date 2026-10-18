@@ -19,6 +19,9 @@
 
 #include <SmApiQueries.h>
 #include <SmOffsetSurface.h>
+#include <SmTrackTopologyChanges.h>
+
+#include <memory>
 
 namespace
 {
@@ -136,6 +139,80 @@ SmBrep* prepare(Rd& rd, const char* path, Graph& g, SmStatus& bst)
     return brep;
 }
 
+void put_graph(std::vector<double>& o, SmBrep* brep);
+
+// An object a tracker list or event names, found by its address only (it may be
+// deleted by the time the lists are read, so it is never dereferenced): `-1 -1` null,
+// `-10 0` the B-rep; a topology object either walk registered: its kind's type code,
+// then for a face / edge / vertex its index before the op (or 100000 + its index in the
+// walk after it), for another kind `-5`; anything else (geometry, an object made and
+// deleted by the op) `-2 -5`.
+void put_tracked(std::vector<double>& o, SmObject* p, Graph& pre, Graph& post, SmBrep* brep)
+{
+    static const double codes[10] = {SmRegion_TYPE,   SmShell_TYPE, SmFaceuse_TYPE,   SmFace_TYPE,
+                                     SmLoopuse_TYPE,  SmLoop_TYPE,  SmEdgeuse_TYPE,   SmEdge_TYPE,
+                                     SmVertexuse_TYPE, SmVertex_TYPE};
+    if (p == nullptr)
+    {
+        o.push_back(-1.0);
+        o.push_back(-1.0);
+        return;
+    }
+    if (p == (SmObject*)brep)
+    {
+        o.push_back(-10.0);
+        o.push_back(0.0);
+        return;
+    }
+    // the address each walk registered, from the kind's own pointer type (a cast down
+    // from SmObject adjusts the address without reading the object, which may be
+    // deleted by now)
+    const void* as[10] = {(const void*)(SmRegion*)p,   (const void*)(SmShell*)p,    (const void*)(SmFaceuse*)p,
+                          (const void*)(SmFace*)p,     (const void*)(SmLoopuse*)p,  (const void*)(SmLoop*)p,
+                          (const void*)(SmEdgeuse*)p,  (const void*)(SmEdge*)p,     (const void*)(SmVertexuse*)p,
+                          (const void*)(SmVertex*)p};
+    for (int k = 0; k < 10; k++)
+    {
+        auto i = pre.index[k].find(as[k]);
+        auto j = post.index[k].find(as[k]);
+        if (i == pre.index[k].end() && j == post.index[k].end())
+            continue;
+        o.push_back(codes[k]);
+        if (k == 3 || k == 7 || k == 9)
+            o.push_back(i != pre.index[k].end() ? (double)i->second : 100000.0 + (double)j->second);
+        else
+            o.push_back(-5.0);
+        return;
+    }
+    o.push_back(-2.0);
+    o.push_back(-5.0);
+}
+
+// The tracker of an edit (SmTrackTopologyChanges on the B-rep): `n rm*`, `n add*`,
+// `n chg*`, then `n` events of `action caller data1 data2 data3` (put_tracked each).
+void put_tracker(std::vector<double>& o, SmTrackTopologyChanges& trk, Graph& pre, SmBrep* brep)
+{
+    Graph post;
+    walk(brep, post, true);
+    for (SmTArray<SmTopology*>* l : {trk.GetRmList(), trk.GetAddList(), trk.GetChgList()})
+    {
+        o.push_back((double)l->GetSize());
+        for (ULONG i = 0; i < l->GetSize(); i++)
+            put_tracked(o, (SmObject*)(*l)[i], pre, post, brep); // (SmTopology* up to SmObject*)
+    }
+    SmTArray<SmNotifyEvent>* ev = trk.GetNotifyEvents();
+    o.push_back((double)ev->GetSize());
+    for (ULONG i = 0; i < ev->GetSize(); i++)
+    {
+        SmNotifyEvent& e = (*ev)[i];
+        o.push_back((double)e.m_eAction);
+        put_tracked(o, e.m_pCaller, pre, post, brep);
+        put_tracked(o, e.m_pData1, pre, post, brep);
+        put_tracked(o, e.m_pData2, pre, post, brep);
+        put_tracked(o, e.m_pData3, pre, post, brep);
+    }
+}
+
 // `faces edges vertices regions` of a fresh walk of `brep`, then for every region (in
 // list order) `void infinite nshells` and for each of its shells `type size has_head`
 // (m_tShellType, m_lListSize, m_pList != NULL).
@@ -168,6 +245,120 @@ void put_counts(std::vector<double>& o, SmBrep* brep)
             o.push_back((double)sh->GetSize());
             o.push_back(sh->GetList() != NULL ? 1.0 : 0.0);
         }
+    }
+    put_graph(o, brep);
+}
+
+// The topology graph of `brep` after an op: a fresh `walk` (the fixture's first-seen order
+// from the region and edge lists) names every object by its index in its kind's list,
+// then every owner / adjacency link is written as such an index (`-1` null, `-3` an
+// object the walk did not reach):
+//   the ten kind counts (regions shells faceuses faces loopuses loops edgeuses edges
+//   vertexuses vertices), then per
+//   region:    void infinite nshells shell*        (GetShells order)
+//   shell:     type size region head               (head: its list's first member)
+//   faceuse:   face mate shell next last orient nloopuses loopuse*
+//   face:      faceuse                             (m_pFU)
+//   loopuse:   loop mate faceuse type start orient
+//   loop:      loopuse
+//   edgeuse:   edge owner_type owner cw ccw vertexuse next last orient
+//   edge:      nedgeuses edgeuse*                  (its radial list from the head)
+//   vertexuse: vertex owner_type owner
+//   vertex:    nvertexuses vertexuse*
+void put_graph(std::vector<double>& o, SmBrep* brep)
+{
+    Graph g;
+    walk(brep, g, true);
+    // (each pointer cast to its kind first, as `walk` registers it)
+    auto I = [&](int k, auto p) { return (double)g.find(k, p); };
+    auto T = [&](SM_TYPE t, const SmTopology* p) -> double {
+        switch (t)
+        {
+        case SmShell_TYPE: return (double)g.find(1, (const SmShell*)p);
+        case SmFaceuse_TYPE: return (double)g.find(2, (const SmFaceuse*)p);
+        case SmLoopuse_TYPE: return (double)g.find(4, (const SmLoopuse*)p);
+        case SmEdgeuse_TYPE: return (double)g.find(6, (const SmEdgeuse*)p);
+        case SmVertexuse_TYPE: return (double)g.find(8, (const SmVertexuse*)p);
+        default: return p == nullptr ? -1.0 : -4.0;
+        }
+    };
+    for (size_t n : {g.regions.size(), g.shells.size(), g.faceuses.size(), g.faces.size(), g.loopuses.size(),
+                     g.loops.size(), g.edgeuses.size(), g.edges.size(), g.vertexuses.size(), g.vertices.size()})
+        o.push_back((double)n);
+    for (SmRegion* r : g.regions)
+    {
+        std::vector<SmTopology*> ss = list_of(r->GetList());
+        o.push_back((double)(r->*RegPeek::void_flag()));
+        o.push_back(r == brep->GetInfiniteRegion() ? 1.0 : 0.0);
+        o.push_back((double)ss.size());
+        for (SmTopology* t : ss)
+            o.push_back(I(1, (SmShell*)t));
+    }
+    for (SmShell* sh : g.shells)
+    {
+        SM_TYPE ty = sh->*ShellPeek::shell_type();
+        o.push_back((double)ty);
+        o.push_back((double)sh->GetSize());
+        o.push_back(I(0, (SmRegion*)sh->GetOwner()));
+        o.push_back(T(ty, sh->GetList()));
+    }
+    for (SmFaceuse* fu : g.faceuses)
+    {
+        std::vector<SmTopology*> lus = list_of(fu->GetList());
+        o.push_back(I(3, fu->*FuPeek::face()));
+        o.push_back(I(2, fu->*FuPeek::mate()));
+        o.push_back(I(1, (SmShell*)fu->GetOwner()));
+        o.push_back(I(2, (SmFaceuse*)fu->GetNext()));
+        o.push_back(I(2, (SmFaceuse*)fu->GetLast()));
+        o.push_back((double)fu->GetOrientation());
+        o.push_back((double)lus.size());
+        for (SmTopology* t : lus)
+            o.push_back(I(4, (SmLoopuse*)t));
+    }
+    for (SmFace* f : g.faces)
+        o.push_back(I(2, f->*FPeek::fu()));
+    for (SmLoopuse* lu : g.loopuses)
+    {
+        o.push_back(I(5, lu->*LuPeek::loop()));
+        o.push_back(I(4, lu->*LuPeek::mate()));
+        o.push_back(I(2, (SmFaceuse*)lu->GetOwner()));
+        o.push_back((double)(lu->*LuPeek::type()));
+        o.push_back(T(lu->*LuPeek::type(), lu->*LuPeek::start()));
+        o.push_back((double)(lu->*LuPeek::orient()));
+    }
+    for (SmLoop* l : g.loops)
+        o.push_back(I(4, l->GetLoopuse()));
+    for (SmEdgeuse* eu : g.edgeuses)
+    {
+        o.push_back(I(7, (SmEdge*)eu->GetOwner()));
+        o.push_back((double)eu->GetEdgeuseType());
+        o.push_back(T(eu->GetEdgeuseType(), eu->*EuPeek::sorlu()));
+        o.push_back(I(6, eu->GetCWEdgeuse()));
+        o.push_back(I(6, eu->GetCCWEdgeuse()));
+        o.push_back(I(8, eu->*EuPeek::vu()));
+        o.push_back(I(6, (SmEdgeuse*)eu->GetNext()));
+        o.push_back(I(6, (SmEdgeuse*)eu->GetLast()));
+        o.push_back((double)eu->GetOrientation());
+    }
+    for (SmEdge* e : g.edges)
+    {
+        std::vector<SmTopology*> eus = list_of(e->GetList());
+        o.push_back((double)eus.size());
+        for (SmTopology* t : eus)
+            o.push_back(I(6, (SmEdgeuse*)t));
+    }
+    for (SmVertexuse* vu : g.vertexuses)
+    {
+        o.push_back(I(9, (SmVertex*)vu->GetOwner()));
+        o.push_back((double)vu->GetVertexuseType());
+        o.push_back(T(vu->GetVertexuseType(), vu->*VuPeek::owner()));
+    }
+    for (SmVertex* v : g.vertices)
+    {
+        std::vector<SmTopology*> vus = list_of(v->GetList());
+        o.push_back((double)vus.size());
+        for (SmTopology* t : vus)
+            o.push_back(I(8, (SmVertexuse*)t));
     }
 }
 
@@ -214,6 +405,12 @@ void run(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
     }
     SmBrep* brep = b.brep;
     o.push_back(0.0);
+    // the edits of `brep` run under a topology change tracker (SmHealData's), whose
+    // lists and events are compared after the op's outputs
+    std::unique_ptr<SmTrackTopologyChanges> trk;
+    if (op == P3_DELETE_FACE || op == P3_WIRE || op == P3_ORIENT || op == P3_SQUEEZE || op == P3_TURN_NURBS ||
+        op == P3_TURN_NURBS_OFFSET)
+        trk.reset(new SmTrackTopologyChanges(brep, TRUE));
     switch (op)
     {
     case P3_COPY:
@@ -340,6 +537,7 @@ void run(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
             SmFaceuse* fu = f->GetUpwardFaceuse();
             o.push_back((double)g.find(2, fu));
         }
+        put_counts(o, brep);
         break;
     }
     case P3_SQUEEZE:
@@ -390,9 +588,15 @@ void run(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
                 o.push_back(d.GetMax().y);
             }
         }
+        put_counts(o, brep);
         break;
     }
     default: o.push_back(-9.0); break;
+    }
+    if (trk)
+    {
+        trk->StopTracking();
+        put_tracker(o, *trk, g, brep);
     }
 }
 } // namespace

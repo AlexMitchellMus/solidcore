@@ -24,7 +24,12 @@
 //! their status; no successful mutation is simulated. Removed/added identities
 //! are returned by the mutation adapters rather than accumulated by a temporary context
 //! callback; the ported edits (`SqueezeEdge`, `DeleteFace`) run under a real
-//! `SmTrackTopologyChanges` on a context of their own (`tracked_edit`). Recursive target catch-up is limited to 32 nested updates (upstream
+//! `SmTrackTopologyChanges` on a context of their own (`tracked_edit`), one per edit
+//! (upstream keeps one per heal loop; the lists merge to the same result with
+//! `Changes::append`), after seeding every object's `SmTopology` record (each C++
+//! object has one; `SmTopology::Notify` reads them). Its owner table is empty, so
+//! geometry notifications reach no owner: only the Chg list depends on it, which
+//! `Changes` does not read. Recursive target catch-up is limited to 32 nested updates (upstream
 //! has no bound); temporary counters and healer state are restored on every exit.
 //! Ordinary statuses from nested `HealTgts` are ignored as upstream, but unported
 //! calls and invalid memory accesses propagate. Bare/SE mutation statuses are
@@ -529,7 +534,8 @@ const EDIT_TRACKER: u64 = 0x4845_414c; // "HEAL"
 /// before it failed (callers that ignore its status keep those changes).
 fn tracked_edit<R>(
     k: &mut Kernel,
-    edit: impl FnOnce(&mut Kernel, &mut NotifyEnv<'_>) -> Result<R>,
+    b: &mut Brep,
+    edit: impl FnOnce(&mut Kernel, &mut Brep, &mut NotifyEnv<'_>) -> Result<R>,
 ) -> (Result<R>, Changes) {
     let mut ctx = crate::geom::context::Context::default();
     let (user, sys) = k.context.take_notify_callbacks();
@@ -542,7 +548,10 @@ fn tracked_edit<R>(
         true,
         Some(&mut ctx),
     );
+    // every object's SmTopology record (SmTopology::Notify reads those a notification
+    // names, e.g. both vertices of SqueezeEdge's SM_NO_MERGE_IN_BREP)
     let mut records = std::collections::BTreeMap::new();
+    crate::topology::brep::p3::seed_topology_records(&mut records, b, &edit_key);
     let mut attributes = crate::geom::attribute::AttributeStore::default();
     let r = {
         let mut env = NotifyEnv {
@@ -551,7 +560,7 @@ fn tracked_edit<R>(
             context: Some(&mut ctx),
             key_of: &edit_key,
         };
-        edit(k, &mut env)
+        edit(k, b, &mut env)
     };
     let changes = Changes {
         removed: tracker
@@ -569,7 +578,7 @@ fn tracked_edit<R>(
 }
 /// `SqueezeEdge(e, survivor)` under the edit tracker ([`tracked_edit`]).
 fn squeeze_edge(k: &mut Kernel, b: &mut Brep, e: EdgeId, survivor: VertexId) -> Result<Changes> {
-    let (r, changes) = tracked_edit(k, |k, env| {
+    let (r, changes) = tracked_edit(k, b, |k, b, env| {
         crate::topology::brep::p3::squeeze_edge(k, b, env, e, survivor)
     });
     r.map(|()| changes)
@@ -1073,7 +1082,7 @@ fn delete_face(
         region_to_keep: keep,
     };
     let mut marks = Marks::default();
-    tracked_edit(k, |k, env| {
+    tracked_edit(k, b, |k, b, env| {
         crate::topology::brep::p3::delete_face(k, b, env, &mut marks, f, opts)
     })
 }
@@ -1525,5 +1534,109 @@ mod tests {
             ),
             Err(SolidError::Upstream { code: SM_ERR, .. })
         ));
+    }
+
+    /// A wire chain A--B--C (edge uses `2i` / `2i+1` of edge `i` at `v_i` / `v_{i+1}`) in one
+    /// wire shell of the infinite region.
+    fn wire_chain() -> (Brep, [VertexId; 3], [EdgeId; 2]) {
+        use crate::geom::extent1d::Extent1d;
+        use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+        use crate::topology::shell::{ShellMembers, ShellType};
+        use crate::topology::{
+            Edge, Edgeuse, EdgeuseId, EdgeuseOwner, Region, Shell, Vertex, Vertexuse, VertexuseId,
+            VertexuseOwner,
+        };
+        let mut b = Brep::new();
+        let r = b
+            .add_region_record(Region {
+                in_brep: true,
+                ..Region::default()
+            })
+            .unwrap();
+        b.set_infinite_region_record(Some(r));
+        let s = b
+            .add_shell_record(Shell {
+                region: Some(r),
+                shell_type: ShellType::Wire,
+                members: ShellMembers::Edgeuse(EdgeuseId::from_index(0)),
+                ..Shell::default()
+            })
+            .unwrap();
+        b.region_mut(r).unwrap().shells.push(s);
+        let v: Vec<VertexId> = (0..3)
+            .map(|i| {
+                b.add_vertex_record(Vertex {
+                    point: crate::math::Vec3::new(f64::from(i), 0.0, 0.0),
+                    tolerance: 1e-6,
+                    ..Vertex::default()
+                })
+                .unwrap()
+            })
+            .collect();
+        let mut es = Vec::new();
+        for i in 0..2u32 {
+            es.push(
+                b.add_edge_record(Edge {
+                    vertices: [v[i as usize], v[i as usize + 1]],
+                    edgeuses: vec![
+                        EdgeuseId::from_index(2 * i),
+                        EdgeuseId::from_index(2 * i + 1),
+                    ],
+                    interval: Extent1d::from_min_max(0.0, 1.0),
+                    tolerance: 1e-6,
+                    curve: None,
+                })
+                .unwrap(),
+            );
+        }
+        for i in 0..4u32 {
+            b.add_edgeuse_record(Edgeuse {
+                edge: Some(EdgeId::from_index(i / 2)),
+                owner: EdgeuseOwner::Shell(Some(s)),
+                vertexuse: Some(VertexuseId::from_index(i)),
+                orientation: if i % 2 == 0 {
+                    OrientType::Same
+                } else {
+                    OrientType::Opposite
+                },
+                ..Edgeuse::default()
+            })
+            .unwrap();
+        }
+        for (i, &vx) in [v[0], v[1], v[1], v[2]].iter().enumerate() {
+            let vu = b
+                .add_vertexuse_record(Vertexuse {
+                    vertex: Some(vx),
+                    owner: VertexuseOwner::Edgeuse(Some(EdgeuseId::from_index(i as u32))),
+                    ..Vertexuse::default()
+                })
+                .unwrap();
+            b.vertex_mut(vx).unwrap().vertexuses.push(vu);
+        }
+        (b, [v[0], v[1], v[2]], [es[0], es[1]])
+    }
+
+    /// The healer's `SqueezeEdge` completes on an ordinary wire chain: its tracked
+    /// edit seeds every object's `SmTopology` record, so `SM_NO_MERGE_IN_BREP` (which
+    /// reads both vertices') succeeds, and the tracker reports the edit
+    /// (`SmTopologyChangeCallback::Execute`).
+    #[test]
+    fn healer_squeeze_of_a_wire_chain_completes_under_its_tracker() {
+        let (mut b, [a, bv, _], [e0, _]) = wire_chain();
+        let mut k = Kernel::default();
+        let changes = squeeze_edge(&mut k, &mut b, e0, a).unwrap();
+        assert_eq!(
+            changes.removed,
+            vec![
+                EntityRef::Edge(e0),
+                EntityRef::Vertex(a),
+                EntityRef::Vertex(bv)
+            ]
+        );
+        assert_eq!(changes.added, vec![Some(EntityRef::Vertex(a))]);
+        // the squeezed edge's uses and their vertex uses are gone; the deleted vertex's
+        // other use (of the second edge) moved to the survivor
+        assert!(b.edge(e0).unwrap().edgeuses.is_empty());
+        assert_eq!(b.vertex(a).unwrap().vertexuses.len(), 1);
     }
 }

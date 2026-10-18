@@ -27,6 +27,7 @@ use serde_json::Value;
 use solidcore::curve::curve::{Curve as SmCurve, CurveKind};
 use solidcore::error::SM_ERR;
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
+use solidcore::geom::context::Context;
 use solidcore::geom::extent1d::Extent1d;
 use solidcore::geom::object::ObjectRef;
 use solidcore::geom::vector3d::Vec3;
@@ -39,14 +40,16 @@ use solidcore::nurbs::math::CPoint;
 use solidcore::surface::offset_surface::{OffsetSurface, SS_UNKNOWN};
 use solidcore::surface::surface::Surface as SmSurface;
 use solidcore::topology::brep::p1 as bp1;
-use solidcore::topology::brep::p2 as bp2;
 use solidcore::topology::brep::p3 as bp3;
 use solidcore::topology::brep_cache::{arena_identity, CacheObject};
 use solidcore::topology::edge::NotifyEnv;
 use solidcore::topology::shell;
-use solidcore::topology::topology::Topology;
+use solidcore::topology::topology::TrackTopologyChanges;
 use solidcore::topology::topology_traverser::Marks;
-use solidcore::topology::{Brep, EdgeId, FaceId, FaceuseId, RegionId, VertexId, VertexuseId};
+use solidcore::topology::{
+    ArenaId, Brep, BrepId, EdgeId, EdgeuseId, EdgeuseOwner, FaceId, FaceuseId, LoopId, LoopuseId,
+    LoopuseStart, RegionId, ShellId, VertexId, VertexuseId, VertexuseOwner,
+};
 use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::topology_brep_p2 as ffi2;
 use solidcore_ffi::units::topology_brep_p3::{self as ffi, Op};
@@ -488,6 +491,400 @@ fn must<T>(r: Result<T, SolidError>) -> Result<T, Fail> {
 }
 
 /// `faces edges vertices regions` of the B-rep's lists.
+/// An arena id's index (`None` for null).
+fn ix<I: ArenaId>(x: Option<I>) -> Option<u32> {
+    x.map(ArenaId::index)
+}
+
+/// `SmUnknown_TYPE`, the type a use without an owner kind reports.
+const UNKNOWN_TYPE: i64 = 16999;
+
+/// The shim's `Graph` over the Rust arena: every object reached by [`walk`], per kind
+/// (`0` regions, `1` shells, `2` face uses, `3` faces, `4` loop uses, `5` loops, `6` edge
+/// uses, `7` edges, `8` vertex uses, `9` vertices), in first-seen order.
+#[derive(Default)]
+struct Walk {
+    lists: [Vec<u32>; 10],
+    index: [BTreeMap<u32, i64>; 10],
+}
+
+impl Walk {
+    fn add(&mut self, k: usize, id: Option<u32>) {
+        let (Some(id), Some(list), Some(index)) =
+            (id, self.lists.get_mut(k), self.index.get_mut(k))
+        else {
+            return;
+        };
+        if let std::collections::btree_map::Entry::Vacant(slot) = index.entry(id) {
+            slot.insert(list.len() as i64);
+            list.push(id);
+        }
+    }
+
+    /// The index of a link (`-1` null, `-3` an object the walk did not reach).
+    fn find(&self, k: usize, id: Option<u32>) -> f64 {
+        match id {
+            None => -1.0,
+            Some(id) => self
+                .index
+                .get(k)
+                .and_then(|m| m.get(&id))
+                .map_or(-3.0, |&i| i as f64),
+        }
+    }
+
+    fn len(&self, k: usize) -> usize {
+        self.lists.get(k).map_or(0, Vec::len)
+    }
+
+    fn at(&self, k: usize, i: usize) -> Result<u32, Fail> {
+        self.lists
+            .get(k)
+            .and_then(|l| l.get(i))
+            .copied()
+            .ok_or_else(|| Fail::Harness(harness("walk index out of range")))
+    }
+}
+
+/// `list_of(shell->GetList())` of a face-use shell: its ring from the head through the
+/// face uses' `GetNext` links (bounded as the shim's).
+fn faceuse_ring(b: &Brep, s: ShellId) -> Result<Vec<FaceuseId>, Fail> {
+    let mut out = Vec::new();
+    let shell::ShellMembers::Faceuses(members) = &must(b.shell(s))?.members else {
+        return Ok(out);
+    };
+    let Some(&head) = members.first() else {
+        return Ok(out);
+    };
+    let mut p = Some(head);
+    while let Some(x) = p {
+        if out.len() >= 100_000 {
+            break;
+        }
+        out.push(x);
+        p = must(shell::faceuse_sibling_links(b, x))?.0;
+        if p == Some(head) {
+            break;
+        }
+    }
+    Ok(out)
+}
+
+/// An edge use's `GetNext` / `GetLast` in its edge's radial list.
+fn edgeuse_ring_links(
+    b: &Brep,
+    eu: EdgeuseId,
+) -> Result<(Option<EdgeuseId>, Option<EdgeuseId>), Fail> {
+    let Some(e) = must(b.edgeuse(eu))?.edge else {
+        return Ok((None, None));
+    };
+    let list = &must(b.edge(e))?.edgeuses;
+    let Some(i) = list.iter().position(|&x| x == eu) else {
+        return Ok((None, None));
+    };
+    let n = list.len();
+    Ok((
+        list.get((i + 1) % n).copied(),
+        list.get((i + n - 1) % n).copied(),
+    ))
+}
+
+const fn shell_head_kind(code: i64) -> Option<usize> {
+    match code {
+        16005 => Some(6),
+        16006 => Some(8),
+        _ => None,
+    }
+}
+
+fn shell_head(sh: &solidcore::topology::Shell) -> (Option<usize>, Option<u32>) {
+    match sh.members {
+        shell::ShellMembers::Edgeuse(x) => (Some(6), Some(x.index())),
+        shell::ShellMembers::Vertexuse(x) => (Some(8), Some(x.index())),
+        shell::ShellMembers::Faceuses(ref l) => (Some(2), ix(l.first().copied())),
+        shell::ShellMembers::Empty => (None, None),
+    }
+}
+
+fn edgeuse_owner(o: EdgeuseOwner) -> (i64, usize, Option<u32>) {
+    match o {
+        EdgeuseOwner::Loopuse(x) => (16004, 4, ix(x)),
+        EdgeuseOwner::Shell(x) => (16013, 1, ix(x)),
+        EdgeuseOwner::Unknown => (UNKNOWN_TYPE, 0, None),
+    }
+}
+
+fn vertexuse_owner(o: VertexuseOwner) -> (i64, usize, Option<u32>) {
+    match o {
+        VertexuseOwner::Edgeuse(x) => (16005, 6, ix(x)),
+        VertexuseOwner::Loopuse(x) => (16004, 4, ix(x)),
+        VertexuseOwner::Shell(x) => (16013, 1, ix(x)),
+        VertexuseOwner::Unknown => (UNKNOWN_TYPE, 0, None),
+    }
+}
+
+fn loopuse_start(s: LoopuseStart) -> (i64, usize, Option<u32>) {
+    match s {
+        LoopuseStart::Edgeuse(x) => (16005, 6, ix(x)),
+        LoopuseStart::Vertexuse(x) => (16006, 8, ix(x)),
+        LoopuseStart::Unknown => (UNKNOWN_TYPE, 0, None),
+    }
+}
+
+const fn orient_code(o: OrientType) -> f64 {
+    match o {
+        OrientType::Unknown => 0.0,
+        OrientType::Same => 1.0,
+        OrientType::Opposite => 2.0,
+    }
+}
+
+/// The fixture's `walk` over the Rust arena, in the same first-seen order.
+#[allow(clippy::too_many_lines)]
+fn walk(b: &Brep) -> Result<Walk, Fail> {
+    let mut g = Walk::default();
+    for r in must(bp1::regions(b, None))? {
+        g.add(0, Some(r.index()));
+    }
+    for e in must(bp1::edges(b, None))? {
+        g.add(7, Some(e.index()));
+    }
+    let mut c = [0usize; 10];
+    let mut more = true;
+    while more {
+        more = false;
+        while c[0] < g.len(0) {
+            let r = RegionId::from_index(g.at(0, c[0])?);
+            for &s in &must(b.region(r))?.shells {
+                g.add(1, Some(s.index()));
+            }
+            c[0] += 1;
+            more = true;
+        }
+        while c[1] < g.len(1) {
+            let s = ShellId::from_index(g.at(1, c[1])?);
+            let sh = must(b.shell(s))?;
+            let ty = sh.shell_type.code();
+            if ty == 16022 {
+                for fu in faceuse_ring(b, s)? {
+                    g.add(2, Some(fu.index()));
+                }
+            } else if let Some(k) = shell_head_kind(ty) {
+                let (kind, id) = shell_head(sh);
+                if id.is_some() && kind != Some(k) {
+                    return Err(Fail::Harness(harness("shell head of another kind")));
+                }
+                g.add(k, id);
+            }
+            c[1] += 1;
+            more = true;
+        }
+        while c[2] < g.len(2) {
+            let fu = must(b.faceuse(FaceuseId::from_index(g.at(2, c[2])?)))?;
+            g.add(3, ix(fu.face));
+            g.add(2, ix(fu.mate));
+            for &lu in &fu.loopuses {
+                g.add(4, Some(lu.index()));
+            }
+            c[2] += 1;
+            more = true;
+        }
+        while c[4] < g.len(4) {
+            let lu = must(b.loopuse(LoopuseId::from_index(g.at(4, c[4])?)))?;
+            g.add(5, ix(lu.loop_));
+            g.add(4, ix(lu.mate));
+            let (_, k, start) = loopuse_start(lu.start);
+            g.add(k, start);
+            // the CCW walk of an edge loop
+            if let LoopuseStart::Edgeuse(Some(head)) = lu.start {
+                let mut q = Some(head);
+                let mut n = 0;
+                while let Some(x) = q {
+                    if n >= 100_000 {
+                        break;
+                    }
+                    g.add(6, Some(x.index()));
+                    q = must(b.edgeuse(x))?.ccw;
+                    n += 1;
+                    if q == Some(head) {
+                        break;
+                    }
+                }
+            }
+            c[4] += 1;
+            more = true;
+        }
+        while c[6] < g.len(6) {
+            let id = EdgeuseId::from_index(g.at(6, c[6])?);
+            let eu = must(b.edgeuse(id))?;
+            g.add(7, ix(eu.edge));
+            let (_, k, owner) = edgeuse_owner(eu.owner);
+            g.add(k, owner);
+            g.add(6, ix(eu.cw));
+            g.add(6, ix(eu.ccw));
+            g.add(8, ix(eu.vertexuse));
+            let (next, last) = edgeuse_ring_links(b, id)?;
+            g.add(6, ix(next));
+            g.add(6, ix(last));
+            c[6] += 1;
+            more = true;
+        }
+        while c[7] < g.len(7) {
+            let e = EdgeId::from_index(g.at(7, c[7])?);
+            for &x in &must(b.edge(e))?.edgeuses {
+                g.add(6, Some(x.index()));
+            }
+            c[7] += 1;
+            more = true;
+        }
+        while c[8] < g.len(8) {
+            let vu = must(b.vertexuse(VertexuseId::from_index(g.at(8, c[8])?)))?;
+            g.add(9, ix(vu.vertex));
+            let (_, k, owner) = vertexuse_owner(vu.owner);
+            g.add(k, owner);
+            c[8] += 1;
+            more = true;
+        }
+        while c[9] < g.len(9) {
+            let v = VertexId::from_index(g.at(9, c[9])?);
+            for &x in &must(b.vertex(v))?.vertexuses {
+                g.add(8, Some(x.index()));
+            }
+            c[9] += 1;
+            more = true;
+        }
+        while c[5] < g.len(5) {
+            let l = must(b.loop_(LoopId::from_index(g.at(5, c[5])?)))?;
+            g.add(4, ix(l.loopuse));
+            c[5] += 1;
+            more = true;
+        }
+    }
+    Ok(g)
+}
+
+/// The shim's `put_graph`: the topology graph after the op, every owner / adjacency
+/// link as an index in [`walk`]'s order (layout in the shim).
+#[allow(clippy::too_many_lines)]
+fn put_graph(o: &mut Vec<f64>, b: &Brep) -> Result<(), Fail> {
+    let g = walk(b)?;
+    for k in 0..10 {
+        o.push(g.len(k) as f64);
+    }
+    for i in 0..g.len(0) {
+        let r = RegionId::from_index(g.at(0, i)?);
+        let region = must(b.region(r))?;
+        o.push(f64::from(region.is_void()));
+        o.push(flag(b.infinite_region() == Some(r)));
+        o.push(region.shells.len() as f64);
+        for &s in &region.shells {
+            o.push(g.find(1, Some(s.index())));
+        }
+    }
+    for i in 0..g.len(1) {
+        let s = ShellId::from_index(g.at(1, i)?);
+        let sh = must(b.shell(s))?;
+        let ty = sh.shell_type.code();
+        o.push(ty as f64);
+        o.push(must(shell::shell_list_size(b, s))? as f64);
+        o.push(g.find(0, ix(sh.region)));
+        // T(ty, head): the head read as the type's kind
+        let (kind, head) = shell_head(sh);
+        let want = match ty {
+            16022 => Some(2),
+            t => shell_head_kind(t),
+        };
+        o.push(match (want, head) {
+            (_, None) => -1.0,
+            (Some(k), Some(_)) if kind == Some(k) => g.find(k, head),
+            (Some(_), Some(_)) => return Err(Fail::Harness(harness("shell head of another kind"))),
+            (None, Some(_)) => -4.0,
+        });
+    }
+    for i in 0..g.len(2) {
+        let id = FaceuseId::from_index(g.at(2, i)?);
+        let fu = must(b.faceuse(id))?;
+        let (next, last) = must(shell::faceuse_sibling_links(b, id))?;
+        o.push(g.find(3, ix(fu.face)));
+        o.push(g.find(2, ix(fu.mate)));
+        o.push(g.find(1, ix(fu.shell)));
+        o.push(g.find(2, ix(next)));
+        o.push(g.find(2, ix(last)));
+        o.push(orient_code(fu.orientation));
+        o.push(fu.loopuses.len() as f64);
+        for &lu in &fu.loopuses {
+            o.push(g.find(4, Some(lu.index())));
+        }
+    }
+    for i in 0..g.len(3) {
+        let f = must(b.face(FaceId::from_index(g.at(3, i)?)))?;
+        o.push(g.find(2, ix(f.faceuse)));
+    }
+    for i in 0..g.len(4) {
+        let lu = must(b.loopuse(LoopuseId::from_index(g.at(4, i)?)))?;
+        let (ty, k, start) = loopuse_start(lu.start);
+        o.push(g.find(5, ix(lu.loop_)));
+        o.push(g.find(4, ix(lu.mate)));
+        o.push(g.find(2, ix(lu.faceuse)));
+        o.push(ty as f64);
+        o.push(if ty == UNKNOWN_TYPE && start.is_none() {
+            -1.0
+        } else {
+            g.find(k, start)
+        });
+        o.push(orient_code(lu.orientation));
+    }
+    for i in 0..g.len(5) {
+        let l = must(b.loop_(LoopId::from_index(g.at(5, i)?)))?;
+        o.push(g.find(4, ix(l.loopuse)));
+    }
+    for i in 0..g.len(6) {
+        let id = EdgeuseId::from_index(g.at(6, i)?);
+        let eu = must(b.edgeuse(id))?;
+        let (ty, k, owner) = edgeuse_owner(eu.owner);
+        let (next, last) = edgeuse_ring_links(b, id)?;
+        o.push(g.find(7, ix(eu.edge)));
+        o.push(ty as f64);
+        o.push(if ty == UNKNOWN_TYPE && owner.is_none() {
+            -1.0
+        } else {
+            g.find(k, owner)
+        });
+        o.push(g.find(6, ix(eu.cw)));
+        o.push(g.find(6, ix(eu.ccw)));
+        o.push(g.find(8, ix(eu.vertexuse)));
+        o.push(g.find(6, ix(next)));
+        o.push(g.find(6, ix(last)));
+        o.push(orient_code(eu.orientation));
+    }
+    for i in 0..g.len(7) {
+        let e = must(b.edge(EdgeId::from_index(g.at(7, i)?)))?;
+        o.push(e.edgeuses.len() as f64);
+        for &x in &e.edgeuses {
+            o.push(g.find(6, Some(x.index())));
+        }
+    }
+    for i in 0..g.len(8) {
+        let vu = must(b.vertexuse(VertexuseId::from_index(g.at(8, i)?)))?;
+        let (ty, k, owner) = vertexuse_owner(vu.owner);
+        o.push(g.find(9, ix(vu.vertex)));
+        o.push(ty as f64);
+        o.push(if ty == UNKNOWN_TYPE && owner.is_none() {
+            -1.0
+        } else {
+            g.find(k, owner)
+        });
+    }
+    for i in 0..g.len(9) {
+        let v = must(b.vertex(VertexId::from_index(g.at(9, i)?)))?;
+        o.push(v.vertexuses.len() as f64);
+        for &x in &v.vertexuses {
+            o.push(g.find(8, Some(x.index())));
+        }
+    }
+    Ok(())
+}
+
 fn put_counts(o: &mut Vec<f64>, b: &Brep) -> Result<(), Fail> {
     o.push(must(bp1::faces(b, None))?.len() as f64);
     o.push(must(bp1::edges(b, None))?.len() as f64);
@@ -509,7 +906,7 @@ fn put_counts(o: &mut Vec<f64>, b: &Brep) -> Result<(), Fail> {
             o.push(flag(sh.members != shell::ShellMembers::Empty));
         }
     }
-    Ok(())
+    put_graph(o, b)
 }
 
 /// The fixture's `put_curve` layout of an edge curve.
@@ -583,39 +980,138 @@ fn wrap_in_offsets(k: &Kernel, b: &mut Brep, faces: &[FaceId], d: f64) -> Result
     Ok(())
 }
 
-/// A default `SmTopology` record (flags, user value, marks) for every object of `b`
-/// under `key` and for the B-rep itself: every C++ topology object carries one, and
-/// `SmTopology::Notify` reads the records of the objects a notification names (e.g.
-/// both vertices of `SqueezeEdge`'s `SM_NO_MERGE_IN_BREP`).
-fn seed_records(
-    records: &mut BTreeMap<ObjectKey, Topology>,
-    b: &Brep,
-    key: &dyn Fn(EntityRef) -> ObjectRef,
+/// The shim's `put_tracked`, by identity only: the B-rep as `-10 0`; a topology object
+/// that existed before the op or that the walk after it reaches: its kind's type code,
+/// then for a face / edge / vertex its index before the op (or 100000 + its index in
+/// the walk after it), for another kind `-5`; anything else `-2 -5`; `-1 -1` for null.
+fn put_tracked(
+    o: &mut Vec<f64>,
+    key: Option<ObjectKey>,
+    pre: &[usize; 10],
+    post: &Walk,
+    brep: ObjectKey,
 ) {
-    let mut all = Vec::new();
-    all.extend(b.regions().iter().map(|(x, _)| EntityRef::Region(x)));
-    all.extend(b.shells().iter().map(|(x, _)| EntityRef::Shell(x)));
-    all.extend(b.faceuses().iter().map(|(x, _)| EntityRef::Faceuse(x)));
-    all.extend(b.faces().iter().map(|(x, _)| EntityRef::Face(x)));
-    all.extend(b.loopuses().iter().map(|(x, _)| EntityRef::Loopuse(x)));
-    all.extend(b.loops().iter().map(|(x, _)| EntityRef::Loop(x)));
-    all.extend(b.edgeuses().iter().map(|(x, _)| EntityRef::Edgeuse(x)));
-    all.extend(b.edges().iter().map(|(x, _)| EntityRef::Edge(x)));
-    all.extend(b.vertexuses().iter().map(|(x, _)| EntityRef::Vertexuse(x)));
-    all.extend(b.vertices().iter().map(|(x, _)| EntityRef::Vertex(x)));
-    for e in all {
-        records.entry(key(e).key).or_default();
+    const CODES: [f64; 10] = [
+        16012.0, 16013.0, 16022.0, 16002.0, 16004.0, 16003.0, 16005.0, 16016.0, 16006.0, 16021.0,
+    ];
+    let Some(key) = key else {
+        o.extend([-1.0, -1.0]);
+        return;
+    };
+    if key == brep {
+        o.extend([-10.0, 0.0]);
+        return;
     }
-    records.entry(bp2::brep_ref(b).key).or_default();
+    // key_of: (kind << 32) | (1 + index), kinds 1..=10 in the walk's order
+    let kind = key.0 >> 32;
+    let idx = (key.0 & 0xffff_ffff).wrapping_sub(1);
+    let (Some(k), Ok(idx)) = (
+        usize::try_from(kind)
+            .ok()
+            .and_then(|x| x.checked_sub(1))
+            .filter(|&x| x < 10),
+        u32::try_from(idx),
+    ) else {
+        o.extend([-2.0, -5.0]);
+        return;
+    };
+    let existed = (idx as usize) < pre.get(k).copied().unwrap_or(0);
+    let after = post.find(k, Some(idx));
+    if !existed && after < 0.0 {
+        o.extend([-2.0, -5.0]);
+        return;
+    }
+    o.push(CODES.get(k).copied().unwrap_or(-2.0));
+    o.push(if matches!(k, 3 | 7 | 9) {
+        if existed {
+            f64::from(idx)
+        } else {
+            100_000.0 + after
+        }
+    } else {
+        -5.0
+    });
 }
 
-#[allow(clippy::too_many_lines)]
+/// The shim's `put_tracker`: the tracker's Rm / Add / Chg lists and its events.
+fn put_tracker(
+    o: &mut Vec<f64>,
+    lists: &solidcore::topology::topology::TopologyChangeLists,
+    pre: &[usize; 10],
+    b: &Brep,
+    brep: ObjectKey,
+) -> Result<(), Fail> {
+    let post = walk(b)?;
+    for l in [&lists.rm_list, &lists.add_list, &lists.chg_list] {
+        o.push(l.len() as f64);
+        for &x in l {
+            put_tracked(o, Some(x), pre, &post, brep);
+        }
+    }
+    o.push(lists.notify_events.len() as f64);
+    for e in &lists.notify_events {
+        o.push(f64::from(e.operation.code()));
+        for x in [e.caller, e.data1, e.data2, e.data3] {
+            put_tracked(o, x.map(|x| x.key), pre, &post, brep);
+        }
+    }
+    Ok(())
+}
+
+/// `run_rust_op_in`, the edits of `b` (as the shim's) under a topology change tracker
+/// on a context of their own, whose lists and events follow the op's outputs.
 fn run_rust_op(
     k: &mut Kernel,
     b: &mut Brep,
     second: Option<&mut Brep>,
     op: &OpIn,
     a: &[f64],
+) -> Result<Vec<f64>, Fail> {
+    let tracked = matches!(
+        op,
+        OpIn::DeleteFace { .. }
+            | OpIn::Wire { .. }
+            | OpIn::Orient { .. }
+            | OpIn::Squeeze { .. }
+            | OpIn::TurnNurbs
+            | OpIn::TurnNurbsOffset { .. }
+    );
+    if !tracked {
+        return run_rust_op_in(k, b, second, op, a, None);
+    }
+    // (arena lengths in the walk's kind order: an imported B-rep's ids are its walk
+    // indices, and an op only appends)
+    let pre = [
+        b.regions().len(),
+        b.shells().len(),
+        b.faceuses().len(),
+        b.faces().len(),
+        b.loopuses().len(),
+        b.loops().len(),
+        b.edgeuses().len(),
+        b.edges().len(),
+        b.vertexuses().len(),
+        b.vertices().len(),
+    ];
+    let brep = solidcore::topology::brep::p2::brep_ref(b).key;
+    let mut ctx = Context::default();
+    let tracker = TrackTopologyChanges::new(Some(BrepId::from_index(0)), 7, true, Some(&mut ctx));
+    let r = run_rust_op_in(k, b, second, op, a, Some(&mut ctx));
+    let lists = tracker.lists();
+    tracker.finish(Some(&mut ctx));
+    let mut out = r?;
+    put_tracker(&mut out, &lists, &pre, b, brep)?;
+    Ok(out)
+}
+
+#[allow(clippy::too_many_lines)]
+fn run_rust_op_in(
+    k: &mut Kernel,
+    b: &mut Brep,
+    second: Option<&mut Brep>,
+    op: &OpIn,
+    a: &[f64],
+    context: Option<&mut Context>,
 ) -> Result<Vec<f64>, Fail> {
     let mut out = vec![0.0];
     let arg = |i: usize| -> Result<f64, Fail> {
@@ -625,16 +1121,16 @@ fn run_rust_op(
     };
     let mut records = BTreeMap::new();
     // (the first B-rep is the source of a copy or merge, notified under source_key_of)
-    seed_records(&mut records, b, &key_of);
-    seed_records(&mut records, b, &source_key_of);
+    bp3::seed_topology_records(&mut records, b, &key_of);
+    bp3::seed_topology_records(&mut records, b, &source_key_of);
     if let Some(dst) = second.as_deref() {
-        seed_records(&mut records, dst, &key_of);
+        bp3::seed_topology_records(&mut records, dst, &key_of);
     }
     let mut attrs = AttributeStore::default();
     let mut env = NotifyEnv {
         records: &mut records,
         attributes: &mut attrs,
-        context: None,
+        context,
         key_of: &key_of,
     };
     match op {
@@ -777,6 +1273,7 @@ fn run_rust_op(
                 out.extend([d.min().x, d.min().y, d.max().x, d.max().y]);
                 out.push(face.faceuse.map_or(-1.0, |x| f64::from(x.index())));
             }
+            put_counts(&mut out, b)?;
         }
         OpIn::Squeeze { .. } => {
             let e = EdgeId::from_index(arg(0)? as u32);
@@ -822,6 +1319,7 @@ fn run_rust_op(
                     out.extend([d.min().x, d.min().y, d.max().x, d.max().y]);
                 }
             }
+            put_counts(&mut out, b)?;
         }
     }
     Ok(out)
@@ -1019,6 +1517,40 @@ mod tests {
     /// plan notes quote. Run from the repository with the C++ reference:
     /// `cargo test --profile difftest -p difftest --features cpp classify_passes --
     /// --ignored --nocapture`.
+    /// Prints both sides' outputs of one fixture case from its tail (`DUMP=<file>#<i>`,
+    /// `DUMP_TAIL=<n>` values, default 120), for debugging a disagreement: `DUMP=...
+    /// cargo test --profile difftest -p difftest --features cpp dump_case -- --ignored
+    /// --nocapture`.
+    #[test]
+    #[ignore = "needs the C++ reference and a DUMP=<fixture>#<index> case"]
+    fn dump_case() {
+        std::env::set_current_dir("../..").unwrap();
+        let spec = std::env::var("DUMP").unwrap();
+        let tail: usize = std::env::var("DUMP_TAIL")
+            .ok()
+            .and_then(|x| x.parse().ok())
+            .unwrap_or(120);
+        let (file, idx) = spec.split_once('#').unwrap();
+        let j: Value = serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
+        let i: Inputs =
+            serde_json::from_value(j["cases"][idx.parse::<usize>().unwrap()]["inputs"].clone())
+                .unwrap();
+        for (side, o) in [
+            ("cpp", run_cpp(&i).unwrap()),
+            ("rust", run_rust(&i).unwrap()),
+        ] {
+            let out = o.values.get("out").cloned().unwrap_or_default();
+            let from = out.len().saturating_sub(tail);
+            println!(
+                "DUMP {side} len={} err={:?} deferred={:?}",
+                out.len(),
+                o.error,
+                o.deferred
+            );
+            println!("DUMP {side} [{from}..] {:?}", &out[from..]);
+        }
+    }
+
     #[test]
     #[ignore = "needs the C++ reference and reports/difftest/topology.brep_p3.json"]
     fn classify_passes() {

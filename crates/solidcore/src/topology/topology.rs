@@ -78,8 +78,9 @@
 //!   surface to `GetOwner()` (and from an edge use to `GetEdge()`) reads an owner
 //!   table the tracker's user fills ([`TrackTopologyChanges::set_owner`]); an
 //!   object missing from it has a NULL owner, so nothing is recorded for it (as for
-//!   a detached curve or surface upstream). The walk is bounded at
-//!   `MAX_OWNER_STEPS` (16) steps (a cyclic table). Both `Dump`s and the
+//!   a detached curve or surface upstream). The walk follows the whole chain (any
+//!   depth); a cyclic table, which upstream's owner pointers cannot form, is
+//!   `InvalidInput` instead of a loop for ever. Both `Dump`s and the
 //!   `SM_DEBUG_CODE` index arrays are compiled out of the reference build and not
 //!   ported.
 //! - `AssertValid`, `CheckPointerChain`, `Dump`, the obsolete `NewMark*` / `Mark2`
@@ -521,12 +522,30 @@ fn state(shared: &SharedState) -> MutexGuard<'_, TrackerState> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// `SmFace_TYPE`, `SmEdge_TYPE`, `SmVertex_TYPE`, `SmEdgeuse_TYPE` (no class derives
-/// from the first three, so `IsKindOf` is type equality).
+/// `SmFace_TYPE`, `SmEdge_TYPE`, `SmVertex_TYPE`, `SmEdgeuse_TYPE`, and the fillet
+/// classes deriving from the last three (`SmFilletEdge_TYPE`, `SmFilletVertex_TYPE`,
+/// `SmFilletEdgeuse_TYPE`, `SmFilletGeom.h`; the composite `SmCFace` / `SmCEdge` are
+/// commented out upstream), so that the tests below are `IsKindOf`.
 const FACE_TYPE: i64 = 16002;
 const EDGE_TYPE: i64 = 16016;
 const VERTEX_TYPE: i64 = 16021;
 const EDGEUSE_TYPE: i64 = 16005;
+const FILLET_EDGEUSE_TYPE: i64 = 16031;
+const FILLET_EDGE_TYPE: i64 = 16033;
+const FILLET_VERTEX_TYPE: i64 = 16034;
+
+/// `IsKindOf(SmEdgeuse_TYPE)`.
+const fn is_edgeuse_type(t: i64) -> bool {
+    t == EDGEUSE_TYPE || t == FILLET_EDGEUSE_TYPE
+}
+
+/// `IsKindOf(SmFace_TYPE) || IsKindOf(SmEdge_TYPE) || IsKindOf(SmVertex_TYPE)`.
+const fn is_tracked_type(t: i64) -> bool {
+    matches!(
+        t,
+        FACE_TYPE | EDGE_TYPE | VERTEX_TYPE | FILLET_EDGE_TYPE | FILLET_VERTEX_TYPE
+    )
+}
 
 /// `IsKindOf(SmCurve_TYPE)`: every curve class is in `CURV_BASE_TYPE`'s block.
 const fn is_curve_type(t: i64) -> bool {
@@ -537,10 +556,6 @@ const fn is_curve_type(t: i64) -> bool {
 const fn is_surface_type(t: i64) -> bool {
     15000 <= t && t < 16000
 }
-
-/// More owner steps than any curve / surface / edge use chain has (a bound on a
-/// cyclic owner table).
-const MAX_OWNER_STEPS: usize = 16;
 
 /// The system notify callback a [`TrackTopologyChanges`] installs
 /// (`SmTopologyChangeCallback`), tagged with its tracker's key.
@@ -656,24 +671,32 @@ impl NotifyCallback for TopologyChangeCallback {
             && (is_surface_type(caller.type_code) || is_curve_type(caller.type_code)))
             || matches!(operation, N::Split | N::Merge)
         {
-            for _ in 0..MAX_OWNER_STEPS {
-                let Some(t) = tracked else { break };
-                if is_surface_type(t.type_code)
+            // the whole chain, as upstream; the table is finite, so a chain that does
+            // not end revisits an object (a cyclic table, which upstream's owner
+            // pointers cannot form and would follow for ever)
+            let mut seen = std::collections::BTreeSet::new();
+            while let Some(t) = tracked {
+                if !(is_surface_type(t.type_code)
                     || is_curve_type(t.type_code)
-                    || t.type_code == EDGEUSE_TYPE
+                    || is_edgeuse_type(t.type_code))
                 {
-                    // GetOwner() / GetEdge()
-                    tracked = st.owners.get(&t).copied();
-                } else {
                     break;
                 }
+                if !seen.insert(t) {
+                    return Err(SolidError::InvalidInput {
+                        operation: "topology::topology::TopologyChangeCallback::execute",
+                        reason: "cyclic owner table",
+                    });
+                }
+                // GetOwner() / GetEdge()
+                tracked = st.owners.get(&t).copied();
             }
         }
 
         let Some(t) = tracked else {
             return Ok(());
         };
-        if !matches!(t.type_code, FACE_TYPE | EDGE_TYPE | VERTEX_TYPE) {
+        if !is_tracked_type(t.type_code) {
             return Ok(());
         }
         let l = &mut st.lists;
@@ -1107,5 +1130,49 @@ mod tests {
         t.stop_tracking(Some(&mut ctx));
         n(&mut ctx, N::AddToBrep, brep, Some(edge), Some(brep), None);
         assert_eq!(t.add_list(), vec![face.key]);
+    }
+    /// `Execute` follows a geometry owner chain of any depth (here 17 surfaces, deeper
+    /// than any fixed bound below the crate's surface nesting limit of 64) to the face
+    /// at its end; a cyclic table is refused instead of looping.
+    #[test]
+    fn tracker_follows_long_owner_chains() {
+        use crate::geom::object::notify as obj_notify;
+        use NotifyOperation as N;
+        let o = |type_code: i64, k: u64| ObjectRef {
+            type_code,
+            key: ObjectKey(k),
+        };
+        let face = o(FACE_TYPE, 100);
+        let mut ctx = Context::default();
+        let mut t = TrackTopologyChanges::new(Some(BrepId::from_index(0)), 3, true, Some(&mut ctx));
+        let chain: Vec<ObjectRef> = (0..17).map(|i| o(15400, 200 + i)).collect();
+        for w in chain.windows(2) {
+            if let [a, b] = w {
+                t.set_owner(*a, Some(*b));
+            }
+        }
+        t.set_owner(chain[16], Some(face));
+        let deepest = chain[0];
+        obj_notify(
+            Some(&mut ctx),
+            N::PostEdit,
+            deepest,
+            Some(deepest),
+            None,
+            None,
+        );
+        assert_eq!(t.lists().chg_list, vec![face.key]);
+        // a cyclic table: refused, nothing recorded
+        t.reset_arrays();
+        let (a, b) = (o(15001, 300), o(15001, 301));
+        t.set_owner(a, Some(b));
+        t.set_owner(b, Some(a));
+        let mut cb = TopologyChangeCallback {
+            tracker: 3,
+            shared: Arc::clone(&t.shared),
+        };
+        assert!(cb.execute(N::PostEdit, a, Some(a), None, None).is_err());
+        assert!(t.lists().chg_list.is_empty());
+        t.stop_tracking(Some(&mut ctx));
     }
 }
