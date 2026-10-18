@@ -64,6 +64,7 @@ use solidcore::intersect::surface_intersector::p1::TsectPnt;
 use solidcore::kernel::Kernel;
 use solidcore::nurbs::b_spline_surface::SurfParamType;
 use solidcore::nurbs::math::NOW;
+use solidcore::surface::offset_surface::SS_UNKNOWN;
 use solidcore::topology::edgeuse::p1 as eu;
 use solidcore::topology::{Brep, Edge, EdgeId, EdgeuseId, FaceId, Vertex};
 use solidcore::SolidError;
@@ -78,6 +79,12 @@ use crate::{HarnessError, Output, Rng, UnitDiff};
 
 /// The runner.
 pub struct Runner;
+
+/// `new SmOffsetSurface(d, *base)` as the shim builds it (default `lSingularities`,
+/// `SM_SS_UNKNOWN`).
+fn rail_offset(d: f64, base: Surface, id: SurfaceId) -> solidcore::Result<OffsetSurface> {
+    OffsetSurface::new(&Kernel::default(), d, base, id, SS_UNKNOWN)
+}
 
 fn harness(msg: impl Into<String>) -> HarnessError {
     HarnessError::new(msg)
@@ -602,7 +609,7 @@ fn put_state(o: &mut Vec<f64>, fs: &FilletSolver) -> Result<(), SolidError> {
         let s = fs.surface(i)?;
         o.push(b(s.is_some()));
         o.push(s.map_or(-1.0, |s| s.key as f64));
-        o.push(s.map_or(0.0, |s| s.surface.offset_distance));
+        o.push(s.map_or(0.0, |s| s.surface.offset_distance()));
         o.push(fs.orientation(i)?);
         o.push(fs.saved_offsets.get(i).copied().unwrap_or(0.0));
     }
@@ -628,15 +635,15 @@ fn rust_state(
         let key = next_key;
         next_key += 1;
         let base = if rail == 0 { &bases[0] } else { &bases[1] };
-        OffsetSurfaceSlot {
+        Ok::<_, SolidError>(OffsetSurfaceSlot {
             key,
-            surface: OffsetSurface::new(d, base.clone(), SurfaceId::Free(rail as u32)),
-        }
+            surface: rail_offset(d, base.clone(), SurfaceId::Free(rail as u32))?,
+        })
     };
     let r = (|| -> Result<(), SolidError> {
         for (k, (h, d)) in has.iter().zip(off).enumerate() {
             if *h {
-                fs.set_surface(k, Some(make(k, *d)))?;
+                fs.set_surface(k, Some(make(k, *d)?))?;
             }
         }
         fs.orientations = *orient;
@@ -672,7 +679,7 @@ fn rust_state(
                 3 => fs.set_offsets_data(&saved)?,
                 4 => {
                     let rail = c[1] as usize;
-                    fs.set_surface(rail, Some(make(rail, c[2])))?;
+                    fs.set_surface(rail, Some(make(rail, c[2])?))?;
                 }
                 5 => fs.set_extension_factor(c[1]),
                 6 => fs.set_reverse_trim(c[1] != 0.0),
@@ -710,7 +717,8 @@ fn shim_with(s: &Surfs, load: bool, found: bool, setup: bool) -> Result<ShimSolv
         if *h {
             let slot = OffsetSurfaceSlot {
                 key: k as u64,
-                surface: OffsetSurface::new(*d, base.clone(), SurfaceId::Free(0)),
+                surface: rail_offset(*d, base.clone(), SurfaceId::Free(0))
+                    .map_err(|e| harness(e.to_string()))?,
             };
             fs.base.set_surface(k, Some(slot)).map_err(|e| harness(e.to_string()))?;
         }
@@ -852,7 +860,7 @@ fn rust_static(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, H
         }
         Inputs::Analytic { surface } => {
             let s = surface_of(surface)?;
-            test_analytic_surface(AnalyticTestSurface::Surface(&s)).map(|v| o.push(b(v)))
+            test_analytic_surface(&Kernel::default(), AnalyticTestSurface::Surface(&s)).map(|v| o.push(b(v)))
         }
         Inputs::AnalyticRev { kind, origin, x, y, p } => {
             let k = Kernel::default();
@@ -860,7 +868,7 @@ fn rust_static(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, H
             let a2p = Axis2Placement::new(v(*origin), v(*x), v(*y));
             let tested = |s: AnalyticTestSurface<'_>, o: &mut Vec<f64>| {
                 o.push(0.0);
-                test_analytic_surface(s).map(|r| o.push(b(r)))
+                test_analytic_surface(&k, s).map(|r| o.push(b(r)))
             };
             let built = match kind {
                 0 => Cone::create_canonical(&k, &a2p, p[0], p[1], p[2], false, false).map(Rev::Cone),
@@ -933,7 +941,7 @@ fn rust_static(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, H
             let r = (|| -> Result<(), SolidError> {
                 for (k, (h, d)) in has.iter().zip(off).enumerate() {
                     if *h {
-                        let s = OffsetSurface::new(*d, base.clone(), SurfaceId::Free(0));
+                        let s = rail_offset(*d, base.clone(), SurfaceId::Free(0))?;
                         fs.set_surface(k, Some(OffsetSurfaceSlot { key: k as u64, surface: s }))?;
                     }
                 }
@@ -1138,14 +1146,14 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             let mut fs = FilletSolver::new(1.0e-6, 0.1, 0.01);
             let r = (|| -> Result<(), SolidError> {
                 if has[0] {
-                    let s = OffsetSurface::new(*off, base.clone(), SurfaceId::Free(0));
+                    let s = rail_offset(*off, base.clone(), SurfaceId::Free(0))?;
                     fs.set_surface(0, Some(OffsetSurfaceSlot { key: 0, surface: s }))?;
                 }
                 if has[1] {
-                    let s = OffsetSurface::new(-*off, base.clone(), SurfaceId::Free(0));
+                    let s = rail_offset(-*off, base.clone(), SurfaceId::Free(0))?;
                     fs.set_surface(1, Some(OffsetSurfaceSlot { key: 1, surface: s }))?;
                 }
-                fs.finish_construction()
+                fs.finish_construction(&Kernel::default())
             })();
             if r.is_ok() {
                 o.push(0.0);
@@ -1204,11 +1212,11 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             let k = Kernel::default();
             let mut fs = FilletSolver::new(1.0e-6, 0.1, 0.01);
             let plane = surface_of(&Surfs::default().base)?;
-            let s1 = OffsetSurface::new(0.0, plane, SurfaceId::Free(0));
+            let mut s1 = rail_offset(0.0, plane, SurfaceId::Free(0)).map_err(|e| harness(e.to_string()))?;
             let mut ext = ExtentNd::new(3);
             let mut per = Vec::new();
             let mut guess = Vec::new();
-            let r = fs.load_initial_values(&k, None, *do2 != 0, *rail, &s1, 0, &mut ext, &mut per, &mut guess);
+            let r = fs.load_initial_values(&k, None, *do2 != 0, *rail, &mut s1, 0, &mut ext, &mut per, &mut guess);
             match r {
                 Ok(_) => o.push(0.0),
                 Err(e @ SolidError::Unported { .. }) => return Ok(Output::unported(&e).unwrap_or_default()),
