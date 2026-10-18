@@ -714,7 +714,7 @@ impl Two {
             .ok_or_else(|| invalid("handle names an absent B-rep"))
     }
 
-    fn brep_m(&mut self, h: H) -> solidcore::Result<&mut Brep> {
+    pub(crate) fn brep_m(&mut self, h: H) -> solidcore::Result<&mut Brep> {
         self.brep_mut(h)
             .ok_or_else(|| invalid("handle names an absent B-rep"))
     }

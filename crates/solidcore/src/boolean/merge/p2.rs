@@ -65,9 +65,11 @@
 //!   `GetVertices` / `GetBrep` (`topology.face_p4`), `SmFace::CalculateBoundingBox`
 //!   (`query.face_p1`), `StitchVertexPairs` / `StitchEdgesOfVertices`
 //!   (`heal.stitch_p1`), `SplitEdgesWithVertices` (`heal.stitch_p2`),
-//!   `TestClosureSplitRegion` (`topology.brep_p6`), `FindAndSetInfiniteRegion`
-//!   (`topology.brep_p5`) and `OrientTrimmedSurfaces` (`topology.brep_p3`). The code
-//!   after each stub is ported in full.
+//!   `FindAndSetInfiniteRegion` (`topology.brep_p5`) and `OrientTrimmedSurfaces`
+//!   (`topology.brep_p3`). The code after each stub is ported in full. The ported
+//!   callees on arena B-reps (`SmEdge::GetVertices`, `SmFace::GetFaceuses`,
+//!   `SmFaceuse::GetShell`, `SmBrep::TestClosureSplitRegion`) are required
+//!   [`MergeBrep`] methods.
 //! - The `SM_DEBUG_CODE` / `SM_VALIDATE_TOPOLOGY` blocks are compiled out upstream
 //!   and not ported. `SM_USE_OLDTOL` is the reference build's setting.
 //! - **Recursion.** None.
@@ -937,22 +939,19 @@ pub trait MergeBrep<O>: IntersectorBrep<O> {
     }
 
     /// `SmBrep::TestClosureSplitRegion(bTestClosure, pFaceuse, rpNewShell,
-    /// rpNewRegion)`: the new shell and region.
+    /// rpNewRegion)` (`topology::brep::p6::test_closure_split_region`): the new shell
+    /// and region.
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] until `topology.brep_p6` is ported.
+    /// Those of the region split.
     fn test_closure_split_region(
         &mut self,
         k: &mut Kernel,
         brep: O,
         test_closure: bool,
         faceuse: O,
-    ) -> Result<(Option<O>, Option<O>)> {
-        let _ = (k, brep, test_closure, faceuse);
-        // UNPORTED(topology.brep_p6): SmBrep::TestClosureSplitRegion
-        unavailable("SmBrep::TestClosureSplitRegion", "topology.brep_p6")
-    }
+    ) -> Result<(Option<O>, Option<O>)>;
 
     /// `SmBrep::FindAndSetInfiniteRegion()` (default arguments).
     ///

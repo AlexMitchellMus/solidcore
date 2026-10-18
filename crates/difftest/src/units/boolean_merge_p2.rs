@@ -28,6 +28,7 @@ use solidcore::geom::attribute::{AttributeStore, ObjectKey};
 use solidcore::geom::context::MarkLock;
 use solidcore::geom::object::ObjectRef;
 use solidcore::kernel::Kernel;
+use solidcore::topology;
 use solidcore::topology::topology::Topology;
 use solidcore::topology::topology_traverser::Marks;
 use solidcore::topology::{
@@ -40,9 +41,10 @@ use std::collections::BTreeMap;
 /// Differential runner for `boolean.merge_p2`.
 pub struct Runner;
 
-/// Handle kinds of the Rust-only face use and shell handles of [`MergeBrep`].
+/// Handle kinds of the Rust-only face use, shell and region handles of [`MergeBrep`].
 const K_FACEUSE: u8 = 14;
 const K_SHELL: u8 = 15;
+const K_REGION: u8 = 16;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct MatesIn {
@@ -321,6 +323,28 @@ impl MergeBrep<H> for Two {
         let (a, c) = face::p2::faceuses(b, FaceId::from_index(f.i))?;
         let h = |fu: Option<FaceuseId>| fu.map(|fu| hd(f.b, K_FACEUSE, fu.index()));
         Ok((h(a), h(c)))
+    }
+    fn test_closure_split_region(
+        &mut self,
+        k: &mut Kernel,
+        brep: H,
+        test_closure: bool,
+        faceuse: H,
+    ) -> solidcore::Result<(Option<H>, Option<H>)> {
+        // The SmTopology marks live in a record per call (upstream's object marks);
+        // the region split takes and releases its own mark locks.
+        let b = self.brep_m(brep)?;
+        let (shell, region) = topology::brep::p6::test_closure_split_region(
+            k,
+            b,
+            &mut Marks::default(),
+            test_closure,
+            FaceuseId::from_index(faceuse.i),
+        )?;
+        Ok((
+            shell.map(|s| hd(brep.b, K_SHELL, s.index())),
+            region.map(|r| hd(brep.b, K_REGION, r.index())),
+        ))
     }
     fn faceuse_shell(&self, fu: H) -> solidcore::Result<Option<H>> {
         let b = self.brep_r(fu)?;
