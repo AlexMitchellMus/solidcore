@@ -1265,7 +1265,10 @@ mod tests {
         fn new_brep(&mut self, _: BrepId) -> Result<BrepId> {
             let id = BrepId::from_index(self.breps.len() as u32);
             let mut brep = Brep::new();
-            brep.add_region_record(Region { in_brep: true })?;
+            brep.add_region_record(Region {
+                in_brep: true,
+                ..Default::default()
+            })?;
             self.breps.push(brep);
             Ok(id)
         }

@@ -156,13 +156,12 @@ pub trait SweepAccess {
         result
     }
 
-    // UNPORTED(topology.brep_p1): SmBrep::GetInfiniteRegion
-    deferred!(
-        /// `SmBrep::GetInfiniteRegion`.
-        fn infinite_region(brep: BrepId) -> RegionId;,
-        "topology.brep_p1",
-        "SmBrep::GetInfiniteRegion"
-    );
+    /// Resolve the existing infinite region through the ported B-rep accessor.
+    fn infinite_region(&mut self, brep: BrepId) -> Result<RegionId> {
+        self.brep(brep)?
+            .infinite_region()
+            .ok_or_else(|| SolidError::null_pointer(super::OP))
+    }
     /// `SmFace::GetEdges`, using the existing faithful co-port.
     fn face_edges(&mut self, face: FaceRef) -> Result<Vec<EdgeId>> {
         crate::topology::topology_traverser::face_edges(self.brep(face.0)?, face.1)
@@ -259,27 +258,29 @@ pub trait SweepAccess {
         "topology.brep_p5",
         "SmBrep::MakeEdgeInFace"
     );
-    // UNPORTED(topology.brep_p1): SmBrep::GetFaces
-    deferred!(
-        /// `SmBrep::GetFaces`.
-        fn faces(brep: BrepId) -> Vec<FaceId>;,
-        "topology.brep_p1",
-        "SmBrep::GetFaces"
-    );
-    // UNPORTED(topology.shell): SmRegion::GetShells
-    deferred!(
-        /// `SmRegion::GetShells`.
-        fn region_shells(region: RegionRef) -> Vec<ShellId>;,
-        "topology.shell",
-        "SmRegion::GetShells"
-    );
-    // UNPORTED(topology.shell): SmShell::GetFaceuses
-    deferred!(
-        /// Faces of the shell's face uses, retaining duplicates and order.
-        fn shell_faceuse_faces(shell: ShellRef) -> Vec<FaceId>;,
-        "topology.shell",
-        "SmShell::GetFaceuses"
-    );
+    /// Native B-rep face order, without an attribute filter.
+    fn faces(&mut self, brep: BrepId) -> Result<Vec<FaceId>> {
+        crate::topology::brep::p1::faces(self.brep(brep)?, None)
+    }
+    /// Shells in the region's native order, with no attribute filter.
+    fn region_shells(&mut self, region: RegionRef) -> Result<Vec<ShellId>> {
+        self.brep(region.0)?
+            .region(region.1)?
+            .get_shells(None, |_, _| Ok(false))
+    }
+    /// Faces of the shell's face uses, retaining duplicates and order.
+    fn shell_faceuse_faces(&mut self, shell: ShellRef) -> Result<Vec<FaceId>> {
+        let brep = self.brep(shell.0)?;
+        brep.shell(shell.1)?
+            .get_faceuses()?
+            .into_iter()
+            .map(|id| {
+                brep.faceuse(id)?
+                    .face
+                    .ok_or_else(|| SolidError::null_pointer(super::OP))
+            })
+            .collect()
+    }
     // UNPORTED(topology.brep_p5): SmBrep::RemoveFaces
     deferred!(
         /// `SmBrep::RemoveFaces`.
@@ -309,13 +310,10 @@ pub trait SweepAccess {
         "blend.hcr",
         "SmHCR::GetSilhouetteEdges"
     );
-    // UNPORTED(topology.brep_p1): SmBrep::GetWireEdges
-    deferred!(
-        /// `SmBrep::GetWireEdges`.
-        fn wire_edges(brep: BrepId) -> Vec<EdgeId>;,
-        "topology.brep_p1",
-        "SmBrep::GetWireEdges"
-    );
+    /// Native B-rep wire-edge order, without an attribute filter.
+    fn wire_edges(&mut self, brep: BrepId) -> Result<Vec<EdgeId>> {
+        crate::topology::brep::p1::wire_edges(self.brep(brep)?, None)
+    }
     // UNPORTED(topology.brep_p2): SmBrep::GetShellVertices
     deferred!(
         /// `SmBrep::GetShellVertices`.

@@ -3287,10 +3287,10 @@ soft_depends_on = ["boolean.topology_intersector_p2", "curve.composite_curve_p2"
 est_lines = 1842
 layer = 53
 tests = ["SM_API_test:TestSmCreateSwungPrimitive", "SM_API_test:TestSmCreateSkinFromFaces", "SM_API_test:TestSmCreateSkinPrimitive", "SM_API_test:TestSmCurveSweep", "SM_API_test:TestSmPipeSweep", "SM_API_test:TestSmCurveSweepFromFaces"]
-status = "todo"
+status = "partial"
 claimed_by = ""
 claimed_at = ""
-notes = "CO-PORTED in sweep.api_brep (PR #110): SmSweepOptions -> solidcore::primitive::primitive_creation::SweepOptions (crates/solidcore/src/primitive/primitive_creation.rs, parent module of p1..p3); 8 fns; largest: SmPrimitiveCreation::CreateCurveSweep, sm_CreateRuledSurfaceFromOffsetCurve, SmPrimitiveCreation::CreateLinearSweep, SmPrimitiveCreation::CreateRotationalSweep; 60 upstream test entry points reach this unit"
+notes = "CO-PORTED in sweep.api_brep (PR #110): SmSweepOptions -> solidcore::primitive::primitive_creation::SweepOptions (crates/solidcore/src/primitive/primitive_creation.rs, parent module of p1..p3); 8 fns; largest: SmPrimitiveCreation::CreateCurveSweep, sm_CreateRuledSurfaceFromOffsetCurve, SmPrimitiveCreation::CreateLinearSweep, SmPrimitiveCreation::CreateRotationalSweep; 60 upstream test entry points reach this unit; PR #233: all eight owned functions ported through PrimitiveAccess/SweepAccess, retaining full tails after unavailable calls. Difftest 287 cases: 280 bit-identical passes (216 full ruled surfaces, 55 helper error/mutation paths, 9 entry-point early/empty returns), 6 topology.brep_p8 deferrals, 1 UB-78 rejection, 0 failures; no absolute floors. Native ruled-surface values and three mutated curve states are compared; curve-sweep preparation/scaling, face skinning, cap/axis/stitch/topology tails are not certified. Caller must supply a concrete PrimitiveAccess resolver. Scaling sampling bounded to 1000000 points; reused sweep engine bounds repetitions to 4096. Legacy sweep APIs now identify their earlier B-rep-constructor blocker. See fixtures/primitive.primitive_creation_p3/README.md and plan/findings.md."
 
 [[unit]]
 id = "blend.fillet_executive_p3"

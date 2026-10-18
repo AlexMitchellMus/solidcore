@@ -837,7 +837,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **How found:** crash in the C++ reference run (`sweep.api_surfaces` probe case).
 - **Confirmed:** yes.
 - **Severity:** crash/UB.
-- **Rust port:** `create_skin_from_faces` is a stub until `primitive.primitive_creation_p3` lands; `BSplineSurface::create_skinned_surface` returns `InvalidInput` for no cross sections. The harness passes at least one face.
+- **Rust port:** `primitive.primitive_creation_p3` (PR #233) implements `CreateSkinFromFaces`; its `BSplineSurface::create_skinned_surface` call returns `InvalidInput` for no cross sections. The p3 native shim and checked FFI reject that exact case before C++; a direct probe of the linked reference reconfirmed SIGSEGV. The legacy API remains blocked earlier at B-rep construction.
 
 #### UB-80. `SmSurfOfExtrusion::EvaluateSTEP` lets order 5 overrun `sm_CrvDerivs`
 - **Location:** `SmSurfOfExtrusion.cpp:920`-`922` (`EvaluateSTEP`, def. `:897`: `lMaxDeriv = 5; // 5: MAXDER in NLib`), `:959` (`m_pGenCurve->EvaluateSTEP(dU, lHighestUDeriv, ..)`); `SmNurbsCrv.cpp:1281` `sm_CrvDerivs` (see UB-33).

@@ -7638,3 +7638,60 @@ for the affected units are in `plan/modules.toml` and `reports/difftest/`.
   mutated-input campaign has 7,389 executed, 3,817 rejected and 8,794 malformed cases:
   zero differing results, crashes, panics or timeouts. This covers the bounded script
   API, not the dependency-blocked construction paths or a general crash guarantee.
+
+## primitive.primitive_creation_p3 (PR #233, 2026-10-18; partial)
+
+All eight owned functions from `SmPrimitiveCreation.cpp` are ported, including
+control flow after dependency calls. Geometry lives in owned curve/surface values;
+`PrimitiveAccess` extends the existing `SweepAccess` resolver for B-rep edits,
+classification and stitch services. The unit supplies no concrete production
+construction adapter. Its default adapters stop only the unavailable calls.
+The active `USE_NEW_ANALYTICS` branches are retained: repeated linear sweeps with
+one repetition call p1, rotations at least 359.99999 degrees dispatch to full
+rotation before the capped-repetition check. The temporary doing-boolean state
+is restored on errors; upstream editing-state side effects are preserved.
+
+The initial native gate is 287 cases / 280 pass / 0 fail / 6 deferred / 1 rejected,
+maximum relative error zero, with no absolute floors. Of the passes, 216 compare
+190 values including a constructed ruled surface, 55 compare 110 values including
+helper mutations before an error, and 9 compare six status/state/output-count
+values on early or empty entry-point paths. Thus these are not 280 successful
+primitive constructions. All six nontrivial constructor fixtures execute C++ and
+defer in Rust at `topology.brep_p8`; they prove no topology or downstream parity.
+The fixture README maps the measured branches to their observed outputs.
+
+The numerical comparison calls the actual file-static offset helper by including
+the pinned upstream source with renamed external symbols. It covers ordinary
+ruled surfaces, corners/pivots and rational weight matching, circular arcs before
+and beyond the apex, surface-map attachment, missing maps, prior marriage/missing
+flags and sliver rejection, with threshold-neighbour and 1e-6..1e6 generated cases.
+The returned offset map is explicit for the caller's surface attribute store.
+Native and Rust curve degrees, control counts, rationality, domains, point and
+tangent samples are compared after the call, including failed calls.
+
+Curve-sweep scaling/orientation, face-based skinning, axis classification,
+cap extraction/construction, full-topology transformations, stitching and map-copy
+tails have full bodies but no compared successful native fixture past the current
+construction dependencies. Scaling uses `number_of_unique_knots`, including the
+upstream natural-domain bounds and scaled-zero comparison; it must not use the
+full knot list length. Subdivision outputs reset on every invocation, including
+failed invocations, as `SubdivideAtDiscontinuity` does. Scaling sampling is bounded
+to 1,000,000 points; the reused sweep engine bounds repetitions to 4096. There is
+no recursion in this unit.
+
+UB-78 was reconfirmed with a direct linked native probe: no skin faces and no
+profile curves produces SIGSEGV. Both the shim and checked FFI reject that exact
+case before the native call. The fixture is a rejection, never a parity pass.
+The helper's selected past-apex three-point-circle construction is preflighted on
+an offset copy for existing UB-57, and a non-finite apex placement is rejected.
+The port returns checked errors for those undefined paths. No tolerance changes.
+
+Legacy sweep API p3 markers now name the earlier `SmBrep::SmBrep` blocker and point
+to the implemented methods; they still need the constructor and concrete access
+adapter before calling them. The integrated sweep defaults now resolve B-rep
+infinite regions/faces/wire edges and region shells/shell face uses using native
+ordered accessors. This exposed a pre-existing fixture mismatch: native op 15
+creates an extra shell vertex outside its queried pool, whereas Rust used pool
+vertex 0. The fixture now uses the corresponding extra vertex; map count and
+pool-key membership are compared separately. Other inherited, unrelated adapters
+in dependency PRs are not claimed as implemented by this unit.

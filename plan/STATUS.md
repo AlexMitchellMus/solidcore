@@ -1037,3 +1037,9 @@ Validation: fmt, normal/native Clippy, 1,292 kernel tests, wasm32, four native F
 tests, all 667 perturbations detected and 1,000 fuzz mutations with zero
 differences/crashes/panics/timeouts. The full `--green` gate completes with
 202 units: 108 passed, 94 partial, zero failed.
+
+PR #233 (`primitive.primitive_creation_p3`): eight owned functions implemented;
+initial differential gate 287 cases, 280 exact passes, 6 construction deferrals,
+one UB-78 rejection. Full topology paths require the documented PrimitiveAccess
+adapter and dependencies. Final integration checks are in progress; per-branch
+coverage and limitations are in the fixture README and `plan/findings.md`.

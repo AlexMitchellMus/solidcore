@@ -1,6 +1,6 @@
 //! Primitive solid creation (`SmPrimitiveCreation`): shared option types and
-//! the creation state and path helpers in [`p1`]. Topology assembly still awaits
-//! the B-rep construction units; the `p2` and `p3` methods are not ported yet.
+//! the creation state and path helpers in [`p1`], and sweeps and skinning in [`p3`].
+//! Topology assembly still awaits the B-rep construction units; `p2` is unported.
 //!
 //! Upstream: `source/SMLib/inc/SmPrimitiveCreation.h`.
 //!
@@ -12,6 +12,7 @@
 //! flags are `bool`.
 
 pub mod p1;
+pub mod p3;
 
 /// Independent flags of a curve sweep (`SmSweepOptions`); every flag defaults to
 /// `false`, as upstream's member initialisers.

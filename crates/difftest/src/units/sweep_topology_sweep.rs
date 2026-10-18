@@ -85,7 +85,11 @@ impl Model {
     fn new(vector: [f64; 3]) -> Result<Self> {
         let mut b = vec![Brep::new(), Brep::new()];
         for brep in &mut b {
-            brep.add_region_record(Region { in_brep: true })?;
+            let region = brep.add_region_record(Region {
+                in_brep: true,
+                ..Default::default()
+            })?;
+            brep.set_infinite_region(Some(region));
             for i in 0..8 {
                 brep.add_vertex_record(Vertex {
                     point: Point3::new(
@@ -317,16 +321,21 @@ fn rust(i: &Input) -> Result<Vec<i64>> {
                 s.do_stitching = false;
                 s.do_merge = false;
                 s.repetitions = 1;
+                // The C++ op creates an additional MakeShellVertex target;
+                // it is deliberately outside the 16 vertices queried by the maps.
+                let tolerance = model.b[0].tolerance();
+                let vertex = model.b[0].add_vertex_record(Vertex {
+                    point: Point3::ZERO,
+                    tolerance,
+                    ..Default::default()
+                })?;
                 s.do_sweep(
                     &mut model,
                     &g,
                     Some(BrepId::from_index(0)),
                     Some((BrepId::from_index(0), RegionId::from_index(0))),
                     &mut solidcore::sweep::topology_sweep::engine::SweepTargets {
-                        vertices_higher: Some(vec![Some((
-                            BrepId::from_index(0),
-                            VertexId::from_index(0),
-                        ))]),
+                        vertices_higher: Some(vec![Some((BrepId::from_index(0), vertex))]),
                         ..Default::default()
                     },
                 )
