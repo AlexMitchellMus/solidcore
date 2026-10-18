@@ -2403,6 +2403,426 @@
     "editing": -1,
     "op": "turn_nurbs"
    }
+  },
+  {
+   "name": "nurbs_off_Mouse_0.1",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "Mouse.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": 0.1
+   }
+  },
+  {
+   "name": "nurbs_off_Mouse_-0.05",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "Mouse.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": -0.05
+   }
+  },
+  {
+   "name": "nurbs_off_Endcap_0.1",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "Endcap.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": 0.1
+   }
+  },
+  {
+   "name": "nurbs_off_Endcap_-0.05",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "Endcap.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": -0.05
+   }
+  },
+  {
+   "name": "nurbs_off_box_with_large_fillet_0.1",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "box_with_large_fillet.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": 0.1
+   }
+  },
+  {
+   "name": "nurbs_off_box_with_large_fillet_-0.05",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "box_with_large_fillet.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": -0.05
+   }
+  },
+  {
+   "name": "nurbs_off_cone_0.1",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "cone.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": 0.1
+   }
+  },
+  {
+   "name": "nurbs_off_cone_-0.05",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "cone.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": -0.05
+   }
+  },
+  {
+   "name": "nurbs_off_disk_0.1",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "disk.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": 0.1
+   }
+  },
+  {
+   "name": "nurbs_off_disk_-0.05",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "disk.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": -0.05
+   }
+  },
+  {
+   "name": "nurbs_off_ellips_ts2_0.1",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "ellips_ts2.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": 0.1
+   }
+  },
+  {
+   "name": "nurbs_off_ellips_ts2_-0.05",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "ellips_ts2.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": -0.05
+   }
+  },
+  {
+   "name": "nurbs_off_plane_circ_0.1",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "plane_circ.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": 0.1
+   }
+  },
+  {
+   "name": "nurbs_off_plane_circ_-0.05",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "plane_circ.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": -0.05
+   }
+  },
+  {
+   "name": "nurbs_off_plane_square_0.1",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "plane_square.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": 0.1
+   }
+  },
+  {
+   "name": "nurbs_off_plane_square_-0.05",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "plane_square.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": -0.05
+   }
+  },
+  {
+   "name": "nurbs_off_sphere_0.1",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "sphere.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": 0.1
+   }
+  },
+  {
+   "name": "nurbs_off_sphere_-0.05",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "sphere.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": -0.05
+   }
+  },
+  {
+   "name": "nurbs_off_surf_extrude_0.1",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "surf_extrude.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": 0.1
+   }
+  },
+  {
+   "name": "nurbs_off_surf_extrude_-0.05",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "surf_extrude.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": -0.05
+   }
+  },
+  {
+   "name": "nurbs_off_surf_rev_0.1",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "surf_rev.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": 0.1
+   }
+  },
+  {
+   "name": "nurbs_off_surf_rev_-0.05",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "surf_rev.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": -0.05
+   }
+  },
+  {
+   "name": "nurbs_off_surf_sphere150_0.1",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "surf_sphere150.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": 0.1
+   }
+  },
+  {
+   "name": "nurbs_off_surf_sphere150_-0.05",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "surf_sphere150.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": -0.05
+   }
+  },
+  {
+   "name": "nurbs_off_torus_0.1",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "torus.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": 0.1
+   }
+  },
+  {
+   "name": "nurbs_off_torus_-0.05",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "torus.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": -0.05
+   }
+  },
+  {
+   "name": "nurbs_off_toruswvy_0.1",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "toruswvy.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": 0.1
+   }
+  },
+  {
+   "name": "nurbs_off_toruswvy_-0.05",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "toruswvy.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": -0.05
+   }
+  },
+  {
+   "name": "nurbs_off_vase_rev_0.1",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "vase_rev.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": 0.1
+   }
+  },
+  {
+   "name": "nurbs_off_vase_rev_-0.05",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm)",
+   "inputs": {
+    "brep": {
+     "kind": "file",
+     "file": "vase_rev.smb",
+     "rebuild": false
+    },
+    "editing": -1,
+    "op": "turn_nurbs_offset",
+    "offset": -0.05
+   }
   }
  ]
 }

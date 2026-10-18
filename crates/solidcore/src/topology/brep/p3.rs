@@ -38,11 +38,12 @@
 //!   already belongs to an edge with `new SmCurve(*pCurve)`, a base-class copy without
 //!   geometry; the port clones the curve with its geometry (`Curve`'s `Clone`, the
 //!   copy constructor of the curve kinds). Recorded as `WR-168` in
-//!   `plan/upstream-issues.md`; unreached today (both functions stop at
-//!   `topology.shell` first).
-//! - **Offset surfaces.** `TurnToNURBS` converts `SmOffsetSurface` faces; there is no
-//!   offset surface kind yet (`surface.offset_surface`), so every surface that is not
-//!   a B-spline kind is skipped, which is upstream's branch for the other kinds.
+//!   `plan/upstream-issues.md`; unreached today (the wire fixtures pass curves no
+//!   edge owns).
+//! - **Offset surfaces.** `TurnToNURBS` approximates an `SmOffsetSurface` of a B-spline
+//!   kind base and extends it; upstream hands `CreateExtendedSurface` a placeholder
+//!   `new SmSurface` that the call overwrites (and leaks), so the port has no
+//!   placeholder.
 //! - **Edge use marks.** `SqueezeEdge` marks the squeezed edge uses (and their radial
 //!   partners, which are squeezed too); upstream never reads those marks (the check is
 //!   commented out) and deletes the edge uses, so the port does not record them.
@@ -60,29 +61,37 @@
 //! - **No recursion.** Every loop is bounded by its input lists; `DeleteFace`'s shell
 //!   split loop removes at least one vertex per pass.
 
+use std::borrow::Cow;
+
 use crate::curve::curve::{Curve, CurveKind};
 use crate::error::{EntityRef, Result, SolidError, SM_ERR_INVALID_INPUT};
 use crate::geom::context::{MarkLock, MarkType, ALL_MARKS};
 use crate::geom::extent1d::Extent1d;
+use crate::geom::geom_utility::p2::ContinuityType;
 use crate::geom::object::{self, NotifyOperation, ObjectRef};
 use crate::geom::tol::{self, SmallTopoType};
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_surface::BSplineSurface;
+use crate::nurbs::b_spline_surface_n_lib::p1::OffsetParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::surface::surface::p2::OFFSET_SURFACE_TYPE;
 use crate::surface::surface::{Surface, SurfaceKind};
 use crate::topology::brep::p1;
 use crate::topology::brep::p2::{self, NotifyArg, OldSurface};
 use crate::topology::brep_cache::{arena_identity, CacheObject};
 use crate::topology::edge::{self, NotifyEnv, SetCurveOptions};
 use crate::topology::edgeuse::p1 as eu1;
+use crate::topology::edgeuse::p3 as eu3;
 use crate::topology::face::p1 as face1;
 use crate::topology::face::p2 as face2;
 use crate::topology::loopuse as lu1;
 use crate::topology::proto_topology::p1::CopyBrepMap;
+use crate::topology::shell::{self, ShellMembers, ShellType};
 use crate::topology::topology as topo;
 use crate::topology::topology_traverser::{self as tt, Entity, Marks};
+use crate::topology::trimming_tools;
 use crate::topology::{
     vertex, vertexuse, Brep, EdgeId, EdgeuseId, EdgeuseOwner, FaceId, FaceuseId, LoopuseId,
     LoopuseStart, Region, RegionId, ShellId, VertexId, Vertexuse, VertexuseId, VertexuseOwner,
@@ -180,116 +189,50 @@ impl Brep {
 
 // ---- unported callees -----------------------------------------------------------------------
 
-/// `SmRegion::SetIsVoid` (unit `topology.shell`).
-fn region_set_is_void(b: &mut Brep, r: RegionId, is_void: bool) -> Result<()> {
-    let _ = (b, r, is_void);
-    // UNPORTED(topology.shell): SmRegion::SetIsVoid
-    Err(SolidError::unported(
-        "SmRegion::SetIsVoid",
-        "topology.shell",
-    ))
+// ---- shells and regions (topology.shell) ----------------------------------------------------
+
+/// `SmBoolean` `TRUE`.
+const TRUE: i32 = 1;
+
+/// `SmRegion::SetIsVoid`.
+fn region_set_is_void(b: &mut Brep, r: RegionId, is_void: i32) -> Result<()> {
+    b.region_mut(r)?.set_is_void(is_void);
+    Ok(())
 }
 
-/// `SmRegion::IsVoid` (unit `topology.shell`).
+/// `SmRegion::IsVoid` as a condition (`TRUE` and `UNSURE` are both non-zero).
 fn region_is_void(b: &Brep, r: RegionId) -> Result<bool> {
-    let _ = (b, r);
-    // UNPORTED(topology.shell): SmRegion::IsVoid
-    Err(SolidError::unported("SmRegion::IsVoid", "topology.shell"))
+    Ok(b.region(r)?.is_void() != 0)
 }
 
-/// `pNewR->m_bIsVoidFlag = pR->m_bIsVoidFlag` (the `SmRegion` member, unit
-/// `topology.shell`).
+/// `pNewR->m_bIsVoidFlag = pR->m_bIsVoidFlag` (the `SmRegion` member).
 fn copy_region_void_flag(dst: &mut Brep, r: RegionId, src: &Brep, from: RegionId) -> Result<()> {
-    let _ = (dst, r, src, from);
-    // UNPORTED(topology.shell): SmRegion::m_bIsVoidFlag
-    Err(SolidError::unported(
-        "SmRegion::m_bIsVoidFlag",
-        "topology.shell",
-    ))
+    let flag = src.region(from)?.is_void();
+    dst.region_mut(r)?.set_is_void(flag);
+    Ok(())
 }
 
-/// `SmRegion::GetShells` (unit `topology.shell`).
+/// `SmRegion::GetShells` (no attribute filter).
 fn region_shells(b: &Brep, r: RegionId) -> Result<Vec<ShellId>> {
-    let _ = (b, r);
-    // UNPORTED(topology.shell): SmRegion::GetShells
-    Err(SolidError::unported(
-        "SmRegion::GetShells",
-        "topology.shell",
-    ))
+    b.region(r)?.get_shells(None, |_, _| Ok(true))
 }
 
-/// `pRegion->PostInsert(pShell)` on the region's shell list (unit `topology.shell`).
-fn region_post_insert_shell(b: &mut Brep, r: RegionId, s: ShellId) -> Result<()> {
-    let _ = (b, r, s);
-    // UNPORTED(topology.shell): SmRegion shell list (SmOwningTopology::PostInsert)
-    Err(SolidError::unported(
-        "SmRegion::PostInsert",
-        "topology.shell",
-    ))
+/// `pShell->m_pList = x; pShell->UpdateListSize()` (the size is recomputed from the
+/// members, [`shell::shell_list_size`]).
+fn set_shell_head(b: &mut Brep, s: ShellId, members: ShellMembers) -> Result<()> {
+    b.shell_mut(s)?.members = members;
+    Ok(())
 }
 
-/// `pRegion->Remove(pShell)` on the region's shell list (unit `topology.shell`).
-fn region_remove_shell(b: &mut Brep, r: RegionId, s: ShellId) -> Result<()> {
-    let _ = (b, r, s);
-    // UNPORTED(topology.shell): SmRegion shell list (SmOwningTopology::Remove)
-    Err(SolidError::unported("SmRegion::Remove", "topology.shell"))
+/// `pShell->m_tShellType = ty`.
+fn set_shell_type(b: &mut Brep, s: ShellId, ty: ShellType) -> Result<()> {
+    b.shell_mut(s)?.set_shell_type(ty.code());
+    Ok(())
 }
 
-/// What `SmShell::m_tShellType` / `m_pList` say (unit `topology.shell`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ShellList {
-    /// `SmFaceuse_TYPE` (`m_pList` the face use list).
-    Faceuses,
-    /// `SmEdgeuse_TYPE` with its wire edge use.
-    Edgeuse(Option<EdgeuseId>),
-    /// `SmVertexuse_TYPE` with its vertex use.
-    Vertexuse(Option<VertexuseId>),
-}
-
-/// `m_tShellType` and `m_pList` of shell `s` (unit `topology.shell`).
-fn shell_list(b: &Brep, s: ShellId) -> Result<ShellList> {
-    let _ = (b, s);
-    // UNPORTED(topology.shell): SmShell::m_tShellType / m_pList
-    Err(SolidError::unported("SmShell::GetList", "topology.shell"))
-}
-
-/// Sets `m_tShellType` / `m_pList` of shell `s` (`UpdateListSize` included; unit
-/// `topology.shell`).
-fn set_shell_list(b: &mut Brep, s: ShellId, list: ShellList) -> Result<()> {
-    let _ = (b, s, list);
-    // UNPORTED(topology.shell): SmShell::m_tShellType / m_pList
-    Err(SolidError::unported(
-        "SmShell::SetShellType",
-        "topology.shell",
-    ))
-}
-
-/// `m_lListSize` of shell `s` (`SmShell::GetSize`, unit `topology.shell`).
-fn shell_list_size(b: &Brep, s: ShellId) -> Result<usize> {
-    let _ = (b, s);
-    // UNPORTED(topology.shell): SmShell::GetSize
-    Err(SolidError::unported("SmShell::GetSize", "topology.shell"))
-}
-
-/// `pShell->Remove(pFU)` on the shell's face use list (unit `topology.shell`).
-fn shell_remove_faceuse(b: &mut Brep, s: ShellId, fu: FaceuseId) -> Result<()> {
-    let _ = (b, s, fu);
-    // UNPORTED(topology.shell): SmShell face use list (SmOwningTopology::Remove)
-    Err(SolidError::unported("SmShell::Remove", "topology.shell"))
-}
-
-/// `pShell->PostInsert(pFU)` on the shell's face use list (unit `topology.shell`).
-fn shell_post_insert_faceuse(b: &mut Brep, s: ShellId, fu: FaceuseId) -> Result<()> {
-    let _ = (b, s, fu);
-    // UNPORTED(topology.shell): SmShell face use list (SmOwningTopology::PostInsert)
-    Err(SolidError::unported(
-        "SmShell::PostInsert",
-        "topology.shell",
-    ))
-}
-
-/// Copies the list links of a face use (`m_pListOwner`, `m_pNext`, `m_pLast` through
-/// the copy map) into `fu` (unit `topology.shell`).
+/// Copies the list links of a face use (`m_pNext`, `m_pLast` through the copy map)
+/// into `fu`; links derived from the shell's members (`None`) stay derived, from the
+/// copied shell's mapped members.
 fn copy_faceuse_links(
     dst: &mut Brep,
     fu: FaceuseId,
@@ -297,22 +240,14 @@ fn copy_faceuse_links(
     from: FaceuseId,
     map: &p1::ObjectMap,
 ) -> Result<()> {
-    let _ = (dst, fu, src, from, map);
-    // UNPORTED(topology.shell): SmShell face use list (m_pListOwner / m_pNext / m_pLast)
-    Err(SolidError::unported(
-        "SmShell::PostInsert",
-        "topology.shell",
-    ))
-}
-
-/// `SmShell::TransferChildrenTo(pTo, NULL)` (unit `topology.shell`).
-fn shell_transfer_children(b: &mut Brep, from: ShellId, to: ShellId) -> Result<()> {
-    let _ = (b, from, to);
-    // UNPORTED(topology.shell): SmShell::TransferChildrenTo
-    Err(SolidError::unported(
-        "SmShell::TransferChildrenTo",
-        "topology.shell",
-    ))
+    let link =
+        |x: Option<FaceuseId>| x.and_then(|x| mapped(EntityRef::Faceuse(x), map, as_faceuse));
+    let links = src
+        .faceuse(from)?
+        .sibling_links
+        .map(|(next, last)| (link(next), link(last)));
+    dst.faceuse_mut(fu)?.sibling_links = links;
+    Ok(())
 }
 
 /// `SmFace::Notify(operation, data1, data2, data3)` of face `f` (unit
@@ -400,7 +335,8 @@ fn brep_bounding_box(
 
 /// `SmEdgeuse::NormalizedEvaluate(t, bParameterSpaceEval, rPoint, &rFirstDeriv,
 /// bOKToMakeUVTrimCurve)` (unit `topology.edgeuse_p3`): the point and first derivative
-/// at normalized parameter `t`.
+/// at normalized parameter `t`; a derivative the evaluation does not write keeps the
+/// caller's default-constructed `SmVector3d` (`SM_UNDEF_DOUBLE`).
 fn normalized_evaluate(
     k: &Kernel,
     b: &mut Brep,
@@ -409,12 +345,9 @@ fn normalized_evaluate(
     parameter_space: bool,
     ok_to_make_uv_trim_curve: bool,
 ) -> Result<(Point3, Vec3)> {
-    let _ = (k, b, eu, t, parameter_space, ok_to_make_uv_trim_curve);
-    // UNPORTED(topology.edgeuse_p3): SmEdgeuse::NormalizedEvaluate
-    Err(SolidError::unported(
-        "SmEdgeuse::NormalizedEvaluate",
-        "topology.edgeuse_p3",
-    ))
+    let eval =
+        eu3::normalized_evaluate(k, b, eu, t, parameter_space, true, ok_to_make_uv_trim_curve)?;
+    Ok((eval.point, eval.first_deriv.unwrap_or(Vec3::UNDEF)))
 }
 
 // ---- helpers --------------------------------------------------------------------------------
@@ -522,7 +455,7 @@ pub fn new_brep(
     // Create infinite region and put into brep's region list
     let r = b.add_region_record(Region::default())?;
     b.set_infinite_region(Some(r));
-    region_set_is_void(&mut b, r, true)?;
+    region_set_is_void(&mut b, r, TRUE)?;
     b.pre_insert_region(r)?;
 
     // report construction at SmObject::Notify level - skip other levels
@@ -838,14 +771,11 @@ pub fn merge_brep(
                 &mut copy_map,
                 &mut reverse_map,
             );
-            // set up new Shell (SE: status not acted on, except an unported list)
-            region_post_insert_shell(b, new_r, new_s)?;
-            let ty = match shell_list(other, s)? {
-                ShellList::Faceuses => ShellList::Faceuses,
-                ShellList::Edgeuse(_) => ShellList::Edgeuse(None),
-                ShellList::Vertexuse(_) => ShellList::Vertexuse(None),
-            };
-            set_shell_list(b, new_s, ty)?;
+            // set up new Shell (SE upstream: PostInsert cannot fail there; here only on
+            // a corrupt list)
+            shell::region_post_insert_shell(b, new_r, new_s)?;
+            let ty = other.shell(s)?.shell_type;
+            set_shell_type(b, new_s, ty)?;
         }
     }
 
@@ -1161,22 +1091,37 @@ pub fn merge_brep(
     for &r in &regions {
         for s in region_shells(other, r)? {
             let new_s = mapped(EntityRef::Shell(s), &map, as_shell);
-            let list = shell_list(other, s)?;
             let Some(new_s) = new_s else { continue };
-            let new_list = match list {
-                ShellList::Edgeuse(Some(x)) => {
-                    ShellList::Edgeuse(mapped(EntityRef::Edgeuse(x), &map, as_edgeuse))
+            // pNewS->m_pList = map(pS->m_pList), m_lListSize copied (an empty list is
+            // skipped upstream; an unmapped head is NULL). A face-use list's other
+            // members follow from the copied face-use links, so they are the mapped
+            // members in the same order.
+            let new_list = match &other.shell(s)?.members {
+                ShellMembers::Empty => continue,
+                ShellMembers::Edgeuse(x) => mapped(EntityRef::Edgeuse(*x), &map, as_edgeuse)
+                    .map_or(ShellMembers::Empty, ShellMembers::Edgeuse),
+                ShellMembers::Vertexuse(x) => mapped(EntityRef::Vertexuse(*x), &map, as_vertexuse)
+                    .map_or(ShellMembers::Empty, ShellMembers::Vertexuse),
+                ShellMembers::Faceuses(list) => {
+                    let head = list.first().copied();
+                    if head
+                        .and_then(|x| mapped(EntityRef::Faceuse(x), &map, as_faceuse))
+                        .is_none()
+                    {
+                        ShellMembers::Empty
+                    } else {
+                        let mut members = Vec::new();
+                        for &x in list {
+                            members.push(
+                                mapped(EntityRef::Faceuse(x), &map, as_faceuse)
+                                    .ok_or(null_deref("unmapped face use"))?,
+                            );
+                        }
+                        ShellMembers::Faceuses(members)
+                    }
                 }
-                ShellList::Vertexuse(Some(x)) => {
-                    ShellList::Vertexuse(mapped(EntityRef::Vertexuse(x), &map, as_vertexuse))
-                }
-                // (an empty list is skipped upstream)
-                ShellList::Edgeuse(None) | ShellList::Vertexuse(None) => {
-                    continue;
-                }
-                ShellList::Faceuses => ShellList::Faceuses,
             };
-            set_shell_list(b, new_s, new_list)?;
+            set_shell_head(b, new_s, new_list)?;
         }
     }
 
@@ -1491,15 +1436,15 @@ pub fn delete_face(
         if surviving == del_region {
             return Err(ser()); // Should not happen
         }
-        ignore_soft(region_remove_shell(b, del_region, os))?;
+        ignore_soft(shell::region_remove_shell(b, del_region, os))?;
         other_shell = None;
         for s in region_shells(b, del_region)? {
-            ignore_soft(region_remove_shell(b, del_region, s))?;
-            ignore_soft(region_post_insert_shell(b, surviving, s))?;
+            ignore_soft(shell::region_remove_shell(b, del_region, s))?;
+            ignore_soft(shell::region_post_insert_shell(b, surviving, s))?;
         }
         if Some(del_region) == b.infinite_region() {
             b.set_infinite_region(Some(surviving));
-            ignore_soft(region_set_is_void(b, surviving, true))?;
+            region_set_is_void(b, surviving, TRUE)?;
         }
 
         // allow attributes to propagate and inform the public of Region merges
@@ -1543,11 +1488,12 @@ pub fn delete_face(
                 let new_s = b.add_shell_record(crate::topology::Shell::default())?;
                 let r = eu1::shell_region(b, shell)?.ok_or(null_deref("shell without region"))?;
                 b.shell_mut(new_s)?.region = Some(r);
-                region_post_insert_shell(b, r, new_s)?;
+                shell::region_post_insert_shell(b, r, new_s)?;
                 b.vertex_mut(v)?.vertexuses.insert(0, vu);
 
                 // Link up shell and vertexuse
-                set_shell_list(b, new_s, ShellList::Vertexuse(Some(vu)))?;
+                set_shell_type(b, new_s, ShellType::Vertex)?;
+                set_shell_head(b, new_s, ShellMembers::Vertexuse(vu))?;
                 b.vertexuse_mut(vu)?.owner = VertexuseOwner::Shell(Some(new_s));
 
                 // count the number of shell vertics made
@@ -1611,9 +1557,9 @@ pub fn delete_face(
     }
 
     // Take care of face and faceuses - remove from lists
-    ignore_soft(shell_remove_faceuse(b, shell, fu))?;
+    ignore_soft(shell::shell_remove_faceuse(b, shell, fu))?;
     if let Some(os) = other_shell {
-        ignore_soft(shell_remove_faceuse(b, os, other_fu))?;
+        ignore_soft(shell::shell_remove_faceuse(b, os, other_fu))?;
     }
 
     // Don't allow stale pointers to remain in the Faces.
@@ -1682,16 +1628,16 @@ fn delete_face_nesting(
     let remaining = |c: usize| c.wrapping_sub(new_shell_vertex_count);
     if any_edgeuse.is_none() && remaining(*vertex_count) == 0 {
         let r = eu1::shell_region(b, shell)?.ok_or(null_deref("shell without region"))?;
-        ignore_soft(region_remove_shell(b, r, shell))?;
+        ignore_soft(shell::region_remove_shell(b, r, shell))?;
     } else {
         // See if shell is now a wire shell - if it is point it to an edgeuse
-        if shell_list_size(b, shell)? == 0 {
+        if shell::shell_list_size(b, shell)? == 0 {
             if let Some(eu) = any_edgeuse {
-                set_shell_list(b, shell, ShellList::Edgeuse(Some(eu)))?;
+                set_shell_head(b, shell, ShellMembers::Edgeuse(eu))?;
+                set_shell_type(b, shell, ShellType::Wire)?;
             }
         }
         // (an empty list is only an SE(SM_ERR) upstream)
-        let _ = shell_list(b, shell)?;
 
         // single/multiple shell check
         let mut need_traversal = true;
@@ -1744,7 +1690,7 @@ fn delete_face_nesting(
             ..crate::topology::Shell::default()
         })?;
         last_new_shell = Some(new_shell);
-        ignore_soft(region_post_insert_shell(b, r, new_shell))?;
+        shell::region_post_insert_shell(b, r, new_shell)?;
         let mut faceuses = Vec::new();
         let mut edgeuses = Vec::new();
         tt::shell_traversal(
@@ -1760,47 +1706,50 @@ fn delete_face_nesting(
 
         if faceuses.is_empty() && !edgeuses.is_empty() {
             // Wire shell
-            set_shell_list(b, new_shell, ShellList::Edgeuse(edgeuses.first().copied()))?;
+            let eu = edgeuses.first().copied().ok_or_else(ser)?;
+            set_shell_head(b, new_shell, ShellMembers::Edgeuse(eu))?;
+            set_shell_type(b, new_shell, ShellType::Wire)?;
         } else if faceuses.is_empty() && edgeuses.is_empty() {
             // Vertex shell
+            set_shell_type(b, new_shell, ShellType::Vertex)?;
             let vu = vertex::primary_vertexuse(b, v)?.ok_or(null_deref("vertex without use"))?;
-            set_shell_list(b, new_shell, ShellList::Vertexuse(Some(vu)))?;
+            set_shell_head(b, new_shell, ShellMembers::Vertexuse(vu))?;
             b.vertexuse_mut(vu)?.owner = VertexuseOwner::Shell(Some(new_shell));
         } else {
             // Faceuse shell
-            set_shell_list(b, new_shell, ShellList::Faceuses)?;
+            set_shell_type(b, new_shell, ShellType::Faceuse)?;
         }
 
         // Link all wire edges back to new shell
         for &eu in &edgeuses {
             if eu1::is_shell_edgeuse(b, eu)? {
                 b.edgeuse_mut(eu)?.owner = EdgeuseOwner::Shell(Some(new_shell));
-                if let ShellList::Edgeuse(Some(x)) = shell_list(b, shell)? {
-                    if x == eu {
-                        set_shell_list(b, shell, ShellList::Edgeuse(None))?;
-                    }
+                // remember to remove the wire from pShell when appropriate (not with
+                // Remove: m_pList = NULL, m_lListSize = 0)
+                if b.shell(shell)?.is_wire_shell()
+                    && b.shell(shell)?.members == ShellMembers::Edgeuse(eu)
+                {
+                    set_shell_head(b, shell, ShellMembers::Empty)?;
                 }
             }
         }
 
         // Transfer faceuses from the old shell to the new shell
         for &x in &faceuses {
-            ignore_soft(shell_remove_faceuse(b, shell, x))?;
-            ignore_soft(shell_post_insert_faceuse(b, new_shell, x))?;
-            b.faceuse_mut(x)?.shell = Some(new_shell);
+            ignore_soft(shell::shell_remove_faceuse(b, shell, x))?;
+            shell::shell_post_insert_faceuse(b, new_shell, x)?;
         }
     }
 
     // If it's still a Faceuse Shell, pShell should be empty and pLastNewShell should
     // contain something.
-    if shell_list(b, shell)? == ShellList::Faceuses {
-        let ok = shell_list_size(b, shell)? == 0
-            && last_new_shell
-                .map(|s| shell_list(b, s))
-                .transpose()?
-                .is_some_and(|l| {
-                    !matches!(l, ShellList::Edgeuse(None) | ShellList::Vertexuse(None))
-                });
+    if b.shell(shell)?.is_faceuse_shell() {
+        let ok = shell::shell_list_size(b, shell)? == 0
+            && b.shell(shell)?.members == ShellMembers::Empty
+            && match last_new_shell {
+                Some(s) => b.shell(s)?.members != ShellMembers::Empty,
+                None => false,
+            };
         if !ok {
             return Err(ser());
         }
@@ -1810,8 +1759,8 @@ fn delete_face_nesting(
     // pLastNewShell
     let last = last_new_shell.ok_or(null_deref("no new shell"))?;
     let r = eu1::shell_region(b, shell)?.ok_or(null_deref("shell without region"))?;
-    ignore_soft(shell_transfer_children(b, last, shell))?;
-    ignore_soft(region_remove_shell(b, r, last))?;
+    ignore_soft(shell::transfer_children(k, b, last, shell, None))?;
+    ignore_soft(shell::region_remove_shell(b, r, last))?;
     Ok(())
 }
 
@@ -2068,7 +2017,8 @@ pub fn squeeze_edge(
             let Some(shell) = eu1::shell(b, eu)? else {
                 continue;
             };
-            if shell_list(b, shell)? != ShellList::Edgeuse(Some(eu)) {
+            // SM_CAST_PTR(SmEdgeuse, pShell->GetList()) == pEU
+            if b.shell(shell)?.members != ShellMembers::Edgeuse(eu) {
                 continue;
             }
             // We have to change the Shell's pointer to an edge use on the edge on the
@@ -2095,7 +2045,7 @@ pub fn squeeze_edge(
             } else {
                 s1
             };
-            set_shell_list(b, shell, ShellList::Edgeuse(Some(surviving_eu)))?;
+            set_shell_head(b, shell, ShellMembers::Edgeuse(surviving_eu))?;
         }
     } else {
         // Not a wire edge: so it's in a Loop, on a Face.
@@ -2236,15 +2186,19 @@ const fn as_bspline_surface(s: &Surface) -> Option<&BSplineSurface> {
 
 /// `TurnToNURBS`: makes every face surface and edge curve of the B-rep a plain
 /// B-spline: a B-spline kind (`SmPlane`, `SmSurfOfRevolution`) gets its B-spline
-/// copy (`ReplaceSurface`, which rebuilds the UV trim curves); a curve of another type
-/// is copied (B-spline kinds), lifted (`SmCrvOnSurf`) or approximated. Surfaces of other
-/// kinds are kept.
+/// copy (`ReplaceSurface`, which rebuilds the UV trim curves); an `SmOffsetSurface` of a
+/// B-spline kind is approximated (`ApproximateOffsetSurface` at ten times the B-rep
+/// tolerance, chord length; a failed approximation skips the face), extended by 2% of
+/// its box diagonal (`CreateExtendedSurface`, G1) and replaces the face's surface; a
+/// curve of another type is copied (B-spline kinds), lifted (`SmCrvOnSurf`) or
+/// approximated. Surfaces of other kinds are kept.
 ///
 /// # Errors
 ///
 /// [`SolidError::Unported`] from [`p2::replace_surface`] (`topology.face_p3`) for any
 /// face with an analytic surface; those of the curve lift / approximation;
-/// `SM_ERR_NULL_POINTER` when a curve could not be made a B-spline (`NER`).
+/// `SM_ERR_NULL_POINTER` when a curve could not be made a B-spline or an offset's base
+/// is not a B-spline kind (`NER`); those of the offset's bounding box and extension.
 pub fn turn_to_nurbs(k: &Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Result<()> {
     ignore_soft(brep_notify(
         b,
@@ -2272,8 +2226,68 @@ pub fn turn_to_nurbs(k: &Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Resul
             .as_ref()
             .ok_or(null_deref("face without surface"))?;
         let Some(bss) = as_bspline_surface(surface) else {
-            // not an SmOffsetSurface (no such kind on this branch yet): skip
-            // UNPORTED(surface.offset_surface): SmOffsetSurface (TurnToNURBS' offset arm)
+            if surface.type_code() != OFFSET_SURFACE_TYPE {
+                continue;
+            }
+            let SurfaceKind::OffsetSurface(offset) = surface.kind() else {
+                return Err(ner());
+            };
+
+            // it is an offset surface
+            let base = offset.base_surface();
+            if as_bspline_surface(base).is_none() {
+                return Err(ner());
+            }
+            // (ApproximateOffsetSurface's GetOrCreateGwNurbPointer: a plane's NURB is
+            // made when missing; a failure leaves the NULL NURB, NER there)
+            let base = match base.kind() {
+                SurfaceKind::Plane(x) => x.base_for_query(),
+                _ => Cow::Borrowed(as_bspline_surface(base).ok_or_else(ner)?),
+            };
+
+            // offset tolerance should be quite large compared to brep tol
+            let approx_tol_3d = b.tolerance() * 10.0;
+
+            // convert (approximate) offset surface to NURB (1 = chord length)
+            let new_bss = match base.approximate_offset_surface(
+                offset.offset_distance(),
+                approx_tol_3d,
+                OffsetParamType::ChordLength,
+            ) {
+                Ok(x) => x,
+                Err(e) if e.is_unported() => return Err(e),
+                // SE(SM_ERR_INVALID_INPUT); continue
+                Err(_) => continue,
+            };
+
+            // delete current UV trimming curves (status not checked upstream)
+            ignore_soft(trimming_tools::clear_uv_trim_curves(b, f))?;
+
+            // first extend the new surface in all directions by a small amount
+            let new_surface = Surface::from(new_bss);
+            let domain = new_surface.natural_uv_domain();
+            let boxes =
+                new_surface.calculate_bounding_box(k, &domain, [true, false, false], true)?;
+            let srf_bbox = boxes.normal_box.ok_or_else(ner)?;
+            let mut size = srf_bbox.size().length();
+            if size >= 1.0e15 || size <= 0.0 {
+                size = 1.0;
+            }
+            let extend_distance = 0.02 * size;
+            let SurfaceKind::BSpline(new_bss) = new_surface.kind() else {
+                return Err(ner());
+            };
+            let ext = new_bss.create_extended_surface(extend_distance, ContinuityType::G1)?;
+            let face_ref = (env.key_of)(EntityRef::Face(f));
+            p2::replace_surface(
+                k,
+                b,
+                f,
+                Surface::from(ext),
+                face_ref,
+                OldSurface::Delete,
+                true,
+            )?;
             continue;
         };
         if surface.type_code() == BSplineSurface::TYPE {
@@ -2934,10 +2948,13 @@ mod tests {
     }
 
     #[test]
-    fn constructor_stops_at_the_void_flag() {
+    fn constructor_makes_a_void_infinite_region() {
         let mut k = Kernel::default();
-        let e = new_brep(&mut k, tol::USE_DEFAULT, tol::USE_DEFAULT).unwrap_err();
-        assert!(e.is_unported());
+        let b = new_brep(&mut k, tol::USE_DEFAULT, tol::USE_DEFAULT).unwrap();
+        let r = b.infinite_region().unwrap();
+        assert_eq!(b.region(r).unwrap().is_void(), TRUE);
+        assert_eq!(p1::regions(&b, None).unwrap(), vec![r]);
+        assert!(b.region(r).unwrap().shells.is_empty());
     }
 
     #[test]

@@ -18,6 +18,7 @@
 #include "sc_topology_fixture.h"
 
 #include <SmApiQueries.h>
+#include <SmOffsetSurface.h>
 
 namespace
 {
@@ -33,6 +34,7 @@ enum P3Op : int32_t
     P3_SQUEEZE = 9,
     P3_TURN_NURBS = 10,
     P3_API_COPY_NULL = 11,
+    P3_TURN_NURBS_OFFSET = 12,
 };
 
 struct EdgePeek : SmEdge
@@ -49,6 +51,11 @@ struct BrepPeek : SmBrep
 struct RegPeek : SmRegion
 {
     static SmBoolean SmRegion::*void_flag() { return &RegPeek::m_bIsVoidFlag; }
+};
+
+struct ShellPeek : SmShell
+{
+    static SM_TYPE SmShell::*shell_type() { return &ShellPeek::m_tShellType; }
 };
 
 // A plain SmBSplineCurve of `c`'s NURB, or nullptr when `c` already is one (or a line)
@@ -129,7 +136,9 @@ SmBrep* prepare(Rd& rd, const char* path, Graph& g, SmStatus& bst)
     return brep;
 }
 
-// `faces edges vertices regions` of a fresh walk of `brep`.
+// `faces edges vertices regions` of a fresh walk of `brep`, then for every region (in
+// list order) `void infinite nshells` and for each of its shells `type size has_head`
+// (m_tShellType, m_lListSize, m_pList != NULL).
 void put_counts(std::vector<double>& o, SmBrep* brep)
 {
     SmTArray<SmFace*> fs;
@@ -144,6 +153,22 @@ void put_counts(std::vector<double>& o, SmBrep* brep)
     o.push_back((double)es.GetSize());
     o.push_back((double)vs.GetSize());
     o.push_back((double)rs.GetSize());
+    for (ULONG i = 0; i < rs.GetSize(); i++)
+    {
+        SmRegion* r = rs[i];
+        SmTArray<SmShell*> ss;
+        r->GetShells(ss);
+        o.push_back((double)(r->*RegPeek::void_flag()));
+        o.push_back(r == brep->GetInfiniteRegion() ? 1.0 : 0.0);
+        o.push_back((double)ss.GetSize());
+        for (ULONG j = 0; j < ss.GetSize(); j++)
+        {
+            SmShell* sh = ss[j];
+            o.push_back((double)(sh->*ShellPeek::shell_type()));
+            o.push_back((double)sh->GetSize());
+            o.push_back(sh->GetList() != NULL ? 1.0 : 0.0);
+        }
+    }
 }
 
 void run(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
@@ -327,8 +352,27 @@ void run(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
         put_counts(o, brep);
         break;
     }
+    case P3_TURN_NURBS_OFFSET:
     case P3_TURN_NURBS:
     {
+        if (op == P3_TURN_NURBS_OFFSET)
+        {
+            // every face-owned B-spline kind surface becomes an SmOffsetSurface of it by
+            // `d` (owning its base) before the call, so TurnToNURBS' offset arm runs; the
+            // base is detached from its face first, so the constructor's IsPeriodic /
+            // GetSingularities use the context tolerance (not SmFace::GetTolerance)
+            double d = rd.num();
+            for (SmFace* f : g.faces)
+            {
+                SmSurface* s = f->*FPeek::srf();
+                if (s == nullptr || s->GetOwner() != (SmObject*)f || !s->IsKindOf(SmBSplineSurface_TYPE))
+                    continue;
+                s->SetOwner(NULL);
+                SmOffsetSurface* off = new (the_context()) SmOffsetSurface(d, *s, TRUE);
+                off->SetOwner(f);
+                f->*FPeek::srf() = off;
+            }
+        }
         o.push_back(st(brep->TurnToNURBS()));
         // TurnToNURBS deletes no face or edge
         for (SmEdge* e : g.edges)
@@ -337,6 +381,14 @@ void run(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
         {
             SmSurface* s = f->GetSurface();
             o.push_back(s ? (double)s->GetType() : -1.0);
+            if (op == P3_TURN_NURBS_OFFSET && s != nullptr)
+            {
+                SmExtent2d d = s->GetNaturalUVDomain();
+                o.push_back(d.GetMin().x);
+                o.push_back(d.GetMin().y);
+                o.push_back(d.GetMax().x);
+                o.push_back(d.GetMax().y);
+            }
         }
         break;
     }

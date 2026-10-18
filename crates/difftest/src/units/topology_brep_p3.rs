@@ -32,13 +32,19 @@ use solidcore::geom::object::ObjectRef;
 use solidcore::geom::vector3d::Vec3;
 use solidcore::kernel::Kernel;
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
+use solidcore::nurbs::b_spline_surface::BSplineSurface;
 use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use solidcore::nurbs::crv_basic::Curve as NlCurve;
 use solidcore::nurbs::math::CPoint;
+use solidcore::surface::offset_surface::{OffsetSurface, SS_UNKNOWN};
+use solidcore::surface::surface::Surface as SmSurface;
 use solidcore::topology::brep::p1 as bp1;
+use solidcore::topology::brep::p2 as bp2;
 use solidcore::topology::brep::p3 as bp3;
 use solidcore::topology::brep_cache::{arena_identity, CacheObject};
 use solidcore::topology::edge::NotifyEnv;
+use solidcore::topology::shell;
+use solidcore::topology::topology::Topology;
 use solidcore::topology::topology_traverser::Marks;
 use solidcore::topology::{Brep, EdgeId, FaceId, FaceuseId, RegionId, VertexId, VertexuseId};
 use solidcore::{EntityRef, SolidError};
@@ -113,6 +119,11 @@ enum OpIn {
         v: i64,
     },
     TurnNurbs,
+    /// `TurnNurbs` after wrapping every face-owned B-spline kind surface in an owning
+    /// `SmOffsetSurface` of it by `offset`.
+    TurnNurbsOffset {
+        offset: f64,
+    },
     ApiCopyNull,
 }
 
@@ -185,6 +196,7 @@ fn op_args(op: &OpIn, c: &[usize; 10]) -> Result<Option<(Op, Vec<f64>)>, Harness
         OpIn::Construct { mse, lsr } => (Op::Construct, vec![*mse, *lsr]),
         OpIn::ApiCopyNull => (Op::ApiCopyNull, vec![0.0]),
         OpIn::TurnNurbs => (Op::TurnNurbs, vec![]),
+        OpIn::TurnNurbsOffset { offset } => (Op::TurnNurbsOffset, vec![*offset]),
         OpIn::Copy { analytics, api } => (Op::Copy, vec![flag(*analytics), flag(*api)]),
         OpIn::Merge { analytics } => (Op::Merge, vec![flag(*analytics)]),
         OpIn::CopyVertices { vertices } => {
@@ -480,7 +492,23 @@ fn put_counts(o: &mut Vec<f64>, b: &Brep) -> Result<(), Fail> {
     o.push(must(bp1::faces(b, None))?.len() as f64);
     o.push(must(bp1::edges(b, None))?.len() as f64);
     o.push(must(bp1::vertices(b, None))?.len() as f64);
-    o.push(must(bp1::regions(b, None))?.len() as f64);
+    let regions = must(bp1::regions(b, None))?;
+    o.push(regions.len() as f64);
+    // the shim's shell digest: per region `void infinite nshells`, per shell
+    // `type size has_head`
+    for r in regions {
+        let region = must(b.region(r))?;
+        let shells = must(region.get_shells(None, |_, _| Ok(true)))?;
+        o.push(f64::from(region.is_void()));
+        o.push(flag(b.infinite_region() == Some(r)));
+        o.push(shells.len() as f64);
+        for s in shells {
+            let sh = must(b.shell(s))?;
+            o.push(sh.shell_type.code() as f64);
+            o.push(must(shell::shell_list_size(b, s))? as f64);
+            o.push(flag(sh.members != shell::ShellMembers::Empty));
+        }
+    }
     Ok(())
 }
 
@@ -520,10 +548,65 @@ fn put_curve(o: &mut Vec<f64>, c: Option<&SmCurve>) -> Result<(), Fail> {
     Ok(())
 }
 
-/// `SmRegion::m_bIsVoidFlag` of the new B-rep's infinite region (unit `topology.shell`).
-fn region_void_flag(_b: &Brep, _r: Option<RegionId>) -> Result<f64, SolidError> {
-    // UNPORTED(topology.shell): SmRegion::IsVoid
-    Err(SolidError::unported("SmRegion::IsVoid", "topology.shell"))
+/// `SmRegion::m_bIsVoidFlag` of the new B-rep's infinite region (`SmRegion::IsVoid`,
+/// unit `topology.shell`).
+fn region_void_flag(b: &Brep, r: Option<RegionId>) -> Result<f64, SolidError> {
+    let r =
+        r.ok_or_else(|| SolidError::null_pointer("difftest::topology_brep_p3::region_void_flag"))?;
+    Ok(f64::from(b.region(r)?.is_void()))
+}
+
+/// The shim's `TurnNurbsOffset` set-up: every face-owned B-spline kind surface is
+/// detached from its face (so the constructor's periodicity and singularity tests use
+/// the context tolerance, not `SmFace::GetTolerance`) and becomes an
+/// `SmOffsetSurface(d, surface, TRUE)` owned by the face.
+fn wrap_in_offsets(k: &Kernel, b: &mut Brep, faces: &[FaceId], d: f64) -> Result<(), Fail> {
+    for &f in faces {
+        let owner = Some(arena_identity(CacheObject::Face(f)));
+        let face = must(b.face_mut(f))?;
+        let wrap = match face.surface.as_ref() {
+            Some(s) if s.owner() == owner => must(s.is_kind_of(BSplineSurface::TYPE))?,
+            _ => false,
+        };
+        if !wrap {
+            continue;
+        }
+        let Some(mut base) = face.surface.take() else {
+            continue;
+        };
+        base.set_owner(None);
+        let off = must(OffsetSurface::new(k, d, base, true, SS_UNKNOWN))?;
+        let mut s = SmSurface::from(off);
+        s.set_owner(owner);
+        face.surface = Some(s);
+    }
+    Ok(())
+}
+
+/// A default `SmTopology` record (flags, user value, marks) for every object of `b`
+/// under `key` and for the B-rep itself: every C++ topology object carries one, and
+/// `SmTopology::Notify` reads the records of the objects a notification names (e.g.
+/// both vertices of `SqueezeEdge`'s `SM_NO_MERGE_IN_BREP`).
+fn seed_records(
+    records: &mut BTreeMap<ObjectKey, Topology>,
+    b: &Brep,
+    key: &dyn Fn(EntityRef) -> ObjectRef,
+) {
+    let mut all = Vec::new();
+    all.extend(b.regions().iter().map(|(x, _)| EntityRef::Region(x)));
+    all.extend(b.shells().iter().map(|(x, _)| EntityRef::Shell(x)));
+    all.extend(b.faceuses().iter().map(|(x, _)| EntityRef::Faceuse(x)));
+    all.extend(b.faces().iter().map(|(x, _)| EntityRef::Face(x)));
+    all.extend(b.loopuses().iter().map(|(x, _)| EntityRef::Loopuse(x)));
+    all.extend(b.loops().iter().map(|(x, _)| EntityRef::Loop(x)));
+    all.extend(b.edgeuses().iter().map(|(x, _)| EntityRef::Edgeuse(x)));
+    all.extend(b.edges().iter().map(|(x, _)| EntityRef::Edge(x)));
+    all.extend(b.vertexuses().iter().map(|(x, _)| EntityRef::Vertexuse(x)));
+    all.extend(b.vertices().iter().map(|(x, _)| EntityRef::Vertex(x)));
+    for e in all {
+        records.entry(key(e).key).or_default();
+    }
+    records.entry(bp2::brep_ref(b).key).or_default();
 }
 
 #[allow(clippy::too_many_lines)]
@@ -541,6 +624,12 @@ fn run_rust_op(
             .ok_or_else(|| Fail::Harness(harness("args too short")))
     };
     let mut records = BTreeMap::new();
+    // (the first B-rep is the source of a copy or merge, notified under source_key_of)
+    seed_records(&mut records, b, &key_of);
+    seed_records(&mut records, b, &source_key_of);
+    if let Some(dst) = second.as_deref() {
+        seed_records(&mut records, dst, &key_of);
+    }
     let mut attrs = AttributeStore::default();
     let mut env = NotifyEnv {
         records: &mut records,
@@ -709,9 +798,16 @@ fn run_rust_op(
             out.push(s);
             put_counts(&mut out, b)?;
         }
-        OpIn::TurnNurbs => {
+        OpIn::TurnNurbs | OpIn::TurnNurbsOffset { .. } => {
             let edges = must(bp1::edges(b, None))?;
             let faces = must(bp1::faces(b, None))?;
+            let offset = match op {
+                OpIn::TurnNurbsOffset { offset } => Some(*offset),
+                _ => None,
+            };
+            if let Some(d) = offset {
+                wrap_in_offsets(k, b, &faces, d)?;
+            }
             let kk: &Kernel = k;
             let (s, _) = status(bp3::turn_to_nurbs(kk, b, &mut env))?;
             out.push(s);
@@ -719,12 +815,12 @@ fn run_rust_op(
                 put_curve(&mut out, must(b.edge(e))?.curve.as_ref())?;
             }
             for f in faces {
-                out.push(
-                    must(b.face(f))?
-                        .surface
-                        .as_ref()
-                        .map_or(-1.0, |x| x.type_code() as f64),
-                );
+                let s = must(b.face(f))?.surface.as_ref();
+                out.push(s.map_or(-1.0, |x| x.type_code() as f64));
+                if let (Some(_), Some(s)) = (offset, s) {
+                    let d = s.natural_uv_domain();
+                    out.extend([d.min().x, d.min().y, d.max().x, d.max().y]);
+                }
             }
         }
     }

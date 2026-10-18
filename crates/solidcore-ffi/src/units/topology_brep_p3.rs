@@ -10,7 +10,8 @@
 //! its `Export` / `Extras` describe the B-rep these ops run on. Indices name entities
 //! in that export's order. Every output starts with `0`, or `-1 status` when the B-rep
 //! could not be built. `counts` is `faces edges vertices regions` of the B-rep after
-//! the op (a fresh walk).
+//! the op (a fresh walk), then per region (list order) `void infinite nshells` and per
+//! shell of it `type size has_head` (`m_tShellType`, `GetSize`, `m_pList != NULL`).
 //!
 //! | [`Op`]          | parameters | outputs |
 //! |-----------------|------------|---------|
@@ -24,6 +25,7 @@
 //! | `Squeeze`       | `edge which v` (survivor: `0` `GetVertex`, `1` the other vertex, `2` vertex `v`) | `status counts` |
 //! | `TurnNurbs`     |            | `status`, per edge its curve block (the fixture's `put_curve`), per face its surface type |
 //! | `ApiCopyNull`   | `0` (no B-rep block) | `0 status` (`SmApiBrepCopy(NULL, ..)`) |
+//! | `TurnNurbsOffset` | `d` | `TurnNurbs` after wrapping every face-owned B-spline kind surface (detached from its face first) in an owning `SmOffsetSurface(d, ..)`; per face also its surface's natural UV domain |
 //!
 //! [`eval`] accepts only what upstream handles without undefined behaviour: valid
 //! B-rep blocks, indices inside the B-rep (it exports the B-rep once more to count),
@@ -39,6 +41,10 @@ use super::topology_vertexuse as vu;
 
 /// Largest magnitude of any input value (HANG-16).
 pub const MAX_GEOMETRY: f64 = 1.0e150;
+
+/// Largest offset distance of a `TurnNurbsOffset` (a harness bound on the generated
+/// inputs: `ApproximateOffsetSurface` is defined for any finite distance).
+pub const MAX_OFFSET: f64 = 1.0e3;
 
 /// Largest vertex list of a `CopyVertices` or face list of an `Orient`.
 pub const MAX_LIST: usize = 32;
@@ -57,6 +63,7 @@ pub enum Op {
     Squeeze = 9,
     TurnNurbs = 10,
     ApiCopyNull = 11,
+    TurnNurbsOffset = 12,
 }
 
 mod sys {
@@ -115,6 +122,12 @@ fn args(op: Op, rd: &mut Reader<'_>, c: &[usize; 10], has_infinite: bool) -> Res
     let [n_r, _, _, n_f, _, _, _, n_e, _, n_v] = *c;
     match op {
         Op::Construct | Op::ApiCopyNull | Op::TurnNurbs => {}
+        Op::TurnNurbsOffset => {
+            let d = rd.finite()?;
+            if d.abs() > MAX_OFFSET {
+                return Err(bad(format!("offset distance {d} beyond {MAX_OFFSET}")));
+            }
+        }
         Op::Copy => {
             rd.flag()?;
             rd.flag()?;

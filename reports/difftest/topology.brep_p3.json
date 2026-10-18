@@ -10,129 +10,89 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "construct_9876543.21_9876543.21",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#1 (upstream source/SMLib/src/SmBrep.cpp (SmBrep(double, double)))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "construct_9876543.21_0.001",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#2 (upstream source/SMLib/src/SmBrep.cpp (SmBrep(double, double)))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "construct_1.0_9876543.21",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#3 (upstream source/SMLib/src/SmBrep.cpp (SmBrep(double, double)))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "construct_1.0_0.001",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#4 (upstream source/SMLib/src/SmBrep.cpp (SmBrep(double, double)))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "construct_100.0_9876543.21",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#5 (upstream source/SMLib/src/SmBrep.cpp (SmBrep(double, double)))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "construct_100.0_0.001",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#6 (upstream source/SMLib/src/SmBrep.cpp (SmBrep(double, double)))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "construct_0.001_9876543.21",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#7 (upstream source/SMLib/src/SmBrep.cpp (SmBrep(double, double)))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "construct_0.001_0.001",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#8 (upstream source/SMLib/src/SmBrep.cpp (SmBrep(double, double)))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_Mouse_api1_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#9 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 20
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_Mouse_api1_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#10 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 20
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "copy_Mouse_api0_an1",
@@ -142,21 +102,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_Mouse_api0_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#12 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 20
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "merge_Mouse_an1",
@@ -166,16 +122,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_Mouse_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#14 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 27
     },
     {
       "max_rel_err": 0.0,
@@ -183,7 +135,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#15 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "deferred": {
@@ -222,33 +174,25 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_Endcap_api1_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#19 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_Endcap_api1_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#20 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "copy_Endcap_api0_an1",
@@ -258,21 +202,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_Endcap_api0_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#22 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "merge_Endcap_an1",
@@ -282,16 +222,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_Endcap_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#24 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -299,7 +235,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#25 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -330,33 +266,25 @@
       "values_compared": 73
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_box_with_large_fillet_api1_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#29 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 20
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_box_with_large_fillet_api1_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#30 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 20
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "copy_box_with_large_fillet_api0_an1",
@@ -366,21 +294,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_box_with_large_fillet_api0_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#32 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 20
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "merge_box_with_large_fillet_an1",
@@ -390,16 +314,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_box_with_large_fillet_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#34 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 27
     },
     {
       "max_rel_err": 0.0,
@@ -407,7 +327,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#35 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "deferred": {
@@ -446,33 +366,25 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_cone_api1_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#39 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_cone_api1_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#40 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "copy_cone_api0_an1",
@@ -482,21 +394,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_cone_api0_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#42 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "merge_cone_an1",
@@ -506,16 +414,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_cone_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#44 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -523,7 +427,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#45 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -554,76 +458,52 @@
       "values_compared": 75
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_disk_api1_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#49 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_disk_api1_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#50 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_disk_api0_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#51 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_disk_api0_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#52 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_disk_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#53 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_disk_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#54 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -631,7 +511,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#55 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -670,33 +550,25 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_ellips_ts2_api1_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#59 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_ellips_ts2_api1_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#60 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "copy_ellips_ts2_api0_an1",
@@ -706,21 +578,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_ellips_ts2_api0_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#62 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "merge_ellips_ts2_an1",
@@ -730,16 +598,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_ellips_ts2_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#64 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -747,7 +611,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#65 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -778,76 +642,52 @@
       "values_compared": 5808
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_plane_circ_api1_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#69 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_plane_circ_api1_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#70 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_plane_circ_api0_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#71 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_plane_circ_api0_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#72 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_plane_circ_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#73 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_plane_circ_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#74 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -855,7 +695,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#75 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -894,76 +734,52 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_plane_square_api1_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#79 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_plane_square_api1_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#80 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_plane_square_api0_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#81 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_plane_square_api0_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#82 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_plane_square_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#83 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_plane_square_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#84 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -971,7 +787,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#85 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -1010,33 +826,25 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_sphere_api1_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#89 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 20
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_sphere_api1_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#90 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 20
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "copy_sphere_api0_an1",
@@ -1046,21 +854,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_sphere_api0_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#92 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 20
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "merge_sphere_an1",
@@ -1070,16 +874,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_sphere_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#94 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 27
     },
     {
       "max_rel_err": 0.0,
@@ -1087,7 +887,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#95 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "deferred": {
@@ -1118,33 +918,25 @@
       "values_compared": 37
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_surf_extrude_api1_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#99 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_surf_extrude_api1_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#100 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "copy_surf_extrude_api0_an1",
@@ -1154,21 +946,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_surf_extrude_api0_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#102 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "merge_surf_extrude_an1",
@@ -1178,16 +966,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_surf_extrude_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#104 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -1195,7 +979,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#105 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -1226,33 +1010,25 @@
       "values_compared": 129
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_surf_rev_api1_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#109 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_surf_rev_api1_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#110 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "copy_surf_rev_api0_an1",
@@ -1262,21 +1038,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_surf_rev_api0_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#112 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "merge_surf_rev_an1",
@@ -1286,16 +1058,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_surf_rev_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#114 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -1303,7 +1071,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#115 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -1334,33 +1102,25 @@
       "values_compared": 161
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_surf_sphere150_api1_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#119 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_surf_sphere150_api1_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#120 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "copy_surf_sphere150_api0_an1",
@@ -1370,21 +1130,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_surf_sphere150_api0_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#122 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "merge_surf_sphere150_an1",
@@ -1394,16 +1150,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_surf_sphere150_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#124 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -1411,7 +1163,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#125 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -1442,33 +1194,25 @@
       "values_compared": 71
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_torus_api1_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#129 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 20
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_torus_api1_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#130 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 20
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "copy_torus_api0_an1",
@@ -1478,21 +1222,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_torus_api0_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#132 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 20
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "merge_torus_an1",
@@ -1502,16 +1242,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_torus_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#134 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 27
     },
     {
       "max_rel_err": 0.0,
@@ -1519,7 +1255,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#135 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "deferred": {
@@ -1550,33 +1286,25 @@
       "values_compared": 111
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_toruswvy_api1_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#139 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 20
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_toruswvy_api1_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#140 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 20
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "copy_toruswvy_api0_an1",
@@ -1586,21 +1314,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_toruswvy_api0_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#142 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 20
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "merge_toruswvy_an1",
@@ -1610,16 +1334,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_toruswvy_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#144 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 27
     },
     {
       "max_rel_err": 0.0,
@@ -1627,7 +1347,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#145 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "deferred": {
@@ -1658,33 +1378,25 @@
       "values_compared": 137
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_vase_rev_api1_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#149 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_vase_rev_api1_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#150 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "copy_vase_rev_api0_an1",
@@ -1694,21 +1406,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_vase_rev_api0_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#152 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "merge_vase_rev_an1",
@@ -1718,16 +1426,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_vase_rev_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#154 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -1735,7 +1439,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#155 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -1766,76 +1470,52 @@
       "values_compared": 171
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_net_api1_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#159 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_net_api1_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#160 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_net_api0_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#161 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "copy_net_api0_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#162 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_net_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#163 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "merge_net_an0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#164 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -1843,7 +1523,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#165 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -1866,12 +1546,372 @@
       "values_compared": 92
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_Mouse_0.1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#168 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_Mouse_-0.05",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#169 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_Endcap_0.1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#170 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_Endcap_-0.05",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#171 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_box_with_large_fillet_0.1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#172 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_box_with_large_fillet_-0.05",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#173 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_cone_0.1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#174 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_cone_-0.05",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#175 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_disk_0.1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#176 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_disk_-0.05",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#177 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_ellips_ts2_0.1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#178 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_ellips_ts2_-0.05",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#179 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_plane_circ_0.1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#180 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_plane_circ_-0.05",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#181 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_plane_square_0.1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#182 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_plane_square_-0.05",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#183 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_sphere_0.1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#184 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_sphere_-0.05",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#185 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_surf_extrude_0.1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#186 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_surf_extrude_-0.05",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#187 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_surf_rev_0.1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#188 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_surf_rev_-0.05",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#189 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_surf_sphere150_0.1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#190 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_surf_sphere150_-0.05",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#191 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_torus_0.1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#192 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_torus_-0.05",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#193 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_toruswvy_0.1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#194 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_toruswvy_-0.05",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#195 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_vase_rev_0.1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#196 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetEdges",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "nurbs_off_vase_rev_-0.05",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p3/copy.json#197 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::TurnToNURBS, SmOffsetSurface arm))",
+      "values_compared": 0
+    },
+    {
       "max_rel_err": 0.0,
       "name": "delface_Mouse_e0_d0",
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#0 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -1879,7 +1919,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#1 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -1887,7 +1927,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#2 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "deferred": {
@@ -1979,7 +2019,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#10 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -1987,7 +2027,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#11 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -1995,7 +2035,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#12 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2003,7 +2043,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#13 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2011,7 +2051,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#14 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -2055,7 +2095,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#18 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -2063,7 +2103,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#19 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -2071,7 +2111,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#20 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -2079,7 +2119,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#21 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -2087,7 +2127,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#22 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -2095,7 +2135,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#23 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -2103,7 +2143,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#24 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -2111,7 +2151,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#25 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -2119,7 +2159,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#26 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "deferred": {
@@ -2211,7 +2251,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#34 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 18
     },
     {
       "deferred": {
@@ -2231,7 +2271,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#36 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2239,7 +2279,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#37 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2247,7 +2287,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#38 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -2303,7 +2343,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#43 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -2323,7 +2363,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#45 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -2343,7 +2383,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#47 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -2351,7 +2391,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#48 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2359,7 +2399,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#49 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2367,7 +2407,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#50 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -2483,7 +2523,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#60 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2491,7 +2531,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#61 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2499,7 +2539,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#62 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -2591,7 +2631,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#70 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -2611,7 +2651,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#72 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2619,7 +2659,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#73 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2627,7 +2667,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#74 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -2671,7 +2711,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#78 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -2679,7 +2719,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#79 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -2687,7 +2727,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#80 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -2695,7 +2735,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#81 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -2703,7 +2743,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#82 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -2711,7 +2751,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#83 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -2719,7 +2759,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#84 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2727,7 +2767,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#85 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2735,7 +2775,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#86 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -2827,7 +2867,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#94 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -2847,7 +2887,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#96 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -2855,7 +2895,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#97 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -2863,7 +2903,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#98 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "deferred": {
@@ -2979,7 +3019,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#108 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2987,7 +3027,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#109 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2995,7 +3035,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#110 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -3087,7 +3127,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#118 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -3107,7 +3147,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#120 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -3115,7 +3155,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#121 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -3123,7 +3163,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#122 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -3215,7 +3255,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#130 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -3235,7 +3275,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#132 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -3243,7 +3283,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#133 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -3251,7 +3291,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#134 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -3367,7 +3407,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#144 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -3375,7 +3415,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#145 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -3383,7 +3423,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#146 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "deferred": {
@@ -3427,7 +3467,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#150 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -3435,7 +3475,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#151 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -3443,7 +3483,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#152 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -3451,7 +3491,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#153 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -3459,7 +3499,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#154 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -3467,7 +3507,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#155 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -3475,7 +3515,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#156 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -3483,7 +3523,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#157 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -3491,7 +3531,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#158 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "deferred": {
@@ -3535,7 +3575,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#162 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -3543,7 +3583,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#163 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -3551,7 +3591,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#164 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -3559,7 +3599,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#165 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -3567,7 +3607,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#166 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -3575,7 +3615,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#167 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -3583,7 +3623,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#168 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -3591,7 +3631,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#169 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -3599,7 +3639,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#170 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -3655,7 +3695,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#175 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -3675,7 +3715,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#177 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -3695,295 +3735,199 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#179 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_net_e0_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#180 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_net_e1_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#181 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_net_e0_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#182 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_net_e1_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#183 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_net_e0_w2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#184 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_net_e1_w2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#185 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_net_w0_r-1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#186 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_net_w0_r0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#187 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_net_w0_r1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#188 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_net_w1_r-1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#189 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_net_w1_r0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#190 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_net_w1_r1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#191 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_plane_square_w0_r-1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#192 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_plane_square_w0_r0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#193 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_plane_square_w0_r1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#194 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_plane_square_w1_r-1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#195 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_plane_square_w1_r0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#196 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_plane_square_w1_r1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#197 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_sphere_w0_r-1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#198 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
-      "values_compared": 0
+      "values_compared": 18
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_sphere_w0_r0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#199 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
-      "values_compared": 0
+      "values_compared": 18
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_sphere_w0_r1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#200 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
-      "values_compared": 0
+      "values_compared": 18
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_sphere_w1_r-1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#201 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
-      "values_compared": 0
+      "values_compared": 18
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_sphere_w1_r0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#202 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
-      "values_compared": 0
+      "values_compared": 18
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "wire_sphere_w1_r1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#203 (upstream tests/prog_test/src/smTopoTest.cpp (my_test_topology))",
-      "values_compared": 0
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -4955,31 +4899,23 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119067",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0003",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119068",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0004",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119069",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
@@ -5014,16 +4950,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0008",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119073",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -5046,16 +4978,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0011",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119076",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
@@ -5082,16 +5010,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0014",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119079",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -5102,28 +5026,20 @@
       "values_compared": 30
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0016",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119081",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0017",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119082",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -5131,19 +5047,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119083",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0019",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119084",
-      "values_compared": 0
+      "values_compared": 20
     },
     {
       "max_rel_err": 0.0,
@@ -5151,7 +5063,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119085",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -5166,28 +5078,20 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0022",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119087",
-      "values_compared": 0
+      "values_compared": 20
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0023",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119088",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
@@ -5219,7 +5123,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119091",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -5258,16 +5162,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0030",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119095",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -5275,19 +5175,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119096",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0032",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119097",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -5307,8 +5203,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0035",
@@ -5342,28 +5238,20 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0038",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119103",
-      "values_compared": 0
+      "values_compared": 20
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0039",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119104",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
@@ -5378,16 +5266,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0041",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119106",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -5395,7 +5279,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119107",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -5410,16 +5294,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0044",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119109",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -5463,7 +5343,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119114",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -5479,7 +5359,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119116",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -5511,7 +5391,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119119",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -5522,16 +5402,12 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0056",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119121",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -5539,19 +5415,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119122",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0058",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119123",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "deferred": {
@@ -5595,7 +5467,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119127",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -5603,19 +5475,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119128",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0064",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119129",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -5623,7 +5491,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119130",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -5643,19 +5511,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119132",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0068",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119133",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -5671,19 +5535,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119135",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0071",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119136",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
@@ -5711,8 +5571,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0074",
@@ -5734,28 +5594,20 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0076",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119141",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0077",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119142",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "deferred": {
@@ -5783,19 +5635,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119145",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0081",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119146",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -5806,16 +5654,12 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0083",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119148",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -5823,19 +5667,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119149",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0085",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119150",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -5851,12 +5691,12 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119152",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0088",
@@ -5866,40 +5706,28 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0089",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119154",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0090",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119155",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0091",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119156",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -5915,7 +5743,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119158",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -5930,16 +5758,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0095",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119160",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -5947,19 +5771,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119161",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0097",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119162",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
@@ -5974,16 +5794,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0099",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119164",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -5999,7 +5815,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119166",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -6007,7 +5823,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119167",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -6015,60 +5831,44 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119168",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0104",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119169",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0105",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119170",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0106",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119171",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0107",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119172",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0108",
@@ -6078,16 +5878,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0109",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119174",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -6095,7 +5891,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119175",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -6118,16 +5914,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0113",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119178",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -6150,28 +5942,20 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0116",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119181",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0117",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119182",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -6179,7 +5963,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119183",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -6187,24 +5971,20 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119184",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0120",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119185",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0121",
@@ -6247,8 +6027,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0125",
@@ -6259,8 +6039,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0126",
@@ -6271,8 +6051,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0127",
@@ -6282,16 +6062,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0128",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119193",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -6314,28 +6090,20 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0131",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119196",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0132",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119197",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -6343,7 +6111,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119198",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -6351,7 +6119,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119199",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -6359,7 +6127,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119200",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -6367,7 +6135,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119201",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -6375,7 +6143,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119202",
-      "values_compared": 6
+      "values_compared": 18
     },
     {
       "deferred": {
@@ -6390,28 +6158,20 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0139",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119204",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0140",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119205",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -6419,7 +6179,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119206",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -6447,7 +6207,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119209",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -6458,40 +6218,28 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0146",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119211",
-      "values_compared": 0
+      "values_compared": 27
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0147",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119212",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0148",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119213",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -6499,24 +6247,20 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119214",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0150",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119215",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0151",
@@ -6526,28 +6270,20 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0152",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119217",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0153",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119218",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -6555,19 +6291,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119219",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0155",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119220",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -6606,16 +6338,12 @@
       "values_compared": 37
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0160",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119225",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -6643,7 +6371,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119228",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -6682,16 +6410,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0167",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119232",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -6722,16 +6446,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0171",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119236",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -6739,7 +6459,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119237",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -6754,16 +6474,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0174",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119239",
-      "values_compared": 0
+      "values_compared": 18
     },
     {
       "deferred": {
@@ -6790,16 +6506,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0177",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119242",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -6843,7 +6555,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119246",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -6870,16 +6582,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0184",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119249",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "deferred": {
@@ -6906,16 +6614,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0187",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119252",
-      "values_compared": 0
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -6923,19 +6627,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119253",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0189",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119254",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -6950,16 +6650,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0191",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119256",
-      "values_compared": 0
+      "values_compared": 18
     },
     {
       "deferred": {
@@ -6982,28 +6678,20 @@
       "values_compared": 75
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0194",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119259",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0195",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119260",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -7051,7 +6739,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119265",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -7066,28 +6754,20 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0202",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119267",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0203",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119268",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
@@ -7115,7 +6795,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119271",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -7131,7 +6811,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119273",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -7151,7 +6831,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119275",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -7159,19 +6839,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119276",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0212",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119277",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
@@ -7186,28 +6862,20 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0214",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119279",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0215",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119280",
-      "values_compared": 0
+      "values_compared": 20
     },
     {
       "deferred": {
@@ -7247,7 +6915,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119284",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -7263,7 +6931,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119286",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -7278,16 +6946,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0223",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119288",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -7298,28 +6962,20 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0225",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119290",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0226",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119291",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "deferred": {
@@ -7334,52 +6990,36 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0228",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119293",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0229",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119294",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0230",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119295",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0231",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119296",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -7387,7 +7027,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119297",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -7422,64 +7062,44 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0236",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119301",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0237",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119302",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0238",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119303",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0239",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119304",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0240",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119305",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -7511,7 +7131,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119308",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -7527,7 +7147,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119310",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -7550,16 +7170,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0248",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119313",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -7574,16 +7190,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0250",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119315",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
@@ -7598,16 +7210,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0252",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119317",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
@@ -7622,21 +7230,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0254",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119319",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0255",
@@ -7651,7 +7255,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119321",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -7670,16 +7274,12 @@
       "values_compared": 23
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0259",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119324",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -7687,24 +7287,20 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119325",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0261",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119326",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0262",
@@ -7726,16 +7322,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0264",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119329",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -7766,16 +7358,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0268",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119333",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -7783,7 +7371,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119334",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -7802,16 +7390,12 @@
       "values_compared": 92
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0272",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119337",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -7846,28 +7430,20 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0276",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119341",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0277",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119342",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -7875,7 +7451,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119343",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -7895,7 +7471,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119345",
-      "values_compared": 6
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -7930,16 +7506,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0284",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119349",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
@@ -7990,16 +7562,12 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0290",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119355",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "deferred": {
@@ -8014,40 +7582,28 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0292",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119357",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0293",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119358",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0294",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119359",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -8079,19 +7635,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119362",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0298",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119363",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
@@ -8111,7 +7663,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119365",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -8119,31 +7671,23 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119366",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0302",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119367",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0303",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119368",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "deferred": {
@@ -8170,16 +7714,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0306",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119371",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -8227,8 +7767,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0311",
@@ -8287,7 +7827,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119381",
-      "values_compared": 6
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -8298,16 +7838,12 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0318",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119383",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -8331,7 +7867,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119386",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -8339,7 +7875,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119387",
-      "values_compared": 6
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -8355,7 +7891,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119389",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -8378,16 +7914,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0327",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119392",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -8398,28 +7930,20 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0329",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119394",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0330",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119395",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -8483,7 +8007,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119401",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -8506,28 +8030,20 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0339",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119404",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0340",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119405",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "deferred": {
@@ -8554,16 +8070,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0343",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119408",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
@@ -8586,16 +8098,12 @@
       "values_compared": 38
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0346",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119411",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -8603,7 +8111,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119412",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "deferred": {
@@ -8635,7 +8143,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119415",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -8643,7 +8151,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119416",
-      "values_compared": 7
+      "values_compared": 19
     },
     {
       "deferred": {
@@ -8658,16 +8166,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0353",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119418",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -8694,28 +8198,20 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::GetList",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0356",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119421",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0357",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119422",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -8750,33 +8246,25 @@
       "values_compared": 171
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0361",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119426",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0362",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119427",
-      "values_compared": 0
+      "values_compared": 18
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0363",
@@ -8794,28 +8282,20 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0365",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119430",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0366",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119431",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -8843,19 +8323,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119434",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0370",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119435",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "deferred": {
@@ -8927,8 +8403,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0377",
@@ -8959,7 +8435,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119445",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -8975,36 +8451,28 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119447",
-      "values_compared": 6
+      "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0383",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119448",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::SetIsVoid",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0384",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119449",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0385",
@@ -9039,8 +8507,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0388",
@@ -9062,21 +8530,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0390",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119455",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
+        "symbol": "SmCone::IsNurbSurfaceCone",
+        "unit": "surface.cone_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0391",
@@ -9086,16 +8550,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0392",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119457",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -9111,7 +8571,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119459",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -9122,16 +8582,12 @@
       "values_compared": 92
     },
     {
-      "deferred": {
-        "symbol": "SmRegion::m_bIsVoidFlag",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0396",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119461",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "deferred": {
@@ -9146,16 +8602,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmShell::IsVertexShell",
-        "unit": "topology.shell"
-      },
       "max_rel_err": 0.0,
       "name": "gen0398",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119463",
-      "values_compared": 0
+      "values_compared": 18
     },
     {
       "deferred": {
@@ -9171,16 +8623,16 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 558,
+  "cases_deferred": 361,
   "cases_failed": 0,
-  "cases_passed": 309,
-  "cases_total": 867,
+  "cases_passed": 536,
+  "cases_total": 897,
   "deferred_by_unit": {
     "query.brep": 49,
+    "surface.cone_p2": 41,
     "topology.brep_p9": 41,
     "topology.face_p3": 161,
-    "topology.face_p4": 39,
-    "topology.shell": 268
+    "topology.face_p4": 69
   },
   "max_rel_err": 0.0,
   "pass": true,
