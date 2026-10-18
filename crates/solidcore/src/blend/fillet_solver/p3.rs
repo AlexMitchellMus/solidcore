@@ -1293,7 +1293,7 @@ impl FilletSolver {
             let side_edge =
                 eu::edge(target, e_use)?.ok_or_else(|| invalid("edge use without edge"))?;
             let (tangent, _opposite_normals) =
-                test_manifold_tangent_rollover(target, side_edge, self.tangency_tolerance)?;
+                test_manifold_tangent_rollover(k, target, side_edge, self.tangency_tolerance)?;
             if tangent {
                 // Unimplemented Tangent Rollover Case
                 return Err(SolidError::sm_err(OP_P));

@@ -17,7 +17,7 @@
 //! | [`SecantConstantRadiusFs::load_initial_values`]   | `SmSecantConstantRadiusFS::LoadInitialValues`     |
 //! | [`SecantConstantRadiusFs::load_jacobian`]         | `SmSecantConstantRadiusFS::LoadJacobian`          |
 //! | [`ConstantRadiusAssistedFs`] (CO-PORTED)          | `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` over the `SmFilletSolver` base ([`FilletSolver`]) |
-//! | `impl FilletSolverOps` for both solvers            | their `LoadJacobian` / `LoadInitialValues` overrides; the inherited `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` overrides (`GetJacobianSize`, `SetupOffsetValues`, `OffsetRadiiCanChange`, `GetType`, `IsKindOf`, `GetSolverType`) return [`SolidError::Unported`] (units `blend.fillet_standard_solver_p1` / `_p2`) |
+//! | `impl FilletSolverOps` for both solvers            | their `LoadJacobian` / `LoadInitialValues` overrides; the inherited `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` overrides (`GetJacobianSize`, `SetupOffsetValues`, `OffsetRadiiCanChange`, `GetType`, `IsKindOf`) return [`SolidError::Unported`] (units `blend.fillet_standard_solver_p1` / `_p2`) |
 //! | [`OffsetSurface`], [`SurfaceId`]                  | an `SmOffsetSurface*` rail surface (unit `surface.offset_surface`) and the identity of its base pointer |
 //! | [`JacobianLoad`], [`InitialValues`]               | the in/out arguments of `LoadJacobian`, `LoadInitialValues` |
 //!

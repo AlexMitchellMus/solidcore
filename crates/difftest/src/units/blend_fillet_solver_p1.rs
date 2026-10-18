@@ -28,7 +28,8 @@
 //! `SmSphere` (defers: no Rust type)), `SmRailRailIntersectENFO` (`rail_rail`, two loading solvers), the
 //! `SmFindClippedRadiusEFO` constructor (`clipped`), `sm_TestSideEdgeConvexity`
 //! (`convexity`: an edge without edge uses compares, others defer), `sm_TrimRail`
-//! (`trim_rail`, on a B-rep edge) and the solver's B-rep queries (`queries`: `GetVertex`,
+//! (`trim_rail`, on a B-rep edge), `sm_TestManifoldTangentRollover` (`rollover`, on a
+//! B-rep edge) and the solver's B-rep queries (`queries`: `GetVertex`,
 //! `FindIndexOfRailOnFace`, `FindIndexOfRailXSideEdgeuse` with edge uses of upstream test
 //! files, face and wire B-reps). B-rep cases build the C++ B-rep, export it through unit
 //! `topology.edgeuse_p1` and import the same records on the Rust side; entity selectors
@@ -42,7 +43,8 @@ use solidcore::blend::fillet_custom_solver::{JacobianLoad, OffsetSurface, Surfac
 use solidcore::blend::fillet_solver::p1::{
     check_edge_curve_domains, compute_uv_vectors, find_next_good_interval, test_analytic_surface,
     AnalyticTestSurface,
-    test_side_edge_convexity, tol_ang_tol_rad, trim_rail, FilStatus, FilletSolver,
+    test_manifold_tangent_rollover, test_side_edge_convexity, tol_ang_tol_rad, trim_rail, FilStatus,
+    FilletSolver,
     FilletSolverOffsetsData, FilletSolverOps, FilletSphereSolveEnfo, FilletSurfaceGenerator,
     FindClippedRadiusEfo, OffsetSurfaceSlot, RailRailIntersectEnfo, RailUvCurveIntersectEnfo,
 };
@@ -57,6 +59,8 @@ use solidcore::geom::axis2_placement::Axis2Placement;
 use solidcore::intersect::point_class::{ClassGeometry, ClassObject, ClassObjectKind, PointClassType};
 use solidcore::math::Point3;
 use solidcore::surface::cone::Cone;
+use solidcore::surface::offset_surface::SS_UNKNOWN;
+use solidcore::surface::sphere::Sphere;
 use solidcore::surface::surface::Surface;
 use solidcore::surface::torus::{Torus, TorusOptions};
 use solidcore::surface::volume::Volume;
@@ -64,7 +68,6 @@ use solidcore::intersect::surface_intersector::p1::TsectPnt;
 use solidcore::kernel::Kernel;
 use solidcore::nurbs::b_spline_surface::SurfParamType;
 use solidcore::nurbs::math::NOW;
-use solidcore::surface::offset_surface::SS_UNKNOWN;
 use solidcore::topology::edgeuse::p1 as eu;
 use solidcore::topology::{Brep, Edge, EdgeId, EdgeuseId, FaceId, Vertex};
 use solidcore::SolidError;
@@ -79,12 +82,6 @@ use crate::{HarnessError, Output, Rng, UnitDiff};
 
 /// The runner.
 pub struct Runner;
-
-/// `new SmOffsetSurface(d, *base)` as the shim builds it (default `lSingularities`,
-/// `SM_SS_UNKNOWN`).
-fn rail_offset(d: f64, base: Surface, id: SurfaceId) -> solidcore::Result<OffsetSurface> {
-    OffsetSurface::new(&Kernel::default(), d, base, id, SS_UNKNOWN)
-}
 
 fn harness(msg: impl Into<String>) -> HarnessError {
     HarnessError::new(msg)
@@ -247,6 +244,12 @@ enum Inputs {
         face: i64,
         side: i64,
     },
+    /// `sm_TestManifoldTangentRollover` on an edge with tolerance `tol` (radians).
+    Rollover {
+        brep: BrepIn,
+        edge: i64,
+        tol: f64,
+    },
 }
 
 impl Inputs {
@@ -277,6 +280,7 @@ impl Inputs {
             Inputs::Convexity { .. } => StaticOp::Convexity,
             Inputs::TrimRail { .. } => StaticOp::TrimRail,
             Inputs::Queries { .. } => StaticOp::Queries,
+            Inputs::Rollover { .. } => StaticOp::Rollover,
             _ => return None,
         })
     }
@@ -286,7 +290,8 @@ impl Inputs {
             Inputs::CheckDomains { brep, .. }
             | Inputs::Convexity { brep, .. }
             | Inputs::TrimRail { brep, .. }
-            | Inputs::Queries { brep, .. } => Some(brep),
+            | Inputs::Queries { brep, .. }
+            | Inputs::Rollover { brep, .. } => Some(brep),
             _ => None,
         }
     }
@@ -354,7 +359,9 @@ fn brep_case(brep: &BrepIn) -> Result<Result<BrepCase, Output>, HarnessError> {
 fn resolve(i: &Inputs, c: &BrepCase) -> [i64; 4] {
     let [_, _, _, n_f, _, _, n_eu, n_e, _, _] = c.counts;
     match i {
-        Inputs::CheckDomains { edge, .. } | Inputs::TrimRail { edge, .. } => [sel(*edge, n_e), -1, -1, -1],
+        Inputs::CheckDomains { edge, .. } | Inputs::TrimRail { edge, .. } | Inputs::Rollover { edge, .. } => {
+            [sel(*edge, n_e), -1, -1, -1]
+        }
         Inputs::Convexity { edge, .. } => [if *edge < 0 { -1 } else { sel(*edge, n_e) }, -1, -1, -1],
         Inputs::Queries { eu, face, side, .. } => [
             sel(eu[0], n_eu),
@@ -427,6 +434,7 @@ fn static_input(i: &Inputs, c: Option<&BrepCase>) -> Result<Vec<f64>, HarnessErr
             o.extend([r[0] as f64, t0, t1]);
         }
         Inputs::Queries { .. } => o.extend(r.map(|v| v as f64)),
+        Inputs::Rollover { tol, .. } => o.extend([r[0] as f64, *tol]),
         _ => return Err(harness("not a static op")),
     }
     Ok(o)
@@ -629,15 +637,16 @@ fn rust_state(
     o: &mut Vec<f64>,
 ) -> Result<Result<(), SolidError>, HarnessError> {
     let bases = [surface_of(&base[0])?, surface_of(&base[1])?];
+    let kern = Kernel::default();
     let mut fs = FilletSolver::new(tols[0], tols[1], tols[2]);
     let mut next_key = 0u64;
-    let mut make = |rail: usize, d: f64| {
+    let mut make = |rail: usize, d: f64| -> Result<OffsetSurfaceSlot, SolidError> {
         let key = next_key;
         next_key += 1;
         let base = if rail == 0 { &bases[0] } else { &bases[1] };
-        Ok::<_, SolidError>(OffsetSurfaceSlot {
+        Ok(OffsetSurfaceSlot {
             key,
-            surface: rail_offset(d, base.clone(), SurfaceId::Free(rail as u32))?,
+            surface: OffsetSurface::new(&kern, d, base.clone(), SurfaceId::Free(rail as u32), SS_UNKNOWN)?,
         })
     };
     let r = (|| -> Result<(), SolidError> {
@@ -707,6 +716,7 @@ fn put_arrays(o: &mut Vec<f64>, f: &[f64], j: Option<&Matrix>) {
 /// A [`ShimSolver`] with the case's offset surfaces (keys 0 and 1).
 fn shim_with(s: &Surfs, load: bool, found: bool, setup: bool) -> Result<ShimSolver, HarnessError> {
     let base = surface_of(&s.base)?;
+    let kern = Kernel::default();
     let mut fs = ShimSolver {
         base: FilletSolver::new(1.0e-6, 0.1, 0.01),
         load,
@@ -715,10 +725,11 @@ fn shim_with(s: &Surfs, load: bool, found: bool, setup: bool) -> Result<ShimSolv
     };
     for (k, (h, d)) in s.has.iter().zip(&s.off).enumerate() {
         if *h {
+            let surface = OffsetSurface::new(&kern, *d, base.clone(), SurfaceId::Free(0), SS_UNKNOWN)
+                .map_err(|e| harness(e.to_string()))?;
             let slot = OffsetSurfaceSlot {
                 key: k as u64,
-                surface: rail_offset(*d, base.clone(), SurfaceId::Free(0))
-                    .map_err(|e| harness(e.to_string()))?,
+                surface,
             };
             fs.base.set_surface(k, Some(slot)).map_err(|e| harness(e.to_string()))?;
         }
@@ -835,6 +846,20 @@ fn rust_brep(i: &Inputs, c: &mut BrepCase, o: &mut Vec<f64>) -> Result<Result<()
                 Ok(())
             })()
         }
+        Inputs::Rollover { tol, .. } => {
+            let e = EdgeId::from_index(eid(r[0])?);
+            match test_manifold_tangent_rollover(&k, &mut c.brep, e, *tol) {
+                Ok((tangent, opposite)) => {
+                    o.extend([b(tangent), b(opposite)]);
+                    Ok(())
+                }
+                Err(SolidError::InvalidInput { .. }) => {
+                    o.push(-2.0);
+                    Ok(())
+                }
+                Err(e) => Err(e),
+            }
+        }
         _ => return Err(harness("not a B-rep op")),
     };
     Ok(res)
@@ -887,8 +912,7 @@ fn rust_static(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, H
                     );
                     c.make_nurb(&k).map(|()| Rev::Cone(c))
                 }
-                // UNPORTED(surface.sphere): SmSphere::CreateCanonical
-                2 => Err(SolidError::unported("SmSphere::CreateCanonical", "surface.sphere")),
+                2 => Sphere::create_canonical(&k, &a2p, p[0]).map(Rev::Sphere),
                 _ => Torus::create_canonical(&k, &a2p, p[0], p[1], TorusOptions::default(), None)
                     .map(Rev::Torus),
             };
@@ -899,6 +923,7 @@ fn rust_static(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, H
                     Ok(())
                 }
                 Ok(Rev::Cone(c)) => tested(AnalyticTestSurface::Cone(&c), o),
+                Ok(Rev::Sphere(s)) => tested(AnalyticTestSurface::Sphere(&s), o),
                 Ok(Rev::Torus(t)) => tested(AnalyticTestSurface::Torus(&t), o),
             }
         }
@@ -937,11 +962,12 @@ fn rust_static(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, H
         } => {
             let plane = Surfs::default();
             let base = surface_of(&plane.base)?;
+            let kern = Kernel::default();
             let mut fs = FilletSolver::new(*tol, 0.1, 0.01);
             let r = (|| -> Result<(), SolidError> {
                 for (k, (h, d)) in has.iter().zip(off).enumerate() {
                     if *h {
-                        let s = rail_offset(*d, base.clone(), SurfaceId::Free(0))?;
+                        let s = OffsetSurface::new(&kern, *d, base.clone(), SurfaceId::Free(0), SS_UNKNOWN)?;
                         fs.set_surface(k, Some(OffsetSurfaceSlot { key: k as u64, surface: s }))?;
                     }
                 }
@@ -1102,6 +1128,16 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             );
             if r.is_ok() {
                 o.push(0.0);
+                // as the shim: per surface P, du, dv, unit normal, UV; curve point, angle
+                for (pv, uvc) in t.surface_pv.iter().zip(&t.uv_curve_pv) {
+                    for p in [pv[0][0], pv[1][0], pv[0][1], pv[2][2]] {
+                        o.extend_from_slice(&[p.x, p.y, p.z]);
+                    }
+                    let uv = uvc[0];
+                    o.extend_from_slice(&[uv.x, uv.y]);
+                }
+                let c = t.curve_pv[0];
+                o.extend_from_slice(&[c.x, c.y, c.z, t.tangent_plane_angle_rad]);
             }
             r
         }
@@ -1143,17 +1179,18 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         }
         Inputs::Finish { surface, has, off } => {
             let base = surface_of(surface)?;
+            let k = Kernel::default();
             let mut fs = FilletSolver::new(1.0e-6, 0.1, 0.01);
             let r = (|| -> Result<(), SolidError> {
                 if has[0] {
-                    let s = rail_offset(*off, base.clone(), SurfaceId::Free(0))?;
+                    let s = OffsetSurface::new(&k, *off, base.clone(), SurfaceId::Free(0), SS_UNKNOWN)?;
                     fs.set_surface(0, Some(OffsetSurfaceSlot { key: 0, surface: s }))?;
                 }
                 if has[1] {
-                    let s = rail_offset(-*off, base.clone(), SurfaceId::Free(0))?;
+                    let s = OffsetSurface::new(&k, -*off, base.clone(), SurfaceId::Free(0), SS_UNKNOWN)?;
                     fs.set_surface(1, Some(OffsetSurfaceSlot { key: 1, surface: s }))?;
                 }
-                fs.finish_construction(&Kernel::default())
+                fs.finish_construction(&k)
             })();
             if r.is_ok() {
                 o.push(0.0);
@@ -1212,7 +1249,8 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             let k = Kernel::default();
             let mut fs = FilletSolver::new(1.0e-6, 0.1, 0.01);
             let plane = surface_of(&Surfs::default().base)?;
-            let mut s1 = rail_offset(0.0, plane, SurfaceId::Free(0)).map_err(|e| harness(e.to_string()))?;
+            let mut s1 = OffsetSurface::new(&k, 0.0, plane, SurfaceId::Free(0), SS_UNKNOWN)
+                .map_err(|e| harness(e.to_string()))?;
             let mut ext = ExtentNd::new(3);
             let mut per = Vec::new();
             let mut guess = Vec::new();
@@ -1344,6 +1382,7 @@ impl ClassGeometry<H> for NoGeometry {
 /// A built analytic surface of [`Inputs::AnalyticRev`].
 enum Rev {
     Cone(Cone),
+    Sphere(Sphere),
     Torus(Torus),
 }
 
@@ -1639,7 +1678,7 @@ fn gen_analytic_rev(rng: &mut Rng) -> Inputs {
 
 fn gen_static(rng: &mut Rng) -> Inputs {
     let s = |rng: &mut Rng| rng.below(64) as i64;
-    match rng.below(9) {
+    match rng.below(10) {
         0 => {
             let n = rng.below(6) as usize;
             let cls = (0..n)
@@ -1719,6 +1758,12 @@ fn gen_static(rng: &mut Rng) -> Inputs {
                 t: [a, a + rng.uniform(0.05, 0.7)],
             }
         }
+        // tolerances from tight to past a right angle (a negative cosine limit)
+        8 => Inputs::Rollover {
+            brep: gen_brep_case(rng),
+            edge: s(rng),
+            tol: *rng.choose(&[1e-6, 1e-3, 0.01, 0.1, 0.5, 1.0, 2.0]).unwrap_or(&0.01),
+        },
         _ => Inputs::Queries {
             brep: gen_brep_case(rng),
             eu: [if rng.chance(0.1) { -1 } else { s(rng) }, if rng.chance(0.2) { -1 } else { s(rng) }],
