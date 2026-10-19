@@ -3260,7 +3260,13 @@ mod tests {
         let second_use = c.clone();
         with_env(|env| bind_wire_curve(&mut k, &mut b, env, e1, c)).unwrap();
         with_env(|env| bind_wire_curve(&mut k, &mut b, env, e2, second_use)).unwrap();
-        let key = |b: &Brep, e| b.edge(e).unwrap().curve.as_ref().and_then(Curve::notify_key);
+        let key = |b: &Brep, e| {
+            b.edge(e)
+                .unwrap()
+                .curve
+                .as_ref()
+                .and_then(Curve::notify_key)
+        };
         assert_eq!(key(&b, e1), Some(original.key));
         assert!(key(&b, e2).is_some() && key(&b, e2) != key(&b, e1));
     }
