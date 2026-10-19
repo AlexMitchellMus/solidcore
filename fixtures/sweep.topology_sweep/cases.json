@@ -1445,6 +1445,37 @@
           0
         ]
       }
+    },
+    {
+      "name": "selected_axis_vertices_are_distinct_from_script_pool",
+      "inputs": {
+        "kind": 2,
+        "vector": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "steps": [
+          [
+            15,
+            0,
+            0,
+            0
+          ],
+          [
+            15,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            1,
+            0
+          ]
+        ]
+      }
     }
   ]
 }

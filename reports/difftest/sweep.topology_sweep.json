@@ -499,6 +499,14 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "selected_axis_vertices_are_distinct_from_script_pool",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/sweep.topology_sweep/cases.json#55",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -4597,8 +4605,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 14,
   "cases_failed": 0,
-  "cases_passed": 553,
-  "cases_total": 567,
+  "cases_passed": 554,
+  "cases_total": 568,
   "deferred_by_unit": {
     "topology.brep_p9": 14
   },
