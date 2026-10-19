@@ -224,7 +224,7 @@ tests = ["prog_test:my_test_surface_closest_point", "prog_test:my_test_drop_poin
 status = "green"
 claimed_by = "swarm-nlib.basis_basic-a1"
 claimed_at = "2026-10-12T19:59:25Z"
-notes = "8 fns; green: 2596 difftest cases (1096 fixture + 1500 generated), 0 deferred, bit-identical (max_rel_err 0); 201,096-case run also clean. See plan/findings.md"
+notes = "8 fns; green: 2605 difftest cases (1105 fixture + 1500 generated), 0 deferred, bit-identical (max_rel_err 0); 201,105-case run and --fuzz 30000 also clean (issue #182). See plan/findings.md"
 
 [[unit]]
 id = "nlib.srf_basic"
