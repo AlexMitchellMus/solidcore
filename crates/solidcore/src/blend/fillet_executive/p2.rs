@@ -511,10 +511,10 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         // pBrep->GetContext()
         let brep = params.brep.ok_or_else(|| null("null B-rep"))?;
 
-        // Note, dApproxTol will presumably be reset for each edge.
-        let mut approx_tol = params.approx_tol;
-        if approx_tol <= EFF_ZERO {
-            approx_tol = 10.0 * access.tolerance(k, brep, false)?;
+        // Note, dApproxTol will be reset for each edge: the default (10 times the B-rep
+        // tolerance) is computed but never read.
+        if params.approx_tol <= EFF_ZERO {
+            let _ = 10.0 * access.tolerance(k, brep, false)?;
         }
         let mut ang_tol_deg = params.ang_tol_deg;
         if ang_tol_deg <= EFF_ZERO {
@@ -599,7 +599,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
 
             // Note, this works well in practice.  [B332]
             const TOL_FACTOR: f64 = 4.0;
-            approx_tol = TOL_FACTOR * access.edge_tolerance(edge)?;
+            let approx_tol = TOL_FACTOR * access.edge_tolerance(edge)?;
 
             let spec = match radius_type {
                 FilletSolverType::ConstRadius => Some(SolverSpec::ConstantRadius {
@@ -1087,7 +1087,6 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             }
 
             let mut curr_corner = corner1;
-            let mut curr_fs = curr_fs;
             let mut steps = 0;
             while let Some(next) = next_fs.filter(|&n| n != fs) {
                 steps += 1;
@@ -1106,7 +1105,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                 let next_corner = access
                     .solver_other_corner(next, curr_corner)?
                     .ok_or_else(|| null("solver without other corner"))?;
-                curr_fs = next;
+                let curr_fs = next;
                 next_fs = access.corner_tangent_solver(next_corner, curr_fs)?;
                 curr_corner = next_corner;
             }
@@ -1207,11 +1206,11 @@ where
         return Ok(None);
     }
 
-    let uv = |list: &[Option<Curve>], i: usize| -> Result<&Curve> {
+    fn uv(list: &[Option<Curve>], i: usize) -> Result<&Curve> {
         list.get(i)
             .and_then(Option::as_ref)
             .ok_or_else(|| null("null intersection UV curve"))
-    };
+    }
 
     // When more than one intersection curve was found, check for self-intersections:
     // we don't do those.
