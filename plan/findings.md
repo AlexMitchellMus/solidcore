@@ -9625,3 +9625,24 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   The FFI refuses a vertex repeated in the one-list `StitchVertexPairs` list (UB-178).
   Upstream defects kept by the port: WR-186 (`DoStitching`'s sticky candidate flags),
   WR-187 (a cancelled squeeze reported as done), UB-197 (stale edge after a failed glue with `m_bIgnoreProblems`).
+
+## blend.fillet_executive_p1, laws slice (`SmFilletLaw` family; PR #260, 2026-10-20; no disagreements)
+
+- **Corpus.** 40 cases (24 fixture, 16 generated): linear laws from `smFilletTest.cpp`
+  (2 -> 0, 2 -> 0.5), the cubic Bezier law r, 1.2r, 0.8r, r over a box edge, sub-maps
+  of a two-edge sequence, zero-length maps and intervals, snapping within the scaled
+  zero, extension below and above the domain with reuse and regrowth of the cached
+  extension, rational and repeated-knot laws, constant (zero-tangent) laws, huge and
+  tiny radii and knot scales: 40 pass at max_rel_err 0; 500 seeds 524 pass; `--perturb`
+  SENSITIVE 40/40; `--fuzz 2000` FUZZ-PASS.
+- **G1-closed law curve.** For a parameter beyond the domain of a G1-closed law curve
+  (the `smFilletTest.cpp` Bezier is one) `CreateExtendedCurve` returns an unextended
+  copy (NLib treats such a curve as periodic) and the evaluation clamps; not a crash.
+  Both sides agree (fixture `bspline_cubic_bezier_outside_domain_closed_law_copied`).
+- **Design.** `FilletLaw::evaluate` takes `&mut self` (upstream caches the extension
+  through a const cast); the `SmLinearFilletLaw` / `SmBSplineFilletLaw` constructors
+  stay with `blend.fillet_executive_p2` (PR #267) and the difftest harness mirrors their
+  zero-length-edge-map fallback until then.
+- Wiring the law into `intersect.surface_intersector_p1` (`EvaluateLawPoint`, opaque
+  `L` law parameter) is left for the executive: the call right after it
+  (`SmOffsetSurface::SetOffsetDistance` through a shared surface) is still a stub there.

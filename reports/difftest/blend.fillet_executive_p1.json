@@ -1,0 +1,337 @@
+{
+  "abs_floors": [],
+  "cases": [
+    {
+      "max_rel_err": 0.0,
+      "name": "linear_2_to_0_box_edge",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#0 (upstream tests/prog_test/src/smFilletTest.cpp:2391)",
+      "values_compared": 39
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "linear_2_to_05_reversed",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#1 (upstream tests/prog_test/src/smFilletTest.cpp:2693)",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "linear_submap_two_edge_sequence",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#2 (upstream source/SMLib/inc/SmFilletExecutive.h:669 (edge maps [0,0.4], [0.4,1]))",
+      "values_compared": 27
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "linear_submap_second_edge",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#3",
+      "values_compared": 27
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "linear_zero_length_map_means_none",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#4 (upstream source/SMLib/src/SmFilletExecutive.cpp:5335)",
+      "values_compared": 15
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "linear_zero_length_interval_divides_by_zero",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#5",
+      "values_compared": 19
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "linear_huge_radii",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#6",
+      "values_compared": 19
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "linear_tiny_radii",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#7",
+      "values_compared": 19
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "base_law_evaluate_is_error",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#8 (upstream source/SMLib/inc/SmFilletExecutive.h:708)",
+      "values_compared": 12
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_cubic_bezier_inside_domain",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#9 (upstream tests/prog_test/src/smFilletTest.cpp:307-399 (dBallRadius 1, edge interval [0,10]))",
+      "values_compared": 31
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_cubic_bezier_outside_domain_closed_law_copied",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#10 (upstream tests/prog_test/src/smFilletTest.cpp:307 (G1-closed law curve: the extension is an unextended copy, evaluation clamps))",
+      "values_compared": 46
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_degree1_is_linear_extension_both_sides",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#11",
+      "values_compared": 50
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_quadratic_extension_reuse_and_regrow",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#12",
+      "values_compared": 65
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_snap_to_ends_within_scaled_zero",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#13",
+      "values_compared": 48
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_zero_length_interval_is_error",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#14",
+      "values_compared": 16
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_no_map_uses_unit_map",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#15",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_zero_length_map_means_unit",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#16",
+      "values_compared": 19
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_submap_scales_derivatives",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#17",
+      "values_compared": 27
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_rational_law",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#18",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_repeated_interior_knot",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#19",
+      "values_compared": 63
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_huge_scale",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#20",
+      "values_compared": 20
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_tiny_scale",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#21",
+      "values_compared": 50
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_constant_radius_zero_tangent",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#22",
+      "values_compared": 24
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_stray_yz_ignored",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#23",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0000",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=13131444038141468807",
+      "values_compared": 12
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0001",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=13131444038141468808",
+      "values_compared": 27
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0002",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=13131444038141468809",
+      "values_compared": 27
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0003",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=13131444038141468810",
+      "values_compared": 15
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0004",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=13131444038141468811",
+      "values_compared": 25
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0005",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=13131444038141468812",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0006",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=13131444038141468813",
+      "values_compared": 15
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0007",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=13131444038141468814",
+      "values_compared": 19
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0008",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=13131444038141468815",
+      "values_compared": 73
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0009",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=13131444038141468816",
+      "values_compared": 72
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0010",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=13131444038141468817",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0011",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=13131444038141468818",
+      "values_compared": 95
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0012",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=13131444038141468819",
+      "values_compared": 19
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0013",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=13131444038141468820",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0014",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=13131444038141468821",
+      "values_compared": 65
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0015",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=13131444038141468822",
+      "values_compared": 15
+    }
+  ],
+  "cases_both_errored": 0,
+  "cases_deferred": 0,
+  "cases_failed": 0,
+  "cases_passed": 40,
+  "cases_total": 40,
+  "deferred_by_unit": {},
+  "max_rel_err": 0.0,
+  "pass": true,
+  "rel_tol": 1e-9,
+  "seeds": 16,
+  "status": "green",
+  "unit": "blend.fillet_executive_p1"
+}

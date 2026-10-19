@@ -6141,16 +6141,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletLaw::Evaluate",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0018",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694060",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -6178,8 +6174,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0022",
@@ -6275,8 +6271,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0028",
@@ -6334,16 +6330,12 @@
       "values_compared": 128
     },
     {
-      "deferred": {
-        "symbol": "SmFilletLaw::Evaluate",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0035",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694077",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -6450,16 +6442,12 @@
       "values_compared": 84
     },
     {
-      "deferred": {
-        "symbol": "SmFilletLaw::Evaluate",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0049",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694091",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -6518,16 +6506,12 @@
       "values_compared": 175
     },
     {
-      "deferred": {
-        "symbol": "SmFilletLaw::Evaluate",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0057",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694099",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -6938,16 +6922,12 @@
       "values_compared": 45
     },
     {
-      "deferred": {
-        "symbol": "SmFilletLaw::Evaluate",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0098",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694140",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -7157,8 +7137,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0119",
@@ -7360,16 +7340,12 @@
       "values_compared": 45
     },
     {
-      "deferred": {
-        "symbol": "SmFilletLaw::Evaluate",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0144",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694186",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -7456,21 +7432,17 @@
       "values_compared": 190
     },
     {
-      "deferred": {
-        "symbol": "SmFilletLaw::Evaluate",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0155",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694197",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0156",
@@ -7528,16 +7500,12 @@
       "values_compared": 33
     },
     {
-      "deferred": {
-        "symbol": "SmFilletLaw::Evaluate",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0163",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694205",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -7605,16 +7573,12 @@
       "values_compared": 217
     },
     {
-      "deferred": {
-        "symbol": "SmFilletLaw::Evaluate",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0172",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694214",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "inputs": {
@@ -7746,8 +7710,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
+        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0183",
@@ -7774,8 +7738,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0186",
@@ -8070,8 +8034,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0222",
@@ -8137,16 +8101,12 @@
       "values_compared": 78
     },
     {
-      "deferred": {
-        "symbol": "SmFilletLaw::Evaluate",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0230",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694272",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -8322,8 +8282,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0238",
@@ -8350,8 +8310,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
+        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0241",
@@ -8538,8 +8498,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0264",
@@ -9298,16 +9258,12 @@
       "values_compared": 2394
     },
     {
-      "deferred": {
-        "symbol": "SmFilletLaw::Evaluate",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0337",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694379",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -9359,8 +9315,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0344",
@@ -9410,16 +9366,12 @@
       "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmFilletLaw::Evaluate",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0350",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694392",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -9430,16 +9382,12 @@
       "values_compared": 355
     },
     {
-      "deferred": {
-        "symbol": "SmFilletLaw::Evaluate",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0352",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694394",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -9559,8 +9507,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0367",
@@ -10022,16 +9970,12 @@
       "values_compared": 33
     },
     {
-      "deferred": {
-        "symbol": "SmFilletLaw::Evaluate",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0413",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694455",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -10050,16 +9994,12 @@
       "values_compared": 200
     },
     {
-      "deferred": {
-        "symbol": "SmFilletLaw::Evaluate",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0416",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694458",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -10262,16 +10202,12 @@
       "values_compared": 231
     },
     {
-      "deferred": {
-        "symbol": "SmFilletLaw::Evaluate",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0442",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694484",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -10331,8 +10267,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0450",
@@ -10575,17 +10511,15 @@
     }
   ],
   "cases_both_errored": 2,
-  "cases_deferred": 42,
+  "cases_deferred": 26,
   "cases_failed": 0,
-  "cases_passed": 1161,
+  "cases_passed": 1177,
   "cases_rejected": 11,
   "cases_total": 1214,
   "deferred_by_unit": {
-    "blend.fillet_executive_p1": 16,
     "intersect.surface_drop_lib_p3": 6,
-    "surface.cone_p1": 11,
-    "surface.sphere": 2,
     "surface.surf_of_extrusion_p2": 1,
+    "surface.surface_p2": 13,
     "topology.brep_p10": 6
   },
   "max_rel_err": 0.0,
