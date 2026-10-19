@@ -551,7 +551,7 @@ fn base_of(k: &Kernel, s: &SolverIn) -> Result<Built<ConstantRadiusAssistedFs>, 
         s.o,
         [None, None],
     );
-    fs.surface_extension_factor = s.ext;
+    fs.solver.surface_extension_factor = s.ext;
     Ok(Ok(fs))
 }
 
@@ -647,7 +647,7 @@ fn rust_jac(
         Ok(b) => b,
         Err(out) => return Ok(out),
     };
-    let load = JacobianLoad {
+    let mut load = JacobianLoad {
         rail_index: rail,
         surface1: selector_id(sel[0].0, solver),
         surf1_offset: sel[0].1,
