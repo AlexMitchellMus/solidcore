@@ -74,8 +74,13 @@ impl ExecutiveAccess<Handle> for Access {
         _: Handle,
         _: &mut FilletExecutive<Handle>,
     ) -> SolidResult<()> {
-        // This empty-B-rep fixture constructs no concrete corner or solver.
-        missing()
+        // No concrete object is constructed here. Future fixtures must dispatch
+        // derived types to their owners, as documented on ExecutiveAccess.
+        // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::AdjustTopology
+        Err(SolidError::unported(
+            "SmFilletCorner::AdjustTopology",
+            "blend.fillet_corner_p1",
+        ))
     }
     fn adjust_tangent_corner(
         &mut self,
@@ -83,8 +88,13 @@ impl ExecutiveAccess<Handle> for Access {
         _: Handle,
         _: &mut FilletExecutive<Handle>,
     ) -> SolidResult<()> {
-        // This empty-B-rep fixture constructs no concrete corner or solver.
-        missing()
+        // No concrete object is constructed here. Future fixtures must dispatch
+        // derived types to their owners, as documented on ExecutiveAccess.
+        // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::AdjustTangentCorner
+        Err(SolidError::unported(
+            "SmFilletCorner::AdjustTangentCorner",
+            "blend.fillet_corner_p1",
+        ))
     }
     fn calc_fillet_geom(
         &mut self,
@@ -92,8 +102,13 @@ impl ExecutiveAccess<Handle> for Access {
         _: Handle,
         _: &mut FilletExecutive<Handle>,
     ) -> SolidResult<()> {
-        // This empty-B-rep fixture constructs no concrete corner or solver.
-        missing()
+        // No concrete object is constructed here. Future fixtures must dispatch
+        // derived types to their owners, as documented on ExecutiveAccess.
+        // UNPORTED(blend.fillet_solver_p4): SmFilletSolver::CalcFilletGeom
+        Err(SolidError::unported(
+            "SmFilletSolver::CalcFilletGeom",
+            "blend.fillet_solver_p4",
+        ))
     }
     fn corner_error_info(
         &self,
