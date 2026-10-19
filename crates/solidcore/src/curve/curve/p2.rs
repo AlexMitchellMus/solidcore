@@ -18,6 +18,7 @@
 //! | [`is_kind_of`], [`Curve::is_kind_of`]             | `SmCurve::IsKindOf`                              |
 //! | [`Curve::approx_eq`]                              | `operator==`                                     |
 //! | [`Curve::owner`], [`Curve::set_owner`], [`OwnerChange`] | `GetOwner`, `SetOwner`                     |
+//! | [`Curve::notify_key`], [`Curve::set_notify_key`] | (none: the object's identity in notifications; CO-PORTED by `topology.brep_p3`) |
 //! | [`Curve::edge`]                                   | `GetEdge`                                        |
 //! | [`notify`]                                        | `SmCurve::Notify`                                |
 //! | [`CurveEvaluate`]                                 | the evaluation virtuals the base numerics call   |
@@ -162,7 +163,7 @@ use crate::curve::parabola::Parabola;
 use crate::curve::projected_curve::ProjectedCurve;
 use crate::error::{ignore_status, ignored, Result, SolidError};
 use crate::geom::a_object::{self, AObject, CacheStore};
-use crate::geom::attribute::AttributeStore;
+use crate::geom::attribute::{AttributeStore, ObjectKey};
 use crate::geom::axis2_placement::Axis2Placement;
 use crate::geom::context::Context;
 use crate::geom::extent1d::Extent1d;
@@ -553,14 +554,20 @@ pub enum CurveKind {
 pub struct Curve {
     kind: CurveKind,
     owner: Option<ObjectRef>,
+    /// The identity this curve object is notified under (upstream passes the object
+    /// itself), given the first time a notification names it
+    /// ([`crate::geom::context::Context::new_geometry_key`]).
+    notify_key: Option<ObjectKey>,
 }
 
-/// The copy constructor: copies the geometry, resets the owner.
+/// The copy constructor: copies the geometry, resets the owner (and the identity: a
+/// copy is another object).
 impl Clone for Curve {
     fn clone(&self) -> Self {
         Self {
             kind: self.kind.clone(),
             owner: None,
+            notify_key: None,
         }
     }
 }
@@ -663,7 +670,22 @@ impl Curve {
     /// constructor).
     #[must_use]
     pub const fn new(kind: CurveKind) -> Self {
-        Self { kind, owner: None }
+        Self {
+            kind,
+            owner: None,
+            notify_key: None,
+        }
+    }
+
+    /// The identity this curve object is notified under, once it has one.
+    #[must_use]
+    pub const fn notify_key(&self) -> Option<ObjectKey> {
+        self.notify_key
+    }
+
+    /// Sets the identity this curve object is notified under.
+    pub fn set_notify_key(&mut self, key: Option<ObjectKey>) {
+        self.notify_key = key;
     }
 
     /// The concrete kind.

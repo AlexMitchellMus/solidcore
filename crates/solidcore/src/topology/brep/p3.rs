@@ -18,7 +18,7 @@
 //! | [`orient_trimmed_surfaces`]     | `SmBrep::OrientTrimmedSurfaces`                  |
 //! | [`squeeze_edge`]                | `SmBrep::SqueezeEdge`                            |
 //! | [`turn_to_nurbs`]               | `SmBrep::TurnToNURBS`                            |
-//! | [`GeometryIds`]                 | (the `m_pCurve` objects' identities, for the notifications) |
+//! | [`edge_curve_identity`]         | (the `m_pCurve` object's identity in the notifications) |
 //! | [`seed_topology_records`]       | (the `SmTopology` members every object carries; for callers of the edits) |
 //! | `Brep::remove_from_*_list` (crate) | `SmOwningTopology::Remove` on the B-rep's list heads (and `~SmTopology`) |
 //!
@@ -58,10 +58,12 @@
 //!   (`SM_NO_DESTRUCTION` / `SM_NO_CONSTRUCTION` at `SmObject` level; `new_brep`'s own
 //!   construction is reported); faces, edges and vertices do.
 //! - **Geometry identities.** Upstream notifies the edge curves as objects of their own
-//!   (`m_pCurve`); the arena has no curve ids, so the edits that notify curves
-//!   (`SqueezeEdge`, `MakeWireEdge(Vertex)`, `TurnToNURBS`) take a [`GeometryIds`]
-//!   registry whose keys the caller allocates, disjoint from its topology keys; a
-//!   replacement curve gets a key of its own.
+//!   (`m_pCurve`). A curve carries the identity it is notified under
+//!   ([`Curve::notify_key`]), given the first time an edit names it from the kernel
+//!   context's geometry keys (`Context::new_geometry_key`, a range above the caller's
+//!   own keys): unique for as long as the context, and so its callbacks, live. A copy
+//!   (`Clone`, upstream's copy constructor) is another object without one; a curve the
+//!   caller hands `MakeWireEdge` keeps its own, as upstream binds that object.
 //! - **Notification identities.** The ids of two B-reps overlap, so `MergeBrep`,
 //!   `CopyVertices` and the copy constructors take the notification identity of the
 //!   source B-rep's objects (`source_key`) beside `env.key_of` for the destination's.
@@ -1846,81 +1848,42 @@ fn wire_curve(curve: &Curve) -> Curve {
     curve.clone()
 }
 
-/// The identities the edits notify geometry objects under: the edge curves
-/// (`m_pCurve`), which upstream passes as distinct objects of their own (never the
-/// edge). Keys are `(kind << 32) | n` for a `kind` the caller chooses above its
-/// topology key kinds (as `NotifyEnv::key_of`'s keys are the caller's) and `n`
-/// counting up: every curve object gets one, a replacement curve included, so two
-/// curves never share an identity. A caller whose callbacks watch several edits keeps
-/// one registry across them, so an edge's current curve keeps its identity and a new
-/// curve never repeats an earlier key. (A curve replaced outside these edits keeps the
-/// old identity in the registry; the old curve is gone by then.)
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GeometryIds {
-    kind: u64,
-    next: u64,
-    curves: BTreeMap<EdgeId, ObjectRef>,
+/// The identity `curve` is notified under: the curve object's own
+/// ([`Curve::notify_key`]), given from the kernel context's geometry keys the first
+/// time a notification names it ([`crate::geom::context::Context::new_geometry_key`]).
+/// Upstream passes the `SmCurve` object itself, so the identity lives with the object
+/// (a copy is a new one) and the context the callbacks are installed in hands out the
+/// keys: no edit, healer or registry restarts them.
+fn curve_identity(k: &mut Kernel, curve: &mut Curve) -> ObjectRef {
+    let key = if let Some(x) = curve.notify_key() {
+        x
+    } else {
+        let x = k.context.new_geometry_key();
+        curve.set_notify_key(Some(x));
+        x
+    };
+    ObjectRef {
+        type_code: curve.type_code(),
+        key,
+    }
 }
 
-impl GeometryIds {
-    /// An empty registry whose keys are of kind `kind` (`kind << 32` and up).
-    #[must_use]
-    pub const fn new(kind: u64) -> Self {
-        Self {
-            kind,
-            next: 0,
-            curves: BTreeMap::new(),
-        }
-    }
-
-    fn fresh(&mut self) -> ObjectKey {
-        self.next = self.next.wrapping_add(1);
-        ObjectKey((self.kind << 32) | (self.next & 0xffff_ffff))
-    }
-
-    /// The identity of edge `e`'s current curve (one is given on first use; the type
-    /// code is the curve's, a B-spline's when the edge has none).
-    pub fn edge_curve(&mut self, b: &Brep, e: EdgeId) -> ObjectRef {
-        if let Some(&r) = self.curves.get(&e) {
-            return r;
-        }
-        let type_code = b
-            .edge(e)
-            .ok()
-            .and_then(|x| x.curve.as_ref())
-            .map_or(BSplineCurve::TYPE, Curve::type_code);
-        let r = ObjectRef {
-            type_code,
-            key: self.fresh(),
-        };
-        self.curves.insert(e, r);
-        r
-    }
-
-    /// The identity of a new curve object (of type `type_code`) that becomes edge
-    /// `e`'s curve: always a fresh one.
-    pub fn new_edge_curve(&mut self, e: EdgeId, type_code: i64) -> ObjectRef {
-        let r = ObjectRef {
-            type_code,
-            key: self.fresh(),
-        };
-        self.curves.insert(e, r);
-        r
-    }
-
-    /// The identity this registry gave edge `e`'s current curve, if any.
-    #[must_use]
-    pub fn current(&self, e: EdgeId) -> Option<ObjectRef> {
-        self.curves.get(&e).copied()
-    }
+/// The identity edge `e`'s curve is notified under (its [`Curve::notify_key`], given
+/// from `k`'s context on first use), `None` without a curve.
+///
+/// # Errors
+///
+/// [`SolidError::NotFound`] for a dangling id.
+pub fn edge_curve_identity(k: &mut Kernel, b: &mut Brep, e: EdgeId) -> Result<Option<ObjectRef>> {
+    Ok(b.edge_mut(e)?.curve.as_mut().map(|c| curve_identity(k, c)))
 }
 
 /// Binds `curve` (owned by nobody, or copied) to the new edge `e` (`SetCurve(.., FALSE)`
 /// then `SetOwner(edge)`).
 fn bind_wire_curve(
+    k: &mut Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
-    geometry: &mut GeometryIds,
     e: EdgeId,
     curve: &Curve,
 ) -> Result<()> {
@@ -1928,12 +1891,16 @@ fn bind_wire_curve(
         .owner()
         .is_some_and(|o| o.type_code == edge_type_code())
     {
+        // (a copy: another object, of an identity of its own)
         wire_curve(curve)
     } else {
-        curve.clone()
+        // upstream binds the caller's curve object itself: it keeps its identity
+        let mut c = curve.clone();
+        c.set_notify_key(curve.notify_key());
+        c
     };
     let _ = new_curve.set_owner(None, None);
-    let new_ref = geometry.new_edge_curve(e, new_curve.type_code());
+    let new_ref = curve_identity(k, &mut new_curve);
     edge::set_curve(
         b,
         e,
@@ -1973,7 +1940,6 @@ pub fn make_wire_edge(
     k: &mut Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
-    geometry: &mut GeometryIds,
     region: Option<RegionId>,
     start: VertexId,
     end: VertexId,
@@ -1994,7 +1960,7 @@ pub fn make_wire_edge(
     edge::set_orientation(b, e, orientation)?;
 
     // bind the curve (or a copy of it) to the new edge
-    bind_wire_curve(b, env, geometry, e, curve)?;
+    bind_wire_curve(k, b, env, e, curve)?;
 
     // set vertex tolerances to include edge end points
     let p_start = curve.evaluate_point(interval.min())?;
@@ -2028,9 +1994,9 @@ pub fn make_wire_edge(
 /// Those of [`p2::make_edge_vertex_topology`] and of the tolerance refresh.
 #[allow(clippy::too_many_arguments)]
 pub fn make_wire_edge_vertex(
+    k: &mut Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
-    geometry: &mut GeometryIds,
     region: Option<RegionId>,
     start: VertexId,
     curve: &Curve,
@@ -2065,7 +2031,7 @@ pub fn make_wire_edge_vertex(
     edge::set_orientation(b, e, orientation)?;
 
     // bind the curve (or a copy of it) to the new edge
-    bind_wire_curve(b, env, geometry, e, curve)?;
+    bind_wire_curve(k, b, env, e, curve)?;
 
     vertex::refresh_tolerance(b, start, false)?;
     vertex::refresh_tolerance(b, v, false)?;
@@ -2105,7 +2071,6 @@ pub fn squeeze_edge(
     k: &mut Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
-    geometry: &mut GeometryIds,
     e: EdgeId,
     survivor: VertexId,
 ) -> Result<()> {
@@ -2139,11 +2104,7 @@ pub fn squeeze_edge(
         NotifyOperation::PreEdit,
         [Some(eref), Some(bref), None],
     ))?;
-    let cref = if b.edge(e)?.curve.is_some() {
-        Some(geometry.edge_curve(b, e))
-    } else {
-        None
-    };
+    let cref = edge_curve_identity(k, b, e)?;
     ignore_soft(brep_notify(
         b,
         env,
@@ -2377,12 +2338,7 @@ const fn as_bspline_surface(s: &Surface) -> Option<&BSplineSurface> {
 /// face with an analytic surface; those of the curve lift / approximation;
 /// `SM_ERR_NULL_POINTER` when a curve could not be made a B-spline or an offset's base
 /// is not a B-spline kind (`NER`); those of the offset's bounding box and extension.
-pub fn turn_to_nurbs(
-    k: &Kernel,
-    b: &mut Brep,
-    env: &mut NotifyEnv<'_>,
-    geometry: &mut GeometryIds,
-) -> Result<()> {
+pub fn turn_to_nurbs(k: &mut Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Result<()> {
     ignore_soft(brep_notify(
         b,
         env,
@@ -2549,8 +2505,9 @@ pub fn turn_to_nurbs(
 
         // Update the edge: drop the old curve (TRUE = delete preExisting Curve)
         // (the new curve exists while the old one does: distinct identities)
-        let old_ref = geometry.edge_curve(b, e);
-        let r = geometry.new_edge_curve(e, bsc.type_code());
+        let old_ref = edge_curve_identity(k, b, e)?.ok_or_else(ner)?;
+        let mut bsc = bsc;
+        let r = curve_identity(k, &mut bsc);
         edge::set_curve(
             b,
             e,
@@ -3124,23 +3081,26 @@ mod tests {
         r.unwrap();
     }
 
-    /// Every curve object gets an identity of its own from the caller's allocator:
-    /// an edge's current curve keeps it; a replacement gets a new one (the old curve
-    /// still exists when upstream makes it); different edges never share one, whatever
-    /// their keys.
+    /// Every curve object gets an identity of its own from the kernel context: a curve
+    /// keeps it; a copy (a new object, as a replacement curve) gets another; the keys
+    /// sit above the callers' own range.
     #[test]
     fn curve_identities_are_distinct() {
-        let mut ids = GeometryIds::new(7);
-        let b = Brep::new();
-        let (e0, e1) = (EdgeId::from_index(0), EdgeId::from_index(1));
-        let c0 = ids.edge_curve(&b, e0);
-        let c1 = ids.edge_curve(&b, e1);
-        assert_ne!(c0.key, c1.key);
-        assert_eq!(ids.edge_curve(&b, e0), c0);
-        let replacement = ids.new_edge_curve(e0, BSplineCurve::TYPE);
-        assert_ne!(replacement.key, c0.key);
-        assert_ne!(replacement.key, c1.key);
-        assert_eq!(ids.edge_curve(&b, e0), replacement);
+        use crate::curve::line::Line;
+        let mut k = Kernel::default();
+        let mut c0 = Curve::from(Line::from_points(Vec3::ZERO, Vec3::X, 3));
+        let mut c1 = Curve::from(Line::from_points(Vec3::ZERO, Vec3::Y, 3));
+        let (r0, r1) = (
+            curve_identity(&mut k, &mut c0),
+            curve_identity(&mut k, &mut c1),
+        );
+        assert_ne!(r0.key, r1.key);
+        assert_eq!(curve_identity(&mut k, &mut c0), r0);
+        let mut copy = c0.clone();
+        assert_eq!(copy.notify_key(), None);
+        let rc = curve_identity(&mut k, &mut copy);
+        assert!(rc.key != r0.key && rc.key != r1.key);
+        assert!(r0.key.0 >= crate::geom::context::GEOMETRY_KEY_BASE);
     }
 
     /// `DeleteFace` after region nesting merged the face's two shells: upstream's
@@ -3292,10 +3252,9 @@ mod tests {
 
     #[test]
     fn turn_to_nurbs_of_an_empty_brep_is_a_no_op() {
-        let k = Kernel::default();
+        let mut k = Kernel::default();
         let mut b = Brep::new();
-        let mut geometry = GeometryIds::new(7);
-        with_env(|env| turn_to_nurbs(&k, &mut b, env, &mut geometry)).unwrap();
+        with_env(|env| turn_to_nurbs(&mut k, &mut b, env)).unwrap();
         assert!(b.faces().is_empty());
     }
 

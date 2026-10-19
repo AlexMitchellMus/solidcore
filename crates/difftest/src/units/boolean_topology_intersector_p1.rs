@@ -908,10 +908,7 @@ impl ProtoBrep<H> for Two {
         }
         let b = self.brep_m(brep)?;
         with_edit_env(b, |b, env| {
-            // curve identities in a kind of their own, above the entity kinds (no
-            // callback watches these edits, so each gets a registry of its own)
-            let mut geometry = bp3::GeometryIds::new(32);
-            bp3::squeeze_edge(k, b, env, &mut geometry, eid(edge), vid(survivor))
+            bp3::squeeze_edge(k, b, env, eid(edge), vid(survivor))
         })
     }
     fn edge_interval(&self, edge: H) -> Option<Extent1d> {

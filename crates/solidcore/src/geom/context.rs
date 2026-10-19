@@ -12,6 +12,7 @@
 //! | [`Context`]                               | `SmContext`                                     |
 //! | [`Context::new`], [`Context::default`]    | `SmContext::SmContext(double, double)` (no `SM_USE_GLOBAL_CACHE`) |
 //! | [`Context::doing_boolean`]                | `SmContext::GetDoingBoolean`                    |
+//! | [`Context::new_geometry_key`], [`GEOMETRY_KEY_BASE`] | (none: geometry identities for notifications; CO-PORTED by `topology.brep_p3`) |
 //! | [`Context::doing_boolean_mut`]            | `SmContext::GetDoingBooleanRef`                 |
 //! | [`Context::set_doing_boolean`]            | `SmContext::SetDoingBoolean`                    |
 //! | [`Context::user_notify_callback`]         | `SmContext::GetUserNotifyCallback`              |
@@ -72,6 +73,7 @@
 //!   `Dump`, `GetTypeString` and `IsLockedMark` are unused upstream and not ported.
 
 use crate::error::{Result, SolidError};
+use crate::geom::attribute::ObjectKey;
 use crate::geom::object;
 use crate::geom::tol;
 use crate::kernel::Kernel;
@@ -195,7 +197,13 @@ pub struct Context {
     user_notify_callback: Option<Box<dyn NotifyCallback>>,
     /// `m_pSysNotifyCallBack`.
     sys_notify_callback: Option<Box<dyn NotifyCallback>>,
+    /// Geometry notification keys handed out so far ([`Context::new_geometry_key`]).
+    geometry_keys: u64,
 }
+
+/// The first notification key [`Context::new_geometry_key`] hands out: the range from
+/// it up is the context's, so a caller's own keys (`NotifyEnv::key_of`) stay below it.
+pub const GEOMETRY_KEY_BASE: u64 = 0xffff << 48;
 
 impl Default for Context {
     /// `SmContext()`: both sizes [`tol::USE_DEFAULT`].
@@ -205,6 +213,16 @@ impl Default for Context {
 }
 
 impl Context {
+    /// A fresh identity for a geometry object to be notified under (upstream passes
+    /// the object itself, `this` / `pData*`): unique among every key this context has
+    /// handed out, for as long as the context lives, so callbacks installed in it
+    /// never see two geometry objects under one key. Keys start at
+    /// [`GEOMETRY_KEY_BASE`].
+    pub fn new_geometry_key(&mut self) -> ObjectKey {
+        self.geometry_keys = self.geometry_keys.wrapping_add(1);
+        ObjectKey(GEOMETRY_KEY_BASE | (self.geometry_keys & ((1 << 48) - 1)))
+    }
+
     /// Creates a context (`SmContext::SmContext(double, double)`): every mark at 1 and
     /// unlocked, not in a Boolean, no callbacks; the zone tolerance follows from the
     /// model size estimate as in [`Context::set_this_model_size_estimate`]. Pass
@@ -220,6 +238,7 @@ impl Context {
             zone_tol_3d: tol::size_estimate_to_zone_tol_3d(model_size_estimate),
             user_notify_callback: None,
             sys_notify_callback: None,
+            geometry_keys: 0,
         }
     }
 

@@ -980,9 +980,11 @@ fn wrap_in_offsets(k: &Kernel, b: &mut Brep, faces: &[FaceId], d: f64) -> Result
     Ok(())
 }
 
-/// The kind of the runner's geometry keys ([`bp3::GeometryIds`]), above every
-/// [`key_of`] kind.
-const GEOMETRY_KIND: u64 = 12;
+/// Whether `key` is a geometry identity (the kernel context's range,
+/// `Context::new_geometry_key`; every [`key_of`] key is below it).
+const fn is_geometry_key(key: ObjectKey) -> bool {
+    key.0 >= solidcore::geom::context::GEOMETRY_KEY_BASE
+}
 
 /// The shim's `GeomRecorder`: a user notify callback that keeps every geometry key a
 /// notification names (the shim's tells geometry from topology while it is live).
@@ -1003,7 +1005,7 @@ impl solidcore::geom::context::NotifyCallback for GeomRecorder {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         for x in [Some(caller), data1, data2, data3].into_iter().flatten() {
-            if x.key.0 >> 32 == GEOMETRY_KIND && !seen.contains(&x.key) {
+            if is_geometry_key(x.key) && !seen.contains(&x.key) {
                 seen.push(x.key);
             }
         }
@@ -1133,18 +1135,15 @@ fn run_rust_op(
             | OpIn::TurnNurbs
             | OpIn::TurnNurbsOffset { .. }
     );
-    // every curve object's identity: a fresh key of GEOMETRY_KIND (one registry per
-    // case: the case's callbacks watch one op)
-    let mut geometry = bp3::GeometryIds::new(GEOMETRY_KIND);
     if !tracked {
-        return run_rust_op_in(k, b, second, op, a, None, &mut geometry);
+        return run_rust_op_in(k, b, second, op, a, None);
     }
     // the curve each edge has before the op (the shim's pre_curves)
     let mut pre_curves = BTreeMap::new();
     let mut owners = Vec::new();
-    for (e, edge) in b.edges().iter() {
-        if edge.curve.is_some() {
-            let c = geometry.edge_curve(b, e);
+    let ids: Vec<EdgeId> = b.edges().ids().collect();
+    for e in ids {
+        if let Some(c) = must(bp3::edge_curve_identity(k, b, e))? {
             pre_curves.insert(c.key, e.index() as usize);
             owners.push((c, key_of(EntityRef::Edge(e))));
         }
@@ -1174,7 +1173,7 @@ fn run_rust_op(
     for (c, e) in owners {
         tracker.set_owner(c, Some(e));
     }
-    let r = run_rust_op_in(k, b, second, op, a, Some(&mut ctx), &mut geometry);
+    let r = run_rust_op_in(k, b, second, op, a, Some(&mut ctx));
     let lists = tracker.lists();
     tracker.finish(Some(&mut ctx));
     let _ = ctx.take_notify_callbacks();
@@ -1188,10 +1187,12 @@ fn run_rust_op(
     let mut post_curves = BTreeMap::new();
     for j in 0..post.len(7) {
         let e = EdgeId::from_index(post.at(7, j)?);
-        if must(b.edge(e))?.curve.is_some() {
-            if let Some(c) = geometry.current(e) {
-                post_curves.insert(c.key, j);
-            }
+        if let Some(c) = must(b.edge(e))?
+            .curve
+            .as_ref()
+            .and_then(SmCurve::notify_key)
+        {
+            post_curves.insert(c, j);
         }
     }
     let mut t = Tracked {
@@ -1215,7 +1216,6 @@ fn run_rust_op_in(
     op: &OpIn,
     a: &[f64],
     context: Option<&mut Context>,
-    geometry: &mut bp3::GeometryIds,
 ) -> Result<Vec<f64>, Fail> {
     let mut out = vec![0.0];
     let arg = |i: usize| -> Result<f64, Fail> {
@@ -1332,13 +1332,13 @@ fn run_rust_op_in(
             };
             let s = if which == 0 {
                 status(bp3::make_wire_edge(
-                    k, b, &mut env, geometry, region, v1, v2, &crv, &ivl, orient,
+                    k, b, &mut env, region, v1, v2, &crv, &ivl, orient,
                 ))?
                 .0
             } else {
                 let p = Vec3::new(end[0], end[1], end[2]);
                 status(bp3::make_wire_edge_vertex(
-                    b, &mut env, geometry, region, v1, &crv, &ivl, orient, p,
+                    k, b, &mut env, region, v1, &crv, &ivl, orient, p,
                 ))?
                 .0
             };
@@ -1392,7 +1392,7 @@ fn run_rust_op_in(
                 _ => any,
             };
             let s = match v {
-                Some(v) => status(bp3::squeeze_edge(k, b, &mut env, geometry, e, v))?.0,
+                Some(v) => status(bp3::squeeze_edge(k, b, &mut env, e, v))?.0,
                 // a null survivor is neither vertex of the edge (`SER_MSG(SM_ERR)`)
                 None => f64::from(SM_ERR),
             };
@@ -1409,8 +1409,7 @@ fn run_rust_op_in(
             if let Some(d) = offset {
                 wrap_in_offsets(k, b, &faces, d)?;
             }
-            let kk: &Kernel = k;
-            let (s, _) = status(bp3::turn_to_nurbs(kk, b, &mut env, geometry))?;
+            let (s, _) = status(bp3::turn_to_nurbs(k, b, &mut env))?;
             out.push(s);
             for e in edges {
                 put_curve(&mut out, must(b.edge(e))?.curve.as_ref())?;
@@ -1630,7 +1629,7 @@ mod tests {
         use solidcore::topology::topology::{NotifyEvent, TopologyChangeLists};
         let g = |n: u64| ObjectRef {
             type_code: BSplineCurve::TYPE,
-            key: ObjectKey((GEOMETRY_KIND << 32) | n),
+            key: ObjectKey(solidcore::geom::context::GEOMETRY_KEY_BASE | n),
         };
         let edge = key_of(EntityRef::Edge(EdgeId::from_index(0)));
         let (a, b) = (g(1), g(2));
