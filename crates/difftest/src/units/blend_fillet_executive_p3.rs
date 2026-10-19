@@ -68,6 +68,33 @@ impl ExecutiveAccess<Handle> for Access {
     ) -> SolidResult<()> {
         missing()
     }
+    fn adjust_topology(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> SolidResult<()> {
+        // This empty-B-rep fixture constructs no concrete corner or solver.
+        missing()
+    }
+    fn adjust_tangent_corner(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> SolidResult<()> {
+        // This empty-B-rep fixture constructs no concrete corner or solver.
+        missing()
+    }
+    fn calc_fillet_geom(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> SolidResult<()> {
+        // This empty-B-rep fixture constructs no concrete corner or solver.
+        missing()
+    }
     fn corner_error_info(
         &self,
         _: Handle,
@@ -79,9 +106,6 @@ impl ExecutiveAccess<Handle> for Access {
         missing()
     }
     fn is_tangent_corner(&self, _: Handle) -> SolidResult<bool> {
-        missing()
-    }
-    fn corner_solvers(&self, _: Handle, _: &FilletExecutive<Handle>) -> SolidResult<Vec<Handle>> {
         missing()
     }
     fn corner_vertex(&self, _: Handle) -> SolidResult<Option<Handle>> {

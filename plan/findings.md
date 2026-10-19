@@ -7810,18 +7810,21 @@ topological parity remains pending the setup and geometry owners.
 Metadata getters are intentionally lazy: non-blending/non-tangent corners never
 request solver metadata, and corner names/type are queried only on error.
 `SmFace::Notify` is an explicit executive-adapter back-edge to `topology.face_p3`,
-with `PreEdit`, the face, its B-rep and null forwarded as separate arguments.
+with `PreEdit`, the face, null and null forwarded as separate arguments.
+`SM_NO_GET_BREP(face)` expands to a null object (`SmTypes.h:659`), not `GetBrep()`.
 
 UNPORTED audit for #244 (after merging main; no existing p3 back-edges were found):
 
-- `blend.fillet_corner_p1` (`todo`): `SmFilletCorner::AdjustTangentCorner`, `SmFilletCorner::AdjustTopology`, `SmFilletCorner::CalcCornerEdgeGeom`, `SmFilletCorner::CalcCornerVertGeom`, `SmFilletCorner::CheckAndFixDegeneracy`, `SmFilletCorner::InsertIntersectionTopology`, `SmFilletCorner::ReInitializeCornerEdges`.
-- `blend.fillet_corner_p3` (`todo`): `SmFilletCorner::CalcCornerGeom`.
+- `blend.fillet_corner_p1` (`todo`): `SmFilletCorner::GetFilletSolvers`, `SmFillet4x3Corner::AdjustTopology`, `SmFilletNxNCorner::AdjustTopology`, `SmFilletCorner::AdjustTangentCorner`, `SmFilletCorner::AdjustTopology`, `SmFilletCorner::CalcCornerEdgeGeom`, `SmFilletCorner::CalcCornerVertGeom`, `SmFilletCorner::CheckAndFixDegeneracy`, `SmFilletCorner::InsertIntersectionTopology`, `SmFilletCorner::ReInitializeCornerEdges`.
+- `blend.fillet_corner_p2` (`todo`): `SmFilletConvexNxNCorner::AdjustTopology`, `SmFilletNx1ClosedCorner::AdjustTangentCorner`.
+- `blend.fillet_corner_p3` (`todo`): `SmFilletCorner::CalcCornerGeom`, `SmFilletNx2Corner::AdjustTopology`, `SmFilletNx2Corner::AdjustTangentCorner`.
 - `blend.fillet_executive_p1` (`todo`): `SmApiChamferFillet`, `SmApiCircularFillet`, `SmApiFilletEdges`, `SmApiFilletEdgesPerEdge`, `SmApiSetBevelCorners`, `SmApiVariableRadiusFillet`, `SmFilletExecutive::CreateFilletCorners`, `SmFilletExecutive::DoPiecewiseMerge`, `SmFilletExecutive::RemoveTopoEdges`.
 - `blend.fillet_executive_p2` (`todo`): `SmFilletExecutive::ProcessSmoothEdgeSequences`, `SmFilletExecutive::SetFilletBrepEdgeMap`.
 - `blend.fillet_geom_p4` (`todo`): `SmFilletGeom::InsertIntersectionTopology`, `SmFilletGeom::MakeFaceBrep`.
 - `blend.fillet_geom_p6` (`todo`): `SmFilletGeom::TrimOriginalSurfaces`.
 - `blend.fillet_solver_p1` (`todo`): `SmFilletSolver::TrimRails`.
 - `blend.fillet_solver_p4` (`todo`): `SmFilletSolver::CalcFilletGeom`.
+- `blend.fillet_standard_solver_p2` (`todo`): `SmSurfaceSurfaceFS::CalcFilletGeom`.
 - `blend.fillet_solver_p5` (`todo`): `SmFilletSolver::TestRollOver`.
 - `boolean.topology_intersector_p2` (`todo`): `SmTopologyIntersector::DeleteFaces`, `SmTopologyIntersector::IntersectInsertRelate`.
 - `heal.stitch_p2` (`todo`): `SmStitch::DoStitching`.
@@ -7898,3 +7901,61 @@ ran on both engines, baseline protocol equal, zero errors and zero lost bytes
 (definite/indirect/possible), no suppressions. The final 211-unit matrix passes;
 its per-unit log audit confirms zero failures and green_but_deferred=0.
 Coverage still establishes zero successful geometric/topological comparisons.
+
+
+### blend.fillet_executive_p3 — response to cbfc8dcc Opus review (PR #244)
+
+- Corrected `SmFace::Notify(PreEdit, face, NULL, NULL)` and its scripted
+  regression. `SM_NO_GET_BREP(face)` is the null-object macro at `SmTypes.h:659`;
+  the alternative `GetBrep()` macro is commented out. The earlier note above now
+  states the actual payload. No native passing fixture reaches this stub today.
+- `AdjustTopology`, `AdjustTangentCorner` and `CalcFilletGeom` are now required
+  virtual-dispatch adapters, with no inherited base-owner default deferral.
+  Adapters must resolve the actual concrete type and either call its implementation
+  or return `Unported` for that implementation's owner. Source tags list every
+  owner: base/4x3/NxN topology adjustment in corner p1, ConvexNxN adjustment and
+  Nx1Closed tangent adjustment in corner p2, Nx2 adjustment/tangent adjustment
+  in corner p3, base fillet geometry in solver p4 and SurfaceSurfaceFS geometry
+  in standard-solver p2. This prevents future base wiring from silently replacing
+  a missing derived implementation. The empty-B-rep runner constructs no corners
+  or solvers and rejects nonexistent handles in these required adapters.
+- `corner_solvers` is now a default `UNPORTED(blend.fillet_corner_p1)` stub for
+  `SmFilletCorner::GetFilletSolvers`. This is real owned logic, not a getter:
+  `SmFilletCorner.cpp:4067-4075` resets the result, loops over the edgeuse count
+  and **always looks up edgeuse [0]**, preserving repeated entries of the first
+  solver. The future port must keep that source quirk, including executive p1's
+  `GetFilletSolverOfEdgeuse` lookup. It has not been executed or established as
+  an upstream defect, so no WR id is reserved. The scripted tangent regression
+  now returns repeated first-solver entries; it is not a port of that algorithm.
+- Extended ownership audit: the tags now cover **41 distinct symbols / 17 owners**,
+  all `todo` in the merged plan; the complete list above includes all new tags.
+  Added GetFilletSolvers; added seven derived symbols and two new owners; removed
+  no dependency owners. Required-but-owned-elsewhere corner accessors are also
+  explicit: `IsBlendingCorner`, virtual `IsTangentCorner` (all current overrides
+  in corner p1), `SetCalcAsConstRad`, `GetFilletedVertex`, `GetCornerType`, and
+  corner `GetThisApproxTol3d` are inline corner-p1 record accesses; solver
+  `GetThisApproxTol3d` is an inline solver record access. They must use those
+  owners' records and concrete dispatch when wired, never supply fake metadata.
+  Error-only `GetName` uses the object's real name. These required reads do not
+  have default `Unported` implementations and are separate from the 41 tags.
+  `MakeCornerTopology` retains its previously documented callgraph ownership gap.
+- Converted the solver's raw approximate tolerance with existing `zone_tol3d`
+  at the `SetTolerance` call site, matching the implicit `SmZoneTol3d(double)`
+  conversion in `SmBrep.h:700`. A scripted regression covers the default sentinel
+  in this p3 call (distinct from the paired fixture-constructor sentinel case).
+- Coverage is **three distinct p3 control paths, all precondition exits**:
+  uninitialized DoFillet; null-target CreateFilletBrep; and DoFilleting reaching
+  that null-target check then restoring temporary flags. The paired tolerance
+  values only read back fixture setup; the four constructor-domain fixtures
+  check harness setup, not a p3 tolerance mutation. No geometric success is paired.
+- FFI docs now distinguish exact Boolean encodings / finite-only tolerances as
+  fixture-encoding choices, not UB guards. Fuzz over empty B-reps does not establish
+  crash safety for eventual geometric paths.
+- Open dependencies include solver p1 (#192, `TrimRails`) and brep p3 (#204,
+  `MergeBrep`/`OrientTrimmedSurfaces`); `todo` is their merged-plan status, not
+  absence of claimed work. Solver p1 uses owned solver objects, so wiring the
+  handle adapter will require a shim that mutates the same executive-backed object.
+  Likewise executive p1 must allocate the actual `m_pAttributeE` on construction;
+  the runner's current `edge_attribute: None` is unreachable before deferral.
+
+Validation of this revision: pending pod gates.

@@ -23,8 +23,10 @@ extern "C" {
 }
 
 /// Validate the fixed record before entering native code. Boolean and enum codes
-/// are exact; tolerances are finite (the native constructor applies `fabs`). There are no input allocations
-/// or recursive native paths for these empty B-rep fixtures.
+/// are exact; tolerances are finite (the native constructor applies `fabs`).
+/// Noncanonical Boolean encodings and NaN/infinite tolerances are rejected as
+/// fixture-encoding choices, not as upstream UB guards. There are no input
+/// allocations or recursive native paths for these empty B-rep fixtures.
 pub fn validate(input: &[f64]) -> Result<(), FfiError> {
     let mut reader = Cursor::new(input);
     reader.index(2)?;

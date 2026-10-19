@@ -28,6 +28,7 @@ use crate::boolean::topology_intersector::p1::TopologyIntersector;
 use crate::error::{Result, SolidError};
 use crate::geom::object::NotifyOperation;
 use crate::geom::solution_array::SolutionObject;
+use crate::geom::tol::zone_tol3d;
 use crate::intersect::point_class::ClassObject;
 use crate::kernel::Kernel;
 use crate::math::Point3;
@@ -247,8 +248,16 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     /// `SmFilletCorner::IsTangentCorner`; called only for blending corners.
     fn is_tangent_corner(&self, corner: O) -> Result<bool>;
     /// `SmFilletCorner::GetFilletSolvers`; called only for tangent blending corners.
-    /// Its edgeuse-to-solver lookup reads the current executive's solver list.
-    fn corner_solvers(&self, corner: O, executive: &FilletExecutive<O>) -> Result<Vec<O>>;
+    /// This is owned logic, not a field accessor. Upstream repeats the lookup of
+    /// `m_pSolverEUs[0]` for every entry, through the current executive's solver list
+    /// (`SmFilletCorner.cpp:4067-4075`); adapters must preserve that quirk.
+    fn corner_solvers(&self, _corner: O, _executive: &FilletExecutive<O>) -> Result<Vec<O>> {
+        // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::GetFilletSolvers
+        Err(SolidError::unported(
+            "SmFilletCorner::GetFilletSolvers",
+            "blend.fillet_corner_p1",
+        ))
+    }
     /// `SmFilletCorner::GetFilletedVertex`.
     fn corner_vertex(&self, corner: O) -> Result<Option<O>>;
     /// `SmFilletCorner::GetThisApproxTol3d`.
@@ -397,33 +406,35 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         ))
     }
 
-    /// `SmFilletCorner::AdjustTopology`; waiting for `blend.fillet_corner_p1`.
+    /// Virtual `AdjustTopology` dispatch. The base, 4x3 and NxN implementations
+    /// belong to `blend.fillet_corner_p1`; ConvexNxN belongs to
+    /// `blend.fillet_corner_p2`, and Nx2 to `blend.fillet_corner_p3`.
+    /// Adapters must dispatch by concrete corner type and return that owner's
+    /// `Unported` while it is missing, never substitute the base success default.
+    // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::AdjustTopology / SmFillet4x3Corner::AdjustTopology / SmFilletNxNCorner::AdjustTopology
+    // UNPORTED(blend.fillet_corner_p2): SmFilletConvexNxNCorner::AdjustTopology
+    // UNPORTED(blend.fillet_corner_p3): SmFilletNx2Corner::AdjustTopology
     fn adjust_topology(
         &mut self,
-        _k: &mut Kernel,
-        _corner: O,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::AdjustTopology
-        Err(SolidError::unported(
-            "SmFilletCorner::AdjustTopology",
-            "blend.fillet_corner_p1",
-        ))
-    }
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
 
-    /// `SmFilletCorner::AdjustTangentCorner`; waiting for `blend.fillet_corner_p1`.
+    /// Virtual `AdjustTangentCorner` dispatch. The base belongs to
+    /// `blend.fillet_corner_p1`, Nx1Closed to `blend.fillet_corner_p2`, and Nx2 to
+    /// `blend.fillet_corner_p3`. Adapters must dispatch by concrete corner type
+    /// and return that owner's `Unported` while it is missing, never substitute
+    /// the base success default.
+    // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::AdjustTangentCorner
+    // UNPORTED(blend.fillet_corner_p2): SmFilletNx1ClosedCorner::AdjustTangentCorner
+    // UNPORTED(blend.fillet_corner_p3): SmFilletNx2Corner::AdjustTangentCorner
     fn adjust_tangent_corner(
         &mut self,
-        _k: &mut Kernel,
-        _corner: O,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::AdjustTangentCorner
-        Err(SolidError::unported(
-            "SmFilletCorner::AdjustTangentCorner",
-            "blend.fillet_corner_p1",
-        ))
-    }
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
 
     /// `SmFilletCorner::CalcCornerEdgeGeom`; waiting for `blend.fillet_corner_p1`.
     fn calc_corner_edges(
@@ -467,19 +478,18 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         ))
     }
 
-    /// `SmFilletSolver::CalcFilletGeom`; waiting for `blend.fillet_solver_p4`.
+    /// Virtual `CalcFilletGeom` dispatch. The base belongs to
+    /// `blend.fillet_solver_p4`; the SurfaceSurfaceFS override belongs to
+    /// `blend.fillet_standard_solver_p2`. Adapters must dispatch by concrete
+    /// solver type and return that owner's `Unported` while it is missing.
+    // UNPORTED(blend.fillet_solver_p4): SmFilletSolver::CalcFilletGeom
+    // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::CalcFilletGeom
     fn calc_fillet_geom(
         &mut self,
-        _k: &mut Kernel,
-        _solver: O,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_solver_p4): SmFilletSolver::CalcFilletGeom
-        Err(SolidError::unported(
-            "SmFilletSolver::CalcFilletGeom",
-            "blend.fillet_solver_p4",
-        ))
-    }
+        k: &mut Kernel,
+        solver: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
 
     /// `SmFilletSolver::TrimRails`; waiting for `blend.fillet_solver_p1`.
     fn trim_rails(
@@ -990,6 +1000,8 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                 && access.tolerance(k, fillet, false)? < tolerance
             {
                 // SM_USE_OLDTOL: repeated comparison and full SetTolerance defaults.
+                // SmBrep.h:700 implicitly constructs SmZoneTol3d at this call.
+                let tolerance = zone_tol3d(k, tolerance);
                 ignore(access.set_brep_tolerance(k, fillet, tolerance, true, true))?;
             }
             let mut geom_index = 0;
@@ -1217,12 +1229,13 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             access.remove_topo_edges(k, self)?;
             access.boolean_post_process(k, self, true)?;
             for face in access.faces(target)? {
+                // SmTypes.h:659: SM_NO_GET_BREP(face) expands to a null object.
                 ignore(access.notify_face(
                     k,
                     face,
                     NotifyOperation::PreEdit,
                     Some(face),
-                    Some(target),
+                    None,
                     None,
                 ))?;
             }

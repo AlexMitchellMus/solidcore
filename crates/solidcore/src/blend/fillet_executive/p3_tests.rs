@@ -51,6 +51,8 @@ struct Access {
     fillet_editing: bool,
     events: Vec<&'static str>,
     stitch_tolerances: Vec<f64>,
+    solver_tolerance: Option<f64>,
+    brep_tolerances: Vec<f64>,
     stitch_lamina: u64,
     corner_metadata: Option<CornerView<Handle>>,
     corner_predicates: [bool; 2],
@@ -92,7 +94,8 @@ impl ExecutiveAccess<Handle> for Access {
     }
     fn corner_solvers(&self, _: Handle, _: &FilletExecutive<Handle>) -> Result<Vec<Handle>> {
         assert!(self.corner_predicates[0] && self.corner_predicates[1]);
-        Ok(vec![Handle(3), Handle(4)])
+        // Script the upstream repeated-first-edgeuse lookup, not distinct solvers.
+        Ok(vec![Handle(3), Handle(3)])
     }
     fn corner_vertex(&self, _: Handle) -> Result<Option<Handle>> {
         Ok(Some(Handle(6)))
@@ -112,7 +115,7 @@ impl ExecutiveAccess<Handle> for Access {
         Ok(Handle(5))
     }
     fn solver_approx_tolerance(&self, _: Handle) -> Result<f64> {
-        Ok(0.125)
+        Ok(self.solver_tolerance.unwrap_or(0.125))
     }
     fn geom_face(&self, _: Handle) -> Result<Option<Handle>> {
         Ok(Some(Handle(2)))
@@ -219,7 +222,7 @@ impl ExecutiveAccess<Handle> for Access {
     ) -> Result<()> {
         assert_eq!(operation, NotifyOperation::PreEdit);
         assert_eq!(data1, Some(face));
-        assert_eq!(data2, Some(Handle(0)));
+        assert!(data2.is_none());
         assert!(data3.is_none());
         self.events.push("notify");
         Ok(())
@@ -252,7 +255,7 @@ impl ExecutiveAccess<Handle> for Access {
         larger: bool,
         cascade: bool,
     ) -> Result<()> {
-        assert_eq!(tol, 0.125);
+        self.brep_tolerances.push(tol);
         assert!(larger && cascade);
         self.events.push("tolerance");
         Ok(())
@@ -991,4 +994,22 @@ fn temporary_attributes_are_also_cleaned_when_merge_fails_or_defers_before_orien
         assert_eq!(access.events.last(), Some(&"delete_attr"));
         assert!(!access.editing);
     }
+}
+
+#[test]
+fn solver_tolerance_sentinel_is_converted_at_set_tolerance_call() {
+    let mut executive = state();
+    executive.solvers.push(Handle(3));
+    let mut access = Access {
+        solver_tolerance: Some(crate::geom::tol::USE_DEFAULT),
+        ..Access::default()
+    };
+    let mut k = Kernel::default();
+    executive
+        .create_fillet_brep(&mut k, &mut access, None)
+        .unwrap();
+    assert_eq!(
+        access.brep_tolerances,
+        [0.125, zone_tol3d(&k, crate::geom::tol::USE_DEFAULT)]
+    );
 }
