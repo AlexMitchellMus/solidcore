@@ -15,7 +15,7 @@
 //! `ComputeSurfaceValues` (fails in the base `SetupOffsetValues`, else evaluates the
 //! offset surfaces), `ComputeUVVectors` (including zero and parallel tangents),
 //! `SplitFilletGeom` with empty intervals, `FinishConstruction` (deferred with an offset
-//! surface to copy: `SmOffsetSurface::Copy`, unit `surface.offset_surface`), the fillet
+//! surface to copy: `SetOffsetSurface`, unit `blend.fillet_geom_p1`), the fillet
 //! surface generators (`fsg`), `SmTol::GetAngTolRad(const SmFilletSolver*)` (`tol_ang`)
 //! and the base `LoadInitialValues` (`initial_values`).
 //!
