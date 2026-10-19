@@ -754,46 +754,53 @@ impl UnitDiff for Runner {
     }
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
-        let op = match rng.below(14) {
-            0..=4 => OpIn::DeleteEdge,
-            5..=6 => OpIn::DeleteVertex,
-            7..=9 => OpIn::ShrinkGeometry,
-            10 => OpIn::StitchFaces,
-            11 => OpIn::Destroy,
-            _ => OpIn::Check,
-        };
-        let brep = if op == OpIn::ShrinkGeometry && rng.chance(0.5) {
-            shrink_face(rng)
-        } else {
-            shared::gen_brep(rng)
-        };
-        let (path, blk) = block(&brep).ok()?;
-        let f = ffi::export(&path, &blk).ok()?;
-        let c = counts(&f.graph)?;
-        let n = match op {
-            OpIn::DeleteEdge => c[7],
-            OpIn::DeleteVertex => c[9],
-            _ => 1,
-        };
-        if n == 0 {
-            return None;
-        }
-        let target = rng.below(n as u64) as i64;
-        let keep = if c[3] > 0 && rng.chance(0.4) {
-            rng.below(c[3] as u64) as i64
-        } else {
-            -1
-        };
-        let tol = *rng.choose(&[1.0e-6, 1.0e-3, 0.1, 0.0])?;
-        let i = Inputs {
-            brep,
-            op,
-            editing: rng.below(8) != 0,
-            target,
-            keep,
-            tol,
-            flag: rng.chance(0.5),
-        };
-        serde_json::to_value(i).ok()
+        // `None` ends the generated list, so draw again past an unusable draw (a
+        // fixture that does not build, or no edge / vertex to delete)
+        (0..64).find_map(|_| try_generate(rng))
     }
+}
+
+/// One generated case, or `None` when the draw is unusable.
+fn try_generate(rng: &mut Rng) -> Option<Value> {
+    let op = match rng.below(14) {
+        0..=4 => OpIn::DeleteEdge,
+        5..=6 => OpIn::DeleteVertex,
+        7..=9 => OpIn::ShrinkGeometry,
+        10 => OpIn::StitchFaces,
+        11 => OpIn::Destroy,
+        _ => OpIn::Check,
+    };
+    let brep = if op == OpIn::ShrinkGeometry && rng.chance(0.5) {
+        shrink_face(rng)
+    } else {
+        shared::gen_brep(rng)
+    };
+    let (path, blk) = block(&brep).ok()?;
+    let f = ffi::export(&path, &blk).ok()?;
+    let c = counts(&f.graph)?;
+    let n = match op {
+        OpIn::DeleteEdge => c[7],
+        OpIn::DeleteVertex => c[9],
+        _ => 1,
+    };
+    if n == 0 {
+        return None;
+    }
+    let target = rng.below(n as u64) as i64;
+    let keep = if c[3] > 0 && rng.chance(0.4) {
+        rng.below(c[3] as u64) as i64
+    } else {
+        -1
+    };
+    let tol = *rng.choose(&[1.0e-6, 1.0e-3, 0.1, 0.0])?;
+    let i = Inputs {
+        brep,
+        op,
+        editing: rng.below(8) != 0,
+        target,
+        keep,
+        tol,
+        flag: rng.chance(0.5),
+    };
+    serde_json::to_value(i).ok()
 }
