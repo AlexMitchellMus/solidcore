@@ -47,8 +47,13 @@
 //!   tests the closure, seams and extension of copies of the solver's offsets wrapped
 //!   as a [`Surface`] (their evaluations dispatch to the offset, as upstream's virtual
 //!   calls do).
-//! - **Unported callees.** `SmFilletIntersector` (unit `blend.fillet_intersector`) in
-//!   `ReCalcFilletGeom`, `CalcConeFilletGeom` / `CalcTorusFilletGeom`
+//! - **Fillet intersector.** `ReCalcFilletGeom` builds the
+//!   [`fillet_intersector::FilletIntersector`] over copies of the solver's offset
+//!   surfaces (as the offset tests above). Its `DoPointIntersection` is a DISPATCH GAP:
+//!   the base driver (`intersect.surface_intersector_p4`) does not reach the fillet
+//!   intersector's overrides yet, and the solver does not implement the intersector's
+//!   `FilletSolverOps`, so it returns [`SolidError::Unported`].
+//! - **Unported callees.** `CalcConeFilletGeom` / `CalcTorusFilletGeom`
 //!   (`blend.fillet_solver_p2`) for analytic fillets, `SmFilletEdge::CalcCrossSection`
 //!   (`blend.fillet_geom_p5`) and `sm_MoveTSP` (`blend.fillet_geom_p6`) after it;
 //!   `sm_SrfSrfIntersection` (`blend.fillet_geom_p2`) and the vertex's
@@ -70,11 +75,11 @@
 //!   does not run it.
 
 use crate::blend::fillet_custom_solver::OffsetSurface;
+use crate::blend::fillet_intersector;
 use crate::blend::fillet_solver::p1::{FilletGeomRef, FilletSolver, FilletSolverOps};
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::{Curve, CurveKind};
 use crate::error::{ignored, EntityRef, Result, SolidError};
-use crate::geom::extent2d::Extent2d;
 use crate::geom::geom_utility::p1::line_closest_point;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::intersect::surface_intersector::p1::{IntersectionPointType, SrfIndex, TsectPnt};
@@ -187,39 +192,31 @@ struct PointIntersection {
     _uv_curves: [Option<BSplineCurve>; 2],
 }
 
-/// `SmFilletIntersector` (unit `blend.fillet_intersector`): constructed on the
-/// solver's two offset surfaces and their extended domains for a fillet geometry.
-struct FilletIntersector;
+/// The fillet intersector `ReCalcFilletGeom` traces with (no solution objects; the
+/// current fillet geometry is a pseudo-B-rep geometry id).
+type FilletIntersector<'s> = fillet_intersector::FilletIntersector<'s, 's, NoObject, FilletGeomId>;
 
-impl FilletIntersector {
-    /// `SmFilletIntersector(*pSurf1, sDomain1, *pSurf2, sDomain2, *pFS, this)`.
-    fn new(_domains: [&Extent2d; 2], _geom: FilletGeomId) -> Result<Self> {
-        // UNPORTED(blend.fillet_intersector): SmFilletIntersector::SmFilletIntersector
-        unported_on(
-            (),
-            "SmFilletIntersector::SmFilletIntersector",
-            "blend.fillet_intersector",
-        )
-    }
-
-    /// `DoPointIntersection(crContext, sTsectPnts, bExtendBefore, bExtendAfter,
-    /// pOptMarchDir, NULL, &dTolerance, &dAngTol, ...)`: writes each point's curve
-    /// parameter (negative when it is not on the traced curve).
-    fn do_point_intersection(
-        &mut self,
-        k: &Kernel,
-        tsect_pnts: &mut [TsectPnt],
-        extend: [bool; 2],
-        march_dir: Vec3,
-        tolerances: [f64; 2],
-    ) -> Result<PointIntersection> {
-        // UNPORTED(blend.fillet_intersector): SmFilletIntersector (SmSurfaceIntersector::DoPointIntersection on the fillet intersector)
-        unported_on(
-            (self, k, tsect_pnts, extend, march_dir, tolerances),
-            "SmFilletIntersector::DoPointIntersection",
-            "blend.fillet_intersector",
-        )
-    }
+/// `sFI.DoPointIntersection(crContext, sTsectPnts, bExtendBefore, bExtendAfter,
+/// pOptMarchDir, NULL, &dTolerance, &dAngTol, ...)`: writes each point's curve
+/// parameter (negative when it is not on the traced curve).
+fn do_point_intersection(
+    fi: &mut FilletIntersector<'_>,
+    k: &Kernel,
+    tsect_pnts: &mut [TsectPnt],
+    extend: [bool; 2],
+    march_dir: Vec3,
+    tolerances: [f64; 2],
+) -> Result<PointIntersection> {
+    // DISPATCH GAP: SmSurfaceIntersector::DoPointIntersection on an SmFilletIntersector
+    // reaches its ComputeNextPoint / FlushCurve / ComputePointValues / TestSpanAccuracy
+    // overrides; the port's base driver (intersect.surface_intersector_p4) would call
+    // the basic intersector's versions (plan/findings.md, blend.fillet_intersector), and
+    // the solver's FilletSolver does not implement fillet_intersector::FilletSolverOps.
+    unported_on(
+        (fi, k, tsect_pnts, extend, march_dir, tolerances),
+        "SmSurfaceIntersector::DoPointIntersection (SmFilletIntersector overrides)",
+        "intersect.surface_intersector_p4",
+    )
 }
 
 /// `sm_MoveTSP(rTsectPnts, lFrom, lTo)` (unit `blend.fillet_geom_p6`).
@@ -719,7 +716,8 @@ impl FilletBrep {
     /// [`SolidError::InvalidInput`] where upstream dereferences `NULL` (no solver, edge
     /// use, offset surface, vertex use); those of `SetupOffsetValues`, the offset
     /// evaluation and the curve solve; [`SolidError::Unported`] for the fillet
-    /// intersector (`blend.fillet_intersector`) and the analytic fillets
+    /// intersector's point intersection (a DISPATCH GAP of
+    /// `intersect.surface_intersector_p4`) and the analytic fillets
     /// (`blend.fillet_solver_p2`).
     pub fn re_calc_fillet_geom(
         &mut self,
@@ -943,17 +941,16 @@ impl FilletBrep {
         }
 
         if !fillet_created {
-            solver.solver().setup_offset_extension(
-                k,
-                &offset_as_surface(&off(&*solver, 0)?),
-                &mut domain1,
-            )?;
-            solver.solver().setup_offset_extension(
-                k,
-                &offset_as_surface(&off(&*solver, 1)?),
-                &mut domain2,
-            )?;
-            let mut fi = FilletIntersector::new([&domain1, &domain2], g)?;
+            let fi_surf1 = offset_as_surface(&off(&*solver, 0)?);
+            let fi_surf2 = offset_as_surface(&off(&*solver, 1)?);
+            solver
+                .solver()
+                .setup_offset_extension(k, &fi_surf1, &mut domain1)?;
+            solver
+                .solver()
+                .setup_offset_extension(k, &fi_surf2, &mut domain2)?;
+            // Setup FilletIntersector
+            let mut fi = FilletIntersector::new(&fi_surf1, &domain1, &fi_surf2, &domain2, Some(g))?;
 
             let mut extend_before = false;
             let mut extend_after = false;
@@ -990,7 +987,8 @@ impl FilletBrep {
                     .iter()
                     .map(|&vu| self.fillet_vertexuse(vu).map(|r| r.tsect_pnt().clone()))
                     .collect::<Result<Vec<_>>>()?;
-                fi.do_point_intersection(
+                do_point_intersection(
+                    &mut fi,
                     k,
                     &mut pnts,
                     [extend_before, extend_after],

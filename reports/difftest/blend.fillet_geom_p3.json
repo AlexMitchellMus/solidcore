@@ -1014,8 +1014,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletIntersector::SmFilletIntersector",
-        "unit": "blend.fillet_intersector"
+        "symbol": "SmSurfaceIntersector::DoPointIntersection (SmFilletIntersector overrides)",
+        "unit": "intersect.surface_intersector_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0022",
@@ -1166,8 +1166,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletIntersector::SmFilletIntersector",
-        "unit": "blend.fillet_intersector"
+        "symbol": "SmSurfaceIntersector::DoPointIntersection (SmFilletIntersector overrides)",
+        "unit": "intersect.surface_intersector_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0040",
@@ -1442,8 +1442,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletIntersector::SmFilletIntersector",
-        "unit": "blend.fillet_intersector"
+        "symbol": "SmSurfaceIntersector::DoPointIntersection (SmFilletIntersector overrides)",
+        "unit": "intersect.surface_intersector_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0074",
@@ -1470,8 +1470,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletIntersector::SmFilletIntersector",
-        "unit": "blend.fillet_intersector"
+        "symbol": "SmSurfaceIntersector::DoPointIntersection (SmFilletIntersector overrides)",
+        "unit": "intersect.surface_intersector_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0077",
@@ -1622,8 +1622,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletIntersector::SmFilletIntersector",
-        "unit": "blend.fillet_intersector"
+        "symbol": "SmSurfaceIntersector::DoPointIntersection (SmFilletIntersector overrides)",
+        "unit": "intersect.surface_intersector_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0094",
@@ -1674,8 +1674,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletIntersector::SmFilletIntersector",
-        "unit": "blend.fillet_intersector"
+        "symbol": "SmSurfaceIntersector::DoPointIntersection (SmFilletIntersector overrides)",
+        "unit": "intersect.surface_intersector_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0100",
@@ -1722,8 +1722,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletIntersector::SmFilletIntersector",
-        "unit": "blend.fillet_intersector"
+        "symbol": "SmSurfaceIntersector::DoPointIntersection (SmFilletIntersector overrides)",
+        "unit": "intersect.surface_intersector_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0105",
@@ -1742,8 +1742,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletIntersector::SmFilletIntersector",
-        "unit": "blend.fillet_intersector"
+        "symbol": "SmSurfaceIntersector::DoPointIntersection (SmFilletIntersector overrides)",
+        "unit": "intersect.surface_intersector_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0107",
@@ -1818,8 +1818,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletIntersector::SmFilletIntersector",
-        "unit": "blend.fillet_intersector"
+        "symbol": "SmSurfaceIntersector::DoPointIntersection (SmFilletIntersector overrides)",
+        "unit": "intersect.surface_intersector_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0116",
@@ -1982,8 +1982,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletIntersector::SmFilletIntersector",
-        "unit": "blend.fillet_intersector"
+        "symbol": "SmSurfaceIntersector::DoPointIntersection (SmFilletIntersector overrides)",
+        "unit": "intersect.surface_intersector_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0136",
@@ -2162,8 +2162,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletIntersector::SmFilletIntersector",
-        "unit": "blend.fillet_intersector"
+        "symbol": "SmSurfaceIntersector::DoPointIntersection (SmFilletIntersector overrides)",
+        "unit": "intersect.surface_intersector_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0158",
@@ -2966,8 +2966,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletIntersector::SmFilletIntersector",
-        "unit": "blend.fillet_intersector"
+        "symbol": "SmSurfaceIntersector::DoPointIntersection (SmFilletIntersector overrides)",
+        "unit": "intersect.surface_intersector_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0256",
@@ -3178,8 +3178,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletIntersector::SmFilletIntersector",
-        "unit": "blend.fillet_intersector"
+        "symbol": "SmSurfaceIntersector::DoPointIntersection (SmFilletIntersector overrides)",
+        "unit": "intersect.surface_intersector_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0281",
@@ -3342,7 +3342,7 @@
   "deferred_by_unit": {
     "blend.fillet_geom_p2": 4,
     "blend.fillet_geom_p5": 11,
-    "blend.fillet_intersector": 13
+    "intersect.surface_intersector_p4": 13
   },
   "max_rel_err": 3.663446558865142e-14,
   "pass": true,
