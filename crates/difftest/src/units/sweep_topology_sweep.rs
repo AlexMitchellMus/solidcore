@@ -54,10 +54,19 @@ fn entity(id: i64) -> Option<E> {
 fn entity_id(e: Option<E>) -> i64 {
     match e {
         None => 64,
-        Some(E::Vertex(b, i)) => i64::from(b.index() * 8 + i.index()),
-        Some(E::Edge(b, i)) => 16 + i64::from(b.index() * 8 + i.index()),
-        Some(E::Face(b, i)) => 32 + i64::from(b.index() * 8 + i.index()),
-        Some(E::Region(b, i)) => 48 + i64::from(b.index() * 8 + i.index()),
+        Some(E::Vertex(b, i)) if b.index() < 2 && i.index() < 8 => {
+            i64::from(b.index() * 8 + i.index())
+        }
+        Some(E::Edge(b, i)) if b.index() < 2 && i.index() < 8 => {
+            16 + i64::from(b.index() * 8 + i.index())
+        }
+        Some(E::Face(b, i)) if b.index() < 2 && i.index() < 8 => {
+            32 + i64::from(b.index() * 8 + i.index())
+        }
+        Some(E::Region(b, i)) if b.index() < 2 && i.index() < 8 => {
+            48 + i64::from(b.index() * 8 + i.index())
+        }
+        Some(_) => -2,
     }
 }
 fn status(e: &SolidError) -> i64 {
@@ -85,7 +94,11 @@ impl Model {
     fn new(vector: [f64; 3]) -> Result<Self> {
         let mut b = vec![Brep::new(), Brep::new()];
         for brep in &mut b {
-            brep.add_region_record(Region { in_brep: true })?;
+            let region = brep.add_region_record(Region {
+                in_brep: true,
+                ..Region::default()
+            })?;
+            brep.set_infinite_region(Some(region));
             for i in 0..8 {
                 brep.add_vertex_record(Vertex {
                     point: Point3::new(
@@ -165,6 +178,63 @@ impl SweepAccess for Model {
     }
     fn kernel_mut(&mut self, _id: BrepId) -> Result<&mut Kernel> {
         Ok(&mut self.k)
+    }
+    fn with_brep_mut<T>(
+        &mut self,
+        id: BrepId,
+        body: impl FnOnce(
+            &Kernel,
+            &mut Brep,
+            &dyn Fn(FaceId) -> solidcore::geom::object::ObjectRef,
+        ) -> Result<T>,
+    ) -> Result<T> {
+        let brep = self
+            .b
+            .get_mut(id.index() as usize)
+            .ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
+        let face_objects = |face: FaceId| solidcore::geom::object::ObjectRef {
+            type_code: solidcore::geom::assert_array::labels::FACE_TYPE,
+            key: ObjectKey(100_000 + u64::from(id.index()) * 10_000 + u64::from(face.index()) * 97),
+        };
+        body(&self.k, brep, &face_objects)
+    }
+    fn with_breps_mut<T>(
+        &mut self,
+        source: BrepId,
+        destination: BrepId,
+        body: impl FnOnce(
+            &Kernel,
+            &mut Brep,
+            &mut Brep,
+            &dyn Fn(FaceId) -> solidcore::geom::object::ObjectRef,
+        ) -> Result<T>,
+    ) -> Result<T> {
+        let si = source.index() as usize;
+        let di = destination.index() as usize;
+        if si == di {
+            return Err(SolidError::invalid_input(
+                "sweep test model",
+                "aliased B-reps",
+            ));
+        }
+        let (left, right) = self
+            .b
+            .split_at_mut_checked(si.max(di))
+            .ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
+        let (src, dst) = if si < di {
+            (left.get_mut(si), right.first_mut())
+        } else {
+            (right.first_mut(), left.get_mut(di))
+        };
+        let src = src.ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
+        let dst = dst.ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
+        let face_objects = |face: FaceId| solidcore::geom::object::ObjectRef {
+            type_code: solidcore::geom::assert_array::labels::FACE_TYPE,
+            key: ObjectKey(
+                100_000 + u64::from(destination.index()) * 10_000 + u64::from(face.index()) * 97,
+            ),
+        };
+        body(&self.k, src, dst, &face_objects)
     }
     fn new_brep(&mut self, _id: BrepId) -> Result<BrepId> {
         unsupported()
@@ -317,16 +387,21 @@ fn rust(i: &Input) -> Result<Vec<i64>> {
                 s.do_stitching = false;
                 s.do_merge = false;
                 s.repetitions = 1;
+                // Match the native fixture's distinct original shell vertex;
+                // it is not one of the 64 map-script pool objects.
+                let tolerance = model.b[0].tolerance();
+                let source = model.b[0].add_vertex_record(Vertex {
+                    point: Point3::ZERO,
+                    tolerance,
+                    ..Vertex::default()
+                })?;
                 s.do_sweep(
                     &mut model,
                     &g,
                     Some(BrepId::from_index(0)),
                     Some((BrepId::from_index(0), RegionId::from_index(0))),
                     &mut solidcore::sweep::topology_sweep::engine::SweepTargets {
-                        vertices_higher: Some(vec![Some((
-                            BrepId::from_index(0),
-                            VertexId::from_index(0),
-                        ))]),
+                        vertices_higher: Some(vec![Some((BrepId::from_index(0), source))]),
                         ..Default::default()
                     },
                 )
@@ -436,5 +511,139 @@ impl UnitDiff for Runner {
         Some(
             json!({"steps":steps,"kind":rng.below(3),"vector":[rng.uniform(-10.,10.),rng.uniform(-10.,10.),rng.uniform(-10.,10.)]}),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use solidcore::geom::extent2d::Extent2d;
+    use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
+    use solidcore::surface::{plane::Plane, surface::Surface};
+    use solidcore::sweep::topology_sweep::access::{FaceInput, SweepMergeId};
+    use solidcore::topology::shell::{ShellMembers, ShellType};
+    use solidcore::topology::{Edgeuse, Face, Faceuse, Shell, ShellId};
+
+    #[test]
+    fn default_queries_reach_the_live_lists_and_missing_infinite_region_is_null() -> Result<()> {
+        let mut model = Model::new([1., 0., 0.])?;
+        let b = BrepId::from_index(0);
+        let inf = model.infinite_region(b)?;
+        let f1 = model.b[0].add_face_record(Face::new(ShellId::from_index(0)))?;
+        let f2 = model.b[0].add_face_record(Face::new(ShellId::from_index(0)))?;
+        model.b[0].set_face_list(vec![f2, f1])?;
+        assert_eq!(model.faces(b)?, vec![f2, f1]);
+        let fu1 = model.b[0].add_faceuse_record(Faceuse {
+            face: Some(f1),
+            ..Faceuse::default()
+        })?;
+        let fu2 = model.b[0].add_faceuse_record(Faceuse {
+            face: Some(f2),
+            ..Faceuse::default()
+        })?;
+        let shell = model.b[0].add_shell_record(Shell {
+            shell_type: ShellType::Faceuse,
+            members: ShellMembers::Faceuses(vec![fu2, fu1, fu2]),
+            ..Shell::default()
+        })?;
+        model.b[0].region_mut(inf)?.shells = vec![shell];
+        assert_eq!(model.region_shells((b, inf))?, vec![shell]);
+        assert_eq!(model.shell_faceuse_faces((b, shell))?, vec![f2, f1, f2]);
+        model.b.push(Brep::new());
+        assert!(model.wire_edges(BrepId::from_index(2))?.is_empty());
+        model.b[0].set_infinite_region(None);
+        assert!(matches!(
+            model.infinite_region(b),
+            Err(SolidError::Upstream { code: 1006, .. })
+        ));
+        Ok(())
+    }
+    #[test]
+    fn copying_defaults_reach_the_next_unavailable_callees() -> Result<()> {
+        let mut model = Model::new([1., 0., 0.])?;
+        let source = BrepId::from_index(0);
+        let destination = BrepId::from_index(1);
+        assert!(model.copy_edges(source, &[], destination)?.is_empty());
+        assert!(matches!(
+            model.copy_edges(source, &[EdgeId::from_index(0)], destination),
+            Err(SolidError::Unported {
+                unit: "topology.brep_p5",
+                ..
+            })
+        ));
+        let mut mates = BTreeMap::new();
+        assert!(matches!(
+            model.copy_faces(source, &[], destination, true, SweepMergeId(0), &mut mates),
+            Err(SolidError::Unported {
+                unit: "topology.brep_p2",
+                ..
+            })
+        ));
+        assert!(mates.is_empty());
+        assert!(matches!(
+            model.copy_faces(source, &[], source, true, SweepMergeId(0), &mut mates),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        assert!(matches!(
+            model.copy_faces(
+                source,
+                &[],
+                BrepId::from_index(99),
+                true,
+                SweepMergeId(0),
+                &mut mates
+            ),
+            Err(SolidError::Upstream { code: 1006, .. })
+        ));
+        Ok(())
+    }
+    #[test]
+    fn make_face_default_calls_the_port_and_retains_its_dependency_attribution() -> Result<()> {
+        let mut model = Model::new([1., 0., 0.])?;
+        let surface = Surface::from(Plane::from_normal(Point3::ZERO, Point3::Z));
+        let curve = model.b[0]
+            .edge(EdgeId::from_index(0))?
+            .curve
+            .clone()
+            .ok_or_else(|| SolidError::null_pointer("test"))?;
+        let input = FaceInput {
+            region: (BrepId::from_index(0), RegionId::from_index(0)),
+            loop_counts: vec![1],
+            curves: vec![curve],
+            uv_curves: None,
+            orientations: vec![OrientType::Same],
+            loop_points: Vec::new(),
+            domain: Extent2d::new(),
+            surface,
+            orientation: OrientType::Same,
+        };
+        assert!(matches!(
+            model.make_face(input),
+            Err(SolidError::Unported {
+                unit: "topology.brep_p9",
+                ..
+            })
+        ));
+        Ok(())
+    }
+    #[test]
+    fn binormal_error_keeps_both_caller_outputs() -> Result<()> {
+        let mut model = Model::new([1., 0., 0.])?;
+        let eu = model.b[0].add_edgeuse_record(Edgeuse::default())?;
+        let mut point = Point3::new(7., 8., 9.);
+        let mut normal = Point3::new(3., 2., 1.);
+        assert!(matches!(
+            model.binormal(
+                (BrepId::from_index(0), eu),
+                0.5,
+                false,
+                &mut point,
+                &mut normal
+            ),
+            Err(SolidError::Upstream { code: 1007, .. })
+        ));
+        assert_eq!(point, Point3::new(7., 8., 9.));
+        assert_eq!(normal, Point3::new(3., 2., 1.));
+        Ok(())
     }
 }
