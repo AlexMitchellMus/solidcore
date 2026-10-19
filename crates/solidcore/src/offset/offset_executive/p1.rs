@@ -410,7 +410,7 @@ impl OffsetExecutive {
                 .face(f)?
                 .surface
                 .as_ref()
-                .is_some_and(|s| matches!(s.kind, SurfaceKind::OffsetSurface(_)));
+                .is_some_and(|s| matches!(s.kind(), SurfaceKind::OffsetSurface(_)));
             if is_offset {
                 // UNPORTED(topology.brep_p2): SmBrep::ReplaceSurface
                 return Err(SolidError::unported(
