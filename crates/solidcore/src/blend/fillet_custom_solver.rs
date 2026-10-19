@@ -61,8 +61,9 @@
 //!   with checks: an index upstream would read or write out of bounds is
 //!   [`SolidError::InvalidInput`]. `rIntervals` must have room for the two new
 //!   intervals, as upstream's fixed-size `SmExtentNd`.
-//! - **Unported callees.** `SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve`
-//!   (`blend.fillet_standard_solver_p2`) returns [`SolidError::Unported`]. Offset
+//! - **Callees.** `SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve` is
+//!   `blend.fillet_standard_solver_p2`'s
+//!   [`ConstantRadiusAssistedFs::guess_point_on_plane_solve`]. Offset
 //!   evaluations use the real offset port; point solvers and default singularity
 //!   construction propagate the errors of their surface dispatchers.
 
@@ -400,25 +401,6 @@ impl ConstantRadiusAssistedFs {
         let d = self.radius(rail)? * self.orientation(rail)?;
         self.surface_mut(rail)?.set_offset_distance(d);
         Ok(())
-    }
-
-    /// `GuessPointOnPlaneSolve(crPlaneOrig, crPlaneNormal, crUVDomain1, crUVDomain2,
-    /// rUV1, rUV2, rbFoundSolution, rTsectPnt)`.
-    #[allow(clippy::unused_self, clippy::too_many_arguments)]
-    fn guess_point_on_plane_solve(
-        &self,
-        _plane_orig: Point3,
-        _plane_normal: Vec3,
-        _uv_domain1: &Extent2d,
-        _uv_domain2: &Extent2d,
-        _uv1: Point2,
-        _uv2: Point2,
-    ) -> Result<Option<TsectPnt>> {
-        // UNPORTED(blend.fillet_standard_solver_p2): SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve
-        Err(SolidError::Unported {
-            upstream: "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-            unit: "blend.fillet_standard_solver_p2",
-        })
     }
 }
 
