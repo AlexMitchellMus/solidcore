@@ -24,6 +24,7 @@
 //! | `EvaluateMate`    | `sm_EvaluateMate`                 | `surface u v` (a face on the surface)        | `pnt[3]` |
 //! | `Capping`         | `JoinVertsByCapping`              | `tol surface uvcurve1 orient1 uvcurve2 orient2` | `n` then `n` x `uvcurve curve3d orient` |
 //! | `ClassifyFacePoint` | `sm_ClassifyFacePoint`          | `surface1 surface2 pos[3]` (two faces)       | `which` |
+//! | `EvaluateMateAnalytic` | `sm_EvaluateMate` on a real `SmPlane` / `SmSurfOfRevolution` | `0 O[3] X[3] Y[3] scale[2] umin vmin umax vmax make_nurb u v` (plane) or `1 a[3] b[3] axis_pnt[3] axis_dir[3] swap u v` (`CreateCanonical` of the line `a b`) | `construction_status`, then the evaluation's status and `pnt[3]` |
 //!
 //! Pseudo-B-rep ops (`op >= 20`) start with the block (the shim builds an `SmFilletBrep`
 //! per call): `nt` target wire-edge curves (3D), `nf` target face surfaces, `nfb` fillet
@@ -88,10 +89,14 @@
 //! `degree + 1`, because `sm_DecomposeSrf` writes past the cache's v-patch array for it.
 //! The u direction fails cleanly there (upstream's B262 guard), non-monotone constructed
 //! vectors run (defined behaviour), and the other ops never decompose, so all of those
-//! are compared. For
+//! are compared. The refusal is the crash precondition, not an exact crash predicate:
+//! some paths return before building the cache for the snapped surface and would
+//! complete (the round-5 review measured 28 of 169 such programs, `TwoPnts` returning
+//! 1001 and `FbVertOnVert`/`FbCliff`/`FbSplitFace` exits ahead of the cache fetch);
+//! telling them apart would mean replicating upstream's control flow. For
 //! `ClassifyFacePoint` and `FbSplitFace`, the
 //! ops that reach `sm_ClassifyFacePoint`, every value (control points as Euclidean
-//! `Pw / w`) is bounded by [`MAX_MAGNITUDE`], the overflow regime of HANG-16; inputs
+//! `Pw / w`) is bounded by [`MAX_MAGNITUDE`], the overflow regime of HANG-29; inputs
 //! under it are accepted even though those from about `1e15` can take seconds to about
 //! a minute. For `SurfaceDropPoint`, `TwoPnts`, `FbVertOnVert` and `FbCliff`, whose
 //! global solves never finish once a coordinate's own box arithmetic overflows
@@ -115,7 +120,7 @@ pub const MAX_LIST: usize = 64;
 /// `sm_ClassifyFacePoint`; rational control points are bounded as `Pw / w`. The
 /// boundary split in upstream `SmCurve::GlobalCoincidenceChecker` (reached through
 /// `SmFace::CalculateUVDomainFromUVTrimCurves`) never terminates once squared
-/// distances overflow to infinity (HANG-16: a control point of `1e153` returns, `1e154`
+/// distances overflow to infinity (HANG-29: a control point of `1e153` returns, `1e154`
 /// never), and that is the only non-termination established, so the bound sits at the
 /// overflow regime. It does not bound the runtime: the split is slow in a
 /// shape-dependent way from about `1e15` on (one control point of `-1e15` in every
@@ -136,7 +141,7 @@ pub const MAX_MAGNITUDE: f64 = 1e150;
 /// a homogeneous `2e307` (Euclidean `1.3e307`) and never at `3e307` (`2e307`), and all
 /// three return in milliseconds at `1e300` and below. The bound sits under every
 /// measured hang and at or under every measured return; it is not the squared-distance
-/// regime of HANG-16 (those three calls return at `1e150`..`1e300`).
+/// regime of HANG-29 (those three calls return at `1e150`..`1e300`).
 pub const MAX_SOLVER_MAGNITUDE: f64 = 1e307;
 /// `NL_NOZ`.
 const NOZ: f64 = f64::MAX;
@@ -159,6 +164,7 @@ pub enum Op {
     EvaluateMate = 9,
     Capping = 10,
     ClassifyFacePoint = 11,
+    EvaluateMateAnalytic = 12,
     FbExport = 20,
     FbVertexGeoms = 21,
     FbVuAtRailEnd = 22,
@@ -191,11 +197,14 @@ impl Op {
     /// The op with this code (the `op` of the shim entry point), if any.
     #[must_use]
     pub fn from_code(code: i64) -> Option<Self> {
-        Self::ALL.iter().copied().find(|&op| i64::from(op as i32) == code)
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|&op| i64::from(op as i32) == code)
     }
 
     /// Every op, in code order.
-    pub const ALL: [Self; 32] = [
+    pub const ALL: [Self; 33] = [
         Self::CleanupNoise,
         Self::CheckSeamOut,
         Self::CheckSeamOn,
@@ -208,6 +217,7 @@ impl Op {
         Self::EvaluateMate,
         Self::Capping,
         Self::ClassifyFacePoint,
+        Self::EvaluateMateAnalytic,
         Self::FbExport,
         Self::FbVertexGeoms,
         Self::FbVuAtRailEnd,
@@ -248,27 +258,31 @@ fn bad(msg: impl Into<String>) -> FfiError {
     FfiError::InvalidArgument(msg.into())
 }
 
-/// Sequential reader over the input.
+/// Sequential reader over the input: the shared [`crate::reader::Cursor`] plus this
+/// op's magnitude bound. `unit_reader!` takes a fixed bound, and this unit's bound
+/// depends on the op, so the newtype is spelled out here.
 struct Reader<'a> {
-    input: &'a [f64],
-    at: usize,
+    cursor: crate::reader::Cursor<'a>,
     /// The magnitude bound of this op's values: [`MAX_MAGNITUDE`] for the ops reaching
-    /// HANG-16, [`MAX_SOLVER_MAGNITUDE`] for the global-solver ops (HANG-20), infinite
+    /// HANG-29, [`MAX_SOLVER_MAGNITUDE`] for the global-solver ops (HANG-20), infinite
     /// otherwise.
     bound: f64,
 }
 
-impl Reader<'_> {
-    fn num(&mut self) -> Result<f64, FfiError> {
-        let v = self
-            .input
-            .get(self.at)
-            .copied()
-            .ok_or_else(|| bad("input too short"))?;
-        self.at += 1;
-        Ok(v)
+impl<'a> core::ops::Deref for Reader<'a> {
+    type Target = crate::reader::Cursor<'a>;
+    fn deref(&self) -> &Self::Target {
+        &self.cursor
     }
+}
 
+impl core::ops::DerefMut for Reader<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.cursor
+    }
+}
+
+impl Reader<'_> {
     fn finite(&mut self) -> Result<f64, FfiError> {
         let v = self.num()?;
         if !v.is_finite() || v.abs() > self.bound {
@@ -293,15 +307,6 @@ impl Reader<'_> {
         (0..k).map(|_| self.finite()).collect()
     }
 
-    /// An integer in `0..=max`.
-    fn index(&mut self, max: usize) -> Result<usize, FfiError> {
-        let v = self.num()?;
-        if v.fract() != 0.0 || v < 0.0 || v > max as f64 {
-            return Err(bad(format!("bad index/count {v}")));
-        }
-        Ok(v as usize)
-    }
-
     /// An integer in `-1..max` as `None` / `Some`.
     fn opt_index(&mut self, len: usize) -> Result<Option<usize>, FfiError> {
         let v = self.num()?;
@@ -312,17 +317,6 @@ impl Reader<'_> {
             return Err(bad(format!("bad optional index {v} (len {len})")));
         }
         Ok(Some(v as usize))
-    }
-
-    fn flag(&mut self) -> Result<bool, FfiError> {
-        Ok(self.index(1)? == 1)
-    }
-
-    fn done(&self) -> Result<(), FfiError> {
-        if self.at != self.input.len() {
-            return Err(bad("trailing input"));
-        }
-        Ok(())
     }
 }
 
@@ -355,7 +349,9 @@ fn check_knots(knots: &[f64], p: usize, what: &str) -> Result<(), FfiError> {
     for w in inner.windows(2) {
         run = if w.first() == w.last() { run + 1 } else { 1 };
         if run > p {
-            return Err(bad(format!("{what}: interior multiplicity above the degree")));
+            return Err(bad(format!(
+                "{what}: interior multiplicity above the degree"
+            )));
         }
     }
     Ok(())
@@ -363,7 +359,9 @@ fn check_knots(knots: &[f64], p: usize, what: &str) -> Result<(), FfiError> {
 
 /// Checks that all points share their rational marker and, for `dim == 3`, are 3D.
 fn check_points(pts: &[[f64; 4]], dim: usize, what: &str) -> Result<(), FfiError> {
-    let [_, _, _, w0] = *pts.first().ok_or_else(|| bad(format!("{what}: no points")))?;
+    let [_, _, _, w0] = *pts
+        .first()
+        .ok_or_else(|| bad(format!("{what}: no points")))?;
     for &[_, _, z, w] in pts {
         if dim == 3 && z == NOZ {
             return Err(bad(format!("{what}: 2D data")));
@@ -388,7 +386,7 @@ fn points(rd: &mut Reader<'_>, k: usize) -> Result<Vec<[f64; 4]>, FfiError> {
                 rd.marker_or_finite(NOW)?,
             ];
             // the bound is on the Euclidean point: a tiny weight under a bounded
-            // homogeneous coordinate reaches the HANG-16 regime just the same
+            // homogeneous coordinate reaches the HANG-29 regime just the same
             let w = pt[3];
             if rd.bound.is_finite() && w != NOW {
                 let oversized = |c: f64| {
@@ -514,6 +512,17 @@ fn validate_geometry(op: Op, rd: &mut Reader<'_>) -> Result<(), FfiError> {
             surface(rd)?;
             rd.finites(3)?;
         }
+        Op::EvaluateMateAnalytic => {
+            if rd.flag()? {
+                // surface of revolution: line ends, axis point and direction, swap
+                rd.finites(12)?;
+            } else {
+                // plane: origin, axes, scales, domain, then make_nurb
+                rd.finites(15)?;
+            }
+            rd.flag()?;
+            rd.finites(2)?;
+        }
         _ => return Err(bad("not a geometry op")),
     }
     Ok(())
@@ -572,7 +581,7 @@ fn validate_block(rd: &mut Reader<'_>) -> Result<Block, FfiError> {
         rd.index(13)?; // SmFilletVertexType
         rd.index(12)?; // SmFilStatus
         rd.opt_index(MAX_LIST)?; // corner tag
-        // SmPointClassificationType: SM_PC_UNKNOWN (100) ..= SM_PC_NOTHING (110)
+                                 // SmPointClassificationType: SM_PC_UNKNOWN (100) ..= SM_PC_NOTHING (110)
         let pc_class = rd.index(110)?;
         if pc_class < 100 {
             return Err(bad("vertex: point class below SM_PC_UNKNOWN"));
@@ -720,8 +729,7 @@ fn validate_pseudo(op: Op, rd: &mut Reader<'_>) -> Result<(), FfiError> {
             rd.flag()?;
             let n = rd.index(MAX_LIST)?;
             for _ in 0..n {
-                rd.opt_index(b.nfb)?
-                    .ok_or_else(|| bad("candidate -1"))?;
+                rd.opt_index(b.nfb)?.ok_or_else(|| bad("candidate -1"))?;
             }
         }
         Op::FbClearEdges => {
@@ -803,16 +811,17 @@ fn validate_pseudo(op: Op, rd: &mut Reader<'_>) -> Result<(), FfiError> {
     Ok(())
 }
 
-/// Runs `op` on the flat `input` (layouts above) and returns the shim's record.
+/// Checks `input` for `op` exactly as [`eval`] does before calling the shim: the
+/// layout, counts and indices, and the magnitude bounds of the hang regimes (HANG-29,
+/// HANG-20). The difftest runs the Rust side only on inputs this accepts, so an input
+/// in a hang regime never reaches the Rust port either.
 ///
 /// # Errors
 ///
-/// [`FfiError::InvalidArgument`] for an input upstream could not handle safely;
-/// [`FfiError::Status`] for a shim error (`SC_ERR_*`).
-pub fn eval(op: Op, input: &[f64]) -> Result<Vec<f64>, FfiError> {
+/// [`FfiError::InvalidArgument`] for an input upstream could not handle safely.
+pub fn validate(op: Op, input: &[f64]) -> Result<(), FfiError> {
     let mut rd = Reader {
-        input,
-        at: 0,
+        cursor: crate::reader::Cursor::new(input),
         bound: match op {
             Op::ClassifyFacePoint | Op::FbSplitFace => MAX_MAGNITUDE,
             Op::SurfaceDropPoint | Op::TwoPnts | Op::FbVertOnVert | Op::FbCliff => {
@@ -826,7 +835,17 @@ pub fn eval(op: Op, input: &[f64]) -> Result<Vec<f64>, FfiError> {
     } else {
         validate_geometry(op, &mut rd)?;
     }
-    rd.done()?;
+    rd.done()
+}
+
+/// Runs `op` on the flat `input` (layouts above) and returns the shim's record.
+///
+/// # Errors
+///
+/// [`FfiError::InvalidArgument`] for an input upstream could not handle safely;
+/// [`FfiError::Status`] for a shim error (`SC_ERR_*`).
+pub fn eval(op: Op, input: &[f64]) -> Result<Vec<f64>, FfiError> {
+    validate(op, input)?;
     call_with_buffer(4096, |buf, len| {
         // SAFETY: input is valid for input.len() reads (validated above); buf is valid
         // for buf.len() writes; len is a valid pointer.

@@ -58,6 +58,7 @@
 #include <SmRegion.h>
 #include <SmShell.h>
 #include <SmSolutionArray.h>
+#include <SmSurfOfRevolution.h>
 #include <SmSurface.h>
 #include <SmSurfaceIntersector.h>
 #include <SmTArray.h>
@@ -91,6 +92,7 @@ enum : int32_t
     OP_EVALUATE_MATE = 9,
     OP_CAPPING = 10,
     OP_CLASSIFY_FACE_POINT = 11,
+    OP_EVALUATE_MATE_ANALYTIC = 12,
     OP_FB_EXPORT = 20,
     OP_FB_VERTEX_GEOMS = 21,
     OP_FB_VU_AT_RAIL_END = 22,
@@ -201,6 +203,10 @@ SmBSplineSurface* read_surface(Rd& rd, const SmContext& ctx)
     // its patch array when the surface cache is built. Read the knot vector the
     // constructor really left and refuse such a surface for the ops that build the
     // cache (in u the decomposition fails cleanly, and the other ops never decompose).
+    // This refuses the precondition, not exactly the crashing runs: some paths return
+    // before the cache for this surface is built (measured 28 of 169 such programs:
+    // TwoPnts 1001 and Fb exits ahead of the cache fetch), and predicting them would
+    // replicate upstream's control flow.
     if (rd.cache_op && !rd.bad)
     {
         const gw_SURFACE* g = srf->GetGwNurbPointer();
@@ -405,6 +411,15 @@ struct Model
             for (ULONG i = 0; i < edges.GetSize(); i++)
                 delete (SmFilletEdge*)edges[i];
             delete pseudo;
+        }
+        // ~SmFilletVertex unlinks itself from its mates, assuming upstream's symmetric
+        // pairing; the model input may pair asymmetrically, which would leave a mate
+        // pointing at an already-deleted vertex. Clear every mate first so no destructor
+        // follows one.
+        for (size_t i = 0; i < verts.size(); ++i)
+        {
+            verts[i]->SetMate(0, NULL);
+            verts[i]->SetMate(1, NULL);
         }
         for (size_t i = 0; i < verts.size(); ++i)
             delete verts[i];
@@ -1083,6 +1098,88 @@ int32_t run_geometry(int32_t op, Rd& rd, std::vector<double>& o)
         if (f == NULL)
         {
             delete b;
+            return SC_ERR_ARG;
+        }
+        SmPoint3d p(0.0, 0.0, 0.0);
+        SmStatus e = sm_EvaluateMate(f, uv, p);
+        o.push_back(st(e));
+        put_pt(o, p);
+        delete b;
+        return SC_OK;
+    }
+    case OP_EVALUATE_MATE_ANALYTIC:
+    {
+        // a real SmPlane (kind 0: SmPlane(O, X, Y, UVScale, UVDomain), MakeNurb when asked)
+        // or SmSurfOfRevolution (kind 1: CreateCanonical of a line, its NURB made, about
+        // an axis), so sm_EvaluateMate's virtual EvaluatePoint and the inherited
+        // EvaluatePointOnExtendedSurface run on those kinds
+        int64_t kind = rd.idx();
+        SmBSplineSurface* s = NULL;
+        SmStatus cs = SM_SUCCESS;
+        if (kind == 0)
+        {
+            SmPoint3d org = rd.vec();
+            SmVector3d x = rd.vec();
+            SmVector3d y = rd.vec();
+            double su = rd.num();
+            double sv = rd.num();
+            double d0 = rd.num();
+            double d1 = rd.num();
+            double d2 = rd.num();
+            double d3 = rd.num();
+            bool nurb = rd.flag();
+            if (!rd.bad)
+            {
+                SmPlane* pl = new (ctx) SmPlane(org, x, y, SmVector2d(su, sv),
+                                                SmExtent2d(d0, d1, d2, d3), &ctx);
+                if (nurb)
+                    cs = pl->MakeNurb();
+                s = pl;
+            }
+        }
+        else
+        {
+            SmPoint3d a = rd.vec();
+            SmPoint3d b = rd.vec();
+            SmPoint3d ap = rd.vec();
+            SmVector3d ad = rd.vec();
+            bool swap = rd.flag();
+            if (!rd.bad)
+            {
+                SmLine* l = new (ctx) SmLine(a, b, 3, &ctx);
+                l->GetOrCreateGwNurbPointer();
+                SmSurfOfRevolution* r = NULL;
+                cs = SmSurfOfRevolution::CreateCanonical(ctx, l, ap, ad, r, swap ? TRUE : FALSE);
+                if (cs != SM_SUCCESS)
+                {
+                    if (r)
+                        delete r; // owns the line
+                    else
+                        delete l;
+                    r = NULL;
+                }
+                s = r;
+            }
+        }
+        SmPoint2d uv = rd.uv();
+        if (rd.bad)
+        {
+            delete s;
+            return SC_ERR_ARG;
+        }
+        o.push_back(st(cs));
+        if (s == NULL || cs != SM_SUCCESS)
+        {
+            delete s;
+            o.push_back(0.0);
+            put_pt(o, SmPoint3d(0.0, 0.0, 0.0));
+            return SC_OK;
+        }
+        SmBrep* b = new (ctx) SmBrep();
+        SmFace* f = face_of(b, s); // the face owns the surface
+        if (f == NULL)
+        {
+            delete b; // as OP_EVALUATE_MATE: a face the B-rep refuses is an input error
             return SC_ERR_ARG;
         }
         SmPoint3d p(0.0, 0.0, 0.0);
