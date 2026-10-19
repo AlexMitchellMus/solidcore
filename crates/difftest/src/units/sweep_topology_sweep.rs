@@ -87,6 +87,7 @@ struct Model {
     k: Kernel,
     b: Vec<Brep>,
     attributes: AttributeStore,
+    notification_records: BTreeMap<ObjectKey, solidcore::topology::topology::Topology>,
     keys: BTreeMap<E, ObjectKey>,
     curve_keys: BTreeMap<EdgeRef, ObjectKey>,
 }
@@ -157,6 +158,7 @@ impl Model {
             k: Kernel::default(),
             b,
             attributes,
+            notification_records: BTreeMap::new(),
             keys,
             curve_keys,
         })
@@ -186,6 +188,7 @@ impl SweepAccess for Model {
             &mut Kernel,
             &mut Brep,
             &dyn Fn(FaceId) -> solidcore::geom::object::ObjectRef,
+            &mut solidcore::topology::edge::NotifyEnv<'_>,
         ) -> Result<T>,
     ) -> Result<T> {
         let brep = self
@@ -196,17 +199,31 @@ impl SweepAccess for Model {
             type_code: solidcore::geom::assert_array::labels::FACE_TYPE,
             key: ObjectKey(100_000 + u64::from(id.index()) * 10_000 + u64::from(face.index()) * 97),
         };
-        body(&mut self.k, brep, &face_objects)
+        let key_of = |entity: solidcore::EntityRef| {
+            if let solidcore::EntityRef::Face(face) = entity {
+                face_objects(face)
+            } else {
+                super::boolean_topology_intersector_p1::p9_entity_ref(entity)
+            }
+        };
+        let mut notifications = solidcore::topology::edge::NotifyEnv {
+            records: &mut self.notification_records,
+            attributes: &mut self.attributes,
+            context: None,
+            key_of: &key_of,
+        };
+        body(&mut self.k, brep, &face_objects, &mut notifications)
     }
     fn with_breps_mut<T>(
         &mut self,
         source: BrepId,
         destination: BrepId,
         body: impl FnOnce(
-            &Kernel,
+            &mut Kernel,
             &mut Brep,
             &mut Brep,
             &dyn Fn(FaceId) -> solidcore::geom::object::ObjectRef,
+            &mut solidcore::topology::edge::NotifyEnv<'_>,
         ) -> Result<T>,
     ) -> Result<T> {
         let si = source.index() as usize;
@@ -234,7 +251,20 @@ impl SweepAccess for Model {
                 100_000 + u64::from(destination.index()) * 10_000 + u64::from(face.index()) * 97,
             ),
         };
-        body(&self.k, src, dst, &face_objects)
+        let key_of = |entity: solidcore::EntityRef| {
+            if let solidcore::EntityRef::Face(face) = entity {
+                face_objects(face)
+            } else {
+                super::boolean_topology_intersector_p1::p9_entity_ref(entity)
+            }
+        };
+        let mut notifications = solidcore::topology::edge::NotifyEnv {
+            records: &mut self.notification_records,
+            attributes: &mut self.attributes,
+            context: None,
+            key_of: &key_of,
+        };
+        body(&mut self.k, src, dst, &face_objects, &mut notifications)
     }
     fn new_brep(&mut self, _id: BrepId) -> Result<BrepId> {
         unsupported()

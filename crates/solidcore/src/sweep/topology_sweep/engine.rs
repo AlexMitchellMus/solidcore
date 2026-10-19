@@ -1223,9 +1223,34 @@ mod tests {
     use crate::sweep::trans_sweep_geometry::TranslationalSweepGeometry;
     use crate::topology::{Brep, BrepId, EdgeId, FaceId, Region, RegionId, ShellId};
 
+    fn notification_object(entity: crate::EntityRef) -> crate::geom::object::ObjectRef {
+        let (kind, index) = match entity {
+            crate::EntityRef::Brep(v) => (16011, v.index()),
+            crate::EntityRef::Shell(v) => (16013, v.index()),
+            crate::EntityRef::Face(v) => (16002, v.index()),
+            crate::EntityRef::Loop(v) => (16003, v.index()),
+            crate::EntityRef::Edge(v) => (16016, v.index()),
+            crate::EntityRef::Vertex(v) => (16021, v.index()),
+            crate::EntityRef::Region(v) => (16012, v.index()),
+            crate::EntityRef::Faceuse(v) => (16022, v.index()),
+            crate::EntityRef::Loopuse(v) => (16004, v.index()),
+            crate::EntityRef::Edgeuse(v) => (16005, v.index()),
+            crate::EntityRef::Vertexuse(v) => (16006, v.index()),
+        };
+        crate::geom::object::ObjectRef {
+            key: crate::geom::attribute::ObjectKey((kind as u64) << 32 | u64::from(index)),
+            type_code: kind,
+        }
+    }
+
     #[derive(Default)]
     struct Access {
         kernel: Kernel,
+        notification_records: std::collections::BTreeMap<
+            crate::geom::attribute::ObjectKey,
+            crate::topology::topology::Topology,
+        >,
+        notification_attributes: crate::geom::attribute::AttributeStore,
         breps: Vec<Brep>,
         deleted: Vec<BrepId>,
         deleted_merges: usize,
@@ -1273,6 +1298,7 @@ mod tests {
                 &mut Kernel,
                 &mut Brep,
                 &dyn Fn(FaceId) -> crate::geom::object::ObjectRef,
+                &mut edge::NotifyEnv<'_>,
             ) -> Result<T>,
         ) -> Result<T> {
             let brep = self
@@ -1285,17 +1311,31 @@ mod tests {
                     100_000 + u64::from(id.index()) * 10_000 + u64::from(face.index()) * 97,
                 ),
             };
-            body(&mut self.kernel, brep, &face_objects)
+            let key_of = |entity: crate::EntityRef| {
+                if let crate::EntityRef::Face(face) = entity {
+                    face_objects(face)
+                } else {
+                    notification_object(entity)
+                }
+            };
+            let mut notifications = edge::NotifyEnv {
+                records: &mut self.notification_records,
+                attributes: &mut self.notification_attributes,
+                context: None,
+                key_of: &key_of,
+            };
+            body(&mut self.kernel, brep, &face_objects, &mut notifications)
         }
         fn with_breps_mut<T>(
             &mut self,
             source: BrepId,
             destination: BrepId,
             body: impl FnOnce(
-                &Kernel,
+                &mut Kernel,
                 &mut Brep,
                 &mut Brep,
                 &dyn Fn(FaceId) -> crate::geom::object::ObjectRef,
+                &mut edge::NotifyEnv<'_>,
             ) -> Result<T>,
         ) -> Result<T> {
             let si = source.index() as usize;
@@ -1325,7 +1365,26 @@ mod tests {
                         + u64::from(face.index()) * 97,
                 ),
             };
-            body(&self.kernel, src, dst, &face_objects)
+            let key_of = |entity: crate::EntityRef| {
+                if let crate::EntityRef::Face(face) = entity {
+                    face_objects(face)
+                } else {
+                    notification_object(entity)
+                }
+            };
+            let mut notifications = edge::NotifyEnv {
+                records: &mut self.notification_records,
+                attributes: &mut self.notification_attributes,
+                context: None,
+                key_of: &key_of,
+            };
+            body(
+                &mut self.kernel,
+                src,
+                dst,
+                &face_objects,
+                &mut notifications,
+            )
         }
         fn new_brep(&mut self, _: BrepId) -> Result<BrepId> {
             let id = BrepId::from_index(self.breps.len() as u32);

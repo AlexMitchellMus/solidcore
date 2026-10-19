@@ -108,10 +108,16 @@ pub trait SweepAccess {
     fn kernel_mut(&mut self, id: BrepId) -> Result<&mut Kernel>;
     /// Borrow a B-rep with its actual caller context and face identity resolver.
     /// The resolver also covers future face ids allocated by the operation.
+    /// Notification records, attributes and callbacks belong to the caller.
     fn with_brep_mut<T>(
         &mut self,
         brep: BrepId,
-        body: impl FnOnce(&mut Kernel, &mut Brep, &dyn Fn(FaceId) -> ObjectRef) -> Result<T>,
+        body: impl FnOnce(
+            &mut Kernel,
+            &mut Brep,
+            &dyn Fn(FaceId) -> ObjectRef,
+            &mut crate::topology::edge::NotifyEnv<'_>,
+        ) -> Result<T>,
     ) -> Result<T>;
     /// Borrow distinct source and destination B-reps, using the destination's
     /// actual context and face identity resolver. The engine only copies between
@@ -121,7 +127,13 @@ pub trait SweepAccess {
         &mut self,
         source: BrepId,
         destination: BrepId,
-        body: impl FnOnce(&Kernel, &mut Brep, &mut Brep, &dyn Fn(FaceId) -> ObjectRef) -> Result<T>,
+        body: impl FnOnce(
+            &mut Kernel,
+            &mut Brep,
+            &mut Brep,
+            &dyn Fn(FaceId) -> ObjectRef,
+            &mut crate::topology::edge::NotifyEnv<'_>,
+        ) -> Result<T>,
     ) -> Result<T>;
     /// Allocate an empty B-rep in `context_of`'s context.
     fn new_brep(&mut self, context_of: BrepId) -> Result<BrepId>;
@@ -252,7 +264,7 @@ pub trait SweepAccess {
             domain,
             orientation,
         } = input;
-        self.with_brep_mut(region.0, |kernel, brep, face_objects| {
+        self.with_brep_mut(region.0, |kernel, brep, face_objects, notifications| {
             let mut owners = Vec::new();
             let built = crate::topology::brep::p7::make_face_with_curve_owners(
                 kernel,
@@ -271,6 +283,7 @@ pub trait SweepAccess {
                 None,
                 face_objects,
                 &mut owners,
+                notifications,
             )?;
             Ok(FaceBuild {
                 face: (
@@ -386,7 +399,7 @@ pub trait SweepAccess {
         edges: &[EdgeId],
         destination: BrepId,
     ) -> Result<Vec<EdgeId>> {
-        self.with_breps_mut(source, destination, |kernel, source, destination, _| {
+        self.with_breps_mut(source, destination, |kernel, source, destination, _, _| {
             crate::topology::brep::p6::copy_edges(kernel, source, edges, destination)
         })
     }
@@ -403,7 +416,7 @@ pub trait SweepAccess {
     );
     /// `SmBrep::RemoveAllTopology`, using its actual mutable caller context.
     fn remove_all_topology(&mut self, brep: BrepId) -> Result<()> {
-        self.with_brep_mut(brep, |kernel, brep, _| {
+        self.with_brep_mut(brep, |kernel, brep, _, _| {
             crate::topology::brep::p10::remove_all_topology(kernel, brep)
         })
     }
@@ -420,7 +433,7 @@ pub trait SweepAccess {
         let status = self.with_breps_mut(
             source,
             destination,
-            |kernel, source, destination, face_objects| {
+            |kernel, source, destination, face_objects, notifications| {
                 // Keep resolver errors outside the native copy status: a
                 // declined borrow must not become a deferred notifier lookup.
                 Ok(crate::topology::brep::p7::copy_faces(
@@ -430,6 +443,7 @@ pub trait SweepAccess {
                     destination,
                     use_merge,
                     face_objects,
+                    notifications,
                 )
                 .and_then(|(_, all_ok)| {
                     if all_ok {
@@ -487,7 +501,7 @@ pub trait SweepAccess {
         point: &mut Point3,
         binormal: &mut Vec3,
     ) -> Result<()> {
-        self.with_brep_mut(edgeuse.0, |kernel, brep, _| {
+        self.with_brep_mut(edgeuse.0, |kernel, brep, _, _| {
             let evaluated = crate::topology::edgeuse::p3::evaluate_binormal(
                 kernel,
                 brep,

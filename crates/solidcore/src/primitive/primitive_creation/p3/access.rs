@@ -66,12 +66,16 @@ pub trait PrimitiveAccess: SweepAccess {
     }
     /// Create a wire, consuming its curve on success.
     fn wire(&mut self, brep: BrepId, curve: &mut Option<Curve>) -> Result<EdgeId> {
-        let _ = (brep, curve);
-        // UNPORTED(topology.brep_p5): SmBrep::CreateWireEdgeFromCurve
-        Err(SolidError::unported(
-            "SmBrep::CreateWireEdgeFromCurve",
-            "topology.brep_p5",
-        ))
+        let input = curve
+            .as_ref()
+            .ok_or_else(|| SolidError::null_pointer("primitive::primitive_creation::p3::wire"))?
+            .clone();
+        let interval = input.natural_interval();
+        let edge = self.with_brep_mut(brep, |kernel, model, _, _| {
+            crate::topology::brep::p5::create_wire_edge_from_curve(kernel, model, input, interval)
+        })?;
+        *curve = None;
+        Ok(edge)
     }
     /// Split a surface at G1 discontinuities and append its faces.
     fn surface_faces(
@@ -113,40 +117,35 @@ pub trait PrimitiveAccess: SweepAccess {
         ))
     }
     /// Topology-intersector deletion, retaining the supplied face order.
-    fn delete_primitive_faces(&mut self, brep: BrepId, faces: &[FaceId]) -> Result<()> {
-        let _ = (brep, faces);
-        // UNPORTED(boolean.topology_intersector_p2): SmTopologyIntersector::DeleteFaces
-        Err(SolidError::unported(
-            "SmTopologyIntersector::DeleteFaces",
-            "boolean.topology_intersector_p2",
-        ))
-    }
+    /// Implementations invoke the ported `TopologyIntersector::delete_faces`
+    /// using a context-only scoped intersector and caller-resolved object handles,
+    /// matching the constructor inside the upstream rotational sweep.
+    fn delete_primitive_faces(&mut self, brep: BrepId, faces: &[FaceId]) -> Result<()>;
     /// Stitch and orient the primitive's resulting B-rep.
     fn stitch_and_orient(&mut self, brep: BrepId) -> Result<()> {
-        let _ = brep;
-        // UNPORTED(topology.brep_p5): SmBrep::StitchAndOrient
-        Err(SolidError::unported(
-            "SmBrep::StitchAndOrient",
-            "topology.brep_p5",
-        ))
+        crate::topology::brep::p5::stitch_and_orient(
+            self.brep_mut(brep)?,
+            &crate::topology::brep::p5::StitchAndOrientOptions::default(),
+        )
     }
     /// Transform the complete B-rep, including pre-existing topology.
     fn transform_primitive(&mut self, brep: BrepId, placement: &Axis2Placement) -> Result<()> {
-        let _ = (brep, placement);
-        // UNPORTED(topology.brep_p5): SmBrep::Transform
-        Err(SolidError::unported(
-            "SmBrep::Transform",
-            "topology.brep_p5",
-        ))
+        self.with_brep_mut(brep, |kernel, model, _, notifications| {
+            crate::topology::brep::p5::transform_with_notifications(
+                kernel,
+                model,
+                placement,
+                None,
+                true,
+                Some(notifications),
+            )
+        })
     }
     /// Create composites for all loops of an input face.
     fn face_composites(&mut self, face: FaceRef) -> Result<Vec<CompositeCurve>> {
-        let _ = face;
-        // UNPORTED(topology.face_p3): SmFace::CreateComposites
-        Err(SolidError::unported(
-            "SmFace::CreateComposites",
-            "topology.face_p3",
-        ))
+        self.with_brep_mut(face.0, |kernel, model, _, _| {
+            crate::topology::face::p3::create_composites(kernel, model, face.1)
+        })
     }
     /// Face's normal bounding box for the rotational axis check.
     fn primitive_face_box(&mut self, face: FaceRef) -> Result<Extent3d> {

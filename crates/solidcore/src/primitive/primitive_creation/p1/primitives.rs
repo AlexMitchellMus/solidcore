@@ -42,6 +42,7 @@ use crate::surface::plane::p1::Plane;
 use crate::surface::sphere::Sphere;
 use crate::surface::surface::Surface;
 use crate::surface::torus::{Torus, TorusOptions};
+use crate::topology::edge::NotifyEnv;
 use crate::topology::{Brep, FaceId, RegionId};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -161,6 +162,7 @@ fn trimmed_face(
     curves: Vec<Curve>,
     surface: Surface,
     domain: Extent2d,
+    notifications: &mut NotifyEnv<'_>,
 ) -> Result<FaceId> {
     use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
     detailed_face(
@@ -175,6 +177,7 @@ fn trimmed_face(
         },
         surface,
         domain,
+        notifications,
     )
 }
 
@@ -201,6 +204,7 @@ pub(super) fn detailed_face(
     boundary: crate::topology::face::p2::FaceCurves,
     surface: Surface,
     domain: Extent2d,
+    notifications: &mut NotifyEnv<'_>,
 ) -> Result<FaceId> {
     use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
     use crate::topology::brep::p7::{make_face_with_curves, FaceCurvesInput};
@@ -225,6 +229,7 @@ pub(super) fn detailed_face(
         orientations: boundary.curve_orients,
         loop_points: boundary.loop_points,
     };
+    let key_of = notifications.key_of;
     make_face_with_curves(
         k,
         b,
@@ -234,11 +239,8 @@ pub(super) fn detailed_face(
         &domain,
         OrientType::Same,
         None,
-        &|face| {
-            crate::topology::brep_cache::arena_identity(
-                crate::topology::brep_cache::CacheObject::Face(face),
-            )
-        },
+        &|face| key_of(crate::EntityRef::Face(face)),
+        notifications,
     )?
     .face
     .ok_or_else(|| SolidError::null_pointer("primitive::primitive_creation::p1::detailed_face"))
@@ -402,6 +404,7 @@ impl PrimitiveCreation {
         brep: &mut Brep,
         dimensions: [f64; 5],
         frame: &Axis2Placement,
+        notifications: &mut NotifyEnv<'_>,
     ) -> Result<()> {
         let [length, inner, outer, start, end] = dimensions;
         if !(length > EFF_ZERO
@@ -469,6 +472,7 @@ impl PrimitiveCreation {
                 curves,
                 Surface::from(plane),
                 domain,
+                notifications,
             ))?;
         }
         for radial in [start_vec, end_vec] {
@@ -603,6 +607,7 @@ impl PrimitiveCreation {
             &mut crate::topology::topology_traverser::Marks,
             &mut crate::topology::topology_traverser::Marks,
         ),
+        notifications: &mut NotifyEnv<'_>,
     ) -> Result<()> {
         let previous = k.context.doing_boolean();
         let edit_a = a.editing_enabled();
@@ -708,7 +713,7 @@ impl PrimitiveCreation {
             })();
             a.face_mut(first)?.surface = Some(first_surface);
             covered?;
-            super::boolean::finish(k, a, b, first, operation, output, marks)?;
+            super::boolean::finish(k, a, b, first, operation, output, marks, notifications)?;
             selected_result = true;
             Ok(())
         })();
@@ -849,6 +854,7 @@ impl PrimitiveCreation {
         radius: f64,
         center: Vec3,
         tolerance: f64,
+        notifications: &mut NotifyEnv<'_>,
     ) -> Result<()> {
         use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
         use crate::nurbs::crv_basic::ConicType;
@@ -935,6 +941,7 @@ impl PrimitiveCreation {
                 boundary,
                 surface,
                 domain,
+                notifications,
             ))?;
         }
         let status = match stitch_faces(k, brep, 10.0 * tolerance) {
@@ -1178,6 +1185,25 @@ pub fn analytic_rotational_sweep(
 
 #[cfg(test)]
 mod tests {
+    fn notification_object(entity: crate::EntityRef) -> crate::geom::object::ObjectRef {
+        let (kind, index) = match entity {
+            crate::EntityRef::Brep(v) => (16011, v.index()),
+            crate::EntityRef::Shell(v) => (16013, v.index()),
+            crate::EntityRef::Face(v) => (16002, v.index()),
+            crate::EntityRef::Loop(v) => (16003, v.index()),
+            crate::EntityRef::Edge(v) => (16016, v.index()),
+            crate::EntityRef::Vertex(v) => (16021, v.index()),
+            crate::EntityRef::Region(v) => (16012, v.index()),
+            crate::EntityRef::Faceuse(v) => (16022, v.index()),
+            crate::EntityRef::Loopuse(v) => (16004, v.index()),
+            crate::EntityRef::Edgeuse(v) => (16005, v.index()),
+            crate::EntityRef::Vertexuse(v) => (16006, v.index()),
+        };
+        crate::geom::object::ObjectRef {
+            key: crate::geom::attribute::ObjectKey((kind as u64) << 32 | u64::from(index)),
+            type_code: kind,
+        }
+    }
     use super::*;
     use crate::topology::topology_traverser::Marks;
     use crate::topology::{Face, ShellId};
@@ -1225,6 +1251,12 @@ mod tests {
                 Boolean2d::Union,
                 &mut None,
                 (&mut marks_a, &mut marks_b),
+                &mut NotifyEnv {
+                    records: &mut std::collections::BTreeMap::default(),
+                    attributes: &mut crate::geom::attribute::AttributeStore::default(),
+                    context: None,
+                    key_of: &notification_object,
+                },
             )
             .unwrap_err();
         assert!(matches!(
@@ -1277,6 +1309,12 @@ mod tests {
                     Boolean2d::Union,
                     &mut output,
                     (&mut marks_a, &mut marks_b),
+                    &mut NotifyEnv {
+                        records: &mut std::collections::BTreeMap::default(),
+                        attributes: &mut crate::geom::attribute::AttributeStore::default(),
+                        context: None,
+                        key_of: &notification_object,
+                    },
                 )
                 .unwrap_err();
             if invalid {

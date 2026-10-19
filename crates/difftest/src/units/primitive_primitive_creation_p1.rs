@@ -128,6 +128,15 @@ fn boolean_face(brep: &mut Brep, k: &Kernel, data: &[f64]) -> solidcore::Result<
 }
 
 fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
+    let mut notification_records = std::collections::BTreeMap::default();
+    let mut notification_attributes = solidcore::geom::attribute::AttributeStore::default();
+    let key_of = super::boolean_topology_intersector_p1::p9_entity_ref;
+    let mut notifications = solidcore::topology::edge::NotifyEnv {
+        records: &mut notification_records,
+        attributes: &mut notification_attributes,
+        context: None,
+        key_of: &key_of,
+    };
     let mut k = Kernel::default();
     let v = &i.data;
     let mut record = Vec::new();
@@ -273,6 +282,7 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
                         value(v, 5),
                     ],
                     &frame,
+                    &mut notifications,
                 ),
                 4 => primitive.create_cone(
                     &k,
@@ -290,6 +300,7 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
                     value(v, 1),
                     frame.origin(),
                     value(v, 7),
+                    &mut notifications,
                 ),
                 8 => PrimitiveCreation::create_cone_elliptic_ends(
                     &k,
@@ -341,6 +352,7 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
                         operation,
                         &mut output,
                         (&mut marks_a, &mut marks_b),
+                        &mut notifications,
                     );
                     record.push(f64::from(output.is_some()));
                     result
@@ -417,6 +429,7 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
                 operation,
                 &mut output,
                 (&mut marks_a, &mut marks_b),
+                &mut notifications,
             );
             let status = match result {
                 Ok(()) => 0,

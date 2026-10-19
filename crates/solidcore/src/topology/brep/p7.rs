@@ -665,6 +665,7 @@ pub fn make_face_with_curves(
         crv_on_surf,
         this_face,
         &mut Vec::new(),
+        env,
     )
 }
 
@@ -687,6 +688,7 @@ pub fn make_face_with_curve_owners(
     crv_on_surf: Option<bool>,
     this_face: &dyn Fn(FaceId) -> ObjectRef,
     curve_owners: &mut Vec<Option<EdgeId>>,
+    env: &mut ed::NotifyEnv<'_>,
 ) -> Result<NewFace> {
     curve_owners.clear();
     let FaceCurvesInput {
@@ -1629,6 +1631,14 @@ mod tests {
             .unwrap();
         b.set_infinite_region(Some(region));
         let mut owners = vec![Some(EdgeId::from_index(99))];
+        let mut records = std::collections::BTreeMap::new();
+        let mut attributes = AttributeStore::default();
+        let mut env = ed::NotifyEnv {
+            records: &mut records,
+            attributes: &mut attributes,
+            context: None,
+            key_of: &key_of,
+        };
         let result = make_face_with_curve_owners(
             &k,
             &mut b,
@@ -1645,6 +1655,7 @@ mod tests {
             None,
             &face_ref,
             &mut owners,
+            &mut env,
         );
         assert!(result.is_err());
         assert_eq!(owners, vec![None, None, None]);
