@@ -62,12 +62,12 @@
 //!   classification; [`CurveOnClassifyObjects`] makes the face and surface handles and
 //!   resolves curve and loop handles, and the caller's [`ClassGeometry`] resolves them
 //!   for `ClassifyFaceInterval` (`lFaceIndx` left at its default).
-//!   `SmCurveClassification::ReSet` is [`CurveClassification::reset`]. Its callees
+//!   `SmCurveClassification::ReSet` is [`CurveClassification::reset`]; its callees
 //!   `IntersectTSBound` / `IntersectEdges` (part 9, wired through borrowed boundary
 //!   views) and `SmFace::GetEdges` (`topology.face_p4`) retain their dependency
-//!   boundaries. `IntersectVertices` and `ClassifyFaceInterval` call their landed
-//!   implementations through the caller's classification handles and
-//!   [`ClassGeometry`] callbacks.
+//!   boundaries. `pbOptModifiedCurve` is the result. `IntersectVertices` and
+//!   `ClassifyFaceInterval` call their landed implementations through the caller's
+//!   classification handles and [`ClassGeometry`] callbacks.
 //! - Boundary views use required handle mappings and the same [`ClassGeometry`]
 //!   implementation as part 5. Lazy UV and gap calculations run on a private B-rep
 //!   snapshot; numerical results are preserved while cache-only updates are discarded.

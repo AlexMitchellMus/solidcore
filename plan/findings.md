@@ -3880,6 +3880,11 @@ cases, 169 deferred; `SmSurface::EvaluateNormal` and `DropVectors` now call the
   extrusion is not yet (the `SurfaceKind` gap above), as does the
   `SmAdvSurfaceIntersector` fall-back of `GlobalSurfaceIntersect`, whose stub therefore
   stays tagged `intersect.adv_surface_intersector` although that unit is `partial`.
+  *Update (PR #85, 2026-10-18):* `ReSet` (part 2) and `IntersectNaturalBounds` (part 8) are
+  now both ported and `SmSurface::CurveOnClassify` runs them for a `Surface`; the stub here
+  is retagged `UNPORTED(intersect.curve_class_p8)` `IntersectNaturalBounds`, which needs a
+  `Surface` the surface of extrusion is not yet (the `SurfaceKind` gap above), so it stays
+  although part 8 is `partial`.
   The `sm_IntersectGenerators` status TODO above is done: `IntersectWithCylinder` and
   `IntersectWithSurfOfExtrusion` keep the partial curves/types and a `false` needs-more
   flag on failure (upstream clears it before the first failure); `Unported` and
@@ -4181,6 +4186,31 @@ cases, 169 deferred; `SmSurface::EvaluateNormal` and `DropVectors` now call the
     `partial`, against the letter of AGENTS.md 4a: the real blocker is cross-unit
     opaque-handle-to-`Brep` resolution (same as parts 1/3/7 and `intersect.point_class`),
     which needs its own tracked work item.
+- **Merge of main (2026-10-18), new back-edges.** Main had moved on by about 460 commits
+  (parts 8 and 9, `heal.heal_data_p3`, the merge-status rework of part 5). Changes:
+  - `MergeIntervals` keeps main's partial-output contract (`merge_intervals_with_partial`)
+    and now takes `k` and the caller's `ClassGeometry` (for part 6's
+    `GetPointObjZoneTol3d`). `SmFace::SplitAtSeam` (`topology.face_p1`) gains a
+    `geometry` argument; the healer and `SmTrimmingTools::SplitAtSeams` pass geometry that
+    resolves nothing (their classification objects are loops and vertices, whose
+    tolerances come from the topology). `split_at_seam`'s merge helper now propagates
+    `InvalidInput` (an unresolvable handle) instead of reading it as an ignored status.
+  - `heal.heal_data_p3`'s `HasDeadTopologyPointObject` calls the part-2 member, which now
+    takes `Option<&Brep>` (it stops at `UNPORTED(topology.brep_p1)`
+    `SmBrep::IsLiveTopologyMember` for any topology object, as before).
+  - `SmSurface::CurveOnClassify` (`surface.surface_p2`) now runs part 8's
+    `IntersectNaturalBounds` (part 8 is partial) and the end classifications; it takes the
+    caller's `ClassGeometry`. It has no caller or difftest yet; a unit test covers a curve
+    inside a plane. A curve crossing the plane's boundary returns `InvalidInput` from
+    part 3's `find_interval` (a temporary boundary handle the test geometry does not
+    resolve); not investigated further, it belongs to part 8's adapter.
+  - `surface.surf_of_extrusion_p2`'s `IntersectWithPlane` stub is retagged
+    `UNPORTED(intersect.curve_class_p8)` (see that unit's entry).
+  - `query.face_p2`'s `CurveOnClassify` cases now complete in Rust (ReSet from this unit,
+    part 9 from main), so its runner compares them: the classified line is
+    `SmBSplineCurve::CreateLineSegment` on both sides (it was an analytic line over
+    `[0, |PQ|]` while every case deferred), and the status, modified flag and each
+    interval's range and three point classifications are compared. All pass.
 
 ## curve.curve_p9: zero-end-tangent Hermite pair, loose tolerance (one case in 30,093)
 

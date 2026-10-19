@@ -680,8 +680,8 @@ impl<O: ClassObject> CurveClassification<O> {
         geometry: &impl ClassGeometry<O>,
         vertices_only: bool,
     ) -> Result<MergedTopology<O>, PartialMergeError<O>> {
-        self.merge_intervals_using(vertices_only, |cc, index, vertex_pass| {
-            Self::p5_merge_interval(cc, k, geometry, index, vertex_pass)
+        self.merge_intervals_using(vertices_only, |c, j, v| {
+            Self::p5_merge_interval(c, k, geometry, j, v)
         })
     }
 
