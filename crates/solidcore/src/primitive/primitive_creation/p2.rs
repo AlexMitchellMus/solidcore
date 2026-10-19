@@ -37,7 +37,7 @@ mod skin;
 mod taper;
 
 pub use super::p1::PrimitiveCreation;
-pub use access::{PrimitiveCreationAccess, TrimType};
+pub use access::PrimitiveCreationAccess;
 
 use crate::curve::curve::{Curve, CurveKind};
 use crate::nurbs::b_spline_curve::p1::BSplineCurve;
@@ -67,11 +67,12 @@ mod tests {
     use crate::geom::axis2_placement::Axis2Placement;
     use crate::geom::context::MarkType;
     use crate::kernel::Kernel;
-    use crate::math::Vec3;
+    use crate::math::{Point3, Vec3};
     use crate::nurbs::b_spline_curve::p1::NurbCircleParam;
     use crate::primitive::primitive_creation::{p3::PrimitiveAccess, SweepOptions};
     use crate::sweep::topology_sweep::access::{EdgeRef, FaceRef, SweepAccess, SweepMergeId};
     use crate::sweep::topology_sweep::SweepEntity;
+    use crate::topology::brep::p10::TrimType;
     use crate::topology::{Brep, BrepId, FaceId, Region, RegionId};
 
     struct Model {
@@ -163,6 +164,17 @@ mod tests {
             none()
         }
         fn offset_map(&self, _: FaceRef) -> Result<Option<OffsetMapAttribute>> {
+            none()
+        }
+        fn project_and_trim(
+            &mut self,
+            _: BrepId,
+            _: &BSplineCurve,
+            _: Vec3,
+            _: Point3,
+            _: TrimType,
+            _: f64,
+        ) -> Result<()> {
             none()
         }
     }

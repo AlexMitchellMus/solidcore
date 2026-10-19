@@ -16,7 +16,7 @@ use solidcore::geom::attribute::TagData;
 use solidcore::geom::axis2_placement::Axis2Placement;
 use solidcore::geom::context::MarkType;
 use solidcore::kernel::Kernel;
-use solidcore::math::Vec3;
+use solidcore::math::{Point3, Vec3};
 use solidcore::nurbs::b_spline_curve::p1::{BSplineCurve, NurbCircleParam};
 use solidcore::primitive::primitive_creation::{
     p1::PrimitiveCreation, p2::PrimitiveCreationAccess, p3::PrimitiveAccess, SweepOptions,
@@ -25,6 +25,7 @@ use solidcore::sweep::topology_sweep::{
     access::{EdgeRef, FaceRef, SweepAccess, SweepMergeId},
     SweepEntity,
 };
+use solidcore::topology::brep::p10::TrimType;
 use solidcore::topology::{Brep, BrepId, FaceId, Region, RegionId};
 use solidcore_ffi::units::primitive_primitive_creation_p2 as ffi;
 
@@ -188,6 +189,17 @@ impl PrimitiveCreationAccess for EmptyModel {
         unavailable()
     }
     fn offset_map(&self, _: FaceRef) -> Result<Option<OffsetMapAttribute>> {
+        unavailable()
+    }
+    fn project_and_trim(
+        &mut self,
+        _: BrepId,
+        _: &BSplineCurve,
+        _: Vec3,
+        _: Point3,
+        _: TrimType,
+        _: f64,
+    ) -> Result<()> {
         unavailable()
     }
 }

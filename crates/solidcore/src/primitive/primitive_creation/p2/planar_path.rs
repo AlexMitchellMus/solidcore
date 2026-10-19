@@ -15,7 +15,6 @@
 //! `CreateExtendedCurve`'s end flag 1 is the start and 0 or 2 the end, as in NLib.
 //! B-reps of a failed sweep stay with the access, as upstream leaves them. No recursion.
 
-use super::access::TrimType;
 use super::{as_bspline, PrimitiveCreationAccess};
 use crate::curve::curve::p9::CurveSolveOptions;
 use crate::curve::curve::Curve;
@@ -33,6 +32,7 @@ use crate::primitive::primitive_creation::p1::{
     extend_path_curves, position_profile_curves, PrimitiveCreation,
 };
 use crate::primitive::primitive_creation::SweepOptions;
+use crate::topology::brep::p10::TrimType;
 use crate::topology::BrepId;
 
 const OP: &str = "primitive::primitive_creation::p2::planar_path";

@@ -1,12 +1,10 @@
 //! External B-rep services of the p2 primitive entry points.
 //!
-//! Upstream: `source/SMLib/src/SmPrimitiveCreation.cpp` (callee boundaries),
-//! `source/SMLib/inc/SmTypes.h` (`SmTrimType`).
+//! Upstream: `source/SMLib/src/SmPrimitiveCreation.cpp` (callee boundaries).
 //!
 //! | Rust | Upstream |
 //! |------|----------|
 //! | [`PrimitiveCreationAccess`] | B-rep, face, merge and stitching services |
-//! | [`TrimType`] | `SmTrimType` (co-ported for `SmBrep::ProjectAndTrim`) |
 //!
 //! Deviations: extends p3's [`PrimitiveAccess`] as that trait extends
 //! `SweepAccess`. Defaults defer only callees whose unit is not ported yet;
@@ -18,19 +16,8 @@ use crate::math::{Point3, Vec3};
 use crate::nurbs::b_spline_curve::p1::BSplineCurve;
 use crate::primitive::primitive_creation::p3::PrimitiveAccess;
 use crate::sweep::topology_sweep::access::FaceRef;
+use crate::topology::brep::p10::TrimType;
 use crate::topology::{BrepId, FaceId};
-
-/// Which side of a projected trimming curve `SmBrep::ProjectAndTrim` keeps
-/// (`SmTrimType`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TrimType {
-    /// `SM_TT_KEEP_POINT`: keep the side containing the reference point.
-    KeepPoint,
-    /// `SM_TT_DELETE_POINT`: remove the side containing the reference point.
-    DeletePoint,
-    /// `SM_TT_SPLIT`: keep both sides.
-    Split,
-}
 
 /// Topology adapters used by the p2 primitives, on top of [`PrimitiveAccess`].
 /// Construction tails never replace upstream's topological edits with arena-only
@@ -51,6 +38,19 @@ pub trait PrimitiveCreationAccess: PrimitiveAccess {
     /// The offset map of the surface of `face`, if any
     /// (`FindAttribute(SM_AI_OFFSETMAP)` on its surface).
     fn offset_map(&self, face: FaceRef) -> Result<Option<OffsetMapAttribute>>;
+    /// Project `curve` along `direction` onto the B-rep's faces and trim them
+    /// (`SmBrep::ProjectAndTrim(curve, direction, reference, type, &tol, NULL, NULL)`).
+    /// Implementations call `topology::brep::p10::project_and_trim` with the B-rep's
+    /// `ProjectEnv` and `approximation_tol_3d: Some(approx_tol)`.
+    fn project_and_trim(
+        &mut self,
+        brep: BrepId,
+        curve: &BSplineCurve,
+        direction: Vec3,
+        reference: Point3,
+        trim_type: TrimType,
+        approx_tol: f64,
+    ) -> Result<()>;
 
     /// Set the B-rep's zone tolerance (`SmBrep::SetTolerance(tol)`).
     fn set_brep_tolerance(&mut self, brep: BrepId, tolerance: f64) -> Result<()> {
@@ -99,24 +99,6 @@ pub trait PrimitiveCreationAccess: PrimitiveAccess {
         Err(SolidError::unported(
             "SmBrep::StitchFaces",
             "topology.brep_p4",
-        ))
-    }
-    /// Project `curve` along `direction` onto the B-rep's faces and trim them
-    /// (`SmBrep::ProjectAndTrim(curve, direction, reference, type, &tol, NULL, NULL)`).
-    fn project_and_trim(
-        &mut self,
-        brep: BrepId,
-        curve: &BSplineCurve,
-        direction: Vec3,
-        reference: Point3,
-        trim_type: TrimType,
-        approx_tol: f64,
-    ) -> Result<()> {
-        let _ = (brep, curve, direction, reference, trim_type, approx_tol);
-        // UNPORTED(topology.brep_p10): SmBrep::ProjectAndTrim
-        Err(SolidError::unported(
-            "SmBrep::ProjectAndTrim",
-            "topology.brep_p10",
         ))
     }
     /// Remove edges and vertices that only split faces or edges
