@@ -273,7 +273,7 @@ fn flag(value: bool) -> f64 {
 }
 
 fn output(values: &[f64]) -> Result<Output, HarnessError> {
-    if values.len() < 13 {
+    if values.len() < 15 {
         return Err(HarnessError::new("bad executive output length"));
     }
     let mut out = Output::new();
@@ -303,9 +303,18 @@ fn output(values: &[f64]) -> Result<Output, HarnessError> {
             .collect(),
     );
     out.ints.insert(
+        "corner_types".into(),
+        values
+            .get(13..15)
+            .ok_or_else(|| HarnessError::new("short corner types"))?
+            .iter()
+            .map(|v| *v as i64)
+            .collect(),
+    );
+    out.ints.insert(
         "comment_bytes".into(),
         values
-            .get(13..)
+            .get(15..)
             .ok_or_else(|| HarnessError::new("short comment bytes"))?
             .iter()
             .map(|v| *v as i64)
@@ -448,6 +457,9 @@ fn rust(input: &Inputs) -> Result<Output, HarnessError> {
         fillet_tol,
         executive.error.comment.len() as f64,
         error_out.comment.len() as f64,
+        // Encode upstream discriminants only at the runner boundary.
+        f64::from(executive.error.corner_type as i32),
+        f64::from(error_out.corner_type as i32),
     ];
     values.extend(
         executive

@@ -3296,8 +3296,8 @@ notes = "CO-PORTED in sweep.api_brep (PR #110): SmSweepOptions -> solidcore::pri
 id = "blend.fillet_executive_p3"
 upstream = ["source/SMLib/src/SmFilletExecutive.cpp"]
 rust_module = "blend::fillet_executive::p3"
-depends_on = ["blend.fillet_solver_p1", "boolean.merge_p1", "boolean.topology_intersector_p1", "geom.context", "geom.object", "geom.tol", "geom.vector3d", "heal.stitch_p1", "topology.brep_p1", "topology.brep_p3", "topology.edge"]
-soft_depends_on = ["blend.fillet_geom_p1", "blend.fillet_solver_p4", "blend.fillet_solver_p5", "boolean.topology_intersector_p2", "curve.curve_p2", "geom.a_object", "geom.attribute", "heal.stitch_p2", "surface.surface_p2", "topology.brep_p2", "topology.brep_p4", "topology.edgeuse_p1", "topology.face_p1", "topology.face_p3", "topology.topology", "topology.vertex"]
+depends_on = ["blend.fillet_geom_p1", "blend.fillet_solver_p1", "boolean.merge_p1", "boolean.topology_intersector_p1", "geom.context", "geom.object", "geom.tol", "geom.vector3d", "heal.stitch_p1", "topology.brep_p1", "topology.brep_p3", "topology.edge"]
+soft_depends_on = ["blend.fillet_solver_p4", "blend.fillet_solver_p5", "boolean.topology_intersector_p2", "curve.curve_p2", "geom.a_object", "geom.attribute", "heal.stitch_p2", "surface.surface_p2", "topology.brep_p2", "topology.brep_p4", "topology.edgeuse_p1", "topology.face_p1", "topology.face_p3", "topology.topology", "topology.vertex"]
 est_lines = 1608
 layer = 54
 tests = ["SM_API_test:TestSmCircularFillet", "SM_API_test:TestSmChamferFillet", "SM_API_test:TestSmFilletEdges", "SM_API_test:TestSmFilletEdgesPerEdge", "SM_API_test:TestSmVariableRadiusFillet", "SM_API_test:TestSmSetBevelCorners"]
@@ -3416,7 +3416,7 @@ tests = ["prog_test:my_test_extent3d", "prog_test:my_test_vector2d", "prog_test:
 status = "todo"
 claimed_by = ""
 claimed_at = ""
-notes = "55 fns; largest: SmFilletCorner::MakeConstantRadiusFillet, SmFilletCorner::MakeFaceBrep, SmFilletCorner::InsertIntersectionTopology, sm_CreateSrfOfRevolution; cycle back-edges (call into later units; stub or co-port): blend.fillet_geom_p3(3), blend.fillet_geom_p5(1); unit-SCC #22 (220 units); hazards: ptr-hash; 319 upstream test entry points reach this unit"
+notes = "55 fns; largest: SmFilletCorner::MakeConstantRadiusFillet, SmFilletCorner::MakeFaceBrep, SmFilletCorner::InsertIntersectionTopology, sm_CreateSrfOfRevolution; cycle back-edges (call into later units; stub or co-port): blend.fillet_geom_p3(3), blend.fillet_geom_p5(1); unit-SCC #22 (220 units); hazards: ptr-hash; 319 upstream test entry points reach this unit; CO-PORTED in blend.fillet_executive_p3 (PR #244): read-only CornerView (GetFilletedVertex, GetCornerType, GetName)"
 
 [[unit]]
 id = "blend.fillet_solver_p2"

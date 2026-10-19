@@ -24,6 +24,7 @@
 //! The upstream `cbi_MAP_TOPO_EDGES=0` experiments remain disabled. Parent-linked
 //! stage hooks borrow this live executive, never an adapter-owned duplicate.
 
+use crate::blend::fillet_geom::p1::FilletCornerType;
 use crate::boolean::topology_intersector::p1::TopologyIntersector;
 use crate::error::{Result, SolidError};
 use crate::geom::object::NotifyOperation;
@@ -59,8 +60,9 @@ fn ignore<T>(result: Result<T>) -> Result<Option<T>> {
     }
 }
 
-/// The initialized error-info members p3 reads or writes. Numeric enum values are
-/// upstream `SmFilletErrorType`, `SmFilStatus`, `SmFilletCornerType`, `SmFilletEdgeType`.
+/// The initialized error-info members p3 reads or writes. Corner kinds use the
+/// shared upstream enum; the other numeric enum values are `SmFilletErrorType`,
+/// `SmFilStatus` and `SmFilletEdgeType`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ErrorInfo<O> {
     /// `m_eErrorCode`.
@@ -68,7 +70,7 @@ pub struct ErrorInfo<O> {
     /// `m_eFilletStatus`.
     pub status: i32,
     /// `m_eCornerType`.
-    pub corner_type: i32,
+    pub corner_type: FilletCornerType,
     /// `m_eEdgeType`.
     pub edge_type: i32,
     /// `m_pFilExec` (identity supplied by the executive owner).
@@ -102,7 +104,7 @@ impl<O> Default for ErrorInfo<O> {
         Self {
             code: 0,
             status: 0,
-            corner_type: 0,
+            corner_type: FilletCornerType::Unknown,
             edge_type: 0,
             executive: None,
             vertex: None,
@@ -200,7 +202,7 @@ pub struct CornerView<O> {
     /// `GetFilletedVertex()`; failure reporting accepts null.
     pub vertex: Option<O>,
     /// `GetCornerType()`.
-    pub corner_type: i32,
+    pub corner_type: FilletCornerType,
     /// `GetName(sBuff, SM_TBLOCK_SIZE)`.
     pub name: String,
 }

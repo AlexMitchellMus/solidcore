@@ -723,7 +723,7 @@ fn final_stitch_failure_sets_bad_merge_and_stops_before_cleanup_postprocess() {
 fn corner() -> CornerView<Handle> {
     CornerView {
         vertex: Some(Handle(6)),
-        corner_type: 9,
+        corner_type: FilletCornerType::NByTwo,
         name: "corner name".into(),
     }
 }
@@ -785,7 +785,7 @@ fn corner_failure_records_context_and_stops_without_allocating_shell() {
     ));
     assert_eq!(executive.error.code, 3);
     assert_eq!(executive.error.status, 2);
-    assert_eq!(executive.error.corner_type, 9);
+    assert_eq!(executive.error.corner_type, FilletCornerType::NByTwo);
     assert_eq!(executive.error.vertex, Some(Handle(6)));
     assert_eq!(executive.error.surfaces, [None]);
     assert_eq!(executive.error.entity_name, "corner name");

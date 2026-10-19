@@ -8396,3 +8396,23 @@ protocol equal to baseline, 0 errors and 0 definite/indirect/possible lost bytes
 no suppressions. The final 214-unit matrix passes, with zero declared-green
 units carrying deferrals in the strict per-unit log audit. Coverage remains three
 paired p3 precondition paths and zero geometric-success comparisons.
+
+
+### blend.fillet_executive_p3 — shared corner metadata (#244 / #247)
+
+Per brett19's coordination request, `CornerView::corner_type` now reuses
+`blend::fillet_geom::p1::FilletCornerType`. The error-info record carries the same
+strongly typed value, including `Unknown` as its existing zero default, so the
+kernel propagates the enum without integer conversion. The scripted corner-error
+regression uses `NByTwo` (upstream discriminant 9). The runner and native fixture
+explicitly encode the two error-info corner kinds at their wire boundary; paired
+precondition fixtures observe `Unknown`, not geometric corner classification.
+Existing numeric values and the three precondition-only control paths are retained.
+The requested read-only `CornerView` co-port note is appended to corner-p1 notes.
+
+The canonical enum is not on main c5c8395a yet. This branch therefore builds on
+#147 (fillet_geom_p1 head 4a987837), merged as-is per AGENTS.md rather than copying
+the claimed enum. The p3 dependency on geom-p1 is now hard because its type is
+required. Incoming #147 code, co-port notes and regenerated reports are preserved;
+no geometry-p1 algorithm is reimplemented. Validation of the new merge and enum
+boundary observations is pending.

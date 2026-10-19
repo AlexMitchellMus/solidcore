@@ -7,8 +7,9 @@
 //! followed by the five executive flags (piecewise, insertion, global, trimming,
 //! classification). `op` is 0 `DoFillet`, 1 `CreateFilletBrep`, 2 `DoFilleting`. Targets
 //! are empty native B-reps with a raw tolerance-member fixture assignment. Output
-//! contains status, error-info, flags and tolerances, then both comment lengths
-//! and their bytes; see the runner's `output` function.
+//! contains status, error-info, flags and tolerances, then both comment lengths,
+//! both upstream corner-type discriminants and the comment bytes; see the runner's
+//! `output` function.
 
 use crate::{call_with_buffer, reader::Cursor, FfiError};
 

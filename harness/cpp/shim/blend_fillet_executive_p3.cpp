@@ -102,7 +102,10 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p3_eval(const double* in, int64_t n,
             target ? static_cast<double>(target->GetTolerance()) : -1.0,
             fillet ? static_cast<double>(fillet->GetTolerance()) : -1.0,
             static_cast<double>(std::strlen(error.m_cComment)),
-            static_cast<double>(std::strlen(error_out.m_cComment))
+            static_cast<double>(std::strlen(error_out.m_cComment)),
+            // Boundary encoding uses the upstream enum discriminants.
+            static_cast<double>(error.m_eCornerType),
+            static_cast<double>(error_out.m_eCornerType)
         };
         for (size_t i=0; i<std::strlen(error.m_cComment); ++i)
             values.push_back(static_cast<unsigned char>(error.m_cComment[i]));
