@@ -1964,3 +1964,306 @@ fn step_solve(
         "blend.fillet_solver_p3",
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::blend::fillet_standard_solver::p1::{
+        FilletLawKind, CONSTANT_RADIUS_FS_TYPE, SURFACE_SURFACE_FS_TYPE, VARIABLE_RADIUS_FS_TYPE,
+    };
+    use crate::curve::line::Line;
+    use crate::geom::vector2d::Vec2;
+    use crate::nurbs::crv_basic::Curve as NurbCurve;
+    use crate::nurbs::math::{CPoint, NOW};
+    use crate::surface::plane::Plane;
+
+    fn p(x: f64, y: f64, z: f64) -> Point3 {
+        Point3::new(x, y, z)
+    }
+
+    /// The plane through the origin spanned by `x` (1, 0, 0) and `y` over `[0, 1]^2`.
+    fn plane(y: Vec3) -> Surface {
+        Surface::from(Plane::new(
+            p(0.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            y,
+            Vec2::new(1.0, 1.0),
+            &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+        ))
+    }
+
+    fn line(a: Point3, b: Point3) -> BSplineCurve {
+        let pw = vec![
+            CPoint::new(a.x, a.y, a.z, NOW),
+            CPoint::new(b.x, b.y, b.z, NOW),
+        ];
+        BSplineCurve::from_nurb(
+            NurbCurve::new(pw, 1, vec![0.0, 0.0, 1.0, 1.0]).expect("curve"),
+            3,
+            false,
+        )
+    }
+
+    /// A rolling-ball corner: z = 0 (normal +z, offset up) and y = 0 (normal -y,
+    /// offset towards +y) with radius `r`; the offsets meet on `y = z = r`.
+    fn corner(k: &Kernel, r: f64) -> ConstantRadiusAssistedFs {
+        let mut s0 = OffsetSurface::new(
+            k,
+            r,
+            plane(Vec3::new(0.0, 1.0, 0.0)),
+            SurfaceId::Free(0),
+            SS_UNKNOWN,
+        )
+        .expect("offset");
+        let mut s1 = OffsetSurface::new(
+            k,
+            -r,
+            plane(Vec3::new(0.0, 0.0, 1.0)),
+            SurfaceId::Free(1),
+            SS_UNKNOWN,
+        )
+        .expect("offset");
+        s0.set_allow_extension(true);
+        s1.set_allow_extension(true);
+        ConstantRadiusAssistedFs::from_parts(
+            1e-6,
+            30.0 * PI / 180.0,
+            2.0 * PI / 180.0,
+            [r, r],
+            [Some(s0), Some(s1)],
+            [1.0, -1.0],
+            [None, None],
+        )
+    }
+
+    #[test]
+    fn guess_plane_solve_finds_the_ball_on_a_corner() {
+        let k = Kernel::default();
+        let fs = corner(&k, 0.25);
+        let d = Extent2d::from_bounds(-1.0, -1.0, 2.0, 2.0);
+        let t = fs
+            .guess_point_on_plane_solve(
+                p(0.4, 0.0, 0.0),
+                Vec3::new(1.0, 0.0, 0.0),
+                &d,
+                &d,
+                Point2::new(0.45, 0.3),
+                Point2::new(0.35, 0.2),
+            )
+            .expect("solve")
+            .expect("found");
+        let (a, b) = (t.uv_pos(SrfIndex::First), t.uv_pos(SrfIndex::Second));
+        assert!(
+            (a.x - 0.4).abs() < 1e-6 && (a.y - 0.25).abs() < 1e-6,
+            "{a:?}"
+        );
+        assert!(
+            (b.x - 0.4).abs() < 1e-6 && (b.y - 0.25).abs() < 1e-6,
+            "{b:?}"
+        );
+        // the solver itself is untouched (the solve runs on a copy)
+        assert_eq!(fs.surface(1).expect("s1").offset_distance(), -0.25);
+    }
+
+    #[test]
+    fn point_on_plane_solve_waits_for_the_base_extension() {
+        let k = Kernel::default();
+        let mut fs = corner(&k, 0.25);
+        let d = Extent2d::from_bounds(-1.0, -1.0, 2.0, 2.0);
+        let r = fs.point_on_plane_solve(
+            &k,
+            None,
+            p(0.4, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            &d,
+            &d,
+            Point2::new(0.45, 0.3),
+            Point2::new(0.35, 0.2),
+        );
+        assert!(r.is_err_and(|e| e.is_unported()));
+    }
+
+    #[test]
+    fn surface_surface_initial_values_use_its_extension() {
+        let k = Kernel::default();
+        let mut fs = SurfaceSurfaceFs::new(
+            &k,
+            1e-6,
+            0.5,
+            0.03,
+            [0.25, 0.25],
+            [
+                (plane(Vec3::new(0.0, 1.0, 0.0)), SurfaceId::Free(0)),
+                (plane(Vec3::new(0.0, 0.0, 1.0)), SurfaceId::Free(1)),
+            ],
+            [true, false],
+            [Point2::new(0.5, 0.25), Point2::new(0.5, 0.25)],
+        )
+        .expect("solver");
+        assert_eq!(fs.trim_type, BoundaryTrimmingType::Minimal);
+        assert!(fs.is_kind_of(SURFACE_SURFACE_FS_TYPE) && fs.is_kind_of(CONSTANT_RADIUS_FS_TYPE));
+        let mut s1 = fs.base.surface(0).expect("s0").clone();
+        let mut ivls = ExtentNd::new(4);
+        let mut per = vec![false, false];
+        let mut guess = vec![0.5, 0.25];
+        let v = fs
+            .load_initial_values(
+                &k, None, true, 0, &mut s1, 0, &mut ivls, &mut per, &mut guess,
+            )
+            .expect("initial values")
+            .expect("computed");
+        assert_eq!((v.surface2_rail, v.surface2_index), (1, 2));
+        assert_eq!(guess.len(), 4);
+        assert!((guess[2] - 0.5).abs() < 1e-9 && (guess[3] - 0.25).abs() < 1e-9);
+        // the domain extended by half its size on both sides
+        let iv = ivls.get(2).expect("u interval");
+        assert_eq!((iv.min(), iv.max()), (-0.5, 1.5));
+        assert_eq!(per.len(), 4);
+
+        // a plain constant-radius solver waits for the base extension
+        let mut cr = fs.base.clone();
+        let r = cr.load_initial_values(
+            &k, None, true, 0, &mut s1, 0, &mut ivls, &mut per, &mut guess,
+        );
+        assert!(r.is_err_and(|e| e.is_unported()));
+        // nothing to do without the second surface
+        assert!(cr
+            .load_initial_values(&k, None, false, 0, &mut s1, 0, &mut ivls, &mut per, &mut guess)
+            .expect("no-op")
+            .is_none());
+    }
+
+    #[test]
+    fn calc_fillet_geom_rejects_parallel_planes_then_steps() {
+        let k = Kernel::default();
+        let parallel = |z: f64| {
+            Surface::from(Plane::new(
+                p(0.0, 0.0, z),
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+                Vec2::new(1.0, 1.0),
+                &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+            ))
+        };
+        let g = [Point2::new(0.5, 0.5), Point2::new(0.5, 0.5)];
+        let mut fs = SurfaceSurfaceFs::new(
+            &k,
+            1e-6,
+            0.5,
+            0.03,
+            [0.1, 0.1],
+            [
+                (parallel(0.0), SurfaceId::Free(0)),
+                (parallel(1.0), SurfaceId::Free(1)),
+            ],
+            [true, false],
+            g,
+        )
+        .expect("solver");
+        assert!(matches!(
+            fs.calc_fillet_geom(&k),
+            Err(SolidError::Upstream { .. })
+        ));
+        let mut fs = SurfaceSurfaceFs::new(
+            &k,
+            1e-6,
+            0.5,
+            0.03,
+            [0.1, 0.1],
+            [
+                (plane(Vec3::new(0.0, 1.0, 0.0)), SurfaceId::Free(0)),
+                (plane(Vec3::new(0.0, 0.0, 1.0)), SurfaceId::Free(1)),
+            ],
+            [true, false],
+            g,
+        )
+        .expect("solver");
+        assert!(fs.calc_fillet_geom(&k).is_err_and(|e| e.is_unported()));
+    }
+
+    #[test]
+    fn type_queries_and_generators() {
+        assert!(constant_radius_assisted_is_kind_of(
+            CONSTANT_RADIUS_ASSISTED_FS_TYPE
+        ));
+        assert!(constant_radius_assisted_is_kind_of(CONSTANT_RADIUS_FS_TYPE));
+        assert!(!constant_radius_assisted_is_kind_of(
+            VARIABLE_RADIUS_FS_TYPE
+        ));
+
+        let k = Kernel::default();
+        let law = FilletLaw::new(FilletLawKind::Linear {
+            start_radius: 0.1,
+            end_radius: 0.2,
+        });
+        let centre = Curve::from(Line::from_points(p(0.0, 0.0, 0.0), p(1.0, 0.0, 0.0), 3));
+        let vr = VariableRadiusFs::from_surfaces(
+            &k,
+            1e-6,
+            0.5,
+            0.03,
+            [
+                (plane(Vec3::new(0.0, 1.0, 0.0)), SurfaceId::Free(0)),
+                (plane(Vec3::new(0.0, 0.0, 1.0)), SurfaceId::Free(1)),
+            ],
+            [1.0, -1.0],
+            centre.clone(),
+            law.clone(),
+            false,
+        );
+        // the fillet law evaluation is unported
+        assert!(vr.is_err_and(|e| e.is_unported()));
+        let mut vr = VariableRadiusFs {
+            curve_based: CurveBasedFs::new(1e-6, 0.5, 0.03),
+            law,
+            law_orientation: false,
+            law_interval: Extent1d::from_min_max(0.0, 1.0),
+        };
+        assert!(vr.is_kind_of(VARIABLE_RADIUS_FS_TYPE) && vr.is_kind_of(CURVE_BASED_FS_TYPE));
+        assert!(!vr.is_kind_of(CONSTANT_RADIUS_FS_TYPE));
+        assert!(matches!(
+            vr.re_calc_fillet_geom(false, None, None),
+            Err(SolidError::Upstream { .. })
+        ));
+        assert!(vr
+            .re_calc_fillet_geom(false, None, Some(&centre))
+            .is_err_and(|e| e.is_unported()));
+
+        // the generators' CreateSurface: G1 only for the blend curves of a
+        // constant-radius solver
+        let r1 = line(p(0.0, 0.0, 1.0), p(5.0, 0.0, 1.0));
+        let r2 = line(p(0.0, 1.0, 0.0), p(5.0, 1.0, 0.0));
+        let mut c = line(p(0.0, 1.0, 1.0), p(5.0, 1.0, 1.0));
+        let (mut a, mut b) = (r1.copy(), r2.copy());
+        let s = CircularCrossSectionFsg::default()
+            .create_surface(
+                &k,
+                1e-6,
+                FilletSolverType::ConstRadius,
+                &mut c,
+                &mut a,
+                &mut b,
+            )
+            .expect("circular");
+        let corner = s.evaluate_point(Point2::new(0.0, 0.0)).expect("point");
+        assert!(corner.distance(p(0.0, 0.0, 1.0)) < 1e-6);
+        let none = RailSurface {
+            surface: None,
+            uv_curve: None,
+        };
+        let mut c = line(p(0.0, 1.0, 1.0), p(5.0, 1.0, 1.0));
+        let (mut a, mut b) = (r1.copy(), r2.copy());
+        b.insert_one_knot(0.5, 1).expect("knot");
+        let r = BlendCurveCrossSectionFsg::default().create_surface(
+            &k,
+            1e-6,
+            FilletSolverType::VariableRadius,
+            &mut c,
+            &mut a,
+            &mut b,
+            none,
+            none,
+        );
+        assert!(matches!(r, Err(SolidError::Upstream { .. })));
+    }
+}

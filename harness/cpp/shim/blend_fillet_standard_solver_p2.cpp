@@ -190,6 +190,14 @@ struct Cra : SmConstantRadiusAssistedFS
         m_pEdgeuses[1] = NULL;
         m_dSurfaceExtensionFactor = ext;
     }
+    // The plane solves are protected.
+    SmStatus solve(bool guess, const SmPoint3d& orig, const SmVector3d& normal, const SmExtent2d& d1,
+                   const SmExtent2d& d2, const SmVector2d& uv1, const SmVector2d& uv2, SmBoolean& found,
+                   SmTsectPnt& t)
+    {
+        return guess ? GuessPointOnPlaneSolve(orig, normal, d1, d2, uv1, uv2, found, t)
+                     : PointOnPlaneSolve(orig, normal, d1, d2, uv1, uv2, found, t);
+    }
 };
 
 // The solver block `cls same surfaceA [surfaceB] r0 r1 o0 o1 ext`: `cls` 0 SmConstantRadiusFS,
@@ -332,12 +340,12 @@ int32_t cr_init(Rd& rd, const SmContext& ctx, std::vector<double>& o)
 }
 
 // `solver orig[3] normal[3] d1[4] d2[4] uv1[2] uv2[2]` on an SmConstantRadiusAssistedFS (cls 2).
-int32_t plane(Rd& rd, const SmContext& ctx, std::vector<double>& o, bool guess)
+int32_t plane_solve(Rd& rd, const SmContext& ctx, std::vector<double>& o, bool guess)
 {
     Built bt;
     if (!bt.build(rd, ctx))
         return SC_ERR_ARG;
-    SmConstantRadiusAssistedFS* fs = (SmConstantRadiusAssistedFS*)bt.fs;
+    Cra* fs = (Cra*)bt.fs;
     SmPoint3d orig = rd.pt3();
     SmVector3d normal = rd.pt3();
     double a0 = rd.num();
@@ -354,8 +362,7 @@ int32_t plane(Rd& rd, const SmContext& ctx, std::vector<double>& o, bool guess)
     SmPoint2d uv2 = rd.pt2();
     SmBoolean found = FALSE;
     SmTsectPnt t;
-    SmStatus stt = guess ? fs->GuessPointOnPlaneSolve(orig, normal, d1, d2, uv1, uv2, found, t)
-                         : fs->PointOnPlaneSolve(orig, normal, d1, d2, uv1, uv2, found, t);
+    SmStatus stt = fs->solve(guess, orig, normal, d1, d2, uv1, uv2, found, t);
     o.push_back(st(stt));
     if (stt == SM_SUCCESS)
         o.push_back(flg(found != FALSE));
@@ -483,8 +490,8 @@ SC_EXPORT int32_t sc_blend_fillet_standard_solver_p2_eval(int32_t op, const doub
     switch (op)
     {
     case OP_CR_INIT: rc = cr_init(rd, ctx, o); break;
-    case OP_GUESS: rc = plane(rd, ctx, o, true); break;
-    case OP_PLANE: rc = plane(rd, ctx, o, false); break;
+    case OP_GUESS: rc = plane_solve(rd, ctx, o, true); break;
+    case OP_PLANE: rc = plane_solve(rd, ctx, o, false); break;
     case OP_SS: rc = ss(rd, ctx, o); break;
     case OP_TYPES: rc = types(rd, ctx, o); break;
     default: return SC_ERR_ARG;
