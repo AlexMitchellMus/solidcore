@@ -2139,7 +2139,7 @@ fn drop_curve(
         k, domain, curve, interval, tolerance, true, None,
     )?;
     Ok((
-        dropped.uv_curves,
+        dropped.uv_curves.into_iter().map(Curve::from).collect(),
         dropped.max_drop_to_surf,
         dropped.max_approx_dev,
     ))
