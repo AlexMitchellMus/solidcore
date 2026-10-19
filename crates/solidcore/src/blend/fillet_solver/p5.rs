@@ -11,6 +11,8 @@
 //! explicit resolver. Completed mutations survive failures. Only unavailable
 //! callees are stubbed; the entire caller continuation is ported, including both
 //! full-rollover calls, the segment walk and topology/surface/corner updates.
+//! The four-argument classification constructor calls the real `reset`
+//! (`intersect.curve_class_p2`), preserving its defaults and source tolerance.
 //! Internal short intervals are retained in descending order for refinement.
 //! See `p5/recovery.rs` for the bounded segment-walk deviation. No recursion.
 
@@ -18,10 +20,13 @@ use super::p1::{FilletGeomRef, FilletSolver};
 use crate::blend::fillet_geom::p1::{
     FilletBrep, FilletCornerId, FilletCornerType, FilletGeomId, FilletGeomType,
 };
+#[cfg(test)]
 use crate::curve::curve::p2::OwnerChange;
 use crate::error::{ignored, EntityRef, Result, SolidError};
+#[cfg(test)]
 use crate::geom::object::ObjectRef;
-use crate::intersect::curve_class::p1::CurveClassification;
+use crate::intersect::curve_class::p1::{CurveClassification, IntervalPosition};
+use crate::intersect::curve_class::p2::ResetOptions;
 use crate::intersect::point_class::PointClassType;
 use crate::kernel::Kernel;
 use crate::query::face::p2::{curve_on_classify, CurveOnClassifyObjects};
@@ -48,14 +53,7 @@ pub trait RolloverObjects: CurveOnClassifyObjects<EntityRef> {
     fn corner_type(&self, corner: FilletCornerId) -> Result<FilletCornerType>;
 }
 
-/// Caller-owned object identities and notification routing for new rail curves.
-/// Arena indices are never assumed to be object-store keys.
-pub trait RolloverOwnership {
-    /// The new owner's actual object identity and its optional B-rep identity.
-    fn edge_owner(&self, edge: EdgeId) -> Result<(ObjectRef, Option<ObjectRef>)>;
-    /// Deliver the `SM_NO_CHANGE_OWNER` notification produced by `Curve::set_owner`.
-    fn owner_changed(&mut self, change: OwnerChange) -> Result<()>;
-}
+pub use super::p1::RailOwnership as RolloverOwnership;
 
 impl FilletSolver {
     /// Classify both rails against their original faces, squeeze tiny end
@@ -70,7 +68,7 @@ impl FilletSolver {
     pub fn test_roll_over(
         &mut self,
         k: &Kernel,
-        target: &Brep,
+        target: &mut Brep,
         fillets: &mut FilletBrep,
         objects: &impl RolloverObjects,
         geometry_id: &impl Fn(FilletGeomRef) -> Result<FilletGeomId>,
@@ -94,13 +92,17 @@ impl FilletSolver {
                 })?;
                 let mate = eu::mate(fillets.brep(), primary)?
                     .ok_or_else(|| SolidError::invalid_input(OP, "TestRollOver: missing mate"))?;
-                let mut cc = CurveClassification::with_curve_interval(
+                let mut cc = CurveClassification::new(k);
+                cc.reset(
                     k,
-                    objects.rail_curve(rail),
-                    interval,
-                    self.approx_tol_3d,
-                );
-                cc.set_uv_curve1(objects.rail_mate_uv_curve(mate));
+                    &ResetOptions {
+                        curve: Some(objects.rail_curve(rail)),
+                        interval: Some(interval),
+                        uv_curve: objects.rail_mate_uv_curve(mate),
+                        zone_tol_3d: self.approx_tol_3d,
+                        ..ResetOptions::default()
+                    },
+                )?;
                 fillets.fillet_edge_mut(rail)?.set_curve_class(Some(cc));
                 let face = fillets.fillet_edge(rail)?.original_face().ok_or_else(|| {
                     SolidError::invalid_input(OP, "TestRollOver: missing original face")
@@ -149,7 +151,7 @@ impl FilletSolver {
     pub fn process_roll_over(
         &mut self,
         k: &Kernel,
-        target: &Brep,
+        target: &mut Brep,
         fillets: &mut FilletBrep,
         id: FilletGeomId,
         corner_type: &impl Fn(FilletCornerId) -> Result<FilletCornerType>,
@@ -171,17 +173,26 @@ trait ClassificationOps {
     fn connect(
         &mut self,
         _k: &Kernel,
-        _fillets: &mut FilletBrep,
-        _rail: EdgeId,
-        _interval: usize,
-        _at_end: bool,
-        _allow_removal_of_ends: bool,
+        fillets: &mut FilletBrep,
+        rail: EdgeId,
+        interval: usize,
+        at_end: bool,
+        allow_removal_of_ends: bool,
     ) -> Result<()> {
-        // UNPORTED(intersect.curve_class_p2): SmCurveClassification::ConnectIntervals
-        Err(SolidError::unported(
-            "SmCurveClassification::ConnectIntervals",
-            "intersect.curve_class_p2",
-        ))
+        fillets
+            .fillet_edge_mut(rail)?
+            .curve_class
+            .as_mut()
+            .ok_or_else(|| SolidError::null_pointer(OP))?
+            .connect_intervals(
+                interval,
+                if at_end {
+                    IntervalPosition::End
+                } else {
+                    IntervalPosition::Start
+                },
+                allow_removal_of_ends,
+            )
     }
     fn refine(
         &mut self,
@@ -281,7 +292,7 @@ mod tests {
     }
 
     fn classified_rails(k: &Kernel, fb: &mut FilletBrep) -> FilletGeomId {
-        let mut geom = FilletGeom::new(None, FilletGeomType::Default).unwrap();
+        let mut geom = FilletGeom::new(k, None, FilletGeomType::Default).unwrap();
         for i in 0..2 {
             let a = fb.brep_mut().add_vertex(Vec3::ZERO).unwrap();
             let b = fb.brep_mut().add_vertex(Vec3::X).unwrap();
@@ -324,12 +335,12 @@ mod tests {
         let mut fb = FilletBrep::new();
         let id = classified_rails(&k, &mut fb);
         let mut solver = FilletSolver::new(1e-5, 1e-3, 1e-3);
-        let target = Brep::new();
+        let mut target = Brep::new();
         let mut adjusted = vec![FilletCornerId(9), FilletCornerId(9)];
         solver
             .process_roll_over(
                 &k,
-                &target,
+                &mut target,
                 &mut fb,
                 id,
                 &|_| panic!("known rails must not resolve a corner"),
@@ -350,7 +361,7 @@ mod tests {
         let refusal = SolidError::invalid_input(OP, "unresolved corner");
         let result = solver.process_roll_over(
             &k,
-            &target,
+            &mut target,
             &mut fb,
             id,
             &|corner| {
@@ -364,7 +375,7 @@ mod tests {
         assert_eq!(adjusted, [FilletCornerId(9), FilletCornerId(9)]);
         let result = solver.process_roll_over(
             &k,
-            &target,
+            &mut target,
             &mut fb,
             id,
             &|_| Ok(FilletCornerType::OneByOne),

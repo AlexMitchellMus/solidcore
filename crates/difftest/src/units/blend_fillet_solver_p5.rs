@@ -1,7 +1,9 @@
 //! Differential checks for the accessible rollover branches. Single-interval
 //! classifications are supplied directly; these checks do not claim to exercise
-//! surface repair. `TestRollOver` with two real rails is deferred by `ReSet`. The
-//! multi-interval process path is deferred by `EvaluateBinormal`. Post-call state,
+//! surface repair. `TestRollOver` with two real rails runs the real `reset`; its
+//! remaining dependencies are reported by the differential run. The
+//! multi-interval process path evaluates binormals on a wire, then compares the
+//! null-surface return. Post-call state,
 //! including caller-seeded duplicate adjusted corners, is compared on every pass.
 use super::topology_edgeuse_p1::import;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
@@ -261,15 +263,19 @@ fn run(i: &Inputs) -> Result<Output, HarnessError> {
     let mut solver = FilletSolver::new(1e-5, 1e-3, 1e-3);
     let mut fb = FilletBrep::new();
     let mut geom = FilletGeom::new(
+        &k,
         None,
         FilletGeomType::from_code(i64::from(i.kind)).ok_or_else(|| harness("kind"))?,
     )
     .map_err(harness)?;
-    let target = import(&ffi::target().map_err(harness)?)?;
+    let mut target = import(&ffi::target().map_err(harness)?)?;
     let face = target.faces().ids().next();
     let region = fb
         .brep_mut()
-        .add_region_record(solidcore::topology::Region { in_brep: true })
+        .add_region_record(solidcore::topology::Region {
+            in_brep: true,
+            ..solidcore::topology::Region::default()
+        })
         .map_err(harness)?;
     let mut rails = Vec::new();
     for (index, cls) in i.rails.iter().enumerate() {
@@ -378,10 +384,10 @@ fn run(i: &Inputs) -> Result<Output, HarnessError> {
         .map(|&c| FilletCornerId(c as u32))
         .collect();
     let outcome = if i.op == 0 {
-        let snapshot = fb.brep().clone();
+        let mut snapshot = fb.brep().clone();
         solver.process_roll_over(
             &k,
-            &snapshot,
+            &mut snapshot,
             &mut fb,
             id,
             &|_| Ok(corner_type(i.corner)),
@@ -393,13 +399,14 @@ fn run(i: &Inputs) -> Result<Output, HarnessError> {
             solver.fillet_geoms.clear();
         }
         let snapshot = fb.clone();
+        let target_objects = target.clone();
         solver.test_roll_over(
             &k,
-            &target,
+            &mut target,
             &mut fb,
             &Objects {
                 fillets: &snapshot,
-                target: &target,
+                target: &target_objects,
             },
             &|reference| {
                 if reference.index == 0 {

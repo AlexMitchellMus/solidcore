@@ -5,8 +5,8 @@
 //! | Rust | Upstream |
 //! |------|----------|
 //! | `Recovery::segments` | multi-interval `SmFilletSolver::ProcessRollOver` |
-//! | `Recovery::split_rail` | typed `sm_SplitRail` adapter (p1) |
-//! | `Recovery::support_edge` | typed `sm_ComputeSupportEdge` adapter (p1) |
+//! | `Recovery::split_rail` | calls [`super::super::p1::split_rail`] |
+//! | `Recovery::support_edge` | calls [`super::super::p1::compute_support_edge`] |
 //!
 //! Deviations: missing callees have typed call boundaries in `RecoveryOps`;
 //! their callers, mutations, cleanup and continuation are fully represented.
@@ -17,6 +17,7 @@
 //! leave a corner walk looping forever.
 //! No recursion.
 
+pub(super) use super::super::p1::rails::SupportIntersection;
 use super::{
     edge, eu, ignored, p2, Brep, CurveClassification, EdgeId, EdgeuseId, EntityRef, FilletBrep,
     FilletCornerId, FilletCornerType, FilletGeomId, FilletGeomRef, FilletGeomType, FilletSolver,
@@ -37,7 +38,7 @@ use crate::topology::{FaceId, VertexId};
 pub(super) struct Recovery<'a> {
     pub solver: &'a mut FilletSolver,
     pub k: &'a Kernel,
-    pub target: &'a Brep,
+    pub target: &'a mut Brep,
     pub fillets: &'a mut FilletBrep,
     pub ownership: &'a mut dyn RolloverOwnership,
 }
@@ -73,18 +74,6 @@ pub(super) struct SideSearch<'a> {
     pub tangency_tolerance: f64,
 }
 
-pub(super) struct SupportIntersection<'a> {
-    pub start: VertexId,
-    pub end: Option<VertexId>,
-    pub start_direction: Option<Vec3>,
-    pub end_direction: Option<Vec3>,
-    pub surfaces: [&'a Surface; 2],
-    pub approx_tol: f64,
-    pub angle_tol: f64,
-    pub skip_two_points_intersection: bool,
-    pub reference_point: Option<Point3>,
-}
-
 // Only unavailable calls are abstracted, so tests can exercise the real caller's
 // entire continuation without pretending those callees are implemented.
 pub(super) trait RecoveryOps {
@@ -95,8 +84,15 @@ pub(super) trait RecoveryOps {
             "blend.fillet_solver_p3",
         ))
     }
-    fn convex(&mut self, c: &Recovery<'_>, edgeuse: EdgeuseId) -> Result<bool> {
-        p2::is_convex_radial_sector(c.k, c.target, edgeuse, 10, true, 0.0)
+    fn convex(
+        &mut self,
+        c: &mut Recovery<'_>,
+        edgeuse: EdgeuseId,
+        samples: u64,
+        step_off: bool,
+        tolerance: f64,
+    ) -> Result<bool> {
+        p2::is_convex_radial_sector(c.k, c.target, edgeuse, samples, step_off, tolerance)
     }
     fn find_side(&mut self, _c: &mut Recovery<'_>, search: SideSearch<'_>) -> Result<SideHit> {
         let SideSearch {
@@ -167,8 +163,9 @@ pub(super) trait RecoveryOps {
             "blend.fillet_solver_p3",
         ))
     }
-    fn tangent(&mut self, c: &Recovery<'_>, side: EdgeId) -> Result<bool> {
+    fn tangent(&mut self, c: &mut Recovery<'_>, side: EdgeId) -> Result<bool> {
         super::super::p1::test_manifold_tangent_rollover(
+            c.k,
             c.target,
             side,
             c.solver.tangency_tolerance,
@@ -177,15 +174,13 @@ pub(super) trait RecoveryOps {
     }
     fn make_edge(
         &mut self,
-        _c: &mut Recovery<'_>,
-        _start: VertexId,
-        _end: VertexId,
+        k: &Kernel,
+        fb: &mut FilletBrep,
+        start: VertexId,
+        end: VertexId,
     ) -> Result<EdgeId> {
-        // UNPORTED(blend.fillet_geom_p5): SmFilletEdge::MakeFilletEdge
-        Err(SolidError::unported(
-            "SmFilletEdge::MakeFilletEdge",
-            "blend.fillet_geom_p5",
-        ))
+        use super::super::p1::rails::{Missing, RailOps};
+        Missing.make_edge(k, fb, start, end)
     }
     fn cliff(
         &mut self,
@@ -229,36 +224,12 @@ pub(super) trait RecoveryOps {
     }
     fn surface_intersection(
         &mut self,
-        _c: &mut Recovery<'_>,
+        k: &Kernel,
+        fb: &mut FilletBrep,
         request: SupportIntersection<'_>,
     ) -> Result<Option<Curve>> {
-        let SupportIntersection {
-            start,
-            end,
-            start_direction,
-            end_direction,
-            surfaces,
-            approx_tol,
-            angle_tol,
-            skip_two_points_intersection,
-            reference_point,
-        } = request;
-        let _ = (
-            start,
-            end,
-            start_direction,
-            end_direction,
-            surfaces,
-            approx_tol,
-            angle_tol,
-            skip_two_points_intersection,
-            reference_point,
-        );
-        // UNPORTED(blend.fillet_geom_p2): sm_SrfSrfIntersection
-        Err(SolidError::unported(
-            "sm_SrfSrfIntersection",
-            "blend.fillet_geom_p2",
-        ))
+        use super::super::p1::rails::{Missing, RailOps};
+        Missing.surface_intersection(k, fb, request)
     }
     fn support(
         &mut self,
@@ -282,17 +253,19 @@ pub(super) trait RecoveryOps {
     }
     fn copy_offset(
         &mut self,
-        _k: &Kernel,
-        _offset: &OffsetSurface,
+        k: &Kernel,
+        offset: &OffsetSurface,
     ) -> (Option<OffsetSurface>, Result<()>) {
-        // UNPORTED(surface.offset_surface): SmOffsetSurface::Copy
-        (
-            None,
-            Err(SolidError::unported(
-                "SmOffsetSurface::Copy",
-                "surface.offset_surface",
-            )),
-        )
+        match offset.surface.copy(k) {
+            Ok(surface) => (
+                Some(OffsetSurface {
+                    surface,
+                    base_id: offset.base_id,
+                }),
+                Ok(()),
+            ),
+            Err(error) => (None, Err(error)),
+        }
     }
 }
 pub(super) struct Missing;
@@ -311,78 +284,21 @@ fn required<T>(value: Option<T>) -> Result<T> {
 }
 
 impl Recovery<'_> {
-    fn install_curve(&mut self, edge: EdgeId, curve: Curve) -> Result<()> {
-        crate::blend::fillet_geom::p1::set_rail_curve(self.fillets.brep_mut(), edge, curve)?;
-        let (owner, brep) = self.ownership.edge_owner(edge)?;
-        let curve = required(self.fillets.brep_mut().edge_mut(edge)?.curve.as_mut())?;
-        let (_, notification) = curve.set_owner(Some(owner), brep);
-        if let Some(notification) = notification {
-            self.ownership.owner_changed(notification)?;
-        }
-        Ok(())
-    }
-
-    // Typed adapters for p1's sm_SplitRail / sm_ComputeSupportEdge. The existing
-    // p1 API has opaque topology refs; these bodies keep every operation after
-    // the missing MakeFilletEdge / SrfSrfIntersection call as well.
     fn split_rail(
         &mut self,
         geom: FilletGeomId,
         rail: EdgeId,
         ops: &mut impl RecoveryOps,
     ) -> Result<(VertexId, EdgeId)> {
-        let start = self.start(rail)?;
-        let end = self.end(rail)?;
-        let mut edgeuse = required(eu::primary_edgeuse(self.fillets.brep(), rail)?)?;
-        let mut vu = required(self.fillets.brep().edgeuse(edgeuse)?.vertexuse)?;
-        if self.fillets.brep().vertexuse(vu)?.vertex != Some(end) {
-            edgeuse = required(eu::mate(self.fillets.brep(), edgeuse)?)?;
-            vu = required(self.fillets.brep().edgeuse(edgeuse)?.vertexuse)?;
-        }
-        if start == end
-            && self.fillets.brep().edgeuse(edgeuse)?.orientation
-                != crate::nurbs::b_spline_surface_n_lib::p2::OrientType::Opposite
-        {
-            edgeuse = required(eu::mate(self.fillets.brep(), edgeuse)?)?;
-            vu = required(self.fillets.brep().edgeuse(edgeuse)?.vertexuse)?;
-        }
-        self.fillets
-            .set_edgeuse_uv_curve(edgeuse, None, true, true)?;
-        self.fillets
-            .brep_mut()
-            .vertex_mut(end)?
-            .vertexuses
-            .retain(|v| *v != vu);
-        let vertex = self.fillets.brep_mut().add_vertex(Point3::ZERO)?;
-        self.fillets
-            .insert_fillet_vertex(vertex, FilletVertex::new(self.k, None));
-        self.fillets
-            .brep_mut()
-            .vertex_mut(vertex)?
-            .vertexuses
-            .push(vu);
-        self.fillets.brep_mut().vertexuse_mut(vu)?.vertex = Some(vertex);
-        let (new_start, new_end) = edge::start_end_vertices(self.fillets.brep(), rail)?;
-        self.fillets.brep_mut().edge_mut(rail)?.vertices =
-            [required(new_start)?, required(new_end)?];
-        let new_rail = ops.make_edge(self, vertex, end)?;
-        let original_face = self.fillets.fillet_edge(rail)?.original_face();
-        let record = self.fillets.fillet_edge_mut(new_rail)?;
-        record.set_fillet_edge_type(FilletEdgeType::Rail);
-        record.set_original_face(original_face);
-        let mut new_eu = required(eu::primary_edgeuse(self.fillets.brep(), new_rail)?)?;
-        let new_vu = required(self.fillets.brep().edgeuse(new_eu)?.vertexuse)?;
-        if self.fillets.brep().vertexuse(new_vu)?.vertex != Some(end) {
-            new_eu = required(eu::mate(self.fillets.brep(), new_eu)?)?;
-        }
-        self.fillets.set_edgeuse_fillet_geom(new_eu, Some(geom))?;
-        let curve = required(edge::curve(self.fillets.brep(), rail)?)?.copy(self.k)?;
-        self.install_curve(new_rail, curve)?;
-        let tolerance = edge::tolerance(self.fillets.brep(), rail)?;
-        self.fillets.brep_mut().edge_mut(new_rail)?.tolerance = tolerance;
-        Ok((vertex, new_rail))
+        super::super::p1::rails::split_rail_with_ops(
+            self.k,
+            self.fillets,
+            self.ownership,
+            geom,
+            rail,
+            &mut RailAdapter(ops),
+        )
     }
-
     fn support_edge(
         &mut self,
         support: EdgeId,
@@ -391,105 +307,17 @@ impl Recovery<'_> {
         angle: f64,
         ops: &mut impl RecoveryOps,
     ) -> Result<()> {
-        let start = self.start(support)?;
-        if !self.fillets.fillet_vertex(start)?.is_processed() {
-            return Err(SolidError::sm_err(OP));
-        }
-        let start_point = self.fillets.vertex_point(start)?;
-        let primary = required(eu::primary_edgeuse(self.fillets.brep(), support)?)?;
-        let mate = required(eu::mate(self.fillets.brep(), primary)?)?;
-        let first = required(self.fillets.fillet_edgeuse(primary)?.fillet_geom())?;
-        let second = required(self.fillets.fillet_edgeuse(mate)?.fillet_geom())?;
-        let surf1 = required(self.fillets.geom(first)?.fillet_surface())?.clone();
-        let surf2 = required(self.fillets.geom(second)?.fillet_surface())?.clone();
-        let outcome = ops.surface_intersection(
-            self,
-            SupportIntersection {
-                start,
-                end: None,
-                start_direction: None,
-                end_direction: None,
-                surfaces: [&surf1, &surf2],
-                approx_tol: approx,
-                angle_tol: angle,
-                skip_two_points_intersection: false,
-                reference_point: None,
-            },
-        );
-        let mut curve = match outcome {
-            Err(e) if e.is_unported() => return Err(e),
-            Ok(Some(curve)) => curve,
-            _ => {
-                self.fillets
-                    .fillet_edge_mut(support)?
-                    .set_status(FilStatus::SurfIntFailure);
-                return Err(SolidError::sm_err(OP));
-            }
-        };
-        let mut interval = curve.natural_interval();
-        let surface = required(self.fillets.geom(geom)?.fillet_surface())?;
-        let solutions = surface.global_curve_intersect(
+        super::super::p1::rails::compute_support_edge_with_ops(
             self.k,
-            [CliffHandle::Curve(&curve), CliffHandle::Surface(surface)],
-            &surface.natural_uv_domain(),
-            &curve,
-            &interval,
+            self.fillets,
+            self.ownership,
+            support,
+            geom,
             approx,
-        )?;
-        let sol = solutions.get(0).ok_or_else(|| SolidError::sm_err(OP))?;
-        let t = sol
-            .start
-            .parameters
-            .first()
-            .copied()
-            .ok_or_else(|| SolidError::null_pointer(OP))?;
-        let end_point = curve.evaluate_point(t)?;
-        let end = self.end(support)?;
-        self.fillets.brep_mut().vertex_mut(end)?.point = end_point;
-        self.fillets
-            .fillet_vertex_mut(end)?
-            .set_status(FilStatus::Processed);
-        let drop1 = curve.drop_point(
-            self.k,
-            &interval,
-            start_point,
-            None,
-            approx,
-            None,
-            SolverOperation::Minimize,
-        )?;
-        if !drop1.success {
-            return Err(SolidError::sm_err(OP));
-        }
-        let drop2 = curve.drop_point(
-            self.k,
-            &interval,
-            end_point,
-            None,
-            approx,
-            None,
-            SolverOperation::Minimize,
-        )?;
-        if !drop2.success {
-            return Err(SolidError::sm_err(OP));
-        }
-        let reverse = drop1.parameter > drop2.parameter;
-        if reverse {
-            ignored(interval.set_min_max(drop2.parameter, drop1.parameter))?;
-        } else {
-            ignored(interval.set_min_max(drop1.parameter, drop2.parameter))?;
-        }
-        curve.trim(
-            self.k,
-            &mut interval,
-            crate::nurbs::b_spline_curve_n_lib::TrimMode::Notify,
-        )?;
-        if reverse {
-            curve.reverse_parameterization(self.k, &interval)?;
-        }
-        self.install_curve(support, curve)
+            angle,
+            &mut RailAdapter(ops),
+        )
     }
-
     fn rail_copy(&self, geom: FilletGeomId, which: usize) -> Result<Rail> {
         let rail = required(self.fillets.geom(geom)?.rail(which))?;
         let count = required(self.fillets.fillet_edge(rail)?.curve_class())?.size();
@@ -585,7 +413,7 @@ impl Recovery<'_> {
         ops: &mut impl RecoveryOps,
     ) -> Result<()> {
         let solver_eu = required(self.solver.edgeuse(0)?)?;
-        let convex = ops.convex(self, solver_eu)?;
+        let convex = ops.convex(self, solver_eu, 10, false, 0.0)?;
         let surface = required(self.fillets.geom(id)?.fillet_surface())?;
         let analytic = if surface.is_kind_of(crate::surface::surface::p2::B_SPLINE_SURFACE_TYPE)? {
             SurfOfRevolution::is_nurb_surface_surf_of_revolution(self.k, surface, 1.0)?.is_some()
@@ -593,7 +421,7 @@ impl Recovery<'_> {
             false
         };
         let mut rails = [self.rail_copy(id, 0)?, self.rail_copy(id, 1)?];
-        let original_surface = required(self.fillets.geom(id)?.fillet_surface())?.copy()?;
+        let original_surface = required(self.fillets.geom(id)?.fillet_surface())?.copy(self.k)?;
         let mut processing_rollover = false;
         let mut corner_eu = None;
         let mut corner_vertex = None;
@@ -666,15 +494,20 @@ impl Recovery<'_> {
                         geom_type = FilletGeomType::TangentRollover;
                         let mut distance = required(self.solver.surface(which)?)?
                             .surface
-                            .offset_distance;
+                            .offset_distance();
                         if hit.opposite_normals {
                             distance *= -1.0;
                             *get_mut(&mut self.solver.orientations, which)? *= -1.0;
                         }
                         let base = required(self.target.face(face)?.surface.as_ref())?;
-                        let mut offset =
-                            OffsetSurface::new(distance, base.clone(), SurfaceId::Face(face));
-                        offset.allow_extension = true;
+                        let mut offset = OffsetSurface::new(
+                            self.k,
+                            distance,
+                            base.clone(),
+                            SurfaceId::Face(face),
+                            crate::surface::offset_surface::SS_UNKNOWN,
+                        )?;
+                        offset.set_allow_extension(true);
                         let key = self.new_offset_key()?;
                         self.solver.set_surface(
                             which,
@@ -857,8 +690,12 @@ impl Recovery<'_> {
                         record.set_fillet_vertex_type(FilletVertexType::OnVertex);
                         record.set_status(FilStatus::Processed);
                         self.fillets.insert_fillet_vertex(end, record);
-                        let support =
-                            ops.make_edge(self, end, required(*get(&new_vertices, which)?)?)?;
+                        let support = ops.make_edge(
+                            self.k,
+                            self.fillets,
+                            end,
+                            required(*get(&new_vertices, which)?)?,
+                        )?;
                         self.fillets
                             .fillet_edge_mut(support)?
                             .set_fillet_edge_type(FilletEdgeType::OnExtendEdge);
@@ -870,7 +707,7 @@ impl Recovery<'_> {
                         .set_fillet_edge_type(FilletEdgeType::CliffRail);
                     let extension = required(get(&saved.surfaces, which)?.as_ref())?
                         .surface
-                        .offset_distance
+                        .offset_distance()
                         .abs();
                     ops.cliff(
                         self,
@@ -998,3 +835,24 @@ impl Recovery<'_> {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+struct RailAdapter<'a, T>(&'a mut T);
+impl<T: RecoveryOps> super::super::p1::rails::RailOps for RailAdapter<'_, T> {
+    fn make_edge(
+        &mut self,
+        k: &Kernel,
+        fb: &mut FilletBrep,
+        start: VertexId,
+        end: VertexId,
+    ) -> Result<EdgeId> {
+        self.0.make_edge(k, fb, start, end)
+    }
+    fn surface_intersection(
+        &mut self,
+        k: &Kernel,
+        fb: &mut FilletBrep,
+        request: SupportIntersection<'_>,
+    ) -> Result<Option<Curve>> {
+        self.0.surface_intersection(k, fb, request)
+    }
+}

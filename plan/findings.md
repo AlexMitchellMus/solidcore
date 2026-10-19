@@ -8215,3 +8215,58 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   unchanged with 0 flips: 300/206/0/94, 1000 seeds 1284/868/0/410, perturb 333/333, fuzz 2000 pass.
   valgrind with `harness/valgrind/ub11.supp` gives 0 errors on the simple, unify, select and split
   samples.
+
+## blend.fillet_solver_p5 — PR #208 maintainer review (2026-10-19)
+
+Integrated the current #147 (`b396cdd3`) and #192 (`a88c62af`) heads and canonical
+main `28cd7d9a`, preserving both sides of the findings history. The offset wrapper
+is the real `surface.offset_surface::OffsetSurface` plus its base identity.
+
+- `ProcessRollOver` calls `IsConvexRadialSector(10, FALSE, 0.0)`, matching the
+  omitted default in `SmEdgeuse.h:356`, rather than stepping off by 20 edge
+  tolerances. Continuation regressions assert the arguments at the callee boundary.
+- Tangent rollover constructs the real offset with `SS_UNKNOWN`, as upstream's
+  two-argument constructor does; `SetAllowExtension(TRUE)` follows construction.
+  Offset copying calls the real `OffsetSurface::copy(k)`, preserving base identity.
+  The existing output/status adapter still preserves a usable copy when an ignored
+  failing status carries one. Regression covers a real copy and its options.
+- `EvaluateBinormal` is wired by the current dependency heads. The target B-rep is
+  mutable because the real evaluator can create UV trim curves. No p5/p1 binormal
+  or offset-copy stub remains.
+- `sm_SplitRail` and `sm_ComputeSupportEdge` now have one implementation each in
+  `blend::fillet_solver::p1::rails`, re-exported as p1's public typed functions.
+  p5 delegates through those implementations. They use `FilletBrep`, geometry ids
+  and `RailOwnership` rather than unresolved opaque topology references. The
+  public-entry regression reaches only the genuinely missing `MakeFilletEdge`
+  (fillet_geom_p5) / `sm_SrfSrfIntersection` (fillet_geom_p2); the continuation
+  regressions exercise successful splits/support curves with scripted callees.
+  Split tolerance uses the real SetTolerance defaults, including vertex cascades.
+- The C++ guard rejects missing rail curves only on the multi-interval path after
+  a non-null fillet surface. Earlier blend, missing-classification, 1x1 and
+  null-surface returns retain their defined behavior. A standalone guard regression
+  distinguishes the null-surface and blend/1x1 returns from the unsafe copy path.
+- Native calls now use `posix_spawn` to execute a separately built worker image.
+  SMLib allocation/destruction never runs in a forked copy of the multithreaded
+  Rust host. Bounded requests/results use private CLOEXEC pipes; the entire small
+  request is written before spawning, avoiding parent SIGPIPE. Signals/aborts and
+  stalled/failed workers remain `SC_ERR_EXCEPTION`, distinct from guard rejection.
+  The worker is built with the same compiler flags and existing SMLib libraries
+  by `solidcore-ffi/build.rs`; no CI workflow changes are required.
+- `TestRollOver`'s four-argument constructor now calls the real `reset` with
+  upstream defaults and the caller's source tolerance; `ConnectIntervals` is also
+  wired to its real p2 port. No actual tangent/cliff repair parity is claimed. Added 84 committed adversarial fixtures: all class pairs at huge/tiny
+  intervals, eight-interval rails across every geometry kind with zero, inverted,
+  huge, tiny, narrow and offset domains, and both TestRollOver operations.
+
+Native safety verification with the spawn worker: 1200 allocation-failure probes,
+818 successes / 382 contained native failures, zero host crashes; SIGSEGV and
+SIGABRT contained. Four direct ASan/LSan calls executed fixture destruction with
+no reported errors/leaks (shim/test instrumented, normal reference libraries).
+
+Review regression results: p5 170 cases / 164 pass / 4 deferred on
+`topology.face_p4::SmFace::GetEdges` / 2 rejected / 0 failed, all compared values
+bit-identical. The original five binormal deferrals now compare. Current dependency
+runs: solver_p1 343/303 pass/40 deferred, geom_p1 480/446 pass/21 deferred/13
+rejected, custom_solver 448/401 pass/47 deferred; no failures. Kernel 1420 tests
+pass, including 18 rollover tests. Native guard/parser/capacity/concurrent-worker
+tests: 4 pass. Fmt, explicit runner/FFI rustfmt, Clippy and wasm32 pass.

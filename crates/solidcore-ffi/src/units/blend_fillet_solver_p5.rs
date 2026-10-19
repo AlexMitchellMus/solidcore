@@ -9,10 +9,13 @@
 //! multiple intervals reach `IsConvexRadialSector` on a wire and the null-surface
 //! check. Supported full rollover with an unknown midpoint needs real face/curve
 //! data and is rejected for this incomplete fixture only. `TestRollOver` op 2 builds
-//! real `SmLine` rails inside a real planar face; it is deferred by Rust's `ReSet`.
-//! Native fixture construction, evaluation and destruction run in a bounded Unix
-//! worker. A signal, destructor abort or stalled worker is a native exception,
+//! real `SmLine` rails inside a real planar face; Rust uses the real classification
+//! reset and propagates remaining topology/refinement dependencies.
+//! Native fixture construction, evaluation and destruction run in a bounded Linux
+//! worker executed with `posix_spawn` (a fresh allocator image). A signal, destructor abort or stalled worker is a native exception,
 //! never an operation status or rejected fixture. No SMLib pointer crosses IPC.
+//! The multi-interval rail-copy guard rejects null curves only after the
+//! defined null-surface return; earlier returns remain covered.
 //! Unsupported platforms fail closed rather than executing SMLib in process.
 
 use crate::{call_with_buffer, FfiError};

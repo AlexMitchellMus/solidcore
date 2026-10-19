@@ -136,17 +136,20 @@ impl Fixture {
             target.edge_mut(side).unwrap().edgeuses.push(eu);
         }
         let mut fb = FilletBrep::new();
-        let mut geom = FilletGeom::new(None, FilletGeomType::Default).unwrap();
+        let mut geom = FilletGeom::new(&k, None, FilletGeomType::Default).unwrap();
         for (i, e) in ends.iter().enumerate() {
             let r = rail(&k, &mut fb, e, unknown);
             geom.set_rail(i, Some(r));
             solver.surfaces[i] = Some(OffsetSurfaceSlot {
                 key: 20 + i as u64,
                 surface: OffsetSurface::new(
+                    &k,
                     0.25 + i as f64 * 0.25,
                     plane(),
                     SurfaceId::Face(FaceId::from_index(0)),
-                ),
+                    crate::surface::offset_surface::SS_UNKNOWN,
+                )
+                .unwrap(),
             });
         }
         geom.set_fillet_surface(Some(plane()));
@@ -166,7 +169,7 @@ impl Fixture {
         Recovery {
             solver: &mut self.solver,
             k: &self.k,
-            target: &self.target,
+            target: &mut self.target,
             fillets: &mut self.fb,
             ownership: &mut self.owners,
         }
@@ -202,7 +205,15 @@ impl RecoveryOps for Script {
         }
         Ok(())
     }
-    fn convex(&mut self, _: &Recovery<'_>, _: EdgeuseId) -> Result<bool> {
+    fn convex(
+        &mut self,
+        _: &mut Recovery<'_>,
+        _: EdgeuseId,
+        samples: u64,
+        step_off: bool,
+        tolerance: f64,
+    ) -> Result<bool> {
+        assert_eq!((samples, step_off, tolerance), (10, false, 0.0));
         self.call("convex")?;
         Ok(true)
     }
@@ -305,25 +316,23 @@ impl RecoveryOps for Script {
     }
     fn make_edge(
         &mut self,
-        c: &mut Recovery<'_>,
+        _: &Kernel,
+        fb: &mut FilletBrep,
         start: VertexId,
         end: VertexId,
     ) -> Result<EdgeId> {
         self.call("make_edge")?;
         if self.corner {
-            assert_eq!(
-                c.fillets.fillet_vertex(start)?.status(),
-                FilStatus::Processed
-            );
+            assert_eq!(fb.fillet_vertex(start)?.status(), FilStatus::Processed);
         }
-        let edge = c.fillets.new_fillet_edge(start, end, None)?;
+        let edge = fb.new_fillet_edge(start, end, None)?;
         for vertex in [start, end] {
-            let vu = c.fillets.brep_mut().add_vertexuse_record(Vertexuse {
+            let vu = fb.brep_mut().add_vertexuse_record(Vertexuse {
                 vertex: Some(vertex),
                 ..Vertexuse::default()
             })?;
-            c.fillets.brep_mut().vertex_mut(vertex)?.vertexuses.push(vu);
-            let eu = c.fillets.brep_mut().add_edgeuse_record(Edgeuse {
+            fb.brep_mut().vertex_mut(vertex)?.vertexuses.push(vu);
+            let eu = fb.brep_mut().add_edgeuse_record(Edgeuse {
                 edge: Some(edge),
                 vertexuse: Some(vu),
                 orientation: if vertex == start {
@@ -333,9 +342,8 @@ impl RecoveryOps for Script {
                 },
                 ..Edgeuse::default()
             })?;
-            c.fillets.brep_mut().edge_mut(edge)?.edgeuses.push(eu);
-            c.fillets
-                .insert_fillet_edgeuse(eu, FilletEdgeuse::default());
+            fb.brep_mut().edge_mut(edge)?.edgeuses.push(eu);
+            fb.insert_fillet_edgeuse(eu, FilletEdgeuse::default());
         }
         Ok(edge)
     }
@@ -372,7 +380,7 @@ impl RecoveryOps for Script {
     fn trim_rails(&mut self, _: &mut Recovery<'_>, _: FilletGeomId) -> Result<()> {
         self.call("trim")
     }
-    fn tangent(&mut self, _: &Recovery<'_>, _: EdgeId) -> Result<bool> {
+    fn tangent(&mut self, _: &mut Recovery<'_>, _: EdgeId) -> Result<bool> {
         self.call("tangent")?;
         Ok(true)
     }
@@ -629,7 +637,7 @@ fn ignored_copy_status_does_not_discard_its_completed_output() {
         f.fb.geom(FilletGeomId(1)).unwrap().off_surfs[0]
             .as_ref()
             .unwrap()
-            .offset_distance,
+            .offset_distance(),
         0.25
     );
 }
@@ -705,6 +713,8 @@ fn typed_split_adapter_keeps_vertex_backlinks_cached_ends_and_copied_rail_data()
     assert_eq!(f.fb.brep().vertex(split).unwrap().vertexuses.len(), 2);
     assert_eq!(f.fb.brep().vertex(old_end).unwrap().vertexuses.len(), 1);
     assert_eq!(f.fb.brep().edge(new).unwrap().tolerance, 0.123);
+    assert_eq!(f.fb.brep().vertex(split).unwrap().tolerance, 0.123);
+    assert_eq!(f.fb.brep().vertex(old_end).unwrap().tolerance, 0.123);
     assert!(f.fb.brep().edge(new).unwrap().curve.is_some());
     let (owner, _) = f.owners.edge_owner(new).unwrap();
     assert_eq!(
@@ -733,7 +743,8 @@ fn support_intersection_failure_marks_the_edge_and_keeps_existing_curve() {
     impl RecoveryOps for FailedIntersection {
         fn surface_intersection(
             &mut self,
-            _: &mut Recovery<'_>,
+            _: &Kernel,
+            _: &mut FilletBrep,
             request: SupportIntersection<'_>,
         ) -> Result<Option<Curve>> {
             assert!(!request.skip_two_points_intersection);
@@ -772,7 +783,8 @@ fn support_recovery_intersects_trims_installs_and_notifies_the_actual_curve() {
     impl RecoveryOps for Intersection {
         fn surface_intersection(
             &mut self,
-            _: &mut Recovery<'_>,
+            _: &Kernel,
+            _: &mut FilletBrep,
             request: SupportIntersection<'_>,
         ) -> Result<Option<Curve>> {
             assert!(!request.skip_two_points_intersection);
@@ -819,4 +831,83 @@ fn support_recovery_intersects_trims_installs_and_notifies_the_actual_curve() {
     );
     assert_eq!(curve.owner(), Some(f.owners.edge_owner(rail).unwrap().0));
     assert_eq!(f.owners.notifications.len(), 1);
+}
+
+#[test]
+fn offset_copy_uses_the_real_port_and_preserves_base_identity_and_options() {
+    let f = Fixture::new([&[1.0], &[1.0]], false);
+    let source = &f.solver.surfaces[0].as_ref().unwrap().surface;
+    let (copy, status) = Missing.copy_offset(&f.k, source);
+    status.unwrap();
+    let copy = copy.unwrap();
+    assert_eq!(copy.base_id, source.base_id);
+    assert_eq!(copy.offset_distance(), source.offset_distance());
+    assert_eq!(
+        copy.surface.allow_extension(),
+        source.surface.allow_extension()
+    );
+    assert_eq!(copy.surface.singularities(), source.surface.singularities());
+    assert_eq!(
+        copy.surface
+            .evaluate_point(crate::math::Point2::new(0.2, 0.3))
+            .unwrap(),
+        source
+            .surface
+            .evaluate_point(crate::math::Point2::new(0.2, 0.3))
+            .unwrap()
+    );
+}
+
+#[test]
+fn public_p1_helpers_reach_only_the_actually_missing_callees() {
+    let mut f = Fixture::new([&[1.0], &[1.0]], false);
+    let id = f.geom;
+    let rail = f.fb.geom(id).unwrap().rail(0).unwrap();
+    let outcome = super::super::super::p1::split_rail(&f.k, &mut f.fb, &mut f.owners, id, rail);
+    assert!(matches!(
+        outcome,
+        Err(SolidError::Unported {
+            unit: "blend.fillet_geom_p5",
+            ..
+        })
+    ));
+    let mut f = Fixture::new([&[1.0], &[1.0]], false);
+    let id = f.geom;
+    let rail = f.fb.geom(id).unwrap().rail(0).unwrap();
+    let start = f.context().start(rail).unwrap();
+    f.fb.fillet_vertex_mut(start)
+        .unwrap()
+        .set_status(FilStatus::Processed);
+    for eu in f.fb.brep().edge(rail).unwrap().edgeuses.clone() {
+        f.fb.set_edgeuse_fillet_geom(eu, Some(id)).unwrap();
+    }
+    let outcome = super::super::super::p1::compute_support_edge(
+        &f.k,
+        &mut f.fb,
+        &mut f.owners,
+        rail,
+        id,
+        1e-5,
+        1e-3,
+    );
+    assert!(matches!(
+        outcome,
+        Err(SolidError::Unported {
+            unit: "blend.fillet_geom_p2",
+            ..
+        })
+    ));
+}
+
+#[test]
+fn end_squeezing_uses_the_real_connect_intervals_port() {
+    use super::super::{squeeze_rail, MissingClassification};
+    let mut f = Fixture::new([&[0.01, 0.99, 1.0], &[1.0]], false);
+    let rail = f.fb.geom(f.geom).unwrap().rail(0).unwrap();
+    let small = squeeze_rail(&f.k, &mut f.fb, rail, 0.001, &mut MissingClassification).unwrap();
+    assert!(small.is_empty());
+    let cc = f.fb.fillet_edge(rail).unwrap().curve_class().unwrap();
+    assert_eq!(cc.size(), 1);
+    assert_eq!(cc.sub_interval(0).unwrap().min(), 0.01);
+    assert_eq!(cc.sub_interval(0).unwrap().max(), 0.99);
 }

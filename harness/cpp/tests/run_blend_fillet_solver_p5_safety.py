@@ -28,6 +28,7 @@ def main():
                "-DSM_GRAPHICS_CALLBACKS=1", "-Iharness/cpp/shim",
                "-Iupstream/source/SMLib/inc", "-Iupstream/source/SM_API/inc",
                "harness/cpp/tests/blend_fillet_solver_p5_alloc.cpp",
+               "harness/cpp/shim/topology_edgeuse_p1.cpp",
                "-Wl,--wrap=calloc", f"-L{cpp / 'lib'}", "-lSM_API", "-lSMLib",
                "-pthread", "-o", str(binary)]
     if args.asan:
@@ -44,6 +45,10 @@ def main():
             print(result.stdout.strip(), flush=True)
         print("ASAN/LSAN PASS: 4 direct calls, fixture destructors executed", flush=True)
         return
+    guarded = run([binary, "guard", 0], cwd=root, timeout=40)
+    if guarded.returncode:
+        raise RuntimeError(guarded.stdout + guarded.stderr)
+    print(guarded.stdout.strip(), flush=True)
     statuses = collections.Counter()
     count = 0
     for mode in ("new", "calloc"):

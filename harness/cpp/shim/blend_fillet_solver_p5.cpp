@@ -46,6 +46,20 @@ struct Corner : SmFilletCorner {
 struct Rail { int n; std::vector<double> a,b; std::vector<int> cls; };
 bool integer(double x, int lo, int hi) { return std::isfinite(x) && x==std::floor(x) && x>=lo && x<=hi; }
 }
+// Guard the dereferences after the null-surface NER without excluding earlier
+// defined returns (blend patches, missing classifications, or 1x1 rails).
+static bool safe_process_rail_copies(const SmFilletGeom* geom) {
+    if(geom->GetFilletGeomType()==SM_FG_BLENDS) return true;
+    SmFilletEdge* rails[2]={geom->GetRail(0),geom->GetRail(1)};
+    if(!rails[0]) return false;
+    SmCurveClassification* a=rails[0]->GetCurveClass();
+    if(!a) return true;
+    if(!rails[1]) return false;
+    SmCurveClassification* b=rails[1]->GetCurveClass();
+    if(!b || (a->GetSize()==1 && b->GetSize()==1)) return true;
+    if(!geom->GetFilletSurface()) return true; // defined NER before the Copy
+    return rails[0]->GetCurve() && rails[1]->GetCurve();
+}
 static int32_t rollover_eval_in_process(const double* in, int64_t n,
     double* out, int64_t cap, int64_t* len) {
     if (!in || n<6 || !len || cap<0 || (cap && !out)) return SC_ERR_ARG;
@@ -136,7 +150,8 @@ static int32_t rollover_eval_in_process(const double* in, int64_t n,
     int status;
     if(op==1) { solver.clear(); status=(int)solver.TestRollOver(adj); }
     else if(op==2) status=(int)solver.TestRollOver(adj);
-    else { solver.set_eu(rails[0]->GetPrimaryEdgeuse()); status=(int)solver.ProcessRollOver(fg,adj); }
+    else { if(!safe_process_rail_copies(fg)) return SC_ERR_ARG;
+        solver.set_eu(rails[0]->GetPrimaryEdgeuse()); status=(int)solver.ProcessRollOver(fg,adj); }
     std::vector<double> result={(double)(status==SM_SUCCESS?0:status),(double)(op==1?type:(int)fg->GetFilletGeomType()),(double)adj.GetSize()};
     for(ULONG i=0;i<adj.GetSize();i++) result.push_back(adj[i]==&c0?0:1);
     for(int i=0;i<2;i++) {
@@ -169,13 +184,9 @@ static int32_t rollover_target_in_process(double* out, int64_t cap, int64_t* len
 SC_EXPORT int32_t sc_blend_fillet_solver_p5_eval(const double* in, int64_t n,
     double* out, int64_t cap, int64_t* len) {
     if(!in || n<6 || !len || cap<0 || (cap && !out)) return SC_ERR_ARG;
-    return sc_rollover::isolated<128>([&](double* data,int64_t size,int64_t* used) {
-        return rollover_eval_in_process(in,n,data,size,used);
-    },out,cap,len);
+    return sc_rollover::isolated(0,in,n,out,cap,len);
 }
 SC_EXPORT int32_t sc_blend_fillet_solver_p5_target(double* out,int64_t cap,int64_t* len) {
     if(!len || cap<0 || (cap && !out)) return SC_ERR_ARG;
-    return sc_rollover::isolated<4096>([](double* data,int64_t size,int64_t* used) {
-        return rollover_target_in_process(data,size,used);
-    },out,cap,len);
+    return sc_rollover::isolated(1,nullptr,0,out,cap,len);
 }
