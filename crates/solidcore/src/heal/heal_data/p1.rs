@@ -47,9 +47,10 @@
 //!   [`crate::topology::brep::p1::regions`] rotated to start at
 //!   [`crate::topology::Brep::infinite_region`] (empty without one).
 //! - **Unported callees** (`UNPORTED` stubs): `SmBrep::FindAndSetInfiniteRegion`
-//!   (`topology.brep_p5`) and `SmFace::CreateUVTrimCurves` (`topology.face_p3`).
-//!   `Fix_BadSheets` calls `topology::brep::p6` for the closure split attempt;
-//!   `HealBrep` and `SmApiHealBrep` run the heal sequence of [`super::p3`].
+//!   (`topology.brep_p5`) and `SmFace::CreateUVTrimCurves` (`topology.face_p3`), so
+//!   `Make_UVTrimCurves` stops at a stub when asked to make curves. `Fix_BadSheets` calls
+//!   `brep_p6` when it finds a sheet face between two closed shells; `HealBrep` and
+//!   `SmApiHealBrep` run the heal sequence of [`super::p3`].
 //! - No recursion; no allocation from caller counts beyond the target lists given.
 
 use crate::error::{Result, SolidError};
