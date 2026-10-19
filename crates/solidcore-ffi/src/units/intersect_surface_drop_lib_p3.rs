@@ -83,25 +83,37 @@ fn finite(x: f64) -> Result<f64, FfiError> {
 }
 
 /// UB-182: building the surface cache of a B-spline surface crashes upstream
-/// (`sm_DecomposeSrf`) when the first non-zero v knot span is below about
-/// `SM_EFF_ZERO * (1 + max |v knot|)` and the UV domain overlaps the surface's v range
-/// (measured: `0,0,0,d,1,1,1` with `d < 2e-12`; `5 + d` below ~7e-12; `100 + d` below
-/// ~1.02e-10; a tiny span at the end, in the interior or in u does not crash).
-fn check_first_v_span(surface: &SurfaceIn, domain: [f64; 4]) -> Result<(), FfiError> {
-    let SurfaceIn::BSpline { q, v, .. } = surface else {
+/// (`sm_DecomposeSrf`) when
+/// - the first v knot span (`v[q + 1] - v[q]`) is zero (the start knot has multiplicity
+///   above `q + 1`) or below about `SM_EFF_ZERO * (1 + max |v knot|)` with the UV domain
+///   overlapping the v range (measured: `0,0,0,d,1,1,1` with `d < 2e-12`; `5 + d` below
+///   ~7e-12; `100 + d` below ~1.02e-10; a tiny span at the end, in the interior or in u
+///   does not crash; an end knot of multiplicity above `q + 1` at the v end does not
+///   either), or
+/// - an end knot of the u vector has multiplicity above `p + 1`.
+fn check_end_spans(surface: &SurfaceIn, domain: [f64; 4]) -> Result<(), FfiError> {
+    let SurfaceIn::BSpline { p, q, u, v, .. } = surface else {
         return Ok(());
     };
-    let (Some(&first), Some(&last), Some(&a), Some(&b)) =
+    if let (Some(&first), Some(&last), Some(&a), Some(&b)) =
         (v.first(), v.last(), v.get(*q), v.get(q + 1))
-    else {
-        return Ok(());
-    };
-    let span = b - a;
-    let limit = 1.0e-12 * (1.0 + first.abs().max(last.abs()));
-    let [_, dv0, _, dv1] = domain;
-    let overlaps = dv0.min(dv1) <= last && dv0.max(dv1) >= first;
-    if span > 0.0 && span < limit && overlaps {
-        return Err(bad("first v knot span too short for the surface cache (UB-182)"));
+    {
+        let span = b - a;
+        let limit = 1.0e-12 * (1.0 + first.abs().max(last.abs()));
+        let [_, dv0, _, dv1] = domain;
+        let overlaps = dv0.min(dv1) <= last && dv0.max(dv1) >= first;
+        if span <= 0.0 || (span < limit && overlaps) {
+            return Err(bad(
+                "first v knot span too short for the surface cache (UB-182)",
+            ));
+        }
+    }
+    let end_mult_above = |lo: Option<&f64>, hi: Option<&f64>| matches!((lo, hi), (Some(a), Some(b)) if a == b);
+    let n = u.len();
+    if end_mult_above(u.get(*p), u.get(p + 1))
+        || (n >= p + 2 && end_mult_above(u.get(n - p - 2), u.get(n - p - 1)))
+    {
+        return Err(bad("u end knot multiplicity above p + 1 (UB-182)"));
     }
     Ok(())
 }
@@ -118,7 +130,7 @@ pub fn encode(d: &Drop) -> Result<Vec<f64>, FfiError> {
     for &x in &d.domain {
         v.push(finite(x)?);
     }
-    check_first_v_span(&d.surface, d.domain)?;
+    check_end_spans(&d.surface, d.domain)?;
     let [i0, i1] = d.interval;
     finite(i0)?;
     finite(i1)?;
@@ -210,8 +222,16 @@ mod tests {
         assert!(encode(&bspline_with_v([0.0, 0.0, 0.0, 1.0e-300, 1.0, 1.0, 1.0], dom)).is_err());
         assert!(encode(&bspline_with_v([0.0, 0.0, 0.0, 1.9e-12, 1.0, 1.0, 1.0], dom)).is_err());
         assert!(encode(&bspline_with_v([5.0, 5.0, 5.0, 5.0 + 5.0e-12, 6.0, 6.0, 6.0], [0.0, 5.0, 1.0, 6.0])).is_err());
+        // an equal knot after the clamped start (multiplicity above q + 1), in v and in u
+        assert!(encode(&bspline_with_v([0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0], dom)).is_err());
+        let mut d = bspline_with_v([0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0], dom);
+        if let SurfaceIn::BSpline { net, u, .. } = &mut d.surface {
+            net.push(net[0].clone());
+            *u = vec![0.0, 0.0, 0.0, 1.0, 1.0];
+        }
+        assert!(encode(&d).is_err());
         // accepted: at the limit, above it, a domain disjoint from the v range, a tiny
-        // span at the end, an exactly equal knot (multiplicity)
+        // span at the end
         assert!(encode(&bspline_with_v([0.0, 0.0, 0.0, 2.0e-12, 1.0, 1.0, 1.0], dom)).is_ok());
         assert!(encode(&bspline_with_v([5.0, 5.0, 5.0, 5.0 + 1.0e-11, 6.0, 6.0, 6.0], [0.0, 5.0, 1.0, 6.0])).is_ok());
         assert!(encode(&bspline_with_v([5.0, 5.0, 5.0, 5.0 + 5.0e-12, 6.0, 6.0, 6.0], dom)).is_ok());
