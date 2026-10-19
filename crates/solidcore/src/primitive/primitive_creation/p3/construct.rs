@@ -8,6 +8,7 @@
 //! | [`PrimitiveCreation::create_swung_primitive`] | `CreateSwungPrimitive` |
 //! | [`PrimitiveCreation::create_skin_from_faces`] | `CreateSkinFromFaces` |
 //! | [`PrimitiveCreation::create_blend_primitive`] | `CreateBlendPrimitive` |
+//! | `swung_curve_scale` (private) | `CreateSwungPrimitive` scale initialization |
 //!
 //! Deviations: typed service resolution replaces pointers. Output face lists
 //! preserve partial results; owned geometry handles cleanup. No recursion.
@@ -64,6 +65,35 @@ pub struct BlendPrimitiveOptions {
     pub end_tangent_length: f64,
 }
 
+// Keep the derived curve dispatch here: the upstream SM_CAST_PTR checks the
+// inheritance chain without slicing SmLine/conics to their cached NURB base.
+fn swung_curve_scale(
+    kernel: &crate::kernel::Kernel,
+    path: &Curve,
+    profile: &Curve,
+    approx_tol: f64,
+) -> Result<f64> {
+    let mut point = profile.evaluate_point(profile.natural_interval().min())?;
+    let normal = Vec3::Y;
+    let d = -point.dot(normal);
+    let property = path.global_property_analysis(
+        kernel,
+        &profile.natural_interval(),
+        CurvePropertyType::PlaneIntersection,
+        approx_tol,
+        &PropertyAnalysisOptions {
+            property_value: Some(d),
+            opt_vectors: &[normal],
+            handle: Some(GeometryHandle(path.natural_interval())),
+            ..Default::default()
+        },
+    )?;
+    if let Some(solution) = property.solutions.get(0) {
+        point = path.evaluate_point(solution.start.param(0)?)?;
+    }
+    Ok((1.0 / point.x).abs())
+}
+
 impl PrimitiveCreation {
     /// Build swung surfaces for every B-spline-compatible path/profile pair.
     /// Only pair (0,0) initializes the scale, even if earlier slots were skipped.
@@ -81,37 +111,27 @@ impl PrimitiveCreation {
         let mut curve_scale = 0.0;
         let mut faces = Vec::new();
         for (i, path) in paths.iter().enumerate() {
-            let Some(path) = path.as_ref().and_then(super::geometry::bspline) else {
+            let Some(path) = path.as_ref() else {
+                continue;
+            };
+            let Some(path_nurb) = super::geometry::bspline(path) else {
                 continue;
             };
             for (j, profile) in profiles.iter().enumerate() {
-                let Some(profile) = profile.as_ref().and_then(super::geometry::bspline) else {
+                let Some(profile) = profile.as_ref() else {
+                    continue;
+                };
+                let Some(profile_nurb) = super::geometry::bspline(profile) else {
                     continue;
                 };
                 if i == 0 && j == 0 {
-                    let mut point = profile.evaluate_point(profile.natural_interval().min())?;
-                    let normal = Vec3::Y;
-                    let d = -point.dot(normal);
-                    let curve = Curve::from(path.clone());
-                    let property = curve.global_property_analysis(
-                        a.kernel(brep)?,
-                        &profile.natural_interval(),
-                        CurvePropertyType::PlaneIntersection,
-                        approx_tol,
-                        &PropertyAnalysisOptions {
-                            property_value: Some(d),
-                            opt_vectors: &[normal],
-                            handle: Some(GeometryHandle(curve.natural_interval())),
-                            ..Default::default()
-                        },
-                    )?;
-                    if let Some(solution) = property.solutions.get(0) {
-                        point = path.evaluate_point(solution.start.param(0)?)?;
-                    }
-                    curve_scale = (1.0 / point.x).abs();
+                    curve_scale = swung_curve_scale(a.kernel(brep)?, path, profile, approx_tol)?;
                 }
-                let surface =
-                    BSplineSurface::create_swung_surface(&profile, &path, scale * curve_scale)?;
+                let surface = BSplineSurface::create_swung_surface(
+                    &profile_nurb,
+                    &path_nurb,
+                    scale * curve_scale,
+                )?;
                 let surface = Surface::from(surface);
                 let domain = surface.natural_uv_domain();
                 a.surface_faces(brep, surface, domain, &mut faces)?;
@@ -210,15 +230,17 @@ impl PrimitiveCreation {
             end_tan_scale: options.end_tangent_length / options.start_tangent_length,
             ..Default::default()
         };
-        let surface = crate::topology::brep::p1::create_edge_edge_blend(
-            a.kernel(brep)?,
-            a.brep(brep)?,
-            flag,
-            first,
-            second,
-            options.curves_direction,
-            Some(&mut derivatives),
-        )?;
+        let surface = a.with_primitive_brep(brep, |kernel, model| {
+            crate::topology::brep::p1::create_edge_edge_blend(
+                kernel,
+                model,
+                flag,
+                first,
+                second,
+                options.curves_direction,
+                Some(&mut derivatives),
+            )
+        })?;
         a.set_editing(brep, true)?;
         let domain = surface.natural_uv_domain();
         ignore_status(a.surface_face(brep, surface, domain, output))?;
@@ -348,5 +370,63 @@ impl PrimitiveCreation {
         })();
         a.kernel_mut(brep)?.context.set_doing_boolean(previous);
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::curve::line::Line;
+    use crate::geom::extent1d::Extent1d;
+    use crate::kernel::Kernel;
+
+    // An imported line may have last-bit differences between its analytic data
+    // and cached NURB. Virtual evaluations must continue to use the analytic data.
+    fn imported_line(point: Vec3, vector: Vec3, scale: f64) -> Curve {
+        let cached_point = Vec3::new(f64::from_bits(point.x.to_bits() + 2), point.y, point.z);
+        let base =
+            BSplineCurve::create_line_segment(3, cached_point, cached_point + scale * vector)
+                .unwrap();
+        Curve::from(Line::from_parts(
+            base,
+            point,
+            vector,
+            Extent1d::from_min_max(0.0, 1.0),
+            scale,
+            false,
+        ))
+    }
+
+    #[test]
+    fn swung_scale_keeps_analytic_profile_when_no_plane_intersection_exists() {
+        let kernel = Kernel::default();
+        let path = Curve::from(BSplineCurve::create_line_segment(3, Vec3::ZERO, Vec3::X).unwrap());
+        let profile = imported_line(Vec3::new(2.0, 2.0, 0.0), Vec3::Z, 1.0);
+        assert_eq!(
+            swung_curve_scale(&kernel, &path, &profile, 1e-5).unwrap(),
+            0.5
+        );
+        let sliced = Curve::from(super::super::geometry::bspline(&profile).unwrap());
+        assert_ne!(
+            swung_curve_scale(&kernel, &path, &sliced, 1e-5).unwrap(),
+            0.5
+        );
+    }
+
+    #[test]
+    fn swung_scale_keeps_analytic_path_after_plane_intersection() {
+        let kernel = Kernel::default();
+        let path = imported_line(Vec3::new(2.0, -1.0, 0.0), Vec3::Y, 2.0);
+        let profile =
+            Curve::from(BSplineCurve::create_line_segment(3, Vec3::X, Vec3::X + Vec3::Z).unwrap());
+        assert_eq!(
+            swung_curve_scale(&kernel, &path, &profile, 1e-5).unwrap(),
+            0.5
+        );
+        let sliced = Curve::from(super::super::geometry::bspline(&path).unwrap());
+        assert_ne!(
+            swung_curve_scale(&kernel, &sliced, &profile, 1e-5).unwrap(),
+            0.5
+        );
     }
 }

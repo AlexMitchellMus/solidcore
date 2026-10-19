@@ -8029,3 +8029,34 @@ p3 cases. The 300-mutation campaign executes 78 cases, rejects 164 and classifie
 bounded harness coverage, not certification of the deferred construction paths.
 
 The full `--green --no-report` gate completes with 210 units: 113 passed, 97 partial, 0 failed.
+
+
+### PR #233 review fixes (2026-10-19)
+
+Canonical main `28cd7d9a` is merged. Its versions of the seven conflicted kernel
+files and B-rep report are retained; the five include!d runners from the review
+match main. `CreateSwungPrimitive` keeps the original `Curve` for the profile
+start point, path property analysis and path solution point. Only the inheritance
+check and `create_swung_surface` use B-spline copies. The curve-sweep preparation
+still deliberately slices its copies, as upstream does.
+
+Two exact Rust regressions use imported analytic lines whose cached NURBs differ
+by two ULPs: one tests the profile point with no intersection, the other the path
+point after a plane intersection. Each checks the analytic result and confirms
+that slicing changes it. These regressions verify dispatch; they do not extend
+native certification past the unavailable topology construction.
+
+Both `SmStitch::DoStitching` adapters now report `heal.stitch_p2`, matching the
+callgraph. The blend call uses the caller's mutable B-rep through the existing
+resolver. The FFI guard allows finite negative op-0 tolerances and zero/negative
+op-5 approximation tolerance. `review.json` adds four native helper comparisons
+and two construction deferrals, rather than treating accepted inputs as coverage
+of the topology tail. New p3 result: 293 cases / 284 pass / 0 fail / 8 deferred /
+1 UB-78 rejection, maximum relative error zero, no tolerance/floor changes.
+Plain/native Clippy, formatting, 1,399 kernel tests, wasm32 and the native FFI
+guard regression pass. The other four affected units retain their previous
+passing/deferred counts.
+
+Review sensitivity: 284/284 perturbations detected. The 300-mutation campaign
+executes 78 cases, rejects 163 and classifies 59 as malformed, with zero
+differences, crashes, panics or timeouts. This is bounded harness coverage.

@@ -1,6 +1,6 @@
 # solidcore status
 
-Last updated: 2026-10-18, PR #233 (`primitive.primitive_creation_p3` partial: 280 bit-identical passes, 6 deferred, 1 UB-78 rejection). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
+Last updated: 2026-10-19, PR #233 review (`primitive.primitive_creation_p3` partial: 284 bit-identical passes, 8 deferred, 1 UB-78 rejection). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
 Latest port: `primitive.primitive_creation_p3` ([PR #233](https://github.com/tangency-labs/solidcore/pull/233)) implements all eight owned functions through `PrimitiveAccess`/`SweepAccess`. Native comparisons certify the ruled-surface helper and early/empty entry paths; successful construction and topology tails await dependencies and a concrete adapter. See the final validation entry below.
 
@@ -1052,3 +1052,24 @@ and 58 malformed cases, with zero differences/crashes/panics/timeouts. Per-branc
 coverage and limitations are in the fixture README and `plan/findings.md`.
 
 The full `--green --no-report` gate completes with 210 units: 113 passed, 97 partial, 0 failed.
+
+
+## PR #233 review integration (2026-10-19)
+
+Merged canonical main `28cd7d9a`, retaining its integrated topology ports and
+formatted runners. Swung scaling now preserves derived curve dispatch in both
+evaluation and property analysis; two exact Rust regressions distinguish the
+analytic line from a cached NURB differing by two ULPs. Both stitching stubs name
+the owning `heal.stitch_p2`. The blend call uses the mutable B-rep contract on main.
+Six added differential fixtures retain finite zero/negative tolerance inputs:
+four helper comparisons pass, and two curve sweeps defer at topology creation.
+The p3 gate is 293 cases: 284 exact passes, 8 deferred, 1 UB-78 rejection, 0 failed.
+All five affected units pass with their explicit deferrals; 1,399 kernel tests,
+wasm32, plain/native Clippy, explicit runner rustfmt and the FFI guard test pass.
+Successful topology construction remains uncertified behind its dependencies and
+production adapter. The integrated manifest has 214 ported units (114 green,
+100 partial).
+
+Review sensitivity: 284/284 perturbations detected. The 300-mutation campaign
+executes 78 cases, rejects 163 and classifies 59 as malformed, with zero
+differences, crashes, panics or timeouts. This is bounded harness coverage.
