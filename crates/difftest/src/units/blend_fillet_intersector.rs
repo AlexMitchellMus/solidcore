@@ -19,7 +19,8 @@
 //! (`SmCrvOnSurf` over an `SmPlane`, a dispatch gap of `curve.crv_on_surf`). `FlushCurve` of two
 //! or more points is not run: in C++ it dereferences the solver's unset executive and the
 //! fillet geometry's `NULL` rails (the Rust side evaluates the offset rails, then stops at
-//! `SmFilletSolver::GetSelfIntersectionHandler`; unit tests cover it).
+//! `SmFilletSolver::GetSelfIntersectionHandler` with an invalid-input error for the missing
+//! executive; unit tests cover it).
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -28,6 +29,7 @@ use solidcore::blend::fillet_custom_solver::{ConstantRadiusAssistedFs, OffsetSur
 use solidcore::blend::fillet_intersector::{
     find_guess_mid_tsect_pnt, flush_crv, FilletIntersector, TYPE,
 };
+use solidcore::blend::fillet_solver::p1::FilletGeomRef;
 use solidcore::curve::curve::Curve;
 use solidcore::geom::extent1d::{Extent1d, ExtentPointType};
 use solidcore::geom::extent2d::Extent2d;
@@ -499,7 +501,7 @@ fn id(i: usize) -> TsectId {
     TsectId(i)
 }
 
-type Fi<'s> = FilletIntersector<'s, 'static, NoSurfaceHandle, ()>;
+type Fi<'s> = FilletIntersector<'s, 'static, NoSurfaceHandle, FilletGeomRef>;
 
 #[allow(clippy::too_many_lines)]
 fn run_op(
