@@ -462,17 +462,17 @@ impl FilletSolver {
 
         // when extending the start of the fillet
         if s.extend_before {
-            start_pnt0 = start_pnt0 - ext0;
-            start_pnt1 = start_pnt1 - ext1;
-            center0 = center0 - center_ext;
+            start_pnt0 -= ext0;
+            start_pnt1 -= ext1;
+            center0 -= center_ext;
             radius0 = center0.distance(start_pnt0);
         }
 
         // when extending the end of the fillet
         if s.extend_after {
-            end_pnt0 = end_pnt0 + ext0;
-            end_pnt1 = end_pnt1 + ext1;
-            center1 = center1 + center_ext;
+            end_pnt0 += ext0;
+            end_pnt1 += ext1;
+            center1 += center_ext;
             radius1 = center1.distance(end_pnt0);
         }
         let _ = radius1;
@@ -658,10 +658,10 @@ impl FilletSolver {
         let dir = end_pnt0 - start_pnt0;
         let ext = dir * f;
         if s.extend_before {
-            start_pnt0 = start_pnt0 - ext;
+            start_pnt0 -= ext;
         }
         if s.extend_after {
-            end_pnt0 = end_pnt0 + ext;
+            end_pnt0 += ext;
         }
         let gen_curve = BSplineCurve::create_line_segment(3, start_pnt0, end_pnt0)?;
 
@@ -695,24 +695,16 @@ impl FilletSolver {
         let crv_ivl0 = rail_crv0.natural_interval();
 
         // Calc Rail1
-        let rail_crv1 = Curve::from(
-            cone.create_iso_parametric_curve(
-                k,
-                SurfParamType::V,
-                uv_domain.max.y,
-                0.0,
-                None,
-                false,
-            )?
-            .curve,
-        );
+        let rail_crv1 = cone
+            .create_iso_parametric_curve(k, SurfParamType::V, uv_domain.max.y, 0.0, None, false)?
+            .curve;
         let crv_ivl1 = rail_crv1.natural_interval();
 
         // Calc centerline
         let dir = center1 - center0;
         let ext = dir * f;
-        center0 = center0 - ext;
-        center1 = center1 + ext;
+        center0 -= ext;
+        center1 += ext;
         let mut center_line = BSplineCurve::create_line_segment(3, center0, center1)?;
         center_line.edit_parameterization(&ivl)?;
 
@@ -854,7 +846,7 @@ impl FilletSolver {
 
         // Recalculate the origin of torus (see upstream notes).
         let tmp_vec = arc_center - origin;
-        origin = origin + axis_of_revolution * tmp_vec.dot(axis_of_revolution);
+        origin += axis_of_revolution * tmp_vec.dot(axis_of_revolution);
 
         // Evaluate points at the ends of the rail curves embedded within the base surfaces.
         let end_uv0 = t_last.uv_pos(SrfIndex::First);
@@ -973,31 +965,13 @@ impl FilletSolver {
 
         // Calc rails: the min and max SM_SP_V isoParameter curves
         let uv_domain = torus.natural_uv_domain();
-        let rail_crv0 = Curve::from(
-            torus
-                .create_iso_parametric_curve(
-                    k,
-                    SurfParamType::V,
-                    uv_domain.min.y,
-                    0.0,
-                    None,
-                    false,
-                )?
-                .curve,
-        );
+        let rail_crv0 = torus
+            .create_iso_parametric_curve(k, SurfParamType::V, uv_domain.min.y, 0.0, None, false)?
+            .curve;
         let crv_ivl0 = rail_crv0.natural_interval();
-        let rail_crv1 = Curve::from(
-            torus
-                .create_iso_parametric_curve(
-                    k,
-                    SurfParamType::V,
-                    uv_domain.max.y,
-                    0.0,
-                    None,
-                    false,
-                )?
-                .curve,
-        );
+        let rail_crv1 = torus
+            .create_iso_parametric_curve(k, SurfParamType::V, uv_domain.max.y, 0.0, None, false)?
+            .curve;
         let crv_ivl1 = rail_crv1.natural_interval();
 
         Ok(FilletGeomParts {
@@ -1261,15 +1235,13 @@ impl FilletSolver {
         }
 
         // Load other fillet surface variables being solved for into the fillet point.
-        let mut cnt = 0;
-        for i in (surf2_index + 2)..x.len() {
+        for (cnt, i) in ((surf2_index + 2)..x.len()).enumerate() {
             if cnt == MAX_USER_DOUBLES {
                 return Err(sm_err());
             }
             if let Some(slot) = tsect.user_doubles.get_mut(cnt) {
                 *slot = sol_at(x, i)?;
             }
-            cnt += 1;
         }
         Ok(Some(edgeuse_parameter))
     }
@@ -1420,15 +1392,13 @@ impl FilletSolver {
             Point2::new(sol_at(x, surf2_index)?, sol_at(x, surf2_index + 1)?);
 
         // Load other fillet surface variables being solved for into the fillet point.
-        let mut cnt = 0;
-        for i in (surf2_index + 2)..other_surf2_index {
+        for (cnt, i) in ((surf2_index + 2)..other_surf2_index).enumerate() {
             if cnt == MAX_USER_DOUBLES {
                 return Err(sm_err());
             }
             if let Some(slot) = tsect.user_doubles.get_mut(cnt) {
                 *slot = sol_at(x, i)?;
             }
-            cnt += 1;
         }
 
         let o_srf = srf_of_rail(other_rail_index)?;
@@ -1441,15 +1411,13 @@ impl FilletSolver {
         );
 
         // Load values into rOtherTsectPnt.
-        let mut cnt = 0;
-        for i in (other_surf2_index + 2)..x.len() {
+        for (cnt, i) in ((other_surf2_index + 2)..x.len()).enumerate() {
             if cnt == MAX_USER_DOUBLES {
                 return Err(sm_err());
             }
             if let Some(slot) = other_tsect.user_doubles.get_mut(cnt) {
                 *slot = sol_at(x, i)?;
             }
-            cnt += 1;
         }
         Ok(true)
     }

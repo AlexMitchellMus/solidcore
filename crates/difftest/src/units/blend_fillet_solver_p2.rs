@@ -179,9 +179,9 @@ fn push_cfg(o: &mut Vec<f64>, c: &Cfg) {
 fn push_surfs(o: &mut Vec<f64>, s: &Surfs) -> Result<(), HarnessError> {
     push_surface(o, &s.base[0])?;
     push_surface(o, &s.base[1])?;
-    for i in 0..2 {
-        o.push(b(s.has[i]));
-        o.push(s.off[i]);
+    for (h, d) in s.has.iter().zip(&s.off) {
+        o.push(b(*h));
+        o.push(*d);
     }
     o.extend(s.orient);
     Ok(())
@@ -292,9 +292,9 @@ fn cpp_input(i: &Inputs, c: Option<&BrepCase>) -> Result<Vec<f64>, HarnessError>
             rail,
             other,
         } => {
-            for k in 0..2 {
-                push_cfg(&mut o, &cfg[k]);
-                push_surfs(&mut o, &surfs[k])?;
+            for (c, s) in cfg.iter().zip(surfs) {
+                push_cfg(&mut o, c);
+                push_surfs(&mut o, s)?;
             }
             o.extend(uv);
             o.extend([*rail as f64, *other as f64]);
@@ -519,25 +519,25 @@ impl FilletSolverOps for TestSolver {
         }
         let tol = self.base.conversion_tol * (1.0 + scale);
         let mut found = true;
-        let va = [pa.x, pa.y, pa.z];
-        let vb = [pb.x, pb.y, pb.z];
-        let ua = [dua.x, dua.y, dua.z];
-        let wa = [dva.x, dva.y, dva.z];
-        let ub = [dub.x, dub.y, dub.z];
-        let wb = [dvb.x, dvb.y, dvb.z];
+        // per row: [S_a, dS_a/du, dS_a/dv, S_b, dS_b/du, dS_b/dv] components
+        let rows = [
+            [pa.x, dua.x, dva.x, pb.x, dub.x, dvb.x],
+            [pa.y, dua.y, dva.y, pb.y, dub.y, dvb.y],
+            [pa.z, dua.z, dva.z, pb.z, dub.z, dvb.z],
+        ];
         let ne = *num_equations;
-        for c in 0..3 {
-            let v = va[c] - vb[c];
+        for (c, [sa, ua, wa, sb, ub, wb]) in rows.into_iter().enumerate() {
+            let v = sa - sb;
             *f.get_mut(ne + c)
                 .ok_or_else(|| SolidError::invalid_input("difftest::TestSolver", "rF"))? = v;
             if v.abs() >= tol {
                 found = false;
             }
             if let Some(j) = jacobian.as_deref_mut() {
-                j.set_at(ne + c, o1, ua[c])?;
-                j.set_at(ne + c, o1 + 1, wa[c])?;
-                j.set_at(ne + c, o2, -ub[c])?;
-                j.set_at(ne + c, o2 + 1, -wb[c])?;
+                j.set_at(ne + c, o1, ua)?;
+                j.set_at(ne + c, o1 + 1, wa)?;
+                j.set_at(ne + c, o2, -ub)?;
+                j.set_at(ne + c, o2 + 1, -wb)?;
             }
         }
         *num_equations += 3;
@@ -566,12 +566,11 @@ fn solver_of(cfg: &Cfg, s: &Surfs) -> Result<TestSolver, HarnessError> {
     let k = Kernel::default();
     let err = |e: SolidError| harness(e.to_string());
     let mut fs = FilletSolver::new(cfg.tol, 0.1, 0.01);
-    for i in 0..2 {
-        if s.has[i] {
-            let base = surface_of(&s.base[i])?;
-            let surface =
-                OffsetSurface::new(&k, s.off[i], base, SurfaceId::Free(i as u32), SS_UNKNOWN)
-                    .map_err(err)?;
+    for (i, ((has, off), base)) in s.has.iter().zip(&s.off).zip(&s.base).enumerate() {
+        if *has {
+            let base = surface_of(base)?;
+            let surface = OffsetSurface::new(&k, *off, base, SurfaceId::Free(i as u32), SS_UNKNOWN)
+                .map_err(err)?;
             fs.set_surface(
                 i,
                 Some(OffsetSurfaceSlot {
@@ -746,15 +745,16 @@ fn rust_run(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, Harn
             rail,
             ptype,
         } => {
-            let mut c = match brep_case(brep)? {
-                Ok(c) => c,
-                Err(_) => return Err(harness("B-rep failed on the Rust side only")),
+            let Ok(mut c) = brep_case(brep)? else {
+                return Err(harness("B-rep failed on the Rust side only"));
             };
             o.push(0.0);
             let side = eu_id(sel(*side, n_eu(&c))).ok_or_else(|| harness("side edge use"))?;
             let mut fs = solver_of(cfg, surfs)?;
-            let mut t = TsectPnt::default();
-            t.point_type = point_type(*ptype);
+            let mut t = TsectPnt {
+                point_type: point_type(*ptype),
+                ..TsectPnt::default()
+            };
             let e = solidcore::topology::edgeuse::p1::edge(&c.brep, side)
                 .map_err(|e| harness(e.to_string()))?
                 .ok_or_else(|| harness("side edge use without edge"))?;
@@ -849,9 +849,8 @@ fn rust_run(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, Harn
             eu,
             tsects,
         } => {
-            let c = match brep_case(brep)? {
-                Ok(c) => c,
-                Err(_) => return Err(harness("B-rep failed on the Rust side only")),
+            let Ok(c) = brep_case(brep)? else {
+                return Err(harness("B-rep failed on the Rust side only"));
             };
             o.push(0.0);
             let mut fs = solver_of(cfg, surfs)?;
@@ -910,9 +909,8 @@ fn rust_run(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, Harn
             }
         }
         Inputs::Record { cfg, brep, eu } => {
-            let c = match brep_case(brep)? {
-                Ok(c) => c,
-                Err(_) => return Err(harness("B-rep failed on the Rust side only")),
+            let Ok(c) = brep_case(brep)? else {
+                return Err(harness("B-rep failed on the Rust side only"));
             };
             o.push(0.0);
             let mut fs = solver_of(
@@ -1023,9 +1021,9 @@ fn arc(r: f64, quarters: usize) -> CrvIn {
     let cs = [(1.0, 0.0), (0.0, 1.0), (-1.0, 0.0), (0.0, -1.0), (1.0, 0.0)];
     let mut cpts = Vec::new();
     let mut u = vec![0.0, 0.0, 0.0];
-    for q in 0..quarters {
-        let (c0, s0) = cs[q];
-        let (c1, s1) = cs[q + 1];
+    for (q, pair) in cs.windows(2).take(quarters).enumerate() {
+        let [(c0, s0), (c1, s1)] =
+            [pair.first(), pair.last()].map(|p| p.copied().unwrap_or((1.0, 0.0)));
         if q == 0 {
             cpts.push([r * c0, r * s0, 0.0, 1.0]);
         }
@@ -1128,7 +1126,9 @@ fn gen_rail_eu(rng: &mut Rng) -> Inputs {
         }
     };
     if rng.chance(0.15) {
-        surfs.has[rng.below(2) as usize] = false;
+        if let Some(h) = surfs.has.get_mut(rng.below(2) as usize) {
+            *h = false;
+        }
     }
     let mut c = gen_cfg(rng, 5, r);
     if c.extra == 5 && rng.chance(0.7) {
@@ -1140,7 +1140,7 @@ fn gen_rail_eu(rng: &mut Rng) -> Inputs {
         brep,
         side: rng.below(16) as i64,
         frac: rng.uniform(0.0, 1.0),
-        rail: if rng.chance(0.8) { 0 } else { 1 },
+        rail: usize::from(!rng.chance(0.8)),
         ptype: rng.below(8) as u8,
     }
 }
@@ -1160,7 +1160,10 @@ fn gen_rail_rail(rng: &mut Rng) -> Inputs {
     }
     if !any_missing && rng.chance(0.7) {
         let k = rng.below(2) as usize;
-        surfs[k].has[rng.below(2) as usize] = false;
+        let i = rng.below(2) as usize;
+        if let Some(h) = surfs.get_mut(k).and_then(|s| s.has.get_mut(i)) {
+            *h = false;
+        }
     }
     Inputs::RailRail {
         cfg: [gen_cfg(rng, 2, r), gen_cfg(rng, 2, r)],
@@ -1217,7 +1220,7 @@ fn gen_straight(rng: &mut Rng, which: u8) -> Inputs {
         which,
         cfg: c,
         surfs,
-        fsg: if rng.chance(0.1) { 0 } else { 1 },
+        fsg: u8::from(!rng.chance(0.1)),
         before: rng.chance(0.5),
         after: rng.chance(0.5),
         factor: if rng.chance(0.7) {
@@ -1271,7 +1274,7 @@ fn gen_torus(rng: &mut Rng) -> Inputs {
         which: 2,
         cfg: c,
         surfs,
-        fsg: if rng.chance(0.1) { 0 } else { 1 },
+        fsg: u8::from(!rng.chance(0.1)),
         before: rng.chance(0.5),
         after: rng.chance(0.85),
         factor: 0.5,
