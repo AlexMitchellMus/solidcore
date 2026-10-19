@@ -8890,6 +8890,43 @@ Both are fuzz "differs" notes (no crash, no panic); the unit's cases and `--pert
    committed fixture `rollover_sphere_tight`, `tol = 1e-12`, passes), so the flag flips only on rounding noise around zero (presumably the
    sphere's evaluation of the normal or binormal); not investigated further.
 
+## blend.fillet_solver_p1: SmoothOutIntersection (back-edge stub of #179, PR #192 round 4)
+
+`blend.fillet_intersector` (#179) listed ten back-edge stubs tagged `blend.fillet_solver_p1`; this PR wires them in
+`impl FilletSolverOps for ConstantRadiusAssistedFs` (`blend/fillet_intersector.rs`) except the one below.
+
+- **`SmSelfIntersectionHandler::SmoothOutIntersection` (`FlushCurve` step 9, `SmFilletIntersector.cpp:1569`) cannot be wired by
+  this unit and is owned by no unit.** The call is virtual on the handler object `GetSelfIntersectionHandler()` returns; the
+  only override that exists is `SmMakeCurveBlendSIH::SmoothOutIntersection` (`SmFilletSolver.cpp:8157-8669`, 513 lines), which
+  `harness/callgraph/units.json` does not assign to any unit (it appears in `unused_functions.txt`: the call graph cannot resolve
+  the virtual call, and nothing calls it directly). This unit owns only the handlers' constructors/destructors (no data).
+  The handler is the member `SmFilletExecutive::m_pSelfIntersectionHandler`: a solver outside an executive has none (upstream
+  dereferences the NULL `m_pExecutive`), and `FilletSolver::self_intersection_handler` already reports the executive's data as
+  `Unported` (`blend.fillet_executive_p1`), so `SmoothOutIntersection` is unreachable from the Rust solver before that unit lands.
+  It is therefore an explicit `Unported` override tagged with the unit that must create the handler
+  (`blend.fillet_executive_p1`); whoever ports the executive should also port the `SmMakeCurveBlendSIH` class
+  (`SmoothOutIntersection`, 513 lines; the `CreateBlends` / `SmMakeSurfaceBlendSIH` overrides are dummies or unused).
+- **`m_pFSG->CreateSurface`** is wired through `FilletSurfaceGenerator::create_surface`: the base class gives `SM_ERR`, the Eiffel tower
+  generator its surface, the linear/circular/blend-curve generators stay `Unported` in `blend.fillet_standard_solver_p1/_p2`. The
+  generators read only the rails, the fillet points and the approximation tolerance, so the centre line, the UV curves and the two
+  surfaces the C++ call also passes are not needed.
+- **`ComputeSurfaceValues` on `ConstantRadiusAssistedFs`** is wired to `FilletSolver::compute_surface_values`, which calls the virtual
+  `SetupOffsetValues`; the `SmConstantRadiusFS` override belongs to `blend.fillet_standard_solver_p1`, so the call ends in that
+  unit's `Unported` until it lands (deferred, as before, in the intersector's difftest).
+
+## blend.fillet_solver_p1: stubs naming blend.fillet_geom_p1 (merged main after #259/#269)
+
+`blend.fillet_geom_p1` is `partial` on main, so the audit lists this unit's 48 `UNPORTED(blend.fillet_geom_p1)` sites as CHECK
+(`SmFilletGeom::Get/SetOffsetSurface`, `GetRail`, `SetFilletGeomType`, `SmFilletEdge::Get/SetOriginalFace`, `SmFilletVertex`
+accessors, `SmFilletEdgeuse::SetUVCurve/Get/SetFilletGeom`, ...). They are not wired here: the ported `FilletGeom` / `FilletEdge` /
+`FilletVertex` live inside a `FilletBrep` and are addressed by `FilletGeomId` / `EdgeId` / `VertexId`, and a `FilletGeom` stores a
+`FilletSolverId`, while this unit's solver owns opaque `FilletGeomRef` handles and its `FilletSolverOps` methods take `&Brep` (not
+`&mut FilletBrep`). Wiring means replacing the handles by `FilletBrep` ids and threading `&mut FilletBrep` through `FilletSolverOps`,
+`blend.fillet_custom_solver`, `blend.fillet_intersector` and the three shims (the 7 deferred `FinishConstruction` cases of this unit's
+report, which stop at `SetOffsetSurface`, are the first to run). That signature change touches every downstream solver PR and is left
+to a follow-up. The two sites that were wireable are wired: `SmFilletSolver::FindIndexOfRailOnFace` (`blend/fillet_geom/p1.rs`, 
+`sm_CreateCubicRailRailInterpolant`) and the `SmCircularCrossSectionFSG` constructor (`offset/offset_geometry_creation.rs`).
+
 ## blend.fillet_intersector (PR #179)
 
 - **FlushCurve with two or more points cannot run standalone in C++.** Past the span

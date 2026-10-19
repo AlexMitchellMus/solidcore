@@ -99,6 +99,7 @@
 //!   defined in the reference build.
 //! - **Recursion.** None.
 
+use crate::blend::fillet_solver::p1::FilletSurfaceGenerator;
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::p2::{Curve, CurveKind};
 use crate::curve::curve::p8::CurveIntersectOptions;
@@ -584,19 +585,6 @@ struct ApproximateCurveFlags {
     just_copy_b_splines: bool,
 }
 
-/// The constructor arguments of `SmCircularCrossSectionFSG`.
-#[derive(Debug, Clone, Copy)]
-struct CircularCrossSectionFsg {
-    /// `bApproximateArcs`.
-    approximate_arcs: bool,
-    /// `dTolPercentRadius`.
-    tol_percent_radius: f64,
-    /// `bMirror`.
-    mirror: bool,
-    /// `bComplement`.
-    complement: bool,
-}
-
 /// `SmCircularCrossSectionFSG sFSG(bApproximateArcs = FALSE, dTolPercentRadius = 0.05,
 /// bMirror = FALSE, bComplement = FALSE)` then `sFSG.CreateSurfaceFromCurves(ctx,
 /// *pCenterLine, *pRail1, *pRail2, tol, bNeedG1Continuity = FALSE, NULL, NULL, NULL, NULL,
@@ -604,7 +592,7 @@ struct CircularCrossSectionFsg {
 /// (`with_rail_surfaces`). The curves are non-const upstream, so they are `&mut`.
 fn circular_cross_section_surface(
     _k: &Kernel,
-    fsg: CircularCrossSectionFsg,
+    fsg: FilletSurfaceGenerator,
     _center_line: &mut Curve,
     _rail1: &mut BSplineCurve,
     _rail2: &mut BSplineCurve,
@@ -612,15 +600,10 @@ fn circular_cross_section_surface(
     _need_g1_continuity: bool,
     _with_rail_surfaces: bool,
 ) -> Result<BSplineSurface> {
-    // (the arguments the wired call will pass on)
-    let _ = (
-        fsg.approximate_arcs,
-        fsg.tol_percent_radius,
-        fsg.mirror,
-        fsg.complement,
-    );
+    // (the constructed `SmCircularCrossSectionFSG`, `blend.fillet_solver_p1`, the wired call
+    // will call on)
+    let _ = fsg;
     // UNPORTED(blend.fillet_standard_solver_p1): SmCircularCrossSectionFSG::CreateSurfaceFromCurves
-    // (the constructor is UNPORTED(blend.fillet_solver_p1): SmCircularCrossSectionFSG::SmCircularCrossSectionFSG)
     Err(SolidError::unported(
         "SmCircularCrossSectionFSG::CreateSurfaceFromCurves",
         "blend.fillet_standard_solver_p1",
@@ -3235,7 +3218,7 @@ impl OffsetGeometryCreation {
             Some(s) => s,
             None => circular_cross_section_surface(
                 k,
-                CircularCrossSectionFsg {
+                FilletSurfaceGenerator::Circular {
                     approximate_arcs: false,
                     tol_percent_radius: 0.05,
                     mirror: false,
