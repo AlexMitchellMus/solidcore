@@ -564,8 +564,7 @@ pub fn copy_brep(
     b.tolerance = src.tolerance;
 
     with_kernel_identities(k, &mut b, env, |k, b, env| {
-        let src_serial = issuer(&mut k.context, env.context.as_deref_mut())
-            .brep_serial_of(src.notify_identity())?;
+        let src_serial = source_serial(k, env, src)?;
 
         // do the actual copying (SE: the status is not acted on)
         if let Err(e) = merge_brep_in(
@@ -599,7 +598,8 @@ pub fn copy_brep(
 }
 
 /// A default `SmTopology` record (flags, user value, marks) for every object of `b`
-/// that has none yet, under `key_of`, and for the B-rep itself ([`p2::brep_ref`]).
+/// that has none yet, under `key_of`, and for the B-rep itself (`key_of` of the B-rep
+/// entity, its kernel key).
 /// Every C++ topology object carries these fields; the arena keeps them in the
 /// caller's [`NotifyEnv::records`], which `SmTopology::Notify` reads for every object a
 /// notification names (e.g. both vertices of `SqueezeEdge`'s `SM_NO_MERGE_IN_BREP`).
@@ -624,7 +624,7 @@ fn seed_records(
     for e in all {
         records.entry(key_of(e).key).or_default();
     }
-    records.entry(p2::brep_ref(b).key).or_default();
+    records.entry(key_of(brep_entity()).key).or_default();
 }
 
 /// The kinds of topology keys with their class type codes (`GetType`), by kind number:
@@ -745,6 +745,23 @@ fn with_kernel_identities<R>(
     r
 }
 
+/// The serial of `src`, a B-rep an edit reads (copies or merges) but does not change:
+/// the one the issuing context ([`issuer`]) gave it, else a fresh one for this edit
+/// only. Seeds the default `SmTopology` record of each of its objects under that serial
+/// ([`seed_records`]), as the edit notifies them as sources.
+///
+/// # Errors
+///
+/// `InvalidInput` for an exhausted identity domain.
+fn source_serial(k: &mut Kernel, env: &mut NotifyEnv<'_>, src: &Brep) -> Result<u64> {
+    let serial =
+        issuer(&mut k.context, env.context.as_deref_mut()).brep_serial_of(src.notify_identity())?;
+    seed_records(env.records, src, &move |e: EntityRef| {
+        topology_ref(serial, e)
+    });
+    Ok(serial)
+}
+
 /// Runs `edit` for a caller that keeps no notification state of its own (upstream's
 /// objects carry it): with an environment whose context holds the kernel context's
 /// notify callbacks and identity domain (lent for the edit and given back,
@@ -818,8 +835,7 @@ pub fn copy_vertices(
     env: &mut NotifyEnv<'_>,
 ) -> Result<Vec<VertexId>> {
     with_kernel_identities(k, dest, env, |k, dest, env| {
-        let src_serial = issuer(&mut k.context, env.context.as_deref_mut())
-            .brep_serial_of(src.notify_identity())?;
+        let src_serial = source_serial(k, env, src)?;
         copy_vertices_in(src, src_serial, vertices, dest, env)
     })
 }
@@ -966,8 +982,7 @@ pub fn merge_brep(
     add_analytics: bool,
 ) -> Result<()> {
     with_kernel_identities(k, b, env, |k, b, env| {
-        let other_serial = issuer(&mut k.context, env.context.as_deref_mut())
-            .brep_serial_of(other.notify_identity())?;
+        let other_serial = source_serial(k, env, other)?;
         merge_brep_in(
             k,
             env,
@@ -3644,6 +3659,41 @@ mod tests {
         assert!(two.iter().all(|x| !one.contains(x)), "{one:?} {two:?}");
         // a clone made after an edit starts without a serial
         assert_eq!(b1.clone().notify_serial(), None);
+    }
+
+    /// A source B-rep (read, not changed) is notified under its own serial, with its
+    /// objects' `SmTopology` records seeded by the edit: copying and merging with no
+    /// records from the caller succeed, and the source's keys decode with its serial.
+    #[test]
+    fn copy_and_merge_seed_the_records_of_their_source() {
+        let (mut ctx, seen) = recording_context();
+        let mut k = Kernel::default();
+        let (src, _, _) = test_support::wire_chain(true);
+        let mut records = BTreeMap::new();
+        let mut attributes = crate::geom::attribute::AttributeStore::default();
+        let mut env = NotifyEnv {
+            records: &mut records,
+            attributes: &mut attributes,
+            context: Some(&mut ctx),
+            key_of: &label,
+        };
+        let mut copy = copy_brep(&mut k, &mut env, &src, None, None, true, false).unwrap();
+        let (other, _, _) = test_support::wire_chain(true);
+        merge_brep(&mut k, &mut env, &mut copy, &other, None, None, false).unwrap();
+        let copy_serial = copy.notify_serial().unwrap();
+        let keys: Vec<ObjectKey> = seen.lock().unwrap().iter().map(|r| r.key).collect();
+        let foreign: Vec<ObjectKey> = keys
+            .iter()
+            .copied()
+            .filter(|&x| x.0 < crate::geom::context::GEOMETRY_KEY_BASE)
+            .filter(|&x| topology_entity(copy_serial, x).is_none())
+            .collect();
+        // the sources (src, then other) were given serials of their own
+        assert!(!foreign.is_empty(), "{keys:?}");
+        assert!(foreign
+            .iter()
+            .all(|&x| crate::geom::context::is_reserved_key(x)));
+        assert!(src.notify_serial().is_none() && other.notify_serial().is_none());
     }
 
     /// The kernel's callbacks are lent with their identity domain
