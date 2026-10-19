@@ -406,8 +406,8 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         ))
     }
 
-    /// Virtual `AdjustTopology` dispatch. The base, 4x3 and NxN implementations
-    /// belong to `blend.fillet_corner_p1`; ConvexNxN belongs to
+    /// Virtual `AdjustTopology` dispatch. The base, 4x3 and `NxN` implementations
+    /// belong to `blend.fillet_corner_p1`; `ConvexNxN` belongs to
     /// `blend.fillet_corner_p2`, and Nx2 to `blend.fillet_corner_p3`.
     /// Adapters must dispatch by concrete corner type and return that owner's
     /// `Unported` while it is missing, never substitute the base success default.
@@ -422,7 +422,7 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     ) -> Result<()>;
 
     /// Virtual `AdjustTangentCorner` dispatch. The base belongs to
-    /// `blend.fillet_corner_p1`, Nx1Closed to `blend.fillet_corner_p2`, and Nx2 to
+    /// `blend.fillet_corner_p1`, `Nx1Closed` to `blend.fillet_corner_p2`, and Nx2 to
     /// `blend.fillet_corner_p3`. Adapters must dispatch by concrete corner type
     /// and return that owner's `Unported` while it is missing, never substitute
     /// the base success default.
@@ -479,7 +479,7 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     }
 
     /// Virtual `CalcFilletGeom` dispatch. The base belongs to
-    /// `blend.fillet_solver_p4`; the SurfaceSurfaceFS override belongs to
+    /// `blend.fillet_solver_p4`; the `SurfaceSurfaceFS` override belongs to
     /// `blend.fillet_standard_solver_p2`. Adapters must dispatch by concrete
     /// solver type and return that owner's `Unported` while it is missing.
     // UNPORTED(blend.fillet_solver_p4): SmFilletSolver::CalcFilletGeom
