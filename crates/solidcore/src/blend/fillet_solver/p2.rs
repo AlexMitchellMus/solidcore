@@ -22,6 +22,11 @@
 //!   [`FilletSolver`]; methods that call a virtual take the solver as
 //!   `&mut dyn FilletSolverOps` (as p1's `ComputeSurfaceValues`). The p1 function
 //!   objects are wrapped privately into [`EvalNFunctions`] for [`LocalSolveNd`].
+//! - **UV trim curve of `RailEdgeuseIntersect`.** p1's [`RailUvCurveIntersectEnfo`]
+//!   takes a [`BSplineCurve`]; upstream's `SmRailUVCurveIntersectENFO` calls the
+//!   curve's virtual `Evaluate`, which `SmLine` and `SmEllipse` override analytically.
+//!   For such a UV trim curve the function object evaluates its B-spline form (equal up
+//!   to rounding); the guess point and the interval use the curve itself.
 //! - **Fillet geometries.** `SmFilletGeom`, `SmFilletEdge`, `SmFilletVertex`, the
 //!   pseudo-B-rep and the executive belong to unported units: each call into them
 //!   returns [`SolidError::Unported`] at the call site (tagged `UNPORTED`). The analytic
@@ -50,16 +55,9 @@
 use crate::blend::fillet_custom_solver::OffsetSurface;
 use crate::blend::fillet_solver::p1::{
     check_edge_curve_domains, test_manifold_tangent_rollover, test_side_edge_convexity, FilStatus,
-    FilletGeomRef, FilletSolver, FilletSolverOps, FilletSphereSolveEnfo, FilletSurfaceGeneratorType,
-    RailRailIntersectEnfo, RailUvCurveIntersectEnfo,
+    FilletGeomRef, FilletSolver, FilletSolverOps, FilletSphereSolveEnfo,
+    FilletSurfaceGeneratorType, RailRailIntersectEnfo, RailUvCurveIntersectEnfo,
 };
-use crate::geom::geom_utility::p2::ContinuityType;
-use crate::geom::solution_array::{ObjectKind, SolutionObject};
-use crate::intersect::point_class::PointClassType;
-use crate::nurbs::b_spline_curve_n_lib::TrimMode;
-use crate::surface::plane::Plane;
-use crate::topology::face::p2 as face_p2;
-use crate::topology::{vertex, VertexuseId};
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::Curve;
 use crate::curve::line::Line;
@@ -67,13 +65,16 @@ use crate::error::{ignore_status, Result, SolidError};
 use crate::geom::axis2_placement::Axis2Placement;
 use crate::geom::extent1d::{Extent1d, ExtentNd};
 use crate::geom::extent2d::Extent2d;
+use crate::geom::geom_utility::p2::ContinuityType;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::geom::local_solve_nd::{BoundaryHandler, EvalNFunctions, LocalSolveNd};
 use crate::geom::matrix::Matrix;
+use crate::geom::solution_array::{ObjectKind, SolutionObject};
 use crate::geom::tol::ANG_TOL_RAD;
 use crate::geom::vector2d::Point2;
 use crate::intersect::curve_class::p1::CurveClassification;
 use crate::intersect::point_class::ClassObject;
+use crate::intersect::point_class::PointClassType;
 use crate::intersect::surface_intersector::p1::{
     IntersectionPointType, SrfIndex, TsectPnt, MAX_USER_DOUBLES,
 };
@@ -81,13 +82,17 @@ use crate::kernel::Kernel;
 use crate::math::{rad_to_deg, Point3, Vec3, EFF_ZERO, EFF_ZERO_SQ, EFF_ZERO_SQRT, PI};
 use crate::nurbs::b_spline_curve::p1::NurbCircleParam;
 use crate::nurbs::b_spline_curve::BSplineCurve;
+use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface::{BSplineSurface, SurfParamType};
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::surface::plane::Plane;
 use crate::surface::surf_of_revolution::SurfOfRevolution;
 use crate::surface::surface::Surface;
 use crate::topology::edgeuse::p1 as eu;
 use crate::topology::edgeuse::p3::get_or_create_uv_trim_curve;
+use crate::topology::face::p2 as face_p2;
 use crate::topology::{edge, vertexuse, Brep, EdgeId, EdgeuseId, FaceId, VertexId};
+use crate::topology::{vertex, VertexuseId};
 
 const OP: &str = "blend::fillet_solver::p2";
 
@@ -320,6 +325,21 @@ fn store_parts(
         "SmFilletGeom::m_pFilletSurface",
         "blend.fillet_geom_p1",
     ))
+}
+
+/// The `SmBSplineCurve` of a UV trim curve (`GetUVTrimCurvePointer` is an
+/// `SmBSplineCurve*`; lines, ellipses, hyperbolas and parabolas derive from it): the
+/// B-spline form [`RailUvCurveIntersectEnfo`] evaluates (module notes).
+fn uv_bspline(c: &Curve) -> Result<BSplineCurve> {
+    use crate::curve::curve::CurveKind;
+    match c.kind() {
+        CurveKind::BSpline(bs) => Ok(bs.clone()),
+        CurveKind::Line(l) => Ok(l.base_with_nurb()?.into_owned()),
+        CurveKind::Ellipse(e) => Ok(e.base().clone()),
+        CurveKind::Hyperbola(h) => Ok(h.base().clone()),
+        CurveKind::Parabola(p) => Ok(p.base().clone()),
+        _ => Err(invalid("UV trim curve is not an SmBSplineCurve")),
+    }
 }
 
 /// `SmLine::CreateLineSegment(ctx, 3, a, b, pLine)` then `EditParameterization(ivl)`.
@@ -1141,20 +1161,19 @@ impl FilletSolver {
 
         // let edgeuse->Surface UV guess = edgeuse->UVTrimCurve(GuessEdgeParameter)
         get_or_create_uv_trim_curve(k, b, side_eu, false, false, true)?.status?;
-        let uv_curve = match eu::uv_trim_curve(b, side_eu)?.0 {
-            Some(c) => match c.kind() {
-                crate::curve::curve::CurveKind::BSpline(bs) => bs.clone(),
-                _ => return Err(invalid("UV trim curve is not a B-spline")),
-            },
-            None => return Err(invalid("no UV trim curve")),
-        };
-        let p2d = uv_curve.evaluate_point(guess_edge_parameter)?;
+        let uv_trim = eu::uv_trim_curve(b, side_eu)?
+            .0
+            .cloned()
+            .ok_or_else(|| invalid("no UV trim curve"))?;
+        // the SmBSplineCurve the function object evaluates (module notes)
+        let uv_curve = uv_bspline(&uv_trim)?;
+        let p2d = uv_trim.evaluate_point(guess_edge_parameter)?;
         let uv_guess = Point2::new(p2d.x, p2d.y);
 
         // Now Set up Solver
         let jacobian_size = ops.jacobian_size()? + 1;
         let mut intervals = ExtentNd::new(jacobian_size);
-        set_interval(&mut intervals, 0, uv_curve.natural_interval());
+        set_interval(&mut intervals, 0, uv_trim.natural_interval());
 
         let base = ops
             .solver()
@@ -1204,7 +1223,7 @@ impl FilletSolver {
         let tol = ops.solver().approx_tol_3d + side_tol;
 
         // specify the rail/curve intersection evaluate function for the NewtonRaphson Solver
-        let ivl = uv_curve.natural_interval();
+        let ivl = uv_trim.natural_interval();
         let mut eval = RailUvEval(RailUvCurveIntersectEnfo::new(
             &uv_curve, ivl, rail_index, ops,
         ));
@@ -1578,7 +1597,11 @@ impl FilletSolver {
 
             // Update the corner vertex to the cross section / side face point
             // UNPORTED(topology.vertex): SmVertex::SetPoint (justified: findings.md "blend.fillet_solver_p1: pseudo-B-rep mutations")
-            unported_on::<_, ()>((corner_v, corner_pnt), "SmVertex::SetPoint", "topology.vertex")?;
+            unported_on::<_, ()>(
+                (corner_v, corner_pnt),
+                "SmVertex::SetPoint",
+                "topology.vertex",
+            )?;
 
             // Drop the cross section's other vertex onto its curve
             let other_v = edge::other_vertex(pseudo, cross_section, Some(corner_v))?
@@ -1619,7 +1642,8 @@ impl FilletSolver {
                 // Set the cross section's UV trim curve intervals
                 let prim = eu::primary_edgeuse(pseudo, cross_section)?
                     .ok_or_else(|| invalid("cross section without edge use"))?;
-                let mate = eu::mate(pseudo, prim)?.ok_or_else(|| invalid("edge use without mate"))?;
+                let mate =
+                    eu::mate(pseudo, prim)?.ok_or_else(|| invalid("edge use without mate"))?;
                 for e_u in [prim, mate] {
                     if let Some(uv) = pseudo.edgeuse_mut(e_u)?.uv_trim_curve.as_mut() {
                         ignore_status(uv.trim(&tk, &mut trim_ivl, TrimMode::Notify))?;
@@ -2073,8 +2097,8 @@ pub fn find_rollover_side_edge<O: ClassObject>(
             {
                 let e1 = edge_object(start_pc, edge_of)?;
                 let e2 = edge_object(end_pc, edge_of)?;
-                let mut eu_on_orig_face = eu::primary_edgeuse(b, e1)?
-                    .ok_or_else(|| invalid("edge without edge use"))?;
+                let mut eu_on_orig_face =
+                    eu::primary_edgeuse(b, e1)?.ok_or_else(|| invalid("edge without edge use"))?;
                 if eu::face(b, eu_on_orig_face)? != Some(orig_face) {
                     eu_on_orig_face = eu::radial(b, eu_on_orig_face)?
                         .ok_or_else(|| invalid("edge use without radial"))?;
@@ -2171,8 +2195,7 @@ pub fn find_rollover_side_edge<O: ClassObject>(
             // If this is the one before the very last segment, do the following check
             if io.curr_index + 2 == total_intervals {
                 let next_ivl = interval_at(cc, io.curr_index + 1)?;
-                if next_ivl.end.point_class() == PointClassType::Unknown && !is_processed(end_v)?
-                {
+                if next_ivl.end.point_class() == PointClassType::Unknown && !is_processed(end_v)? {
                     io.curr_index += 1;
                     return Ok(());
                 }
@@ -2192,7 +2215,8 @@ pub fn find_rollover_side_edge<O: ClassObject>(
         let side_edge = edge_object(&ivl.start, edge_of)?;
 
         // Check whether the side edge we hit is tangent, or concave/convex.
-        let (tangent, opposite) = test_manifold_tangent_rollover(k, b, side_edge, tangency_tol_rad)?;
+        let (tangent, opposite) =
+            test_manifold_tangent_rollover(k, b, side_edge, tangency_tol_rad)?;
         io.is_tangential_side_edge = tangent;
         io.opposite_normals = opposite;
         let convex_side_edge =
