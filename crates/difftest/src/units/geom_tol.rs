@@ -344,16 +344,16 @@ fn rust_values(op: Op, i: &Inputs) -> Result<solidcore::Result<Vec<f64>>, Harnes
         )),
         Op::AngTolRad => v1(tol::ang_tol_rad()),
         Op::ModelSize => v1(tol::model_size_estimate(&k)),
-        Op::AreParallel => {
-            Ok(vec![flag(tol::are_parallel(vec3(0), vec3(3), i.flag.then(|| a(6))))])
-        }
-        Op::ArePerpendicular => {
-            Ok(vec![flag(tol::are_perpendicular(
-                vec3(0),
-                vec3(3),
-                i.flag.then(|| a(6)),
-            ))])
-        }
+        Op::AreParallel => Ok(vec![flag(tol::are_parallel(
+            vec3(0),
+            vec3(3),
+            i.flag.then(|| a(6)),
+        ))]),
+        Op::ArePerpendicular => Ok(vec![flag(tol::are_perpendicular(
+            vec3(0),
+            vec3(3),
+            i.flag.then(|| a(6)),
+        ))]),
         Op::IsZeroSpeed => v1(flag(tol::is_zero_speed(
             a(0),
             a(1),
@@ -463,8 +463,9 @@ fn rust_curve_case(i: &Inputs) -> Result<Output, HarnessError> {
     })();
     match r {
         Ok(v) => Ok(Output::new().values("r", v)),
-        Err(e) => Ok(Output::unported(&e)
-            .unwrap_or_else(|| Output::err(format!("rust_error: {e}")))),
+        Err(e) => {
+            Ok(Output::unported(&e).unwrap_or_else(|| Output::err(format!("rust_error: {e}"))))
+        }
     }
 }
 
@@ -478,8 +479,9 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
     let op = lookup(&i.op)?;
     match rust_values(op, i)? {
         Ok(v) => Ok(Output::new().values("r", v)),
-        Err(e) => Ok(Output::unported(&e)
-            .unwrap_or_else(|| Output::err(format!("rust_error: {e}")))),
+        Err(e) => {
+            Ok(Output::unported(&e).unwrap_or_else(|| Output::err(format!("rust_error: {e}"))))
+        }
     }
 }
 
@@ -548,7 +550,11 @@ fn vector(rng: &mut Rng, len_scale: f64) -> [f64; 3] {
     let t = rng.uniform(0.0, 2.0 * PI);
     let p = rng.uniform(-PI / 2.0, PI / 2.0);
     let len = len_scale * rng.uniform(0.5, 1.5);
-    [len * p.cos() * t.cos(), len * p.cos() * t.sin(), len * p.sin()]
+    [
+        len * p.cos() * t.cos(),
+        len * p.cos() * t.sin(),
+        len * p.sin(),
+    ]
 }
 
 fn obj(rng: &mut Rng) -> Obj {
@@ -694,7 +700,13 @@ fn curve_case(rng: &mut Rng) -> Inputs {
         op: CURVE.into(),
         model: tol::USE_DEFAULT,
         ratio: tol::USE_DEFAULT,
-        a: vec![param, tol_v, i0, i1, xs * pick(rng, &[0.5, 1.0, 2.0, 1.0e3], 1.0)],
+        a: vec![
+            param,
+            tol_v,
+            i0,
+            i1,
+            xs * pick(rng, &[0.5, 1.0, 2.0, 1.0e3], 1.0),
+        ],
         flag: rng.chance(0.4),
         small: 0,
         objs: Vec::new(),
@@ -714,7 +726,10 @@ fn gen_case(rng: &mut Rng) -> Inputs {
         return curve_case(rng);
     }
     let idx = rng.below(OPS.len() as u64) as usize;
-    let (name, op) = OPS.get(idx).copied().unwrap_or(("size_estimate", Op::SizeEstimate));
+    let (name, op) = OPS
+        .get(idx)
+        .copied()
+        .unwrap_or(("size_estimate", Op::SizeEstimate));
     let model = model_size(rng);
     let ratio = ratio(rng);
     let zone = tol::size_estimate_to_zone_tol_3d(if model == tol::USE_DEFAULT {

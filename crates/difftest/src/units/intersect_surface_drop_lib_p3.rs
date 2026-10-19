@@ -221,8 +221,16 @@ fn gen_pole_surface(rng: &mut Rng, s: f64) -> SurfIn {
             // sphere (perhaps a cap): circle about the axis
             let r = rng.uniform(0.5, 2.0) * s;
             let half = core::f64::consts::FRAC_PI_2;
-            let d0 = if rng.chance(0.7) { -half } else { rng.uniform(-1.2, 0.0) };
-            let d1 = if rng.chance(0.7) { half } else { rng.uniform(0.3, 1.2) };
+            let d0 = if rng.chance(0.7) {
+                -half
+            } else {
+                rng.uniform(-1.2, 0.0)
+            };
+            let d1 = if rng.chance(0.7) {
+                half
+            } else {
+                rng.uniform(0.3, 1.2)
+            };
             SurfIn::Revolution {
                 gen: CurveIn::Circle {
                     c: [0.0, 0.0, 0.0],
@@ -569,28 +577,23 @@ fn fixtures() -> Vec<(String, Inputs)> {
         // TestSmCreateRectangle shape: an edge of the unit square (deferred: offset)
         (
             "plane_edge".to_owned(),
-            fixture(square_plane(), line([0.0, 0.0, 0.0], [1.0, 0.0, 0.0]), unit, [0.0, 1.0]),
+            fixture(
+                square_plane(),
+                line([0.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
+                unit,
+                [0.0, 1.0],
+            ),
         ),
         // a point curve inside the square
         (
             "plane_point".to_owned(),
-            fixture(
-                square_plane(),
-                point_at([0.5, 0.25, 0.0]),
-                unit,
-                [0.0, 1.0],
-            ),
+            fixture(square_plane(), point_at([0.5, 0.25, 0.0]), unit, [0.0, 1.0]),
         ),
         // a point curve above the square (a good first drop along the normal, then no
         // next point: no curve)
         (
             "plane_point_above".to_owned(),
-            fixture(
-                square_plane(),
-                point_at([0.5, 0.25, 0.5]),
-                unit,
-                [0.0, 1.0],
-            ),
+            fixture(square_plane(), point_at([0.5, 0.25, 0.5]), unit, [0.0, 1.0]),
         ),
         // negative and default tolerances run as |tol| / zone/2 (PR #136 review)
         (
@@ -624,7 +627,12 @@ fn fixtures() -> Vec<(String, Inputs)> {
         // a line along the normal of the square
         (
             "plane_normal_line".to_owned(),
-            fixture(square_plane(), line([0.5, 0.5, 0.0], [0.5, 0.5, 1.0]), unit, [0.0, 1.0]),
+            fixture(
+                square_plane(),
+                line([0.5, 0.5, 0.0], [0.5, 0.5, 1.0]),
+                unit,
+                [0.0, 1.0],
+            ),
         ),
         // a domain larger than the plane's
         (

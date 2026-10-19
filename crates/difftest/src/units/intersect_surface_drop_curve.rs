@@ -341,7 +341,8 @@ fn rust_surface(s: &SurfIn) -> Result<Surface, HarnessError> {
             );
             // with its NURB, as the shim makes it (a read-only query of the Rust plane
             // never keeps one; upstream's would, changing later point solves)
-            p.make_nurb().map_err(|e| harness(format!("plane NURB: {e}")))?;
+            p.make_nurb()
+                .map_err(|e| harness(format!("plane NURB: {e}")))?;
             Ok(Surface::from(p))
         }
         SurfIn::Bspline(d) => {
@@ -493,8 +494,7 @@ fn put_acc(o: &mut Vec<f64>, a: &TraceOutput) {
 const SHARED_START_LIST: f64 = -3.0;
 
 fn put_start_points(o: &mut Vec<f64>, t: &SurfaceDropCurve<'_>) -> Result<(), Fail> {
-    if t
-        .base
+    if t.base
         .start_points
         .iter()
         .any(|id| t.base.curve_points.contains(id))
@@ -582,7 +582,13 @@ fn run_op(
             uv,
             point,
             tol,
-        } => match st(test_point(surface, &ext(*domain), p2(*uv), v3(*point), *tol))? {
+        } => match st(test_point(
+            surface,
+            &ext(*domain),
+            p2(*uv),
+            v3(*point),
+            *tol,
+        ))? {
             Ok(tp) => o.extend([
                 0.0,
                 b(tp.good_point),
@@ -949,9 +955,7 @@ fn uv_in(rng: &mut Rng, d: [f64; 4]) -> [f64; 2] {
 
 /// A surface point at `uv` lifted `h` along the normal (the evaluation in the port).
 fn lifted(surface: &Surface, uv: [f64; 2], h: f64) -> Option<[f64; 3]> {
-    let (p, du, dv) = surface
-        .evaluate_1st_derivatives(p2(uv), true, true)
-        .ok()?;
+    let (p, du, dv) = surface.evaluate_1st_derivatives(p2(uv), true, true).ok()?;
     let n = du.cross(dv);
     let l = n.length();
     let q = if l > 1e-12 { p + n * (h / l) } else { p };
@@ -966,7 +970,10 @@ fn gen_curve(rng: &mut Rng, surface: &Surface, d: [f64; 4], lift: f64) -> Option
     };
     let segment = |a: [f64; 3], bb: [f64; 3]| {
         let l = ((bb[0] - a[0]).powi(2) + (bb[1] - a[1]).powi(2) + (bb[2] - a[2]).powi(2)).sqrt();
-        let m = a.iter().chain(bb.iter()).fold(1.0_f64, |m, x| m.max(x.abs()));
+        let m = a
+            .iter()
+            .chain(bb.iter())
+            .fold(1.0_f64, |m, x| m.max(x.abs()));
         (l > 1e-8 * m).then_some(CurveIn::Segment { a, b: bb })
     };
     match rng.below(10) {
@@ -1160,14 +1167,15 @@ fn gen_inputs(rng: &mut Rng) -> Option<Inputs> {
                     continue;
                 }
                 let param = if rng.chance(0.3) {
-                    *curve_knots(&curve).get(rng.below(2) as usize).unwrap_or(&civl.0)
+                    *curve_knots(&curve)
+                        .get(rng.below(2) as usize)
+                        .unwrap_or(&civl.0)
                 } else {
                     param_in(rng, civl)
                 };
                 OpIn::Step {
                     param,
-                    old: pick(rng, &[0.0, 1e-13, 0.01, 0.2, 1.0, 10.0], 0.1)
-                        * (civl.1 - civl.0),
+                    old: pick(rng, &[0.0, 1e-13, 0.01, 0.2, 1.0, 10.0], 0.1) * (civl.1 - civl.0),
                 }
             }
             4 => {
@@ -1188,8 +1196,12 @@ fn gen_inputs(rng: &mut Rng) -> Option<Inputs> {
                 } else {
                     uv_in(rng, d)
                 };
-                let pnt = lifted(&surface, [uv[0].clamp(d[0], d[2]), uv[1].clamp(d[1], d[3])], scale * rng.uniform(-0.5, 0.5))
-                    .unwrap_or([0.0; 3]);
+                let pnt = lifted(
+                    &surface,
+                    [uv[0].clamp(d[0], d[2]), uv[1].clamp(d[1], d[3])],
+                    scale * rng.uniform(-0.5, 0.5),
+                )
+                .unwrap_or([0.0; 3]);
                 let jitter = scale * pick(rng, &[0.0, 1e-7, 1e-3, 0.1], 0.0);
                 OpIn::TestPoint {
                     domain: d,

@@ -1735,6 +1735,13 @@ impl<'s> SurfaceDropCurve<'s> {
             } else {
                 // more than one solution - probably walking in/out of a boundary:
                 // the SmSurfaceTracer algorithm
+                //
+                // First suspect for a later disagreement (WR-182, plan/findings.md "The
+                // start list after `DoTrace` shares nodes with the curve list"): upstream
+                // TraceCurve2 appends `start` to the intrusive curve ring without taking it
+                // off m_vStartPoints, and this base `TraceCurve` walks the start list too
+                // (end test, AddStartPoint). The port's id `Vec`s do not model that
+                // aliasing; the harness reports such a start list as -3 on both sides.
                 match trace_curve_base(self, k, start, &out.curves_3d) {
                     Ok(()) => flush_curve(&mut self.base, out, Some(self.curve))?,
                     Err(e) if e.is_unported() => return Err(e),

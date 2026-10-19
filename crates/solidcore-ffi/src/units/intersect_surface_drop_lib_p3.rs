@@ -33,8 +33,8 @@
 
 use crate::{call_with_buffer, FfiError};
 
-pub use super::intersect_surface_drop_lib_p2::{CurveIn, SurfaceIn, MAX_COORD, NOW};
 use super::intersect_surface_drop_lib_p2::{encode_curve, encode_surface};
+pub use super::intersect_surface_drop_lib_p2::{CurveIn, SurfaceIn, MAX_COORD, NOW};
 
 mod sys {
     extern "C" {
@@ -91,6 +91,7 @@ fn finite(x: f64) -> Result<f64, FfiError> {
 ///   does not crash; an end knot of multiplicity above `q + 1` at the v end does not
 ///   either), or
 /// - an end knot of the u vector has multiplicity above `p + 1`.
+// Assumes clamped knot vectors: an unclamped double knot at index p / q would be rejected too.
 fn check_end_spans(surface: &SurfaceIn, domain: [f64; 4]) -> Result<(), FfiError> {
     let SurfaceIn::BSpline { p, q, u, v, .. } = surface else {
         return Ok(());
@@ -108,7 +109,8 @@ fn check_end_spans(surface: &SurfaceIn, domain: [f64; 4]) -> Result<(), FfiError
             ));
         }
     }
-    let end_mult_above = |lo: Option<&f64>, hi: Option<&f64>| matches!((lo, hi), (Some(a), Some(b)) if a == b);
+    let end_mult_above =
+        |lo: Option<&f64>, hi: Option<&f64>| matches!((lo, hi), (Some(a), Some(b)) if a == b);
     let n = u.len();
     if end_mult_above(u.get(*p), u.get(p + 1))
         || (n >= p + 2 && end_mult_above(u.get(n - p - 2), u.get(n - p - 1)))
@@ -219,9 +221,21 @@ mod tests {
     fn guard_rejects_only_the_crashing_first_v_span() {
         let dom = [0.0, 0.0, 1.0, 1.0];
         // UB-182: first span below `1e-12 * (1 + max |knot|)` with an overlapping domain
-        assert!(encode(&bspline_with_v([0.0, 0.0, 0.0, 1.0e-300, 1.0, 1.0, 1.0], dom)).is_err());
-        assert!(encode(&bspline_with_v([0.0, 0.0, 0.0, 1.9e-12, 1.0, 1.0, 1.0], dom)).is_err());
-        assert!(encode(&bspline_with_v([5.0, 5.0, 5.0, 5.0 + 5.0e-12, 6.0, 6.0, 6.0], [0.0, 5.0, 1.0, 6.0])).is_err());
+        assert!(encode(&bspline_with_v(
+            [0.0, 0.0, 0.0, 1.0e-300, 1.0, 1.0, 1.0],
+            dom
+        ))
+        .is_err());
+        assert!(encode(&bspline_with_v(
+            [0.0, 0.0, 0.0, 1.9e-12, 1.0, 1.0, 1.0],
+            dom
+        ))
+        .is_err());
+        assert!(encode(&bspline_with_v(
+            [5.0, 5.0, 5.0, 5.0 + 5.0e-12, 6.0, 6.0, 6.0],
+            [0.0, 5.0, 1.0, 6.0]
+        ))
+        .is_err());
         // an equal knot after the clamped start (multiplicity above q + 1), in v and in u
         assert!(encode(&bspline_with_v([0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0], dom)).is_err());
         let mut d = bspline_with_v([0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0], dom);
@@ -232,10 +246,26 @@ mod tests {
         assert!(encode(&d).is_err());
         // accepted: at the limit, above it, a domain disjoint from the v range, a tiny
         // span at the end
-        assert!(encode(&bspline_with_v([0.0, 0.0, 0.0, 2.0e-12, 1.0, 1.0, 1.0], dom)).is_ok());
-        assert!(encode(&bspline_with_v([5.0, 5.0, 5.0, 5.0 + 1.0e-11, 6.0, 6.0, 6.0], [0.0, 5.0, 1.0, 6.0])).is_ok());
-        assert!(encode(&bspline_with_v([5.0, 5.0, 5.0, 5.0 + 5.0e-12, 6.0, 6.0, 6.0], dom)).is_ok());
-        assert!(encode(&bspline_with_v([0.0, 0.0, 0.0, 1.0 - 1.0e-13, 1.0, 1.0, 1.0], dom)).is_ok());
+        assert!(encode(&bspline_with_v(
+            [0.0, 0.0, 0.0, 2.0e-12, 1.0, 1.0, 1.0],
+            dom
+        ))
+        .is_ok());
+        assert!(encode(&bspline_with_v(
+            [5.0, 5.0, 5.0, 5.0 + 1.0e-11, 6.0, 6.0, 6.0],
+            [0.0, 5.0, 1.0, 6.0]
+        ))
+        .is_ok());
+        assert!(encode(&bspline_with_v(
+            [5.0, 5.0, 5.0, 5.0 + 5.0e-12, 6.0, 6.0, 6.0],
+            dom
+        ))
+        .is_ok());
+        assert!(encode(&bspline_with_v(
+            [0.0, 0.0, 0.0, 1.0 - 1.0e-13, 1.0, 1.0, 1.0],
+            dom
+        ))
+        .is_ok());
         assert!(encode(&bspline_with_v([0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0], dom)).is_ok());
     }
 

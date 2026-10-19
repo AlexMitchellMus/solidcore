@@ -29495,8 +29495,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu0_uv",
@@ -29507,8 +29507,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu0_3d",
@@ -29519,8 +29519,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu1_uv",
@@ -29531,8 +29531,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu1_3d",
@@ -29543,8 +29543,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu2_uv",
@@ -29555,8 +29555,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu2_3d",
@@ -29567,8 +29567,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu3_uv",
@@ -29579,8 +29579,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu3_3d",
@@ -29591,8 +29591,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu4_uv",
@@ -29603,8 +29603,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu4_3d",
@@ -29615,8 +29615,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu5_uv",
@@ -29627,8 +29627,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu5_3d",
@@ -29639,8 +29639,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu6_uv",
@@ -29651,8 +29651,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu6_3d",
@@ -29663,8 +29663,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu7_uv",
@@ -29675,8 +29675,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu7_3d",
@@ -29879,8 +29879,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_torus_eu0_uv",
@@ -29891,8 +29891,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_torus_eu0_3d",
@@ -29903,8 +29903,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_torus_eu1_uv",
@@ -29915,8 +29915,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_torus_eu1_3d",
@@ -29927,8 +29927,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_torus_eu2_uv",
@@ -29939,8 +29939,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_torus_eu2_3d",
@@ -29951,8 +29951,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_torus_eu3_uv",
@@ -29963,8 +29963,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_torus_eu3_3d",
@@ -29975,8 +29975,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_torus_eu4_uv",
@@ -29987,8 +29987,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_torus_eu4_3d",
@@ -29999,8 +29999,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_torus_eu5_uv",
@@ -30011,8 +30011,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_torus_eu5_3d",
@@ -30023,8 +30023,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_torus_eu6_uv",
@@ -30035,8 +30035,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_torus_eu6_3d",
@@ -30047,8 +30047,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_torus_eu7_uv",
@@ -30059,8 +30059,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_torus_eu7_3d",
@@ -30071,8 +30071,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu0_uv",
@@ -30083,8 +30083,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu0_3d",
@@ -30095,8 +30095,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu1_uv",
@@ -30107,8 +30107,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu1_3d",
@@ -30119,8 +30119,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu2_uv",
@@ -30131,8 +30131,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu2_3d",
@@ -30143,8 +30143,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu3_uv",
@@ -30155,8 +30155,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu3_3d",
@@ -30167,8 +30167,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu4_uv",
@@ -30179,8 +30179,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu4_3d",
@@ -30191,8 +30191,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu5_uv",
@@ -30203,8 +30203,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu5_3d",
@@ -30215,8 +30215,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu6_uv",
@@ -30227,8 +30227,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu6_3d",
@@ -30239,8 +30239,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu7_uv",
@@ -30251,8 +30251,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu7_3d",
@@ -30263,8 +30263,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu0_uv",
@@ -30275,8 +30275,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu0_3d",
@@ -30287,8 +30287,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu1_uv",
@@ -30299,8 +30299,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu1_3d",
@@ -30311,8 +30311,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu2_uv",
@@ -30323,8 +30323,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu2_3d",
@@ -30335,8 +30335,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu3_uv",
@@ -30347,8 +30347,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu3_3d",
@@ -30359,8 +30359,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu4_uv",
@@ -30371,8 +30371,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu4_3d",
@@ -30383,8 +30383,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu5_uv",
@@ -30395,8 +30395,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu5_3d",
@@ -30407,8 +30407,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu6_uv",
@@ -30419,8 +30419,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu6_3d",
@@ -30431,8 +30431,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu7_uv",
@@ -30443,8 +30443,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu7_3d",
@@ -37939,8 +37939,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_norm_3d_start",
@@ -37951,8 +37951,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_norm_3d_mid",
@@ -37963,8 +37963,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_norm_uv_mid",
@@ -37975,8 +37975,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_norm_uv_nomake",
@@ -37987,8 +37987,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_norm_uv_end",
@@ -37999,8 +37999,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_binormal_uv",
@@ -38011,8 +38011,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_binormal_3d",
@@ -38023,8 +38023,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_binormal_start",
@@ -38035,8 +38035,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_binormal_out",
@@ -38047,8 +38047,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_getcreate_all",
@@ -38059,8 +38059,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_getcreate_nomake",
@@ -38071,8 +38071,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_create_dev",
@@ -38083,8 +38083,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_create_plain",
@@ -38095,8 +38095,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_norm_3d_start",
@@ -38107,8 +38107,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_norm_3d_mid",
@@ -38119,8 +38119,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_norm_uv_mid",
@@ -38131,8 +38131,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_norm_uv_nomake",
@@ -38143,8 +38143,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_norm_uv_end",
@@ -38155,8 +38155,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_binormal_uv",
@@ -38167,8 +38167,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_binormal_3d",
@@ -38179,8 +38179,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_binormal_start",
@@ -38191,8 +38191,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_binormal_out",
@@ -38203,8 +38203,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_getcreate_all",
@@ -38215,8 +38215,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_getcreate_nomake",
@@ -38227,8 +38227,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_create_dev",
@@ -38239,8 +38239,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_create_plain",
@@ -38251,8 +38251,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_norm_3d_start",
@@ -38263,8 +38263,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_norm_3d_mid",
@@ -38275,8 +38275,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_norm_uv_mid",
@@ -38287,8 +38287,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_norm_uv_nomake",
@@ -38299,8 +38299,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_norm_uv_end",
@@ -38311,8 +38311,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_binormal_uv",
@@ -38323,8 +38323,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_binormal_3d",
@@ -38335,8 +38335,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_binormal_start",
@@ -38347,8 +38347,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_binormal_out",
@@ -38359,8 +38359,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_getcreate_all",
@@ -38371,8 +38371,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_getcreate_nomake",
@@ -38383,8 +38383,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_create_dev",
@@ -38395,8 +38395,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_create_plain",
@@ -38407,8 +38407,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_norm_3d_start",
@@ -38419,8 +38419,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_norm_3d_mid",
@@ -38431,8 +38431,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_norm_uv_mid",
@@ -38443,8 +38443,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_norm_uv_nomake",
@@ -38455,8 +38455,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_norm_uv_end",
@@ -38467,8 +38467,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_binormal_uv",
@@ -38479,8 +38479,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_binormal_3d",
@@ -38491,8 +38491,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_binormal_start",
@@ -38503,8 +38503,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_binormal_out",
@@ -38515,8 +38515,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_getcreate_all",
@@ -38527,8 +38527,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_getcreate_nomake",
@@ -38539,8 +38539,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_create_dev",
@@ -38551,8 +38551,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_create_plain",
@@ -38563,8 +38563,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_norm_3d_start",
@@ -38575,8 +38575,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_norm_3d_mid",
@@ -38587,8 +38587,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_norm_uv_mid",
@@ -38599,8 +38599,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_norm_uv_nomake",
@@ -38611,8 +38611,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_norm_uv_end",
@@ -38623,8 +38623,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_binormal_uv",
@@ -38635,8 +38635,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_binormal_3d",
@@ -38647,8 +38647,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_binormal_start",
@@ -38659,8 +38659,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_binormal_out",
@@ -38671,8 +38671,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_getcreate_all",
@@ -38683,8 +38683,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_getcreate_nomake",
@@ -38695,8 +38695,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_create_dev",
@@ -38707,8 +38707,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_create_plain",
@@ -38719,8 +38719,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_norm_3d_start",
@@ -38731,8 +38731,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_norm_3d_mid",
@@ -38743,8 +38743,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_norm_uv_mid",
@@ -38755,8 +38755,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_norm_uv_nomake",
@@ -38767,8 +38767,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_norm_uv_end",
@@ -38779,8 +38779,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_binormal_uv",
@@ -38791,8 +38791,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_binormal_3d",
@@ -38803,8 +38803,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_binormal_start",
@@ -38815,8 +38815,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_binormal_out",
@@ -38827,8 +38827,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_getcreate_all",
@@ -38839,8 +38839,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_getcreate_nomake",
@@ -38851,8 +38851,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_create_dev",
@@ -38863,8 +38863,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_create_plain",
@@ -39811,8 +39811,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_norm_3d_start",
@@ -39823,8 +39823,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_norm_3d_mid",
@@ -39835,8 +39835,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_norm_uv_mid",
@@ -39847,8 +39847,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_norm_uv_nomake",
@@ -39859,8 +39859,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_norm_uv_end",
@@ -39871,8 +39871,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_binormal_uv",
@@ -39883,8 +39883,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_binormal_3d",
@@ -39895,8 +39895,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_binormal_start",
@@ -39907,8 +39907,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_binormal_out",
@@ -39919,8 +39919,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_getcreate_all",
@@ -39931,8 +39931,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_getcreate_nomake",
@@ -39943,8 +39943,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_create_dev",
@@ -39955,8 +39955,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_create_plain",
@@ -39967,8 +39967,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_norm_3d_start",
@@ -39979,8 +39979,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_norm_3d_mid",
@@ -39991,8 +39991,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_norm_uv_mid",
@@ -40003,8 +40003,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_norm_uv_nomake",
@@ -40015,8 +40015,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_norm_uv_end",
@@ -40027,8 +40027,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_binormal_uv",
@@ -40039,8 +40039,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_binormal_3d",
@@ -40051,8 +40051,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_binormal_start",
@@ -40063,8 +40063,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_binormal_out",
@@ -40075,8 +40075,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_getcreate_all",
@@ -40087,8 +40087,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_getcreate_nomake",
@@ -40099,8 +40099,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_create_dev",
@@ -40111,8 +40111,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_create_plain",
@@ -40123,8 +40123,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_norm_3d_start",
@@ -40135,8 +40135,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_norm_3d_mid",
@@ -40147,8 +40147,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_norm_uv_mid",
@@ -40159,8 +40159,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_norm_uv_nomake",
@@ -40171,8 +40171,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_norm_uv_end",
@@ -40183,8 +40183,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_binormal_uv",
@@ -40195,8 +40195,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_binormal_3d",
@@ -40207,8 +40207,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_binormal_start",
@@ -40219,8 +40219,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_binormal_out",
@@ -40231,8 +40231,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_getcreate_all",
@@ -40243,8 +40243,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_getcreate_nomake",
@@ -40255,8 +40255,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_create_dev",
@@ -40267,8 +40267,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_create_plain",
@@ -40279,8 +40279,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_norm_3d_start",
@@ -40291,8 +40291,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_norm_3d_mid",
@@ -40303,8 +40303,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_norm_uv_mid",
@@ -40315,8 +40315,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_norm_uv_nomake",
@@ -40327,8 +40327,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_norm_uv_end",
@@ -40339,8 +40339,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_binormal_uv",
@@ -40351,8 +40351,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_binormal_3d",
@@ -40363,8 +40363,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_binormal_start",
@@ -40375,8 +40375,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_binormal_out",
@@ -40387,8 +40387,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_getcreate_all",
@@ -40399,8 +40399,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_getcreate_nomake",
@@ -40411,8 +40411,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_create_dev",
@@ -40423,8 +40423,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_create_plain",
@@ -40435,8 +40435,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_norm_3d_start",
@@ -40447,8 +40447,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_norm_3d_mid",
@@ -40459,8 +40459,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_norm_uv_mid",
@@ -40471,8 +40471,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_norm_uv_nomake",
@@ -40483,8 +40483,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_norm_uv_end",
@@ -40495,8 +40495,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_binormal_uv",
@@ -40507,8 +40507,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_binormal_3d",
@@ -40519,8 +40519,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_binormal_start",
@@ -40531,8 +40531,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_binormal_out",
@@ -40543,8 +40543,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_getcreate_all",
@@ -40555,8 +40555,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_getcreate_nomake",
@@ -40567,8 +40567,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_create_dev",
@@ -40579,8 +40579,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_create_plain",
@@ -40591,8 +40591,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_norm_3d_start",
@@ -40603,8 +40603,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_norm_3d_mid",
@@ -40615,8 +40615,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_norm_uv_mid",
@@ -40627,8 +40627,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_norm_uv_nomake",
@@ -40639,8 +40639,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_norm_uv_end",
@@ -40651,8 +40651,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_binormal_uv",
@@ -40663,8 +40663,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_binormal_3d",
@@ -40675,8 +40675,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_binormal_start",
@@ -40687,8 +40687,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_binormal_out",
@@ -40699,8 +40699,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_getcreate_all",
@@ -40711,8 +40711,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_getcreate_nomake",
@@ -40723,8 +40723,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_create_dev",
@@ -40735,8 +40735,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_create_plain",
@@ -40747,8 +40747,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_norm_3d_start",
@@ -40759,8 +40759,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_norm_3d_mid",
@@ -40771,8 +40771,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_norm_uv_mid",
@@ -40783,8 +40783,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_norm_uv_nomake",
@@ -40795,8 +40795,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_norm_uv_end",
@@ -40807,8 +40807,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_binormal_uv",
@@ -40819,8 +40819,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_binormal_3d",
@@ -40831,8 +40831,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_binormal_start",
@@ -40843,8 +40843,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_binormal_out",
@@ -40855,8 +40855,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_getcreate_all",
@@ -40867,8 +40867,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_getcreate_nomake",
@@ -40879,8 +40879,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_create_dev",
@@ -40891,8 +40891,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_create_plain",
@@ -40903,8 +40903,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_norm_3d_start",
@@ -40915,8 +40915,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_norm_3d_mid",
@@ -40927,8 +40927,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_norm_uv_mid",
@@ -40939,8 +40939,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_norm_uv_nomake",
@@ -40951,8 +40951,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_norm_uv_end",
@@ -40963,8 +40963,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_binormal_uv",
@@ -40975,8 +40975,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_binormal_3d",
@@ -40987,8 +40987,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_binormal_start",
@@ -40999,8 +40999,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_binormal_out",
@@ -41011,8 +41011,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_getcreate_all",
@@ -41023,8 +41023,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_getcreate_nomake",
@@ -41035,8 +41035,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_create_dev",
@@ -41047,8 +41047,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_create_plain",
@@ -41059,8 +41059,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_norm_3d_start",
@@ -41071,8 +41071,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_norm_3d_mid",
@@ -41083,8 +41083,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_norm_uv_mid",
@@ -41095,8 +41095,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_norm_uv_nomake",
@@ -41107,8 +41107,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_norm_uv_end",
@@ -41119,8 +41119,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_binormal_uv",
@@ -41131,8 +41131,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_binormal_3d",
@@ -41143,8 +41143,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_binormal_start",
@@ -41155,8 +41155,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_binormal_out",
@@ -41167,8 +41167,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_getcreate_all",
@@ -41179,8 +41179,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_getcreate_nomake",
@@ -41191,8 +41191,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_create_dev",
@@ -41203,8 +41203,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_create_plain",
@@ -41215,8 +41215,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_norm_3d_start",
@@ -41227,8 +41227,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_norm_3d_mid",
@@ -41239,8 +41239,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_norm_uv_mid",
@@ -41251,8 +41251,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_norm_uv_nomake",
@@ -41263,8 +41263,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_norm_uv_end",
@@ -41275,8 +41275,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_binormal_uv",
@@ -41287,8 +41287,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_binormal_3d",
@@ -41299,8 +41299,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_binormal_start",
@@ -41311,8 +41311,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_binormal_out",
@@ -41323,8 +41323,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_getcreate_all",
@@ -41335,8 +41335,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_getcreate_nomake",
@@ -41347,8 +41347,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_create_dev",
@@ -41359,8 +41359,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_create_plain",
@@ -41371,8 +41371,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_norm_3d_start",
@@ -41383,8 +41383,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_norm_3d_mid",
@@ -41395,8 +41395,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_norm_uv_mid",
@@ -41407,8 +41407,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_norm_uv_nomake",
@@ -41419,8 +41419,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_norm_uv_end",
@@ -41431,8 +41431,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_binormal_uv",
@@ -41443,8 +41443,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_binormal_3d",
@@ -41455,8 +41455,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_binormal_start",
@@ -41467,8 +41467,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_binormal_out",
@@ -41479,8 +41479,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_getcreate_all",
@@ -41491,8 +41491,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_getcreate_nomake",
@@ -41503,8 +41503,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_create_dev",
@@ -41515,8 +41515,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_create_plain",
@@ -41527,8 +41527,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_norm_3d_start",
@@ -41539,8 +41539,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_norm_3d_mid",
@@ -41551,8 +41551,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_norm_uv_mid",
@@ -41563,8 +41563,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_norm_uv_nomake",
@@ -41575,8 +41575,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_norm_uv_end",
@@ -41587,8 +41587,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_binormal_uv",
@@ -41599,8 +41599,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_binormal_3d",
@@ -41611,8 +41611,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_binormal_start",
@@ -41623,8 +41623,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_binormal_out",
@@ -41635,8 +41635,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_getcreate_all",
@@ -41647,8 +41647,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_getcreate_nomake",
@@ -41659,8 +41659,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_create_dev",
@@ -41671,8 +41671,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_create_plain",
@@ -41683,8 +41683,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_norm_3d_start",
@@ -41695,8 +41695,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_norm_3d_mid",
@@ -41707,8 +41707,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_norm_uv_mid",
@@ -41719,8 +41719,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_norm_uv_nomake",
@@ -41731,8 +41731,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_norm_uv_end",
@@ -41743,8 +41743,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_binormal_uv",
@@ -41755,8 +41755,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_binormal_3d",
@@ -41767,8 +41767,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_binormal_start",
@@ -41779,8 +41779,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_binormal_out",
@@ -41791,8 +41791,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_getcreate_all",
@@ -41803,8 +41803,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_getcreate_nomake",
@@ -41815,8 +41815,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_create_dev",
@@ -41827,8 +41827,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_create_plain",
@@ -41839,8 +41839,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_norm_3d_start",
@@ -41851,8 +41851,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_norm_3d_mid",
@@ -41863,8 +41863,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_norm_uv_mid",
@@ -41875,8 +41875,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_norm_uv_nomake",
@@ -41887,8 +41887,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_norm_uv_end",
@@ -41899,8 +41899,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_binormal_uv",
@@ -41911,8 +41911,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_binormal_3d",
@@ -41923,8 +41923,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_binormal_start",
@@ -41935,8 +41935,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_binormal_out",
@@ -41947,8 +41947,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_getcreate_all",
@@ -41959,8 +41959,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_getcreate_nomake",
@@ -41971,8 +41971,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_create_dev",
@@ -41983,8 +41983,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_create_plain",
@@ -41995,8 +41995,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_norm_3d_start",
@@ -42007,8 +42007,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_norm_3d_mid",
@@ -42019,8 +42019,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_norm_uv_mid",
@@ -42031,8 +42031,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_norm_uv_nomake",
@@ -42043,8 +42043,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_norm_uv_end",
@@ -42055,8 +42055,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_binormal_uv",
@@ -42067,8 +42067,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_binormal_3d",
@@ -42079,8 +42079,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_binormal_start",
@@ -42091,8 +42091,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_binormal_out",
@@ -42103,8 +42103,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_getcreate_all",
@@ -42115,8 +42115,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_getcreate_nomake",
@@ -42127,8 +42127,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_create_dev",
@@ -42139,8 +42139,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_create_plain",
@@ -42151,8 +42151,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_norm_3d_start",
@@ -42163,8 +42163,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_norm_3d_mid",
@@ -42175,8 +42175,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_norm_uv_mid",
@@ -42187,8 +42187,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_norm_uv_nomake",
@@ -42199,8 +42199,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_norm_uv_end",
@@ -42211,8 +42211,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_binormal_uv",
@@ -42223,8 +42223,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_binormal_3d",
@@ -42235,8 +42235,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_binormal_start",
@@ -42247,8 +42247,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_binormal_out",
@@ -42259,8 +42259,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_getcreate_all",
@@ -42271,8 +42271,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_getcreate_nomake",
@@ -42283,8 +42283,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_create_dev",
@@ -42295,8 +42295,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_create_plain",
@@ -42307,8 +42307,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_norm_3d_start",
@@ -42319,8 +42319,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_norm_3d_mid",
@@ -42331,8 +42331,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_norm_uv_mid",
@@ -42343,8 +42343,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_norm_uv_nomake",
@@ -42355,8 +42355,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_norm_uv_end",
@@ -42367,8 +42367,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_binormal_uv",
@@ -42379,8 +42379,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_binormal_3d",
@@ -42391,8 +42391,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_binormal_start",
@@ -42403,8 +42403,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_binormal_out",
@@ -42415,8 +42415,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_getcreate_all",
@@ -42427,8 +42427,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_getcreate_nomake",
@@ -42439,8 +42439,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_create_dev",
@@ -42451,8 +42451,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_create_plain",
@@ -42463,8 +42463,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_norm_3d_start",
@@ -42475,8 +42475,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_norm_3d_mid",
@@ -42487,8 +42487,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_norm_uv_mid",
@@ -42499,8 +42499,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_norm_uv_nomake",
@@ -42511,8 +42511,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_norm_uv_end",
@@ -42523,8 +42523,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_binormal_uv",
@@ -42535,8 +42535,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_binormal_3d",
@@ -42547,8 +42547,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_binormal_start",
@@ -42559,8 +42559,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_binormal_out",
@@ -42571,8 +42571,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_getcreate_all",
@@ -42583,8 +42583,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_getcreate_nomake",
@@ -42595,8 +42595,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_create_dev",
@@ -42607,8 +42607,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_create_plain",
@@ -43271,8 +43271,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0002",
@@ -43335,8 +43335,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0008",
@@ -43347,8 +43347,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0009",
@@ -43367,8 +43367,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0011",
@@ -43379,8 +43379,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::ReadFromFile",
-        "unit": "topology.brep_p7"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0012",
@@ -43425,7 +43425,7 @@
     "surface.cone_p1": 140,
     "surface.sphere": 189,
     "surface.surf_of_extrusion_p2": 189,
-    "topology.brep_p7": 381,
+    "topology.brep_p10": 381,
     "topology.face_p3": 274
   },
   "max_rel_err": 0.0,

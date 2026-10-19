@@ -12,8 +12,8 @@
 
 use crate::{call_with_buffer, check, FfiError};
 
-pub use super::intersect_surface_drop_lib_p2::{CurveIn, MAX_COORD};
 use super::intersect_surface_drop_lib_p2::encode_curve;
+pub use super::intersect_surface_drop_lib_p2::{CurveIn, MAX_COORD};
 
 mod sys {
     extern "C" {
@@ -270,7 +270,9 @@ pub fn curve_tols(
         if x.is_finite() && x.abs() <= MAX_COORD {
             Ok(x)
         } else {
-            Err(FfiError::InvalidArgument("value not finite or too large".into()))
+            Err(FfiError::InvalidArgument(
+                "value not finite or too large".into(),
+            ))
         }
     };
     let mut v = Vec::new();
