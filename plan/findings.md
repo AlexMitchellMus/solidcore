@@ -6673,7 +6673,10 @@ where upstream dereferences it).
 CW/CCW neighbour, face use, face and surface pointers without checking, so the shim
 refuses them (`-2`) unless every edge use of both B-reps is a loop edge use with all of
 those (wire, single-face and network B-reps therefore only exercise the refusal; the
-runner mirrors the predicate on the imported B-reps). `ReplaceEdgeCurves` with a 3D
+runner mirrors the predicate on the imported B-reps). `VertexOffset` is the exception: it
+walks no loops (`IsLaminaVertex` is `GetEdges` + `IsLamina`), so it keeps only its
+per-edge checks (a curve on each edge; for a single edge, a face with surface and a
+B-spline curve) and runs on wire and network vertices too (maintainer review of #156). `ReplaceEdgeCurves` with a 3D
 curve and a null UV curve dereferences the UV curve only when the curves run opposite:
 the shim replicates the shape test (end-point matches, then the tangent dot product)
 and refuses only then. These refusals are C++ crash guards, not `UNPORTED` deferrals.
@@ -6782,32 +6785,41 @@ stubbed: they need an `OffsetBrep` over the executive's original and offset B-re
 #175's code after `EdgeuseOffset` (cpp:2956-3071), which reaches `topology.brep_p7/p8`; a
 follow-up once this PR merges.
 
-**Results.** 861 cases (5 upstream-derived fixtures, 56 cases built in code, 800 generated
-two-B-rep scripts): 428 pass bit for bit (`max_rel_err 0`), 0 fail, 433 deferred, 0 cases
-where both sides reject the script. 426 passes compare an upstream result; 2 (`gen0264`,
-`gen0685`) are guard agreements: the shim refuses the only op as an upstream null
+**Results.** 866 cases (5 upstream-derived fixtures, 61 cases built in code, 800 generated
+two-B-rep scripts): 433 pass bit for bit (`max_rel_err 0`), 0 fail, 433 deferred, 0 cases
+where both sides reject the script. 430 passes compare an upstream result; 3 (`gen0264`,
+`gen0685`, `network_vertex_three_edges`) are guard agreements: the shim refuses the only op as an upstream null
 dereference, so no C++ runs and both sides compare `[0, op, -2]` (they count under
 `with_values=428 no_values=0` because the record has three values). Deferred, by the unit that blocks: `topology.brep_p2` 166,
 `topology.brep_p1` 78, `harness:analytic-geometry-export` 70, `topology.face_p3` 42,
 `intersect.surface_drop_curve` 27, `curve.crv_on_surf` 25, `topology.face_p2` 12,
 `intersect.surface_drop_lib_p3` 7, `blend.fillet_standard_solver_p1` 4, `surface.cone_p2` 2.
-Success-path coverage (counted at this head): 211 of the 428 passes complete at least one
+Success-path coverage (counted at this head): 222 of the 433 passes complete at least one
 successful call among the unit's ops (the rest compare matching `-2` refusals or matching
 upstream error statuses). Per op, the passing cases that contain a success / a refusal / an
 upstream error (a case can count in several): `FaceuseOffset` 30 / 15 / 0, `VertexOffset`
-48 / 24 / 18, `ReplaceEdgeCurves` 49 / 9 / 0, `TrimExtendedEdge` 44 / 50 / 0,
-`ExtendTrimEdges` 1 / 39 / 7, `HaveTangentGaps` 55 / 30 / 0, `EdgeuseOffset` 34 / 22 / 10,
+59 / 14 / 24, `ReplaceEdgeCurves` 49 / 9 / 0, `TrimExtendedEdge` 44 / 50 / 0,
+`ExtendTrimEdges` 1 / 39 / 7, `HaveTangentGaps` 56 / 30 / 0, `EdgeuseOffset` 34 / 22 / 10,
 `LocalFaceuseOffset` 6 / 37 / 52 (`HaveTangentGaps`' points: upstream ignores
 `NormalizedEvaluate`'s status and a failed evaluation leaves `sPnt` at `SM_UNDEF_DOUBLE`, which
 the port mirrors; an evaluator that wrote part of the point before failing would diverge, a
 theoretical case no input reaches); no successful pass: `UpdateFaceSurfaceDomain` (54
 refusals), `MateEdges` (18 refusals, 54 upstream errors). (This PR's earliest per-op
 counts swapped the `FaceuseOffset` and `ReplaceEdgeCurves` labels.) A 4000-seed sweep
-(4061 cases) passes 2114, fails 0, defers 1947, with no C++ crash or stall. Perturb:
-`SENSITIVE 428/428`. `--fuzz 2000`: `FUZZ-PASS cases=2000 rejected=243 malformed=635
-ran=1122 differs=0 crashes=0 panics=0 timeouts=0`. Valgrind: 54 sampled shim programs
-before the wiring round, then 64 on the new paths (54 newly passing cases, up to ten per
-op family plus eight built-in ones, and ten new deferrals including the five above): clean.
+(4066 cases) passes 2119, fails 0, defers 1947, with no C++ crash or stall. Perturb:
+`SENSITIVE 433/433`. `--fuzz 2000`: `FUZZ-PASS cases=2000 rejected=224 malformed=627
+ran=1149 differs=0 crashes=0 panics=0 timeouts=0`; one earlier run of the same tree had a
+single timeout, `fuzz01488` (a one-field mutation of `gen0577`, whose C++ side takes about
+19 s alone against the 20 s budget, the Rust 0.16 s): load-dependent, as `gen0577` itself.
+Valgrind: 54 sampled shim programs before the wiring round, then 64 on the new paths (54
+newly passing cases, up to ten per op family plus eight built-in ones, and ten new
+deferrals including the five above), then the 13 cases the review follow-up changes: clean.
+**Review follow-up (maintainer review of #156).** The shim and runner no longer refuse
+`VertexOffset` on B-reps whose edge uses are not all loop edge uses (see Guards): 8
+generated cases now compare its result on wire / network / face B-reps, and four new
+built-in cases run it on the wire network's and a single wire's vertices (the one with
+three of the network's edges is a guard agreement: the shim's per-edge check refuses it). `HaveTangentGaps`
+accepts `n = 0` (upstream evaluates once at `0 / 0`; `cone_have_tangent_gaps_no_samples`).
 `nurbs.b_spline_surface_p2` (touched): 764 cases, 759 pass, 5 deferred; its
 `three_arcs_about_two_centres` case (arcs about two centres, the first two sharing their
 start point) compares 94 values and fails with the first arc's centre captured by value, so
