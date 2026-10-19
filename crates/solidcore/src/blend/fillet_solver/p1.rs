@@ -1955,8 +1955,9 @@ impl<'a> FilletSphereSolveEnfo<'a> {
 /// surfaces; `crX = [t u v ...]` with `t` on the UV curve and `(u, v)` the rail's UV
 /// point.
 pub struct RailUvCurveIntersectEnfo<'a> {
-    /// `m_crUVCurve`.
-    pub uv_curve: &'a BSplineCurve,
+    /// `m_crUVCurve` (an `SmBSplineCurve&`; `Evaluate` is virtual, so any
+    /// `SmBSplineCurve`-derived kind such as an `SmLine` dispatches on its own kind).
+    pub uv_curve: &'a Curve,
     /// `m_vInterval`.
     pub interval: Extent1d,
     /// `m_lRailIndex`.
@@ -1968,7 +1969,7 @@ impl<'a> RailUvCurveIntersectEnfo<'a> {
     /// `SmRailUVCurveIntersectENFO(crUVCurve, crInterval, crSurfaceOfCurve, lRailIndex,
     /// crFilletSolver)` (the surface of the curve is only drawn upstream).
     pub fn new(
-        uv_curve: &'a BSplineCurve,
+        uv_curve: &'a Curve,
         interval: Extent1d,
         rail_index: usize,
         solver: &'a mut dyn FilletSolverOps,
