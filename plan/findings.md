@@ -5875,6 +5875,23 @@ Blocked: no output of this unit can be compared with the C++ yet. Checked agains
   `brep_p9` are all still `todo` on `main`. Open PRs: `brep_p1` #145 (draft), `brep_p4`
   #173 (draft), `brep_p6` #169 (ready, unmerged), `brep_p7` #155 (draft); `brep_p3`,
   `brep_p5` and `brep_p9` have no PR. Still blocked.
+- **Re-checked a fourth time 2026-10-18** (`main` at `73649d48`): `brep_p6` has merged as
+  `partial` (#169), but `brep_p1`, `brep_p3`, `brep_p4`, `brep_p5`, `brep_p7` and `brep_p9`
+  are still `todo` on `main`. They all have open contributor PRs now: `brep_p1` #145,
+  `brep_p5` #194, `brep_p7` #155 and `brep_p9` #183 are ready, and `brep_p3` #204 and
+  `brep_p4` #173 are drafts. Merging those branches into this one would not unblock it.
+  Their own notes say that none of their successful construction paths is compared yet:
+  #155 says every `MakeFaceWithCurves` pass is a no-op, empty input or error status, #194
+  certifies 0 of its 12 successful mutation paths, #183's `MakeVertexLoop` defers at
+  `brep_p1`, and `brep_p6`'s `MakeFaceTopology` defers every non-null surface at
+  `SmFace::SetTolerance` (`topology.face_p3`). They also stop at `SmBrep::Notify`
+  (`topology.brep_p2`, #149 open) and `SmFace::Notify` (`topology.face_p3`, no PR).
+  Every path through this unit reaches those builders (the "new algorithm" branch of
+  `CreateFaceInRegionFromSurface` is dead code: `sbUseOldAlgorithm` is a `constexpr
+  TRUE`), so a runner would still compare nothing beyond input-validation statuses.
+  **Unblock when** `brep_p7`'s `MakeFaceWithCurves` (and so `brep_p2` `Notify` and
+  `face_p3` `SetTolerance`/`Notify`) completes a face for real, and `brep_p1`, `brep_p5`
+  and `brep_p9` are `partial` or better. Still blocked.
 
 ## intersect.curve_class_p6 (partial; PR #138)
 
