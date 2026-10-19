@@ -2524,6 +2524,7 @@ pub fn create_corner_blend(
     // pass the call along (FALSE = bicubic patch through curves and crossTangents)
     let surfs: Vec<Option<&BSplineSurface>> = ordered_surfs.iter().map(Option::as_ref).collect();
     BSplineSurface::create_corner_blend(
+        k,
         &ordered_3d,
         &eu_orients,
         &ordered_uv,
