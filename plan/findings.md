@@ -6983,9 +6983,9 @@ independent p6 integration.
 
 ## blend.fillet_geom_p1 (`SmFilletGeom.cpp` part 1: fillet records, pseudo B-rep, static helpers; PR #147, 2026-10-16; partial, no disagreements)
 
-Gate: `PARTIAL blend.fillet_geom_p1 cases=461 passed=429 failed=0 deferred=19 max_rel_err=0e0 rejected=13`
-(`cases_both_errored` 0, so 429 real passes; the 13 rejected cases are the flagged
-regression inputs below; 2000-seed sweep 2037 pass / 111 deferred / 0 failed / 13 rejected; `--perturb` 429/429 detected).
+Gate: `PARTIAL blend.fillet_geom_p1 cases=480 passed=446 failed=0 deferred=21 max_rel_err=0e0 rejected=13`
+(`cases_both_errored` 0, so 446 real passes; the 13 rejected cases are the flagged
+regression inputs below; 2000-seed sweep 2051 pass / 116 deferred / 0 failed / 13 rejected; `--perturb` 446/446 detected).
 
 - **Deferred (unported callees, no stub of this unit's own code).**
   `sm_ClassifyFacePoint` calls `SmFace::CalculateUVDomainFromUVTrimCurves`, wired to
@@ -6996,7 +6996,7 @@ regression inputs below; 2000-seed sweep 2037 pass / 111 deferred / 0 failed / 1
   14 cases (one is the 1e50 boundary input below), so `SmFilletVertex::UpdateSplitFace` defers only
   for a vertex classified to the split face and other vertices compare.
   `sm_TwoPntsIntersection` defers past its point drops in
-  `SmSurface::PointBasedSurfaceIntersect` (3 cases): `surface.surface_p2`'s port stops
+  `SmSurface::PointBasedSurfaceIntersect` (5 cases): `surface.surface_p2`'s port stops
   at `SmSurfaceIntersector::DoPointIntersection`, labelled
   `intersect.surface_intersector_p4` although that unit is partial, because part 4's
   function runs the basic intersector's `ComputeSingularityPoint` instead of
@@ -7017,9 +7017,9 @@ regression inputs below; 2000-seed sweep 2037 pass / 111 deferred / 0 failed / 1
   upstream dereferences it there (`GetFilletSolver()->GetSurface(k)`: SIGSEGV, found
   by the pre-review), so the shim repeats upstream's degree / kind / end-distance
   pre-checks and refuses (`SC_ERR_ARG`, recorded as a rejected case) any input that
-  would reach it; the Rust side on that path rebuilds the rails and stops at
-  `SmOffsetSurface::GetNaturalUVDomain` (`surface.offset_surface`; the drop domain,
-  evaluated before `SmSurface::DropCurve` of `intersect.surface_drop_lib_p3`) with
+  would reach it; the Rust side on that path rebuilds the rails, takes the drop domain
+  from the wired `SmOffsetSurface::GetNaturalUVDomain` (`surface.offset_surface`, #62)
+  and stops at `SmSurface::DropCurve` (`intersect.surface_drop_lib_p3`) with
   `Unported`, or with a null-pointer error when, as in the difftest, no solver is
   passed. The Rust adjusting path (net-row copy, rail `SetCurve` resets, the solver's
   offset-distance save and restore, the `Unported` at the drop, the null-solver
@@ -7032,12 +7032,16 @@ regression inputs below; 2000-seed sweep 2037 pass / 111 deferred / 0 failed / 1
   intersection, the five-point cubic through `CreateCanonical`) is ported behind the
   two solver call stubs but cannot run yet (lesson 27: a stub replaces only its call).
 - **Pseudo-B-rep construction.** `SmFilletEdgeuse(SmFilletBrep*)` needs the pseudo
-  B-rep's infinite region and first shell (`topology.brep_p1` / `topology.brep_p2`,
-  sibling PRs #145 / #149, `topology.shell` #154): stubbed. The difftest builds the
-  pseudo B-rep with `SmFilletEdge::MakeFilletEdge` on the C++ side and with the
-  low-level record writes on the Rust side (both documented in the FFI module), so the
-  record methods compare without it. When #145/#149 land, wire
-  `FilletBrep::new_fillet_edgeuse`.
+  B-rep's infinite region and first shell. `SmBrep::GetInfiniteRegion`
+  (`topology.brep_p1`, #145) and `SmRegion::GetShells` (`topology.shell`, #154) are
+  wired; the region itself is created by `SmBrep()` (`SmBrep.cpp:533`, run by
+  `SmFilletBrep()`), whose constructor is `topology.brep_p3`'s and unported, so
+  `FilletBrep::new` has none and the constructor stops at
+  `UNPORTED(topology.brep_p3) SmBrep::SmBrep` (never upstream's NULL), then at
+  `UNPORTED(topology.brep_p2) SmBrep::MakeShellVertexTopology` when the region has no
+  shell. The difftest builds the pseudo B-rep with `SmFilletEdge::MakeFilletEdge` on
+  the C++ side and with the low-level record writes on the Rust side (both documented
+  in the FFI module), so the record methods compare without it.
 - **Solution handles.** `GlobalCurveIntersect` and `GlobalPointSolve` record the curve
   and surface they ran on in their `SmSolutionArray`; `Solution::parameter_interval`
   reads the natural domain off that handle. `calc_cliff_rail_int_edge` passes a private
@@ -7052,16 +7056,38 @@ regression inputs below; 2000-seed sweep 2037 pass / 111 deferred / 0 failed / 1
   `m_bPointTestEnabled` / `m_bProcessBoundaryCurves` around `GlobalPointSolve`; for a
   standalone surface the cache already has that state, and the Rust point solve of a
   face-owned surface is itself unported (`query.face_p2`), so nothing is toggled.
-- **Coverage.** The shim builds plain B-spline surfaces and curves only, so the plane /
-  surface-of-revolution arms of `sm_EvaluateMate`'s `SmBSplineSurface` cast and any
-  analytic-kind path inside the surface callees are never compared. Ops with no passing
-  case: `fb` `cliff` (deferred), `classify_face_point` (all deferred), `fb`
+- **Coverage.** The shim builds plain B-spline surfaces and curves, except for the
+  `evaluate_mate_analytic` op (maintainer review): `sm_EvaluateMate` on a real `SmPlane`
+  (with and without its NURB) and on a canonical `SmSurfOfRevolution` of a line, so
+  both arms of its `SmBSplineSurface` cast compare, inside the domain (the virtual
+  `EvaluatePoint`) and outside it (`EvaluatePointOnExtendedSurface`). A real
+  `SmCylinder` / `SmCone` cannot be a Rust `Surface` yet (the cone kind's dispatch gap,
+  `surface.cone_p1`). Analytic-kind paths inside the other surface callees are never
+  compared. `fb` `cliff` (op 31) has 2 status-0 and 2 error-status passes and 2
+  deferrals. Ops with no passing case: `classify_face_point` (all deferred), `fb`
   `split_face` of a vertex classified to the split face (deferred; other vertices
   pass), `two_pnts` past its point drops (deferred; drop failures pass), `fb`
   `examine` past its pre-checks (rejected, above), `sm_FindStepoffUV` and
   `sm_CreateCubicRailRailInterpolant` (no cases: they take an `SmFilletSolver`).
   `capping` with a cap (iso-parameter lines lifted through `sm_ExtractIsoCurve`)
   compares.
+- **Tolerance classes (maintainer review of `f0240ceb`).** `sm_SurfaceDropPoint` passes
+  its `double` dropping tolerance to `GlobalPointSolve`'s `SmZoneTol3d` parameter, which
+  converts it (`SmZoneTol3d(double)`, `SmTol.cpp:107`: `SM_USE_DEFAULT` becomes the zone
+  tolerance, then `fabs`, `SmTol.h:148`); the port passed it raw, so a negative
+  `approx_tol` (e.g. `-1e-3`) found the point in C++ and nothing in Rust (`SM_ERR`):
+  5 of the reviewer's 686 adversarial cases (a closed cylinder at `(1, 0, 0.5)`, a
+  bilinear corner, cubic patches at scale 1 and 1e-5). Fixed with `zone_tol3d`; the
+  audit of every call in this unit's 111 functions found the same raw pass at
+  `sm_FindStepoffUV` (`GlobalPointSolve`), `sm_ClassifyFacePoint` (`GetZoneTol3d` of
+  the face, an `SmZoneTol3d`), `JoinVertsByCapping` (`LiftCurve`'s `SmApproxTol3d`) and
+  the examine path (`DropCurve`'s `SmApproxTol3d`), now converted with `zone_tol3d` /
+  `approx_tol3d`. `sm_TwoPntsIntersection`'s `SM_CAST_APPROXTOL3D_PTR(&dSSITol)` is a
+  pointer cast (no conversion), so `PointBasedSurfaceIntersect` keeps the raw value;
+  `GlobalCurveIntersect`, `SmCurve::GlobalPointSolve` and `ContainsPoint2d` take plain
+  `double`s. Regression fixtures `surface_drop_point_negative_tol_*`,
+  `two_pnts_negative_tol_*`, `capping_gap_negative_tol` and `capping_gap_use_default_tol`;
+  the generator now draws negative tolerances for these ops too.
 - **Upstream hang HANG-29 and the magnitude guard.** The `fuzz_guards` sweep found a
   face whose surface has a control point of magnitude 1e154: `sm_ClassifyFacePoint`'s
   C++ path (`CalculateUVDomainFromUVTrimCurves` -> `DropAndTrimCurve` ->
@@ -7103,6 +7129,11 @@ regression inputs below; 2000-seed sweep 2037 pass / 111 deferred / 0 failed / 1
   applies the FFI's count rules (`1 <= p <= n`, `r = n + p + 1`, likewise in v and
   for curves) before building either. Library code that takes an unvalidated
   `srf_basic::Surface` still assumes consistent counts (owner: `nurbs.srf_nurb`).
+  Round 8: fuzz mutations that unflag the HANG-20 fixtures (`expected_rejection =
+  false`) reached the Rust solver above the 1e307 bound, where it loops as upstream
+  does (3 timeouts). The runner now runs the FFI's own validation
+  (`blend_fillet_geom_p1::validate`, which `eval` calls) before the Rust side, so an
+  input the FFI refuses is a harness error on both sides and never runs in Rust.
 - **Upstream crash UB-166: a near-zero or near-start interior v knot.** The
   re-review's fuzz found a SIGSEGV in `sm_DecomposeSrf` through the surface cache
   (`sm_SurfaceDropPoint`, and `sm_ClassifyFacePoint` through `SmSurface::DropCurve`):
