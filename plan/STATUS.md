@@ -8,6 +8,8 @@ Previous port integration: `sweep.topology_sweep` ([PR #222](https://github.com/
 
 Last updated: 2026-10-17, PR #213 (`primitive.primitive_creation_p1` partial: 661 bit-identical passes, 17 dependency deferrals, one UB-57 construction preflight rejection). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
+Last updated: 2026-10-19, PR #213 review (`primitive.primitive_creation_p1` partial: 689 exact passes, 75 dependency deferrals, 9 rejected native fixtures). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
+
 Latest topology integration: `topology.brep_p6` partial (PR #169, after its dependency #154: 498 cases, 450 pass, 48 deferred, 0 failed; 206 units, 113 green and 93 partial); before: `topology.shell` partial (PR #154, continuing @0xlillith's PR #80: 192 ported units, 109 green and 83 partial); before: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green); before: `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
 
 Latest main integration: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green).
@@ -1044,19 +1046,23 @@ Review verification: the extended 256-seed run has 380 cases, 291 bit-identical
 passes, zero failures and 89 query deferrals. Perturbation detects every compared
 case (108/108 default, 291/291 extended).
 
-## primitive.primitive_creation_p1 — PR #213 (2026-10-17)
+## primitive.primitive_creation_p1 — PR #213 (review, 2026-10-19)
 
-Partial port of the primitive state/maps, pivot and planar-path helpers, primitive
-constructors, analytic rotational sweep, pole-free sphere assembly, elliptic-ended
-cone and planar boolean control. Dependency PR #145 is merged into this branch;
-its B-rep state and ordered collections are reused.
+Ports primitive state/maps and all owned non-debug control flow, including the
+pivot/path helpers, primitive constructors, analytic sweep and planar boolean.
+Merged canonical main `5040b0b2`, retaining its current B-rep p1 code and reports;
+dependency #145 has landed. The two `MakeFaceWithCurves` adapters now use p7.
+`Boolean2D` uses upstream's 0.0001-degree normal tolerance. Added kernel tests for
+that boundary, edit/context/result restoration, and plane coverage before the
+intersection dependency. The bottom cylindrical-box points retain signed zero.
 
-Default native differential result: 689 cases, 667 passes with zero relative
-error, zero failures, 17 deferred and five native preflight rejections (UB-57 and the
-two-point G1 fallback). Passing
-cases compare geometry helper outputs or real error/status/state records; primitive
-construction/topology mutations remain deferred and are not claimed as certified.
-See `plan/findings.md` for branch witnesses and the exact dependency breakdown.
+Native differential result: 773 cases, 689 exact passes, zero failures,
+75 deferred and nine rejected. New fixtures include 32 nonempty/empty boolean
+validation cases, four independent rear-X tilts and 48 nonempty sweeps with B-spline and real analytic generators (four
+negative full-circle inputs reproduce a native hang and are rejected precisely
+at the analytic-cylinder branch). No primitive topology, cap mutation or
+post-intersection boolean mutation is certified by deferred cases. Details and
+the native GDB trace are summarized in `plan/findings.md` / `upstream-issues.md`.
 
 Validation: fmt, normal/native Clippy, 1,292 kernel tests, wasm32, four native FFI
 tests, all 667 perturbations detected and 1,000 fuzz mutations with zero
@@ -1096,3 +1102,14 @@ production adapter. The integrated manifest has 214 ported units (114 green,
 Review sensitivity: 284/284 perturbations detected. The 300-mutation campaign
 executes 78 cases, rejects 163 and classifies 59 as malformed, with zero
 differences, crashes, panics or timeouts. This is bounded harness coverage.
+
+Validation after the p10 integration: fmt, default/native Clippy, 1398 kernel
+tests, wasm32, five native FFI tests, p7/p10 differential reruns, 689/689
+perturbations detected, and two focused 500-case fuzz runs with no differences,
+crashes, panics or timeouts.
+
+The analytic sweep fixtures exposed lazy-line NURB construction and owner-side
+reparameterization in surface.surf_of_extrusion_p1. Both now follow the virtual
+upstream path, preserving the IsLinear domain snapshot before GetEnds. Six new
+regressions bring its exact differential passes to 2061/2061. The final local
+--green gate completed: 213 units, 114 passed, 99 partial, zero failed.

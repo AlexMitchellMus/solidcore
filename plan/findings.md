@@ -8348,7 +8348,6 @@ rejected: nothing runs on either side.
 - **Aliased points.** `ComputeNextPoint` with `prev == next` returns no point for a
   non-crossing point (as upstream, which returns before touching either reference) and
   `InvalidInput` for a crossing (upstream would read and write one object at once).
-
 ## topology.brep_p10 (`SmBrep::MakeTopologyFromData`, PR #130): review fixes
 
 - **UV trim curve cast.** Upstream stores an edge use's UV trim curve as
@@ -9212,3 +9211,94 @@ passing/deferred counts.
 Review sensitivity: 284/284 perturbations detected. The 300-mutation campaign
 executes 78 cases, rejects 163 and classifies 59 as malformed, with zero
 differences, crashes, panics or timeouts. This is bounded harness coverage.
+
+### PR #213 maintainer review fixes (2026-10-19)
+
+Merged canonical main `28cd7d9a` and retained main's complete `topology.brep_p1`
+implementation, wiring and reports. The remaining PR diff adds primitive p1 and
+its sweep constructor markers/map payload; it does not carry the older p1 co-port.
+
+Both primitive `MakeFaceWithCurves` adapters now call `topology::brep::p7`:
+`trimmed_face` supplies one four-curve loop with SAME orientations, and
+`detailed_face` forwards each loop, 3D curve, UV curve, orientation and loop point.
+Both pass the given region/domain, SAME surface orientation and the upstream
+null optional curve-on-surface flag. The cylindrical-box witness now reaches
+`SmBrep::MakeShellVertex` in `topology.brep_p9`, rather than stopping at p7.
+The pole-free sphere and downstream boolean call sites still cannot complete
+the earlier missing dependencies and remain uncertified.
+
+`Boolean2D` now uses `EFF_ZERO_DEG`, the default of upstream `IsParallelTo`
+(`SmVector3d.h:143`), instead of the 0.5-degree zone angle. The 0.01-degree
+regression returns actual invalid-input status on both engines. The new 32
+boolean fixtures compare non-planar first/later surfaces, later primary and
+secondary faces, plane offsets and normal tilts around the actual thresholds,
+all five operations, empty operands and preserved seeded result slots. Ten
+valid coplanar cases execute the C++ and reach Rust's intersection dependency;
+they are deferred, not geometry/mutation comparisons. Rust's non-planar fixture
+retains the canonical sphere's analytic revolution base (the available Surface
+variant); native uses SmSphere. Rust's validation fixture builds surface/face
+records while C++ constructs trimmed faces: only validation status, restored
+edit flags and result presence are compared, not those fixture topologies.
+
+Two kernel tests pin the angular rejection (including 0.01 degrees), restore
+edit/context/result state on error, and observe both plane domains after
+coverage and before `IntersectInsertRelate`. These tests prevent a deferred
+result from masking regression of the validation prefix. The angular test
+accepts 0, 0.00005 and 180 degrees up to the intersection dependency, while
+0.0002 and 0.01 degrees must be invalid input.
+
+Rear X tilt is read at op4 index 19 in Rust and C++; four new cone cases vary it
+independently. The nonempty sweep layout appends its checked count and curve
+blocks; 24 cases cover line, full circle, open arc and skew line with/without
+caps and distance 0, 2 or -1. The two negative full-circle cases hang in native
+`N_CreateEllipticalArcAngTypeTol` via `SmCone::AdjustSTEPUVDomain` (confirmed in
+GDB; see `plan/upstream-issues.md`). An exact native preflight repeats the
+upstream full-circle and axis-parallel branch tests and rejects that negative
+cylinder branch, preserving accepted negative line/open-arc fixtures. The native
+harness transfers sweep curve ownership once, and accounts for Boolean2D
+consuming B on success. Deferred nonempty sweeps/cones do not certify their
+constructed surfaces or topology. Bottom cylindrical-box points are no longer
+added to Vec3::ZERO, preserving negative-zero components.
+
+Current differential gate: **749 cases, 689 pass, 0 fail, 53 deferred, 7 rejected,
+max_rel_err 0**, no absolute floors. Deferrals: boolean.topology_intersector_p2
+10, topology.brep_p3 5, topology.brep_p8 37, topology.brep_p9 1. The original five
+preflight rejections remain, plus the two negative-circle hangs. Every pass
+compares real helper values or returned status/state records; no empty passes.
+
+### PR #213 follow-up integration with main 5040b0b2 (2026-10-19)
+
+Merged #130 (`topology.brep_p10`) after the review fixes. Kept main's B-rep p7/p10
+code and reports, then reran both affected units: p7 316 cases / 197 pass /
+119 deferred; p10 1404 / 839 / 565; both zero failures and zero relative error.
+Primitive p1 stays 749 cases / 689 pass / 53 deferred / 7 rejected, zero failures
+and zero relative error. Sensitivity still detects 689/689 compared cases.
+
+Validation on this integration: fmt (including both include!d unit files),
+workspace Clippy with default and native features, 1397 kernel tests, wasm32,
+and five native primitive FFI tests. Two focused 500-case fuzz runs finish with
+zero differences, crashes, panics or timeouts: boolean 433 rejected / 31 malformed /
+36 ran; nonempty sweeps 413 rejected / 46 malformed / 41 ran. Those executed
+fuzz cases include dependency deferrals and are not additional geometry parity
+claims. The upstream checkout is clean at the pinned c9c5979.
+
+## PR #213 analytic sweep regression resolved (2026-10-19)
+
+Real analytic skew lines from (0,0,0) to (1,0,1), swept along Z at distances
+0/2/-1 with either cap flag, exposed Rust status 1001 from the raw B-spline
+base versus native success before the missing face dependency. The extrusion
+now materializes a lazy line through its virtual MakeNurb and applies existing
+owner parameterization. A finite swapped extrusion with domain [-.5,-2,2,3]
+also exposed a classification point of (0,0,0) versus native (-.5,0,-.5): native
+GetEnds reenters owner construction while IsLinear retains its earlier sample
+domain. The shared classification suffix now accepts that captured domain and
+the constructor preserves the same side effects and operation order.
+
+Six direct surface regressions compare complete native state; extrusion p1
+passes 2061/2061 exactly. Primitive p1: 773 cases, 689 exact passes, zero failures,
+75 dependency deferrals and nine native rejections; all 689 perturbations are
+detected. Curve p5: 3095 passes/two deferred; extrusion p2: 1148 passes/225 deferred;
+translational sweep geometry: 719 passes/50 deferred/19 rejected, all zero failures.
+No tolerance or absolute floor changed. Kernel tests: 1398 passed. The complete
+local --green gate: 213 units, 114 passed, 99 partial, zero failed. Both focused
+500-case FFI fuzz runs completed without differences, crashes, panics or timeouts.
