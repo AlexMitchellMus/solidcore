@@ -1270,7 +1270,7 @@ mod tests {
             &mut self,
             id: BrepId,
             body: impl FnOnce(
-                &Kernel,
+                &mut Kernel,
                 &mut Brep,
                 &dyn Fn(FaceId) -> crate::geom::object::ObjectRef,
             ) -> Result<T>,
@@ -1285,7 +1285,7 @@ mod tests {
                     100_000 + u64::from(id.index()) * 10_000 + u64::from(face.index()) * 97,
                 ),
             };
-            body(&self.kernel, brep, &face_objects)
+            body(&mut self.kernel, brep, &face_objects)
         }
         fn with_breps_mut<T>(
             &mut self,

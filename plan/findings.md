@@ -7898,7 +7898,7 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   rebasing the published branch; preserved both appended findings sections. Available
   `SweepAccess` defaults now call `Brep::infinite_region`, owning-list face/wire
   queries, region/shell traversals, part 6 edge copying, part 7 face construction and
-  copying, and part 3 edge-use binormal evaluation. Only unavailable callees remain
+  copying, part 3 edge-use binormal evaluation, and part 10 topology removal. Only unavailable callees remain
   deferred locally; the stitch owner is `heal.stitch_p2`. Borrow-splitting callbacks
   pass the real caller context and face-object resolver, without a default kernel
   or inferred object keys. Native binormal point/vector outputs are written only on

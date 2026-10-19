@@ -111,7 +111,7 @@ pub trait SweepAccess {
     fn with_brep_mut<T>(
         &mut self,
         brep: BrepId,
-        body: impl FnOnce(&Kernel, &mut Brep, &dyn Fn(FaceId) -> ObjectRef) -> Result<T>,
+        body: impl FnOnce(&mut Kernel, &mut Brep, &dyn Fn(FaceId) -> ObjectRef) -> Result<T>,
     ) -> Result<T>;
     /// Borrow distinct source and destination B-reps, using the destination's
     /// actual context and face identity resolver. The engine only copies between
@@ -401,13 +401,12 @@ pub trait SweepAccess {
         "topology.brep_p3",
         "SmBrep::CopyVertices"
     );
-    // UNPORTED(topology.brep_p10): SmBrep::RemoveAllTopology
-    deferred!(
-        /// `SmBrep::RemoveAllTopology`.
-        fn remove_all_topology(brep: BrepId) -> ();,
-        "topology.brep_p10",
-        "SmBrep::RemoveAllTopology"
-    );
+    /// `SmBrep::RemoveAllTopology`, using its actual mutable caller context.
+    fn remove_all_topology(&mut self, brep: BrepId) -> Result<()> {
+        self.with_brep_mut(brep, |kernel, brep, _| {
+            crate::topology::brep::p10::remove_all_topology(kernel, brep)
+        })
+    }
     /// `SmBrep::CopyFaces` with the scoped merge notifier's edge mates.
     fn copy_faces(
         &mut self,

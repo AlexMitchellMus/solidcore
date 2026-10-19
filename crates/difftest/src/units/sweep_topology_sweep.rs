@@ -183,7 +183,7 @@ impl SweepAccess for Model {
         &mut self,
         id: BrepId,
         body: impl FnOnce(
-            &Kernel,
+            &mut Kernel,
             &mut Brep,
             &dyn Fn(FaceId) -> solidcore::geom::object::ObjectRef,
         ) -> Result<T>,
@@ -196,7 +196,7 @@ impl SweepAccess for Model {
             type_code: solidcore::geom::assert_array::labels::FACE_TYPE,
             key: ObjectKey(100_000 + u64::from(id.index()) * 10_000 + u64::from(face.index()) * 97),
         };
-        body(&self.k, brep, &face_objects)
+        body(&mut self.k, brep, &face_objects)
     }
     fn with_breps_mut<T>(
         &mut self,
@@ -554,6 +554,32 @@ mod tests {
         model.b[0].set_infinite_region(None);
         assert!(matches!(
             model.infinite_region(b),
+            Err(SolidError::Upstream { code: 1006, .. })
+        ));
+        Ok(())
+    }
+    #[test]
+    fn remove_all_topology_calls_the_live_port_and_preserves_editing_errors() -> Result<()> {
+        let mut model = Model::new([1., 0., 0.])?;
+        let brep = BrepId::from_index(0);
+        assert!(matches!(
+            model.remove_all_topology(brep),
+            Err(SolidError::Upstream {
+                code: solidcore::error::SM_ERR,
+                ..
+            })
+        ));
+        model.b[0].set_editing_enabled(true);
+        assert!(matches!(
+            model.remove_all_topology(brep),
+            Err(SolidError::Unported {
+                unit: "topology.brep_p5",
+                ..
+            })
+        ));
+        assert!(model.b[0].editing_enabled());
+        assert!(matches!(
+            model.remove_all_topology(BrepId::from_index(99)),
             Err(SolidError::Upstream { code: 1006, .. })
         ));
         Ok(())
