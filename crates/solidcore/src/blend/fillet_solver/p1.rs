@@ -2608,11 +2608,10 @@ pub fn test_analytic_surface(k: &Kernel, surface: AnalyticTestSurface<'_>) -> Re
         AnalyticTestSurface::Torus(t) => t.base.base(),
     };
     match Cone::is_nurb_surface_cone(k, bss, 1.0) {
-        Ok(Some(_)) => Ok(true),
         Ok(None) => Ok(false),
         // upstream returns the iso curve status as the SmBoolean: a failing (non-zero)
         // status reads as TRUE
-        Err(SolidError::Upstream { .. }) => Ok(true),
+        Ok(Some(_)) | Err(SolidError::Upstream { .. }) => Ok(true),
         Err(e) => Err(e),
     }
 }
