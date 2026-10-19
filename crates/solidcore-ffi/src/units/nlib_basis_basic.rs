@@ -30,8 +30,8 @@
 //!   allocates);
 //! - `make_compatible`: at least `degree + 1` knots, `|knot| <= 1e100`, and a positive
 //!   range `U[m] - U[0] >= 1e-100` per vector (so the rescale stays finite), and no read
-//!   past `R[mr]` or `S[ms]` (upstream-issues UB-13: degree 0 with ends of multiplicity
-//!   > 1, unclamped or unsorted vectors, too few knots for the degree). That last check
+//!   past `R[mr]` or `S[ms]` (upstream-issues UB-13: degree 0 with repeated end knots,
+//!   unclamped or unsorted vectors, too few knots for the degree). That last check
 //!   is exact: [`make_compatible_reads_in_bounds`] replays upstream's rescale (with
 //!   `N_BasisReparam` itself) and index walk in the shim. The shim still pads both
 //!   vectors with `+inf` entries.
