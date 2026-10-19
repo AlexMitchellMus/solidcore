@@ -1371,6 +1371,24 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** crash (out-of-bounds read and write through a stale pointer).
 - **Rust port:** `nurbs::nurbs_srf::decompose_srf` bounds the patch index and returns an error. The `blend.fillet_geom_p1` shim reads back the knot vector the real constructor left and refuses (`SC_ERR_ARG`), for the six ops that build a surface cache, a surface whose constructed v vector has start multiplicity above `degree + 1`; that is the crash precondition, so it also refuses some runs that would complete because their path returns before building the cache (28 of 169 such programs in the round-5 review: `TwoPnts` 1001 and Fb-op exits before the cache fetch). It does not re-implement the fixup (a replica in the Rust wrapper missed the end-snap route). The u over-multiplicity, non-monotone constructed vectors, curves and the other ops are compared. Comparing the non-monotone vectors exposed three port bugs on the cache path, fixed in PR #147: the Rust caches held a `Clone` of their surface (the copy constructor, which runs the fixup a second time) where upstream holds a pointer, `compute_net_constants` returned the error of a failed `N_SrfEvalPt` that upstream ignores, and `subdivide_node` returned the error of a failed patch split that upstream's `GW_ERR` only logs (the children stay zero-filled).
 
+#### UB-175. `SmFilletVertex::CalcVertOnVert` dereferences a missing or non-vertex classification object
+- **Location:** `source/SMLib/src/SmFilletGeom.cpp:2337-2345` (`SmFilletVertex::CalcVertOnVert`), reached from `SmFilletVertex::CalcCornerVertGeom` (`:1434`) for an `SM_FV_ON_VERTEX` vertex.
+- **What happens:** `(SmVertex*)GetPointClassObject()` is used without a check: a vertex whose point classification has no object dereferences `NULL` in `pVert->GetPoint()`, and an object of another kind (an edge use or face) is cast blindly and read as a vertex. There is no `NER` as in the sibling calculators.
+- **Trigger:** `CalcCornerVertGeom()` on an `SM_FV_ON_VERTEX` fillet vertex whose classification object is `NULL` or not an `SmVertex`.
+- **How found:** read during porting (`blend.fillet_geom_p3`, PR #242).
+- **Confirmed:** no (the difftest shim refuses such models, `SC_ERR_ARG`).
+- **Severity:** crash (NULL dereference) / UB (wrong-type cast).
+- **Rust port:** `FilletBrep::calc_vert_on_vert` returns `SM_ERR_NULL_POINTER` without an object and `SolidError::InvalidInput` for an object that is not a vertex.
+
+#### UB-176. `SmFilletVertex::CalcMateGeom` recurses without bound through a cycle of mates
+- **Location:** `source/SMLib/src/SmFilletGeom.cpp:3480-3490` (`SmFilletVertex::CalcMateGeom`: `pMainFV->CalcCornerVertGeom()`), with `CalcCornerVertGeom` (`:1434`) calling `CalcMateGeom` for an `SM_FV_MATE` vertex.
+- **What happens:** A mate computes its main vertex (`GetMate(0)`) first, unprocessed, through `CalcCornerVertGeom`; when the main vertex is itself an unprocessed mate whose `GetMate(0)` leads back (a cycle of `SM_FV_MATE` vertices, including a vertex that is its own mate), the two calls recurse until the stack overflows. Nothing marks a vertex as in progress.
+- **Trigger:** two unprocessed `SM_FV_MATE` fillet vertices that are each other's `GetMate(0)`.
+- **How found:** read during porting (`blend.fillet_geom_p3`, PR #242).
+- **Confirmed:** no (the difftest shim refuses mate cycles, `SC_ERR_ARG`).
+- **Severity:** crash (stack overflow).
+- **Rust port:** the nesting is bounded by `blend::fillet_geom::p3::MAX_MATE_DEPTH` (64; upstream's corners nest it at most once); deeper nesting is `SolidError::InvalidInput`.
+
 ### Healer target management
 
 #### UB-163. Uncached healer props removal leaves targets that resize into NULL props holes

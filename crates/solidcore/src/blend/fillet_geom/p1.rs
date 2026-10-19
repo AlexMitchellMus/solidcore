@@ -1596,7 +1596,7 @@ impl FilletBrep {
 
     /// `SmVertex::SetPoint`: `Notify(SM_NO_CHANGE_GEOMETRY)` resets the cached gaps of
     /// every vertex use of the vertex, then the point is stored.
-    fn set_vertex_point(&mut self, v: VertexId, point: Point3) -> Result<()> {
+    pub fn set_vertex_point(&mut self, v: VertexId, point: Point3) -> Result<()> {
         for vu in self.brep.vertex(v)?.vertexuses.clone() {
             let vu = self.brep.vertexuse_mut(vu)?;
             vu.vertex_edge_gap.reset();
