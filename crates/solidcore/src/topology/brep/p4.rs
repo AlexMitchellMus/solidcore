@@ -75,7 +75,9 @@
 //!   dereferences `pL->m_pLU` (undefined behaviour only).
 //!   The flag is restored on every return, including [`SolidError::Unported`].
 //! - **Stitching.** `StitchFaces` builds the `SmStitch` (`heal.stitch_p1`) with its
-//!   options; `SmStitch::DoStitching` (unit `heal.stitch_p2`) is not ported yet.
+//!   options and runs `SmStitch::DoStitching` (`heal.stitch_p2`) without the min-gap
+//!   outputs; its edge counts (`ULONG`) are `u32` in [`StitchOutcome`] (a count past
+//!   `u32::MAX` is [`SolidError::InvalidInput`]).
 //! - **Bounds.** No recursion; every loop is bounded by a record list. The edge-use
 //!   walks are those of the ported `CollectEdgeuses` (bounded there).
 
@@ -87,6 +89,7 @@ use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::object::{NotifyOperation, ObjectRef};
 use crate::heal::stitch::p1::{DefaultStitchCallback, Stitch};
+use crate::heal::stitch::p2::MinGapRequest;
 use crate::kernel::Kernel;
 use crate::math::{Point2, Vec3, EFF_ZERO};
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
@@ -113,6 +116,7 @@ use std::collections::BTreeMap;
 const OP_DELETE_EDGE: &str = "topology::brep::p4::delete_edge";
 const OP_DELETE_VERTEX: &str = "topology::brep::p4::delete_vertex";
 const OP_SHRINK: &str = "topology::brep::p4::shrink_geometry";
+const OP_STITCH: &str = "topology::brep::p4::stitch_faces";
 const OP_DESTROY: &str = "topology::brep::p4::destroy";
 
 /// The caller's state the notifications of [`delete_edge`] and [`delete_vertex`]
@@ -1463,12 +1467,17 @@ fn do_stitching(
     vertices: Option<&[VertexId]>,
     edges: Option<&[EdgeId]>,
 ) -> Result<StitchOutcome> {
-    let _ = (k, b, stitch, vertices, edges);
-    // UNPORTED(heal.stitch_p2): SmStitch::DoStitching
-    Err(SolidError::unported(
-        "SmStitch::DoStitching",
-        "heal.stitch_p2",
-    ))
+    // the min-gap outputs are not requested (NULL)
+    let r = stitch.do_stitching(k, b, vertices, edges, MinGapRequest::default())?;
+    let count = |n: u64| {
+        u32::try_from(n).map_err(|_| SolidError::invalid_input(OP_STITCH, "edge count overflow"))
+    };
+    Ok(StitchOutcome {
+        stitched_edges: count(r.stitched_edges)?,
+        lamina_edges: count(r.lamina_edges)?,
+        max_vertex_edge_gap: r.max_vertex_gap,
+        max_edge_face_trim_curve_gap: r.max_edge_gap,
+    })
 }
 
 /// `SmBrep::StitchFaces`: glues coincident vertex and edge pairs of the B-rep (of the
@@ -1477,9 +1486,9 @@ fn do_stitching(
 ///
 /// # Errors
 ///
-/// Those of the stitcher; [`SolidError::Unported`] while the bounding-box lock
-/// (`SmBrep::LockBoundingBox`, unit `query.brep`), the face queries and
-/// `SmStitch::DoStitching` are not ported. The lock ([`LockBrepBox`]) is released when
+/// Those of the face queries and the stitcher; [`SolidError::Unported`] while the
+/// bounding-box lock (`SmBrep::LockBoundingBox`, unit `query.brep`) and the stitcher's
+/// callees are not ported. The lock ([`LockBrepBox`]) is released when
 /// it goes out of scope, on every path.
 pub fn stitch_faces(
     k: &mut Kernel,
