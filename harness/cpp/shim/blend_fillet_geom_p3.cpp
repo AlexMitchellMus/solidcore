@@ -496,7 +496,7 @@ struct Model
         if (g1->GetFilletSurface() == NULL || g2->GetFilletSurface() == NULL)
             return true;
         // without a B-spline 3D curve the surface/surface intersection is called with
-        // m_cpCorner->GetContext() (UB-196)
+        // m_cpCorner->GetContext() (UB-200)
         if (e->GetCurve() == NULL || !e->GetCurve()->IsKindOf(SmBSplineCurve_TYPE))
             return e->GetFilletCorner() != NULL;
         return p->GetUVTrimCurvePointer() != NULL && m->GetUVTrimCurvePointer() != NULL;
@@ -701,7 +701,7 @@ int32_t run(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
         // upstream dereferences the solver, its offset surfaces and (but for a corner
         // fillet) its first edge use; the analytic fillets (CalcConeFilletGeom, unit
         // blend.fillet_solver_p2) read solver data this shim does not build; without a
-        // march direction it may read the first of no sorted points (UB-195)
+        // march direction it may read the first of no sorted points (UB-199)
         SmFilletSolver* fs = geom == NULL ? NULL : geom->GetFilletSolver();
         if (fs == NULL || fs->GetSurface(0) == NULL || fs->GetSurface(1) == NULL ||
             (geom->GetFilletGeomType() != SM_FG_CORNER_FILLET && fs->GetEdgeuse(0) == NULL) ||
