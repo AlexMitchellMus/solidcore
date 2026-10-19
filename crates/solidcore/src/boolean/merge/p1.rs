@@ -23,9 +23,10 @@
 //! borrowed explicitly; edge/vertex mate storage is co-ported in
 //! `boolean::topology_intersector::p1` and shared mutably with `merge_p5`. B-rep
 //! edge/shell traversal uses `topology::brep::p1` (`GetEdges`, `GetShells`; the
-//! latter deduplicates shells in native region order).
-//! Region propagation takes refs, their `IsVoid` results and source-list callback
-//! handles.
+//! latter still stops at `SmRegion::GetShells`, unit `topology.shell`).
+//! Region propagation takes refs and
+//! their `IsVoid` results and source-list callback handles, because arena regions
+//! do not yet carry shell state.
 //! Missing topology mutations and point classification return
 //! Unported at the first call reached. The temporary transform waits on B-rep
 //! bounding boxes before any mutation; no translation is faked. Destruction is
@@ -359,13 +360,14 @@ fn brep_edges(brep: &Brep) -> Result<Vec<EdgeId>> {
     crate::topology::brep::p1::edges(brep, None)
 }
 
-/// `SmBrep::GetShells` in native region/shell order.
-fn brep_shells(k: &mut Kernel, brep: &Brep) -> Result<Vec<ShellId>> {
-    crate::topology::brep::p1::shells(k, brep, None)
-}
-
+/// `SmBrep::GetVertices` (ported in `topology::brep::p1`: the vertex list in list order).
 fn brep_vertices(brep: &Brep) -> Result<Vec<VertexId>> {
     crate::topology::brep::p1::vertices(brep, None)
+}
+
+/// `SmBrep::GetShells` (ported in `topology::brep::p1`; `&mut Kernel` for its mark lock).
+fn brep_shells(k: &mut Kernel, brep: &Brep) -> Result<Vec<ShellId>> {
+    crate::topology::brep::p1::shells(k, brep, None)
 }
 
 fn set_face_tolerance(_brep: &mut Brep, _face: FaceId, _tolerance: f64) -> Result<()> {
