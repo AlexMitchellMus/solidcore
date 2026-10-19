@@ -1570,3 +1570,6 @@ SC_EXPORT int32_t sc_blend_fillet_geom_p1_eval(int32_t op, const double* in, int
     return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len);
     SC_CATCH
 }
+
+// Wrappers of SmFilletGeom.cpp file-statics for the shim of unit blend.fillet_geom_p6.
+#include "blend_fillet_geom_p6_static.inc"

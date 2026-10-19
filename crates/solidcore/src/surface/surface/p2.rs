@@ -4027,6 +4027,21 @@ fn insert_split(split_params: &mut Vec<f64>, t: f64, tol: f64) {
     }
 }
 
+/// The handle of the curve `sm_IntersectAndSplit` analyses (upstream: the solutions'
+/// object is that curve, whose natural interval scales the solver's duplicate test).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SplitCurveHandle(Extent1d);
+
+impl SolutionObject for SplitCurveHandle {
+    fn kind(&self) -> crate::geom::solution_array::ObjectKind {
+        crate::geom::solution_array::ObjectKind::Curve
+    }
+
+    fn natural_interval(&self) -> Option<Extent1d> {
+        Some(self.0)
+    }
+}
+
 /// `sm_IntersectAndSplit`: adds the parameters where `uv_curve` over `interval`
 /// crosses the plane through `plane_pnt` with normal `plane_norm` to the sorted
 /// `split_params` (skipping values within `SM_EFF_ZERO_SQRT` of one there).
@@ -4034,7 +4049,7 @@ fn insert_split(split_params: &mut Vec<f64>, t: f64, tol: f64) {
 /// # Errors
 ///
 /// Those of `SmCurve::GlobalPropertyAnalysis`.
-pub fn intersect_and_split<O: SolutionObject>(
+pub fn intersect_and_split(
     k: &Kernel,
     uv_curve: &Curve,
     interval: &Extent1d,
@@ -4044,7 +4059,7 @@ pub fn intersect_and_split<O: SolutionObject>(
 ) -> Result<()> {
     let plane_d = -plane_norm.dot(plane_pnt);
     let vectors = [plane_norm];
-    let analysis = uv_curve.global_property_analysis::<O>(
+    let analysis = uv_curve.global_property_analysis(
         k,
         interval,
         CurvePropertyType::PlaneIntersection,
@@ -4053,7 +4068,7 @@ pub fn intersect_and_split<O: SolutionObject>(
             property_value: Some(plane_d),
             opt_vectors: &vectors,
             want_comb: false,
-            handle: None,
+            handle: Some(SplitCurveHandle(uv_curve.natural_interval())),
         },
     )?;
 

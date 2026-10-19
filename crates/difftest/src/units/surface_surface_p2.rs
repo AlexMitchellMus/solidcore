@@ -1960,7 +1960,7 @@ fn rust_static_op(op: &OpIn) -> Result<Run, HarnessError> {
             let c = SmCurve::from(curve_of(c)?);
             record(|o| {
                 let mut s = s.clone();
-                intersect_and_split::<Handle>(
+                intersect_and_split(
                     &k,
                     &c,
                     &Extent1d::from_min_max(ivl[0], ivl[1]),

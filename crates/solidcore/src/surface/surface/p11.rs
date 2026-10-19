@@ -1865,7 +1865,7 @@ impl Surface {
                     {
                         // split the UVcurve at the Surface discontinuity (SER: checked)
                         let knot = *knots.get(iu).ok_or(SolidError::sm_err(OP_LIFT))?;
-                        intersect_and_split::<BoundaryCurveHandle>(
+                        intersect_and_split(
                             k,
                             uv_curve,
                             interval,
@@ -1887,7 +1887,7 @@ impl Surface {
                     {
                         // (SER: checked)
                         let knot = *knots.get(iv).ok_or(SolidError::sm_err(OP_LIFT))?;
-                        intersect_and_split::<BoundaryCurveHandle>(
+                        intersect_and_split(
                             k,
                             uv_curve,
                             interval,
