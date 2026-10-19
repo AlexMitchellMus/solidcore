@@ -23,7 +23,7 @@ extern "C" {
 }
 
 /// Validate the fixed record before entering native code. Boolean and enum codes
-/// are exact; tolerances are finite and nonnegative. There are no input allocations
+/// are exact; tolerances are finite (the native constructor applies `fabs`). There are no input allocations
 /// or recursive native paths for these empty B-rep fixtures.
 pub fn validate(input: &[f64]) -> Result<(), FfiError> {
     let mut reader = Cursor::new(input);
@@ -33,7 +33,7 @@ pub fn validate(input: &[f64]) -> Result<(), FfiError> {
     }
     reader.index(7)?;
     let tolerance = reader.num()?;
-    if !tolerance.is_finite() || tolerance < 0.0 {
+    if !tolerance.is_finite() {
         return Err(FfiError::InvalidArgument("invalid tolerance".into()));
     }
     for _ in 0..5 {
@@ -128,15 +128,28 @@ mod tests {
     }
 
     #[test]
-    fn finite_nonnegative_tolerances_are_kept_without_scale_cutoff() {
-        for tolerance in [0.0, 1e-300, 1e-9, 1.0, 1e100, f64::MAX] {
+    fn finite_tolerances_are_kept_without_sign_or_scale_cutoff() {
+        for tolerance in [
+            0.0,
+            -0.0,
+            -1e-300,
+            -0.25,
+            -1.0,
+            -f64::MAX,
+            9876543.21,
+            1e-300,
+            1e-9,
+            1.0,
+            1e100,
+            f64::MAX,
+        ] {
             let mut values = record();
             if let Some(slot) = values.get_mut(7) {
                 *slot = tolerance;
             }
             assert!(validate(&values).is_ok());
         }
-        for tolerance in [-1e-300, -1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        for tolerance in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
             let mut values = record();
             if let Some(slot) = values.get_mut(7) {
                 *slot = tolerance;

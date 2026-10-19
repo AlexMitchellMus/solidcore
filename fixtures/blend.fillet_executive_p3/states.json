@@ -479,6 +479,86 @@
           1
         ]
       }
+    },
+    {
+      "name": "default-sentinel",
+      "inputs": {
+        "record": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          9876543.21,
+          0,
+          1,
+          0,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "name": "negative-tolerance",
+      "inputs": {
+        "record": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          -0.25,
+          0,
+          1,
+          0,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "name": "negative-default-magnitude",
+      "inputs": {
+        "record": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          -9876543.21,
+          0,
+          1,
+          0,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "name": "negative-tiny-tolerance",
+      "inputs": {
+        "record": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          -1e-300,
+          0,
+          1,
+          0,
+          1,
+          1
+        ]
+      }
     }
   ]
 }

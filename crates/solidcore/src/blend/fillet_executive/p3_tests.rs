@@ -3,13 +3,21 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
 use super::*;
+use crate::boolean::topology_intersector::p1::{IntersectionResults, IntersectionTable};
 use crate::geom::solution_array::ObjectKind;
+use crate::intersect::point_class::ClassObjectKind;
+use std::cell::Cell;
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Handle(u8);
 impl ClassObject for Handle {
     fn class_kind(&self) -> ClassObjectKind {
-        ClassObjectKind::Other
+        if (10..=13).contains(&self.0) {
+            ClassObjectKind::Edge
+        } else {
+            ClassObjectKind::Other
+        }
     }
 }
 impl SolutionObject for Handle {
@@ -19,8 +27,24 @@ impl SolutionObject for Handle {
 }
 
 #[derive(Default)]
+#[allow(clippy::struct_excessive_bools)] // independent scripted callback scenarios
 struct Access {
     process_error: Option<SolidError>,
+    mapped_edges: bool,
+    corner_enables_global: bool,
+    degenerate_edge: Option<Handle>,
+    insert_live_state: bool,
+    geoms: Vec<Handle>,
+    append_geom: bool,
+    geom_snapshots: Cell<usize>,
+    geom_reads: Cell<usize>,
+    created_attributes: usize,
+    attributes: BTreeMap<Handle, Vec<Handle>>,
+    removed_edges: Vec<Option<Handle>>,
+    marked_pairs: Vec<(Handle, Handle)>,
+    orient_error: Option<SolidError>,
+    merge_error: Option<SolidError>,
+
     piecewise_error: Option<SolidError>,
     stitch_error: bool,
     editing: bool,
@@ -38,11 +62,23 @@ fn absent<T>() -> Result<T> {
     Err(invalid("test handle has no geometry"))
 }
 impl ExecutiveAccess<Handle> for Access {
-    fn make_corner_topology(&mut self, _: &mut Kernel, _: Handle) -> Result<()> {
+    fn make_corner_topology(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        executive: &mut FilletExecutive<Handle>,
+    ) -> Result<()> {
         self.events.push("corner_topology");
+        if self.corner_enables_global {
+            executive.options.global_merge = true;
+        }
         Ok(())
     }
-    fn corner_error_info(&self, _: Handle) -> Result<CornerView<Handle>> {
+    fn corner_error_info(
+        &self,
+        _: Handle,
+        _: &FilletExecutive<Handle>,
+    ) -> Result<CornerView<Handle>> {
         self.corner_metadata
             .clone()
             .ok_or_else(|| invalid("no corner metadata"))
@@ -54,7 +90,7 @@ impl ExecutiveAccess<Handle> for Access {
         assert!(self.corner_predicates[0]);
         Ok(self.corner_predicates[1])
     }
-    fn corner_solvers(&self, _: Handle) -> Result<Vec<Handle>> {
+    fn corner_solvers(&self, _: Handle, _: &FilletExecutive<Handle>) -> Result<Vec<Handle>> {
         assert!(self.corner_predicates[0] && self.corner_predicates[1]);
         Ok(vec![Handle(3), Handle(4)])
     }
@@ -65,7 +101,12 @@ impl ExecutiveAccess<Handle> for Access {
         Ok(0.125)
     }
     fn solver_geoms(&self, _: Handle) -> Result<Vec<Handle>> {
-        Ok(vec![])
+        self.geom_snapshots.set(self.geom_snapshots.get() + 1);
+        Ok(self.geoms.clone())
+    }
+    fn solver_geom(&self, _: Handle, index: usize) -> Result<Option<Handle>> {
+        self.geom_reads.set(self.geom_reads.get() + 1);
+        Ok(self.geoms.get(index).copied())
     }
     fn solver_edge(&self, _: Handle) -> Result<Handle> {
         Ok(Handle(5))
@@ -74,10 +115,15 @@ impl ExecutiveAccess<Handle> for Access {
         Ok(0.125)
     }
     fn geom_face(&self, _: Handle) -> Result<Option<Handle>> {
-        absent()
+        Ok(Some(Handle(2)))
     }
-    fn topo_edge(&self, _: Handle) -> Result<TopoEdgeView<Handle>> {
-        absent()
+    fn topo_edge(&self, edge: Handle) -> Result<TopoEdgeView<Handle>> {
+        assert_eq!(edge, Handle(20));
+        Ok(TopoEdgeView {
+            on_edge: true,
+            has_curve: true,
+            brep_edge: Some(Handle(11)),
+        })
     }
     fn vertex_point(&self, _: Handle) -> Result<Point3> {
         Ok(self.corner_point)
@@ -111,8 +157,14 @@ impl ExecutiveAccess<Handle> for Access {
         }
         Ok(())
     }
-    fn edges(&self, _: Handle) -> Result<Vec<Handle>> {
-        Ok(vec![])
+    fn edges(&self, brep: Handle) -> Result<Vec<Handle>> {
+        Ok(if !self.mapped_edges {
+            vec![]
+        } else if brep == Handle(0) {
+            vec![Handle(10), Handle(12)]
+        } else {
+            vec![Handle(11), Handle(13)]
+        })
     }
     fn vertices(&self, _: Handle) -> Result<Vec<Handle>> {
         Ok(vec![])
@@ -120,27 +172,37 @@ impl ExecutiveAccess<Handle> for Access {
     fn faces(&self, _: Handle) -> Result<Vec<Handle>> {
         Ok(vec![Handle(2)])
     }
-    fn add_attribute(&mut self, _: Handle, _: Option<Handle>) -> Result<()> {
-        absent()
+    fn add_attribute(&mut self, edge: Handle, attribute: Option<Handle>) -> Result<()> {
+        if let Some(attribute) = attribute {
+            self.attributes.get_mut(&attribute).unwrap().push(edge);
+        }
+        Ok(())
     }
     fn new_keep_attribute(&mut self, _: &Kernel) -> Result<Handle> {
-        absent()
+        let attribute = Handle(u8::try_from(30 + self.created_attributes).unwrap());
+        self.created_attributes += 1;
+        self.attributes.insert(attribute, vec![]);
+        self.events.push("new_attr");
+        Ok(attribute)
     }
-    fn attribute_users(&self, _: Handle) -> Result<Vec<Handle>> {
-        absent()
+    fn attribute_users(&self, attribute: Handle) -> Result<Vec<Handle>> {
+        Ok(self.attributes.get(&attribute).unwrap().clone())
     }
-    fn delete_attribute(&mut self, _: Handle) -> Result<()> {
-        absent()
+    fn delete_attribute(&mut self, attribute: Handle) -> Result<()> {
+        self.attributes.remove(&attribute).unwrap();
+        self.events.push("delete_attr");
+        Ok(())
     }
     fn with_marks<T>(
         &mut self,
         k: &mut Kernel,
         _: Handle,
         _: Handle,
-        _: &[(Handle, Handle)],
+        mates: &[(Handle, Handle)],
         body: impl FnOnce(&mut Self, &mut Kernel, &[ContextMark]) -> Result<T>,
     ) -> Result<T> {
         self.events.push("marks");
+        self.marked_pairs = mates.to_vec();
         body(self, k, &[])
     }
     fn shrink_face(&mut self, _: &mut Kernel, _: Handle) -> Result<()> {
@@ -250,7 +312,7 @@ impl ExecutiveAccess<Handle> for Access {
     ) -> Result<()> {
         assert!(copy.is_none() && reverse.is_none() && analytics);
         self.events.push("merge");
-        Ok(())
+        self.merge_error.clone().map_or(Ok(()), Err)
     }
     fn do_stitching(
         &mut self,
@@ -282,7 +344,12 @@ impl ExecutiveAccess<Handle> for Access {
             max_edge_gap: 0.0,
         })
     }
-    fn remove_topo_edges(&mut self, _: &mut Kernel, _: &mut FilletExecutive<Handle>) -> Result<()> {
+    fn remove_topo_edges(
+        &mut self,
+        _: &mut Kernel,
+        executive: &mut FilletExecutive<Handle>,
+    ) -> Result<()> {
+        self.removed_edges = executive.topo_edges.clone();
         self.events.push("remove_topo");
         Ok(())
     }
@@ -297,9 +364,20 @@ impl ExecutiveAccess<Handle> for Access {
     ) -> Result<()> {
         assert!(outward && !*solid && !unify && faces.is_none());
         self.events.push("orient");
-        Err(failure()) // upstream ignores this ordinary status
+        if self.created_attributes > 0 {
+            assert!(
+                !self.attributes.is_empty(),
+                "orientation must see temporary attributes"
+            );
+        }
+        self.orient_error.clone().map_or(Ok(()), Err) // ordinary errors are ignored
     }
-    fn calc_corner_vertices(&mut self, _: &mut Kernel, _: Handle) -> Result<()> {
+    fn calc_corner_vertices(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> Result<()> {
         self.events.push("corner_vertices");
         if self.corner_fail == Some("vertices") {
             Err(failure())
@@ -307,20 +385,143 @@ impl ExecutiveAccess<Handle> for Access {
             Ok(())
         }
     }
-    fn check_degeneracy(&mut self, _: &mut Kernel, _: Handle) -> Result<bool> {
+    fn check_degeneracy(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        executive: &mut FilletExecutive<Handle>,
+    ) -> Result<bool> {
         self.events.push("degeneracy");
+        if let Some(edge) = self.degenerate_edge {
+            executive
+                .topo_edges
+                .retain(|candidate| *candidate != Some(edge));
+            return Ok(true);
+        }
         Ok(false)
     }
-    fn adjust_topology(&mut self, _: &mut Kernel, _: Handle) -> Result<()> {
+    fn adjust_topology(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> Result<()> {
         self.events.push("adjust");
         Ok(())
     }
-    fn adjust_tangent_corner(&mut self, _: &mut Kernel, _: Handle) -> Result<()> {
+    fn adjust_tangent_corner(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> Result<()> {
         self.events.push("adjust_tangent");
         Ok(())
     }
-    fn calc_corner_edges(&mut self, _: &mut Kernel, _: Handle) -> Result<()> {
+    fn calc_corner_edges(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> Result<()> {
         self.events.push("corner_edges");
+        Ok(())
+    }
+    fn calc_fillet_geom(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        executive: &mut FilletExecutive<Handle>,
+    ) -> Result<()> {
+        executive.error.code = 6;
+        Ok(())
+    }
+    fn trim_rails(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> Result<()> {
+        Ok(())
+    }
+    fn make_face_brep(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: Handle,
+        executive: &mut FilletExecutive<Handle>,
+    ) -> Result<()> {
+        assert!(executive.fillet.is_some());
+        self.events.push("make_face");
+        if self.append_geom {
+            self.append_geom = false;
+            self.geoms.push(Handle(9));
+        }
+        Ok(())
+    }
+    fn intersect_insert_relate(
+        &mut self,
+        _: &mut Kernel,
+        _: &mut TopologyIntersector<Handle>,
+    ) -> Result<()> {
+        self.events.push("global");
+        Ok(())
+    }
+    fn insert_geom_topology(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        executive: &mut FilletExecutive<Handle>,
+    ) -> Result<()> {
+        if self.insert_live_state {
+            executive
+                .intersector
+                .seed_mates_for_test(&[(Handle(10), Handle(11))]);
+            let mut table = IntersectionTable::default();
+            table.brep_surfaces.push(Some(Handle(8)));
+            table.other_surfaces.push(Some(Handle(9)));
+            table.results.push(IntersectionResults::default());
+            executive.intersector.set_intersection_table(Some(table));
+        }
+        Ok(())
+    }
+    fn insert_corner_topology(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        executive: &mut FilletExecutive<Handle>,
+    ) -> Result<()> {
+        if self.insert_live_state {
+            assert_eq!(
+                executive
+                    .intersector
+                    .intersection_table()
+                    .unwrap()
+                    .brep_surfaces,
+                [Some(Handle(8))]
+            );
+            executive
+                .intersector
+                .seed_mates_for_test(&[(Handle(12), Handle(13))]);
+        }
+        Ok(())
+    }
+    fn trim_original_surfaces(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        kept: &mut Vec<Handle>,
+        _: &mut Vec<Handle>,
+        _: &[ContextMark],
+        executive: &mut FilletExecutive<Handle>,
+    ) -> Result<()> {
+        if self.insert_live_state {
+            assert_eq!(
+                executive.intersector.other_mate(Some(Handle(12))),
+                Some(Handle(13))
+            );
+        }
+        kept.push(Handle(2));
         Ok(())
     }
     fn calc_corner_geom(
@@ -483,6 +684,7 @@ fn stitching_retries_exactly_five_times_doubles_tolerance_and_ignores_orientatio
     executive.options.trimming = true;
     let mut access = Access {
         stitch_lamina: 1,
+        orient_error: Some(failure()),
         ..Access::default()
     };
     let mut k = Kernel::default();
@@ -624,4 +826,169 @@ fn corner_error_reporting_preserves_a_null_filleted_vertex() {
     ));
     assert_eq!(executive.error.code, 3);
     assert!(executive.error.vertex.is_none());
+}
+
+#[test]
+fn disabled_mapping_experiments_do_not_add_candidates_or_intersections() {
+    for trimming in [false, true] {
+        let mut executive = state();
+        executive.options.trimming = trimming;
+        executive.intersection_edges = vec![Some(Handle(12))];
+        executive.intersection_vertices = vec![Some(Handle(6))];
+        executive
+            .intersector
+            .seed_mates_for_test(&[(Handle(10), Handle(11))]);
+        let mut access = Access {
+            mapped_edges: true,
+            ..Access::default()
+        };
+        executive
+            .do_filleting(&mut Kernel::default(), &mut access, None)
+            .unwrap();
+        assert_eq!(access.created_attributes, 0);
+        assert!(access.removed_edges.is_empty());
+        assert!(executive.topo_edges.is_empty());
+        assert_eq!(executive.intersection_edges, [Some(Handle(12))]);
+        assert_eq!(executive.intersection_vertices, [Some(Handle(6))]);
+    }
+}
+
+#[test]
+fn corner_topology_updates_the_global_merge_branch_on_the_live_executive() {
+    let mut executive = state();
+    executive.corners.push(Handle(7));
+    let mut access = Access {
+        corner_enables_global: true,
+        ..Access::default()
+    };
+    executive
+        .do_filleting(&mut Kernel::default(), &mut access, None)
+        .unwrap();
+    assert!(executive.options.global_merge);
+    assert!(access.events.contains(&"global"));
+}
+
+#[test]
+fn degeneracy_removes_deleted_candidates_before_the_attribute_scan() {
+    let mut executive = state();
+    executive.corners.push(Handle(7));
+    executive.topo_edges.push(Some(Handle(20)));
+    executive.options.trimming = true;
+    let mut access = Access {
+        mapped_edges: true,
+        degenerate_edge: Some(Handle(20)),
+        ..Access::default()
+    };
+    executive
+        .do_filleting(&mut Kernel::default(), &mut access, None)
+        .unwrap();
+    assert_eq!(access.created_attributes, 0);
+    assert!(access.removed_edges.is_empty());
+}
+
+#[test]
+fn insertion_hooks_share_mates_and_existing_ssi_with_subsequent_phases() {
+    let mut executive = state();
+    executive.solvers.push(Handle(3));
+    executive.corners.push(Handle(7));
+    executive.options.topology_insertion = true;
+    executive.options.trimming = true;
+    let mut access = Access {
+        mapped_edges: true,
+        insert_live_state: true,
+        geoms: vec![Handle(8)],
+        ..Access::default()
+    };
+    executive
+        .do_filleting(&mut Kernel::default(), &mut access, None)
+        .unwrap();
+    assert_eq!(
+        access.marked_pairs,
+        [(Handle(10), Handle(11)), (Handle(12), Handle(13))]
+    );
+    assert!(executive.intersector.intersection_table().is_some());
+    assert_eq!(executive.error.code, 6);
+}
+
+#[test]
+fn temporary_attributes_survive_orientation_and_are_cleaned_on_errors_or_deferrals() {
+    for error in [
+        None,
+        Some(failure()),
+        Some(SolidError::unported(
+            "SmBrep::OrientTrimmedSurfaces",
+            "topology.brep_p3",
+        )),
+    ] {
+        let mut executive = state();
+        executive.options.trimming = true;
+        executive.topo_edges.push(Some(Handle(20)));
+        let mut access = Access {
+            mapped_edges: true,
+            orient_error: error.clone(),
+            ..Access::default()
+        };
+        let result = executive.do_filleting(&mut Kernel::default(), &mut access, None);
+        assert_eq!(
+            result.is_err(),
+            error.as_ref().is_some_and(SolidError::is_unported)
+        );
+        assert_eq!(access.created_attributes, 1);
+        assert!(access.attributes.is_empty());
+        assert_eq!(access.events.last(), Some(&"delete_attr"));
+        assert!(
+            access.events.iter().position(|s| *s == "orient").unwrap()
+                < access
+                    .events
+                    .iter()
+                    .position(|s| *s == "delete_attr")
+                    .unwrap()
+        );
+    }
+}
+
+#[test]
+fn face_creation_reads_the_live_geometry_array_without_repeated_snapshots() {
+    let mut executive = state();
+    executive.solvers.push(Handle(3));
+    let mut access = Access {
+        geoms: vec![Handle(8)],
+        append_geom: true,
+        ..Access::default()
+    };
+    executive
+        .create_fillet_brep(&mut Kernel::default(), &mut access, None)
+        .unwrap();
+    assert_eq!(
+        access.events.iter().filter(|s| **s == "make_face").count(),
+        2
+    );
+    assert_eq!(access.geom_reads.get(), 3);
+    assert_eq!(access.geom_snapshots.get(), 0);
+}
+
+#[test]
+fn temporary_attributes_are_also_cleaned_when_merge_fails_or_defers_before_orientation() {
+    for error in [
+        failure(),
+        SolidError::unported("SmBrep::MergeBrep", "topology.brep_p3"),
+    ] {
+        let mut executive = state();
+        executive.options.trimming = true;
+        executive.topo_edges.push(Some(Handle(20)));
+        let mut access = Access {
+            mapped_edges: true,
+            merge_error: Some(error.clone()),
+            ..Access::default()
+        };
+        assert_eq!(
+            executive.do_filleting(&mut Kernel::default(), &mut access, None),
+            Err(error)
+        );
+        assert_eq!(access.created_attributes, 1);
+        assert!(access.attributes.is_empty());
+        assert!(!access.events.contains(&"orient"));
+        assert_eq!(access.events.last(), Some(&"delete_attr"));
+        assert!(!access.editing);
+    }
 }

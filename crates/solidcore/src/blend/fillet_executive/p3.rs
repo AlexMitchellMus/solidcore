@@ -21,12 +21,14 @@
 //! calls return `Unported` without swallowing it in ignored-status branches. There
 //! is no input-dependent recursion. The two temporary flags and temporary attribute
 //! ownership are restored explicitly after fallible bodies, including on deferral.
+//! The upstream `cbi_MAP_TOPO_EDGES=0` experiments remain disabled. Parent-linked
+//! stage hooks borrow this live executive, never an adapter-owned duplicate.
 
 use crate::boolean::topology_intersector::p1::TopologyIntersector;
 use crate::error::{Result, SolidError};
 use crate::geom::object::NotifyOperation;
 use crate::geom::solution_array::SolutionObject;
-use crate::intersect::point_class::{ClassObject, ClassObjectKind};
+use crate::intersect::point_class::ClassObject;
 use crate::kernel::Kernel;
 use crate::math::Point3;
 use crate::topology::proto_topology::p1::CopyBrepMap;
@@ -232,22 +234,29 @@ pub struct StitchAttempt {
 /// Dependency access. Handles must preserve object identity across B-reps and
 /// resolve topology through typed `Brep` arenas. Required methods read dependency
 /// records or adapt existing APIs; default methods are precisely the missing calls, with complete arguments.
+/// Parent-linked corner/solver/geometry operations receive the live executive,
+/// including its options, lists, error info and intersector. Adapters must not
+/// retain a second executive or intersector; writes must be visible to the next phase.
 /// No claimed solver/corner implementation or record is reproduced here.
 pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     /// `GetName`, `GetCornerType`, `GetFilletedVertex` for error reporting only.
-    fn corner_error_info(&self, corner: O) -> Result<CornerView<O>>;
+    fn corner_error_info(&self, corner: O, executive: &FilletExecutive<O>)
+        -> Result<CornerView<O>>;
     /// `SmFilletCorner::IsBlendingCorner`.
     fn is_blending_corner(&self, corner: O) -> Result<bool>;
     /// `SmFilletCorner::IsTangentCorner`; called only for blending corners.
     fn is_tangent_corner(&self, corner: O) -> Result<bool>;
     /// `SmFilletCorner::GetFilletSolvers`; called only for tangent blending corners.
-    fn corner_solvers(&self, corner: O) -> Result<Vec<O>>;
+    /// Its edgeuse-to-solver lookup reads the current executive's solver list.
+    fn corner_solvers(&self, corner: O, executive: &FilletExecutive<O>) -> Result<Vec<O>>;
     /// `SmFilletCorner::GetFilletedVertex`.
     fn corner_vertex(&self, corner: O) -> Result<Option<O>>;
     /// `SmFilletCorner::GetThisApproxTol3d`.
     fn corner_approx_tolerance(&self, corner: O) -> Result<f64>;
     /// `SmFilletSolver::m_vFilletGeoms`, copied only where the caller needs them.
     fn solver_geoms(&self, solver: O) -> Result<Vec<O>>;
+    /// Live indexed access to `m_vFilletGeoms`, without copying its full array.
+    fn solver_geom(&self, solver: O, index: usize) -> Result<Option<O>>;
     /// `SmFilletSolver::GetEdgeuse(0)->GetEdge()`.
     fn solver_edge(&self, solver: O) -> Result<O>;
     /// `SmFilletSolver::GetThisApproxTol3d`.
@@ -353,10 +362,20 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     /// Pure virtual `SmFilletCorner::MakeCornerTopology` dispatch. Concrete
     /// overrides are not assigned to units.json; adapters must use the corner
     /// owner's implementation rather than inventing an UNPORTED owner here.
-    fn make_corner_topology(&mut self, k: &mut Kernel, corner: O) -> Result<()>;
+    fn make_corner_topology(
+        &mut self,
+        k: &mut Kernel,
+        corner: O,
+        _executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
 
     /// `SmFilletCorner::CalcCornerVertGeom`; waiting for `blend.fillet_corner_p1`.
-    fn calc_corner_vertices(&mut self, _k: &mut Kernel, _corner: O) -> Result<()> {
+    fn calc_corner_vertices(
+        &mut self,
+        _k: &mut Kernel,
+        _corner: O,
+        _executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
         // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::CalcCornerVertGeom
         Err(SolidError::unported(
             "SmFilletCorner::CalcCornerVertGeom",
@@ -365,7 +384,12 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     }
 
     /// `SmFilletCorner::CheckAndFixDegeneracy`; waiting for `blend.fillet_corner_p1`.
-    fn check_degeneracy(&mut self, _k: &mut Kernel, _corner: O) -> Result<bool> {
+    fn check_degeneracy(
+        &mut self,
+        _k: &mut Kernel,
+        _corner: O,
+        _executive: &mut FilletExecutive<O>,
+    ) -> Result<bool> {
         // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::CheckAndFixDegeneracy
         Err(SolidError::unported(
             "SmFilletCorner::CheckAndFixDegeneracy",
@@ -374,7 +398,12 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     }
 
     /// `SmFilletCorner::AdjustTopology`; waiting for `blend.fillet_corner_p1`.
-    fn adjust_topology(&mut self, _k: &mut Kernel, _corner: O) -> Result<()> {
+    fn adjust_topology(
+        &mut self,
+        _k: &mut Kernel,
+        _corner: O,
+        _executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
         // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::AdjustTopology
         Err(SolidError::unported(
             "SmFilletCorner::AdjustTopology",
@@ -383,7 +412,12 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     }
 
     /// `SmFilletCorner::AdjustTangentCorner`; waiting for `blend.fillet_corner_p1`.
-    fn adjust_tangent_corner(&mut self, _k: &mut Kernel, _corner: O) -> Result<()> {
+    fn adjust_tangent_corner(
+        &mut self,
+        _k: &mut Kernel,
+        _corner: O,
+        _executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
         // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::AdjustTangentCorner
         Err(SolidError::unported(
             "SmFilletCorner::AdjustTangentCorner",
@@ -392,7 +426,12 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     }
 
     /// `SmFilletCorner::CalcCornerEdgeGeom`; waiting for `blend.fillet_corner_p1`.
-    fn calc_corner_edges(&mut self, _k: &mut Kernel, _corner: O) -> Result<()> {
+    fn calc_corner_edges(
+        &mut self,
+        _k: &mut Kernel,
+        _corner: O,
+        _executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
         // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::CalcCornerEdgeGeom
         Err(SolidError::unported(
             "SmFilletCorner::CalcCornerEdgeGeom",
@@ -401,7 +440,12 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     }
 
     /// `SmFilletCorner::ReInitializeCornerEdges`; waiting for `blend.fillet_corner_p1`.
-    fn reinitialize_corner_edges(&mut self, _k: &mut Kernel, _corner: O) -> Result<()> {
+    fn reinitialize_corner_edges(
+        &mut self,
+        _k: &mut Kernel,
+        _corner: O,
+        _executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
         // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::ReInitializeCornerEdges
         Err(SolidError::unported(
             "SmFilletCorner::ReInitializeCornerEdges",
@@ -424,7 +468,12 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     }
 
     /// `SmFilletSolver::CalcFilletGeom`; waiting for `blend.fillet_solver_p4`.
-    fn calc_fillet_geom(&mut self, _k: &mut Kernel, _solver: O) -> Result<()> {
+    fn calc_fillet_geom(
+        &mut self,
+        _k: &mut Kernel,
+        _solver: O,
+        _executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
         // UNPORTED(blend.fillet_solver_p4): SmFilletSolver::CalcFilletGeom
         Err(SolidError::unported(
             "SmFilletSolver::CalcFilletGeom",
@@ -433,7 +482,12 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     }
 
     /// `SmFilletSolver::TrimRails`; waiting for `blend.fillet_solver_p1`.
-    fn trim_rails(&mut self, _k: &mut Kernel, _solver: O) -> Result<()> {
+    fn trim_rails(
+        &mut self,
+        _k: &mut Kernel,
+        _solver: O,
+        _executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
         // UNPORTED(blend.fillet_solver_p1): SmFilletSolver::TrimRails
         Err(SolidError::unported(
             "SmFilletSolver::TrimRails",
@@ -447,6 +501,7 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         _k: &mut Kernel,
         _solver: O,
         _adjusted_corners: &mut Vec<O>,
+        _executive: &mut FilletExecutive<O>,
     ) -> Result<()> {
         // UNPORTED(blend.fillet_solver_p5): SmFilletSolver::TestRollOver
         Err(SolidError::unported(
@@ -472,7 +527,13 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     }
 
     /// `SmFilletGeom::MakeFaceBrep`; waiting for `blend.fillet_geom_p4`.
-    fn make_face_brep(&mut self, _k: &mut Kernel, _geom: O, _brep: O) -> Result<()> {
+    fn make_face_brep(
+        &mut self,
+        _k: &mut Kernel,
+        _geom: O,
+        _brep: O,
+        _executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
         // UNPORTED(blend.fillet_geom_p4): SmFilletGeom::MakeFaceBrep
         Err(SolidError::unported(
             "SmFilletGeom::MakeFaceBrep",
@@ -523,7 +584,12 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     }
 
     /// `SmFilletGeom::InsertIntersectionTopology`; waiting for `blend.fillet_geom_p4`.
-    fn insert_geom_topology(&mut self, _k: &mut Kernel, _geom: O) -> Result<()> {
+    fn insert_geom_topology(
+        &mut self,
+        _k: &mut Kernel,
+        _geom: O,
+        _executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
         // UNPORTED(blend.fillet_geom_p4): SmFilletGeom::InsertIntersectionTopology
         Err(SolidError::unported(
             "SmFilletGeom::InsertIntersectionTopology",
@@ -532,7 +598,12 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     }
 
     /// `SmFilletCorner::InsertIntersectionTopology`; waiting for `blend.fillet_corner_p1`.
-    fn insert_corner_topology(&mut self, _k: &mut Kernel, _corner: O) -> Result<()> {
+    fn insert_corner_topology(
+        &mut self,
+        _k: &mut Kernel,
+        _corner: O,
+        _executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
         // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::InsertIntersectionTopology
         Err(SolidError::unported(
             "SmFilletCorner::InsertIntersectionTopology",
@@ -561,6 +632,7 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         _kept_faces: &mut Vec<O>,
         _deleted_faces: &mut Vec<O>,
         _marks: &[ContextMark],
+        _executive: &mut FilletExecutive<O>,
     ) -> Result<()> {
         // UNPORTED(blend.fillet_geom_p6): SmFilletGeom::TrimOriginalSurfaces
         Err(SolidError::unported(
@@ -723,7 +795,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         corner: O,
         comment: &str,
     ) -> Result<()> {
-        let view = access.corner_error_info(corner)?;
+        let view = access.corner_error_info(corner, self)?;
         self.error.code = 3; // SM_FILERR_VERTEX_PROBLEM
         self.error.status = 2; // SM_FIL_FAILURE
         self.error.corner_type = view.corner_type;
@@ -769,7 +841,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
 
         let mut index = 0;
         while let Some(corner) = self.corners.get(index).copied() {
-            if ignore(access.make_corner_topology(k, corner))?.is_none() {
+            if ignore(access.make_corner_topology(k, corner, self))?.is_none() {
                 return self.corner_failure(
                     access,
                     corner,
@@ -778,7 +850,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             }
             let mut as_constant = access.is_blending_corner(corner)?;
             if as_constant && access.is_tangent_corner(corner)? {
-                let solvers = access.corner_solvers(corner)?;
+                let solvers = access.corner_solvers(corner, self)?;
                 if solvers.len() == 2 {
                     let solver = solvers
                         .first()
@@ -799,7 +871,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                 }
             }
             access.set_calc_as_const_rad(corner, as_constant)?;
-            if ignore(access.calc_corner_vertices(k, corner))?.is_none() {
+            if ignore(access.calc_corner_vertices(k, corner, self))?.is_none() {
                 return self.corner_failure(
                     access,
                     corner,
@@ -810,8 +882,8 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         }
         let mut index = 0;
         while let Some(corner) = self.corners.get(index).copied() {
-            if !access.check_degeneracy(k, corner)?
-                && ignore(access.adjust_topology(k, corner))?.is_none()
+            if !access.check_degeneracy(k, corner, self)?
+                && ignore(access.adjust_topology(k, corner, self))?.is_none()
             {
                 return self.corner_failure(
                     access,
@@ -823,7 +895,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         }
         let mut index = 0;
         while let Some(solver) = self.solvers.get(index).copied() {
-            if ignore(access.calc_fillet_geom(k, solver))?.is_none() {
+            if ignore(access.calc_fillet_geom(k, solver, self))?.is_none() {
                 return self.solver_failure(
                     access,
                     solver,
@@ -835,21 +907,21 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         }
         let mut index = 0;
         while let Some(corner) = self.corners.get(index).copied() {
-            if ignore(access.adjust_tangent_corner(k, corner))?.is_none() {
+            if ignore(access.adjust_tangent_corner(k, corner, self))?.is_none() {
                 return self.corner_failure(
                     access,
                     corner,
                     "Fillet Corner Error: Topology Adjustment Failure",
                 );
             }
-            if ignore(access.calc_corner_vertices(k, corner))?.is_none() {
+            if ignore(access.calc_corner_vertices(k, corner, self))?.is_none() {
                 return self.corner_failure(
                     access,
                     corner,
                     "Fillet Corner Error: Vertex Computation Failure",
                 );
             }
-            if ignore(access.calc_corner_edges(k, corner))?.is_none() {
+            if ignore(access.calc_corner_edges(k, corner, self))?.is_none() {
                 return self.corner_failure(
                     access,
                     corner,
@@ -860,7 +932,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         }
         let mut index = 0;
         while let Some(solver) = self.solvers.get(index).copied() {
-            if ignore(access.trim_rails(k, solver))?.is_none() {
+            if ignore(access.trim_rails(k, solver, self))?.is_none() {
                 return self.solver_failure(
                     access,
                     solver,
@@ -874,7 +946,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             let mut adjusted = Vec::new();
             let mut index = 0;
             while let Some(solver) = self.solvers.get(index).copied() {
-                if ignore(access.test_rollover(k, solver, &mut adjusted))?.is_none() {
+                if ignore(access.test_rollover(k, solver, &mut adjusted, self))?.is_none() {
                     return self.solver_failure(
                         access,
                         solver,
@@ -885,8 +957,8 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                 index += 1;
             }
             for corner in adjusted {
-                ignore(access.reinitialize_corner_edges(k, corner))?;
-                if ignore(access.calc_corner_edges(k, corner))?.is_none() {
+                ignore(access.reinitialize_corner_edges(k, corner, self))?;
+                if ignore(access.calc_corner_edges(k, corner, self))?.is_none() {
                     return self.corner_failure(
                         access,
                         corner,
@@ -921,8 +993,8 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                 ignore(access.set_brep_tolerance(k, fillet, tolerance, true, true))?;
             }
             let mut geom_index = 0;
-            while let Some(geom) = access.solver_geoms(solver)?.get(geom_index).copied() {
-                if ignore(access.make_face_brep(k, geom, fillet))?.is_none() {
+            while let Some(geom) = access.solver_geom(solver, geom_index)? {
+                if ignore(access.make_face_brep(k, geom, fillet, self))?.is_none() {
                     return self.solver_failure(
                         access,
                         solver,
@@ -977,7 +1049,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             }
             let mut index = 0;
             while let Some(solver) = self.solvers.get(index).copied() {
-                if let Some(geom) = access.solver_geoms(solver)?.first().copied() {
+                if let Some(geom) = access.solver_geom(solver, 0)? {
                     if let Some(face) = access.geom_face(geom)? {
                         ignore(access.shrink_face(k, face))?;
                     }
@@ -993,24 +1065,6 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         })();
         k.context.set_doing_boolean(doing_boolean);
         result
-    }
-
-    fn collect_mapped(&mut self) -> Result<()> {
-        for object in self
-            .intersector
-            .mapped_brep_objects(ClassObjectKind::Edge)?
-        {
-            self.intersection_edges
-                .push((object.class_kind() == ClassObjectKind::Edge).then_some(object));
-        }
-        for object in self
-            .intersector
-            .mapped_brep_objects(ClassObjectKind::Vertex)?
-        {
-            self.intersection_vertices
-                .push((object.class_kind() == ClassObjectKind::Vertex).then_some(object));
-        }
-        Ok(())
     }
 
     fn merge_fillet(
@@ -1036,17 +1090,17 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             while let Some(solver) = self.solvers.get(index).copied() {
                 // GetFilletGeoms copies the array before its inner loop.
                 for geom in access.solver_geoms(solver)? {
-                    access.insert_geom_topology(k, geom)?;
+                    access.insert_geom_topology(k, geom, self)?;
                 }
                 index += 1;
             }
             let mut index = 0;
             while let Some(corner) = self.corners.get(index).copied() {
-                access.insert_corner_topology(k, corner)?;
+                access.insert_corner_topology(k, corner, self)?;
                 index += 1;
             }
         }
-        self.collect_mapped()?;
+        // Upstream cbi_MAP_TOPO_EDGES=0: do not collect mapped intersections.
         if self.options.global_merge {
             self.intersector
                 .set_this_approx_tol_3d(access.tolerance(k, target, true)?);
@@ -1089,7 +1143,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         let mut index = 0;
         while let Some(solver) = self.solvers.get(index).copied() {
             for geom in access.solver_geoms(solver)? {
-                access.trim_original_surfaces(k, geom, &mut kept, &mut deleted, marks)?;
+                access.trim_original_surfaces(k, geom, &mut kept, &mut deleted, marks, self)?;
             }
             index += 1;
         }
@@ -1113,17 +1167,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                     ignore(access.add_attribute(edge, Some(attribute)))?;
                 }
             }
-            for edge in edges {
-                if let Some(mate) = self
-                    .intersector
-                    .brep_mate(Some(edge))
-                    .filter(|mate| mate.class_kind() == ClassObjectKind::Edge)
-                {
-                    let attribute = access.new_keep_attribute(k)?;
-                    attributes.push(attribute);
-                    ignore(access.add_attribute(mate, Some(attribute)))?;
-                }
-            }
+            // Upstream cbi_MAP_TOPO_EDGES=0: no attributes on extra mated edges.
             access.merge_brep(k, target, fillet, None, None, true)?;
             if self.intersector.other_brep() == Some(fillet) {
                 self.intersector.set_other_brep(None);
@@ -1169,7 +1213,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                     self.topo_edges.push(Some(user));
                 }
             }
-            self.collect_mapped()?;
+            // Upstream cbi_MAP_TOPO_EDGES=0: do not collect mapped intersections.
             access.remove_topo_edges(k, self)?;
             access.boolean_post_process(k, self, true)?;
             for face in access.faces(target)? {
@@ -1182,9 +1226,18 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                     None,
                 ))?;
             }
+            let mut maybe_not_solid = false;
+            ignore(access.orient_trimmed_surfaces(
+                k,
+                target,
+                true,
+                &mut maybe_not_solid,
+                false,
+                None,
+            ))?;
             Ok(())
         })();
-        // SmObjsDelete is destroyed before OrientTrimmedSurfaces, also on SER.
+        // SmObjsDelete lives through orientation; also clean up on errors/deferrals.
         let mut cleanup = Ok(());
         for attribute in attributes {
             let deleted = access.delete_attribute(attribute);
@@ -1192,10 +1245,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                 cleanup = deleted;
             }
         }
-        result.and(cleanup)?;
-        let mut maybe_not_solid = false;
-        ignore(access.orient_trimmed_surfaces(k, target, true, &mut maybe_not_solid, false, None))?;
-        Ok(())
+        result.and(cleanup)
     }
 }
 

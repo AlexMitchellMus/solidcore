@@ -60,10 +60,19 @@ fn missing<T>() -> SolidResult<T> {
     Err(missing_error())
 }
 impl ExecutiveAccess<Handle> for Access {
-    fn make_corner_topology(&mut self, _: &mut Kernel, _: Handle) -> SolidResult<()> {
+    fn make_corner_topology(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> SolidResult<()> {
         missing()
     }
-    fn corner_error_info(&self, _: Handle) -> SolidResult<CornerView<Handle>> {
+    fn corner_error_info(
+        &self,
+        _: Handle,
+        _: &FilletExecutive<Handle>,
+    ) -> SolidResult<CornerView<Handle>> {
         missing()
     }
     fn is_blending_corner(&self, _: Handle) -> SolidResult<bool> {
@@ -72,7 +81,7 @@ impl ExecutiveAccess<Handle> for Access {
     fn is_tangent_corner(&self, _: Handle) -> SolidResult<bool> {
         missing()
     }
-    fn corner_solvers(&self, _: Handle) -> SolidResult<Vec<Handle>> {
+    fn corner_solvers(&self, _: Handle, _: &FilletExecutive<Handle>) -> SolidResult<Vec<Handle>> {
         missing()
     }
     fn corner_vertex(&self, _: Handle) -> SolidResult<Option<Handle>> {
@@ -82,6 +91,9 @@ impl ExecutiveAccess<Handle> for Access {
         missing()
     }
     fn solver_geoms(&self, _: Handle) -> SolidResult<Vec<Handle>> {
+        missing()
+    }
+    fn solver_geom(&self, _: Handle, _: usize) -> SolidResult<Option<Handle>> {
         missing()
     }
     fn solver_edge(&self, _: Handle) -> SolidResult<Handle> {
@@ -297,8 +309,9 @@ fn rust(input: &Inputs) -> Result<Output, HarnessError> {
     let mut k = Kernel::default();
     k.context.set_doing_boolean(*prior_boolean != 0.0);
     let mut b = solidcore::topology::Brep::new();
-    // Both fixtures write the raw member; SetTolerance belongs to brep p2.
-    b.set_tolerance(*tolerance);
+    // Apply SmZoneTol3d's default-sentinel/fabs conversion, then write the member.
+    // SmBrep::SetTolerance belongs to brep p2 and is not exercised by this setup.
+    b.set_tolerance(solidcore::geom::tol::zone_tol3d(&k, *tolerance));
     b.set_editing_enabled(*editing != 0.0);
     let mut access = Access {
         breps: vec![Some(b)],

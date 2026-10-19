@@ -7742,3 +7742,45 @@ matching protocol, zero errors, zero definitely/indirectly/possibly lost bytes.
 These checks establish no successful geometric or topological parity.
 The final parallel green/partial matrix passes all 210 units; a separate per-unit
 log audit confirms zero failures and zero units declared green with deferrals.
+
+
+### blend.fillet_executive_p3 — response to bb84f1a5 pre-review (PR #244)
+
+- Removed all three inactive `cbi_MAP_TOPO_EDGES` experiments: both intersection
+  collection sites and the extra mate-attribute scan. The pinned C++ macro is 0.
+  The regression supplies populated real mate maps and no original topo candidates,
+  checks unchanged intersection arrays with trimming off/on, and checks that no
+  extra candidates or keep attributes are introduced.
+- All parent-linked corner/solver/geometry stage hooks now borrow the live
+  `FilletExecutive`, including topology creation, degeneracy, adjustment,
+  vertex/edge/face geometry, rail trimming, rollover, insertion and surface trimming.
+  This carries options, topo edges, error info and the existing intersector through
+  every stage; adapters must not keep a duplicate executive/intersector. Insertion
+  regressions verify mate and SSI writes across hooks and into the subsequent mark
+  and trim phases; other regressions check global-merge enablement and candidate
+  deletion before the attribute scan.
+- Hook audit: `GetFilletSolvers` resolves edgeuses through the parent solver list
+  (`SmFilletCorner.cpp:4073`), so it now receives the executive read-only; error-only
+  metadata also receives it. Solver/geometry error notifications can reach parent
+  `NoteFilletError` (`SmFilletSolver.cpp:7943`, `SmFilletGeom.cpp:13220`), covered by
+  the mutable stage contract. Standalone B-rep, stitch and attribute hooks receive
+  their explicit objects/context; intersector operations already borrow the actual
+  intersector. The remaining corner predicates/point/tolerance getters and the
+  nonvirtual `SetCalcAsConstRad` are local record accesses, not parent mutations.
+- The intersector-p1 change is a cfg(test)-only mate-map fixture initializer; it
+  changes no production API/algorithm. It avoids a second, fake intersector in the
+  regression world. The full matrix rechecks intersector p1 as well as p3.
+- Native and Rust fixture setup now both construct a zone tolerance: the positive
+  `SM_USE_DEFAULT` sentinel converts before `fabs`, and finite negatives are
+  accepted and absolutized. Fixed paired cases include the positive sentinel,
+  -0.25, a tiny negative, and the negative sentinel magnitude (which must not be
+  confused with the positive default sentinel).
+- Temporary keep attributes now survive orientation and are unlinked afterwards,
+  including on failures and deferrals. Tests observe live attributes in orientation
+  and cleanup both there and when merge exits earlier.
+- Face construction and first-geometry queries now use indexed live access;
+  snapshot copies remain only where C++ explicitly copies its array. A regression
+  appends geometry during face creation and verifies two visits with zero array
+  snapshots, preserving live upstream iteration rather than capturing a stale list.
+
+Validation of this revision is pending; the earlier counts above describe bb84f1a5.
