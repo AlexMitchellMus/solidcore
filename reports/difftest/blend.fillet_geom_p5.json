@@ -1,0 +1,3541 @@
+{
+  "abs_floors": [],
+  "cases": [
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0000",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818539",
+      "values_compared": 42
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0001",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818540",
+      "values_compared": 71
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0002",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818541",
+      "values_compared": 70
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0003",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818542",
+      "values_compared": 141
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0004",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818543",
+      "values_compared": 43
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0005",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818544",
+      "values_compared": 114
+    },
+    {
+      "inputs": {
+        "geom_solvers": [0],
+        "model": {
+          "edges": [
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [-0.00007975002317538059, -0.00008784891842394355, -0.000245309642064359, -1.7976931348623157e+308],
+                  [0.00030078241362296664, -0.00006504518020058325, 0.0001322812532294806, -1.7976931348623157e+308],
+                  [0.0007075513238063387, -0.00008434496220650781, -0.0002729128493161757, -1.7976931348623157e+308],
+                  [0.001022537969526096, -0.00007135632713878396, -0.00013412196379018697, -1.7976931348623157e+308]
+                ],
+                "dim": 3,
+                "p": 2,
+                "u": [0.0, 0.0, 0.0, 0.4906078960208485, 1.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": -1,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "interval": [0.0, 1.0],
+              "status": 0,
+              "ve": 1,
+              "vs": 0
+            },
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [-0.000022269570215824346, 0.0009636506339456738, 0.00016414868569634506, -1.7976931348623157e+308],
+                  [0.0002827314897808759, 0.0009789094140563279, -0.00010998172618482107, -1.7976931348623157e+308],
+                  [0.0007050151779929896, 0.0010057930663560056, -0.00024338102068687946, -1.7976931348623157e+308],
+                  [0.0010960383358903994, 0.001002584701744128, -0.00016326545736579072, -1.7976931348623157e+308]
+                ],
+                "dim": 3,
+                "p": 2,
+                "u": [0.0, 0.0, 0.0, 0.4906078960208485, 1.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": -1,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "interval": [0.0, 1.0],
+              "status": 0,
+              "ve": 3,
+              "vs": 2
+            }
+          ],
+          "faces": [],
+          "fillet_brep": [],
+          "geoms": [
+            {
+              "gtype": 2,
+              "other1": [],
+              "other2": [],
+              "rails": [0, 1],
+              "sides": [],
+              "status": 0,
+              "surface": {
+                "net": [
+                  [
+                    [-0.00007975002317538059, -0.00008784891842394355, -0.000245309642064359, -1.7976931348623157e+308],
+                    [-0.00008522738898945591, 0.0003615766403123188, -0.00019042459867800354, -1.7976931348623157e+308],
+                    [0.00009147494693168488, 0.0006015883733972731, -0.0002926943088725806, -1.7976931348623157e+308],
+                    [-0.000022269570215824346, 0.0009636506339456738, 0.00016414868569634506, -1.7976931348623157e+308]
+                  ],
+                  [
+                    [0.00030078241362296664, -0.00006504518020058325, 0.0001322812532294806, -1.7976931348623157e+308],
+                    [0.0002471118915221891, 0.00026749936456884927, 0.00006426691860829537, -1.7976931348623157e+308],
+                    [0.00026389953370390724, 0.0007309848067182262, -0.00008314042417741102, -1.7976931348623157e+308],
+                    [0.0002827314897808759, 0.0009789094140563279, -0.00010998172618482107, -1.7976931348623157e+308]
+                  ],
+                  [
+                    [0.0007075513238063387, -0.00008434496220650781, -0.0002729128493161757, -1.7976931348623157e+308],
+                    [0.0006420022013301777, 0.00024616950071993786, -0.00007571648004626223, -1.7976931348623157e+308],
+                    [0.00067767055910124, 0.0006154488617655712, 0.0000620756425590605, -1.7976931348623157e+308],
+                    [0.0007050151779929896, 0.0010057930663560056, -0.00024338102068687946, -1.7976931348623157e+308]
+                  ],
+                  [
+                    [0.001022537969526096, -0.00007135632713878396, -0.00013412196379018697, -1.7976931348623157e+308],
+                    [0.0010280161344927566, 0.0003885299614854686, -0.00023527256078642166, -1.7976931348623157e+308],
+                    [0.0009080404012292683, 0.0005881629450412228, -0.00015787800771382735, -1.7976931348623157e+308],
+                    [0.0010960383358903994, 0.001002584701744128, -0.00016326545736579072, -1.7976931348623157e+308]
+                  ]
+                ],
+                "p": 2,
+                "q": 3,
+                "u": [0.0, 0.0, 0.0, 0.4906078960208485, 1.0, 1.0, 1.0],
+                "v": [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]
+              }
+            }
+          ],
+          "targets": [],
+          "vertices": [
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.000018584196768704094, -0.0000823468545078348, -0.0001548044497018172],
+              "status": 1,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 0
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.000976753503413201, -0.00007314731232629232, -0.0001526769380849813],
+              "status": 1,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 0
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.00006823865975382893, 0.0009692172675764131, 0.00008512556661286647],
+              "status": 0,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 0
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.0006287986004438135, 0.0009980743205514932, -0.00020268592508234287],
+              "status": 1,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 0
+            }
+          ]
+        },
+        "query": {
+          "g": 0,
+          "q": "trim_rails"
+        },
+        "solvers": [
+          {
+            "ang": 0.44863192378356287,
+            "approx": 1e-6,
+            "tang": 0.013036498089840389
+          }
+        ]
+      },
+      "max_rel_err": 8.317455636021908e-8,
+      "mismatch_count": 13,
+      "mismatches": [
+        {
+          "cpp": "5.520260843225932e-4",
+          "field": "values.r1_c3d_cpts[8]",
+          "rel_err": 3.8321968560441534e-8,
+          "rust": "5.520261054773203e-4"
+        },
+        {
+          "cpp": "9.960533920216944e-4",
+          "field": "values.r1_c3d_cpts[9]",
+          "rel_err": 1.3521000533141055e-9,
+          "rust": "9.960533933684582e-4"
+        },
+        {
+          "cpp": "-1.9505181041463962e-4",
+          "field": "values.r1_c3d_cpts[10]",
+          "rel_err": 3.4261522264323215e-8,
+          "rust": "-1.950518170974118e-4"
+        },
+        {
+          "cpp": "6.288152187002493e-4",
+          "field": "values.r1_c3d_cpts[12]",
+          "rel_err": 8.317455636021908e-8,
+          "rust": "6.288152710016805e-4"
+        },
+        {
+          "cpp": "9.985984572237832e-4",
+          "field": "values.r1_c3d_cpts[13]",
+          "rel_err": 1.7358883118305484e-9,
+          "rust": "9.985984589572386e-4"
+        },
+        {
+          "cpp": "-2.023271714229348e-4",
+          "field": "values.r1_c3d_cpts[14]",
+          "rel_err": 2.449142139805749e-8,
+          "rust": "-2.0232717637821493e-4"
+        },
+        {
+          "cpp": "6.377101509221692e-1",
+          "field": "values.r1_c3d_knots[4]",
+          "rel_err": 7.855607180443504e-8,
+          "rust": "6.377102010181775e-1"
+        },
+        {
+          "cpp": "6.377101509221692e-1",
+          "field": "values.r1_c3d_knots[5]",
+          "rel_err": 7.855607180443504e-8,
+          "rust": "6.377102010181775e-1"
+        },
+        {
+          "cpp": "6.377101509221692e-1",
+          "field": "values.r1_c3d_knots[6]",
+          "rel_err": 7.855607180443504e-8,
+          "rust": "6.377102010181775e-1"
+        },
+        {
+          "cpp": "6.377101509221692e-1",
+          "field": "values.r1_ivl[1]",
+          "rel_err": 7.855607180443504e-8,
+          "rust": "6.377102010181775e-1"
+        },
+        {
+          "cpp": "6.377101509221692e-1",
+          "field": "values.r1_uv1_cpts[4]",
+          "rel_err": 7.855607180443504e-8,
+          "rust": "6.377102010181775e-1"
+        },
+        {
+          "cpp": "6.377101509221692e-1",
+          "field": "values.r1_uv1_knots[2]",
+          "rel_err": 7.855607180443504e-8,
+          "rust": "6.377102010181775e-1"
+        },
+        {
+          "cpp": "6.377101509221692e-1",
+          "field": "values.r1_uv1_knots[3]",
+          "rel_err": 7.855607180443504e-8,
+          "rust": "6.377102010181775e-1"
+        }
+      ],
+      "name": "gen0006",
+      "outcome": "fail",
+      "pass": false,
+      "source": "generated:seed=9207373017645818545",
+      "values_compared": 107
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0007",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818546",
+      "values_compared": 97
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0008",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818547",
+      "values_compared": 214
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0009",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818548",
+      "values_compared": 141
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0010",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818549",
+      "values_compared": 125
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0011",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818550",
+      "values_compared": 121
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0012",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818551",
+      "values_compared": 118
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0013",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818552",
+      "values_compared": 97
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0014",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818553",
+      "values_compared": 47
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0015",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818554",
+      "values_compared": 64
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0016",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818555",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0017",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818556",
+      "values_compared": 101
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0018",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818557",
+      "values_compared": 133
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0019",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=9207373017645818558",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0020",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818559",
+      "values_compared": 141
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0021",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818560",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0022",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818561",
+      "values_compared": 125
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0023",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818562",
+      "values_compared": 107
+    },
+    {
+      "inputs": {
+        "geom_solvers": [0],
+        "model": {
+          "edges": [
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [-0.0000807243992617649, -0.00008652747550405062, -0.00029755939673231874, -1.7976931348623157e+308],
+                  [0.0003342673088572975, -0.00009012334942492117, -0.00007676211957073972, -1.7976931348623157e+308],
+                  [0.0004891863516751536, -0.000059895188010141264, -0.000046367523255373524, -1.7976931348623157e+308],
+                  [0.0007791316576364845, -7.858901202093011e-6, 0.0001786338405993364, -1.7976931348623157e+308],
+                  [0.001099731904486474, 0.00007552066654227405, 0.0001408842854155551, -1.7976931348623157e+308]
+                ],
+                "dim": 3,
+                "p": 3,
+                "u": [0.0, 0.0, 0.0, 0.0, 0.9384659735801583, 1.0, 1.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": -1,
+                  "uv_curve": {
+                    "cpts": [
+                      [0.0, 0.5469468838077545, 0.0, -1.7976931348623157e+308],
+                      [1.0, 0.48556203619908256, 0.0, -1.7976931348623157e+308]
+                    ],
+                    "dim": 2,
+                    "p": 1,
+                    "u": [0.0, 0.0, 1.0, 1.0]
+                  },
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "interval": [0.0, 1.0],
+              "status": 0,
+              "ve": 1,
+              "vs": 0
+            },
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [0.000011981881794159849, 0.0009303495513962875, -0.0002722891260937317, -1.7976931348623157e+308],
+                  [0.00023411505764625413, 0.0010756939401355481, 0.0001495770555500758, -1.7976931348623157e+308],
+                  [0.0005027855321112701, 0.0009565066412734755, 0.00020714264212695906, -1.7976931348623157e+308],
+                  [0.0007926350976043215, 0.0009271684220319536, -0.00006946397907430207, -1.7976931348623157e+308],
+                  [0.0009043575437624651, 0.0009707795243766045, 0.00009016682094957535, -1.7976931348623157e+308]
+                ],
+                "dim": 3,
+                "p": 3,
+                "u": [0.0, 0.0, 0.0, 0.0, 0.9384659735801583, 1.0, 1.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": -1,
+                  "uv_curve": {
+                    "cpts": [
+                      [0.0, 0.028066701911224734, 0.0, -1.7976931348623157e+308],
+                      [1.0, -0.003779594434677333, 0.0, -1.7976931348623157e+308]
+                    ],
+                    "dim": 2,
+                    "p": 1,
+                    "u": [0.0, 0.0, 1.0, 1.0]
+                  },
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "interval": [0.0, 1.0],
+              "status": 0,
+              "ve": 3,
+              "vs": 2
+            }
+          ],
+          "faces": [],
+          "fillet_brep": [],
+          "geoms": [
+            {
+              "gtype": 0,
+              "other1": [],
+              "other2": [],
+              "rails": [0, 1],
+              "sides": [],
+              "status": 0,
+              "surface": {
+                "net": [
+                  [
+                    [-0.0000807243992617649, -0.00008652747550405062, -0.00029755939673231874, -1.7976931348623157e+308],
+                    [0.00004143413508769489, 0.00043709683599200136, -0.000128918865079914, -1.7976931348623157e+308],
+                    [0.000011981881794159849, 0.0009303495513962875, -0.0002722891260937317, -1.7976931348623157e+308]
+                  ],
+                  [
+                    [0.0003342673088572975, -0.00009012334942492117, -0.00007676211957073972, -1.7976931348623157e+308],
+                    [0.00023198479290809405, 0.0005774604432681008, -0.00023696934307709005, -1.7976931348623157e+308],
+                    [0.00023411505764625413, 0.0010756939401355481, 0.0001495770555500758, -1.7976931348623157e+308]
+                  ],
+                  [
+                    [0.0004891863516751536, -0.000059895188010141264, -0.000046367523255373524, -1.7976931348623157e+308],
+                    [0.0005516772229050204, 0.0005287850087454126, -0.00015963616491339463, -1.7976931348623157e+308],
+                    [0.0005027855321112701, 0.0009565066412734755, 0.00020714264212695906, -1.7976931348623157e+308]
+                  ],
+                  [
+                    [0.0007791316576364845, -7.858901202093011e-6, 0.0001786338405993364, -1.7976931348623157e+308],
+                    [0.0007792362993506772, 0.0005489165498791815, -0.00008420737773663559, -1.7976931348623157e+308],
+                    [0.0007926350976043215, 0.0009271684220319536, -0.00006946397907430207, -1.7976931348623157e+308]
+                  ],
+                  [
+                    [0.001099731904486474, 0.00007552066654227405, 0.0001408842854155551, -1.7976931348623157e+308],
+                    [0.0010624125251540693, 0.00046975818730983124, -0.000197340755074163, -1.7976931348623157e+308],
+                    [0.0009043575437624651, 0.0009707795243766045, 0.00009016682094957535, -1.7976931348623157e+308]
+                  ]
+                ],
+                "p": 3,
+                "q": 2,
+                "u": [0.0, 0.0, 0.0, 0.0, 0.9384659735801583, 1.0, 1.0, 1.0, 1.0],
+                "v": [0.0, 0.0, 0.0, 3.4503539006022, 3.4503539006022, 3.4503539006022]
+              }
+            }
+          ],
+          "targets": [],
+          "vertices": [
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.00022018420196336466, -0.0000819777926640077, -0.00014586958094971221],
+              "status": 1,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 0
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.0007655465745695323, -9.71964145953994e-6, 0.00016177778208536863],
+              "status": 1,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 0
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.000459570881443841, 0.0009833968470238073, 0.00010617631618544806],
+              "status": 1,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 0
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.000037813949381321515, 0.0009456891669133036, -0.00022574899792660478],
+              "status": 1,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 0
+            }
+          ]
+        },
+        "query": {
+          "g": 0,
+          "q": "trim_rails"
+        },
+        "solvers": [
+          {
+            "ang": 0.19556330656621548,
+            "approx": 1e-9,
+            "tang": 0.0343255414852151
+          }
+        ]
+      },
+      "max_rel_err": 1.477346231045704e-6,
+      "mismatch_count": 1,
+      "mismatches": [
+        {
+          "cpp": "3.577861910203989e-2",
+          "field": "values.r1_vu_uv[2]",
+          "rel_err": 1.477346231045704e-6,
+          "rust": "3.5778566244631806e-2"
+        }
+      ],
+      "name": "gen0024",
+      "outcome": "fail",
+      "pass": false,
+      "source": "generated:seed=9207373017645818563",
+      "values_compared": 151
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0025",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818564",
+      "values_compared": 101
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0026",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818565",
+      "values_compared": 85
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0027",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818566",
+      "values_compared": 156
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0028",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818567",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0029",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818568",
+      "values_compared": 146
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0030",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818569",
+      "values_compared": 107
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0031",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818570",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0032",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818571",
+      "values_compared": 109
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0033",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818572",
+      "values_compared": 154
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0034",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818573",
+      "values_compared": 119
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0035",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818574",
+      "values_compared": 123
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0036",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818575",
+      "values_compared": 85
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0037",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818576",
+      "values_compared": 184
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0038",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818577",
+      "values_compared": 80
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0039",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818578",
+      "values_compared": 105
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0040",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818579",
+      "values_compared": 36
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0041",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818580",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0042",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818581",
+      "values_compared": 48
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0043",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818582",
+      "values_compared": 140
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0044",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818583",
+      "values_compared": 109
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0045",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818584",
+      "values_compared": 113
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0046",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818585",
+      "values_compared": 106
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0047",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818586",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0048",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818587",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0049",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818588",
+      "values_compared": 101
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0050",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818589",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0051",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818590",
+      "values_compared": 101
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0052",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818591",
+      "values_compared": 30754
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0053",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818592",
+      "values_compared": 47
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0054",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818593",
+      "values_compared": 134
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0055",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818594",
+      "values_compared": 128
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0056",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818595",
+      "values_compared": 37
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0057",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818596",
+      "values_compared": 111
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0058",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818597",
+      "values_compared": 53
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0059",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818598",
+      "values_compared": 47
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0060",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818599",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0061",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818600",
+      "values_compared": 85
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0062",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818601",
+      "values_compared": 117
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0063",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818602",
+      "values_compared": 85
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0064",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818603",
+      "values_compared": 42
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0065",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818604",
+      "values_compared": 135
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0066",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818605",
+      "values_compared": 499
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0067",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818606",
+      "values_compared": 85
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0068",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818607",
+      "values_compared": 113
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0069",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818608",
+      "values_compared": 49
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0070",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818609",
+      "values_compared": 95
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0071",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818610",
+      "values_compared": 113
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0072",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818611",
+      "values_compared": 100
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0073",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818612",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0074",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818613",
+      "values_compared": 117
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0075",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818614",
+      "values_compared": 111
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0076",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818615",
+      "values_compared": 101
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0077",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818616",
+      "values_compared": 85
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0078",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818617",
+      "values_compared": 53
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0079",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818618",
+      "values_compared": 146
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0080",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818619",
+      "values_compared": 60
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0081",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818620",
+      "values_compared": 145
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0082",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818621",
+      "values_compared": 114
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0083",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818622",
+      "values_compared": 514
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0084",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818623",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0085",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818624",
+      "values_compared": 119
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0086",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818625",
+      "values_compared": 130
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0087",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818626",
+      "values_compared": 135
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0088",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818627",
+      "values_compared": 146
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0089",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818628",
+      "values_compared": 114
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0090",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818629",
+      "values_compared": 43
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0091",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=9207373017645818630",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0092",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818631",
+      "values_compared": 123
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0093",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818632",
+      "values_compared": 117
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0094",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818633",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0095",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818634",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0096",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818635",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0097",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818636",
+      "values_compared": 125
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0098",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818637",
+      "values_compared": 135
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0099",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818638",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0100",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818639",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0101",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818640",
+      "values_compared": 117
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0102",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818641",
+      "values_compared": 137
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0103",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818642",
+      "values_compared": 123
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0104",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818643",
+      "values_compared": 113
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0105",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818644",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0106",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818645",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0107",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818646",
+      "values_compared": 97
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0108",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818647",
+      "values_compared": 125
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0109",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818648",
+      "values_compared": 90
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0110",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818649",
+      "values_compared": 59
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0111",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818650",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0112",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818651",
+      "values_compared": 145
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0113",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818652",
+      "values_compared": 107
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0114",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818653",
+      "values_compared": 123
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0115",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818654",
+      "values_compared": 100
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0116",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818655",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0117",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818656",
+      "values_compared": 64
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0118",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818657",
+      "values_compared": 65
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0119",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818658",
+      "values_compared": 85
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0120",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818659",
+      "values_compared": 141
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0121",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818660",
+      "values_compared": 95
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0122",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818661",
+      "values_compared": 125
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0123",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=9207373017645818662",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0124",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818663",
+      "values_compared": 135
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0125",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818664",
+      "values_compared": 140
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0126",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818665",
+      "values_compared": 133
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0127",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818666",
+      "values_compared": 65
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0128",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818667",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0129",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818668",
+      "values_compared": 125
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0130",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818669",
+      "values_compared": 95
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0131",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818670",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0132",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818671",
+      "values_compared": 2524
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0133",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818672",
+      "values_compared": 101
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0134",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818673",
+      "values_compared": 144
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0135",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818674",
+      "values_compared": 100
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0136",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818675",
+      "values_compared": 126
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0137",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818676",
+      "values_compared": 106
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0138",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818677",
+      "values_compared": 114
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0139",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818678",
+      "values_compared": 151
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0140",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818679",
+      "values_compared": 123
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0141",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818680",
+      "values_compared": 47
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0142",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818681",
+      "values_compared": 65
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0143",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818682",
+      "values_compared": 184
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0144",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818683",
+      "values_compared": 125
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0145",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=9207373017645818684",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "geom_solvers": [0],
+        "model": {
+          "edges": [
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [0.00006232050539656406, -0.00003544671721140324, 0.00011061479718097173, -1.7976931348623157e+308],
+                  [0.0002803377447786969, 0.00009425590006143322, -0.0002060061736280735, -1.7976931348623157e+308],
+                  [0.0007255878033519127, 0.000033501317710920327, -0.0002167499443428122, -1.7976931348623157e+308],
+                  [0.001016513773292295, -2.2456655592574536e-6, -0.00012857080245208714, -1.7976931348623157e+308]
+                ],
+                "dim": 3,
+                "p": 2,
+                "u": [0.0, 0.0, 0.0, 0.6454269175398784, 1.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": -1,
+                  "uv_curve": {
+                    "cpts": [
+                      [0.0, 0.7242463435997459, 0.0, -1.7976931348623157e+308],
+                      [1.0, 0.6390892745804415, 0.0, -1.7976931348623157e+308]
+                    ],
+                    "dim": 2,
+                    "p": 1,
+                    "u": [0.0, 0.0, 1.0, 1.0]
+                  },
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "interval": [0.0, 1.0],
+              "status": 0,
+              "ve": 1,
+              "vs": 0
+            },
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [0.00008597226972071432, 0.0009040915755502307, -6.952093247860169e-6, -1.7976931348623157e+308],
+                  [0.0003872576107694162, 0.0009498572422673525, 0.00003226455105809151, -1.7976931348623157e+308],
+                  [0.0007635763429484393, 0.0009724312454836671, 0.0001072203968705363, -1.7976931348623157e+308],
+                  [0.001044676576945496, 0.0009486993612114693, -0.0002622633216017569, -1.7976931348623157e+308]
+                ],
+                "dim": 3,
+                "p": 2,
+                "u": [0.0, 0.0, 0.0, 0.6454269175398784, 1.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": -1,
+                  "uv_curve": {
+                    "cpts": [
+                      [0.0, 0.12027562591975849, 0.0, -1.7976931348623157e+308],
+                      [1.0, 0.21116886932012519, 0.0, -1.7976931348623157e+308]
+                    ],
+                    "dim": 2,
+                    "p": 1,
+                    "u": [0.0, 0.0, 1.0, 1.0]
+                  },
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "interval": [0.0, 1.0],
+              "status": 0,
+              "ve": 3,
+              "vs": 2
+            }
+          ],
+          "faces": [],
+          "fillet_brep": [],
+          "geoms": [
+            {
+              "gtype": 2,
+              "other1": [],
+              "other2": [],
+              "rails": [0, 1],
+              "sides": [],
+              "status": 0,
+              "surface": {
+                "net": [
+                  [
+                    [0.00006232050539656406, -0.00003544671721140324, 0.00011061479718097173, -1.7976931348623157e+308],
+                    [-0.00006396391721921964, 0.0003809942142721856, -0.00007301740137190419, -1.7976931348623157e+308],
+                    [4.685634485302459e-6, 0.0006552049333865225, 0.00014454129035726399, -1.7976931348623157e+308],
+                    [0.00008597226972071432, 0.0009040915755502307, -6.952093247860169e-6, -1.7976931348623157e+308]
+                  ],
+                  [
+                    [0.0002803377447786969, 0.00009425590006143322, -0.0002060061736280735, -1.7976931348623157e+308],
+                    [0.00031715846736877785, 0.0003305198821843928, -0.00010990623289629046, -1.7976931348623157e+308],
+                    [0.00034170775273206143, 0.0007350252553202185, -0.0002029996203954328, -1.7976931348623157e+308],
+                    [0.0003872576107694162, 0.0009498572422673525, 0.00003226455105809151, -1.7976931348623157e+308]
+                  ],
+                  [
+                    [0.0007255878033519127, 0.000033501317710920327, -0.0002167499443428122, -1.7976931348623157e+308],
+                    [0.0006076837527627225, 0.0004210537993253114, -0.0001335834169891366, -1.7976931348623157e+308],
+                    [0.0006199355221114465, 0.0005930520579684481, 0.00019499931352382965, -1.7976931348623157e+308],
+                    [0.0007635763429484393, 0.0009724312454836671, 0.0001072203968705363, -1.7976931348623157e+308]
+                  ],
+                  [
+                    [0.001016513773292295, -2.2456655592574536e-6, -0.00012857080245208714, -1.7976931348623157e+308],
+                    [0.0010215265726473235, 0.000417228317702401, -0.00002624329128633751, -1.7976931348623157e+308],
+                    [0.00091787610242293, 0.0007552716665834451, 0.00028818665488392233, -1.7976931348623157e+308],
+                    [0.001044676576945496, 0.0009486993612114693, -0.0002622633216017569, -1.7976931348623157e+308]
+                  ]
+                ],
+                "p": 2,
+                "q": 1,
+                "u": [0.0, 0.0, 0.0, 0.6454269175398784, 1.0, 1.0, 1.0],
+                "v": [0.0, 0.0, 0.06982120643163495, 0.618527859591132, 1.0, 1.0]
+              }
+            }
+          ],
+          "targets": [],
+          "vertices": [
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.0007022426935731037, 0.00003722391034812049, -0.0002032409806489932],
+              "status": 0,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 0
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.00007757895094099883, -0.00002662372596664653, 0.00008895239755900544],
+              "status": 1,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 0
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.00041900421812593073, 0.0009470142787902882, 0.00004215255412373446],
+              "status": 1,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 0
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.0006924201422574259, 0.0009663870761641857, 0.00007443441759140286],
+              "status": 1,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 0
+            }
+          ]
+        },
+        "query": {
+          "g": 0,
+          "q": "trim_rails"
+        },
+        "solvers": [
+          {
+            "ang": 0.4164810788648525,
+            "approx": 0.00001,
+            "tang": 0.05159561671471703
+          }
+        ]
+      },
+      "max_rel_err": 1.1459461186806413e-8,
+      "mismatch_count": 15,
+      "mismatches": [
+        {
+          "cpp": "6.580520577276151e-4",
+          "field": "values.r1_c3d_cpts[8]",
+          "rel_err": 1.537094832591825e-9,
+          "rust": "6.580520587391035e-4"
+        },
+        {
+          "cpp": "8.620187885342696e-5",
+          "field": "values.r1_c3d_cpts[10]",
+          "rel_err": 2.3371889566378187e-9,
+          "rust": "8.620187905489704e-5"
+        },
+        {
+          "cpp": "6.924201732122718e-4",
+          "field": "values.r1_c3d_cpts[12]",
+          "rel_err": 3.5978659516331185e-9,
+          "rust": "6.924201757035068e-4"
+        },
+        {
+          "cpp": "7.443450625466738e-5",
+          "field": "values.r1_c3d_cpts[14]",
+          "rel_err": 1.1459461186806413e-8,
+          "rust": "7.443450540168804e-5"
+        },
+        {
+          "cpp": "7.195880082561928e-1",
+          "field": "values.r1_c3d_knots[4]",
+          "rel_err": 3.735262880742641e-9,
+          "rust": "7.195880109440432e-1"
+        },
+        {
+          "cpp": "7.195880082561928e-1",
+          "field": "values.r1_c3d_knots[5]",
+          "rel_err": 3.735262880742641e-9,
+          "rust": "7.195880109440432e-1"
+        },
+        {
+          "cpp": "7.195880082561928e-1",
+          "field": "values.r1_c3d_knots[6]",
+          "rel_err": 3.735262880742641e-9,
+          "rust": "7.195880109440432e-1"
+        },
+        {
+          "cpp": "7.195880082561928e-1",
+          "field": "values.r1_ivl[1]",
+          "rel_err": 3.735262880742641e-9,
+          "rust": "7.195880109440432e-1"
+        },
+        {
+          "cpp": "7.195880082561928e-1",
+          "field": "values.r1_uv1_cpts[4]",
+          "rel_err": 3.735262726456715e-9,
+          "rust": "7.195880109440431e-1"
+        },
+        {
+          "cpp": "7.195880082561928e-1",
+          "field": "values.r1_uv1_knots[2]",
+          "rel_err": 3.735262880742641e-9,
+          "rust": "7.195880109440432e-1"
+        },
+        {
+          "cpp": "7.195880082561928e-1",
+          "field": "values.r1_uv1_knots[3]",
+          "rel_err": 3.735262880742641e-9,
+          "rust": "7.195880109440432e-1"
+        },
+        {
+          "cpp": "7.195880082561928e-1",
+          "field": "values.r1_uv2_cpts[4]",
+          "rel_err": 3.735262726456715e-9,
+          "rust": "7.195880109440431e-1"
+        },
+        {
+          "cpp": "1.8568131390217368e-1",
+          "field": "values.r1_uv2_cpts[5]",
+          "rel_err": 1.3157353192572694e-9,
+          "rust": "1.8568131414648115e-1"
+        },
+        {
+          "cpp": "7.195880082561928e-1",
+          "field": "values.r1_uv2_knots[2]",
+          "rel_err": 3.735262880742641e-9,
+          "rust": "7.195880109440432e-1"
+        },
+        {
+          "cpp": "7.195880082561928e-1",
+          "field": "values.r1_uv2_knots[3]",
+          "rel_err": 3.735262880742641e-9,
+          "rust": "7.195880109440432e-1"
+        }
+      ],
+      "name": "gen0146",
+      "outcome": "fail",
+      "pass": false,
+      "source": "generated:seed=9207373017645818685",
+      "values_compared": 134
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0147",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818686",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0148",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818687",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0149",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818688",
+      "values_compared": 109
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0150",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818689",
+      "values_compared": 117
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0151",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818690",
+      "values_compared": 105
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0152",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818691",
+      "values_compared": 141
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0153",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818692",
+      "values_compared": 106
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0154",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818693",
+      "values_compared": 117
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0155",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818694",
+      "values_compared": 109
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0156",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818695",
+      "values_compared": 141
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0157",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818696",
+      "values_compared": 6681
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0158",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818697",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0159",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818698",
+      "values_compared": 95
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0160",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818699",
+      "values_compared": 109
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0161",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818700",
+      "values_compared": 109
+    },
+    {
+      "inputs": {
+        "geom_solvers": [0],
+        "model": {
+          "edges": [
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [-0.0000932686954562142, -0.0000685337017374908, 0.00007347761183658713, -1.7976931348623157e+308],
+                  [0.0004124048194917926, 0.00005862576958364119, -0.00016444889153475982, -1.7976931348623157e+308],
+                  [0.0010765041889830638, 0.000014025131326703508, -0.00010434813253357386, -1.7976931348623157e+308]
+                ],
+                "dim": 3,
+                "p": 2,
+                "u": [0.0, 0.0, 0.0, 1.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": -1,
+                  "uv_curve": {
+                    "cpts": [
+                      [0.0, 0.38010034321835995, 0.0, -1.7976931348623157e+308],
+                      [1.0, 0.34124244305045426, 0.0, -1.7976931348623157e+308]
+                    ],
+                    "dim": 2,
+                    "p": 1,
+                    "u": [0.0, 0.0, 1.0, 1.0]
+                  },
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "interval": [0.0, 1.0],
+              "status": 0,
+              "ve": 1,
+              "vs": 0
+            },
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [0.00005163144972108177, 0.001021654052012046, 0.00009628850642745701, -1.7976931348623157e+308],
+                  [0.0004222868642607767, 0.0010630336463920823, -0.00029858654450722657, -1.7976931348623157e+308],
+                  [0.0010803918083502238, 0.0010876487926478019, -0.00011040729281099618, -1.7976931348623157e+308]
+                ],
+                "dim": 3,
+                "p": 2,
+                "u": [0.0, 0.0, 0.0, 1.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": -1,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "interval": [0.0, 1.0],
+              "status": 0,
+              "ve": 3,
+              "vs": 2
+            }
+          ],
+          "faces": [],
+          "fillet_brep": [],
+          "geoms": [
+            {
+              "gtype": 2,
+              "other1": [],
+              "other2": [],
+              "rails": [0, 1],
+              "sides": [],
+              "status": 0,
+              "surface": {
+                "net": [
+                  [
+                    [-0.0000932686954562142, -0.0000685337017374908, 0.00007347761183658713, -1.7976931348623157e+308],
+                    [3.1930544380071867e-6, 0.00027616071664768543, -0.000059078061868778315, -1.7976931348623157e+308],
+                    [-0.000016558503107778995, 0.0007169196916009526, -0.00024803430471196064, -1.7976931348623157e+308],
+                    [0.00005163144972108177, 0.001021654052012046, 0.00009628850642745701, -1.7976931348623157e+308]
+                  ],
+                  [
+                    [0.0004124048194917926, 0.00005862576958364119, -0.00016444889153475982, -1.7976931348623157e+308],
+                    [0.00041776615451869523, 0.0002632648670393189, -0.00012798259784895576, -1.7976931348623157e+308],
+                    [0.0005318332394327183, 0.0006188935110169869, -0.00012448592825145522, -1.7976931348623157e+308],
+                    [0.0004222868642607767, 0.0010630336463920823, -0.00029858654450722657, -1.7976931348623157e+308]
+                  ],
+                  [
+                    [0.0010765041889830638, 0.000014025131326703508, -0.00010434813253357386, -1.7976931348623157e+308],
+                    [0.001004153943498684, 0.00026791208910340253, -0.00019744503053344004, -1.7976931348623157e+308],
+                    [0.001065587095399984, 0.0005774944743440013, 0.0002568774598569141, -1.7976931348623157e+308],
+                    [0.0010803918083502238, 0.0010876487926478019, -0.00011040729281099618, -1.7976931348623157e+308]
+                  ]
+                ],
+                "p": 2,
+                "q": 3,
+                "u": [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+                "v": [0.0, 0.0, 0.0, 0.0, 3.4492367653269866, 3.4492367653269866, 3.4492367653269866, 3.4492367653269866]
+              }
+            }
+          ],
+          "targets": [],
+          "vertices": [
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.00022778728977127535, -6.354829244576088e-6, -0.000043067487367713935],
+              "status": 0,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 0
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.0002274828129832218, -6.61970146020997e-6, -0.000042868800546221385],
+              "status": 1,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 0
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.00030496292285150267, 0.0010453749858028753, -0.00009057927798072535],
+              "status": 1,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 0
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.0005855936410155223, 0.0010644435342146354, -0.00016636956039475524],
+              "status": 1,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 0
+            }
+          ]
+        },
+        "query": {
+          "g": 0,
+          "q": "trim_rails"
+        },
+        "solvers": [
+          {
+            "ang": 0.4457654827944065,
+            "approx": 1e-9,
+            "tang": 0.06622101821934011
+          }
+        ]
+      },
+      "max_rel_err": 7.658420395082499e-7,
+      "mismatch_count": 26,
+      "mismatches": [
+        {
+          "cpp": "5.9835695910636895e-5",
+          "field": "values.r0_c3d_cpts[4]",
+          "rel_err": 3.916705693996248e-8,
+          "rust": "5.9835698254225096e-5"
+        },
+        {
+          "cpp": "-3.0033220918054902e-5",
+          "field": "values.r0_c3d_cpts[5]",
+          "rel_err": 1.9622660831621653e-8,
+          "rust": "-3.0033220328723194e-5"
+        },
+        {
+          "cpp": "1.439841591770988e-6",
+          "field": "values.r0_c3d_cpts[6]",
+          "rel_err": 7.658420395082499e-7,
+          "rust": "1.4398404890797668e-6"
+        },
+        {
+          "cpp": "2.2746324111658095e-4",
+          "field": "values.r0_c3d_cpts[8]",
+          "rel_err": 2.2560971674550434e-8,
+          "rust": "2.274632462483728e-4"
+        },
+        {
+          "cpp": "-7.278266622766937e-6",
+          "field": "values.r0_c3d_cpts[9]",
+          "rel_err": 9.571316003459614e-8,
+          "rust": "-7.278265926141039e-6"
+        },
+        {
+          "cpp": "-4.327728839417877e-5",
+          "field": "values.r0_c3d_cpts[10]",
+          "rel_err": 3.163279109587182e-8,
+          "rust": "-4.3277289763160236e-5"
+        },
+        {
+          "cpp": "3.0277320611223474e-1",
+          "field": "values.r0_c3d_knots[3]",
+          "rel_err": 1.5307125723406506e-8,
+          "rust": "3.0277321074682234e-1"
+        },
+        {
+          "cpp": "3.0277320611223474e-1",
+          "field": "values.r0_c3d_knots[4]",
+          "rel_err": 1.5307125723406506e-8,
+          "rust": "3.0277321074682234e-1"
+        },
+        {
+          "cpp": "3.0277320611223474e-1",
+          "field": "values.r0_c3d_knots[5]",
+          "rel_err": 1.5307125723406506e-8,
+          "rust": "3.0277321074682234e-1"
+        },
+        {
+          "cpp": "3.0277320611223474e-1",
+          "field": "values.r0_ivl[1]",
+          "rel_err": 1.5307125723406506e-8,
+          "rust": "3.0277321074682234e-1"
+        },
+        {
+          "cpp": "3.0277320611223474e-1",
+          "field": "values.r0_uv1_cpts[4]",
+          "rel_err": 1.5307125723406506e-8,
+          "rust": "3.0277321074682234e-1"
+        },
+        {
+          "cpp": "3.0277320611223474e-1",
+          "field": "values.r0_uv1_knots[2]",
+          "rel_err": 1.5307125723406506e-8,
+          "rust": "3.0277321074682234e-1"
+        },
+        {
+          "cpp": "3.0277320611223474e-1",
+          "field": "values.r0_uv1_knots[3]",
+          "rel_err": 1.5307125723406506e-8,
+          "rust": "3.0277321074682234e-1"
+        },
+        {
+          "cpp": "3.0277320611223474e-1",
+          "field": "values.r0_uv2_cpts[4]",
+          "rel_err": 1.5307125723406506e-8,
+          "rust": "3.0277321074682234e-1"
+        },
+        {
+          "cpp": "3.0277320611223474e-1",
+          "field": "values.r0_uv2_knots[2]",
+          "rel_err": 1.5307125723406506e-8,
+          "rust": "3.0277321074682234e-1"
+        },
+        {
+          "cpp": "3.0277320611223474e-1",
+          "field": "values.r0_uv2_knots[3]",
+          "rel_err": 1.5307125723406506e-8,
+          "rust": "3.0277321074682234e-1"
+        },
+        {
+          "cpp": "4.3390964831810234e-4",
+          "field": "values.r1_c3d_cpts[4]",
+          "rel_err": 1.3074170476144604e-9,
+          "rust": "4.339096488854032e-4"
+        },
+        {
+          "cpp": "-1.5153422654908195e-4",
+          "field": "values.r1_c3d_cpts[6]",
+          "rel_err": 1.7697071212186303e-9,
+          "rust": "-1.5153422681725315e-4"
+        },
+        {
+          "cpp": "5.855936411234885e-4",
+          "field": "values.r1_c3d_cpts[8]",
+          "rel_err": 2.2791689727626305e-9,
+          "rust": "5.855936424581554e-4"
+        },
+        {
+          "cpp": "5.867835736482492e-1",
+          "field": "values.r1_c3d_knots[3]",
+          "rel_err": 2.108693809050558e-9,
+          "rust": "5.867835748855961e-1"
+        }
+      ],
+      "name": "gen0162",
+      "outcome": "fail",
+      "pass": false,
+      "source": "generated:seed=9207373017645818701",
+      "values_compared": 113
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0163",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818702",
+      "values_compared": 133
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0164",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818703",
+      "values_compared": 109
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0165",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818704",
+      "values_compared": 59
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0166",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818705",
+      "values_compared": 49
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0167",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818706",
+      "values_compared": 95
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0168",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818707",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0169",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818708",
+      "values_compared": 105
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0170",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818709",
+      "values_compared": 42
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0171",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818710",
+      "values_compared": 113
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0172",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818711",
+      "values_compared": 116
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0173",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818712",
+      "values_compared": 125
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0174",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=9207373017645818713",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0175",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818714",
+      "values_compared": 95
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0176",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818715",
+      "values_compared": 111
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0177",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818716",
+      "values_compared": 109
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0178",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=9207373017645818717",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0179",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818718",
+      "values_compared": 123
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0180",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818719",
+      "values_compared": 112
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0181",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818720",
+      "values_compared": 127
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0182",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818721",
+      "values_compared": 128
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0183",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818722",
+      "values_compared": 105
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0184",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818723",
+      "values_compared": 106
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0185",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818724",
+      "values_compared": 111
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0186",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818725",
+      "values_compared": 101
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0187",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818726",
+      "values_compared": 123
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0188",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818727",
+      "values_compared": 121
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0189",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818728",
+      "values_compared": 124
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0190",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818729",
+      "values_compared": 140
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0191",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818730",
+      "values_compared": 101
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0192",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818731",
+      "values_compared": 130
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0193",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818732",
+      "values_compared": 114
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0194",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818733",
+      "values_compared": 114
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0195",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818734",
+      "values_compared": 111
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0196",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818735",
+      "values_compared": 63
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0197",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818736",
+      "values_compared": 128
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0198",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818737",
+      "values_compared": 127
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0199",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818738",
+      "values_compared": 43
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0200",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818739",
+      "values_compared": 101
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0201",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818740",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0202",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818741",
+      "values_compared": 123
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0203",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818742",
+      "values_compared": 113
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0204",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818743",
+      "values_compared": 133
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0205",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818744",
+      "values_compared": 123
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0206",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818745",
+      "values_compared": 97
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0207",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818746",
+      "values_compared": 101
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0208",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=9207373017645818747",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0209",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818748",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0210",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818749",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0211",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818750",
+      "values_compared": 1
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0212",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=9207373017645818751",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0213",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818752",
+      "values_compared": 113
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0214",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818753",
+      "values_compared": 156
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0215",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818754",
+      "values_compared": 111
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0216",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818755",
+      "values_compared": 47
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0217",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818756",
+      "values_compared": 85
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0218",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=9207373017645818757",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0219",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818758",
+      "values_compared": 111
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0220",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818759",
+      "values_compared": 95
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0221",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818760",
+      "values_compared": 153
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0222",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818761",
+      "values_compared": 59
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0223",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818762",
+      "values_compared": 109
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0224",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=9207373017645818763",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0225",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818764",
+      "values_compared": 125
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0226",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818765",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0227",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818766",
+      "values_compared": 123
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0228",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818767",
+      "values_compared": 81
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0229",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818768",
+      "values_compared": 122
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0230",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818769",
+      "values_compared": 90
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0231",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818770",
+      "values_compared": 113
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0232",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818771",
+      "values_compared": 49
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0233",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818772",
+      "values_compared": 145
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0234",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818773",
+      "values_compared": 47
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0235",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818774",
+      "values_compared": 156
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0236",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818775",
+      "values_compared": 133
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0237",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818776",
+      "values_compared": 64
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0238",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818777",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0239",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818778",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0240",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818779",
+      "values_compared": 123
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0241",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818780",
+      "values_compared": 124
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0242",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818781",
+      "values_compared": 117
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0243",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818782",
+      "values_compared": 141
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0244",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818783",
+      "values_compared": 63
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0245",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818784",
+      "values_compared": 111
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0246",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818785",
+      "values_compared": 113
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0247",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818786",
+      "values_compared": 111
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0248",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818787",
+      "values_compared": 101
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0249",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818788",
+      "values_compared": 12949
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0250",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818789",
+      "values_compared": 30
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0251",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818790",
+      "values_compared": 151
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0252",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818791",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0253",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818792",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0254",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818793",
+      "values_compared": 132
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0255",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818794",
+      "values_compared": 123
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0256",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818795",
+      "values_compared": 121
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0257",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818796",
+      "values_compared": 109
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0258",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818797",
+      "values_compared": 59
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0259",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818798",
+      "values_compared": 59
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0260",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=9207373017645818799",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0261",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818800",
+      "values_compared": 85
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0262",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818801",
+      "values_compared": 101
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0263",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818802",
+      "values_compared": 102
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0264",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818803",
+      "values_compared": 4354
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0265",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818804",
+      "values_compared": 81
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0266",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=9207373017645818805",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0267",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818806",
+      "values_compared": 42
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0268",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818807",
+      "values_compared": 97
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0269",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818808",
+      "values_compared": 141
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0270",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818809",
+      "values_compared": 135
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0271",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818810",
+      "values_compared": 127
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0272",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=9207373017645818811",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0273",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818812",
+      "values_compared": 144
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0274",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818813",
+      "values_compared": 125
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0275",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818814",
+      "values_compared": 113
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0276",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818815",
+      "values_compared": 111
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0277",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818816",
+      "values_compared": 125
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0278",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818817",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0279",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818818",
+      "values_compared": 125
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0280",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818819",
+      "values_compared": 124
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0281",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818820",
+      "values_compared": 122
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0282",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818821",
+      "values_compared": 59
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0283",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818822",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0284",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818823",
+      "values_compared": 85
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0285",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818824",
+      "values_compared": 49
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0286",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818825",
+      "values_compared": 334
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0287",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818826",
+      "values_compared": 151
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0288",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818827",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0289",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818828",
+      "values_compared": 125
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0290",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818829",
+      "values_compared": 133
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0291",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818830",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0292",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818831",
+      "values_compared": 125
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0293",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818832",
+      "values_compared": 97
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0294",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818833",
+      "values_compared": 589
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0295",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818834",
+      "values_compared": 105
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0296",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818835",
+      "values_compared": 125
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0297",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818836",
+      "values_compared": 85
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0298",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818837",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0299",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=9207373017645818838",
+      "values_compared": 3
+    }
+  ],
+  "cases_both_errored": 0,
+  "cases_deferred": 13,
+  "cases_failed": 4,
+  "cases_passed": 283,
+  "cases_total": 300,
+  "deferred_by_unit": {
+    "topology.brep_p3": 13
+  },
+  "max_rel_err": 1.477346231045704e-6,
+  "pass": false,
+  "rel_tol": 1e-9,
+  "seeds": 16,
+  "status": "fail",
+  "unit": "blend.fillet_geom_p5"
+}

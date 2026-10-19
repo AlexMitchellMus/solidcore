@@ -235,6 +235,10 @@ int32_t p5_run(int32_t op, Rd& rd, std::vector<double>& o)
         SmFilletGeom* g = M.geom(rd.idx());
         if (rd.bad || g == NULL || g->GetRail(0) == NULL || g->GetRail(1) == NULL)
             return SC_ERR_ARG;
+        // SmFilletEdge::UpdateSplitFace -> ShouldSwapFaces dereferences both faces, which
+        // this op passes as NULL: only a geometry with no rail edge to update can run (none)
+        if (g->GetRail(0) != NULL)
+            return SC_ERR_ARG;
         SmStatus r = g->UpdateSplitFace(NULL, NULL);
         o.push_back(st(r));
         return SC_OK;

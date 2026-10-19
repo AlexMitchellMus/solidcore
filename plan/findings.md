@@ -9318,3 +9318,37 @@ base to the derived solver, so the call is an `UNPORTED(blend.fillet_geom_p1)` s
 (`UNPORTED(blend.fillet_corner_p1)`), so no difftest case reaches it; wire it once p1's
 signature takes the `FilletSolver` base (or a solver trait) and the corner unit lands. No
 disagreement.
+
+## blend.fillet_geom_p5: rail trims and cross sections disagree in the tolerance-dominated regime (blocked)
+
+PR #264, difftest `--unit blend.fillet_geom_p5` (300 generated cases: 283 pass, 4 fail,
+13 deferred; `--seeds 2000`: 1896 pass, 22 fail, 82 deferred). Every failure has a model
+at scale `1e-3` or `1e-6` (`scale_of` in the p1 generator) with a solver tolerance
+`1e-9 .. 1e-3`, i.e. a tolerance comparable to or larger than the rail; ordinary scales
+agree bit for bit. Three kinds, all inside callees of ported units:
+
+1. `TrimRailCurves` / `TrimCliffRails` (17 of the 2000-seed failures, mostly cliff
+   rollover geometries): the trimmed rail's control points and the vertex uses' UV
+   points differ at `1e-9 .. 1.5e-6` relative (e.g. `gen0024`: the end vertex's
+   `GlobalPointSolve` parameter, cpp `3.577861910203989e-2`, rust
+   `3.5778566244631806e-2`; `gen0162`: cpp `5.9835695910636895e-5`, rust
+   `5.9835698254225096e-5`). The calls are `SmCurve::DropPoint` (MINIMIZE, growing
+   tolerances) and `SmCurve::GlobalPointSolve(ivl, SM_SO_MINIMIZE, p, tol, NULL, NULL,
+   SM_SR_ALL)` on the same rail curve, then `Copy`/`Trim`; the Rust side passes the same
+   arguments (`curve.curve_p6` / `curve.curve_p1`). Suspected: upstream keeps the curve's
+   cache on the curve object across the drop and the solve (`SmCacheMgr`), the port
+   rebuilds it per call; or a solver branch of those units that only differs when the
+   tolerance exceeds the curve's extent. Not isolated yet.
+2. `gen1042` (`TrimRailCurves`, rational degree-1 rail at scale `1e-3`, tolerance
+   `1e-3`, coincident end points): upstream's `GlobalCurveSelfIntersect(ivl, 1e-2)` (unit
+   `curve.curve_p9`) returns exactly one solution (the rail is trimmed to its interior
+   knots `[1.1280950573855266, 2.243313725505451]`), the port's does not (no trim).
+3. `gen0677` (`CalcCrossSection` on a fillet surface at scale `1e-3`): upstream succeeds
+   with a lifted 3D curve and a UV curve; the port returns `SM_ERR_NULL_POINTER` (no UV
+   curve to lift), so `sm_CreateUVCurve` (`blend.fillet_geom_p4`, PR #252) or `LiftCurve`
+   (`surface.surface_p11`) differs there.
+
+Not fixed here: the differing code is in the callees, which are shared with other units.
+The unit stays `blocked` until these are isolated (start with a curve-level difftest of
+`DropPoint` + `GlobalPointSolve` on one curve object at scale `1e-3` with tolerance
+`1e-9 .. 1e-3`). No tolerance was loosened and no generator scale was narrowed.

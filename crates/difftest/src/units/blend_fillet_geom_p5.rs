@@ -34,7 +34,7 @@ use solidcore::curve::curve::{Curve, CurveKind};
 use solidcore::kernel::Kernel;
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::nurbs::math::NOW;
-use solidcore::topology::{edge, edgeuse::p1 as eu1, EdgeId};
+use solidcore::topology::{edge, edgeuse::p1 as eu1};
 use solidcore::SolidError;
 use solidcore_ffi::units::blend_fillet_geom_p5::{self as ffi, Op};
 
