@@ -1019,7 +1019,7 @@ case (108/108 default, 291/291 extended).
 
 Ports primitive state/maps and all owned non-debug control flow, including the
 pivot/path helpers, primitive constructors, analytic sweep and planar boolean.
-Merged canonical main `28cd7d9a`, retaining its current B-rep p1 code and reports;
+Merged canonical main `5040b0b2`, retaining its current B-rep p1 code and reports;
 dependency #145 has landed. The two `MakeFaceWithCurves` adapters now use p7.
 `Boolean2D` uses upstream's 0.0001-degree normal tolerance. Added kernel tests for
 that boundary, edit/context/result restoration, and plane coverage before the
@@ -1032,3 +1032,8 @@ negative full-circle inputs reproduce a native hang and are rejected precisely
 at the analytic-cylinder branch). No primitive topology, cap mutation or
 post-intersection boolean mutation is certified by deferred cases. Details and
 the native GDB trace are summarized in `plan/findings.md` / `upstream-issues.md`.
+
+Validation after the p10 integration: fmt, default/native Clippy, 1397 kernel
+tests, wasm32, five native FFI tests, p7/p10 differential reruns, 689/689
+perturbations detected, and two focused 500-case fuzz runs with no differences,
+crashes, panics or timeouts.
