@@ -44,6 +44,31 @@ fn curve(v: &[f64]) -> solidcore::Result<BSplineCurve> {
         )
     }
 }
+fn sweep_curve(k: &Kernel, v: &[f64], analytic: bool) -> solidcore::Result<Curve> {
+    if !analytic {
+        return curve(v).map(Curve::from);
+    }
+    let origin = Vec3::new(value(v, 1), value(v, 2), value(v, 3));
+    if value(v, 0) == 0.0 {
+        Ok(Curve::from(solidcore::curve::line::Line::from_points(
+            origin,
+            Vec3::new(value(v, 4), value(v, 5), value(v, 6)),
+            3,
+        )))
+    } else {
+        solidcore::curve::ellipse::Ellipse::create_canonical_circle(
+            k,
+            &Axis2Placement::new(origin, Vec3::X, Vec3::Y),
+            value(v, 4),
+            Some(&solidcore::geom::extent1d::Extent1d::from_min_max(
+                value(v, 5),
+                value(v, 6),
+            )),
+            None,
+        )
+        .map(Curve::from)
+    }
+}
 fn samples(curve: &Curve, record: &mut Vec<f64>) -> solidcore::Result<()> {
     let interval = curve.natural_interval();
     record.extend([interval.min(), interval.max()]);
@@ -280,20 +305,24 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
                     },
                     value(v, 7) != 0.0,
                 ),
-                9 => primitive.create_linear_sweep(
-                    &mut k,
-                    &mut brep,
-                    v.get(20..)
+                9 => {
+                    let curves = v
+                        .get(20..)
                         .unwrap_or_default()
                         .as_chunks::<7>()
                         .0
                         .iter()
-                        .map(|chunk| curve(chunk).map(Curve::from))
-                        .collect::<solidcore::Result<Vec<_>>>()?,
-                    frame.z_axis(),
-                    value(v, 1),
-                    value(v, 7) != 0.0,
-                ),
+                        .map(|chunk| sweep_curve(&k, chunk, value(v, 6) != 0.0))
+                        .collect::<solidcore::Result<Vec<_>>>()?;
+                    primitive.create_linear_sweep(
+                        &mut k,
+                        &mut brep,
+                        curves,
+                        frame.z_axis(),
+                        value(v, 1),
+                        value(v, 7) != 0.0,
+                    )
+                }
                 10 => {
                     let mut output = (value(v, 6) != 0.0).then(Brep::new);
                     let mut marks_a = solidcore::topology::topology_traverser::Marks::default();

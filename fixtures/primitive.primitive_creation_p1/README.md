@@ -63,7 +63,14 @@ The same review file varies rear X tilt independently and supplies a line, full
 circle, open arc and skew line to the linear sweep with/without caps and signed
 or zero sweep distances. Deferred construction is listed separately in reports.
 
-Two negative-distance full-circle sweeps reproduce a native nontermination in
+Four negative-distance full-circle sweeps reproduce a native nontermination in
 the analytic-cylinder branch. A preflight repeats that branch's arc/axis tests
 and rejects only negative sweeps selecting it. Zero/positive circles and
 negative lines/open arcs stay accepted. See `plan/upstream-issues.md`.
+
+For selector 9, parameter 6 selects real analytic `SmLine`/`SmCircle` objects
+when nonzero; zero keeps the B-spline line/circle builders. Rust uses the matching
+Line/Ellipse variants. Both families include full circles and open arcs, so the
+`IsAnalytic` STEP-interval choice and the copy/extrusion branches are reached.
+Their missing face construction still makes those cases deferred, not geometry
+parity. Negative full circles are rejected in both families (four witnesses).

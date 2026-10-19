@@ -55,6 +55,21 @@ SmBSplineCurve* pc1_curve(const double* data) {
     }
     return curve;
 }
+// Sweep fixtures cover the IsAnalytic/STEP-interval branch as well as B-splines.
+SmCurve* pc1_sweep_curve(const double* data, bool analytic) {
+    if(!analytic) return pc1_curve(data);
+    const SmVector3d origin(data[1],data[2],data[3]);
+    if(data[0]==0) return new(the_context()) SmLine(origin,
+        SmVector3d(data[4],data[5],data[6]),3,&the_context());
+    SmAxis2Placement frame(origin,SmVector3d(1,0,0),SmVector3d(0,1,0));
+    SmExtent1d interval(data[5],data[6]);
+    SmCircle* circle=nullptr;
+    if(SmCircle::CreateCanonical(the_context(),frame,data[4],circle,&interval)!=SM_SUCCESS) {
+        delete circle;
+        return nullptr;
+    }
+    return circle;
+}
 // N_CrvExtendByDist's G1 fallback reads a third control point after a
 // failed normalization, including on two-point lines. Check only the exact
 // extension stages selected by ExtendPathCurves; unextended huge lines remain
@@ -244,7 +259,7 @@ SC_EXPORT int32_t sc_primitive_primitive_creation_p1_eval(int32_t op, const doub
                 if(n!=19) {
                     if(n<20 || data[19]<0 || data[19]>32 || data[19]!=(int)data[19] || n!=20+7*(int)data[19]) return SC_ERR_ARG;
                     for(int i=0;i<(int)data[19];++i) {
-                        auto curve=pc1_curve(data+20+7*i);
+                        auto curve=pc1_sweep_curve(data+20+7*i,data[6]!=0);
                         if(!curve) return -1010;
                         curves.Add(curve);
                     }

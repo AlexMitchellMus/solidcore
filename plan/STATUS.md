@@ -1,6 +1,6 @@
 # solidcore status
 
-Last updated: 2026-10-19, PR #213 review (`primitive.primitive_creation_p1` partial: 689 exact passes, 53 dependency deferrals, 7 rejected native fixtures). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
+Last updated: 2026-10-19, PR #213 review (`primitive.primitive_creation_p1` partial: 689 exact passes, 75 dependency deferrals, 9 rejected native fixtures). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
 Latest topology integration: `topology.brep_p6` partial (PR #169, after its dependency #154: 498 cases, 450 pass, 48 deferred, 0 failed; 206 units, 113 green and 93 partial); before: `topology.shell` partial (PR #154, continuing @0xlillith's PR #80: 192 ported units, 109 green and 83 partial); before: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green); before: `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
 
@@ -1025,15 +1025,21 @@ dependency #145 has landed. The two `MakeFaceWithCurves` adapters now use p7.
 that boundary, edit/context/result restoration, and plane coverage before the
 intersection dependency. The bottom cylindrical-box points retain signed zero.
 
-Native differential result: 749 cases, 689 exact passes, zero failures,
-53 deferred and seven rejected. New fixtures include 32 nonempty/empty boolean
-validation cases, four independent rear-X tilts and 24 nonempty sweeps (two
+Native differential result: 773 cases, 689 exact passes, zero failures,
+75 deferred and nine rejected. New fixtures include 32 nonempty/empty boolean
+validation cases, four independent rear-X tilts and 48 nonempty sweeps with B-spline and real analytic generators (four
 negative full-circle inputs reproduce a native hang and are rejected precisely
 at the analytic-cylinder branch). No primitive topology, cap mutation or
 post-intersection boolean mutation is certified by deferred cases. Details and
 the native GDB trace are summarized in `plan/findings.md` / `upstream-issues.md`.
 
-Validation after the p10 integration: fmt, default/native Clippy, 1397 kernel
+Validation after the p10 integration: fmt, default/native Clippy, 1398 kernel
 tests, wasm32, five native FFI tests, p7/p10 differential reruns, 689/689
 perturbations detected, and two focused 500-case fuzz runs with no differences,
 crashes, panics or timeouts.
+
+The analytic sweep fixtures exposed lazy-line NURB construction and owner-side
+reparameterization in surface.surf_of_extrusion_p1. Both now follow the virtual
+upstream path, preserving the IsLinear domain snapshot before GetEnds. Six new
+regressions bring its exact differential passes to 2061/2061. The final local
+--green gate completed: 213 units, 114 passed, 99 partial, zero failed.

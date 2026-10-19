@@ -1353,6 +1353,296 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_line_cap0_distance0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#60 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_line_cap0_distance2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#61 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_line_cap0_distance-1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#62 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_line_cap1_distance0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#63 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_line_cap1_distance2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#64 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_line_cap1_distance-1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#65 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_circle_cap0_distance0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#66 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_circle_cap0_distance2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#67 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "data": [9, -1, 3, 4, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0, 360],
+        "op": 4
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_circle_cap0_distance-1",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "native fixture preflight rejected undefined construction",
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#68 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_circle_cap1_distance0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#69 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_circle_cap1_distance2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#70 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "data": [9, -1, 3, 4, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0, 360],
+        "op": 4
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_circle_cap1_distance-1",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "native fixture preflight rejected undefined construction",
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#71 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_arc_cap0_distance0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#72 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_arc_cap0_distance2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#73 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_arc_cap0_distance-1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#74 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_arc_cap1_distance0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#75 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_arc_cap1_distance2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#76 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_arc_cap1_distance-1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#77 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_skew_line_cap0_distance0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#78 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_skew_line_cap0_distance2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#79 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_skew_line_cap0_distance-1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#80 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_skew_line_cap1_distance0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#81 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_skew_line_cap1_distance2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#82 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "linear_analytic_skew_line_cap1_distance-1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p1/review.json#83 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
       "max_rel_err": 0.0,
       "name": "rotate_on_axis",
       "outcome": "pass",
@@ -6242,15 +6532,15 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 53,
+  "cases_deferred": 75,
   "cases_failed": 0,
   "cases_passed": 689,
-  "cases_rejected": 7,
-  "cases_total": 749,
+  "cases_rejected": 9,
+  "cases_total": 773,
   "deferred_by_unit": {
     "boolean.topology_intersector_p2": 10,
     "topology.brep_p3": 5,
-    "topology.brep_p8": 37,
+    "topology.brep_p8": 59,
     "topology.brep_p9": 1
   },
   "max_rel_err": 0.0,
