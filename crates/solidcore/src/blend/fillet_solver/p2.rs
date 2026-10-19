@@ -69,6 +69,7 @@ use crate::geom::matrix::Matrix;
 use crate::geom::tol::ANG_TOL_RAD;
 use crate::geom::vector2d::Point2;
 use crate::intersect::curve_class::p1::CurveClassification;
+use crate::intersect::point_class::ClassObject;
 use crate::intersect::surface_intersector::p1::{
     IntersectionPointType, SrfIndex, TsectPnt, MAX_USER_DOUBLES,
 };
@@ -360,9 +361,6 @@ impl FilletSolver {
         let start_uv1 = t_first.uv_pos(SrfIndex::Second);
         let end_uv0 = t_last.uv_pos(SrfIndex::First);
         let end_uv1 = t_last.uv_pos(SrfIndex::Second);
-        if !has_surface(ops.solver(), 0)? || !has_surface(ops.solver(), 1)? {
-            return Err(invalid("no offset surface"));
-        }
 
         // set OffsetSurface offset = radius for begin point and get sCenter0
         let mut radius0 = offset_radius(ops, t_first)?;
@@ -539,9 +537,6 @@ impl FilletSolver {
 
         // Get some parameters for surf-of-revo creation
         let (t_first, t_last) = first_last(tsects)?;
-        if !has_surface(ops.solver(), 0)? || !has_surface(ops.solver(), 1)? {
-            return Err(invalid("no offset surface"));
-        }
         let start_uv0 = t_first.uv_pos(SrfIndex::First);
         let start_uv1 = t_first.uv_pos(SrfIndex::Second);
         let end_uv0 = t_last.uv_pos(SrfIndex::First);
@@ -722,9 +717,6 @@ impl FilletSolver {
 
         // Locate the generating curve(arc)
         let (t_first, t_last) = first_last(tsects)?;
-        if !has_surface(s, 0)? || !has_surface(s, 1)? {
-            return Err(invalid("no offset surface"));
-        }
         let start_uv0 = t_first.uv_pos(SrfIndex::First);
         let start_uv1 = t_first.uv_pos(SrfIndex::Second);
 
@@ -814,7 +806,7 @@ impl FilletSolver {
         let mut angle_span = end_ang - start_ang;
 
         // Determine if we need to extend the span even when 'm_bExtendBefore' is FALSE
-        if !curve.is_closed(&ivl, crate::geom::tol::ZONE_TOL_3D)? && !s.extend_after {
+        if !curve.is_closed(&ivl, 0.0)? && !s.extend_after {
             // for both filletSector->edgeuses
             for i in 0..2 {
                 let eu_i = s.edgeuse(i)?.ok_or_else(|| invalid("no edge use"))?;
@@ -849,7 +841,7 @@ impl FilletSolver {
         let eu0 = s.edgeuse(0)?.ok_or_else(|| invalid("no edge use"))?;
         let e0 = eu::edge(b, eu0)?.ok_or_else(|| invalid("edge use without edge"))?;
         let e0_curve = edge::curve(b, e0)?.ok_or_else(|| invalid("edge without curve"))?;
-        let move_seam = if e0_curve.is_closed(&edge::interval(b, e0)?, crate::geom::tol::ZONE_TOL_3D)? {
+        let move_seam = if e0_curve.is_closed(&edge::interval(b, e0)?, 0.0)? {
             false
         } else {
             angle_span > 360.0 - EFF_ZERO
@@ -1415,10 +1407,10 @@ fn unported_temporary_radius_change() -> Result<()> {
 /// (`SmFilletEdge::GetOriginalFace`, unit `blend.fillet_geom_p1`) on; those of the
 /// rail's vertex queries.
 #[allow(clippy::too_many_arguments)]
-pub fn find_rollover_side_edge(
+pub fn find_rollover_side_edge<O: ClassObject>(
     pseudo: &Brep,
     _b: &Brep,
-    cc: &CurveClassification,
+    cc: &CurveClassification<O>,
     curr_index: usize,
     rail: EdgeId,
     orig_rail_uv_curve: &Curve,
@@ -1427,7 +1419,7 @@ pub fn find_rollover_side_edge(
     rollover_corner_eu: Option<EdgeuseId>,
     tangency_tol_rad: f64,
 ) -> Result<RolloverSideEdge> {
-    let total_intervals = cc.len();
+    let total_intervals = cc.intervals().len();
     let start_v = edge::vertex(pseudo, rail)?;
     let end_v = edge::other_vertex(pseudo, rail, start_v)?;
     let _ = (
