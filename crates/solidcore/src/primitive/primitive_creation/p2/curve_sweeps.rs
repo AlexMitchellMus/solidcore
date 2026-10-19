@@ -81,13 +81,14 @@ impl PrimitiveCreation {
             curves.push(Some(trimmed_edge_curve(a, brep, edge)?));
         }
 
-        // Now call Sweep with profile curves
+        // Now call Sweep with profile curves (the B-spline reference as an SmCurve)
+        let scale_reference = scale_reference.cloned().map(Curve::from);
         self.create_curve_sweep(
             a,
             brep,
             &curves,
             path,
-            scale_reference,
+            scale_reference.as_ref(),
             scale_curve,
             approx_tol,
             options,
@@ -131,13 +132,14 @@ impl PrimitiveCreation {
             }
         }
 
-        // Now call Sweep with profile curves
+        // Now call Sweep with profile curves (the B-spline reference as an SmCurve)
+        let scale_reference = scale_reference.cloned().map(Curve::from);
         self.create_curve_sweep(
             a,
             brep,
             &curves,
             path,
-            scale_reference,
+            scale_reference.as_ref(),
             scale_curve,
             approx_tol,
             options,

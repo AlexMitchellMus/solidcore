@@ -66,6 +66,7 @@ mod tests {
     use crate::geom::attribute::TagData;
     use crate::geom::axis2_placement::Axis2Placement;
     use crate::geom::context::MarkType;
+    use crate::geom::object::ObjectRef;
     use crate::kernel::Kernel;
     use crate::math::{Point3, Vec3};
     use crate::nurbs::b_spline_curve::p1::NurbCircleParam;
@@ -73,6 +74,7 @@ mod tests {
     use crate::sweep::topology_sweep::access::{EdgeRef, FaceRef, SweepAccess, SweepMergeId};
     use crate::sweep::topology_sweep::SweepEntity;
     use crate::topology::brep::p10::TrimType;
+    use crate::topology::edge::NotifyEnv;
     use crate::topology::{Brep, BrepId, FaceId, Region, RegionId};
 
     struct Model {
@@ -108,6 +110,32 @@ mod tests {
         }
         fn kernel_mut(&mut self, _: BrepId) -> Result<&mut Kernel> {
             Ok(&mut self.k)
+        }
+        fn with_brep_mut<T>(
+            &mut self,
+            _: BrepId,
+            _: impl FnOnce(
+                &mut Kernel,
+                &mut Brep,
+                &dyn Fn(FaceId) -> ObjectRef,
+                &mut NotifyEnv<'_>,
+            ) -> Result<T>,
+        ) -> Result<T> {
+            none()
+        }
+        fn with_breps_mut<T>(
+            &mut self,
+            _: BrepId,
+            _: BrepId,
+            _: impl FnOnce(
+                &mut Kernel,
+                &mut Brep,
+                &mut Brep,
+                &dyn Fn(FaceId) -> ObjectRef,
+                &mut NotifyEnv<'_>,
+            ) -> Result<T>,
+        ) -> Result<T> {
+            none()
         }
         fn new_brep(&mut self, _: BrepId) -> Result<BrepId> {
             Err(SolidError::unported("SmBrep::SmBrep", "topology.brep_p3"))
@@ -145,6 +173,9 @@ mod tests {
         }
     }
     impl PrimitiveAccess for Model {
+        fn delete_primitive_faces(&mut self, _: BrepId, _: &[FaceId]) -> Result<()> {
+            none()
+        }
         fn with_primitive_brep<T>(
             &mut self,
             _: BrepId,

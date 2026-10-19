@@ -7,7 +7,8 @@
 //! | [`PrimitiveCreationAccess`] | B-rep, face, merge and stitching services |
 //!
 //! Deviations: extends p3's [`PrimitiveAccess`] as that trait extends
-//! `SweepAccess`. Defaults defer only callees whose unit is not ported yet;
+//! `SweepAccess`. Defaults call the ported services (`topology.face_p3`,
+//! `topology.brep_p5`) and defer only callees whose unit is not ported yet;
 //! outputs no p2 caller reads (stitch counts and gaps) are not returned.
 
 use crate::curve::composite_curve::OffsetMapAttribute;
@@ -74,12 +75,7 @@ pub trait PrimitiveCreationAccess: PrimitiveAccess {
     /// Whether two consecutive edges of the face's outer loop are lamina
     /// (`SmFace::HasConsecutiveLaminaEdges`).
     fn has_consecutive_lamina_edges(&mut self, face: FaceRef) -> Result<bool> {
-        let _ = face;
-        // UNPORTED(topology.face_p3): SmFace::HasConsecutiveLaminaEdges
-        Err(SolidError::unported(
-            "SmFace::HasConsecutiveLaminaEdges",
-            "topology.face_p3",
-        ))
+        crate::topology::face::p3::has_consecutive_lamina_edges(self.brep(face.0)?, face.1)
     }
     /// Delete a face with the edges and vertices left unconnected, nesting regions
     /// (`SmBrep::DeleteFace(face, TRUE)`).
@@ -103,13 +99,13 @@ pub trait PrimitiveCreationAccess: PrimitiveAccess {
     }
     /// Remove edges and vertices that only split faces or edges
     /// (`SmBrep::RemoveTopologicalEdgesAndVertices`).
-    fn remove_topological_edges_and_vertices(&mut self, brep: BrepId) -> Result<()> {
-        let _ = brep;
-        // UNPORTED(topology.brep_p5): SmBrep::RemoveTopologicalEdgesAndVertices
-        Err(SolidError::unported(
-            "SmBrep::RemoveTopologicalEdgesAndVertices",
-            "topology.brep_p5",
-        ))
+    fn remove_topological_edges_and_vertices(&mut self, brep: BrepId) -> Result<()>
+    where
+        Self: Sized,
+    {
+        self.with_primitive_brep(brep, |k, b| {
+            crate::topology::brep::p5::remove_topological_edges_and_vertices(k, b, None, None)
+        })
     }
     /// Whether the B-rep is a closed manifold solid (`SmBrep::IsManifoldSolid`).
     fn is_manifold_solid(&mut self, brep: BrepId) -> Result<bool> {

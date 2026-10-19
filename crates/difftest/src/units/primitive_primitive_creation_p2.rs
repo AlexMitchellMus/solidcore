@@ -97,6 +97,11 @@ fn options(f: &[f64]) -> SweepOptions {
 // topology is faked.
 struct EmptyModel {
     k: Kernel,
+    notification_records: std::collections::BTreeMap<
+        solidcore::geom::attribute::ObjectKey,
+        solidcore::topology::topology::Topology,
+    >,
+    notification_attributes: solidcore::geom::attribute::AttributeStore,
     b: Brep,
 }
 fn unavailable<T>() -> Result<T> {
@@ -116,6 +121,8 @@ impl EmptyModel {
         b.set_editing_enabled(editing);
         Ok(Self {
             k: Kernel::default(),
+            notification_records: std::collections::BTreeMap::default(),
+            notification_attributes: solidcore::geom::attribute::AttributeStore::default(),
             b,
         })
     }
@@ -132,6 +139,55 @@ impl SweepAccess for EmptyModel {
     }
     fn kernel_mut(&mut self, _: BrepId) -> Result<&mut Kernel> {
         Ok(&mut self.k)
+    }
+    fn with_brep_mut<T>(
+        &mut self,
+        id: BrepId,
+        body: impl FnOnce(
+            &mut Kernel,
+            &mut Brep,
+            &dyn Fn(FaceId) -> solidcore::geom::object::ObjectRef,
+            &mut solidcore::topology::edge::NotifyEnv<'_>,
+        ) -> Result<T>,
+    ) -> Result<T> {
+        if id != BrepId::from_index(0) {
+            return unavailable();
+        }
+        // As primitive.primitive_creation_p3's fixture: this fixture owns the face-key
+        // namespace, including future allocations.
+        let face_objects = |face: FaceId| solidcore::geom::object::ObjectRef {
+            type_code: solidcore::geom::assert_array::labels::FACE_TYPE,
+            key: solidcore::geom::attribute::ObjectKey(100_000 + u64::from(face.index()) * 97),
+        };
+        let key_of = |entity: solidcore::EntityRef| {
+            if let solidcore::EntityRef::Face(face) = entity {
+                face_objects(face)
+            } else {
+                super::boolean_topology_intersector_p1::p9_entity_ref(entity)
+            }
+        };
+        let mut notifications = solidcore::topology::edge::NotifyEnv {
+            records: &mut self.notification_records,
+            attributes: &mut self.notification_attributes,
+            context: None,
+            key_of: &key_of,
+        };
+        body(&mut self.k, &mut self.b, &face_objects, &mut notifications)
+    }
+    fn with_breps_mut<T>(
+        &mut self,
+        _source: BrepId,
+        _destination: BrepId,
+        _body: impl FnOnce(
+            &mut Kernel,
+            &mut Brep,
+            &mut Brep,
+            &dyn Fn(FaceId) -> solidcore::geom::object::ObjectRef,
+            &mut solidcore::topology::edge::NotifyEnv<'_>,
+        ) -> Result<T>,
+    ) -> Result<T> {
+        // This fixture has one B-rep; no distinct pair can be resolved.
+        unavailable()
     }
     fn new_brep(&mut self, _: BrepId) -> Result<BrepId> {
         // UNPORTED(topology.brep_p3): SmBrep::SmBrep
@@ -170,6 +226,9 @@ impl SweepAccess for EmptyModel {
     }
 }
 impl PrimitiveAccess for EmptyModel {
+    fn delete_primitive_faces(&mut self, _: BrepId, _: &[FaceId]) -> Result<()> {
+        unavailable()
+    }
     fn with_primitive_brep<T>(
         &mut self,
         _: BrepId,

@@ -1803,7 +1803,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **How found:** generated difftest case (`primitive.primitive_creation_p2`), then isolated native probes with 20-40 s limits.
 - **Confirmed:** yes (C++ 87 s for the radius `1e-5` sphere; stack samples from a scratch `SIGPROF` handler all in the ray fire's line intersection, for the analytic and the stitched path).
 - **Severity:** hang (seconds to minutes per call).
-- **Rust port:** The face construction and stitch belong to unported units (`topology.brep_p8`, `topology.brep_p9`, `heal.stitch_p2`). p1's FFI requires radii above `1e-4`; the `primitive.primitive_creation_p2` FFI rejects spheres, tori and cones from half the zone tolerance to `1.5e-4` across at any turn, keeping inputs that fail before any face is built, and its generator keeps skins and planar paths at scale `1e-3` or more.
+- **Rust port:** These cases defer at the face construction (`topology.brep_p8`, not ported yet), before the ray fire; `FindInfiniteRegion` (`topology.brep_p9`) and the stitch (`heal.stitch_p2`) are partial ports that these cases do not reach yet. p1's FFI requires radii above `1e-4`; the `primitive.primitive_creation_p2` FFI rejects spheres, tori and cones from half the zone tolerance to `1.5e-4` across at any turn, keeping inputs that fail before any face is built, and its generator keeps skins and planar paths at scale `1e-3` or more.
 
 #### HANG-33. `SmStitch::StitchIntoShell` never returns when `dMaxStitchTol3d / 100` underflows
 - **Location:** `source/SMLib/src/SmStitch.cpp:2756`-`2791` (`StitchIntoShell`).
