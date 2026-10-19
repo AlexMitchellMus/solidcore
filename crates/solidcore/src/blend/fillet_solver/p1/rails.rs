@@ -19,7 +19,7 @@ use crate::geom::{global_solver::SolverOperation, object::ObjectRef};
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3};
 use crate::surface::surface::Surface;
-use crate::topology::{edge, edgeuse::p1 as eu, EdgeId, VertexId};
+use crate::topology::{edge, edgeuse::p1 as eu, EdgeId, Vertex, VertexId};
 const OP: &str = "blend::fillet_solver::p1::rails";
 
 /// Caller-owned object identities and notification routing for new rail curves.
@@ -217,7 +217,12 @@ impl Rails<'_> {
             .vertex_mut(end)?
             .vertexuses
             .retain(|v| *v != vu);
-        let vertex = self.fillets.brep_mut().add_vertex(Point3::ZERO)?;
+        // SmVertex() starts at the origin with tolerance 0, independent of
+        // the system zone tolerance used by Brep::add_vertex's convenience API.
+        let vertex = self
+            .fillets
+            .brep_mut()
+            .add_vertex_record(Vertex::default())?;
         self.fillets
             .insert_fillet_vertex(vertex, FilletVertex::new(self.k, None));
         self.fillets

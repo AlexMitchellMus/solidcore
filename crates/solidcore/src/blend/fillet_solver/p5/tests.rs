@@ -324,6 +324,7 @@ impl RecoveryOps for Script {
         self.call("make_edge")?;
         if self.corner {
             assert_eq!(fb.fillet_vertex(start)?.status(), FilStatus::Processed);
+            assert_eq!(fb.brep().vertex(start)?.tolerance, 0.0);
         }
         let edge = fb.new_fillet_edge(start, end, None)?;
         for vertex in [start, end] {
@@ -910,4 +911,21 @@ fn end_squeezing_uses_the_real_connect_intervals_port() {
     assert_eq!(cc.size(), 1);
     assert_eq!(cc.sub_interval(0).unwrap().min(), 0.01);
     assert_eq!(cc.sub_interval(0).unwrap().max(), 0.99);
+}
+
+#[test]
+fn split_preserves_tolerances_smaller_than_the_zone_default() {
+    let mut f = Fixture::new([&[1.0], &[1.0]], false);
+    let id = f.geom;
+    let rail = f.fb.geom(id).unwrap().rail(0).unwrap();
+    let end = f.context().end(rail).unwrap();
+    f.fb.brep_mut().edge_mut(rail).unwrap().tolerance = 1e-12;
+    f.fb.brep_mut().vertex_mut(end).unwrap().tolerance = 1e-12;
+    let (middle, new_rail) = f
+        .context()
+        .split_rail(id, rail, &mut Script::default())
+        .unwrap();
+    assert_eq!(f.fb.brep().edge(new_rail).unwrap().tolerance, 1e-12);
+    assert_eq!(f.fb.brep().vertex(middle).unwrap().tolerance, 1e-12);
+    assert_eq!(f.fb.brep().vertex(end).unwrap().tolerance, 1e-12);
 }

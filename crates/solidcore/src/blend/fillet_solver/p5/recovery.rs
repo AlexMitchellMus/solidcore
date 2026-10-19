@@ -33,7 +33,7 @@ use crate::curve::curve::Curve;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::math::{Point3, Vec3, EFF_ZERO_SQRT};
 use crate::surface::surface::Surface;
-use crate::topology::{FaceId, VertexId};
+use crate::topology::{FaceId, Vertex, VertexId};
 
 pub(super) struct Recovery<'a> {
     pub solver: &'a mut FilletSolver,
@@ -685,7 +685,12 @@ impl Recovery<'_> {
                     if corner_eu.is_some() && !hit.trim {
                         // This is target-B-rep geometry, copied into a new pseudo vertex.
                         let point = self.target.vertex(required(corner_vertex)?)?.point;
-                        let end = self.fillets.brep_mut().add_vertex(point)?;
+                        // SmFilletVertex() + SetPoint: retain SmVertex's zero
+                        // tolerance rather than Brep::add_vertex's zone default.
+                        let end = self.fillets.brep_mut().add_vertex_record(Vertex {
+                            point,
+                            ..Vertex::default()
+                        })?;
                         let mut record = FilletVertex::new(self.k, None);
                         record.set_fillet_vertex_type(FilletVertexType::OnVertex);
                         record.set_status(FilStatus::Processed);
