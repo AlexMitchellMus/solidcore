@@ -84,6 +84,24 @@ fn err(e: &(impl ToString + ?Sized)) -> HarnessError {
     HarnessError::new(e.to_string())
 }
 
+/// The shared encoder (`topology_vertexuse::push_surface`) writes the knot counts as
+/// `len - 1` unchecked, so a B-spline surface without knots (a fuzz mutation) is
+/// malformed input here rather than an overflow.
+fn check_knots(surface: &impl Serialize) -> Result<(), HarnessError> {
+    let s = serde_json::to_value(surface).map_err(|e| err(&e))?;
+    if let Some(b) = s.get("bspline") {
+        for k in ["u", "v"] {
+            if b.get(k)
+                .and_then(Value::as_array)
+                .is_some_and(Vec::is_empty)
+            {
+                return Err(err("surface without knots"));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// The fixture block of `brep` (validate-only off, no cached gaps).
 fn block(brep: &BrepIn) -> Result<(String, Vec<f64>), HarnessError> {
     let mut v = Vec::new();
@@ -95,6 +113,7 @@ fn block(brep: &BrepIn) -> Result<(String, Vec<f64>), HarnessError> {
             v.extend([*t0, *t1]);
         }
         BrepIn::Face { surface, dom } => {
+            check_knots(surface)?;
             v.push(2.0);
             shared::push_surface(&mut v, surface)?;
             v.extend(dom);
