@@ -239,6 +239,10 @@ struct IdentityDomain {
     token: Arc<DomainToken>,
     geometry_issued: u64,
     breps_issued: u64,
+    /// The stand-in a crate edit left while it lends the context's callbacks
+    /// ([`Context::lend_notify`]): the context issues nothing and lends nothing until
+    /// they are given back.
+    lent: bool,
 }
 
 impl IdentityDomain {
@@ -247,6 +251,7 @@ impl IdentityDomain {
             token: Arc::new(DomainToken(())),
             geometry_issued: 0,
             breps_issued: 0,
+            lent: false,
         }
     }
 }
@@ -299,6 +304,14 @@ pub struct NotifyLease {
     identities: IdentityDomain,
 }
 
+/// The refusal of a context whose callbacks a crate edit has lent out
+/// ([`Context::lend_notify`]): a nested edit through it would notify no callback, in
+/// another domain.
+const NOTIFY_LENT: SolidError = SolidError::InvalidInput {
+    operation: "geom::context::lend_notify",
+    reason: "the context's notify callbacks are lent to an edit in progress (nested edit)",
+};
+
 /// The refusal of an exhausted identity domain.
 const IDENTITIES_EXHAUSTED: SolidError = SolidError::InvalidInput {
     operation: "geom::context::identities",
@@ -320,8 +333,10 @@ impl Context {
     ///
     /// # Errors
     ///
-    /// `InvalidInput` once the domain has issued every geometry key.
+    /// `InvalidInput` once the domain has issued every geometry key, or while a crate
+    /// edit has lent the context's callbacks ([`Context::lend_notify`]).
     pub(crate) fn geometry_key(&mut self, slot: &mut IdentitySlot) -> Result<ObjectKey> {
+        self.check_not_lent()?;
         if let Some(i) = &slot.0 {
             if Arc::ptr_eq(&i.domain, &self.identities.token) {
                 return Ok(ObjectKey(i.value));
@@ -347,9 +362,11 @@ impl Context {
     ///
     /// # Errors
     ///
-    /// `InvalidInput` once the domain has issued every serial.
+    /// `InvalidInput` once the domain has issued every serial, or while a crate edit
+    /// has lent the context's callbacks ([`Context::lend_notify`]).
     pub(crate) fn brep_serial(&mut self, slot: &mut IdentitySlot) -> Result<u64> {
-        if let Some(serial) = self.issued_serial(slot) {
+        self.check_not_lent()?;
+        if let Some(serial) = self.issued_brep_serial(slot) {
             return Ok(serial);
         }
         let serial = self.fresh_serial()?;
@@ -360,22 +377,8 @@ impl Context {
         Ok(serial)
     }
 
-    /// [`Context::brep_serial`] for a B-rep the caller cannot change: its stored serial
-    /// when this domain issued it, else a fresh serial for this use only (never one a
-    /// live B-rep holds, so nothing aliases; the B-rep's objects get stable keys once a
-    /// mutable use stores one).
-    ///
-    /// # Errors
-    ///
-    /// `InvalidInput` once the domain has issued every serial.
-    pub(crate) fn brep_serial_of(&mut self, slot: &IdentitySlot) -> Result<u64> {
-        match self.issued_serial(slot) {
-            Some(serial) => Ok(serial),
-            None => self.fresh_serial(),
-        }
-    }
-
-    fn issued_serial(&self, slot: &IdentitySlot) -> Option<u64> {
+    /// The serial this context's domain issued the B-rep owning `slot`, if it did.
+    pub(crate) fn issued_brep_serial(&self, slot: &IdentitySlot) -> Option<u64> {
         slot.0
             .as_ref()
             .filter(|i| Arc::ptr_eq(&i.domain, &self.identities.token))
@@ -466,6 +469,12 @@ impl Context {
     /// another context for a while ([`Context::restore_notify_lease`]; no upstream
     /// counterpart: a context reached through `GetContext` cannot be borrowed twice).
     /// The identities the callbacks see keep coming from their own domain.
+    ///
+    /// Until the lease is given back this context is a new identity domain, whose
+    /// identities may coincide with the lent domain's: every caller store keyed by
+    /// identities (notification records and attributes, a tracker, a callback's state)
+    /// must be scoped to one domain. A lease that is never given back leaves the context
+    /// a new domain for good.
     pub fn take_notify_lease(&mut self) -> NotifyLease {
         NotifyLease {
             user: self.user_notify_callback.take(),
@@ -474,12 +483,38 @@ impl Context {
         }
     }
 
-    /// Installs a lease's callbacks and identity domain, replacing this context's
-    /// (returning a lease to the context it came from, or lending it to a stand-in).
+    /// Installs a lease's callbacks and identity domain, dropping this context's own
+    /// callbacks and domain (returning a lease to the context it came from, or lending
+    /// it to a stand-in); take them out first to keep them.
     pub fn restore_notify_lease(&mut self, lease: NotifyLease) {
         self.user_notify_callback = lease.user;
         self.sys_notify_callback = lease.sys;
         self.identities = lease.identities;
+    }
+
+    /// Lends the callbacks and the identity domain for a crate edit, as
+    /// [`Context::take_notify_lease`], and marks this context as lent until
+    /// [`Context::restore_notify_lease`] gives them back.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` when they are already lent (a nested edit), before anything
+    /// moves.
+    pub(crate) fn lend_notify(&mut self) -> Result<NotifyLease> {
+        self.check_not_lent()?;
+        let lease = self.take_notify_lease();
+        self.identities.lent = true;
+        Ok(lease)
+    }
+
+    /// `InvalidInput` when a crate edit has lent this context's callbacks
+    /// ([`Context::lend_notify`]).
+    pub(crate) const fn check_not_lent(&self) -> Result<()> {
+        if self.identities.lent {
+            Err(NOTIFY_LENT)
+        } else {
+            Ok(())
+        }
     }
 
     /// The context's model size estimate, or the system one when it is

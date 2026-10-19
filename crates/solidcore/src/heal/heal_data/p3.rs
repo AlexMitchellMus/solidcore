@@ -480,62 +480,55 @@ const EDIT_TRACKER: u64 = 0x4845_414c; // "HEAL"
 /// (`SmTopologyChangeCallback::Execute`, `topology::topology`): the removed and the
 /// added faces, edges and vertices. The edit also borrows the kernel (mark locks),
 /// so the kernel context's notify callbacks are lent to a context of their own for
-/// the edit's notifications and given back afterwards; a callback already installed
-/// there (an outer tracker) keeps the edit's notifications, and the tracker then
-/// records nothing, as upstream. Notification records and attributes are scratch:
-/// nothing in the healer reads them. A failed edit still reports what was tracked
-/// before it failed (callers that ignore its status keep those changes).
+/// the edit's notifications and given back afterwards
+/// (`topology::brep::p3::with_lent_context`); a callback already installed there (an
+/// outer tracker) keeps the edit's notifications, and the tracker then records
+/// nothing, as upstream. The healer keeps no notification identities of its own, so
+/// `b`'s objects are named by their kernel identities
+/// (`topology::brep::p3::kernel_named_edit`), and the tracker's lists are decoded with
+/// `b`'s serial. Notification records and attributes are scratch: nothing in the
+/// healer reads them. A failed edit still reports what was tracked before it failed
+/// (callers that ignore its status keep those changes). Not nestable: a tracked edit
+/// (or a `topology::brep::p3::with_kernel_callbacks`) inside `edit` is refused, before
+/// anything changes.
 fn tracked_edit<R>(
     k: &mut Kernel,
     b: &mut Brep,
     edit: impl FnOnce(&mut Kernel, &mut Brep, &mut NotifyEnv<'_>) -> Result<R>,
 ) -> (Result<R>, Changes) {
     use crate::topology::brep::p3 as brep_p3;
-    let mut ctx = crate::geom::context::Context::default();
-    ctx.restore_notify_lease(k.context.take_notify_lease());
-    // (the tracker reads its B-rep only to tell it from null)
-    let tracker = TrackTopologyChanges::new(
-        Some(crate::topology::BrepId::from_index(0)),
-        EDIT_TRACKER,
-        true,
-        Some(&mut ctx),
-    );
-    // the edit names b's objects by their kernel identities (and seeds their
-    // SmTopology records); the tracker's lists are decoded with b's serial
-    let (r, serial) = match brep_p3::notify_serial(&mut ctx, b) {
-        Ok(serial) => {
-            let key_of = move |e: EntityRef| brep_p3::topology_ref(serial, e);
-            let mut records = std::collections::BTreeMap::new();
-            let mut attributes = crate::geom::attribute::AttributeStore::default();
-            let mut env = NotifyEnv {
-                records: &mut records,
-                attributes: &mut attributes,
-                context: Some(&mut ctx),
-                key_of: &key_of,
-            };
-            (edit(k, b, &mut env), serial)
-        }
-        Err(e) => (Err(e), 0),
-    };
-    let edit_entity = |key: ObjectKey| {
-        brep_p3::topology_entity(serial, key).filter(|e| {
-            matches!(
-                e,
-                EntityRef::Face(_) | EntityRef::Edge(_) | EntityRef::Vertex(_)
-            )
-        })
-    };
-    let changes = Changes {
-        removed: tracker
-            .rm_list()
-            .into_iter()
-            .filter_map(edit_entity)
-            .collect(),
-        added: tracker.add_list().into_iter().map(edit_entity).collect(),
-    };
-    tracker.finish(Some(&mut ctx));
-    k.context.restore_notify_lease(ctx.take_notify_lease());
-    (r, changes)
+    let lent = brep_p3::with_lent_context(k, |k, ctx| {
+        // (the tracker reads its B-rep only to tell it from null)
+        let tracker = TrackTopologyChanges::new(
+            Some(crate::topology::BrepId::from_index(0)),
+            EDIT_TRACKER,
+            true,
+            Some(&mut *ctx),
+        );
+        let r = brep_p3::kernel_named_edit(k, ctx, b, edit);
+        let serial = b.notify_serial();
+        let edit_entity = |key: ObjectKey| {
+            serial
+                .and_then(|s| brep_p3::topology_entity(s, key))
+                .filter(|e| {
+                    matches!(
+                        e,
+                        EntityRef::Face(_) | EntityRef::Edge(_) | EntityRef::Vertex(_)
+                    )
+                })
+        };
+        let changes = Changes {
+            removed: tracker
+                .rm_list()
+                .into_iter()
+                .filter_map(edit_entity)
+                .collect(),
+            added: tracker.add_list().into_iter().map(edit_entity).collect(),
+        };
+        tracker.finish(Some(ctx));
+        (r, changes)
+    });
+    lent.unwrap_or_else(|e| (Err(e), Changes::default()))
 }
 /// `SqueezeEdge(e, survivor)` under the edit tracker ([`tracked_edit`]).
 fn squeeze_edge(k: &mut Kernel, b: &mut Brep, e: EdgeId, survivor: VertexId) -> Result<Changes> {
@@ -1521,6 +1514,25 @@ mod tests {
         // other use (of the second edge) moved to the survivor
         assert!(b.edge(e0).unwrap().edgeuses.is_empty());
         assert_eq!(b.vertex(a).unwrap().vertexuses.len(), 1);
+    }
+
+    /// A tracked edit nested in a lent edit is refused before anything changes
+    /// (`topology::brep::p3::with_lent_context`), and tracks nothing; once the outer
+    /// lend is over, a tracked edit runs.
+    #[test]
+    fn nested_tracked_edits_are_refused() {
+        use crate::topology::brep::p3 as brep_p3;
+        let (mut b, [a, _, _], [e0, _]) = wire_chain();
+        let mut k = Kernel::default();
+        let r = brep_p3::with_kernel_callbacks(&mut k, &mut b, |k, b, _| {
+            let (r, changes) =
+                tracked_edit(k, b, |k, b, env| brep_p3::squeeze_edge(k, b, env, e0, a));
+            assert!(changes.removed.is_empty() && changes.added.is_empty());
+            r
+        });
+        assert!(matches!(r, Err(SolidError::InvalidInput { .. })), "{r:?}");
+        assert!(!b.edge(e0).unwrap().edgeuses.is_empty());
+        assert!(squeeze_edge(&mut k, &mut b, e0, a).is_ok());
     }
 
     /// The A--B--C chain of [`wire_chain`] with line curves and AB's uses reversed (its

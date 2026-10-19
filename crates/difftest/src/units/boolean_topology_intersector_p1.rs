@@ -1303,25 +1303,40 @@ impl IntersectorBrep<H> for Two {
     }
 }
 
-/// A notification environment for the `topology.brep_p3` edits of the hooks (no
-/// attributes or context: the intersector cases compare no attributes). The edits name
-/// every object by its kernel-issued identity and seed its `SmTopology` record
-/// themselves, so the environment's `key_of` is only a label they never read.
+/// A notification environment for the B-rep edits of the hooks (no attributes or
+/// context: the intersector cases compare no attributes). Each entity is notified
+/// under its arena kind and index, which identify it within the edited B-rep (the
+/// edits give each object its default `SmTopology` record, as each C++ object has).
 fn with_edit_env<R>(
     b: &mut Brep,
     f: impl FnOnce(&mut Brep, &mut solidcore::topology::edge::NotifyEnv<'_>) -> R,
 ) -> R {
     let mut records = BTreeMap::new();
     let mut attributes = AttributeStore::default();
-    let label = |_: EntityRef| ObjectRef {
-        type_code: 0,
-        key: ObjectKey(0),
+    let key_of = |e: EntityRef| {
+        let (kind, i) = match e {
+            EntityRef::Brep(_) => (0u64, 0),
+            EntityRef::Region(x) => (1, x.index()),
+            EntityRef::Shell(x) => (2, x.index()),
+            EntityRef::Faceuse(x) => (3, x.index()),
+            EntityRef::Face(x) => (4, x.index()),
+            EntityRef::Loopuse(x) => (5, x.index()),
+            EntityRef::Loop(x) => (6, x.index()),
+            EntityRef::Edgeuse(x) => (7, x.index()),
+            EntityRef::Edge(x) => (8, x.index()),
+            EntityRef::Vertexuse(x) => (9, x.index()),
+            EntityRef::Vertex(x) => (10, x.index()),
+        };
+        ObjectRef {
+            type_code: 0,
+            key: ObjectKey((kind << 32) | u64::from(i)),
+        }
     };
     let mut env = solidcore::topology::edge::NotifyEnv {
         records: &mut records,
         attributes: &mut attributes,
         context: None,
-        key_of: &label,
+        key_of: &key_of,
     };
     f(b, &mut env)
 }

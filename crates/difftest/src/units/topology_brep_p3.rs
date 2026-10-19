@@ -14,9 +14,8 @@
 //! Entity selectors are taken modulo the matching entity count (`-1` selects null);
 //! an op that needs an entity the B-rep lacks is skipped on both sides (`no target`).
 //! `Merge` / `CopyVertices` target a second build of the same B-rep (a second import
-//! on the Rust side). The port names every object by its kernel-issued identity
-//! (`bp3::topology_ref`, the B-rep's serial from the issuing context); the environment's
-//! `key_of` ([`label`]) is a label it never reads. `DeleteFace` always passes a deleted list
+//! on the Rust side), whose objects the Rust side notifies under identities of their
+//! own ([`source_key_of`]). `DeleteFace` always passes a deleted list
 //! (`pOptDeletedEdgesVertices`); the header default `NULL` only skips its `Add`s and
 //! is not compared.
 
@@ -331,12 +330,35 @@ fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
 
 // ---- Rust side ----------------------------------------------------------------------------
 
-/// The caller's label for each entity (`NotifyEnv::key_of`): the port's edits never read
-/// it (they notify kernel-issued identities), so one constant serves.
-fn label(_: EntityRef) -> ObjectRef {
+/// The identity each entity is notified and attributed under: its type code and
+/// `(kind << 32) | (1 + index)`, so records of different kinds never share a key.
+fn key_of(e: EntityRef) -> ObjectRef {
+    let (kind, type_code, i) = match e {
+        EntityRef::Region(x) => (1u64, 16012, x.index()),
+        EntityRef::Shell(x) => (2, 16013, x.index()),
+        EntityRef::Faceuse(x) => (3, 16022, x.index()),
+        EntityRef::Face(x) => (4, 16002, x.index()),
+        EntityRef::Loopuse(x) => (5, 16004, x.index()),
+        EntityRef::Loop(x) => (6, 16003, x.index()),
+        EntityRef::Edgeuse(x) => (7, 16005, x.index()),
+        EntityRef::Edge(x) => (8, 16016, x.index()),
+        EntityRef::Vertexuse(x) => (9, 16006, x.index()),
+        EntityRef::Vertex(x) => (10, 16021, x.index()),
+        EntityRef::Brep(_) => (11, 16999, 0),
+    };
     ObjectRef {
-        type_code: 0,
-        key: ObjectKey(0),
+        type_code,
+        key: ObjectKey((kind << 32) | (1 + u64::from(i))),
+    }
+}
+
+/// The identity of the source B-rep's entities in a copy or merge into another B-rep
+/// (its ids overlap the destination's, which are notified under [`key_of`]).
+fn source_key_of(e: EntityRef) -> ObjectRef {
+    let r = key_of(e);
+    ObjectRef {
+        type_code: r.type_code,
+        key: ObjectKey(r.key.0 | (1 << 40)),
     }
 }
 
@@ -958,8 +980,8 @@ fn wrap_in_offsets(k: &Kernel, b: &mut Brep, faces: &[FaceId], d: f64) -> Result
     Ok(())
 }
 
-/// Whether `key` is a geometry identity (`GEOMETRY_KEY_BASE`'s range; every topology
-/// key, `bp3::topology_ref`, is below it).
+/// Whether `key` is a geometry identity (the kernel context's range,
+/// `Context::new_geometry_key`; every [`key_of`] key is below it).
 const fn is_geometry_key(key: ObjectKey) -> bool {
     key.0 >= solidcore::geom::context::GEOMETRY_KEY_BASE
 }
@@ -992,12 +1014,11 @@ impl solidcore::geom::context::NotifyCallback for GeomRecorder {
 }
 
 /// What the shim's `Tracked` holds: the arena lengths before the op, the walk after
-/// it, the B-rep's serial and key, each pre-op edge curve's key, the geometry the
-/// notifications named and that geometry numbered by first appearance in the output.
+/// it, the B-rep's key, each pre-op edge curve's key, the geometry the notifications
+/// named and that geometry numbered by first appearance in the output.
 struct Tracked<'a> {
     pre: [usize; 10],
     post: Walk,
-    serial: u64,
     brep: ObjectKey,
     pre_curves: &'a BTreeMap<ObjectKey, usize>,
     post_curves: BTreeMap<ObjectKey, usize>,
@@ -1044,22 +1065,16 @@ fn put_tracked(o: &mut Vec<f64>, key: Option<ObjectKey>, t: &mut Tracked<'_>) {
         o.extend([-30.0, n as f64]);
         return;
     }
-    // a topology key of this B-rep (bp3::topology_ref), by the walk's kind order
-    let Some((k, idx)) = bp3::topology_entity(t.serial, key).and_then(|e| {
-        Some(match e {
-            EntityRef::Region(x) => (0, x.index()),
-            EntityRef::Shell(x) => (1, x.index()),
-            EntityRef::Faceuse(x) => (2, x.index()),
-            EntityRef::Face(x) => (3, x.index()),
-            EntityRef::Loopuse(x) => (4, x.index()),
-            EntityRef::Loop(x) => (5, x.index()),
-            EntityRef::Edgeuse(x) => (6, x.index()),
-            EntityRef::Edge(x) => (7, x.index()),
-            EntityRef::Vertexuse(x) => (8, x.index()),
-            EntityRef::Vertex(x) => (9, x.index()),
-            EntityRef::Brep(_) => return None,
-        })
-    }) else {
+    // key_of: (kind << 32) | (1 + index), kinds 1..=10 in the walk's order
+    let kind = key.0 >> 32;
+    let idx = (key.0 & 0xffff_ffff).wrapping_sub(1);
+    let (Some(k), Ok(idx)) = (
+        usize::try_from(kind)
+            .ok()
+            .and_then(|x| x.checked_sub(1))
+            .filter(|&x| x < 10),
+        u32::try_from(idx),
+    ) else {
         o.extend([-2.0, -5.0]);
         return;
     };
@@ -1123,18 +1138,16 @@ fn run_rust_op(
     if !tracked {
         return run_rust_op_in(k, b, second, op, a, None);
     }
-    // the op's notifications go through a context of their own, which issues every
-    // identity they carry: the B-rep's serial and each edge's curve before the op (the
-    // shim's pre_curves)
+    // the op's notifications go through a context of their own, which issues the
+    // curves' identities: each edge's curve before the op (the shim's pre_curves)
     let mut ctx = Context::default();
-    let serial = must(bp3::notify_serial(&mut ctx, b))?;
     let mut pre_curves = BTreeMap::new();
     let mut owners = Vec::new();
     let ids: Vec<EdgeId> = b.edges().ids().collect();
     for e in ids {
         if let Some(c) = must(bp3::edge_curve_identity(&mut ctx, b, e))? {
             pre_curves.insert(c.key, e.index() as usize);
-            owners.push((c, bp3::topology_ref(serial, EntityRef::Edge(e))));
+            owners.push((c, key_of(EntityRef::Edge(e))));
         }
     }
     // (arena lengths in the walk's kind order: an imported B-rep's ids are its walk
@@ -1151,7 +1164,7 @@ fn run_rust_op(
         b.vertexuses().len(),
         b.vertices().len(),
     ];
-    let brep = bp3::topology_ref(serial, EntityRef::Brep(BrepId::from_index(0))).key;
+    let brep = solidcore::topology::brep::p2::brep_ref(b).key;
     let recorder = GeomRecorder::default();
     let seen = std::sync::Arc::clone(&recorder.0);
     ctx.set_user_notify_callback(Some(Box::new(recorder)));
@@ -1186,7 +1199,6 @@ fn run_rust_op(
     let mut t = Tracked {
         pre,
         post,
-        serial,
         brep,
         pre_curves: &pre_curves,
         post_curves,
@@ -1212,14 +1224,14 @@ fn run_rust_op_in(
             .copied()
             .ok_or_else(|| Fail::Harness(harness("args too short")))
     };
-    // (the edits seed every object's SmTopology record under its kernel identity)
+    // (the edits seed every object's SmTopology record the caller keeps none for)
     let mut records = BTreeMap::new();
     let mut attrs = AttributeStore::default();
     let mut env = NotifyEnv {
         records: &mut records,
         attributes: &mut attrs,
         context,
-        key_of: &label,
+        key_of: &key_of,
     };
     match op {
         OpIn::Construct { mse, lsr } => {
@@ -1233,15 +1245,24 @@ fn run_rust_op_in(
             put_counts(&mut out, &nb)?;
         }
         OpIn::ApiCopyNull => {
-            let (s, _) = status(bp3::api_brep_copy(k, &mut env, None))?;
+            let (s, _) = status(bp3::api_brep_copy(k, &mut env, None, &source_key_of))?;
             out.push(s);
         }
         OpIn::Copy { analytics, api } => {
             let src: &Brep = b;
             let r = if *api {
-                bp3::api_brep_copy(k, &mut env, Some(src))
+                bp3::api_brep_copy(k, &mut env, Some(src), &source_key_of)
             } else {
-                bp3::copy_brep(k, &mut env, src, None, None, true, *analytics)
+                bp3::copy_brep(
+                    k,
+                    &mut env,
+                    src,
+                    &source_key_of,
+                    None,
+                    None,
+                    true,
+                    *analytics,
+                )
             };
             let c = must(r)?;
             out.push(0.0);
@@ -1251,7 +1272,16 @@ fn run_rust_op_in(
         }
         OpIn::Merge { analytics } => {
             let dst = second.ok_or_else(|| Fail::Harness(harness("no second B-rep")))?;
-            let (s, _) = status(bp3::merge_brep(k, &mut env, dst, b, None, None, *analytics))?;
+            let (s, _) = status(bp3::merge_brep(
+                k,
+                &mut env,
+                dst,
+                b,
+                &source_key_of,
+                None,
+                None,
+                *analytics,
+            ))?;
             out.push(s);
             put_counts(&mut out, dst)?;
         }
@@ -1261,7 +1291,7 @@ fn run_rust_op_in(
             let vs: Vec<VertexId> = (0..n)
                 .map(|j| arg(1 + j).map(|x| VertexId::from_index(x as u32)))
                 .collect::<Result<_, _>>()?;
-            let (s, r) = status(bp3::copy_vertices(k, b, &vs, dst, &mut env))?;
+            let (s, r) = status(bp3::copy_vertices(k, b, &vs, dst, &mut env, &source_key_of))?;
             out.push(s);
             out.push(r.map_or(0.0, |x| x.len() as f64));
             put_counts(&mut out, dst)?;
@@ -1596,7 +1626,7 @@ mod tests {
             type_code: BSplineCurve::TYPE,
             key: ObjectKey(solidcore::geom::context::GEOMETRY_KEY_BASE | n),
         };
-        let edge = bp3::topology_ref(1, EntityRef::Edge(EdgeId::from_index(0)));
+        let edge = key_of(EntityRef::Edge(EdgeId::from_index(0)));
         let (a, b) = (g(1), g(2));
         let lists = |new: ObjectRef, old: ObjectRef| TopologyChangeLists {
             notify_events: vec![NotifyEvent {
@@ -1614,7 +1644,6 @@ mod tests {
             let mut t = Tracked {
                 pre: [0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
                 post: Walk::default(),
-                serial: 1,
                 brep: ObjectKey(u64::MAX),
                 pre_curves: &pre_curves,
                 post_curves,
