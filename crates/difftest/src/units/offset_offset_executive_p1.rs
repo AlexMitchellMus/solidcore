@@ -1052,10 +1052,7 @@ fn curve_key(edge: EdgeId, type_code: i64) -> ObjectRef {
 
 // The shim's measured_traversal: GetEdges order without the closing support edges,
 // each edge's uses in its list order (primary first).
-fn measured_traversal(
-    brep: &Brep,
-    supports: &[EdgeId],
-) -> RResult<(Vec<EdgeId>, Vec<EdgeuseId>)> {
+fn measured_traversal(brep: &Brep, supports: &[EdgeId]) -> RResult<(Vec<EdgeId>, Vec<EdgeuseId>)> {
     let edges: Vec<EdgeId> = solidcore::topology::brep::p1::edges(brep, None)?
         .into_iter()
         .filter(|edge| !supports.contains(edge))
@@ -2049,7 +2046,7 @@ mod tests {
     #[test]
     fn each_highlevel_probe_calls_its_real_method() {
         for (branch, dependency, status) in [
-            (Probe::ReplaceEmpty, Some("topology.brep_p4"), 1000),
+            (Probe::ReplaceEmpty, None, 1000),
             (Probe::RemoveNoMerge, None, 1000),
             (Probe::RemoveEmpty, Some("topology.brep_p5"), 1000),
             (Probe::SideWallNull, None, 1000),
@@ -2246,7 +2243,8 @@ mod tests {
                 approx_tol: 1e-6,
             }))
             .unwrap();
-        assert_eq!(output.deferred.unwrap().unit, "topology.brep_p4");
+        // ShrinkGeometry of the empty B-rep and the empty offset-surface scan complete
+        assert!(output.deferred.is_none() && output.error.is_none());
     }
 
     const SYNC_LISTS: [&str; 4] = [

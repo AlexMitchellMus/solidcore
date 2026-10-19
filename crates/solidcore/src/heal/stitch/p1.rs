@@ -1977,9 +1977,8 @@ fn stitch_and_orient(
     faces_to_swap: Option<&[FaceId]>,
     just_unify: Option<bool>,
 ) -> Result<()> {
-    // The part 5 body reaches no kernel state before its stitching dependency.
-    let _ = k;
     crate::topology::brep::p5::stitch_and_orient(
+        k,
         b,
         &crate::topology::brep::p5::StitchAndOrientOptions {
             stitch_tolerance: stitch_tol_3d,

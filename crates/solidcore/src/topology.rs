@@ -1022,6 +1022,14 @@ impl Brep {
             .ok_or_else(|| not_found("topology::Brep::remove_shell_record", id))
     }
 
+    /// Deletes a region record (upstream `delete`; no unlinking: the caller resets the
+    /// region list head and the infinite region when they named it).
+    pub fn remove_region_record(&mut self, id: RegionId) -> Result<Region> {
+        self.regions
+            .remove(id)
+            .ok_or_else(|| not_found("topology::Brep::remove_region_record", id))
+    }
+
     /// Deletes a face record (upstream `m_pFaceListHead->Remove` and `delete`): the
     /// face leaves the B-rep's face list; no other unlinking.
     pub fn remove_face_record(&mut self, id: FaceId) -> Result<Face> {

@@ -709,8 +709,16 @@ impl UnitDiff for Runner {
         let target = u32::try_from(i.target).unwrap_or(u32::MAX);
         let r = match i.op {
             OpIn::DeleteEdge => {
-                p4::delete_edge(&mut k, &mut b, &mut env, EdgeId::from_index(target), keep)
-                    .map(|()| None)
+                // the shim passes `keep_face->GetSurface()`: NULL for a face without one
+                let keep_surface = keep.filter(|&f| b.face(f).is_ok_and(|r| r.surface.is_some()));
+                p4::delete_edge(
+                    &mut k,
+                    &mut b,
+                    &mut env,
+                    EdgeId::from_index(target),
+                    keep_surface,
+                )
+                .map(|()| None)
             }
             OpIn::DeleteVertex => {
                 p4::delete_vertex(&mut k, &mut b, &mut env, VertexId::from_index(target))

@@ -224,7 +224,7 @@ pub fn combine_with_notifications(
             true,
             true,
         ))?;
-        crate::error::ignore_status(delete_vertex(b, deleted))?;
+        crate::error::ignore_status(delete_vertex(k, b, deleted, notifications.as_deref_mut()))?;
         return Ok(());
     } else if edges.is_empty() {
         let first_uses = vertex::vertexuses(b, survivor)?;
@@ -253,7 +253,7 @@ pub fn combine_with_notifications(
             true,
             true,
         ))?;
-        crate::error::ignore_status(delete_vertex(b, deleted))?;
+        crate::error::ignore_status(delete_vertex(k, b, deleted, notifications.as_deref_mut()))?;
         return Ok(());
     }
     let mut common = None;
@@ -370,9 +370,49 @@ fn notify_merge(
     missing("SmBrep::Notify", "topology.brep_p2")
 }
 
-fn delete_vertex(_b: &mut Brep, _vertex: VertexId) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteVertex
-    missing("SmBrep::DeleteVertex", "topology.brep_p4")
+/// `SmBrep::DeleteVertex(vertex)` with the caller's notification records, attributes
+/// and identities, or (without them) on call-local records
+/// ([`crate::topology::brep::p4::with_local_env`]). The context is the kernel's.
+fn delete_vertex(
+    k: &mut Kernel,
+    b: &mut Brep,
+    vertex: VertexId,
+    notifications: Option<&mut EditNotifyEnv<'_>>,
+) -> Result<()> {
+    use crate::topology::brep::p4;
+    match notifications {
+        Some(env) => {
+            let mut d = p4::DeleteEnv {
+                records: &mut *env.records,
+                attributes: &mut *env.attributes,
+                key_of: env.key_of,
+            };
+            p4::delete_vertex(k, b, &mut d, vertex)
+        }
+        None => p4::with_local_env(|d| p4::delete_vertex(k, b, d, vertex)),
+    }
+}
+
+/// `SmBrep::DeleteEdge(edge, pOptSurfaceToKeep)`, environment as [`delete_vertex`].
+fn delete_edge_with(
+    k: &mut Kernel,
+    b: &mut Brep,
+    edge: EdgeId,
+    surface_to_keep: Option<FaceId>,
+    notifications: Option<&mut EditNotifyEnv<'_>>,
+) -> Result<()> {
+    use crate::topology::brep::p4;
+    match notifications {
+        Some(env) => {
+            let mut d = p4::DeleteEnv {
+                records: &mut *env.records,
+                attributes: &mut *env.attributes,
+                key_of: env.key_of,
+            };
+            p4::delete_edge(k, b, &mut d, edge, surface_to_keep)
+        }
+        None => p4::with_local_env(|d| p4::delete_edge(k, b, d, edge, surface_to_keep)),
+    }
 }
 
 fn squeeze_edge(_b: &mut Brep, _edge: EdgeId, _survivor: VertexId) -> Result<()> {
@@ -920,7 +960,7 @@ pub fn glue_with_notifications(
         crate::error::ignore_status(vertex::set_tolerance(b, survivor, radius, true, true))?;
     }
     if vertex::is_shell_vertex(b, deleted)? {
-        delete_vertex(b, deleted)?;
+        delete_vertex(k, b, deleted, notifications.as_deref_mut())?;
         return Ok(());
     }
     if vertex::is_shell_vertex(b, survivor)? {
@@ -1037,15 +1077,23 @@ fn shell_vertexuse(b: &Brep, shell: ShellId) -> Result<Option<VertexuseId>> {
 fn remove_region_shell(b: &mut Brep, region: RegionId, shell: ShellId) -> Result<()> {
     crate::topology::shell::region_remove_shell(b, region, shell)
 }
-fn destroy_topology_record(_b: &mut Brep, _entity: crate::error::EntityRef) -> Result<()> {
-    // These plain deletes follow detachment from the topology graph. They must
-    // not call DeleteVertex, which would repeat notifications/list removal, or
-    // delete a vertex when only its vertex-use is being destroyed. The owning
-    // arena is append-only: erasure must preserve every other typed id and use
-    // actual object lifetime/key routing. This storage integration belongs to
-    // the B-rep destructor, not the already ported entity destructor bodies.
-    // UNPORTED(topology.brep_p4): SmBrep::~SmBrep (stable owning record erasure).
-    missing("SmBrep::~SmBrep", "topology.brep_p4")
+/// A plain `delete` after detachment from the topology graph: the record leaves its
+/// arena (`topology.brep_p4`'s record removal, which keeps every other typed id
+/// valid). It does not call `DeleteVertex` (that would repeat the notifications and
+/// list removals) and deletes only the named record. The destructors'
+/// `SM_NO_DESTRUCTION` notifications are not modelled (as in
+/// [`crate::topology::brep::p4`]).
+fn destroy_topology_record(b: &mut Brep, entity: crate::error::EntityRef) -> Result<()> {
+    use crate::error::EntityRef as E;
+    match entity {
+        E::Shell(id) => b.remove_shell_record(id).map(drop),
+        E::Vertexuse(id) => b.remove_vertexuse_record(id).map(drop),
+        E::Vertex(id) => b.remove_vertex_record(id).map(drop),
+        _ => Err(SolidError::invalid_input(
+            OP,
+            "unexpected record to destroy",
+        )),
+    }
 }
 fn clear_shell_list(b: &mut Brep, shell: ShellId) -> Result<()> {
     // GlueVertices clears only the head and size, retaining m_tShellType.
@@ -1316,6 +1364,7 @@ fn make_edge_in_face_with_vu(
 /// Makes the selected regions manifold. `None` means all non-infinite regions;
 /// `Some(&[])` means no regions and returns the native `SM_ERR`.
 pub fn make_manifold(
+    k: &mut Kernel,
     b: &mut Brep,
     regions_to_keep: Option<&[RegionId]>,
     keep_interior_faces: bool,
@@ -1358,12 +1407,12 @@ pub fn make_manifold(
         }
         for edge in brep_edges(b)? {
             if crate::topology::edge::is_wire(b, edge)? {
-                delete_edge(b, edge)?;
+                delete_edge_with(k, b, edge, None, None)?;
             }
         }
         for vertex in brep_vertices(b)? {
             if vertex::is_shell_vertex(b, vertex)? {
-                delete_vertex(b, vertex)?;
+                delete_vertex(k, b, vertex, None)?;
             }
         }
         regions = brep_regions(b)?;
@@ -1421,10 +1470,6 @@ fn delete_face(
 ) -> Result<()> {
     // UNPORTED(topology.brep_p3): SmBrep::DeleteFace
     missing("SmBrep::DeleteFace", "topology.brep_p3")
-}
-fn delete_edge(_b: &mut Brep, _edge: EdgeId) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge
-    missing("SmBrep::DeleteEdge", "topology.brep_p4")
 }
 fn set_region_is_void(b: &mut Brep, region: RegionId, is_void: bool) -> Result<()> {
     b.region_mut(region)?.set_is_void(i32::from(is_void));
@@ -1494,13 +1539,14 @@ pub fn remove_topological_with_notifications(
             }
             // Return the kept surface's current owner after the deletion. Its
             // former face id can become stale when DeleteEdge merges the faces.
-            let current_face = delete_edge_keep_surface(b, edge, keep)?;
+            let current_face =
+                delete_edge_keep_surface(k, b, edge, keep, notifications.as_deref_mut())?;
             let domain = topological.merged_face_domain.unwrap_or_default();
             crate::topology::face::p2::set_uv_domain(b, current_face, &domain)?;
         }
         for vertex in brep_vertices(b)? {
             if vertex::is_loop_vertex(b, vertex)? {
-                delete_vertex(b, vertex)?;
+                delete_vertex(k, b, vertex, notifications.as_deref_mut())?;
                 continue;
             }
             if crate::error::ignored(vertex::is_topological_vertex(k, b, vertex))?.unwrap_or(false)
@@ -1525,9 +1571,34 @@ pub fn remove_topological_with_notifications(
     result.and(restored.map(|_| ()))
 }
 
-fn delete_edge_keep_surface(_b: &mut Brep, _edge: EdgeId, _surface_face: FaceId) -> Result<FaceId> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge
-    missing("SmBrep::DeleteEdge", "topology.brep_p4")
+/// `DeleteEdge(pEdge, pSurfToKeep)` followed by `pSurfToKeep->GetFace()`: the face
+/// holding the kept surface afterwards. A surface is named by its face here; when
+/// `DeleteEdge` merges the faces and swaps the kept surface into the survivor, the
+/// kept face's record is deleted and the survivor (the other face of the edge) holds
+/// it; otherwise the kept face still does.
+fn delete_edge_keep_surface(
+    k: &mut Kernel,
+    b: &mut Brep,
+    edge: EdgeId,
+    surface_face: FaceId,
+    notifications: Option<&mut EditNotifyEnv<'_>>,
+) -> Result<FaceId> {
+    let mut faces = Vec::new();
+    for eu in crate::topology::edge::edgeuses(b, edge, None, None)? {
+        if let Some(f) = crate::topology::edgeuse::p1::face(b, eu)? {
+            if f != surface_face && !faces.contains(&f) {
+                faces.push(f);
+            }
+        }
+    }
+    delete_edge_with(k, b, edge, Some(surface_face), notifications)?;
+    if b.face(surface_face).is_ok() {
+        return Ok(surface_face);
+    }
+    faces
+        .into_iter()
+        .find(|&f| b.face(f).is_ok_and(|r| r.surface.is_some()))
+        .ok_or_else(|| SolidError::null_pointer(OP))
 }
 
 /// Removes the requested faces then their wire edges and shell vertices.
@@ -1560,12 +1631,12 @@ pub fn remove_faces(
         }
         for edge in all_edges {
             if crate::topology::edge::is_wire(b, edge)? {
-                delete_edge(b, edge)?;
+                delete_edge_with(k, b, edge, None, None)?;
             }
         }
         for vertex in all_vertices {
             if vertex::is_shell_vertex(b, vertex)? {
-                delete_vertex(b, vertex)?;
+                delete_vertex(k, b, vertex, None)?;
             }
         }
         Ok(())
@@ -1625,10 +1696,15 @@ pub fn initial_stitch_tolerance(brep_tolerance: f64, requested: f64) -> f64 {
 
 /// Stitches twice if needed, then orients surfaces. No success is manufactured
 /// from the statuses ignored upstream when a required callee is missing.
-pub fn stitch_and_orient(b: &mut Brep, options: &StitchAndOrientOptions) -> Result<()> {
+pub fn stitch_and_orient(
+    k: &mut Kernel,
+    b: &mut Brep,
+    options: &StitchAndOrientOptions,
+) -> Result<()> {
     let mut lamina = 0;
     let mut tolerance = initial_stitch_tolerance(b.tolerance(), options.stitch_tolerance);
     crate::error::ignore_status(stitch_faces(
+        k,
         b,
         tolerance,
         options.allow_spine_edges,
@@ -1641,6 +1717,7 @@ pub fn stitch_and_orient(b: &mut Brep, options: &StitchAndOrientOptions) -> Resu
             tolerance * 10.0
         };
         crate::error::ignore_status(stitch_faces(
+            k,
             b,
             tolerance,
             options.allow_spine_edges,
@@ -1656,14 +1733,19 @@ pub fn stitch_and_orient(b: &mut Brep, options: &StitchAndOrientOptions) -> Resu
     Ok(())
 }
 
+/// `StitchFaces(tol, lNumStitched, lNumLamina, dMaxVGap, dMaxEGap, NULL, bAllowSpine)`:
+/// `lamina` receives the remaining lamina edge count; on failure it keeps its value.
 fn stitch_faces(
-    _b: &mut Brep,
-    _tolerance: f64,
-    _allow_spine: bool,
-    _lamina: &mut usize,
+    k: &mut Kernel,
+    b: &mut Brep,
+    tolerance: f64,
+    allow_spine: bool,
+    lamina: &mut usize,
 ) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::StitchFaces
-    missing("SmBrep::StitchFaces", "topology.brep_p4")
+    let out = crate::topology::brep::p4::stitch_faces(k, b, tolerance, None, allow_spine)?;
+    *lamina = usize::try_from(out.lamina_edges)
+        .map_err(|_| SolidError::invalid_input(OP, "lamina edge count"))?;
+    Ok(())
 }
 
 fn orient_trimmed_surfaces(

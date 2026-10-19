@@ -50,16 +50,29 @@
 //!   `GetSurfaces` / `GetCurves` are `topology.brep_p1`'s; a surface (curve) is named
 //!   by the face (edge) holding it (identity of the returned reference).
 //! - **Notifications** go to the ported handlers (`SmEdge::Notify`,
-//!   `SmVertex::Notify`) with the caller's [`DeleteEnv`]; `SmBrep::Notify` (unit
-//!   `topology.brep_p2`) and `SmFace::Notify` (unit `topology.face_p3`) are not
-//!   ported yet. Their statuses are ignored upstream; [`SolidError::Unported`]
-//!   propagates.
+//!   `SmVertex::Notify`, `SmFace::Notify`) with the caller's [`DeleteEnv`] and the
+//!   kernel's context, and with upstream's data arguments (the B-rep is named by
+//!   [`Brep::key`]); `SmFace::Notify` runs without a trimmed-surface cache (not part of
+//!   the arena model). `SmBrep::Notify` (unit `topology.brep_p2`) is not ported yet.
+//!   Their statuses are ignored upstream; [`SolidError::Unported`] propagates.
+//! - **Destructor notifications.** Upstream's `delete` of a face, edge, edge use or
+//!   shell runs its destructor, which notifies `SM_NO_DESTRUCTION` (`~SmFace`,
+//!   `SmFace.cpp:94`; `~SmEdge`, `SmEdge.cpp:85`, which also sets and restores the
+//!   context's boolean flag around it; `~SmEdgeuse`, `SmEdgeuse.cpp:76`; `~SmShell`,
+//!   `SmShell.cpp:55`). The record removals do not send these notifications (not
+//!   modelled): attributes the caller's store holds for a deleted record stay there,
+//!   and the destructor's flag toggle is not observable after it returns.
+//! - **`TBB`.** `ShrinkGeometry`'s `CreateUVTrimCurvesParallel` (`SM_USE_TBB`,
+//!   `SmBrep.cpp:32253`) is not compiled in the reference build and not ported.
 //! - **Loops.** A loop made by splitting a loop gets the split face as
 //!   [`crate::topology::Loop::face`]; `Loop::edges` stays empty (the loop uses carry
 //!   the topology).
 //! - **Destructor.** [`destroy`] runs the destructor's observable work (editing
 //!   enabled, the context's boolean flag set for the duration and restored, the
-//!   notifications) and empties the arenas; Rust drops the records themselves.
+//!   notifications) and empties the arenas, regions included (`delete pR`), and clears
+//!   the region list head and the infinite region (`m_pInfiniteRegion = NULL`); Rust
+//!   drops the records themselves. A loop without a loop use is skipped where upstream
+//!   dereferences `pL->m_pLU` (undefined behaviour only).
 //!   The flag is restored on every return, including [`SolidError::Unported`].
 //! - **Stitching.** `StitchFaces` builds the `SmStitch` (`heal.stitch_p1`) with its
 //!   options; `SmStitch::DoStitching` (unit `heal.stitch_p2`) is not ported yet.
@@ -67,6 +80,7 @@
 //!   walks are those of the ported `CollectEdgeuses` (bounded there).
 
 use crate::error::{ignore_status, ignored, EntityRef, Result, SolidError};
+use crate::geom::a_object::BREP_TYPE;
 use crate::geom::attribute::{AttributeStore, ObjectKey};
 use crate::geom::context::{MarkLock, ALL_MARKS};
 use crate::geom::extent1d::Extent1d;
@@ -78,15 +92,17 @@ use crate::math::{Point2, Vec3, EFF_ZERO};
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::nurbs::knots::Side;
+use crate::query::face::p2 as query_face2;
 use crate::topology::brep::p1::{self as brep1, LockBrepBox};
 use crate::topology::edge::{self, NotifyEnv};
 use crate::topology::edgeuse::p1 as eu1;
 use crate::topology::edgeuse::p3 as eu3;
 use crate::topology::face::p1 as face1;
 use crate::topology::face::p2 as face2;
+use crate::topology::face::p3 as face3;
 use crate::topology::shell::{self, ShellMembers, ShellType};
 use crate::topology::topology::Topology;
-use crate::topology::topology_traverser::{shell_traversal, Entity, Marks};
+use crate::topology::topology_traverser::{self, shell_traversal, Entity, Marks};
 use crate::topology::{
     loopuse, vertex, vertexuse, Brep, EdgeId, EdgeuseId, EdgeuseOwner, FaceId, FaceuseId, Loop,
     LoopId, Loopuse, LoopuseId, LoopuseStart, RegionId, Shell, ShellId, VertexId, VertexuseId,
@@ -118,42 +134,87 @@ impl core::fmt::Debug for DeleteEnv<'_> {
     }
 }
 
-// ---- unported callees ---------------------------------------------------------------------
+/// Runs `f` with a [`DeleteEnv`] on topology records and an attribute store local to
+/// the call, and entities notified under their type code and arena index (as
+/// [`loopuse::face_notify_edit`] does): the environment of a caller that holds no
+/// notification state (the B-rep keeps no attributes for its records; upstream on
+/// objects without attributes).
+pub(crate) fn with_local_env<T>(f: impl FnOnce(&mut DeleteEnv<'_>) -> Result<T>) -> Result<T> {
+    let mut records = BTreeMap::new();
+    let mut attributes = AttributeStore::default();
+    let mut env = DeleteEnv {
+        records: &mut records,
+        attributes: &mut attributes,
+        key_of: &loopuse::notify_ref,
+    };
+    f(&mut env)
+}
 
-/// `SmBrep::Notify` (unit `topology.brep_p2`).
-fn brep_notify(_b: &Brep, _operation: NotifyOperation) -> Result<()> {
+// ---- notifications and face queries ---------------------------------------------------------
+
+/// The B-rep's own identity (`this`) as a notification argument ([`Brep::key`]).
+fn brep_ref(b: &Brep) -> ObjectRef {
+    ObjectRef {
+        type_code: BREP_TYPE,
+        key: b.key(),
+    }
+}
+
+/// `SmBrep::Notify(op, data1, data2, data3)` (unit `topology.brep_p2`) with upstream's
+/// data arguments. (The handler's state and B-rep cache slot, as #149 shapes them, are
+/// not types on main yet; they join [`DeleteEnv`] when the handler lands. `~SmBrep`
+/// has no caller state and notifies through the B-rep alone.)
+fn brep_notify(
+    b: &mut Brep,
+    operation: NotifyOperation,
+    data: [Option<ObjectRef>; 3],
+) -> Result<()> {
+    let _ = (b, operation, data);
     // UNPORTED(topology.brep_p2): SmBrep::Notify
     Err(SolidError::unported("SmBrep::Notify", "topology.brep_p2"))
 }
 
-/// `SmFace::Notify` (unit `topology.face_p3`).
-fn face_notify(_b: &Brep, _f: FaceId, _operation: NotifyOperation) -> Result<()> {
-    // UNPORTED(topology.face_p3): SmFace::Notify
-    Err(SolidError::unported("SmFace::Notify", "topology.face_p3"))
+/// `pFace->Notify(op, pFace, this, NULL)`: [`face3::notify`] with the caller's records,
+/// attributes and identities and the kernel's context. The trimmed-surface cache is
+/// not part of the arena model (`None`, as in [`crate::topology::loopuse`]).
+fn face_notify(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut DeleteEnv<'_>,
+    f: FaceId,
+    operation: NotifyOperation,
+) -> Result<()> {
+    let key_of = env.key_of;
+    let data = [Some(key_of(EntityRef::Face(f))), Some(brep_ref(b)), None];
+    let mut n = NotifyEnv {
+        records: env.records,
+        attributes: env.attributes,
+        context: Some(&mut k.context),
+        key_of,
+    };
+    face3::notify(b, f, &mut n, None, operation, data)
 }
 
-/// `SmFace::ComputeLoopOrientation(loop, orient)` (default domain and flags).
-fn face_compute_loop_orientation(_b: &Brep, _f: FaceId, _l: Option<LoopId>) -> Result<OrientType> {
-    // UNPORTED(topology.face_p3): SmFace::ComputeLoopOrientation
-    Err(SolidError::unported(
-        "SmFace::ComputeLoopOrientation",
-        "topology.face_p3",
-    ))
+/// `SmFace::ComputeLoopOrientation(pLoop, eOrient)` (default `pUVBounds = NULL`,
+/// `bDo3dLoopComputation = FALSE`). A null loop is dereferenced upstream.
+fn face_compute_loop_orientation(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    l: Option<LoopId>,
+) -> Result<OrientType> {
+    let l = deref(l, OP_DELETE_EDGE)?;
+    face3::compute_loop_orientation(k, b, f, l, None, false)
 }
 
-/// `SmFace::GetVertices(vertices)` (default arguments).
-fn face_vertices(_b: &Brep, _f: FaceId) -> Result<Vec<VertexId>> {
-    // UNPORTED(topology.face_p4): SmFace::GetVertices
-    Err(SolidError::unported(
-        "SmFace::GetVertices",
-        "topology.face_p4",
-    ))
+/// `SmFace::GetVertices(vertices)` (default `bTgtLoopsOnly = FALSE`, no target loops).
+fn face_vertices(b: &Brep, f: FaceId) -> Result<Vec<VertexId>> {
+    query_face2::face_vertices(b, f, false, None)
 }
 
 /// `SmFace::GetEdges(edges)` (default arguments).
-fn face_edges(_b: &Brep, _f: FaceId) -> Result<Vec<EdgeId>> {
-    // UNPORTED(topology.face_p4): SmFace::GetEdges
-    Err(SolidError::unported("SmFace::GetEdges", "topology.face_p4"))
+fn face_edges(b: &Brep, f: FaceId) -> Result<Vec<EdgeId>> {
+    topology_traverser::face_edges(b, f)
 }
 
 // ---- shell and region lists (topology.shell) -----------------------------------------------
@@ -323,13 +384,15 @@ fn face_calculate_uv_domain(k: &Kernel, b: &mut Brep, f: FaceId) -> Result<Exten
     face1::calculate_uv_domain_from_uv_trim_curves(k, b, f, true, false, false).map(|o| o.domain)
 }
 
-/// `SmFace::RemoveLoop(pLoop)`. Upstream notifies the face and then dereferences the
-/// loop, so a null loop is the null-dereference error after the notification.
+/// `SmFace::RemoveLoop(pLoop)`. Upstream notifies the face (`SmFace`'s own
+/// `Notify(SM_NO_PRE_EDIT, this, SM_NO_GET_BREP(this), NULL)`, as in
+/// [`face1::remove_loop`]) and then dereferences the loop, so a null loop is the
+/// null-dereference error after the notification.
 fn face_remove_loop(b: &mut Brep, f: FaceId, l: Option<LoopId>) -> Result<()> {
     if let Some(l) = l {
         return face1::remove_loop(b, f, l);
     }
-    ignore_status(face_notify(b, f, NotifyOperation::PreEdit))?;
+    ignore_status(loopuse::face_notify_edit(b, f, NotifyOperation::PreEdit))?;
     Err(SolidError::invalid_input(
         OP_DELETE_EDGE,
         "null pointer dereference",
@@ -337,31 +400,29 @@ fn face_remove_loop(b: &mut Brep, f: FaceId, l: Option<LoopId>) -> Result<()> {
 }
 
 /// The surface swap of `DeleteEdge`:
-/// `pSurfTmp = pSurvF->GetSurface(); pSurvF->SetSurface(pDelF->GetSurface());
-/// pDelF->SetSurface(pSurfTmp);`.
+/// `pSurvOwner = pSurvF->GetSurface()->GetFace(); ..; pSurfTmp = pSurvF->GetSurface();
+/// pSurvF->SetSurface(pDelF->GetSurface()); pDelF->SetSurface(pSurfTmp);`.
 ///
-/// Surfaces are owned values here, so the swap takes the surface out of `del_f`, gives
-/// it to `surv_f` (`SetSurface` hands back the one it replaces, without deleting it)
-/// and gives that one to `del_f`. `SetSurface` is `void` upstream; the only failure
-/// the port can raise is [`SolidError::Unported`] from its notification. A face
-/// without a surface has none to hand over: upstream notifies and then dereferences
-/// the null surface.
+/// Upstream dereferences both faces' surfaces (`SmBrep.cpp:6050-6051`) before either
+/// `SetSurface`, so a survivor without a surface is the null-dereference error with
+/// nothing changed. (The deleted face holds the surface to keep.) Surfaces are owned
+/// values here, so the swap takes the surface out of `del_f`, gives it to `surv_f`
+/// (`SetSurface` hands back the one it replaces, without deleting it) and gives that
+/// one to `del_f`. `SetSurface` is `void` upstream; the only failure the port can
+/// raise is [`SolidError::Unported`] from its notification.
 fn swap_face_surfaces(
     b: &mut Brep,
     key_of: &dyn Fn(EntityRef) -> ObjectRef,
     surv_f: FaceId,
     del_f: FaceId,
 ) -> Result<()> {
+    // pSurvF->GetSurface()->GetFace(), pDelF->GetSurface()->GetFace()
+    deref(b.face(surv_f)?.surface.as_ref(), OP_DELETE_EDGE)?;
     let del_surface = deref(b.face_mut(del_f)?.surface.take(), OP_DELETE_EDGE)?;
     let surv_this = key_of(EntityRef::Face(surv_f));
     let surv_old = face1::set_surface(b, surv_f, surv_this, del_surface, false)?;
-    let Some(surv_old) = surv_old else {
-        ignore_status(face_notify(b, del_f, NotifyOperation::ChangeGeometry))?;
-        return Err(SolidError::invalid_input(
-            OP_DELETE_EDGE,
-            "null pointer dereference",
-        ));
-    };
+    // the survivor's surface was checked above
+    let surv_old = deref(surv_old, OP_DELETE_EDGE)?;
     let del_this = key_of(EntityRef::Face(del_f));
     face1::set_surface(b, del_f, del_this, surv_old, false)?;
     Ok(())
@@ -577,18 +638,28 @@ pub fn delete_edge(
     }
 
     // prepare the public - notify the Brep it's about to be edited
-    ignore_status(brep_notify(b, NotifyOperation::PreEdit))?;
+    let this = brep_ref(b);
+    let edge_ref = (env.key_of)(EntityRef::Edge(e));
+    ignore_status(brep_notify(
+        b,
+        NotifyOperation::PreEdit,
+        [Some(this), None, None],
+    ))?;
     ignore_status(notify_edge(k, b, env, e))?;
-    ignore_status(brep_notify(b, NotifyOperation::RmFromBrep))?;
+    ignore_status(brep_notify(
+        b,
+        NotifyOperation::RmFromBrep,
+        [Some(edge_ref), Some(this), None],
+    ))?;
 
     // get radial/mate list starters
     let eu = deref(eu1::primary_edgeuse(b, e)?, OP)?;
     let eu_mate = deref(eu1::mate(b, eu)?, OP)?;
 
     if is_manifold {
-        delete_manifold_edge(k, b, env.key_of, e, eu, eu_mate, surface_to_keep)
+        delete_manifold_edge(k, b, env, e, eu, eu_mate, surface_to_keep)
     } else if edge::is_lamina(b, e)? {
-        delete_lamina_edge(b, e, eu, eu_mate)
+        delete_lamina_edge(k, b, env, e, eu, eu_mate)
     } else {
         delete_wire_edge(k, b, e, eu, eu_mate)
     }
@@ -596,9 +667,9 @@ pub fn delete_edge(
 
 /// The manifold branch of [`delete_edge`].
 fn delete_manifold_edge(
-    k: &Kernel,
+    k: &mut Kernel,
     b: &mut Brep,
-    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+    env: &mut DeleteEnv<'_>,
     e: EdgeId,
     eu: EdgeuseId,
     eu_mate: EdgeuseId,
@@ -699,12 +770,17 @@ fn delete_manifold_edge(
     let single_closed_loop_isolated = lu != lu_rad && eu_single && eu_rad_single;
 
     // notify the face and the radial face of the upcoming edit
-    ignore_status(face_notify(b, face, NotifyOperation::PreEdit))?;
-    ignore_status(face_notify(b, face_rad, NotifyOperation::PreEdit))?;
+    ignore_status(face_notify(k, b, env, face, NotifyOperation::PreEdit))?;
+    ignore_status(face_notify(k, b, env, face_rad, NotifyOperation::PreEdit))?;
 
     if merge_face {
         // inform the public about this upcoming merge in Brep
-        ignore_status(brep_notify(b, NotifyOperation::MergeInBrep))?;
+        let data = [
+            surv_f.map(|f| (env.key_of)(EntityRef::Face(f))),
+            del_f.map(|f| (env.key_of)(EntityRef::Face(f))),
+            Some(brep_ref(b)),
+        ];
+        ignore_status(brep_notify(b, NotifyOperation::MergeInBrep, data))?;
     }
 
     // Remove parameter space curves from both faces if they do not have the same
@@ -717,13 +793,16 @@ fn delete_manifold_edge(
     // When merging two faces - see if Face Surfaces need to be swapped
     if !split_loop && !both_inner {
         if let Some(keep) = surface_to_keep {
+            // UB-198: upstream reads pSurvF->GetSurface() here although pSurvF is set
+            // only when merging faces; unreachable on well-formed topology (a strut end
+            // implies a split loop), kept as a defensive null-dereference error.
             let sf = deref(surv_f, OP)?;
             if Some(keep) != surface_of(b, sf)? {
                 let df = deref(del_f, OP)?;
                 // when DelF owns the surface to keep
                 if surface_of(b, df)? == Some(keep) {
                     // swap the surfaces between the faces
-                    swap_face_surfaces(b, key_of, sf, df)?;
+                    swap_face_surfaces(b, env.key_of, sf, df)?;
                     if flip_face {
                         ignore_status(face1::flip_face_orientation(b, sf))?;
                     }
@@ -893,7 +972,7 @@ fn delete_manifold_edge(
 
         if loopuse::orientation(b, lu_mate)? == OrientType::Same {
             let l = loopuse::loop_(b, lu_mate)?;
-            let loop_orient = face_compute_loop_orientation(b, face, l)?;
+            let loop_orient = face_compute_loop_orientation(k, b, face, l)?;
             if loop_orient != OrientType::Same {
                 loopuse::collect_edgeuses(b, lu, eu_rad_cw)?;
                 loopuse::collect_edgeuses(b, lu_mate, eu_rad_mate_cw)?;
@@ -992,14 +1071,21 @@ fn edgeuse_normal(
 }
 
 /// The lamina branch of [`delete_edge`].
-fn delete_lamina_edge(b: &mut Brep, e: EdgeId, eu: EdgeuseId, eu_mate: EdgeuseId) -> Result<()> {
+fn delete_lamina_edge(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut DeleteEnv<'_>,
+    e: EdgeId,
+    eu: EdgeuseId,
+    eu_mate: EdgeuseId,
+) -> Result<()> {
     const OP: &str = OP_DELETE_EDGE;
     let lu = ner(eu1::loopuse(b, eu)?, OP)?;
     let lu_mate = ner(eu1::loopuse(b, eu_mate)?, OP)?;
     let faceuse = ner(loopuse::faceuse(b, lu)?, OP)?;
     let face = ner(eu1::faceuse_face(b, faceuse)?, OP)?;
 
-    ignore_status(face_notify(b, face, NotifyOperation::PreEdit))?;
+    ignore_status(face_notify(k, b, env, face, NotifyOperation::PreEdit))?;
 
     let v_is_strut = eu1::is_strut(b, eu)?;
     let v_other_is_strut = eu1::is_strut(b, eu_mate)?;
@@ -1263,9 +1349,19 @@ pub fn delete_vertex(
     }
 
     // inform the public of upcoming change
-    ignore_status(brep_notify(b, NotifyOperation::PreEdit))?;
+    let this = brep_ref(b);
+    let vertex_ref = (env.key_of)(EntityRef::Vertex(v));
+    ignore_status(brep_notify(
+        b,
+        NotifyOperation::PreEdit,
+        [Some(this), None, None],
+    ))?;
     ignore_status(notify_vertex(k, b, env, v))?;
-    ignore_status(brep_notify(b, NotifyOperation::RmFromBrep))?;
+    ignore_status(brep_notify(
+        b,
+        NotifyOperation::RmFromBrep,
+        [Some(vertex_ref), Some(this), None],
+    ))?;
 
     // vertices should be disconnected from edges prior to delete
     if !vertex::edges(b, v, None)?.is_empty() {
@@ -1321,7 +1417,7 @@ pub fn delete_vertex(
         let fu1 = deref(loopuse::faceuse(b, lu1)?, OP)?;
         let f = ner(eu1::faceuse_face(b, fu1)?, OP)?;
 
-        ignore_status(face_notify(b, f, NotifyOperation::PreEdit))?;
+        ignore_status(face_notify(k, b, env, f, NotifyOperation::PreEdit))?;
 
         // remove and delete vertex to loop connections
         ignore_status(faceuse_remove(b, fu1, lu1, OP))?;
@@ -1471,9 +1567,11 @@ pub fn shrink_geometry(k: &Kernel, b: &mut Brep) -> Result<()> {
             .intersect(&face_domain)
             .unwrap_or_else(|_| Extent2d::new());
         if !surf_domain.are_equal(&face_domain, EFF_ZERO) {
-            let mut dom = face_domain;
+            // trim the surface: the domain is in/out (TrimWithDomain may snap it to
+            // the trimmed surface's natural domain), and the snapped value is the one
+            // `SetUVDomain` gets below
             if let Some(s) = b.face_mut(face)?.surface.as_mut() {
-                ignore_status(s.trim_with_domain(k, &mut dom))?;
+                ignore_status(s.trim_with_domain(k, &mut face_domain))?;
             }
             ignore_status(face1::remove_uv_trim_curves(b, face))?;
         }
@@ -1513,7 +1611,12 @@ pub fn destroy(k: &mut Kernel, b: &mut Brep) -> Result<()> {
 
 fn destroy_records(b: &mut Brep) -> Result<()> {
     const OP: &str = OP_DESTROY;
-    ignore_status(brep_notify(b, NotifyOperation::Destruction))?;
+    let this = brep_ref(b);
+    ignore_status(brep_notify(
+        b,
+        NotifyOperation::Destruction,
+        [Some(this), None, None],
+    ))?;
 
     // faces
     for f in brep1::faces(b, None)? {
@@ -1557,8 +1660,10 @@ fn destroy_records(b: &mut Brep) -> Result<()> {
         for s in region_shells(b, r)? {
             b.remove_shell_record(s)?;
         }
-        // the region record itself goes with the B-rep
+        b.remove_region_record(r)?;
     }
+    b.set_region_list_head(None);
+    b.set_infinite_region_record(None);
 
     unlock_bounding_box(b)
 }

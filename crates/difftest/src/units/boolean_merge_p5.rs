@@ -392,7 +392,7 @@ impl UnitDiff for Runner {
                 keep.push(EdgeId::from_index(0));
             }
             match process_wires_and_shell_vertices(
-                &k,
+                &mut k,
                 &mut a,
                 &mut b,
                 &mut am,

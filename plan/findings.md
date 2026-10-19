@@ -8939,27 +8939,20 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   valgrind with `harness/valgrind/ub11.supp` gives 0 errors on the simple, unify, select and split
   samples.
 
-## topology.brep_p4: back-edges without a notification environment
+## topology.brep_p4: back-edges on opaque object handles
 
 `topology.brep_p4` (`SmBrep::DeleteEdge`, `DeleteVertex`, `ShrinkGeometry`, `StitchFaces`, `~SmBrep`;
-PR #173) is partial, but twelve `UNPORTED(topology.brep_p4)` call sites on main stay stubs, each
-marked `justified:` with this section:
+PR #173) wires 16 of the 19 `UNPORTED(topology.brep_p4)` call sites on main. Callers with a
+notification environment pass it (`topology/brep/p7.rs` `GlueEdgesGeneral`, `topology/brep/p5.rs`
+`*_with_notifications`, `boolean/merge/p5.rs` through its `VertexCopy` records); callers that hold no
+notification state run on call-local records (`topology::brep::p4::with_local_env`, as
+`heal::stitch::p1::make_vertex_split_edge` and `loopuse::face_notify_edit` do). Three stay stubs,
+each `justified:` with this section, for a reason specific to the site:
 
-- **`DeleteEdge` / `DeleteVertex`** in `boolean/merge/p1.rs` (2), `boolean/merge/p5.rs` (2),
-  `heal/heal_data/p3.rs` (2), `topology/brep/p10.rs` (`RemoveAllTopology`, 2), `topology/brep/p7.rs`
-  (1). The ported `delete_edge` / `delete_vertex` take `&mut Kernel` and a `DeleteEnv`: the
-  `SmTopology` records, the attribute store and the identities that `SmEdge::Notify` /
-  `SmVertex::Notify` (and, once ported, `SmBrep::Notify`, unit `topology.brep_p2`) work on. None of
-  these callers carries such an environment (most have no `Kernel` either), so wiring them means
-  threading it through their public signatures and their difftest runners. An empty environment
-  would make up a notification result the C++ never produces (attributes and topology records of
-  the caller's objects dropped), so it is not used. Every case through these sites still defers at
-  `SmBrep::Notify` first, so wiring would not move any difftest number until `topology.brep_p2`
-  lands; the threading is best done together with that wiring.
-- **`DeleteEdge`** in `topology/proto_topology/p3.rs`: the caller works on object-key records with no
-  `Brep` to delete from.
-- **`ShrinkGeometry`** in `offset/offset_executive/p1.rs` (2): both are the first statement of a
-  continuation that is not ported (`ReplaceImplicitOffsets`' offset-surface replacement, cpp:1978-2035;
-  `PiecewiseMerge`'s `SmMerge`, cpp:2429-2474). The stubs mark where that continuation starts; calling
-  the shrink alone would edit the B-rep and then return `Unported`, so it is wired with the
-  continuation.
+- **`DeleteEdge` / `DeleteVertex`** in `boolean/topology_intersector/p2.rs` (`brep_delete_edge`,
+  `brep_delete_vertex`): the intersector is generic over its object handles `O`; the B-rep, the edge
+  (vertex) and the surface to keep are `O` values with no `&mut Brep` or typed id to call the port
+  with. Wiring needs the typed adapter that resolves `O` to a B-rep and its ids, which that unit does
+  not have yet.
+- **`DeleteEdge`** in `topology/proto_topology/p3.rs` (`brep_delete_edge(which, edge)`): the caller
+  names the B-rep by an index (`which`) and the edge by a generic handle `O`; it holds no `Brep`.

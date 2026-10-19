@@ -10,8 +10,10 @@
 //! Deviations: operands, marks and mate maps are borrowed explicitly instead of
 //! reading `SmMerge::m_vTI`; ids replace pointers. Output stays mutable because
 //! upstream preserves its partial contents on failure. Classification (including
-//! face/edge-to-region resolution) waits for `query.brep`; graph deletion waits
-//! for `topology.brep_p4`; edge copying waits for `boolean.merge_p2`. Vertex
+//! face/edge-to-region resolution) waits for `query.brep`; graph deletion is
+//! `topology.brep_p4`'s `DeleteEdge` / `DeleteVertex`, notified through `copy`'s
+//! records, attributes and primary identities and the kernel's context (hence
+//! `&mut Kernel`); edge copying waits for `boolean.merge_p2`. Vertex
 //! copying delegates to [`p1::merge_vertex`]. B-rep
 //! caches are not attached to arena B-reps yet, so the optional cache resizing is
 //! absent. The deletion retry loop is iterative; wire collection uses the bounded
@@ -30,6 +32,7 @@ use crate::geom::a_object::BooleanOperation;
 use crate::geom::context::{Context, MarkType};
 use crate::kernel::Kernel;
 use crate::math::Point3;
+use crate::topology::brep::p4::{self, DeleteEnv};
 use crate::topology::topology_traverser::{collect_wire_edges, Entity, Marks};
 use crate::topology::{edge, vertex, vertexuse, Brep, EdgeId, RegionId, VertexId};
 
@@ -63,20 +66,34 @@ fn classify_region(
     ))
 }
 
-fn delete_edge(_brep: &mut Brep, _edge: EdgeId) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge (justified: plan/findings.md "topology.brep_p4: back-edges without a notification environment")
-    Err(SolidError::unported(
-        "SmBrep::DeleteEdge",
-        "topology.brep_p4",
-    ))
+/// The deletion environment over the caller-owned records, attributes and primary
+/// identities of `copy`.
+fn delete_env<'a>(copy: &'a mut VertexCopy<'_>) -> DeleteEnv<'a> {
+    DeleteEnv {
+        records: &mut *copy.records,
+        attributes: &mut *copy.attributes,
+        key_of: copy.destination_key,
+    }
 }
 
-fn delete_vertex(_brep: &mut Brep, _vertex: VertexId) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteVertex (justified: plan/findings.md "topology.brep_p4: back-edges without a notification environment")
-    Err(SolidError::unported(
-        "SmBrep::DeleteVertex",
-        "topology.brep_p4",
-    ))
+/// `SmBrep::DeleteEdge(edge)` (default `pOptSurfaceToKeep = NULL`).
+fn delete_edge(
+    k: &mut Kernel,
+    brep: &mut Brep,
+    copy: &mut VertexCopy<'_>,
+    edge: EdgeId,
+) -> Result<()> {
+    p4::delete_edge(k, brep, &mut delete_env(copy), edge, None)
+}
+
+/// `SmBrep::DeleteVertex(vertex)`.
+fn delete_vertex(
+    k: &mut Kernel,
+    brep: &mut Brep,
+    copy: &mut VertexCopy<'_>,
+    vertex: VertexId,
+) -> Result<()> {
+    p4::delete_vertex(k, brep, &mut delete_env(copy), vertex)
 }
 
 fn merge_edge(_brep: &mut Brep, _other: &Brep, _edge: EdgeId, _region: RegionId) -> Result<()> {
@@ -137,7 +154,7 @@ fn keep_other(operation: BooleanOperation, is_void: bool) -> bool {
 /// mutable because relating a kept vertex (`SmTopologyIntersector::Relate`) raises the
 /// smaller of the two vertex tolerances, in whichever operand holds it.
 pub fn process_wires_and_shell_vertices(
-    k: &Kernel,
+    k: &mut Kernel,
     brep: &mut Brep,
     other: &mut Brep,
     brep_marks: &mut Marks,
@@ -193,12 +210,12 @@ pub fn process_wires_and_shell_vertices(
                     if let Some(slot) = edges.iter_mut().find(|slot| **slot == Some(edge_id)) {
                         *slot = None;
                     }
-                    delete_edge(brep, edge_id)?;
+                    delete_edge(k, brep, copy, edge_id)?;
                     for v in [Some(v1), (v1 != v2).then_some(v2)].into_iter().flatten() {
                         if vertex::is_shell_vertex(brep, v)?
                             && relations.vertices.other(v).is_none()
                         {
-                            delete_vertex(brep, v)?;
+                            delete_vertex(k, brep, copy, v)?;
                         }
                     }
                 }
@@ -266,7 +283,7 @@ pub fn process_wires_and_shell_vertices(
             let region = classify_region(k, other, vertex.point, vertex.tolerance, false, false)?
                 .ok_or_else(|| SolidError::sm_err(OP))?;
             if remove_in_region(operation, region.is_void) {
-                delete_vertex(brep, v)?;
+                delete_vertex(k, brep, copy, v)?;
             }
         }
     }
@@ -393,7 +410,7 @@ mod tests {
         let mut attrs = AttributeStore::new();
         let mut keep = vec![EdgeId::from_index(u32::MAX)];
         let result = process_wires_and_shell_vertices(
-            &k,
+            &mut k,
             &mut a,
             &mut b,
             &mut am,
@@ -447,7 +464,7 @@ mod tests {
             ] {
                 let mut keep = vec![ae];
                 assert!(process_wires_and_shell_vertices(
-                    &k,
+                    &mut k,
                     &mut a,
                     &mut b,
                     &mut am,
@@ -474,7 +491,7 @@ mod tests {
             ] {
                 let mut keep = vec![ae];
                 process_wires_and_shell_vertices(
-                    &k,
+                    &mut k,
                     &mut a,
                     &mut b,
                     &mut am,
