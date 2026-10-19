@@ -1184,7 +1184,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** crash.
 - **Rust port:** takes a slice of curves (no NULL entries).
 
-#### UB-164. `SmBrep::DeleteEdge` with a surface to keep dereferences a NULL surviving face on a strut edge
+#### UB-195. `SmBrep::DeleteEdge` with a surface to keep dereferences a NULL surviving face on a strut edge
 - **Location:** `source/SMLib/src/SmBrep.cpp:6024` (`pOptSurfaceToKeep != pSurvF->GetSurface()`) in `SmBrep::DeleteEdge` (def. `:5752`); `pSurvF`/`pDelF` are set only when `bMergeFace` (`:5910`).
 - **What happens:** The surface-swap block runs for any manifold edge with different loops on its two sides that are not both inner loops, but `bMergeFace` is also false when either end of the edge is a strut end. Then `pSurvF` is still `NULL` and a non-NULL `pOptSurfaceToKeep` makes it dereference `NULL` (and `pDelF` after it).
 - **Trigger:** `DeleteEdge(pStrutManifoldEdge, pSomeSurface)` on a manifold edge with a strut end between two faces.

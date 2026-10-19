@@ -7839,3 +7839,28 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   unchanged with 0 flips: 300/206/0/94, 1000 seeds 1284/868/0/410, perturb 333/333, fuzz 2000 pass.
   valgrind with `harness/valgrind/ub11.supp` gives 0 errors on the simple, unify, select and split
   samples.
+
+## topology.brep_p4: back-edges without a notification environment
+
+`topology.brep_p4` (`SmBrep::DeleteEdge`, `DeleteVertex`, `ShrinkGeometry`, `StitchFaces`, `~SmBrep`;
+PR #173) is partial, but twelve `UNPORTED(topology.brep_p4)` call sites on main stay stubs, each
+marked `justified:` with this section:
+
+- **`DeleteEdge` / `DeleteVertex`** in `boolean/merge/p1.rs` (2), `boolean/merge/p5.rs` (2),
+  `heal/heal_data/p3.rs` (2), `topology/brep/p10.rs` (`RemoveAllTopology`, 2), `topology/brep/p7.rs`
+  (1). The ported `delete_edge` / `delete_vertex` take `&mut Kernel` and a `DeleteEnv`: the
+  `SmTopology` records, the attribute store and the identities that `SmEdge::Notify` /
+  `SmVertex::Notify` (and, once ported, `SmBrep::Notify`, unit `topology.brep_p2`) work on. None of
+  these callers carries such an environment (most have no `Kernel` either), so wiring them means
+  threading it through their public signatures and their difftest runners. An empty environment
+  would make up a notification result the C++ never produces (attributes and topology records of
+  the caller's objects dropped), so it is not used. Every case through these sites still defers at
+  `SmBrep::Notify` first, so wiring would not move any difftest number until `topology.brep_p2`
+  lands; the threading is best done together with that wiring.
+- **`DeleteEdge`** in `topology/proto_topology/p3.rs`: the caller works on object-key records with no
+  `Brep` to delete from.
+- **`ShrinkGeometry`** in `offset/offset_executive/p1.rs` (2): both are the first statement of a
+  continuation that is not ported (`ReplaceImplicitOffsets`' offset-surface replacement, cpp:1978-2035;
+  `PiecewiseMerge`'s `SmMerge`, cpp:2429-2474). The stubs mark where that continuation starts; calling
+  the shrink alone would edit the B-rep and then return `Unported`, so it is wired with the
+  continuation.
