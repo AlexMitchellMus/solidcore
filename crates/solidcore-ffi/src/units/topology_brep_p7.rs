@@ -16,7 +16,7 @@
 //! | `MakeFace`          | `kind side orient region_null` (`kind` 0: null surface, 1: a square wire loop on `z = 0`) | `-3 \| status [face shell region counts]` (`-3`: the square's lines cannot be made) |
 //! | `Glue`              | `e1 e2 orient gap nesting`, B-rep block | `0 (-2 \| status counts edge_tols vertex_tols)` (tolerances sorted) (`-2`: `SM_OT_SAME`, equal intervals and one edge without curve) (`-1 status` when the B-rep build fails) |
 //! | `Copy`              | `n use_merge`, B-rep block | `0 status nfaces counts` |
-//! | `MergeSelf`         | `face tol`, B-rep block | `0 (-2 \| status nedges)` |
+//! | `MergeSelf`         | `face tol ncurves (curve3d curveuv1 curveuv2)*`, B-rep block | `0 (-2 \| status nedges counts)` (UV curves 2D) |
 //!
 //! `counts` are the region, shell, face, loop, edge and vertex counts of the B-rep made.
 //!
@@ -318,6 +318,9 @@ pub fn eval(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
         Op::Glue | Op::Copy | Op::MergeSelf => {
             // the topology.vertexuse wrapper validates the block itself and exports
             let (block, args) = split_block(op, input)?;
+            if op == Op::MergeSelf {
+                merge_self_curves(input)?;
+            }
             let export = fixture::eval(fixture::Op::Export, path, block)?;
             let Some(c) = fixture::counts(&export) else {
                 return Ok(export);
@@ -346,6 +349,8 @@ pub fn eval(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
                         return Err(bad("face index out of range"));
                     }
                     ar.finite()?;
+                    // (the curves: merge_self_curves)
+                    ar.at = args.len();
                 }
             }
             ar.done()?;
@@ -354,18 +359,39 @@ pub fn eval(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
     raw(op, path, input)
 }
 
-/// The number of op arguments before the B-rep block of a B-rep op.
-const fn n_args(op: Op) -> usize {
-    match op {
-        Op::Glue => 5,
-        Op::Copy | Op::MergeSelf => 2,
-        _ => 0,
+/// Validates `MergeSelf`'s curves (`face tol ncurves (curve3d curveuv1 curveuv2)*`, the
+/// UV curves 2D); the length of its arguments.
+fn merge_self_curves(input: &[f64]) -> Result<usize, FfiError> {
+    let mut rd = Reader::new(input);
+    rd.num()?;
+    rd.num()?;
+    let nc = rd.index(MAX_CURVES)?;
+    for _ in 0..nc {
+        curve(&mut rd)?;
+        for _ in 0..2 {
+            if rd.num()? != 2.0 {
+                return Err(bad("UV curve dimension must be 2"));
+            }
+            rd.at -= 1;
+            curve(&mut rd)?;
+        }
     }
+    Ok(rd.at)
+}
+
+/// The number of op arguments before the B-rep block of a B-rep op.
+fn n_args(op: Op, input: &[f64]) -> Result<usize, FfiError> {
+    Ok(match op {
+        Op::Glue => 5,
+        Op::Copy => 2,
+        Op::MergeSelf => merge_self_curves(input)?,
+        _ => 0,
+    })
 }
 
 /// Splits a B-rep op's input into its arguments (first) and the B-rep block.
 fn split_block(op: Op, input: &[f64]) -> Result<(&[f64], &[f64]), FfiError> {
-    let n = n_args(op);
+    let n = n_args(op, input)?;
     Ok((
         input.get(n..).ok_or_else(|| bad("input too short"))?,
         input.get(..n).ok_or_else(|| bad("input too short"))?,
