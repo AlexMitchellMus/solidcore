@@ -527,22 +527,17 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
     type FilletGeom = ();
 
     fn set_surfaces_to_zero_offset(&mut self) -> Result<()> {
-        for (surface, saved) in self.surfaces.iter_mut().zip(self.saved_offsets.iter_mut()) {
-            if let Some(s) = surface {
-                *saved = s.offset_distance();
-                s.set_offset_distance(0.0);
-            }
-        }
-        Ok(())
+        // unit blend.fillet_solver_p1 (PR #192): the base `SmFilletSolver` member
+        self.solver.set_surfaces_to_zero_offset()
     }
 
     fn reload_surface_offsets(&mut self) -> Result<()> {
-        for (surface, saved) in self.surfaces.iter_mut().zip(self.saved_offsets.iter()) {
-            if let Some(s) = surface {
-                s.set_offset_distance(*saved);
-            }
-        }
-        Ok(())
+        self.solver.reload_surface_offsets()
+    }
+
+    fn compute_uv_vectors(&mut self, _k: &Kernel, point: &mut TsectPnt) -> Result<()> {
+        // SmFilletSolver::ComputeUVVectors reads only the intersection point
+        crate::blend::fillet_solver::p1::compute_uv_vectors(point)
     }
 
     fn rail_surface_evaluate_1st_derivatives(
@@ -1882,7 +1877,7 @@ mod tests {
         assert!(fi
             .test_span_accuracy(&mut s, &Kernel::default(), p, z, None)
             .is_err());
-        assert_eq!(s.surfaces[0].as_ref().unwrap().offset_distance(), 1.0);
+        assert_eq!(s.surface(0).unwrap().offset_distance(), 1.0);
     }
 
     #[test]
@@ -1910,9 +1905,9 @@ mod tests {
         assert!(r.found_good_point);
         assert!(r.deviation_found.is_none());
         // offsets restored
-        assert_eq!(s.surfaces[0].as_ref().unwrap().offset_distance(), 1.0);
-        assert_eq!(s.surfaces[1].as_ref().unwrap().offset_distance(), -2.0);
-        assert_eq!(s.saved_offsets, [1.0, -2.0]);
+        assert_eq!(s.surface(0).unwrap().offset_distance(), 1.0);
+        assert_eq!(s.surface(1).unwrap().offset_distance(), -2.0);
+        assert_eq!(s.solver.saved_offsets, [1.0, -2.0]);
     }
 
     #[test]
