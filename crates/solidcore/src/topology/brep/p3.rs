@@ -19,7 +19,7 @@
 //! | [`squeeze_edge`]                | `SmBrep::SqueezeEdge`                            |
 //! | [`turn_to_nurbs`]               | `SmBrep::TurnToNURBS`                            |
 //! | [`edge_curve_identity`]         | (the `m_pCurve` object's identity in the notifications) |
-//! | [`with_kernel_callbacks`]       | (for callers without notification state: the B-rep context's callbacks) |
+//! | [`default_key_of`], [`with_kernel_callbacks`]       | (for callers without notification state: the B-rep context's callbacks) |
 //! | [`seed_topology_records`]       | (the `SmTopology` members every object carries; for callers of the edits) |
 //! | `Brep::remove_from_*_list` (crate) | `SmOwningTopology::Remove` on the B-rep's list heads (and `~SmTopology`) |
 //!
@@ -602,6 +602,32 @@ pub fn seed_topology_records(
         records.entry(key_of(e).key).or_default();
     }
     records.entry(p2::brep_ref(b).key).or_default();
+}
+
+/// A notification identity for callers without identities of their own (with
+/// [`with_kernel_callbacks`]): the entity's class type code (`GetType`) and its kind
+/// (`0` the B-rep, then region, shell, face use, face, loop use, loop, edge use, edge,
+/// vertex use, vertex) shifted by 32, or-ed with its index; below the reserved geometry
+/// key range.
+#[must_use]
+pub fn default_key_of(e: EntityRef) -> ObjectRef {
+    let (kind, type_code, i): (u64, i64, u32) = match e {
+        EntityRef::Brep(_) => (0, 16011, 0),
+        EntityRef::Region(x) => (1, 16012, x.index()),
+        EntityRef::Shell(x) => (2, 16013, x.index()),
+        EntityRef::Faceuse(x) => (3, 16022, x.index()),
+        EntityRef::Face(x) => (4, 16002, x.index()),
+        EntityRef::Loopuse(x) => (5, 16004, x.index()),
+        EntityRef::Loop(x) => (6, 16003, x.index()),
+        EntityRef::Edgeuse(x) => (7, 16005, x.index()),
+        EntityRef::Edge(x) => (8, 16016, x.index()),
+        EntityRef::Vertexuse(x) => (9, 16006, x.index()),
+        EntityRef::Vertex(x) => (10, 16021, x.index()),
+    };
+    ObjectRef {
+        type_code,
+        key: ObjectKey((kind << 32) | u64::from(i)),
+    }
 }
 
 /// Runs `edit` for a caller that keeps no notification state of its own (upstream's

@@ -2023,7 +2023,7 @@ pub(crate) fn glue_edges_general(
 
 /// `SmBrep::SqueezeEdge(edge, keep)` (unit `topology.brep_p3`,
 /// [`crate::topology::brep::p3::squeeze_edge`]), notifying through the kernel
-/// context's callbacks under [`stitch_key`] identities.
+/// context's callbacks under [`crate::topology::brep::p3::default_key_of`] identities.
 ///
 /// # Errors
 ///
@@ -2035,33 +2035,10 @@ pub(crate) fn squeeze_edge_to(
     keep: VertexId,
 ) -> Result<()> {
     let e = e.ok_or_else(|| SolidError::null_pointer("heal::stitch::p1::squeeze_edge_to"))?;
-    crate::topology::brep::p3::with_kernel_callbacks(k, b, &stitch_key, |k, b, env| {
+    let key_of = crate::topology::brep::p3::default_key_of;
+    crate::topology::brep::p3::with_kernel_callbacks(k, b, &key_of, |k, b, env| {
         crate::topology::brep::p3::squeeze_edge(k, b, env, e, keep)
     })
-}
-
-/// The identity a stitch edit notifies `e` under: its class's type code (`GetType`) and
-/// its kind (`0` the B-rep, then region, shell, face use, face, loop use, loop, edge
-/// use, edge, vertex use, vertex) shifted by 32, or-ed with its index (below the
-/// reserved geometry key range).
-fn stitch_key(e: EntityRef) -> crate::geom::object::ObjectRef {
-    let (kind, type_code, i): (u64, i64, u32) = match e {
-        EntityRef::Brep(_) => (0, 16011, 0),
-        EntityRef::Region(x) => (1, 16012, x.index()),
-        EntityRef::Shell(x) => (2, 16013, x.index()),
-        EntityRef::Faceuse(x) => (3, 16022, x.index()),
-        EntityRef::Face(x) => (4, 16002, x.index()),
-        EntityRef::Loopuse(x) => (5, 16004, x.index()),
-        EntityRef::Loop(x) => (6, 16003, x.index()),
-        EntityRef::Edgeuse(x) => (7, 16005, x.index()),
-        EntityRef::Edge(x) => (8, 16016, x.index()),
-        EntityRef::Vertexuse(x) => (9, 16006, x.index()),
-        EntityRef::Vertex(x) => (10, 16021, x.index()),
-    };
-    crate::geom::object::ObjectRef {
-        type_code,
-        key: crate::geom::attribute::ObjectKey((kind << 32) | u64::from(i)),
-    }
 }
 
 /// `SmBrep::MakeVertexSplitEdge(edge, t, rpE1, rpE2, rpNewV)` (unit `topology.brep_p9`).
