@@ -11,6 +11,7 @@
 //! | [`OffsetExecutive::replace_implicit_offsets`] | `ReplaceImplicitOffsets` |
 //! | [`OffsetExecutive::remove_excess_faces`] | `RemoveExcessFaces` |
 //! | [`OffsetExecutive::get_create_extended_surface`] | `GetCreateExtendedSurface` |
+//! | [`OffsetExecutive::insert_extended_surface`] | `m_vSurfExtSurf.Insert` (protected upstream; harness seeding) |
 //! | [`OffsetExecutive::piecewise_merge`] | `PiecewiseMerge` |
 //! | `sort_edgeuses`, `insert_breaks`, `remove_small_stuff`, `extract_gaps` (private) | `sm_SortEdgeuses`, `sm_InsertBreaks`, `sm_RemoveSmallStuff`, `sm_ExtractGaps` |
 //! | [`OffsetExecutive::offset_edgeuse`] | `GetOffsetEdgeuse` |
@@ -28,14 +29,15 @@
 //! floating-point comparisons. Extension identity is a caller-supplied key, never an address.
 //! Every unavailable dependency is reported at its actual call, including ignored statuses.
 //! Continuations after unconditional missing calls are documented there, not reported as success.
-//! `RemoveExcessFaces` borrows the original B-rep immutably (its arenas have no editing flag)
+//! `RemoveExcessFaces` borrows the original B-rep immutably for queries
 //! and uses the existing canonical arena-identity cache adapter; custom geometry owner keys
 //! or indirect owner chains are explicitly unsupported rather than silently skipped.
-//! Result-edge enumeration uses arena order, not `SmBrep::GetEdges` linked-list order
-//! (owned by `topology.brep_p1`); nonempty queries still defer at `NormalizedEvaluate`.
-//! Edge-offset preparation and gap handling are shared with p2 without notifications;
-//! live mapped pairs still require the caller's real notification records, context and
-//! distinct original/result identities before geometry creation.
+//! Result-edge enumeration uses native `SmBrep::GetEdges` list order;
+//! nonempty queries still defer at `NormalizedEvaluate`.
+//! Edge-offset preparation and gap handling are shared with p2. Preparation can split
+//! result edges and notify through caller-owned stores, using either an external
+//! `NotifyEnv` or the actual kernel context. Geometry creators are ported separately;
+//! their cross-arena executive/SSI adapters remain explicit partial boundaries.
 //! No new input-driven recursion; existing topology walks are cycle-bounded.
 
 use std::collections::BTreeMap;
@@ -51,6 +53,7 @@ use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::geom::object::{NotifyOperation, ObjectRef};
 use crate::geom::solution_array::{Solution, SolutionArray};
 use crate::geom::tol::Relation;
+use crate::heal::stitch::p2 as stitch;
 use crate::intersect::topology_solver::p1::TopologySolver;
 use crate::intersect::topology_solver::p2::TopologySolveOptions;
 use crate::kernel::Kernel;
@@ -58,10 +61,11 @@ use crate::math::{Vec3, BIG_DOUBLE, EFF_ZERO, PI};
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::nurbs::knots::Side;
 use crate::surface::surface::{Surface, SurfaceKind};
+use crate::topology::brep::p1::{self as bp1, SetRegionVoidType};
 use crate::topology::brep_cache::{
     arena_identity, make_brep_cache, BrepCache, BrepObjects, CacheObject, CacheSource,
 };
-use crate::topology::edge::{self, NotifyEnv};
+use crate::topology::edge::{self, NotificationStores, NotifyEnv, NotifyState};
 use crate::topology::edgeuse::{p1 as eu, p2 as eu2};
 use crate::topology::face::p2 as face;
 use crate::topology::topology;
@@ -325,13 +329,52 @@ impl OffsetExecutive {
         self.blend_to_faces.remove_all();
     }
 
-    /// Synchronizes mapped edge ranges. A required split defers at `MakeVertexSplitEdge`;
-    /// no-split, no-match, gap and null-padding branches are fully implemented.
+    /// Synchronizes mapped edge ranges, splitting offset edges at the other side's
+    /// breaks with `MakeVertexSplitEdge`. `notifications` and `curve_ref` identify the
+    /// offset B-rep's entities and edge curves for the split's notifications.
     pub fn synchronize_offset_edgeuses(
         &mut self,
-        _kernel: &Kernel,
+        kernel: &mut Kernel,
         original: Option<EdgeuseId>,
         other: Option<EdgeuseId>,
+        notifications: &mut NotifyEnv<'_>,
+        curve_ref: &dyn Fn(EdgeId, i64) -> ObjectRef,
+    ) -> Result<SynchronizedEdgeuses> {
+        self.synchronize_offset_edgeuses_with_state(
+            kernel,
+            original,
+            other,
+            &mut NotifyState::from_env(notifications),
+            curve_ref,
+        )
+    }
+
+    /// Synchronizes through the kernel's actual context and caller-owned result stores.
+    /// Like the external-environment entry point, this may split and notify result edges.
+    pub fn synchronize_offset_edgeuses_with_kernel_context(
+        &mut self,
+        kernel: &mut Kernel,
+        original: Option<EdgeuseId>,
+        other: Option<EdgeuseId>,
+        notifications: &mut NotificationStores<'_>,
+        curve_ref: &dyn Fn(EdgeId, i64) -> ObjectRef,
+    ) -> Result<SynchronizedEdgeuses> {
+        self.synchronize_offset_edgeuses_with_state(
+            kernel,
+            original,
+            other,
+            &mut NotifyState::from_kernel_stores(notifications),
+            curve_ref,
+        )
+    }
+
+    fn synchronize_offset_edgeuses_with_state(
+        &mut self,
+        kernel: &mut Kernel,
+        original: Option<EdgeuseId>,
+        other: Option<EdgeuseId>,
+        notifications: &mut NotifyState<'_>,
+        curve_ref: &dyn Fn(EdgeId, i64) -> ObjectRef,
     ) -> Result<SynchronizedEdgeuses> {
         let original = required(original)?;
         let mut first = self.edgeuse_to_edgeuses.seconds(original);
@@ -351,7 +394,7 @@ impl OffsetExecutive {
             return Ok(out);
         }
 
-        let brep = self.required_offset_brep()?;
+        let brep = required(self.offset_brep.as_mut())?;
         remove_small_stuff(brep, &mut second)?;
         if second.is_empty() {
             sort_edgeuses(brep, &mut first)?;
@@ -359,8 +402,9 @@ impl OffsetExecutive {
             out.edgeuses = first.into_iter().map(Some).collect();
             return Ok(out);
         }
-        insert_breaks(brep, &first, &second)?;
-        insert_breaks(brep, &second, &first)?;
+        insert_breaks(kernel, brep, &first, &mut second, notifications, curve_ref)?;
+        insert_breaks(kernel, brep, &second, &mut first, notifications, curve_ref)?;
+        let brep = &*brep;
         sort_edgeuses(brep, &mut first)?;
         sort_edgeuses(brep, &mut second)?;
         extract_gaps(brep, &mut first, &second, &mut out.gaps)?;
@@ -397,6 +441,14 @@ impl OffsetExecutive {
         }
     }
 
+    /// Caches `surface` as the extension of `base_key` (`m_vSurfExtSurf.Insert`), replacing
+    /// any earlier entry. Upstream's map is protected; the offset difftest shims reach it
+    /// through a subclass to seed every base with itself, so that a lookup never extends,
+    /// and their runners seed the port's cache through this method.
+    pub fn insert_extended_surface(&mut self, base_key: u64, surface: Surface) {
+        self.extended_surfaces.insert(base_key, surface);
+    }
+
     /// Replaces implicit offset surfaces with approximations (`ReplaceImplicitOffsets`).
     /// The unconditional initial shrink is owned by `topology.brep_p4`.
     pub fn replace_implicit_offsets(
@@ -417,8 +469,8 @@ impl OffsetExecutive {
     /// Removes result faces too close to the original (`RemoveExcessFaces`).
     ///
     /// The source is borrowed immutably while solving, corresponding to the upstream
-    /// editing-disabled query. `Brep` has no editing flag, so upstream's success-only
-    /// reset to `TRUE` (or leaving it `FALSE` on a solver error) cannot be represented.
+    /// editing-disabled query. This legacy immutable-kernel entry cannot advance the
+    /// real traversal mark at removal; use the kernel-context entry for that step.
     /// Geometry owners must use [`arena_identity`] directly; custom keys or indirect
     /// owner chains return [`SolidError::Unsupported`] rather than omitting geometry.
     /// Cache and solver errors propagate before any result-face removal. Ordinary
@@ -430,8 +482,46 @@ impl OffsetExecutive {
         original: &Brep,
         result: &mut Brep,
     ) -> Result<()> {
-        if !self.merge_results || !self.shell_faces.is_empty() {
+        if self.excess_faces(kernel, original, result)?.is_none() {
             return Ok(());
+        }
+        // UNPORTED(offset.offset_executive_p1): SmOffsetExecutive::RemoveExcessFaces (mutable Kernel adapter)
+        Err(SolidError::unported(
+            "SmOffsetExecutive::RemoveExcessFaces (mutable Kernel adapter)",
+            "offset.offset_executive_p1",
+        ))
+    }
+
+    /// Removes excess faces using the result's actual editing flag and kernel marks.
+    /// An empty deletion list still calls the landed `RemoveFaces` implementation.
+    pub fn remove_excess_faces_with_kernel_context(
+        &self,
+        kernel: &mut Kernel,
+        original: &Brep,
+        result: &mut Brep,
+    ) -> Result<()> {
+        let Some(delete_faces) = self.excess_faces(kernel, original, result)? else {
+            return Ok(());
+        };
+        let editing_enabled = result.editing_enabled();
+        // cpp:2099–2102 ignores ordinary RemoveFaces failures but still executes
+        // its editing guard and traversal-mark effects. Missing work must defer.
+        ignore_status(crate::topology::brep::p5::remove_faces(
+            kernel,
+            result,
+            editing_enabled,
+            &delete_faces,
+        ))
+    }
+
+    fn excess_faces(
+        &self,
+        kernel: &Kernel,
+        original: &Brep,
+        result: &Brep,
+    ) -> Result<Option<Vec<FaceId>>> {
+        if !self.merge_results || !self.shell_faces.is_empty() {
+            return Ok(None);
         }
         let min_distance = self.offset_distance * 0.95;
         let mut delete_faces = Vec::new();
@@ -457,13 +547,8 @@ impl OffsetExecutive {
                 &mut delete_faces,
             )?;
         }
-        // All candidate faces have been gathered in first-seen order, without duplicates.
-        // Even an empty deletion list reaches RemoveFaces upstream (mark increment).
-        // UNPORTED(topology.brep_p5): SmBrep::RemoveFaces
-        Err(SolidError::unported(
-            "SmBrep::RemoveFaces",
-            "topology.brep_p5",
-        ))
+        // All candidates are gathered in first-seen order, without duplicates.
+        Ok(Some(delete_faces))
     }
 
     /// Builds a closing ruled side wall, or succeeds without work for null/ambiguous mappings.
@@ -492,19 +577,80 @@ impl OffsetExecutive {
     }
 
     /// Builds edge cap offsets. Notifications use distinct original/result object keys;
-    /// the geometry creation itself remains owned by `offset.offset_geometry_creation`.
+    /// `offset_curve_ref` identifies offset edge curves split while synchronizing. The
+    /// geometry creation itself remains owned by `offset.offset_geometry_creation`.
+    #[allow(clippy::too_many_arguments)]
     pub fn build_offset_of_edgeuses(
         &mut self,
-        kernel: &Kernel,
+        kernel: &mut Kernel,
+        original: &Brep,
+        edgeuse: EdgeuseId,
+        other: EdgeuseId,
+        mark_type: MarkType,
+        notifications: &mut NotifyEnv<'_>,
+        offset_key_of: &dyn Fn(EntityRef) -> ObjectRef,
+        offset_curve_ref: &dyn Fn(EdgeId, i64) -> ObjectRef,
+    ) -> Result<()> {
+        self.build_offset_of_edgeuses_with_state(
+            kernel,
+            original,
+            edgeuse,
+            other,
+            mark_type,
+            &mut NotifyState::from_env(notifications),
+            offset_key_of,
+            offset_curve_ref,
+        )
+    }
+
+    /// Builds the edge-offset prefix with real caller stores and the kernel context.
+    /// `notifications.key_of` identifies source entities; `offset_key_of` identifies
+    /// result entities, including any edges created by synchronization. `mark_type`
+    /// is the existing traversal mark, not a request to acquire or advance one.
+    #[allow(clippy::too_many_arguments)]
+    pub fn build_offset_of_edgeuses_with_kernel_context(
+        &mut self,
+        kernel: &mut Kernel,
+        original: &Brep,
+        edgeuse: EdgeuseId,
+        other: EdgeuseId,
+        mark_type: MarkType,
+        notifications: &mut NotificationStores<'_>,
+        offset_key_of: &dyn Fn(EntityRef) -> ObjectRef,
+        offset_curve_ref: &dyn Fn(EdgeId, i64) -> ObjectRef,
+    ) -> Result<()> {
+        self.build_offset_of_edgeuses_with_state(
+            kernel,
+            original,
+            edgeuse,
+            other,
+            mark_type,
+            &mut NotifyState::from_kernel_stores(notifications),
+            offset_key_of,
+            offset_curve_ref,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn build_offset_of_edgeuses_with_state(
+        &mut self,
+        kernel: &mut Kernel,
         original: &Brep,
         edgeuse: EdgeuseId,
         other: EdgeuseId,
         _mark_type: MarkType,
-        notifications: &mut NotifyEnv<'_>,
+        notifications: &mut NotifyState<'_>,
         offset_key_of: &dyn Fn(EntityRef) -> ObjectRef,
+        offset_curve_ref: &dyn Fn(EdgeId, i64) -> ObjectRef,
     ) -> Result<()> {
-        let Some((edge, synchronized)) =
-            self.prepare_offset_edgeuses(kernel, original, edgeuse, other)?
+        let Some((edge, synchronized)) = self.prepare_offset_edgeuses(
+            kernel,
+            original,
+            edgeuse,
+            other,
+            &mut notifications.rekey(offset_key_of),
+            offset_curve_ref,
+        )?
         else {
             return Ok(());
         };
@@ -519,36 +665,42 @@ impl OffsetExecutive {
             };
             if let Some(offset) = offset {
                 let result = self.required_offset_brep()?;
-                notify_edge_and_vertices(
-                    original,
-                    edge,
-                    result,
-                    edge_of(result, *offset)?,
-                    notifications,
-                    offset_key_of,
-                )?;
+                let result_edge = edge_of(result, *offset)?;
+                notifications.with_env(kernel, |env| {
+                    notify_edge_and_vertices(
+                        original,
+                        edge,
+                        result,
+                        result_edge,
+                        env,
+                        offset_key_of,
+                    )
+                })?;
             }
-            // Continuation cpp:2956–3071: skip absent cap, otherwise build trimmed
-            // or natural-domain face and record edge->face. No reachable geometry
-            // creation branch can be substituted for #156's EdgeuseOffset.
-            // UNPORTED(offset.offset_geometry_creation): SmOffsetGeometryCreation::EdgeuseOffset
+            // The generic EdgeuseOffset creator is ported; its backend still needs
+            // this executive's source/result topology, SSI and mark adapters. Keep
+            // the caller's mark unchanged until that integration is available.
+            // Continuation cpp:2956–3071 constructs the cap and records edge->face.
+            // UNPORTED(offset.offset_executive_p1): SmOffsetExecutive::BuildOffsetOfEdgeuses (geometry-creation adapter)
             return Err(SolidError::unported(
-                "SmOffsetGeometryCreation::EdgeuseOffset",
-                "offset.offset_geometry_creation",
+                "SmOffsetExecutive::BuildOffsetOfEdgeuses (geometry-creation adapter)",
+                "offset.offset_executive_p1",
             ));
         }
 
         self.fill_offset_edgeuse_gaps(kernel, original, edge, &synchronized)
     }
 
-    /// Notification-free `BuildOffsetOfEdgeuses` prefix, shared with p2.
+    /// Shared prefix; synchronization mutates/notifies the result exactly once.
     /// `None` is the selected-shell-face no-op, not an empty synchronization.
-    pub(super) fn prepare_offset_edgeuses(
+    fn prepare_offset_edgeuses(
         &mut self,
-        kernel: &Kernel,
+        kernel: &mut Kernel,
         original: &Brep,
         edgeuse: EdgeuseId,
         other: EdgeuseId,
+        notifications: &mut NotifyState<'_>,
+        curve_ref: &dyn Fn(EdgeId, i64) -> ObjectRef,
     ) -> Result<Option<(EdgeId, SynchronizedEdgeuses)>> {
         let edge = edge_of(original, edgeuse)?;
         let first_face = eu::face(original, edgeuse)?;
@@ -559,7 +711,13 @@ impl OffsetExecutive {
         {
             return Ok(None);
         }
-        let synchronized = self.synchronize_offset_edgeuses(kernel, Some(edgeuse), Some(other))?;
+        let synchronized = self.synchronize_offset_edgeuses_with_state(
+            kernel,
+            Some(edgeuse),
+            Some(other),
+            notifications,
+            curve_ref,
+        )?;
         Ok(Some((edge, synchronized)))
     }
 
@@ -670,10 +828,10 @@ impl OffsetExecutive {
                 if edges_to_blend.len() != 1 {
                     return Ok(VertexOffset::default());
                 }
-                // UNPORTED(offset.offset_geometry_creation): SmOffsetGeometryCreation::VertexOffset
+                // UNPORTED(offset.offset_executive_p1): SmOffsetExecutive::BuildOffsetOfVertex (geometry-creation adapter)
                 return Err(SolidError::unported(
-                    "SmOffsetGeometryCreation::VertexOffset",
-                    "offset.offset_geometry_creation",
+                    "SmOffsetExecutive::BuildOffsetOfVertex (geometry-creation adapter)",
+                    "offset.offset_executive_p1",
                 ));
             }
         }
@@ -708,10 +866,11 @@ impl OffsetExecutive {
             }
         }
         // This call is unconditional, even when the vertex has no incident edges.
-        // UNPORTED(offset.offset_geometry_creation): SmOffsetGeometryCreation::VertexOffset
+        // The creator exists; the executive's arena/geometry backend is missing.
+        // UNPORTED(offset.offset_executive_p1): SmOffsetExecutive::BuildOffsetOfVertex (geometry-creation adapter)
         Err(SolidError::unported(
-            "SmOffsetGeometryCreation::VertexOffset",
-            "offset.offset_geometry_creation",
+            "SmOffsetExecutive::BuildOffsetOfVertex (geometry-creation adapter)",
+            "offset.offset_executive_p1",
         ))
     }
 }
@@ -721,24 +880,39 @@ impl OffsetExecutive {
     ///
     /// On the non-merge path the B-rep is taken and relations are cleared *before*
     /// stitching, as upstream. A deferred stitch therefore leaves `offset_brep()` empty.
-    pub fn piecewise_merge(&mut self, kernel: &Kernel, original: &mut Brep) -> Result<Brep> {
+    pub fn piecewise_merge(&mut self, kernel: &mut Kernel, original: &mut Brep) -> Result<Brep> {
         if !self.merge_results {
             self.clear_relations();
-            let _result = required(self.offset_brep.take())?;
+            let mut result = required(self.offset_brep.take())?;
+            // the stitch statuses are ignored upstream
             if self.create_offset_solid {
-                // TRUE, result tolerance; continuation checks multiple regions and
-                // calls FindAndSetInfiniteRegion with editing temporarily disabled.
-                // UNPORTED(heal.stitch_p2): SmStitch::StitchIntoShell
-                return Err(SolidError::unported(
-                    "SmStitch::StitchIntoShell",
-                    "heal.stitch_p2",
-                ));
+                // Tol: StitchIntoShell() adds in the tols of the topology objects,
+                // so the Brep's tolerance should be plenty.
+                let stitch_tol_3d = result.tolerance();
+                ignore_status(stitch::stitch_into_shell(
+                    kernel,
+                    &mut result,
+                    true,
+                    stitch_tol_3d,
+                ))?;
+            } else {
+                ignore_status(stitch::stitch_into_solid(kernel, &mut result))?;
             }
-            // UNPORTED(heal.stitch_p2): SmStitch::StitchIntoSolid
-            return Err(SolidError::unported(
-                "SmStitch::StitchIntoSolid",
-                "heal.stitch_p2",
-            ));
+
+            if bp1::regions(&result, None)?.len() > 1 {
+                let old = result.editing_enabled();
+                result.set_editing_enabled(false);
+                let r = stitch::find_and_set_infinite_region(
+                    kernel,
+                    &mut result,
+                    None,
+                    SetRegionVoidType::InfiniteRegionSwap,
+                    None,
+                );
+                result.set_editing_enabled(old);
+                r?;
+            }
+            return Ok(result);
         }
 
         // Surfaces are face-owned concrete values. Face ids identify the two sides
@@ -855,12 +1029,13 @@ impl OffsetExecutive {
             // merge self-intersections when enabled, reject faces whose lamina
             // edge sample (0.4567) is closer than distance - 2*approximation_tol.
             // Finally relate each face and call this unit's MapEdgeuses.
-            // SmBrep::MakeFaceWithCurves (topology::brep::p7::make_face_with_curves)
-            // takes m_pOffsetBrep->GetInfiniteRegion() as its first argument.
-            // UNPORTED(topology.brep_p1): SmBrep::GetInfiniteRegion
+            // The infinite-region accessor and p7 constructor are available;
+            // this legacy entry still lacks the construction/Copy notification
+            // and SSI integration, not the underlying topology implementation.
+            // UNPORTED(offset.offset_executive_p1): SmOffsetExecutive::BuildOffsetOfFaceuse (construction/SSI adapter)
             return Err(SolidError::unported(
-                "SmBrep::GetInfiniteRegion",
-                "topology.brep_p1",
+                "SmOffsetExecutive::BuildOffsetOfFaceuse (construction/SSI adapter)",
+                "offset.offset_executive_p1",
             ));
         }
 
@@ -1076,25 +1251,53 @@ fn sort_edgeuses(brep: &Brep, edgeuses: &mut [EdgeuseId]) -> Result<()> {
     }
 }
 
-fn insert_breaks(brep: &Brep, edgeuses: &[EdgeuseId], to_split: &[EdgeuseId]) -> Result<()> {
+fn insert_breaks(
+    kernel: &mut Kernel,
+    brep: &mut Brep,
+    edgeuses: &[EdgeuseId],
+    to_split: &mut Vec<EdgeuseId>,
+    notifications: &mut NotifyState<'_>,
+    curve_ref: &dyn Fn(EdgeId, i64) -> ObjectRef,
+) -> Result<()> {
     for max_end in [false, true] {
         for &edgeuse in edgeuses {
             let source = interval(brep, edgeuse)?;
             let param = if max_end { source.max() } else { source.min() };
-            for &split in to_split {
+            // Uses appended by a split are scanned too: upstream re-reads GetSize.
+            let mut index = 0;
+            while let Some(&split) = to_split.get(index) {
+                index += 1;
                 let target = interval(brep, split)?;
-                if target.contains_value(param, 0.0)
-                    && !target.is_value_on_boundary(param, EFF_ZERO).0
+                if !target.contains_value(param, 0.0)
+                    || target.is_value_on_boundary(param, EFF_ZERO).0
                 {
-                    // Continuation cpp:2538–2555: failed splits continue scanning;
-                    // successful splits append matching CCW then CW uses and break.
-                    // Returning Unported must not be mistaken for a failed C++ split.
-                    // UNPORTED(topology.brep_p9): SmBrep::MakeVertexSplitEdge
-                    return Err(SolidError::unported(
-                        "SmBrep::MakeVertexSplitEdge",
-                        "topology.brep_p9",
-                    ));
+                    continue;
                 }
+                // The split reads the offset B-rep's own editing state (the executive's
+                // constructors enable it, cpp:437, 1073). Dependency errors propagate;
+                // only SM_ERR continues.
+                let edge_id = edge_of(brep, split)?;
+                let output = crate::topology::brep::p9::make_vertex_split_edge_with_state(
+                    kernel,
+                    brep,
+                    edge_id,
+                    param,
+                    notifications,
+                    curve_ref,
+                )?;
+                if !output.split {
+                    continue; // Can't split if too close to end point
+                }
+                let new_edges = required(output.edges)?;
+                let ccw = required(eu::ccw_edgeuse(brep, split)?)?;
+                let cw = required(eu::cw_edgeuse(brep, split)?)?;
+                if new_edges.contains(&edge_of(brep, ccw)?) {
+                    to_split.push(ccw);
+                }
+                if new_edges.contains(&edge_of(brep, cw)?) {
+                    to_split.push(cw);
+                }
+                break;
             }
         }
     }
@@ -1327,6 +1530,110 @@ mod tests {
         ))
     }
 
+    /// A wire edge with real vertices and a primary/mate pair, as in the p9 split tests.
+    fn wire_use(brep: &mut Brep, min: f64, max: f64) -> EdgeuseId {
+        let mut curve = Line::from_points(Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0), 3);
+        let interval = Extent1d::from_raw(min, max);
+        curve.edit_parameterization(&interval).unwrap();
+        let v0 = brep.add_vertex(Vec3::ZERO).unwrap();
+        let v1 = brep.add_vertex(Vec3::new(1.0, 0.0, 0.0)).unwrap();
+        let edge = brep.add_edge(v0, v1).unwrap();
+        let record = brep.edge_mut(edge).unwrap();
+        record.interval = interval;
+        record.curve = Some(Curve::from(curve));
+        let mut primary = None;
+        for (vertex, orientation) in [(v0, OrientType::Same), (v1, OrientType::Opposite)] {
+            let vertexuse = brep
+                .add_vertexuse_record(Vertexuse {
+                    vertex: Some(vertex),
+                    ..Vertexuse::default()
+                })
+                .unwrap();
+            let edgeuse = brep
+                .add_edgeuse_record(Edgeuse {
+                    edge: Some(edge),
+                    owner: crate::topology::EdgeuseOwner::Shell(None),
+                    vertexuse: Some(vertexuse),
+                    orientation,
+                    ..Edgeuse::default()
+                })
+                .unwrap();
+            brep.vertexuse_mut(vertexuse).unwrap().owner =
+                crate::topology::VertexuseOwner::Edgeuse(Some(edgeuse));
+            brep.vertex_mut(vertex).unwrap().vertexuses.push(vertexuse);
+            brep.edge_mut(edge).unwrap().edgeuses.push(edgeuse);
+            primary.get_or_insert(edgeuse);
+        }
+        primary.unwrap()
+    }
+
+    fn split_entities(brep: &Brep) -> Vec<EntityRef> {
+        brep.edges()
+            .iter()
+            .map(|(id, _)| EntityRef::Edge(id))
+            .chain(brep.edgeuses().iter().map(|(id, _)| EntityRef::Edgeuse(id)))
+            .chain(brep.vertices().iter().map(|(id, _)| EntityRef::Vertex(id)))
+            .chain(
+                brep.vertexuses()
+                    .iter()
+                    .map(|(id, _)| EntityRef::Vertexuse(id)),
+            )
+            .collect()
+    }
+
+    fn split_env<R>(
+        brep_key: ObjectKey,
+        entities: &[EntityRef],
+        run: impl FnOnce(&mut NotifyEnv<'_>, &dyn Fn(EdgeId, i64) -> ObjectRef) -> R,
+    ) -> R {
+        let key = |entity| {
+            let (index, type_code) = match entity {
+                EntityRef::Edge(id) => (id.index(), edge::TYPE),
+                EntityRef::Edgeuse(id) => (id.index(), eu::TYPE),
+                EntityRef::Vertex(id) => (id.index(), vertex::TYPE),
+                EntityRef::Vertexuse(id) => (id.index(), crate::topology::vertexuse::TYPE),
+                _ => panic!("unexpected split fixture entity"),
+            };
+            ObjectRef {
+                key: ObjectKey(
+                    1_000_000 + u64::try_from(type_code).unwrap() * 1000 + u64::from(index),
+                ),
+                type_code,
+            }
+        };
+        let mut records = BTreeMap::from([(brep_key, topology::Topology::new())]);
+        for &entity in entities {
+            records.insert(key(entity).key, topology::Topology::new());
+        }
+        let mut attributes = AttributeStore::default();
+        let mut env = NotifyEnv {
+            records: &mut records,
+            attributes: &mut attributes,
+            context: None,
+            key_of: &key,
+        };
+        run(&mut env, &|edge, kind| ObjectRef {
+            key: ObjectKey(1000 + u64::from(edge.index())),
+            type_code: kind,
+        })
+    }
+
+    fn sync(
+        executive: &mut OffsetExecutive,
+        original: Option<EdgeuseId>,
+        other: Option<EdgeuseId>,
+    ) -> Result<SynchronizedEdgeuses> {
+        let mut kernel = Kernel::default();
+        let entities = executive
+            .offset_brep()
+            .map(split_entities)
+            .unwrap_or_default();
+        let brep_key = executive.offset_brep().map_or(ObjectKey(0), Brep::key);
+        split_env(brep_key, &entities, |env, curve_ref| {
+            executive.synchronize_offset_edgeuses(&mut kernel, original, other, env, curve_ref)
+        })
+    }
+
     fn assert_dependency<T: core::fmt::Debug>(result: Result<T>, symbol: &str, owner: &str) {
         match result.unwrap_err() {
             SolidError::Unported { upstream, unit } => {
@@ -1449,10 +1756,9 @@ mod tests {
 
     #[test]
     fn synchronization_null_original_and_empty_maps_do_not_need_a_brep() {
-        let kernel = Kernel::default();
         let mut executive = executive();
         assert!(matches!(
-            executive.synchronize_offset_edgeuses(&kernel, None, None),
+            sync(&mut executive, None, None),
             Err(SolidError::Upstream {
                 code: crate::error::SM_ERR_NULL_POINTER,
                 ..
@@ -1460,16 +1766,13 @@ mod tests {
         ));
         let a = EdgeuseId::from_index(100);
         assert_eq!(
-            executive
-                .synchronize_offset_edgeuses(&kernel, Some(a), None)
-                .unwrap(),
+            sync(&mut executive, Some(a), None).unwrap(),
             SynchronizedEdgeuses::default()
         );
     }
 
     #[test]
     fn unmapped_first_side_sorts_but_does_not_filter_the_other_side() {
-        let kernel = Kernel::default();
         let mut executive = executive();
         let mut brep = Brep::new();
         let high = add_use(&mut brep, 5.0, 6.0, 100.0);
@@ -1484,9 +1787,7 @@ mod tests {
         executive.relate_edgeuses(b, high);
         executive.relate_edgeuses(b, low);
         executive.set_offset_brep(brep);
-        let out = executive
-            .synchronize_offset_edgeuses(&kernel, Some(a), Some(b))
-            .unwrap();
+        let out = sync(&mut executive, Some(a), Some(b)).unwrap();
         assert_eq!(out.edgeuses, vec![None, None]);
         assert_eq!(out.other_edgeuses, vec![Some(low), Some(high)]);
         assert!(out.gaps.is_empty() && out.other_gaps.is_empty());
@@ -1494,7 +1795,6 @@ mod tests {
 
     #[test]
     fn strict_ten_percent_removal_then_null_padding() {
-        let kernel = Kernel::default();
         let mut executive = executive();
         let mut brep = Brep::new();
         let small = add_use(&mut brep, 0.0, 1.0, 1.0);
@@ -1503,9 +1803,7 @@ mod tests {
         executive.relate_edgeuses(original, small);
         executive.relate_edgeuses(original, large);
         executive.set_offset_brep(brep);
-        let out = executive
-            .synchronize_offset_edgeuses(&kernel, Some(original), None)
-            .unwrap();
+        let out = sync(&mut executive, Some(original), None).unwrap();
         assert_eq!(out.edgeuses, vec![Some(large)]);
         assert_eq!(out.other_edgeuses, vec![None]);
         // Filtering is local; correspondence cardinality is not rewritten.
@@ -1528,7 +1826,6 @@ mod tests {
 
     #[test]
     fn synchronization_second_side_is_filtered_before_its_empty_branch() {
-        let kernel = Kernel::default();
         let mut executive = executive();
         let mut brep = Brep::new();
         let keep = add_use(&mut brep, 0.0, 2.0, 2.0);
@@ -1538,16 +1835,13 @@ mod tests {
         executive.relate_edgeuses(a, keep);
         executive.relate_edgeuses(b, zero);
         executive.set_offset_brep(brep);
-        let out = executive
-            .synchronize_offset_edgeuses(&kernel, Some(a), Some(b))
-            .unwrap();
+        let out = sync(&mut executive, Some(a), Some(b)).unwrap();
         assert_eq!(out.edgeuses, vec![Some(keep)]);
         assert_eq!(out.other_edgeuses, vec![None]);
     }
 
     #[test]
     fn synchronization_filtered_first_side_still_leaves_second_unfiltered() {
-        let kernel = Kernel::default();
         let mut executive = executive();
         let mut brep = Brep::new();
         let zero = add_use(&mut brep, 0.0, 0.0, 0.0);
@@ -1559,16 +1853,13 @@ mod tests {
         executive.relate_edgeuses(b, small);
         executive.relate_edgeuses(b, large);
         executive.set_offset_brep(brep);
-        let out = executive
-            .synchronize_offset_edgeuses(&kernel, Some(a), Some(b))
-            .unwrap();
+        let out = sync(&mut executive, Some(a), Some(b)).unwrap();
         assert_eq!(out.edgeuses, vec![None, None]);
         assert_eq!(out.other_edgeuses, vec![Some(small), Some(large)]);
     }
 
     #[test]
     fn synchronization_matches_intervals_without_requiring_splits() {
-        let kernel = Kernel::default();
         let mut executive = executive();
         let mut brep = Brep::new();
         let high_a = add_use(&mut brep, 1.0, 2.0, 1.0);
@@ -1584,9 +1875,7 @@ mod tests {
             executive.relate_edgeuses(b, offset);
         }
         executive.set_offset_brep(brep);
-        let out = executive
-            .synchronize_offset_edgeuses(&kernel, Some(a), Some(b))
-            .unwrap();
+        let out = sync(&mut executive, Some(a), Some(b)).unwrap();
         assert_eq!(out.edgeuses, vec![Some(low_a), Some(high_a)]);
         assert_eq!(out.other_edgeuses, vec![Some(low_b), Some(high_b)]);
         assert!(out.gaps.is_empty() && out.other_gaps.is_empty());
@@ -1594,7 +1883,6 @@ mod tests {
 
     #[test]
     fn synchronization_extracts_gaps_in_sorted_order() {
-        let kernel = Kernel::default();
         let mut executive = executive();
         let mut brep = Brep::new();
         let high = add_use(&mut brep, 4.0, 5.0, 1.0);
@@ -1606,9 +1894,7 @@ mod tests {
         executive.relate_edgeuses(a, low);
         executive.relate_edgeuses(b, other);
         executive.set_offset_brep(brep);
-        let out = executive
-            .synchronize_offset_edgeuses(&kernel, Some(a), Some(b))
-            .unwrap();
+        let out = sync(&mut executive, Some(a), Some(b)).unwrap();
         assert!(out.edgeuses.is_empty() && out.other_edgeuses.is_empty());
         assert_eq!(out.gaps, vec![low, high]);
         assert_eq!(out.other_gaps, vec![other]);
@@ -1631,46 +1917,86 @@ mod tests {
     }
 
     #[test]
-    fn break_insertion_defers_only_for_strict_interior_outside_boundary_tolerance() {
+    fn break_insertion_skips_boundaries_and_continues_past_refused_splits() {
+        let mut kernel = Kernel::default();
         let mut brep = Brep::new();
-        let whole = add_use(&mut brep, 0.0, 1.0, 1.0);
+        let whole = wire_use(&mut brep, 0.0, 1.0);
         let equal = add_use(&mut brep, 0.0, 1.0, 1.0);
-        insert_breaks(&brep, &[equal], &[whole]).unwrap();
         let near = add_use(&mut brep, EFF_ZERO / 2.0, 1.0, 1.0);
-        insert_breaks(&brep, &[near], &[whole]).unwrap();
-        let exact = add_use(&mut brep, EFF_ZERO, 1.0, 1.0);
-        assert_dependency(
-            insert_breaks(&brep, &[exact], &[whole]),
-            "SmBrep::MakeVertexSplitEdge",
-            "topology.brep_p9",
-        );
         let max_break = add_use(&mut brep, 0.0, 0.5, 1.0);
-        assert_dependency(
-            insert_breaks(&brep, &[max_break], &[whole]),
-            "SmBrep::MakeVertexSplitEdge",
-            "topology.brep_p9",
-        );
+        let edges = brep.edges().len();
+        let insert = |brep: &mut Brep, kernel: &mut Kernel, uses: &[EdgeuseId]| {
+            let mut to_split = vec![whole];
+            let entities = split_entities(brep);
+            let result = split_env(brep.key(), &entities, |env, curve_ref| {
+                insert_breaks(
+                    kernel,
+                    brep,
+                    uses,
+                    &mut to_split,
+                    &mut NotifyState::from_env(env),
+                    curve_ref,
+                )
+            });
+            (result, to_split)
+        };
+        // Editing disabled (the B-rep constructor's default): every split is
+        // refused with SM_ERR, so the scan continues and nothing is split.
+        let (result, to_split) = insert(&mut brep, &mut kernel, &[equal, near, max_break]);
+        result.unwrap();
+        assert_eq!(to_split, vec![whole]);
+        assert_eq!(brep.edges().len(), edges);
+        // Interior by the boundary test but within MakeVertexSplitEdge's scaled zero:
+        // refused even with editing enabled.
+        brep.set_editing_enabled(true);
+        let exact = add_use(&mut brep, EFF_ZERO, 1.0, 1.0);
+        let edges = brep.edges().len();
+        let (result, to_split) = insert(&mut brep, &mut kernel, &[equal, near, exact]);
+        result.unwrap();
+        assert_eq!(to_split, vec![whole]);
+        assert_eq!(brep.edges().len(), edges);
+        assert!(!kernel.context.doing_boolean());
+        // A strict interior break splits, up to the B-rep's ADD notification.
+        let (result, _) = insert(&mut brep, &mut kernel, &[max_break]);
+        assert_dependency(result, "SmBrep::Notify", "topology.brep_p2");
     }
 
     #[test]
-    fn synchronization_reports_split_dependency_without_mutating_relations_or_arenas() {
-        let kernel = Kernel::default();
+    fn synchronization_without_editing_refuses_splits() {
         let mut executive = executive();
         let mut brep = Brep::new();
         let part = add_use(&mut brep, 0.25, 1.0, 1.0);
-        let whole = add_use(&mut brep, 0.0, 1.0, 1.0);
+        let whole = wire_use(&mut brep, 0.0, 1.0);
         let a = EdgeuseId::from_index(80);
         let b = EdgeuseId::from_index(81);
         executive.relate_edgeuses(a, part);
         executive.relate_edgeuses(b, whole);
         executive.set_offset_brep(brep);
+        let out = sync(&mut executive, Some(a), Some(b)).unwrap();
+        assert_eq!(out.edgeuses, vec![Some(part)]);
+        assert_eq!(out.other_edgeuses, vec![Some(whole)]);
+        assert_eq!(executive.offset_brep().unwrap().edges().len(), 2);
+    }
+
+    #[test]
+    fn synchronization_reports_split_dependency_without_changing_relations() {
+        let mut executive = executive();
+        let mut brep = Brep::new();
+        let part = add_use(&mut brep, 0.25, 1.0, 1.0);
+        let whole = wire_use(&mut brep, 0.0, 1.0);
+        let a = EdgeuseId::from_index(80);
+        let b = EdgeuseId::from_index(81);
+        executive.relate_edgeuses(a, part);
+        executive.relate_edgeuses(b, whole);
+        brep.set_editing_enabled(true);
+        executive.set_offset_brep(brep);
         assert_dependency(
-            executive.synchronize_offset_edgeuses(&kernel, Some(a), Some(b)),
-            "SmBrep::MakeVertexSplitEdge",
-            "topology.brep_p9",
+            sync(&mut executive, Some(a), Some(b)),
+            "SmBrep::Notify",
+            "topology.brep_p2",
         );
         assert_eq!(executive.offset_edgeuse(a), Some(part));
-        assert_eq!(executive.offset_brep().unwrap().edges().len(), 2);
+        assert_eq!(executive.offset_edgeuse(b), Some(whole));
     }
 
     #[test]
@@ -1688,12 +2014,11 @@ mod tests {
 
     #[test]
     fn invalid_mapped_ids_return_errors_instead_of_panicking() {
-        let kernel = Kernel::default();
         let mut executive = executive();
         executive.relate_edgeuses(EdgeuseId::from_index(80), EdgeuseId::from_index(u32::MAX));
         executive.set_offset_brep(Brep::new());
         assert!(matches!(
-            executive.synchronize_offset_edgeuses(&kernel, Some(EdgeuseId::from_index(80)), None),
+            sync(&mut executive, Some(EdgeuseId::from_index(80)), None),
             Err(SolidError::NotFound { .. })
         ));
     }
@@ -1789,8 +2114,8 @@ mod tests {
         executive.set_shell_faces(&[]);
         assert_dependency(
             executive.remove_excess_faces(&kernel, &original, &mut result),
-            "SmBrep::RemoveFaces",
-            "topology.brep_p5",
+            "SmOffsetExecutive::RemoveExcessFaces (mutable Kernel adapter)",
+            "offset.offset_executive_p1",
         );
         add_use(&mut result, 0.0, 1.0, 1.0);
         add_use(&mut result, 0.0, 1.0, 2.0);
@@ -1809,6 +2134,37 @@ mod tests {
             "SmBrep::ShrinkGeometry",
             "topology.brep_p4",
         );
+    }
+
+    #[test]
+    fn kernel_context_removal_uses_actual_editing_flag_and_releases_nested_mark() {
+        let mut kernel = Kernel::default();
+        let original = Brep::new();
+        let mut result = Brep::new_with_infinite_region().unwrap();
+        let mut exec = executive();
+        exec.set_merge_results(true);
+        // Native RemoveExcessFaces ignores the editing-disabled refusal from
+        // RemoveFaces. No traversal mark is acquired by that refused inner call.
+        exec.remove_excess_faces_with_kernel_context(&mut kernel, &original, &mut result)
+            .unwrap();
+        assert!(!result.editing_enabled());
+        assert_eq!(kernel.context.current_mark(MarkType::Mark), 1);
+        result.set_editing_enabled(true);
+        crate::geom::context::with_mark_lock(
+            &mut kernel,
+            crate::geom::context::ALL_MARKS,
+            |kernel, mark| {
+                assert_eq!(mark, MarkType::Mark);
+                exec.remove_excess_faces_with_kernel_context(kernel, &original, &mut result)
+                    .unwrap();
+                assert!(kernel.context.is_mark_locked(mark));
+                assert!(!kernel.context.is_mark_locked(MarkType::Mark2));
+                assert_eq!(kernel.context.current_mark(MarkType::Mark2), 3);
+            },
+        )
+        .unwrap();
+        assert!(!kernel.context.is_mark_locked(MarkType::Mark));
+        assert_eq!(kernel.context.current_mark(MarkType::Mark), 3);
     }
 
     fn excess_face_fixture() -> (Brep, EdgeId, FaceId, FaceId) {
@@ -1841,15 +2197,37 @@ mod tests {
         (result, edge_id, first_face, second_face)
     }
 
+    fn prepare(
+        executive: &mut OffsetExecutive,
+        original: &Brep,
+        first: EdgeuseId,
+        other: EdgeuseId,
+    ) -> Result<Option<(EdgeId, SynchronizedEdgeuses)>> {
+        let entities = executive
+            .offset_brep()
+            .map(split_entities)
+            .unwrap_or_default();
+        let brep_key = executive.offset_brep().map_or(ObjectKey(0), Brep::key);
+        split_env(brep_key, &entities, |env, curve_ref| {
+            executive.prepare_offset_edgeuses(
+                &mut Kernel::default(),
+                original,
+                first,
+                other,
+                &mut NotifyState::from_env(env),
+                curve_ref,
+            )
+        })
+    }
+
     #[test]
     fn shared_edge_preparation_preserves_shell_skip_and_validation_order() {
-        let kernel = Kernel::default();
         let (mut original, edge, first_face, other_face) = excess_face_fixture();
         let first = original.edge(edge).unwrap().edgeuses[0];
         let other = original.edge(edge).unwrap().edgeuses[1];
         let mut exec = executive();
         assert_eq!(
-            exec.prepare_offset_edgeuses(&kernel, &original, first, other),
+            prepare(&mut exec, &original, first, other),
             Ok(Some((edge, SynchronizedEdgeuses::default())))
         );
         exec.set_shell_faces(&[first_face, other_face]);
@@ -1857,19 +2235,16 @@ mod tests {
         exec.relate_edgeuses(first, missing);
         exec.set_offset_brep(Brep::new());
         // The selected-face no-op precedes synchronization of the stale mapping.
-        assert_eq!(
-            exec.prepare_offset_edgeuses(&kernel, &original, first, other),
-            Ok(None)
-        );
+        assert_eq!(prepare(&mut exec, &original, first, other), Ok(None));
         exec.set_extend_convex_edges(true);
         assert!(matches!(
-            exec.prepare_offset_edgeuses(&kernel, &original, first, other),
+            prepare(&mut exec, &original, first, other),
             Err(SolidError::NotFound { entity: EntityRef::Edgeuse(id), .. }) if id == missing
         ));
         // A missing first edge is checked before even reading the other face.
         original.edgeuse_mut(first).unwrap().edge = None;
         assert!(matches!(
-            exec.prepare_offset_edgeuses(&kernel, &original, first, missing),
+            prepare(&mut exec, &original, first, missing),
             Err(SolidError::Upstream {
                 code: crate::error::SM_ERR_NULL_POINTER,
                 ..
@@ -2060,21 +2435,24 @@ mod tests {
 
     #[test]
     fn merge_clears_all_relations_and_preserves_upstream_transfer_order() {
-        let kernel = Kernel::default();
+        let mut kernel = Kernel::default();
         let mut original = Brep::new();
         for solid in [false, true] {
             let mut executive = executive();
             executive.set_offset_brep(Brep::new());
             executive.set_create_offset_solid(solid);
             executive.relate_edgeuses(EdgeuseId::from_index(1), EdgeuseId::from_index(2));
+            // StitchIntoShell defers at DoStitching's first Notify, StitchIntoSolid at
+            // its bounding box
+            let (symbol, owner) = if solid {
+                ("SmBrep::Notify", "topology.brep_p2")
+            } else {
+                ("SmBrep::CalculateBoundingBox", "query.brep")
+            };
             assert_dependency(
-                executive.piecewise_merge(&kernel, &mut original),
-                if solid {
-                    "SmStitch::StitchIntoShell"
-                } else {
-                    "SmStitch::StitchIntoSolid"
-                },
-                "heal.stitch_p2",
+                executive.piecewise_merge(&mut kernel, &mut original),
+                symbol,
+                owner,
             );
             assert!(executive.offset_brep().is_none());
             assert_eq!(executive.offset_edgeuse(EdgeuseId::from_index(1)), None);
@@ -2084,7 +2462,7 @@ mod tests {
         executive.set_offset_brep(Brep::new());
         executive.relate_edgeuses(EdgeuseId::from_index(1), EdgeuseId::from_index(2));
         assert_dependency(
-            executive.piecewise_merge(&kernel, &mut original),
+            executive.piecewise_merge(&mut kernel, &mut original),
             "SmBrep::ShrinkGeometry",
             "topology.brep_p4",
         );
@@ -2159,8 +2537,8 @@ mod tests {
         let mut offset = Some(plane(1.0));
         assert_dependency(
             executive.build_offset_of_faceuse(&kernel, &mut original, Some(faceuse), &mut offset),
-            "SmBrep::GetInfiniteRegion",
-            "topology.brep_p1",
+            "SmOffsetExecutive::BuildOffsetOfFaceuse (construction/SSI adapter)",
+            "offset.offset_executive_p1",
         );
         let smaller = Surface::from(Plane::new(
             Vec3::ZERO,
@@ -2179,8 +2557,8 @@ mod tests {
         let mut offset = Some(smaller);
         assert_dependency(
             executive.build_offset_of_faceuse(&kernel, &mut original, Some(faceuse), &mut offset),
-            "SmBrep::GetInfiniteRegion",
-            "topology.brep_p1",
+            "SmOffsetExecutive::BuildOffsetOfFaceuse (construction/SSI adapter)",
+            "offset.offset_executive_p1",
         );
     }
 
@@ -2300,8 +2678,8 @@ mod tests {
         executive.relate_faceuse(mate, cap_face);
         assert_dependency(
             executive.build_offset_of_vertex(&kernel, &original, Some(vertex)),
-            "SmOffsetGeometryCreation::VertexOffset",
-            "offset.offset_geometry_creation",
+            "SmOffsetExecutive::BuildOffsetOfVertex (geometry-creation adapter)",
+            "offset.offset_executive_p1",
         );
         executive.relate_faceuse(faceuse, empty_face);
         let offset = executive
@@ -2324,8 +2702,8 @@ mod tests {
             .is_err());
         assert_dependency(
             executive.build_offset_of_vertex(&kernel, &original, Some(vertex)),
-            "SmOffsetGeometryCreation::VertexOffset",
-            "offset.offset_geometry_creation",
+            "SmOffsetExecutive::BuildOffsetOfVertex (geometry-creation adapter)",
+            "offset.offset_executive_p1",
         );
         executive
             .fill_gap_edgeuses(&kernel, EdgeId::from_index(u32::MAX), &[], &[])
@@ -2437,16 +2815,20 @@ mod tests {
         exec.relate_edgeuses(old, new);
         assert_dependency(
             exec.build_offset_of_edgeuses(
-                &Kernel::default(),
+                &mut Kernel::default(),
                 &original,
                 old,
                 old,
                 MarkType::Mark,
                 &mut env,
                 &offset_key,
+                &|edge, kind| ObjectRef {
+                    key: ObjectKey(1000 + u64::from(edge.index())),
+                    type_code: kind,
+                },
             ),
-            "SmOffsetGeometryCreation::EdgeuseOffset",
-            "offset.offset_geometry_creation",
+            "SmOffsetExecutive::BuildOffsetOfEdgeuses (geometry-creation adapter)",
+            "offset.offset_executive_p1",
         );
         for (entity, expected) in [
             (EntityRef::Edge(EdgeId::from_index(0)), 37),

@@ -8,7 +8,7 @@
 //! |----------------------------------------------|----------------------------------------------|
 //! | [`read_from_file`]                           | `SmBrep::ReadFromFile`                       |
 //! | [`make_face`], [`MakeFaceOptions`], [`NewFace`] | `SmBrep::MakeFace`                        |
-//! | [`make_face_with_curves`], [`FaceCurvesInput`] | `SmBrep::MakeFaceWithCurves`               |
+//! | [`make_face_with_curves`], [`make_face_with_curves_with_kernel_context`], [`FaceCurvesInput`] | `SmBrep::MakeFaceWithCurves` |
 //! | [`glue_edges_general`]                       | `SmBrep::GlueEdgesGeneral`                   |
 //! | [`copy_faces`]                               | `SmBrep::CopyFaces`                          |
 //! | [`merge_self_intersection_curves`], [`SelfIntersectionCurve`] | `SmBrep::MergeSelfIntersectionCurves` |
@@ -60,20 +60,21 @@
 //! - **Unported callees** return [`SolidError::Unported`]: `SmBrep::GetInfiniteRegion`
 //!   (`topology.brep_p1`); `SmBrep::Notify`, `SetTolerance`, `sm_CheckAndFixUVTrimCurves`,
 //!   `RebuildUVTrimCurves` (`topology.brep_p2`); `MakeWireEdge`, `MakeWireEdgeVertex`
-//!   (`topology.brep_p3`); `DeleteEdge` (`topology.brep_p4`); `GlueVertices`
-//!   (`topology.brep_p5`); `MakeShellVertex` (`topology.brep_p9`);
-//!   `MakeTopologyFromData`, `TestClosureSplitRegion(edge)` (`topology.brep_p10`);
-//!   `SmFace::Notify`, `SetTolerance`,
-//!   `CreateUVTrimCurves` (`topology.face_p3`); `SmFace::GetBrep`, `GetEdges`
+//!   (`topology.brep_p3`); `DeleteEdge` (`topology.brep_p4`); `MakeShellVertexTopology`
+//!   (`topology.brep_p2`, reached through `topology.brep_p9`'s `MakeShellVertex`);
+//!   `SmFace::GetBrep`, `GetEdges`
 //!   (`topology.face_p4`); `SmMerge` (`boolean.merge_p2`); the curve constructor of
 //!   `SmCurveClassification` (`intersect.curve_class_p4`), which
-//!   `MergeSelfIntersectionCurves` reaches first. Its classification of a UV curve
+//!   `MergeSelfIntersectionCurves` reaches first. `GlueVertices` calls
+//!   `topology.brep_p5` with the caller's notification environment. Its classification of a UV curve
 //!   against the faces and the `SetCurve` + `MergeIntervals` that follows are two stubs
 //!   (`classify_on_faces`, `set_curve_and_merge`) over a stand-in interval type; the
 //!   upstream interval loop around them is ported (`GetSize() != 1` skips before the
 //!   second merge, `SM_ERR` after it, `SE(SM_ERR)` for a middle not on an edge).
 //!   `SmShell::IsInnerShell` (merged shells) calls `topology.shell`'s port;
-//!   `MakeFaceTopology` and `TestClosureSplitRegion(faceuse)` call `topology.brep_p6`'s.
+//!   `MakeFaceTopology` and `TestClosureSplitRegion(faceuse)` call `topology.brep_p6`'s;
+//!   `MakeTopologyFromData` and `TestClosureSplitRegion(edge)` call
+//!   `topology.brep_p10`'s (`ReadFromFile` takes that unit's [`TopologyEnv`]).
 //!   That `MakeFaceTopology` names the face for its surface's owner before the face
 //!   exists, so it gets the key `this_face` gives the next face id (arenas only append);
 //!   it builds the face on a copy of the surface, which `MakeFace` then replaces with
@@ -85,6 +86,10 @@
 //!   only for two edges without curve (`NULL == NULL`). The glued-away edge stays in the edge arena as an orphan without edge uses;
 //!   enumerations of the B-rep's edges must skip edges without edge uses (upstream removes
 //!   it from `m_pEdgeListHead`).
+//! - **Notification context.** Face-from-curves entrypoints share one algorithm.
+//!   The kernel-context variant binds caller-owned stores to the actual kernel only
+//!   during construction notifications; the legacy immutable-kernel API keeps its
+//!   explicit external context, including null.
 //! - **Bounds.** No recursion; every loop is over input arrays or B-rep lists.
 
 use crate::curve::crv_on_surf::CrvOnSurf;
@@ -103,6 +108,7 @@ use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_curve_n_lib::InValueType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::surface::surface::{Surface, SurfaceKind};
+use crate::topology::brep::p10::{self, MakeTopologyOptions, TopologyEnv};
 use crate::topology::brep::p6;
 use crate::topology::brep_data::BrepData;
 use crate::topology::database_io::FileType;
@@ -223,96 +229,104 @@ fn delete_edge(_b: &mut Brep, _e: EdgeId) -> Result<()> {
     ))
 }
 
-/// `GlueVertices(survivor, other)`.
-fn glue_vertices(_b: &mut Brep, _v1: VertexId, _v2: VertexId) -> Result<()> {
-    // UNPORTED(topology.brep_p5): SmBrep::GlueVertices
-    Err(SolidError::unported(
-        "SmBrep::GlueVertices",
-        "topology.brep_p5",
-    ))
+/// `GlueVertices(survivor, other)` (default `pOptWireEdgesInBrep = NULL`), with the
+/// caller's notification environment.
+fn glue_vertices(
+    k: &mut Kernel,
+    b: &mut Brep,
+    v1: VertexId,
+    v2: VertexId,
+    env: &mut ed::NotifyEnv<'_>,
+) -> Result<()> {
+    super::p5::glue_with_notifications(k, b, Some(v1), Some(v2), None, Some(env))
 }
 
-/// `TestClosureSplitRegion(TRUE, edge, aNewShells, aNewRegions)` (status ignored).
-fn test_closure_split_region_edge(_b: &mut Brep, _e: EdgeId) -> Result<()> {
-    // UNPORTED(topology.brep_p10): SmBrep::TestClosureSplitRegion
-    Err(SolidError::unported(
-        "SmBrep::TestClosureSplitRegion",
-        "topology.brep_p10",
-    ))
-}
-
-/// `MakeShellVertex(region, point, rpNewShell, rpNewVertex)`.
-fn make_shell_vertex(
-    _b: &mut Brep,
-    _region: RegionId,
-    _point: Point3,
-) -> Result<(ShellId, VertexId)> {
-    // UNPORTED(topology.brep_p9): SmBrep::MakeShellVertex
-    Err(SolidError::unported(
-        "SmBrep::MakeShellVertex",
-        "topology.brep_p9",
-    ))
+/// `TestClosureSplitRegion(TRUE, edge, aNewShells, aNewRegions)` (unit
+/// `topology.brep_p10`; status ignored by the caller).
+fn test_closure_split_region_edge(k: &mut Kernel, b: &mut Brep, e: EdgeId) -> Result<()> {
+    p10::test_closure_split_region(k, b, true, e).map(|_| ())
 }
 
 /// `MakeTopologyFromData(pBrepData, sAttributes, bMakeUVTrimCurves, bAddAnalytics,
-/// bForceSameTol)` with the defaults `bCheckUVCurves = FALSE`, `bAlwaysHeal = FALSE`,
-/// `bHealerIsEnabled = TRUE` (`ReadFromFile` passes an empty local `sAttributes`).
+/// bForceSameTol)` (unit `topology.brep_p10`) with the defaults `bCheckUVCurves =
+/// FALSE`, `bAlwaysHeal = FALSE`, `bHealerIsEnabled = TRUE`. `ReadFromFile` passes an
+/// empty local `sAttributes`, so the records' attribute indices refer to nothing.
 fn make_topology_from_data(
-    _k: &Kernel,
-    _b: &mut Brep,
-    _data: &mut BrepData,
-    _make_uv_trim_curves: bool,
-    _add_analytics: bool,
-    _force_same_tol: bool,
+    k: &mut Kernel,
+    b: &mut Brep,
+    data: &mut BrepData,
+    env: &mut TopologyEnv<'_>,
+    make_uv_trim_curves: bool,
+    add_analytics: bool,
+    force_same_tol: bool,
 ) -> Result<()> {
-    // UNPORTED(topology.brep_p10): SmBrep::MakeTopologyFromData
-    Err(SolidError::unported(
-        "SmBrep::MakeTopologyFromData",
-        "topology.brep_p10",
-    ))
+    // SmTArray<SmAttribute*> sAttributes; (empty)
+    let saved = std::mem::take(&mut env.all_attributes);
+    let r = p10::make_topology_from_data(
+        k,
+        b,
+        data,
+        env,
+        MakeTopologyOptions {
+            make_uv_trim_curves,
+            add_analytics,
+            force_same_tol,
+            check_uv_trim_curves: false,
+            always_heal: false,
+            healer_enabled: true,
+        },
+    );
+    env.all_attributes = saved;
+    r
 }
 
 /// `SmFace::Notify(op, data1, data2, data3)` on face `f` (`None` for a null datum or for
 /// the B-rep, which has no identity here).
 fn face_notify(
-    _b: &mut Brep,
-    _f: FaceId,
-    _op: NotifyOperation,
-    _data: [Option<EntityRef>; 3],
+    b: &mut Brep,
+    f: FaceId,
+    op: NotifyOperation,
+    data: [Option<EntityRef>; 3],
 ) -> Result<()> {
-    // UNPORTED(topology.face_p3): SmFace::Notify
-    Err(SolidError::unported("SmFace::Notify", "topology.face_p3"))
+    crate::topology::loopuse::face_notify_data(b, f, op, data)
 }
 
 /// `SmFace::SetTolerance(tol, bUpdateOnlyIfLarger, bCascadeToBndries)` (`SM_USE_OLDTOL`).
 fn face_set_tolerance(
-    _b: &mut Brep,
-    _f: FaceId,
-    _tol: f64,
-    _update_only_if_larger: bool,
-    _cascade_to_boundaries: bool,
+    b: &mut Brep,
+    f: FaceId,
+    tol: f64,
+    update_only_if_larger: bool,
+    cascade_to_boundaries: bool,
 ) -> Result<()> {
-    // UNPORTED(topology.face_p3): SmFace::SetTolerance
-    Err(SolidError::unported(
-        "SmFace::SetTolerance",
-        "topology.face_p3",
-    ))
+    crate::topology::face::p3::set_tolerance(
+        b,
+        f,
+        tol,
+        update_only_if_larger,
+        cascade_to_boundaries,
+    )
 }
 
 /// `pNewFace->CreateUVTrimCurves(bAdjustTolerances, &uvCurves, &orients, ..)`.
 fn face_create_uv_trim_curves(
-    _k: &Kernel,
-    _b: &mut Brep,
-    _f: FaceId,
-    _adjust_tolerances: bool,
-    _uv: Vec<Curve>,
-    _orients: &[OrientType],
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    adjust_tolerances: bool,
+    uv: Vec<Curve>,
+    orients: &[OrientType],
 ) -> Result<()> {
-    // UNPORTED(topology.face_p3): SmFace::CreateUVTrimCurves
-    Err(SolidError::unported(
-        "SmFace::CreateUVTrimCurves",
-        "topology.face_p3",
-    ))
+    let mut curves: Vec<Option<Curve>> = uv.into_iter().map(Some).collect();
+    // the gap statistics (the NULL out-parameters) are not read
+    crate::topology::face::p3::create_uv_trim_curves(
+        k,
+        b,
+        f,
+        adjust_tolerances,
+        Some((&mut curves, orients)),
+    )
+    .map(|_| ())
 }
 
 /// `pFace->GetBrep() == this`.
@@ -427,23 +441,29 @@ fn merge_shells(k: &mut Kernel, b: &mut Brep, mut del: ShellId, mut keep: ShellI
 // ---- ReadFromFile ---------------------------------------------------------------------------
 
 /// `ReadFromFile`: reads one B-rep from the contents of a database file of `file_type`
-/// into `b`, then checks and fixes its UV trim curves, or rebuilds them with
-/// `rebuild_uv_trim_curves`.
+/// into `b` (a B-rep as `SmBrep()` makes it: see
+/// [`Brep::new_with_infinite_region`]), then checks and fixes its UV trim curves, or
+/// rebuilds them with `rebuild_uv_trim_curves`. `env` names the new topology objects and
+/// receives their records and the attributes of the geometry copies (its
+/// `all_attributes` is not used: upstream passes an empty array).
 ///
 /// # Errors
 ///
-/// Those of [`BrepData::read_from_file`]; [`SolidError::Unported`]
-/// (`MakeTopologyFromData`, `sm_CheckAndFixUVTrimCurves`, `RebuildUVTrimCurves`).
+/// Those of [`BrepData::read_from_file`] and
+/// [`p10::make_topology_from_data`]; [`SolidError::Unported`]
+/// (`sm_CheckAndFixUVTrimCurves`, `RebuildUVTrimCurves`, and the callees of
+/// `MakeTopologyFromData`).
 pub fn read_from_file(
-    k: &Kernel,
+    k: &mut Kernel,
     b: &mut Brep,
     data: Vec<u8>,
     file_type: FileType,
     rebuild_uv_trim_curves_flag: bool,
+    env: &mut TopologyEnv<'_>,
 ) -> Result<()> {
     let mut brep_data = BrepData::read_from_file(k, data, file_type)?;
     // MakeTopologyFromData(pBrepData, sAttributes, FALSE, TRUE, TRUE)
-    make_topology_from_data(k, b, &mut brep_data, false, true, true)?;
+    make_topology_from_data(k, b, &mut brep_data, env, false, true, true)?;
     drop(brep_data);
 
     // check the UV trim curves unless they are rebuilt (statuses ignored)
@@ -613,7 +633,6 @@ fn oriented_end(c: &Curve, orient: OrientType, start: bool, prev: Point3) -> Res
 /// loop does not close; `SM_ERR` for an edge shorter than the tolerance that closes;
 /// [`SolidError::InvalidInput`] for loop counts exceeding the curves; those of the
 /// evaluations; [`SolidError::Unported`] (see the module docs).
-#[allow(clippy::too_many_lines)] // one upstream routine
 pub fn make_face_with_curves(
     k: &Kernel,
     b: &mut Brep,
@@ -624,6 +643,114 @@ pub fn make_face_with_curves(
     orientation: OrientType,
     crv_on_surf: Option<bool>,
     this_face: &dyn Fn(FaceId) -> ObjectRef,
+    env: &mut ed::NotifyEnv<'_>,
+) -> Result<NewFace> {
+    make_face_with_curves_impl(
+        FaceKernel::External(k),
+        b,
+        region,
+        input,
+        surface,
+        uv_domain,
+        orientation,
+        crv_on_surf,
+        this_face,
+        &mut ed::NotifyState::from_env(env),
+    )
+}
+
+/// [`make_face_with_curves`] using caller-owned notification stores and the actual
+/// kernel context. Geometry and construction order are identical to the legacy
+/// entrypoint, including its incomplete topology barriers. `this_face` still
+/// identifies the new face as the surface's owner; `stores.key_of` names entities
+/// for topology notifications.
+pub fn make_face_with_curves_with_kernel_context(
+    k: &mut Kernel,
+    b: &mut Brep,
+    region: Option<RegionId>,
+    input: FaceCurvesInput,
+    surface: Surface,
+    uv_domain: &Extent2d,
+    orientation: OrientType,
+    crv_on_surf: Option<bool>,
+    this_face: &dyn Fn(FaceId) -> ObjectRef,
+    stores: &mut ed::NotificationStores<'_>,
+) -> Result<NewFace> {
+    make_face_with_curves_with_state(
+        k,
+        b,
+        region,
+        input,
+        surface,
+        uv_domain,
+        orientation,
+        crv_on_surf,
+        this_face,
+        &mut ed::NotifyState::from_kernel_stores(stores),
+    )
+}
+
+pub(crate) fn make_face_with_curves_with_state(
+    k: &mut Kernel,
+    b: &mut Brep,
+    region: Option<RegionId>,
+    input: FaceCurvesInput,
+    surface: Surface,
+    uv_domain: &Extent2d,
+    orientation: OrientType,
+    crv_on_surf: Option<bool>,
+    this_face: &dyn Fn(FaceId) -> ObjectRef,
+    state: &mut ed::NotifyState<'_>,
+) -> Result<NewFace> {
+    make_face_with_curves_impl(
+        FaceKernel::Mutable(k),
+        b,
+        region,
+        input,
+        surface,
+        uv_domain,
+        orientation,
+        crv_on_surf,
+        this_face,
+        state,
+    )
+}
+
+// Preserve the public legacy &Kernel API without inventing a mutable kernel or
+// detaching its context. Only construction notification sites need mutable access.
+enum FaceKernel<'a> {
+    External(&'a Kernel),
+    Mutable(&'a mut Kernel),
+}
+
+impl FaceKernel<'_> {
+    fn geometry(&self) -> &Kernel {
+        match self {
+            Self::External(kernel) => kernel,
+            Self::Mutable(kernel) => kernel,
+        }
+    }
+
+    fn context(&mut self) -> Option<&mut crate::geom::context::Context> {
+        match self {
+            Self::External(_) => None,
+            Self::Mutable(kernel) => Some(&mut kernel.context),
+        }
+    }
+}
+
+#[allow(clippy::too_many_lines)] // one upstream routine
+fn make_face_with_curves_impl(
+    mut k: FaceKernel<'_>,
+    b: &mut Brep,
+    region: Option<RegionId>,
+    input: FaceCurvesInput,
+    surface: Surface,
+    uv_domain: &Extent2d,
+    orientation: OrientType,
+    crv_on_surf: Option<bool>,
+    this_face: &dyn Fn(FaceId) -> ObjectRef,
+    state: &mut ed::NotifyState<'_>,
 ) -> Result<NewFace> {
     let FaceCurvesInput {
         loops,
@@ -688,7 +815,7 @@ pub fn make_face_with_curves(
                     let entry = uv
                         .get_mut(index + jj)
                         .ok_or_else(|| null("loop counts exceed the curves"))?;
-                    ignore_status(entry.convert_to_2d(k))?;
+                    ignore_status(entry.convert_to_2d(k.geometry()))?;
                     let uv_curve = entry.clone();
                     let new3d = if crv_on_surf {
                         let base = match surface.kind() {
@@ -704,7 +831,7 @@ pub fn make_face_with_curves(
                                 ));
                             }
                         };
-                        let c = CrvOnSurf::new(k, uv_curve, base, Some(*uv_domain), 2)?;
+                        let c = CrvOnSurf::new(k.geometry(), uv_curve, base, Some(*uv_domain), 2)?;
                         let c = Curve::from(c);
                         // (IsDegenerate returns a flag upstream: a failed test is "no")
                         if ignored(c.is_degenerate(EFF_ZERO, None))?.unwrap_or(false) {
@@ -715,7 +842,7 @@ pub fn make_face_with_curves(
                     } else {
                         let ivl = uv_curve.natural_interval();
                         ignored(surface.lift_curve(
-                            k,
+                            k.geometry(),
                             uv_domain,
                             &uv_curve,
                             &ivl,
@@ -790,7 +917,7 @@ pub fn make_face_with_curves(
                         ));
                     }
                     let deformed = ignored(curve.deform_to_end_point_targets(
-                        k,
+                        k.geometry(),
                         new_start,
                         new_end,
                         true,
@@ -865,7 +992,13 @@ pub fn make_face_with_curves(
             }
             let found_start = m.found;
             let start_vertex = if vertices.is_empty() {
-                let (_shell, v) = make_shell_vertex(b, region, start_pt)?;
+                let (_shell, v) = super::p9::make_shell_vertex_with_context(
+                    k.context(),
+                    b,
+                    Some(region),
+                    start_pt,
+                    state,
+                )?;
                 vertices.push(v);
                 // (upstream assigns the new shell only when it already has one)
                 v
@@ -941,7 +1074,8 @@ pub fn make_face_with_curves(
     // vertex loops
     let mut loop_vertices: Vec<VertexId> = Vec::new();
     for &p in &loop_points {
-        let (_shell, v) = make_shell_vertex(b, region, p)?;
+        let (_shell, v) =
+            super::p9::make_shell_vertex_with_context(k.context(), b, Some(region), p, state)?;
         loop_vertices.push(v);
     }
 
@@ -959,7 +1093,7 @@ pub fn make_face_with_curves(
     }
 
     let made = make_face(
-        k,
+        k.geometry(),
         b,
         Some(region),
         &sorted_loops,
@@ -984,7 +1118,7 @@ pub fn make_face_with_curves(
         let uv: Vec<Curve> = uv_curves
             .ok_or_else(|| null("crv_on_surf without UV curves (upstream dereferences null)"))?;
         // CreateUVTrimCurves(FALSE, &sNewUVCurves, &crCurveOrientations, ..)
-        let r = face_create_uv_trim_curves(k, b, face, false, uv, &orientations);
+        let r = face_create_uv_trim_curves(k.geometry(), b, face, false, uv, &orientations);
         match r {
             Err(e) if e.is_unported() => return Err(e),
             Err(SolidError::Upstream { code, .. }) if code == crate::error::SM_ERR => {
@@ -1311,7 +1445,7 @@ pub fn glue_edges_general(
             new_region = attempt.region;
         }
         if ed::is_spine(b, surv)? && new_region.is_none() {
-            ignore_status(test_closure_split_region_edge(b, surv))?;
+            ignore_status(test_closure_split_region_edge(k, b, surv))?;
         }
     }
     Ok(())
@@ -1337,6 +1471,7 @@ pub fn copy_faces(
     dest: &mut Brep,
     use_merge: bool,
     this_face: &dyn Fn(FaceId) -> ObjectRef,
+    env: &mut ed::NotifyEnv<'_>,
 ) -> Result<(Vec<FaceId>, bool)> {
     // pDestinationBrep->SetTolerance(GetTolerance()) = (tol, TRUE, TRUE): grow only
     brep_set_tolerance(dest, src.tolerance(), true, true)?;
@@ -1396,6 +1531,7 @@ pub fn copy_faces(
             OrientType::Same,
             None,
             this_face,
+            env,
         ) {
             Ok(made) => {
                 if let Some(nf) = made.face {
@@ -1489,10 +1625,10 @@ pub fn merge_self_intersection_curves(
             let end2 = ed::other_vertex(b, e2, st2)?;
             let v = |x: Option<VertexId>| x.ok_or_else(|| null("edge without vertex"));
             if st1 != st2 {
-                glue_vertices(b, v(st1)?, v(st2)?)?;
+                glue_vertices(k, b, v(st1)?, v(st2)?, env)?;
             }
             if st1 != end1 && end1 != end2 {
-                glue_vertices(b, v(end1)?, v(end2)?)?;
+                glue_vertices(k, b, v(end1)?, v(end2)?, env)?;
             }
             if e1 != e2 {
                 glue_edges_general(
@@ -1635,6 +1771,163 @@ mod tests {
     }
 
     #[test]
+    fn face_with_curves_forwards_owner_keys_in_both_context_modes() {
+        use crate::geom::context::Context;
+        use crate::topology::edge::notification_test_support as callbacks;
+        use std::cell::Cell;
+
+        for kernel_context in [false, true] {
+            let mut k = Kernel::default();
+            let kernel_events = callbacks::install(&mut k.context);
+            let mut external = Context::default();
+            let external_events = callbacks::install(&mut external);
+            let mut b = Brep::new();
+            let region = b
+                .add_region_record(Region {
+                    in_brep: true,
+                    ..Region::default()
+                })
+                .unwrap();
+            let shell = b.add_shell().unwrap();
+            b.add_face(shell).unwrap();
+            let expected_id = FaceId::from_index(1);
+            let owner = ObjectRef {
+                type_code: fp2::TYPE,
+                key: ObjectKey(9001),
+            };
+            let requested = Cell::new(None);
+            let this_face = |face| {
+                requested.set(Some(face));
+                owner
+            };
+            let mut records = std::collections::BTreeMap::new();
+            let mut attributes = AttributeStore::default();
+            let input = FaceCurvesInput {
+                loops: vec![1],
+                curves_3d: Some(vec![None]),
+                orientations: vec![OrientType::Same],
+                ..Default::default()
+            };
+            let key =
+                |_| panic!("topology notifications must not precede the face topology barrier");
+            let result = if kernel_context {
+                make_face_with_curves_with_kernel_context(
+                    &mut k,
+                    &mut b,
+                    Some(region),
+                    input,
+                    plane(),
+                    &dom(),
+                    OrientType::Same,
+                    None,
+                    &this_face,
+                    &mut ed::NotificationStores {
+                        records: &mut records,
+                        attributes: &mut attributes,
+                        key_of: &key,
+                    },
+                )
+            } else {
+                make_face_with_curves(
+                    &k,
+                    &mut b,
+                    Some(region),
+                    input,
+                    plane(),
+                    &dom(),
+                    OrientType::Same,
+                    None,
+                    &this_face,
+                    &mut ed::NotifyEnv {
+                        records: &mut records,
+                        attributes: &mut attributes,
+                        context: Some(&mut external),
+                        key_of: &key,
+                    },
+                )
+            };
+            assert!(matches!(
+                result,
+                Err(SolidError::Unported {
+                    upstream: "SmFace::SetTolerance",
+                    unit: "topology.face_p3",
+                })
+            ));
+            assert_eq!(requested.get(), Some(expected_id));
+            assert_eq!(
+                b.face(expected_id)
+                    .unwrap()
+                    .surface
+                    .as_ref()
+                    .unwrap()
+                    .owner(),
+                Some(owner)
+            );
+            assert!(records.is_empty());
+            assert!(kernel_events.lock().unwrap().is_empty());
+            assert!(external_events.lock().unwrap().is_empty());
+            callbacks::assert_installed(&k.context, &kernel_events);
+            callbacks::assert_installed(&external, &external_events);
+        }
+    }
+
+    #[test]
+    fn kernel_face_constructor_keeps_validation_and_shell_vertex_barrier_order() {
+        let mut k = Kernel::default();
+        let mut b = Brep::new();
+        let region = b.add_region_record(Region::default()).unwrap();
+        let mut records = std::collections::BTreeMap::new();
+        let mut attributes = AttributeStore::default();
+        let mut stores = ed::NotificationStores {
+            records: &mut records,
+            attributes: &mut attributes,
+            key_of: &|_| panic!("no notification key before construction"),
+        };
+        let mut run = |input| {
+            make_face_with_curves_with_kernel_context(
+                &mut k,
+                &mut b,
+                Some(region),
+                input,
+                plane(),
+                &dom(),
+                OrientType::Same,
+                None,
+                &|_| panic!("no face before shell vertex construction"),
+                &mut stores,
+            )
+        };
+        assert!(matches!(
+            run(FaceCurvesInput {
+                loops: vec![1],
+                ..Default::default()
+            }),
+            Err(SolidError::InvalidInput {
+                reason: "no curves",
+                ..
+            })
+        ));
+        let input = FaceCurvesInput {
+            loops: vec![1],
+            curves_3d: Some(vec![Some(Curve::from(
+                crate::curve::line::Line::from_points(Point3::ZERO, Point3::new(1.0, 0.0, 0.0), 3),
+            ))]),
+            orientations: vec![OrientType::Same],
+            ..Default::default()
+        };
+        assert!(matches!(
+            run(input),
+            Err(SolidError::Unported {
+                upstream: "SmBrep::MakeShellVertexTopology",
+                unit: "topology.brep_p2",
+            })
+        ));
+        assert!(records.is_empty());
+        assert!(b.vertices().is_empty());
+        assert!(b.faces().is_empty());
+    }
+
+    #[test]
     fn face_with_curves_input_errors() {
         let k = Kernel::default();
         let mut b = Brep::new();
@@ -1644,7 +1937,15 @@ mod tests {
                 ..Region::default()
             })
             .unwrap();
-        let run = |b: &mut Brep, input: FaceCurvesInput, region| {
+        let mut records = std::collections::BTreeMap::new();
+        let mut attrs = AttributeStore::default();
+        let mut env = ed::NotifyEnv {
+            records: &mut records,
+            attributes: &mut attrs,
+            context: None,
+            key_of: &key_of,
+        };
+        let mut run = |b: &mut Brep, input: FaceCurvesInput, region| {
             make_face_with_curves(
                 &k,
                 b,
@@ -1655,6 +1956,7 @@ mod tests {
                 OrientType::Same,
                 None,
                 &face_ref,
+                &mut env,
             )
         };
         // no curves
@@ -1727,13 +2029,34 @@ mod tests {
 
     #[test]
     fn read_errors_and_deferral() {
-        let k = Kernel::default();
-        let mut b = Brep::new();
-        assert!(read_from_file(&k, &mut b, Vec::new(), FileType::Ascii, false).is_err());
+        let mut k = Kernel::default();
+        let mut b = Brep::new_with_infinite_region().unwrap();
+        let mut store = AttributeStore::new();
+        let mut records = std::collections::BTreeMap::new();
+        let mut env = TopologyEnv {
+            all_attributes: &[],
+            attributes: &mut store,
+            key_of: &key_of,
+            records: &mut records,
+            next_key: 1,
+        };
+        assert!(
+            read_from_file(&mut k, &mut b, Vec::new(), FileType::Ascii, false, &mut env).is_err()
+        );
         let mut src = Brep::new();
         let mut dest = Brep::new();
-        assert!(copy_faces(&k, &mut src, &[], &mut dest, false, &face_ref)
-            .unwrap_err()
-            .is_unported());
+        let mut records = std::collections::BTreeMap::new();
+        let mut attrs = AttributeStore::default();
+        let mut env = ed::NotifyEnv {
+            records: &mut records,
+            attributes: &mut attrs,
+            context: None,
+            key_of: &key_of,
+        };
+        assert!(
+            copy_faces(&k, &mut src, &[], &mut dest, false, &face_ref, &mut env)
+                .unwrap_err()
+                .is_unported()
+        );
     }
 }

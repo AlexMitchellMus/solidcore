@@ -59,24 +59,29 @@
 //! `tests/prog_test/src/smOffsetTest.cpp:190-295`, not volume parity assertions.
 //! No new input-dependent recursion is introduced.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use solidcore::curve::curve::{Curve, CurveKind};
 use solidcore::curve::line::Line;
+use solidcore::error::EntityRef;
+use solidcore::geom::attribute::{AttributeStore, ObjectKey};
 use solidcore::geom::extent1d::Extent1d;
 use solidcore::geom::extent2d::Extent2d;
-use solidcore::geom::object::FaceKey;
+use solidcore::geom::object::{FaceKey, ObjectRef};
 use solidcore::kernel::Kernel;
 use solidcore::math::Vec3;
 use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use solidcore::nurbs::knots::Side;
 use solidcore::offset::offset_executive::p1::{OffsetExecutive, OffsetOperation};
 use solidcore::offset::offset_executive::p2::{
-    self, OffsetOptions, ShellOptions, SolidOffsetOptions,
+    self, OffsetNotifications, OffsetOptions, ShellOptions, SolidOffsetOptions,
 };
 use solidcore::query::api_queries::BrepRef;
 use solidcore::surface::plane::Plane;
 use solidcore::surface::surface::{Surface, SurfaceKind};
+use solidcore::topology::topology::Topology;
 use solidcore::topology::{
     Brep, BrepId, Edge, EdgeId, Edgeuse, EdgeuseOwner, Face, FaceId, Faceuse, Loop, LoopEdge,
     Loopuse, LoopuseStart, Region, Shell, ShellId, Vertex, VertexId, Vertexuse, VertexuseOwner,
@@ -1420,6 +1425,85 @@ fn native_outcome(input: &Inputs, outcome: ffi::Outcome) -> HResult<Output> {
     }
 }
 
+// Notifications use disjoint fixture namespaces, not arena-local IDs or geometry
+// cache-owner keys. Every existing native topology record is registered before the
+// operation; constructors register new result topology in these same caller stores.
+fn notification_key(entity: EntityRef, namespace: u64) -> ObjectRef {
+    let (index, type_code) = match entity {
+        EntityRef::Brep(id) => (id.index(), solidcore::geom::a_object::BREP_TYPE),
+        EntityRef::Region(id) => (id.index(), Region::type_code()),
+        EntityRef::Shell(id) => (id.index(), Shell::type_code()),
+        EntityRef::Face(id) => (id.index(), solidcore::topology::face::p2::TYPE),
+        EntityRef::Faceuse(id) => (id.index(), 16022),
+        EntityRef::Loopuse(id) => (id.index(), solidcore::topology::loopuse::TYPE),
+        EntityRef::Edge(id) => (id.index(), solidcore::topology::edge::TYPE),
+        EntityRef::Edgeuse(id) => (id.index(), solidcore::topology::edgeuse::p1::TYPE),
+        EntityRef::Vertex(id) => (id.index(), solidcore::topology::vertex::TYPE),
+        EntityRef::Vertexuse(id) => (id.index(), solidcore::topology::vertexuse::TYPE),
+        // A Rust Loop is a logical boundary record, not a native notification target.
+        EntityRef::Loop(id) => (id.index(), solidcore::topology::topology::TYPE),
+    };
+    ObjectRef {
+        key: ObjectKey((namespace << 60) | ((type_code as u64) << 32) | u64::from(index)),
+        type_code,
+    }
+}
+
+fn original_notification_key(entity: EntityRef) -> ObjectRef {
+    notification_key(entity, 1)
+}
+
+fn result_notification_key(entity: EntityRef) -> ObjectRef {
+    notification_key(entity, 3)
+}
+
+fn result_curve_key(edge: EdgeId, type_code: i64) -> ObjectRef {
+    ObjectRef {
+        key: ObjectKey((4_u64 << 60) | ((type_code as u64) << 32) | u64::from(edge.index())),
+        type_code,
+    }
+}
+
+fn register_notification_brep(
+    records: &mut BTreeMap<ObjectKey, Topology>,
+    brep: &mut Brep,
+    namespace: u64,
+) {
+    let mut register = |entity| {
+        records.insert(notification_key(entity, namespace).key, Topology::new());
+    };
+    let root = EntityRef::Brep(BrepId::from_index(0));
+    brep.set_key(notification_key(root, namespace).key);
+    register(root);
+    for (id, _) in brep.regions().iter() {
+        register(EntityRef::Region(id));
+    }
+    for (id, _) in brep.shells().iter() {
+        register(EntityRef::Shell(id));
+    }
+    for (id, _) in brep.faces().iter() {
+        register(EntityRef::Face(id));
+    }
+    for (id, _) in brep.faceuses().iter() {
+        register(EntityRef::Faceuse(id));
+    }
+    for (id, _) in brep.loopuses().iter() {
+        register(EntityRef::Loopuse(id));
+    }
+    for (id, _) in brep.edges().iter() {
+        register(EntityRef::Edge(id));
+    }
+    for (id, _) in brep.edgeuses().iter() {
+        register(EntityRef::Edgeuse(id));
+    }
+    for (id, _) in brep.vertices().iter() {
+        register(EntityRef::Vertex(id));
+    }
+    for (id, _) in brep.vertexuses().iter() {
+        register(EntityRef::Vertexuse(id));
+    }
+}
+
 fn rust_output(input: &Inputs) -> RResult<Output> {
     validate(input)?;
     let mut source = input
@@ -1427,11 +1511,29 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
         .as_ref()
         .map(|fixture| build(fixture, input.tolerance))
         .transpose()?;
-    let foreign = input
+    let mut foreign = input
         .foreign
         .as_ref()
         .map(|fixture| build(fixture, input.tolerance))
         .transpose()?;
+    let mut records = BTreeMap::new();
+    let mut attributes = AttributeStore::default();
+    if let Some(brep) = source.as_mut() {
+        register_notification_brep(&mut records, brep, 1);
+    }
+    if let Some(brep) = foreign.as_mut() {
+        register_notification_brep(&mut records, brep, 2);
+    }
+    let result_brep = result_notification_key(EntityRef::Brep(BrepId::from_index(0)));
+    records.insert(result_brep.key, Topology::new());
+    let mut notifications = OffsetNotifications {
+        records: &mut records,
+        attributes: &mut attributes,
+        original_key_of: &original_notification_key,
+        result_key_of: &result_notification_key,
+        result_curve_ref: &result_curve_key,
+        result_brep,
+    };
     let keys = selections(input, source.as_ref(), foreign.as_ref())?;
     let selected_before = observe_selections(&keys, source.as_ref(), foreign.as_ref());
     let source_state_before = source.as_ref().map(|brep| format!("{brep:?}"));
@@ -1466,6 +1568,7 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
                 .as_mut()
                 .ok_or_else(|| bad("static offset null source"))?,
             input.config.offset(),
+            &mut notifications,
         ),
         Operation::StaticShell => {
             let original = source
@@ -1476,6 +1579,7 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
                 original,
                 input.config.shell(),
                 &local_faces(&keys)?,
+                &mut notifications,
             );
             transferred = outcome.input_ownership_transferred();
             source = outcome.retained_input;
@@ -1490,11 +1594,12 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
                 SolidOffsetOptions {
                     skip_stitch_merge: input.config.skip_stitch_merge,
                 },
+                &mut notifications,
             ),
         Operation::Extended => exec
             .as_mut()
             .ok_or_else(|| bad("missing Rust executive"))?
-            .do_extended_offset(&mut kernel, source.as_mut()),
+            .do_extended_offset(&mut kernel, source.as_mut(), &mut notifications),
         Operation::ApiShell => p2::api_shell_brep_full(
             &mut kernel,
             source.as_ref().map(|brep| BrepRef {
@@ -1503,10 +1608,14 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
             }),
             input.config.shell(),
             &keys,
+            &mut notifications,
         ),
-        Operation::ApiOffset => {
-            p2::api_offset_brep_full(&mut kernel, source.as_mut(), input.config.offset())
-        }
+        Operation::ApiOffset => p2::api_offset_brep_full(
+            &mut kernel,
+            source.as_mut(),
+            input.config.offset(),
+            &mut notifications,
+        ),
     };
     let (status, result) = operation(result)?;
     if result.is_some()
@@ -1871,6 +1980,36 @@ mod tests {
     }
 
     #[test]
+    fn notification_keys_separate_arenas_entity_kinds_and_curve_records() {
+        let edge = EdgeId::from_index(0);
+        let vertex = VertexId::from_index(0);
+        let source_edge = original_notification_key(EntityRef::Edge(edge));
+        let result_edge = result_notification_key(EntityRef::Edge(edge));
+        let source_vertex = original_notification_key(EntityRef::Vertex(vertex));
+        let curve = result_curve_key(edge, 17001);
+        let identities = [
+            source_edge.key,
+            result_edge.key,
+            source_vertex.key,
+            curve.key,
+        ];
+        assert_eq!(identities.into_iter().collect::<BTreeSet<_>>().len(), 4);
+        let mut source = build(&sheet([0.0; 3], 1.0, 0), 1e-6).unwrap();
+        let mut foreign = build(&sheet([0.0; 3], 1.0, 0), 1e-6).unwrap();
+        let mut records = BTreeMap::new();
+        register_notification_brep(&mut records, &mut source, 1);
+        let source_count = records.len();
+        register_notification_brep(&mut records, &mut foreign, 2);
+        assert_eq!(records.len(), 2 * source_count);
+        assert_ne!(source.key(), foreign.key());
+        assert!(records.contains_key(&source_edge.key));
+        assert_eq!(
+            original_notification_key(EntityRef::Edge(edge)),
+            source_edge
+        );
+    }
+
+    #[test]
     fn fixtures_designate_native_infinite_region_and_link_shells() {
         for (fixture, regions, shells) in [
             (Fixture::Empty, 1, 0),
@@ -2206,7 +2345,7 @@ mod tests {
     }
 
     #[test]
-    fn positive_geometry_and_strict_boundaries_reach_real_dependencies() {
+    fn positive_geometry_and_strict_boundaries_preserve_explicit_partial_paths() {
         for (operation, fixture, extend, symbol) in [
             (
                 Operation::StaticShell,
@@ -2225,13 +2364,13 @@ mod tests {
                 Operation::Solid,
                 sheet([0.0; 3], 1.0, 0),
                 false,
-                "SmOffsetGeometryCreation::FaceuseOffset",
+                "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
             ),
             (
                 Operation::Extended,
                 sheet([0.0; 3], 1.0, 0),
                 true,
-                "SmOffsetGeometryCreation::FaceuseOffset",
+                "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
             ),
         ] {
             for distance in [0.0, 1.9999999999999995e-6, 2e-6, 2.0000000000000003e-6] {

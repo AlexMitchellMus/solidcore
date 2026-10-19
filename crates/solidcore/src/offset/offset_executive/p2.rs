@@ -23,31 +23,37 @@
 //! upstream); member null is native 1006, API null/invalid selection is native 1007.
 //! Offset/member inputs are mutable so existing queries can populate lazy UV trim
 //! geometry in the same arena; this adds no constructive capability or topology copy.
-//! Arena order replaces owning face-list order, as in p1. Empty temporary allocation
-//! co-ports the empty constructor's single void infinite region and enables editing
-//! as both upstream offset methods do; region insertion errors propagate. Tolerance,
-//! region flags and identity use the real accessors. No offset geometry is fabricated.
-//! Copied faces pass that actual region ID to brep p7. Edge-offset preparation and gap
-//! handling reuse p1; live pairs still need real notification state before construction.
+//! Source faces use the native owning-list order. Temporary allocation uses the real
+//! empty constructor's void infinite region, tolerance, editing flag and caller-reserved
+//! result key. No offset geometry is fabricated. Copied faces pass the actual region
+//! and caller-owned notification stores to brep p7; mapped edges use p1's common
+//! notification-aware builder exactly once, with the already-claimed traversal mark.
+//! Generic geometry creators are available, but the executive's FaceuseOffset/SSI
+//! and cross-arena geometry backends are not yet integrated.
 //! Continuations after missing calls are documented there, including ignored-status
 //! calls. Scoped Boolean changes and mark locks are restored on every `Result` exit.
 //! There is no new recursion; all owned loops are bounded by existing arena/relation lengths.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::p1::{OffsetExecutive, OffsetOperation};
-use crate::error::{Result, SolidError};
-use crate::geom::context::{with_mark_lock, ALL_MARKS};
-use crate::geom::object::FaceKey;
+use crate::error::{EntityRef, Result, SolidError};
+use crate::geom::attribute::{AttributeStore, ObjectKey};
+use crate::geom::context::{with_mark_lock, MarkType, ALL_MARKS};
+use crate::geom::object::{FaceKey, NotifyOperation, ObjectRef};
+use crate::heal::stitch::p2 as stitch;
 use crate::kernel::Kernel;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::query::api_queries::{brep_is_manifold_solid, BrepRef};
 
-use crate::topology::brep::p7::{make_face_with_curves, FaceCurvesInput};
-use crate::topology::brep_cache::{arena_identity, CacheObject};
+use crate::topology::brep::p1 as bp1;
+use crate::topology::brep::p7::{make_face_with_curves_with_kernel_context, FaceCurvesInput};
+
+use crate::topology::edge::{NotificationStores, NotifyState};
 use crate::topology::edgeuse::{p1 as eu, p2 as eu2};
 use crate::topology::face::p2 as face;
-use crate::topology::{Brep, BrepId, EdgeuseId, FaceId, Region, RegionId};
+use crate::topology::topology::Topology;
+use crate::topology::{Brep, BrepId, EdgeId, EdgeuseId, FaceId, RegionId};
 
 const OP_OFFSET: &str = "offset::offset_executive::p2::offset_brep";
 const OP_SHELL: &str = "offset::offset_executive::p2::shell_brep";
@@ -55,6 +61,36 @@ const OP_SOLID: &str = "offset::offset_executive::p2::do_solid_offset";
 const OP_EXTENDED: &str = "offset::offset_executive::p2::do_extended_offset";
 const OP_API_SHELL: &str = "offset::offset_executive::p2::api_shell_brep_full";
 const OP_API_OFFSET: &str = "offset::offset_executive::p2::api_offset_brep_full";
+
+/// Caller-owned notification capability for an offset operation.
+///
+/// Source and result identities must be disjoint, even when their arena-local ids
+/// coincide. Register existing source/result topology records under these keys;
+/// constructors register newly created topology in the same stores. Reserve
+/// `result_brep` before calling: it is assigned to the temporary before construction.
+/// The context always comes from the supplied `Kernel`, never from a substitute.
+pub struct OffsetNotifications<'a> {
+    /// Actual topology metadata, shared by source and result notifications.
+    pub records: &'a mut BTreeMap<ObjectKey, Topology>,
+    /// Actual attributes associated with those object identities.
+    pub attributes: &'a mut AttributeStore,
+    /// Object identities in the source arena.
+    pub original_key_of: &'a dyn Fn(EntityRef) -> ObjectRef,
+    /// Disjoint object identities in the result arena, including newly made entities.
+    pub result_key_of: &'a dyn Fn(EntityRef) -> ObjectRef,
+    /// Identities of result edge curves (the second argument is the curve type).
+    pub result_curve_ref: &'a dyn Fn(EdgeId, i64) -> ObjectRef,
+    /// Reserved, caller-owned identity of the result B-rep.
+    pub result_brep: ObjectRef,
+}
+
+impl core::fmt::Debug for OffsetNotifications<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("OffsetNotifications")
+            .field("result_brep", &self.result_brep)
+            .finish_non_exhaustive()
+    }
+}
 
 /// Signed distance and independent convex/concave offset choices.
 ///
@@ -116,12 +152,14 @@ pub fn offset_brep(
     kernel: &mut Kernel,
     original: &mut Brep,
     options: OffsetOptions,
+    notifications: &mut OffsetNotifications<'_>,
 ) -> Result<Brep> {
     let mut executive = configured_executive(original, options);
     collapse_offset_status(executive.do_solid_offset(
         kernel,
         Some(original),
         SolidOffsetOptions::default(),
+        notifications,
     ))
 }
 
@@ -138,6 +176,7 @@ impl OffsetExecutive {
         mut original: Brep,
         options: ShellOptions,
         faces: &[FaceId],
+        notifications: &mut OffsetNotifications<'_>,
     ) -> ShellOutcome {
         let result = (|| {
             // cpp:206–215: do not move the guard before this real query.
@@ -148,7 +187,7 @@ impl OffsetExecutive {
 
             // cpp:217–251: the helper's scope drops any separately retained
             // executive temporary before querying the result's manifold status.
-            let mut shell = run_shell_offset(kernel, &mut original, options, faces)?;
+            let mut shell = run_shell_offset(kernel, &mut original, options, faces, notifications)?;
             if !brep_is_manifold_solid(&shell)? && !options.create_offset_solid {
                 return Ok(shell);
             }
@@ -200,18 +239,19 @@ impl OffsetExecutive {
         kernel: &mut Kernel,
         original: Option<&mut Brep>,
         _options: SolidOffsetOptions,
+        notifications: &mut OffsetNotifications<'_>,
     ) -> Result<Brep> {
         // cpp:411–418: dispatch must precede NER and the Boolean scope.
         if self.extend_convex_edges() {
-            return self.do_extended_offset(kernel, original);
+            return self.do_extended_offset(kernel, original, notifications);
         }
         let original = required(original, OP_SOLID)?;
         with_doing_boolean(kernel, |kernel| {
-            self.allocate_offset_brep()?;
-            let faces: Vec<_> = original.faces().iter().map(|(id, _)| id).collect();
+            self.allocate_offset_brep(notifications)?;
+            let faces = bp1::faces(original, None)?;
             for id in faces {
                 if self.shell_faces().contains(&id) {
-                    self.copy_shell_face_prefix(kernel, original, id, false)?;
+                    self.copy_shell_face_prefix(kernel, original, id, false, notifications)?;
                 } else {
                     self.offset_face_prefix(original, id, false)?;
                 }
@@ -248,24 +288,23 @@ impl OffsetExecutive {
         &mut self,
         kernel: &mut Kernel,
         original: Option<&mut Brep>,
+        notifications: &mut OffsetNotifications<'_>,
     ) -> Result<Brep> {
         let original = required(original, OP_EXTENDED)?;
-        self.allocate_offset_brep()?;
-        let faces: Vec<_> = original.faces().iter().map(|(id, _)| id).collect();
+        self.allocate_offset_brep(notifications)?;
+        let faces = bp1::faces(original, None)?;
         for id in faces {
             if self.shell_faces().contains(&id) {
-                self.copy_shell_face_prefix(kernel, original, id, true)?;
+                self.copy_shell_face_prefix(kernel, original, id, true, notifications)?;
             } else {
                 self.offset_face_prefix(original, id, true)?;
             }
         }
 
         let mapped = self.mapped_original_edgeuses();
-        with_mark_lock(kernel, ALL_MARKS, |kernel, _mark_type| {
-            // The geometry/Copy-notification boundaries above still stop every
-            // nonempty face loop before it can install live result mappings.
-            // Still validate caller-installed stale mappings in the native order;
-            // the new empty result arena must not make local ids look live.
+        with_mark_lock(kernel, ALL_MARKS, |kernel, mark_type| {
+            // The same claimed mark reaches both mapped-edge passes. Source and
+            // result keys stay disjoint through p1's synchronization and Copy calls.
             let mut marked = BTreeSet::new();
             if self.extend_convex_edges() {
                 for &edgeuse in &mapped {
@@ -284,7 +323,14 @@ impl OffsetExecutive {
                         false,
                         true,
                     )? {
-                        self.mapped_edge_prefix(kernel, original, edgeuse, radial)?;
+                        self.mapped_edge_prefix(
+                            kernel,
+                            original,
+                            edgeuse,
+                            radial,
+                            mark_type,
+                            notifications,
+                        )?;
                         marked.insert(radial);
                         marked.insert(required(eu::mate(original, radial)?, OP_EXTENDED)?);
                         marked.insert(edgeuse);
@@ -306,12 +352,20 @@ impl OffsetExecutive {
                     };
                     radial = selected;
                 }
-                self.mapped_edge_prefix(kernel, original, edgeuse, radial)?;
+                self.mapped_edge_prefix(
+                    kernel,
+                    original,
+                    edgeuse,
+                    radial,
+                    mark_type,
+                    notifications,
+                )?;
             }
 
             // cpp:1580: retain the same temporary on both success and failure.
             let mut temporary = required(self.take_offset_brep(), OP_EXTENDED)?;
-            let status = self.remove_excess_faces(kernel, original, &mut temporary);
+            let status =
+                self.remove_excess_faces_with_kernel_context(kernel, original, &mut temporary);
             self.set_offset_brep(temporary);
             status?;
 
@@ -335,11 +389,11 @@ impl OffsetExecutive {
             // fits its natural domain, the extension if trim fits that domain;
             // otherwise restore the original and return SM_ERR. Do not synthesize
             // replacement surfaces or omit this work for nonempty results.
-            self.extend_result_faces_prefix(kernel)?;
+            self.extend_result_faces_prefix(kernel, notifications)?;
 
             let mut result = self.piecewise_merge(kernel, original)?;
             if !self.create_offset_solid() {
-                self.remove_excess_faces(kernel, original, &mut result)?;
+                self.remove_excess_faces_with_kernel_context(kernel, original, &mut result)?;
             }
             // cpp:1772 is called even after stitching in PiecewiseMerge. Its
             // ordinary status is only asserted, but Unported must still defer.
@@ -347,23 +401,50 @@ impl OffsetExecutive {
             // FindAndSetInfiniteRegion when >1 region (editing temporarily false),
             // refresh regions, set void flags by infinite-region identity, then
             // transfer result ownership and clear the executive temporary.
-            // UNPORTED(heal.stitch_p2): SmStitch::StitchIntoSolid
-            Err(SolidError::unported(
-                "SmStitch::StitchIntoSolid",
-                "heal.stitch_p2",
-            ))
+            crate::error::ignore_status(stitch::stitch_into_solid(kernel, &mut result))?;
+            // MakeManifold exists in p5, but its remaining metadata/topology
+            // adapters must still propagate Unported even though native ignores
+            // ordinary errors. Do not turn that partial path into empty success.
+            if crate::error::ignored(crate::topology::brep::p5::make_manifold(
+                &mut result,
+                None,
+                false,
+            ))?
+            .is_some()
+            {
+                if bp1::regions(&result, None)?.len() > 1 {
+                    let previous = result.editing_enabled();
+                    result.set_editing_enabled(false);
+                    let status = stitch::find_and_set_infinite_region(
+                        kernel,
+                        &mut result,
+                        None,
+                        bp1::SetRegionVoidType::InfiniteRegionSwap,
+                        None,
+                    );
+                    result.set_editing_enabled(previous);
+                    status?;
+                }
+                for region in bp1::regions(&result, None)? {
+                    let is_void = Some(region) == result.infinite_region();
+                    result.region_mut(region)?.is_void = i32::from(is_void);
+                }
+            }
+            let _ = self.take_offset_brep();
+            Ok(result)
         })?
     }
 
-    fn allocate_offset_brep(&mut self) -> Result<()> {
-        let mut temporary = Brep::new();
-        // SmBrep.cpp:532–537: the empty constructor owns one void infinite region.
-        let region = temporary.add_region_record(Region {
-            in_brep: true,
-            is_void: 1,
-            ..Region::default()
-        })?;
-        temporary.set_infinite_region(Some(region));
+    fn allocate_offset_brep(&mut self, notifications: &mut OffsetNotifications<'_>) -> Result<()> {
+        let mut temporary = Brep::new_with_infinite_region()?;
+        temporary.set_key(notifications.result_brep.key);
+        let region = required(temporary.infinite_region(), OP_SOLID)?;
+        // The empty constructor created this real topology record. Unlike source
+        // records and the reserved B-rep key, it did not exist before this call.
+        notifications
+            .records
+            .entry((notifications.result_key_of)(EntityRef::Region(region)).key)
+            .or_default();
         temporary.set_tolerance(self.approximation_tol_3d());
         // SmOffsetExecutive.cpp:437 / 1073, after constructing the temporary.
         temporary.set_editing_enabled(true);
@@ -373,10 +454,11 @@ impl OffsetExecutive {
 
     fn copy_shell_face_prefix(
         &mut self,
-        kernel: &Kernel,
+        kernel: &mut Kernel,
         original: &mut Brep,
         id: FaceId,
         extended: bool,
+        notifications: &mut OffsetNotifications<'_>,
     ) -> Result<()> {
         let operation = if extended { OP_EXTENDED } else { OP_SOLID };
         // Both the 3D and UV outputs are requested, in this order, upstream.
@@ -400,7 +482,12 @@ impl OffsetExecutive {
         };
         let mut temporary = required(self.take_offset_brep(), operation)?;
         let region = temporary.infinite_region();
-        let made = make_face_with_curves(
+        let mut stores = NotificationStores {
+            records: &mut *notifications.records,
+            attributes: &mut *notifications.attributes,
+            key_of: notifications.result_key_of,
+        };
+        let made = make_face_with_curves_with_kernel_context(
             kernel,
             &mut temporary,
             region,
@@ -409,25 +496,50 @@ impl OffsetExecutive {
             &source_face.uv_domain,
             OrientType::Same,
             None,
-            // Surface ownership is local to this result arena, not a cross-arena
-            // Copy notification identity (which needs caller-owned records).
-            &|face| arena_identity(CacheObject::Face(face)),
+            &|face| (notifications.result_key_of)(EntityRef::Face(face)),
+            &mut stores,
         );
         self.set_offset_brep(temporary);
         let made = made?;
-        if extended {
-            // cpp:1194 precedes faceuse selection and MapEdgeuses. Preserve the
-            // real Copy notification boundary; no empty attribute store is used.
-            // Continuation cpp:1196–1207: select by infinite-region identity,
-            // apply inset, relate the faceuse and map its edgeuses.
-            // UNPORTED(topology.face_p3): SmFace::Notify
-            return Err(SolidError::unported("SmFace::Notify", "topology.face_p3"));
-        }
         let new_face = required(made.face, operation)?;
+        if extended {
+            // cpp:1194: Copy notifies the original face with the new result face.
+            let mut stores = NotificationStores {
+                records: &mut *notifications.records,
+                attributes: &mut *notifications.attributes,
+                key_of: notifications.original_key_of,
+            };
+            crate::error::ignore_status(NotifyState::from_kernel_stores(&mut stores).with_env(
+                kernel,
+                |env| {
+                    crate::topology::face::p3::notify(
+                        original,
+                        id,
+                        env,
+                        None,
+                        NotifyOperation::Copy,
+                        [
+                            Some((notifications.result_key_of)(EntityRef::Face(new_face))),
+                            None,
+                            None,
+                        ],
+                    )
+                },
+            ))?;
+        }
         let mut faceuse = required(face::upward_faceuse(original, id)?, operation)?;
         let shell = required(eu::faceuse_shell(original, faceuse)?, operation)?;
-        let region = required(eu::shell_region(original, shell)?, operation)?;
-        if !region_is_void(original, region)? {
+        let region = eu::shell_region(original, shell)?;
+        let use_mate = if extended {
+            region != original.infinite_region()
+        } else {
+            !region_is_void(original, required(region, operation)?)?
+        };
+        if use_mate {
+            faceuse = required(eu::faceuse_mate(original, faceuse)?, operation)?;
+        }
+        // cpp:1196–1207 applies inset only to extended copied faces.
+        if extended && self.inset() {
             faceuse = required(eu::faceuse_mate(original, faceuse)?, operation)?;
         }
         // cpp:498–506: copied rounded faces do not apply inset.
@@ -460,49 +572,46 @@ impl OffsetExecutive {
         // Continuation cpp:559–567: rounded offset skips a null surface; extended
         // cpp:1296–1312 instead returns SM_ERR for null or for SSI count >0 with
         // merge_results, or >5 with extend_convex_edges. Then call p1
-        // BuildOffsetOfFaceuse, preserving both surface and SSI data. Geometry
-        // creation belongs to the open geometry-creation unit, not this prefix.
-        // UNPORTED(offset.offset_geometry_creation): SmOffsetGeometryCreation::FaceuseOffset
+        // BuildOffsetOfFaceuse, preserving both surface and SSI data. The generic
+        // creator is landed; this executive's arena/SSI backend is not yet wired.
+        // UNPORTED(offset.offset_executive_p2): SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)
         Err(SolidError::unported(
-            "SmOffsetGeometryCreation::FaceuseOffset",
-            "offset.offset_geometry_creation",
+            "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+            "offset.offset_executive_p2",
         ))
     }
 
     fn mapped_edge_prefix(
         &mut self,
-        kernel: &Kernel,
+        kernel: &mut Kernel,
         original: &Brep,
         edgeuse: EdgeuseId,
         radial: EdgeuseId,
+        mark_type: MarkType,
+        notifications: &mut OffsetNotifications<'_>,
     ) -> Result<()> {
-        // The extended face loop stops at geometry creation or Copy notification
-        // before installing live result mappings. Shared p1 preparation validates
-        // caller-installed stale mappings before any edge/vertex notification.
-        // No empty notification/attribute store is fabricated here.
-        let Some((edge, synchronized)) =
-            self.prepare_offset_edgeuses(kernel, original, edgeuse, radial)?
-        else {
-            return Ok(());
+        let mut stores = NotificationStores {
+            records: &mut *notifications.records,
+            attributes: &mut *notifications.attributes,
+            key_of: notifications.original_key_of,
         };
-        if synchronized.edgeuses.is_empty() {
-            return self.fill_offset_edgeuse_gaps(kernel, original, edge, &synchronized);
-        }
-        // Continuation: invoke p1 BuildOffsetOfEdgeuses with actual original/result
-        // notification records once face construction can create live mappings;
-        // preserve Copy notifications before the geometry creator and use the
-        // claimed mark without advancing it. That needs caller-owned NotifyEnv
-        // records/attributes and distinct arena keys, plus a split borrow of the
-        // real kernel context (p1 also takes &Kernel). There is no live mapped
-        // pair at this boundary in the current prefix; no success is claimed.
-        // UNPORTED(offset.offset_geometry_creation): SmOffsetGeometryCreation::EdgeuseOffset
-        Err(SolidError::unported(
-            "SmOffsetGeometryCreation::EdgeuseOffset",
-            "offset.offset_geometry_creation",
-        ))
+        self.build_offset_of_edgeuses_with_kernel_context(
+            kernel,
+            original,
+            edgeuse,
+            radial,
+            mark_type,
+            &mut stores,
+            notifications.result_key_of,
+            notifications.result_curve_ref,
+        )
     }
 
-    fn extend_result_faces_prefix(&mut self, kernel: &Kernel) -> Result<()> {
+    fn extend_result_faces_prefix(
+        &mut self,
+        kernel: &Kernel,
+        notifications: &OffsetNotifications<'_>,
+    ) -> Result<()> {
         let temporary = required(self.take_offset_brep(), OP_EXTENDED)?;
         let status = (|| {
             for (id, face) in temporary.faces().iter() {
@@ -510,9 +619,8 @@ impl OffsetExecutive {
                     continue;
                 }
                 let surface = required(face.surface.as_ref(), OP_EXTENDED)?;
-                // A surface is a concrete, face-owned value. The same canonical
-                // arena identity as p1's cache adapter is stable within this run.
-                let key = arena_identity(CacheObject::Face(id));
+                // Face-owned surfaces use the caller's result-arena identities.
+                let key = (notifications.result_key_of)(EntityRef::Face(id));
                 self.get_create_extended_surface(kernel, key.key.0, surface)?;
                 // Continuation documented at cpp:1613 above. In particular, domain
                 // calculation must not run before the temporary replacement.
@@ -541,6 +649,7 @@ pub fn api_shell_brep_full(
     original: Option<BrepRef<'_, BrepId>>,
     _options: ShellOptions,
     faces: &[Option<FaceKey>],
+    _notifications: &mut OffsetNotifications<'_>,
 ) -> Result<Brep> {
     let original = original.ok_or_else(|| invalid_input(OP_API_SHELL))?;
     validate_shell_faces(original, faces)?;
@@ -563,9 +672,10 @@ pub fn api_offset_brep_full(
     kernel: &mut Kernel,
     original: Option<&mut Brep>,
     options: OffsetOptions,
+    notifications: &mut OffsetNotifications<'_>,
 ) -> Result<Brep> {
     let original = original.ok_or_else(|| invalid_input(OP_API_OFFSET))?;
-    offset_brep(kernel, original, options)
+    offset_brep(kernel, original, options, notifications)
 }
 
 fn configured_executive(original: &Brep, options: OffsetOptions) -> OffsetExecutive {
@@ -596,10 +706,16 @@ fn run_shell_offset(
     original: &mut Brep,
     options: ShellOptions,
     faces: &[FaceId],
+    notifications: &mut OffsetNotifications<'_>,
 ) -> Result<Brep> {
     let mut executive = configured_shell_executive(original, options, faces);
     // Unlike offset_brep, shelling must not collapse ordinary inner statuses.
-    executive.do_solid_offset(kernel, Some(original), SolidOffsetOptions::default())
+    executive.do_solid_offset(
+        kernel,
+        Some(original),
+        SolidOffsetOptions::default(),
+        notifications,
+    )
 }
 
 fn collapse_offset_status<T>(result: Result<T>) -> Result<T> {
@@ -686,7 +802,126 @@ mod tests {
     use crate::math::{Vec3, PI};
     use crate::surface::plane::Plane;
     use crate::surface::surface::Surface;
-    use crate::topology::{Faceuse, FaceuseId, Shell};
+    use crate::topology::{Faceuse, FaceuseId, Region, Shell};
+
+    fn fixture_key(entity: EntityRef, namespace: u64) -> ObjectRef {
+        let (index, type_code) = match entity {
+            EntityRef::Brep(id) => (id.index(), crate::geom::a_object::BREP_TYPE),
+            EntityRef::Shell(id) => (id.index(), Shell::type_code()),
+            EntityRef::Face(id) => (id.index(), face::TYPE),
+            EntityRef::Faceuse(id) => (id.index(), 16022),
+            EntityRef::Edge(id) => (id.index(), crate::topology::edge::TYPE),
+            EntityRef::Edgeuse(id) => (id.index(), eu::TYPE),
+            EntityRef::Vertex(id) => (id.index(), crate::topology::vertex::TYPE),
+            EntityRef::Vertexuse(id) => (id.index(), crate::topology::vertexuse::TYPE),
+            EntityRef::Loopuse(id) => (id.index(), crate::topology::loopuse::TYPE),
+            EntityRef::Region(id) => (id.index(), Region::type_code()),
+            EntityRef::Loop(_) => panic!("fixture has no loop records"),
+        };
+        ObjectRef {
+            key: ObjectKey(
+                namespace + u64::try_from(type_code).unwrap() * 1_000_000 + u64::from(index),
+            ),
+            type_code,
+        }
+    }
+
+    fn original_key(entity: EntityRef) -> ObjectRef {
+        fixture_key(entity, 100_000_000_000)
+    }
+
+    fn result_key(entity: EntityRef) -> ObjectRef {
+        fixture_key(entity, 200_000_000_000)
+    }
+
+    fn result_curve(edge: EdgeId, type_code: i64) -> ObjectRef {
+        ObjectRef {
+            key: ObjectKey(300_000_000_000 + u64::from(edge.index())),
+            type_code,
+        }
+    }
+
+    fn source_brep() -> Brep {
+        let mut brep = Brep::new();
+        brep.set_key(original_key(EntityRef::Brep(BrepId::from_index(0))).key);
+        brep
+    }
+
+    struct NotificationFixture {
+        records: BTreeMap<ObjectKey, Topology>,
+        attributes: AttributeStore,
+    }
+
+    impl NotificationFixture {
+        fn new(original: &Brep) -> Self {
+            let mut records = BTreeMap::new();
+            records.insert(original.key(), Topology::new());
+            records.insert(
+                result_key(EntityRef::Brep(BrepId::from_index(0))).key,
+                Topology::new(),
+            );
+            let entities = original
+                .shells()
+                .iter()
+                .map(|(id, _)| EntityRef::Shell(id))
+                .chain(original.faces().iter().map(|(id, _)| EntityRef::Face(id)))
+                .chain(
+                    original
+                        .faceuses()
+                        .iter()
+                        .map(|(id, _)| EntityRef::Faceuse(id)),
+                )
+                .chain(original.edges().iter().map(|(id, _)| EntityRef::Edge(id)))
+                .chain(
+                    original
+                        .edgeuses()
+                        .iter()
+                        .map(|(id, _)| EntityRef::Edgeuse(id)),
+                )
+                .chain(
+                    original
+                        .vertices()
+                        .iter()
+                        .map(|(id, _)| EntityRef::Vertex(id)),
+                )
+                .chain(
+                    original
+                        .vertexuses()
+                        .iter()
+                        .map(|(id, _)| EntityRef::Vertexuse(id)),
+                )
+                .chain(
+                    original
+                        .loopuses()
+                        .iter()
+                        .map(|(id, _)| EntityRef::Loopuse(id)),
+                )
+                .chain(
+                    original
+                        .regions()
+                        .iter()
+                        .map(|(id, _)| EntityRef::Region(id)),
+                );
+            for entity in entities {
+                records.insert(original_key(entity).key, Topology::new());
+            }
+            Self {
+                records,
+                attributes: AttributeStore::default(),
+            }
+        }
+
+        fn context(&mut self) -> OffsetNotifications<'_> {
+            OffsetNotifications {
+                records: &mut self.records,
+                attributes: &mut self.attributes,
+                original_key_of: &original_key,
+                result_key_of: &result_key,
+                result_curve_ref: &result_curve,
+                result_brep: result_key(EntityRef::Brep(BrepId::from_index(0))),
+            }
+        }
+    }
 
     fn executive() -> OffsetExecutive {
         OffsetExecutive::new(OffsetOperation::SolidOffset, 0.125, 1.0e-6)
@@ -705,7 +940,7 @@ mod tests {
     }
 
     fn one_face(surface: bool) -> (Brep, FaceId) {
-        let mut brep = Brep::new();
+        let mut brep = source_brep();
         let region = brep
             .add_region_record(Region {
                 in_brep: true,
@@ -776,15 +1011,24 @@ mod tests {
             let mut exec = executive();
             exec.set_extend_convex_edges(extended);
             assert_dependency(
-                exec.do_solid_offset(
-                    &mut kernel,
-                    Some(&mut original),
-                    SolidOffsetOptions::default(),
-                ),
-                "SmOffsetGeometryCreation::FaceuseOffset",
-                "offset.offset_geometry_creation",
+                {
+                    let mut notifications = NotificationFixture::new(&original);
+                    exec.do_solid_offset(
+                        &mut kernel,
+                        Some(&mut original),
+                        SolidOffsetOptions::default(),
+                        &mut notifications.context(),
+                    )
+                },
+                "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+                "offset.offset_executive_p2",
             );
             let temporary = exec.offset_brep().unwrap();
+            assert_eq!(
+                temporary.key(),
+                result_key(EntityRef::Brep(BrepId::from_index(0))).key
+            );
+            assert_ne!(temporary.key(), original.key());
             assert_eq!(temporary.regions().len(), 1);
             let (id, region) = temporary.regions().iter().next().unwrap();
             assert_eq!(temporary.infinite_region(), Some(id));
@@ -802,12 +1046,21 @@ mod tests {
 
     #[test]
     fn allocated_infinite_region_bypasses_p7_none_region_fallback() {
-        let kernel = Kernel::default();
+        let mut kernel = Kernel::default();
         let mut exec = executive();
-        exec.allocate_offset_brep().unwrap();
+        let mut notifications = NotificationFixture::new(&source_brep());
+        exec.allocate_offset_brep(&mut notifications.context())
+            .unwrap();
         let mut temporary = exec.take_offset_brep().unwrap();
         let region = temporary.infinite_region();
         assert!(region.is_some());
+        assert_eq!(
+            temporary.key(),
+            result_key(EntityRef::Brep(BrepId::from_index(0))).key
+        );
+        assert!(notifications
+            .records
+            .contains_key(&result_key(EntityRef::Region(region.unwrap())).key));
         // Nonempty loops pass p7's initial guards. Its curve-count check is after
         // region lookup, so reaching it proves the stale None fallback was skipped.
         let input = FaceCurvesInput {
@@ -816,8 +1069,8 @@ mod tests {
             orientations: vec![OrientType::Same],
             ..FaceCurvesInput::default()
         };
-        let result = make_face_with_curves(
-            &kernel,
+        let result = make_face_with_curves_with_kernel_context(
+            &mut kernel,
             &mut temporary,
             region,
             input,
@@ -825,7 +1078,12 @@ mod tests {
             &Extent2d::from_bounds(-1.0, -1.0, 1.0, 1.0),
             OrientType::Same,
             None,
-            &|face| arena_identity(CacheObject::Face(face)),
+            &|face| result_key(EntityRef::Face(face)),
+            &mut NotificationStores {
+                records: &mut notifications.records,
+                attributes: &mut notifications.attributes,
+                key_of: &result_key,
+            },
         );
         assert!(matches!(
             result,
@@ -881,8 +1139,8 @@ mod tests {
                     } else {
                         assert_dependency(
                             result,
-                            "SmOffsetGeometryCreation::FaceuseOffset",
-                            "offset.offset_geometry_creation",
+                            "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+                            "offset.offset_executive_p2",
                         );
                     }
                 }
@@ -920,8 +1178,8 @@ mod tests {
                         } else {
                             assert_dependency(
                                 result,
-                                "SmOffsetGeometryCreation::FaceuseOffset",
-                                "offset.offset_geometry_creation",
+                                "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+                                "offset.offset_executive_p2",
                             );
                         }
                     }
@@ -945,8 +1203,8 @@ mod tests {
         brep.shell_mut(shell).unwrap().region = None;
         assert_dependency(
             executive().offset_face_prefix(&brep, face, false),
-            "SmOffsetGeometryCreation::FaceuseOffset",
-            "offset.offset_geometry_creation",
+            "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+            "offset.offset_executive_p2",
         );
         assert_status(
             executive().offset_face_prefix(&brep, face, true),
@@ -956,7 +1214,7 @@ mod tests {
 
     #[test]
     fn empty_edge_synchronization_is_a_no_op_not_a_geometry_dependency() {
-        let mut original = Brep::new();
+        let mut original = source_brep();
         let start = original.add_vertex(Vec3::ZERO).unwrap();
         let end = original.add_vertex(Vec3::X).unwrap();
         let edge = original.add_edge(start, end).unwrap();
@@ -972,19 +1230,29 @@ mod tests {
                 ..crate::topology::Edgeuse::default()
             })
             .unwrap();
-        let kernel = Kernel::default();
+        let mut kernel = Kernel::default();
         for extended in [false, true] {
             let mut exec = executive();
             exec.set_extend_convex_edges(extended);
             assert_eq!(
-                exec.mapped_edge_prefix(&kernel, &original, first, second),
+                {
+                    let mut notifications = NotificationFixture::new(&original);
+                    exec.mapped_edge_prefix(
+                        &mut kernel,
+                        &original,
+                        first,
+                        second,
+                        MarkType::Mark,
+                        &mut notifications.context(),
+                    )
+                },
                 Ok(())
             );
             assert!(exec.offset_brep().is_none());
             assert_eq!(kernel.context.current_mark(MarkType::Mark), 1);
             let missing = EdgeuseId::from_index(99);
             assert!(matches!(
-                exec.mapped_edge_prefix(&kernel, &original, first, missing),
+                { let mut notifications = NotificationFixture::new(&original); exec.mapped_edge_prefix(&mut kernel, &original, first, missing, MarkType::Mark, &mut notifications.context()) },
                 Err(SolidError::NotFound { entity: EntityRef::Edgeuse(id), .. }) if id == missing
             ));
         }
@@ -992,7 +1260,7 @@ mod tests {
 
     #[test]
     fn static_snapshot_preserves_sign_absolute_distance_tolerance_and_flags() {
-        let mut brep = Brep::new();
+        let mut brep = source_brep();
         brep.set_tolerance(3.25e-7);
         for distance in [0.125, -0.125, 0.0, -0.0, f64::INFINITY, f64::NEG_INFINITY] {
             for extend_convex_edges in [false, true] {
@@ -1028,7 +1296,7 @@ mod tests {
 
     #[test]
     fn shell_snapshot_keeps_all_flags_and_the_ordered_duplicate_face_list() {
-        let mut original = Brep::new();
+        let mut original = source_brep();
         original.set_tolerance(6.5e-7);
         let faces = [
             FaceId::from_index(9),
@@ -1062,18 +1330,35 @@ mod tests {
 
     #[test]
     fn shell_inner_ordinary_status_is_not_collapsed_like_static_offset() {
-        let mut original = Brep::new();
+        let mut original = source_brep();
         let shell = original.add_shell().unwrap();
         original.add_face(shell).unwrap();
         let mut kernel = Kernel::default();
         // Exercise exactly the post-query shell helper: the real public shell
         // entry point must still defer at IsManifoldSolid before reaching it.
         assert_status(
-            run_shell_offset(&mut kernel, &mut original, ShellOptions::default(), &[]),
+            {
+                let mut notifications = NotificationFixture::new(&original);
+                run_shell_offset(
+                    &mut kernel,
+                    &mut original,
+                    ShellOptions::default(),
+                    &[],
+                    &mut notifications.context(),
+                )
+            },
             SM_ERR_NULL_POINTER,
         );
         assert_status(
-            offset_brep(&mut kernel, &mut original, OffsetOptions::default()),
+            {
+                let mut notifications = NotificationFixture::new(&original);
+                offset_brep(
+                    &mut kernel,
+                    &mut original,
+                    OffsetOptions::default(),
+                    &mut notifications.context(),
+                )
+            },
             SM_ERR,
         );
         assert!(!kernel.context.doing_boolean());
@@ -1088,29 +1373,417 @@ mod tests {
         assert!(!SolidOffsetOptions::default().skip_stitch_merge);
     }
 
+    #[derive(Debug, Default)]
+    struct NotificationLog(Vec<(NotifyOperation, ObjectRef, Option<ObjectRef>)>);
+
+    impl crate::geom::context::NotifyCallback for NotificationLog {
+        fn execute(
+            &mut self,
+            operation: NotifyOperation,
+            caller: ObjectRef,
+            data1: Option<ObjectRef>,
+            _data2: Option<ObjectRef>,
+            _data3: Option<ObjectRef>,
+        ) -> Result<()> {
+            self.0.push((operation, caller, data1));
+            Ok(())
+        }
+
+        fn as_any(&self) -> Option<&dyn core::any::Any> {
+            Some(self)
+        }
+    }
+
+    fn wire_use(brep: &mut Brep) -> EdgeuseId {
+        use crate::topology::{Edgeuse, EdgeuseOwner, Vertexuse, VertexuseOwner};
+        let start = brep.add_vertex(Vec3::ZERO).unwrap();
+        let end = brep.add_vertex(Vec3::X).unwrap();
+        let edge = brep.add_edge(start, end).unwrap();
+        brep.edge_mut(edge).unwrap().curve = Some(crate::curve::curve::Curve::from(
+            crate::curve::line::Line::from_points(Vec3::ZERO, Vec3::X, 3),
+        ));
+        brep.edge_mut(edge).unwrap().interval = crate::geom::extent1d::Extent1d::from_raw(0.0, 1.0);
+        let mut first = None;
+        for (vertex, orientation) in [(start, OrientType::Same), (end, OrientType::Opposite)] {
+            let vertexuse = brep
+                .add_vertexuse_record(Vertexuse {
+                    vertex: Some(vertex),
+                    ..Vertexuse::default()
+                })
+                .unwrap();
+            let edgeuse = brep
+                .add_edgeuse_record(Edgeuse {
+                    edge: Some(edge),
+                    vertexuse: Some(vertexuse),
+                    owner: EdgeuseOwner::Shell(None),
+                    orientation,
+                    ..Edgeuse::default()
+                })
+                .unwrap();
+            brep.vertexuse_mut(vertexuse).unwrap().owner = VertexuseOwner::Edgeuse(Some(edgeuse));
+            brep.vertex_mut(vertex).unwrap().vertexuses.push(vertexuse);
+            brep.edge_mut(edge).unwrap().edgeuses.push(edgeuse);
+            first.get_or_insert(edgeuse);
+        }
+        first.unwrap()
+    }
+
+    #[test]
+    fn mapped_builder_notifies_real_kernel_and_copies_disjoint_records_and_attributes() {
+        use crate::geom::attribute::{Attribute, Behavior};
+        let mut original = source_brep();
+        let old = wire_use(&mut original);
+        let mut result = Brep::new_with_infinite_region().unwrap();
+        let result_brep = result_key(EntityRef::Brep(BrepId::from_index(0)));
+        result.set_key(result_brep.key);
+        let new = wire_use(&mut result);
+        let mut fixture = NotificationFixture::new(&original);
+        let entities = [
+            (EntityRef::Edge(EdgeId::from_index(0)), 37),
+            (
+                EntityRef::Vertex(crate::topology::VertexId::from_index(0)),
+                11,
+            ),
+            (
+                EntityRef::Vertex(crate::topology::VertexId::from_index(1)),
+                53,
+            ),
+        ];
+        for (entity, value) in entities {
+            fixture
+                .records
+                .get_mut(&original_key(entity).key)
+                .unwrap()
+                .set_user_index1(value);
+            fixture
+                .records
+                .insert(result_key(entity).key, Topology::new());
+        }
+        let attribute = fixture
+            .attributes
+            .insert(Attribute::new(77, Behavior::Copy))
+            .unwrap();
+        fixture
+            .attributes
+            .add_attribute(original_key(entities[0].0).key, attribute)
+            .unwrap();
+        let mut kernel = Kernel::default();
+        kernel
+            .context
+            .set_user_notify_callback(Some(Box::<NotificationLog>::default()));
+        let mut outer =
+            MarkLock::new(std::slice::from_mut(&mut kernel.context), 0, ALL_MARKS).unwrap();
+        let mut exec = executive();
+        exec.set_offset_brep(result);
+        exec.relate_edgeuses(old, new);
+        let status = with_mark_lock(&mut kernel, ALL_MARKS, |kernel, mark| {
+            assert_eq!(mark, MarkType::Mark2);
+            let current = kernel.context.current_mark(mark);
+            let result =
+                exec.mapped_edge_prefix(kernel, &original, old, old, mark, &mut fixture.context());
+            assert_eq!(kernel.context.current_mark(mark), current);
+            assert!(kernel.context.is_mark_locked(mark));
+            result
+        })
+        .unwrap();
+        assert_dependency(
+            status,
+            "SmOffsetExecutive::BuildOffsetOfEdgeuses (geometry-creation adapter)",
+            "offset.offset_executive_p1",
+        );
+        for (entity, value) in entities {
+            assert_ne!(original_key(entity).key, result_key(entity).key);
+            assert_eq!(
+                fixture
+                    .records
+                    .get(&original_key(entity).key)
+                    .unwrap()
+                    .user_index1(),
+                value
+            );
+            assert_eq!(
+                fixture
+                    .records
+                    .get(&result_key(entity).key)
+                    .unwrap()
+                    .user_index1(),
+                value
+            );
+        }
+        assert!(fixture
+            .attributes
+            .find_attribute(result_key(entities[0].0).key, 77)
+            .is_some());
+        let log = kernel
+            .context
+            .user_notify_callback()
+            .unwrap()
+            .as_any()
+            .unwrap()
+            .downcast_ref::<NotificationLog>()
+            .unwrap();
+        let expected: Vec<_> = entities
+            .into_iter()
+            .map(|(entity, _)| {
+                (
+                    NotifyOperation::Copy,
+                    original_key(entity),
+                    Some(result_key(entity)),
+                )
+            })
+            .collect();
+        assert_eq!(log.0, expected);
+        assert!(kernel.context.is_mark_locked(MarkType::Mark));
+        assert!(!kernel.context.is_mark_locked(MarkType::Mark2));
+        assert_eq!(kernel.context.current_mark(MarkType::Mark), 3);
+        assert_eq!(kernel.context.current_mark(MarkType::Mark2), 3);
+        outer
+            .release(std::slice::from_mut(&mut kernel.context))
+            .unwrap();
+    }
+
+    #[test]
+    fn kernel_context_synchronization_splits_only_result_keys_before_real_dependency() {
+        let mut original = source_brep();
+        let old = wire_use(&mut original);
+        let other = wire_use(&mut original);
+        let mut kernel = Kernel::default();
+        let mut result = Brep::new_with_infinite_region().unwrap();
+        result.set_key(result_key(EntityRef::Brep(BrepId::from_index(0))).key);
+        result.set_editing_enabled(true);
+        let whole = wire_use(&mut result);
+        let part = wire_use(&mut result);
+        let part_edge = eu::edge(&result, part).unwrap().unwrap();
+        let part_interval = crate::geom::extent1d::Extent1d::from_raw(0.25, 1.0);
+        result.edge_mut(part_edge).unwrap().interval = part_interval;
+        result
+            .edge_mut(part_edge)
+            .unwrap()
+            .curve
+            .as_mut()
+            .unwrap()
+            .edit_parameterization(&kernel, &part_interval)
+            .unwrap();
+        let mut fixture = NotificationFixture::new(&original);
+        let source_records = fixture.records.clone();
+        let entities = result
+            .edges()
+            .iter()
+            .map(|(id, _)| EntityRef::Edge(id))
+            .chain(
+                result
+                    .edgeuses()
+                    .iter()
+                    .map(|(id, _)| EntityRef::Edgeuse(id)),
+            )
+            .chain(
+                result
+                    .vertices()
+                    .iter()
+                    .map(|(id, _)| EntityRef::Vertex(id)),
+            )
+            .chain(
+                result
+                    .vertexuses()
+                    .iter()
+                    .map(|(id, _)| EntityRef::Vertexuse(id)),
+            )
+            .chain(result.regions().iter().map(|(id, _)| EntityRef::Region(id)));
+        for entity in entities {
+            fixture
+                .records
+                .insert(result_key(entity).key, Topology::new());
+        }
+        kernel
+            .context
+            .set_user_notify_callback(Some(Box::<NotificationLog>::default()));
+        let mut exec = executive();
+        exec.set_offset_brep(result);
+        exec.relate_edgeuses(old, part);
+        exec.relate_edgeuses(other, whole);
+        assert_dependency(
+            exec.synchronize_offset_edgeuses_with_kernel_context(
+                &mut kernel,
+                Some(old),
+                Some(other),
+                &mut NotificationStores {
+                    records: &mut fixture.records,
+                    attributes: &mut fixture.attributes,
+                    key_of: &result_key,
+                },
+                &result_curve,
+            ),
+            "SmBrep::Notify",
+            "topology.brep_p2",
+        );
+        for (key, record) in source_records {
+            assert_eq!(fixture.records.get(&key), Some(&record));
+        }
+        let whole_edge = eu::edge(exec.offset_brep().unwrap(), whole)
+            .unwrap()
+            .unwrap();
+        let log = kernel
+            .context
+            .user_notify_callback()
+            .unwrap()
+            .as_any()
+            .unwrap()
+            .downcast_ref::<NotificationLog>()
+            .unwrap();
+        assert!(log.0.iter().any(
+            |(operation, caller, _)| *operation == NotifyOperation::PreEdit
+                && *caller == result_key(EntityRef::Edge(whole_edge))
+        ));
+        assert!(log
+            .0
+            .iter()
+            .all(|(_, caller, _)| caller.key.0 >= 200_000_000_000));
+        assert!(!kernel.context.doing_boolean());
+        assert_eq!(kernel.context.current_mark(MarkType::Mark), 1);
+    }
+
+    #[test]
+    fn null_and_invalid_selection_guards_do_not_touch_notification_capability() {
+        use crate::geom::attribute::{Attribute, Behavior};
+        let (original, face) = one_face(true);
+        let mut fixture = NotificationFixture::new(&original);
+        let attribute = fixture
+            .attributes
+            .insert(Attribute::new(81, Behavior::Copy))
+            .unwrap();
+        fixture
+            .attributes
+            .add_attribute(original.key(), attribute)
+            .unwrap();
+        let before = fixture.records.clone();
+        let never_key =
+            |_: EntityRef| -> ObjectRef { panic!("guard called a topology key callback") };
+        let never_curve =
+            |_: EdgeId, _: i64| -> ObjectRef { panic!("guard called a curve key callback") };
+        let mut kernel = Kernel::default();
+        {
+            let mut notifications = OffsetNotifications {
+                records: &mut fixture.records,
+                attributes: &mut fixture.attributes,
+                original_key_of: &never_key,
+                result_key_of: &never_key,
+                result_curve_ref: &never_curve,
+                result_brep: result_key(EntityRef::Brep(BrepId::from_index(0))),
+            };
+            assert_status(
+                api_offset_brep_full(
+                    &mut kernel,
+                    None,
+                    OffsetOptions::default(),
+                    &mut notifications,
+                ),
+                1007,
+            );
+            assert_status(
+                api_shell_brep_full(
+                    &mut kernel,
+                    None,
+                    ShellOptions::default(),
+                    &[None],
+                    &mut notifications,
+                ),
+                1007,
+            );
+            for faces in [
+                vec![None],
+                vec![Some((BrepId::from_index(8), face))],
+                vec![Some((BrepId::from_index(7), FaceId::from_index(99)))],
+            ] {
+                assert_status(
+                    api_shell_brep_full(
+                        &mut kernel,
+                        Some(source(&original, 7)),
+                        ShellOptions::default(),
+                        &faces,
+                        &mut notifications,
+                    ),
+                    1007,
+                );
+            }
+            for extended in [false, true] {
+                let mut exec = executive();
+                exec.set_extend_convex_edges(extended);
+                assert_status(
+                    exec.do_solid_offset(
+                        &mut kernel,
+                        None,
+                        SolidOffsetOptions::default(),
+                        &mut notifications,
+                    ),
+                    SM_ERR_NULL_POINTER,
+                );
+                assert!(exec.offset_brep().is_none());
+            }
+            assert_status(
+                executive().do_extended_offset(&mut kernel, None, &mut notifications),
+                SM_ERR_NULL_POINTER,
+            );
+        }
+        assert_eq!(fixture.records, before);
+        assert_eq!(
+            fixture.attributes.find_attribute(original.key(), 81),
+            Some(attribute)
+        );
+        assert!(!kernel.context.doing_boolean());
+        assert_eq!(kernel.context.current_mark(MarkType::Mark), 1);
+    }
+
     #[test]
     fn native_api_null_and_member_null_statuses_are_distinct() {
         let mut kernel = Kernel::default();
         assert_status(
-            api_offset_brep_full(&mut kernel, None, OffsetOptions::default()),
+            {
+                let mut notifications = NotificationFixture::new(&source_brep());
+                api_offset_brep_full(
+                    &mut kernel,
+                    None,
+                    OffsetOptions::default(),
+                    &mut notifications.context(),
+                )
+            },
             1007,
         );
         assert_status(
-            api_shell_brep_full(&mut kernel, None, ShellOptions::default(), &[None]),
+            {
+                let mut notifications = NotificationFixture::new(&source_brep());
+                api_shell_brep_full(
+                    &mut kernel,
+                    None,
+                    ShellOptions::default(),
+                    &[None],
+                    &mut notifications.context(),
+                )
+            },
             1007,
         );
         for extended in [false, true] {
             let mut exec = executive();
             exec.set_extend_convex_edges(extended);
             assert_status(
-                exec.do_solid_offset(&mut kernel, None, SolidOffsetOptions::default()),
+                {
+                    let mut notifications = NotificationFixture::new(&source_brep());
+                    exec.do_solid_offset(
+                        &mut kernel,
+                        None,
+                        SolidOffsetOptions::default(),
+                        &mut notifications.context(),
+                    )
+                },
                 SM_ERR_NULL_POINTER,
             );
             assert!(exec.offset_brep().is_none());
             assert!(!kernel.context.doing_boolean());
         }
         assert_status(
-            executive().do_extended_offset(&mut kernel, None),
+            {
+                let mut notifications = NotificationFixture::new(&source_brep());
+                executive().do_extended_offset(&mut kernel, None, &mut notifications.context())
+            },
             SM_ERR_NULL_POINTER,
         );
     }
@@ -1125,13 +1798,17 @@ mod tests {
                 let mut exec = executive();
                 exec.set_extend_convex_edges(true);
                 assert_dependency(
-                    exec.do_solid_offset(
-                        &mut kernel,
-                        Some(&mut original),
-                        SolidOffsetOptions { skip_stitch_merge },
-                    ),
-                    "SmOffsetGeometryCreation::FaceuseOffset",
-                    "offset.offset_geometry_creation",
+                    {
+                        let mut notifications = NotificationFixture::new(&original);
+                        exec.do_solid_offset(
+                            &mut kernel,
+                            Some(&mut original),
+                            SolidOffsetOptions { skip_stitch_merge },
+                            &mut notifications.context(),
+                        )
+                    },
+                    "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+                    "offset.offset_executive_p2",
                 );
                 assert_eq!(kernel.context.doing_boolean(), previous);
                 assert_eq!(exec.offset_brep().unwrap().tolerance(), 1.0e-6);
@@ -1174,13 +1851,17 @@ mod tests {
             let mut exec = executive();
             exec.set_inset(inset);
             assert_dependency(
-                exec.do_solid_offset(
-                    &mut kernel,
-                    Some(&mut original),
-                    SolidOffsetOptions::default(),
-                ),
-                "SmOffsetGeometryCreation::FaceuseOffset",
-                "offset.offset_geometry_creation",
+                {
+                    let mut notifications = NotificationFixture::new(&original);
+                    exec.do_solid_offset(
+                        &mut kernel,
+                        Some(&mut original),
+                        SolidOffsetOptions::default(),
+                        &mut notifications.context(),
+                    )
+                },
+                "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+                "offset.offset_executive_p2",
             );
             assert!(!kernel.context.doing_boolean());
             assert!(exec.offset_brep().unwrap().faces().is_empty());
@@ -1188,7 +1869,7 @@ mod tests {
     }
 
     #[test]
-    fn faces_are_processed_in_arena_order_without_grouping_selected_faces_first() {
+    fn faces_are_processed_in_native_order_without_grouping_selected_faces_first() {
         let (mut original, first) = one_face(false);
         let shell = original.face(first).unwrap().shell;
         let second = original.add_face(shell).unwrap();
@@ -1198,13 +1879,17 @@ mod tests {
             exec.set_extend_convex_edges(extended);
             exec.set_shell_faces(&[second]);
             assert_dependency(
-                exec.do_solid_offset(
-                    &mut kernel,
-                    Some(&mut original),
-                    SolidOffsetOptions::default(),
-                ),
-                "SmOffsetGeometryCreation::FaceuseOffset",
-                "offset.offset_geometry_creation",
+                {
+                    let mut notifications = NotificationFixture::new(&original);
+                    exec.do_solid_offset(
+                        &mut kernel,
+                        Some(&mut original),
+                        SolidOffsetOptions::default(),
+                        &mut notifications.context(),
+                    )
+                },
+                "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+                "offset.offset_executive_p2",
             );
             let mut exec = executive();
             exec.set_extend_convex_edges(extended);
@@ -1212,11 +1897,15 @@ mod tests {
             // The first face's copy prefix reaches its missing surface before
             // even inspecting the malformed second face's absent faceuse.
             assert_status(
-                exec.do_solid_offset(
-                    &mut kernel,
-                    Some(&mut original),
-                    SolidOffsetOptions::default(),
-                ),
+                {
+                    let mut notifications = NotificationFixture::new(&original);
+                    exec.do_solid_offset(
+                        &mut kernel,
+                        Some(&mut original),
+                        SolidOffsetOptions::default(),
+                        &mut notifications.context(),
+                    )
+                },
                 SM_ERR_NULL_POINTER,
             );
         }
@@ -1224,7 +1913,7 @@ mod tests {
 
     #[test]
     fn empty_solid_always_shrinks_before_skip_or_merge() {
-        let mut original = Brep::new();
+        let mut original = source_brep();
         for previous in [false, true] {
             for skip_stitch_merge in [false, true] {
                 for merge in [false, true] {
@@ -1234,11 +1923,15 @@ mod tests {
                     exec.set_merge_results(merge);
                     exec.set_create_offset_solid(true);
                     assert_dependency(
-                        exec.do_solid_offset(
-                            &mut kernel,
-                            Some(&mut original),
-                            SolidOffsetOptions { skip_stitch_merge },
-                        ),
+                        {
+                            let mut notifications = NotificationFixture::new(&original);
+                            exec.do_solid_offset(
+                                &mut kernel,
+                                Some(&mut original),
+                                SolidOffsetOptions { skip_stitch_merge },
+                                &mut notifications.context(),
+                            )
+                        },
                         "SmBrep::ShrinkGeometry",
                         "topology.brep_p4",
                     );
@@ -1261,11 +1954,15 @@ mod tests {
             exec.set_shell_faces(&[face, face]);
             exec.set_extend_convex_edges(extended);
             assert_status(
-                exec.do_solid_offset(
-                    &mut kernel,
-                    Some(&mut original),
-                    SolidOffsetOptions::default(),
-                ),
+                {
+                    let mut notifications = NotificationFixture::new(&original);
+                    exec.do_solid_offset(
+                        &mut kernel,
+                        Some(&mut original),
+                        SolidOffsetOptions::default(),
+                        &mut notifications.context(),
+                    )
+                },
                 SM_ERR_NULL_POINTER,
             );
             assert_eq!(exec.shell_faces(), &[face, face]);
@@ -1278,11 +1975,13 @@ mod tests {
             exec.set_extend_convex_edges(extended);
             // The loop-free fixture reaches p7's real input guard. The temporary
             // supplies its actual infinite region, not p7's stale None fallback.
+            let mut notifications = NotificationFixture::new(&original);
             let error = exec
                 .do_solid_offset(
                     &mut kernel,
                     Some(&mut original),
                     SolidOffsetOptions::default(),
+                    &mut notifications.context(),
                 )
                 .unwrap_err();
             assert!(matches!(
@@ -1298,7 +1997,7 @@ mod tests {
 
     #[test]
     fn empty_extended_uses_p1_stitch_choice_and_releases_its_mark_on_error() {
-        let mut original = Brep::new();
+        let mut original = source_brep();
         for create_solid in [false, true] {
             for previous in [false, true] {
                 let mut kernel = Kernel::default();
@@ -1306,13 +2005,24 @@ mod tests {
                 let mut exec = executive();
                 exec.set_create_offset_solid(create_solid);
                 assert_dependency(
-                    exec.do_extended_offset(&mut kernel, Some(&mut original)),
-                    if create_solid {
-                        "SmStitch::StitchIntoShell"
-                    } else {
-                        "SmStitch::StitchIntoSolid"
+                    {
+                        let mut notifications = NotificationFixture::new(&original);
+                        exec.do_extended_offset(
+                            &mut kernel,
+                            Some(&mut original),
+                            &mut notifications.context(),
+                        )
                     },
-                    "heal.stitch_p2",
+                    if create_solid {
+                        "SmBrep::Notify"
+                    } else {
+                        "SmBrep::CalculateBoundingBox"
+                    },
+                    if create_solid {
+                        "topology.brep_p2"
+                    } else {
+                        "query.brep"
+                    },
                 );
                 assert!(exec.offset_brep().is_none());
                 assert_eq!(kernel.context.current_mark(MarkType::Mark), 3);
@@ -1324,15 +2034,22 @@ mod tests {
 
     #[test]
     fn extended_scope_preserves_an_outer_mark_lock_and_releases_its_own() {
-        let mut original = Brep::new();
+        let mut original = source_brep();
         let mut kernel = Kernel::default();
         let mut outer =
             MarkLock::new(std::slice::from_mut(&mut kernel.context), 0, ALL_MARKS).unwrap();
         assert_eq!(outer.mark_type(), MarkType::Mark);
         assert_dependency(
-            executive().do_extended_offset(&mut kernel, Some(&mut original)),
-            "SmStitch::StitchIntoSolid",
-            "heal.stitch_p2",
+            {
+                let mut notifications = NotificationFixture::new(&original);
+                executive().do_extended_offset(
+                    &mut kernel,
+                    Some(&mut original),
+                    &mut notifications.context(),
+                )
+            },
+            "SmBrep::CalculateBoundingBox",
+            "query.brep",
         );
         assert!(kernel.context.is_mark_locked(MarkType::Mark));
         assert!(!kernel.context.is_mark_locked(MarkType::Mark2));
@@ -1345,14 +2062,21 @@ mod tests {
 
     #[test]
     fn stale_mapped_edgeuse_is_not_silently_skipped_on_the_empty_extended_path() {
-        let mut original = Brep::new();
+        let mut original = source_brep();
         for extended in [false, true] {
             let mut kernel = Kernel::default();
             let mut exec = executive();
             exec.set_extend_convex_edges(extended);
             let missing = EdgeuseId::from_index(9);
             exec.relate_edgeuses(missing, EdgeuseId::from_index(4));
-            let result = exec.do_extended_offset(&mut kernel, Some(&mut original));
+            let result = {
+                let mut notifications = NotificationFixture::new(&original);
+                exec.do_extended_offset(
+                    &mut kernel,
+                    Some(&mut original),
+                    &mut notifications.context(),
+                )
+            };
             assert!(matches!(
                 result,
                 Err(SolidError::NotFound { entity: EntityRef::Edgeuse(id), .. })
@@ -1366,29 +2090,47 @@ mod tests {
 
     #[test]
     fn empty_extended_merge_reaches_remove_faces_even_without_candidate_faces() {
-        let mut original = Brep::new();
+        let mut original = source_brep();
         let mut kernel = Kernel::default();
         let mut exec = executive();
         exec.set_merge_results(true);
         assert_dependency(
-            exec.do_extended_offset(&mut kernel, Some(&mut original)),
-            "SmBrep::RemoveFaces",
-            "topology.brep_p5",
+            {
+                let mut notifications = NotificationFixture::new(&original);
+                exec.do_extended_offset(
+                    &mut kernel,
+                    Some(&mut original),
+                    &mut notifications.context(),
+                )
+            },
+            "SmBrep::ShrinkGeometry",
+            "topology.brep_p4",
         );
         assert!(exec.offset_brep().is_some());
+        // RemoveFaces ran with the temporary's real editing flag before the
+        // later piecewise-merge dependency, and released its nested mark.
+        assert_eq!(kernel.context.current_mark(MarkType::Mark2), 3);
+        assert!(!kernel.context.is_mark_locked(MarkType::Mark2));
         assert_eq!(kernel.context.current_mark(MarkType::Mark), 3);
         assert!(!kernel.context.is_mark_locked(MarkType::Mark));
     }
 
     #[test]
     fn nonempty_shell_list_skips_remove_faces_but_not_piecewise_merge_shrink() {
-        let mut original = Brep::new();
+        let mut original = source_brep();
         let mut kernel = Kernel::default();
         let mut exec = executive();
         exec.set_merge_results(true);
         exec.set_shell_faces(&[FaceId::from_index(0)]);
         assert_dependency(
-            exec.do_extended_offset(&mut kernel, Some(&mut original)),
+            {
+                let mut notifications = NotificationFixture::new(&original);
+                exec.do_extended_offset(
+                    &mut kernel,
+                    Some(&mut original),
+                    &mut notifications.context(),
+                )
+            },
             "SmBrep::ShrinkGeometry",
             "topology.brep_p4",
         );
@@ -1419,12 +2161,20 @@ mod tests {
             "topology.brep_p4",
         );
 
-        let mut original = Brep::new();
+        let mut original = source_brep();
         let shell = original.add_shell().unwrap();
         original.add_face(shell).unwrap(); // native invalid/dereferenced faceuse
         let mut kernel = Kernel::default();
         assert_status(
-            offset_brep(&mut kernel, &mut original, OffsetOptions::default()),
+            {
+                let mut notifications = NotificationFixture::new(&original);
+                offset_brep(
+                    &mut kernel,
+                    &mut original,
+                    OffsetOptions::default(),
+                    &mut notifications.context(),
+                )
+            },
             SM_ERR,
         );
         assert!(!kernel.context.doing_boolean());
@@ -1432,7 +2182,7 @@ mod tests {
 
     #[test]
     fn static_and_api_offset_flags_select_the_real_empty_extended_path() {
-        let mut original = Brep::new();
+        let mut original = source_brep();
         for extended in [false, true] {
             let mut kernel = Kernel::default();
             let options = OffsetOptions {
@@ -1441,14 +2191,22 @@ mod tests {
                 merge_results: false,
             };
             assert_dependency(
-                api_offset_brep_full(&mut kernel, Some(&mut original), options),
+                {
+                    let mut notifications = NotificationFixture::new(&original);
+                    api_offset_brep_full(
+                        &mut kernel,
+                        Some(&mut original),
+                        options,
+                        &mut notifications.context(),
+                    )
+                },
                 if extended {
-                    "SmStitch::StitchIntoSolid"
+                    "SmBrep::CalculateBoundingBox"
                 } else {
                     "SmBrep::ShrinkGeometry"
                 },
                 if extended {
-                    "heal.stitch_p2"
+                    "query.brep"
                 } else {
                     "topology.brep_p4"
                 },
@@ -1460,22 +2218,26 @@ mod tests {
     #[test]
     fn shell_manifold_query_precedes_strict_distance_guard_and_retains_input() {
         for distance in [0.0, -0.0, 1.0e-30, -1.0e-30, 0.25, -0.25] {
-            let mut original = Brep::new();
+            let mut original = source_brep();
             original.set_tolerance(1.0e-5);
             let mut kernel = Kernel::default();
-            let outcome = OffsetExecutive::shell_brep(
-                &mut kernel,
-                original,
-                ShellOptions {
-                    offset: OffsetOptions {
-                        distance,
-                        extend_convex_edges: true,
-                        merge_results: true,
+            let outcome = {
+                let mut notifications = NotificationFixture::new(&original);
+                OffsetExecutive::shell_brep(
+                    &mut kernel,
+                    original,
+                    ShellOptions {
+                        offset: OffsetOptions {
+                            distance,
+                            extend_convex_edges: true,
+                            merge_results: true,
+                        },
+                        create_offset_solid: true,
                     },
-                    create_offset_solid: true,
-                },
-                &[],
-            );
+                    &[],
+                    &mut notifications.context(),
+                )
+            };
             assert!(!outcome.input_ownership_transferred());
             assert_eq!(outcome.retained_input.as_ref().unwrap().tolerance(), 1.0e-5);
             assert_dependency(
@@ -1522,12 +2284,16 @@ mod tests {
             vec![Some((BrepId::from_index(7), FaceId::from_index(99)))],
         ] {
             assert_status(
-                api_shell_brep_full(
-                    &mut kernel,
-                    Some(source(&original, 7)),
-                    ShellOptions::default(),
-                    &faces,
-                ),
+                {
+                    let mut notifications = NotificationFixture::new(&original);
+                    api_shell_brep_full(
+                        &mut kernel,
+                        Some(source(&original, 7)),
+                        ShellOptions::default(),
+                        &faces,
+                        &mut notifications.context(),
+                    )
+                },
                 1007,
             );
         }
@@ -1544,21 +2310,29 @@ mod tests {
         assert_eq!(original_face.index(), 0);
         let mut kernel = Kernel::default();
         assert_status(
-            api_shell_brep_full(
-                &mut kernel,
-                Some(source(&original, 7)),
-                ShellOptions::default(),
-                &[Some((source(&foreign, 8).handle, foreign_face))],
-            ),
+            {
+                let mut notifications = NotificationFixture::new(&original);
+                api_shell_brep_full(
+                    &mut kernel,
+                    Some(source(&original, 7)),
+                    ShellOptions::default(),
+                    &[Some((source(&foreign, 8).handle, foreign_face))],
+                    &mut notifications.context(),
+                )
+            },
             1007,
         );
         assert_dependency(
-            api_shell_brep_full(
-                &mut kernel,
-                Some(source(&original, 7)),
-                ShellOptions::default(),
-                &[Some((BrepId::from_index(7), original_face))],
-            ),
+            {
+                let mut notifications = NotificationFixture::new(&original);
+                api_shell_brep_full(
+                    &mut kernel,
+                    Some(source(&original, 7)),
+                    ShellOptions::default(),
+                    &[Some((BrepId::from_index(7), original_face))],
+                    &mut notifications.context(),
+                )
+            },
             "SmBrep::SmBrep",
             "topology.brep_p3",
         );
@@ -1575,19 +2349,23 @@ mod tests {
         let mut kernel = Kernel::default();
         for distance in [0.0, -0.0, -0.5, 0.5] {
             assert_dependency(
-                api_shell_brep_full(
-                    &mut kernel,
-                    Some(source(&original, 3)),
-                    ShellOptions {
-                        offset: OffsetOptions {
-                            distance,
-                            extend_convex_edges: true,
-                            merge_results: true,
+                {
+                    let mut notifications = NotificationFixture::new(&original);
+                    api_shell_brep_full(
+                        &mut kernel,
+                        Some(source(&original, 3)),
+                        ShellOptions {
+                            offset: OffsetOptions {
+                                distance,
+                                extend_convex_edges: true,
+                                merge_results: true,
+                            },
+                            create_offset_solid: true,
                         },
-                        create_offset_solid: true,
-                    },
-                    &[good, good],
-                ),
+                        &[good, good],
+                        &mut notifications.context(),
+                    )
+                },
                 "SmBrep::SmBrep",
                 "topology.brep_p3",
             );
@@ -1595,12 +2373,16 @@ mod tests {
         // An empty list still copies; it does not jump to IsManifoldSolid or the
         // shell distance check. No source arena or geometry is changed.
         assert_dependency(
-            api_shell_brep_full(
-                &mut kernel,
-                Some(source(&original, 3)),
-                ShellOptions::default(),
-                &[],
-            ),
+            {
+                let mut notifications = NotificationFixture::new(&original);
+                api_shell_brep_full(
+                    &mut kernel,
+                    Some(source(&original, 3)),
+                    ShellOptions::default(),
+                    &[],
+                    &mut notifications.context(),
+                )
+            },
             "SmBrep::SmBrep",
             "topology.brep_p3",
         );
@@ -1613,7 +2395,7 @@ mod tests {
 
     #[test]
     fn malformed_face_error_restores_context_and_retains_allocated_temporary() {
-        let mut original = Brep::new();
+        let mut original = source_brep();
         let shell = original.add_shell().unwrap();
         let face = original.add_face(shell).unwrap();
         original.face_mut(face).unwrap().faceuse = Some(FaceuseId::from_index(99));
@@ -1621,11 +2403,15 @@ mod tests {
             let mut kernel = Kernel::default();
             kernel.context.set_doing_boolean(previous);
             let mut exec = executive();
-            let result = exec.do_solid_offset(
-                &mut kernel,
-                Some(&mut original),
-                SolidOffsetOptions::default(),
-            );
+            let result = {
+                let mut notifications = NotificationFixture::new(&original);
+                exec.do_solid_offset(
+                    &mut kernel,
+                    Some(&mut original),
+                    SolidOffsetOptions::default(),
+                    &mut notifications.context(),
+                )
+            };
             assert!(matches!(
                 result,
                 Err(SolidError::NotFound {
