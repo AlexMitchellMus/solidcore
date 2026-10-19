@@ -1364,6 +1364,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** crash/UB.
 - **Rust port:** `topology::brep::p1::redistribute_seam_uv_trim_curves` returns `InvalidInput` for an edge with fewer than four edge uses.
 
+#### UB-193. `SmTopologySweep::SweepEdgeHigh` uses the original edge curve after `MakeFaceWithCurves` freed it
+- **Location:** `source/SMLib/src/SmTopologySweep.cpp:2162`-`2165` (`SmTopologySweep::SweepEdgeHigh`: `pOrigEdgeCurve->GetOwner()` after `pBrepToSweep->MakeFaceWithCurves(..)` at `:2127`); `source/SMLib/src/SmBrep.cpp:16134`-`16143` (`SmBrep::MakeFaceWithCurves` deletes each trim curve that is degenerate or whose `ApproximateLength` is below the zone tolerance, and clears its slot in the caller's array). The swept copy and the vertex sweep curves are looked up in `s3DCurves` again before use (`:2178`-`2183`, the B317 fix, `:2207`, `:2270`); the original-position copy is not.
+- **What happens:** When the face built for a swept edge drops the copy of the edge's own curve because it is shorter than the zone tolerance, `SweepEdgeHigh` makes a virtual call through the freed curve. The release build segfaults loading `GetOwner` from its vtable.
+- **Trigger:** Partial primitives of `SmPrimitiveCreation` on a fresh B-rep (zone tolerance `1e-5`), which sweep their profile edges with `SmRotationalSweepGeometry` (turns below `359.99999` degrees): `CreateCone(1, 1, top, 0, 90, identity)` with `top` from `1.2e-6` to `9e-6`, and the same with the height or both radii in that range (`1e-5` returns `SM_ERR`; `1e-9` to `1e-6` return `SM_ERR_INVALID_INPUT`); `CreateTorus(major, minor, 0, 90)` with `minor` `5e-7`, `1e-6` or `1.5e-6` and `major` `0`, `minor` or `0.01`, at origins `0`, `(1, -0.7, 0.3)` and `(1000, -700, 300)`, over turns `90`, `359` and `1e-9` (`minor = 2e-6` does not crash). Generated cases `gen0097`, `gen0145`, `gen0150`, `gen0197` and `gen0202` of `primitive.primitive_creation_p2`. Partial spheres never crash: the axis line sweeps to no face, and the arc's face fails the degenerate-surface test of `SweepEdgeHigh` first.
+- **How found:** generated difftest case (`primitive.primitive_creation_p2`), then about 450 isolated native probes (one process per input).
+- **Confirmed:** yes. Each crashing probe's backtrace (a scratch `SIGSEGV` handler, frames resolved with `addr2line`) ends in `SweepEdgeHigh` <- `DoSweepEdgesHigher` <- `DoSweep` <- `CreateRotationalSweep`; the faulting instruction is the vtable load after the `pOrigEdgeCurve` null test.
+- **Severity:** crash.
+- **Rust port:** `sweep::topology_sweep` keeps arena ids: a dropped curve has no edge in the face build's `curve_edges`, and `sweep_edge_high` returns an error (`required`) instead of reading it. The `primitive.primitive_creation_p2` FFI rejects partial cones that build a profile line shorter than the zone tolerance (mirroring the cone's own early failures) and partial tori whose minor circle is shorter than it.
+
 ### Healer target management
 
 #### UB-163. Uncached healer props removal leaves targets that resize into NULL props holes
@@ -1542,6 +1551,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes. Unmodified C++ times out; debugger captured `d1`, `du`, and search parameters as NaN.
 - **Severity:** hang.
 - **Harness:** `surface.offset_surface` refuses every `CreateExtendedSurface` step in process (see HANG-6), so this input stops at its extension step; an FFI test replays the exact input and checks the refusal. These are unsafe-reference exclusions, not passing difftest cases.
+
+#### HANG-32. Closed shells a few zone tolerances across take minutes to place in their region
+- **Location:** `source/SMLib/src/SmBrep.cpp:8666` `SmBrep::FindAndSetInfiniteRegion` -> `:8004` `FindInfiniteRegion` (ray fire at `:8417`) -> `source/SMLib/src/SmShell.cpp:592` `SmShell::RayFire` -> `SmSurface::GlobalLineIntersect`. The solver tree (`SmGlobalSolver::SolveBranch`, more than twenty levels) checks each new solution with `SmLSIGlobalSolver::IdenticalSolutions` (`SmSurface.cpp:18843`) or `LocalCurveIntersect`, which re-derive the surface's singularities (`SmSurface::GetSingularities`, `:12384`) every time. Reached from `TestClosureSplitRegion` (`SmBrep.cpp:27654`, `:27845`), both through `CreateFaceFromSurface` -> `MakeFaceWithCurves` for an analytic face and through `SmStitch::DoStitching` -> `GlueEdgesGeneral` for a stitched sweep.
+- **What happens:** Placing a small closed shell in its region takes minutes.
+- **Trigger:** `SmPrimitiveCreation` primitives on a fresh B-rep (zone tolerance `1e-5`): `CreateSphere(r)` and the partial `CreateSphere(r, 0, 359.999995)` (p3's `CreateRotationalSweep` builds analytic faces from `359.99999` degrees up) for `r` from `8e-6` to `5e-5` (radius `1e-5` takes 87 s and succeeds; `1e-4` takes 7.7 s); `CreateSphere(r, 0, 359)` for `r` from `4e-5` to `1e-4` (20 s at `1e-4`); `CreateTorus(s, s, 0, 360)` for `s` from `1e-5` to `2e-5`, and `CreateTorus(s, s, 0, 359)` from `3e-6` to `5e-5` (16.5 s at `5e-5`); `CreateCone(s, s, s, 0, 359)` at `2e-5` and `(0, 359.999995)` at `1e-5`; `CreateSkinPrimitive` of two circles of radius `1e-5` (25-30 s with caps, 10 s without; the stitch's closure test, `TestClosureSplitRegion` -> `SmTopologyTraverser::IsInnerShell` -> `SmFace::GlobalLineIntersect`). Every primitive probe from `1.5e-4` up, spheres of `5e-6` or less, and skins from `1e-4` up return in milliseconds. (The static `CreateSweepAlongPlanarPath` of a `1e-5` circle along `1e-4` lines also runs past a minute, in `ProjectAndTrim` and the boolean's face intersections rather than the ray fire; at `1e-3` it takes 0.1 s.) Generated case `gen0072` of `primitive.primitive_creation_p2` (sphere `1e-5`, turn `360.0000000036`).
+- **How found:** generated difftest case (`primitive.primitive_creation_p2`), then isolated native probes with 20-40 s limits.
+- **Confirmed:** yes (C++ 87 s for the radius `1e-5` sphere; stack samples from a scratch `SIGPROF` handler all in the ray fire's line intersection, for the analytic and the stitched path).
+- **Severity:** hang (seconds to minutes per call).
+- **Rust port:** The face construction and stitch belong to unported units (`topology.brep_p8`, `topology.brep_p9`, `heal.stitch_p2`). p1's FFI requires radii above `1e-4`; the `primitive.primitive_creation_p2` FFI rejects spheres, tori and cones from half the zone tolerance to `1.5e-4` across at any turn, keeping inputs that fail before any face is built, and its generator keeps skins and planar paths at scale `1e-3` or more.
 
 ## Nondeterminism
 
@@ -1860,6 +1878,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** wrong result (the intended recovery is dead code).
 - **Cause:** `s2ndUVCurves.Add(pNewUVTrimCurve)` where `sUVCurves.Add(...)` was meant.
 - **Rust port:** Reproduces it (`topology::edgeuse::p3::create_uv_trim_curve` builds the joined curve into the discarded second-half array and reports the recovery path).
+
+#### WR-191. `SmMerge::ManifoldBoolean` leaves both contexts in boolean mode when it fails
+- **Location:** `source/SMLib/src/SmMerge.cpp:2551`-`2552` (`SmMerge::ManifoldBoolean` sets `SetDoingBoolean(TRUE)` on the B-rep's and the other B-rep's contexts); they are cleared only at the three success returns (`:3114`-`3115`, `:4148`-`4149`, `:5095`-`5096`). Every error return in between (`SER` at `:2616`, `:2628`, `:2661`, `:3023` and later, `SER(SM_ERR)` at `:3394`, `:3621`) leaves them set.
+- **What happens:** After a failed boolean, every later operation on those contexts runs in boolean mode (which delays surface cache construction, among other effects), until something resets the flag.
+- **Trigger:** the static `SmPrimitiveCreation::CreateSweepAlongPlanarPath` (tolerance `1e-7`, both caps, profile centred on the path) of a circle of radius `1e-3` at the origin along the lines `(0,0,0)-(0,0,0.01)` and `(0,0,0.01)-(0.01,0,0.01)`: it returns `SM_ERR` with the context's doing-boolean flag set, and the next primitive on that context reports it still set (generated case `gen0092` of `primitive.primitive_creation_p2`, which made the three cases after it differ).
+- **How found:** generated difftest case (`primitive.primitive_creation_p2`), then the same inputs in sequence in one process.
+- **Confirmed:** yes (the flag is set after the failing sweep and after the following, unrelated primitive). That the flag comes from `ManifoldBoolean` is from source reading: it is the only unscoped set on that path without a restore (the `SmBrep` and `SmEdge` destructors save and restore it, the primitive entry points use `SmTemporaryChangeValue`).
+- **Severity:** wrong result (state leaks into later calls).
+- **Rust port:** The `ManifoldBoolean` port (`boolean.merge_p4`) keeps the same exits. The `primitive.primitive_creation_p2` shim clears the flag before each case.
 
 ### NLib
 

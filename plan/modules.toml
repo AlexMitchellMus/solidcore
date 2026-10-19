@@ -2660,7 +2660,7 @@ tests = ["prog_test:my_test_single_periodic_vertexuse", "SM_API_test:TestSmAdvan
 status = "todo"
 claimed_by = ""
 claimed_at = ""
-notes = "4 fns; largest: SmBrep::MakeTopologyFromData, SmBrep::ProjectAndTrim, SmBrep::TestClosureSplitRegion, SmBrep::RemoveAllTopology; cycle back-edges (call into later units; stub or co-port): topology.brep_p1(10), topology.brep_p2(4), topology.brep_p5(4), topology.brep_p4(2), query.brep(1), topology.brep_p6(1), topology.face_p1(1); unit-SCC #22 (220 units); 179 upstream test entry points reach this unit"
+notes = "CO-PORTED in primitive.primitive_creation_p2 (PR #250): SmTrimType -> solidcore::primitive::primitive_creation::p2::TrimType; 4 fns; largest: SmBrep::MakeTopologyFromData, SmBrep::ProjectAndTrim, SmBrep::TestClosureSplitRegion, SmBrep::RemoveAllTopology; cycle back-edges (call into later units; stub or co-port): topology.brep_p1(10), topology.brep_p2(4), topology.brep_p5(4), topology.brep_p4(2), query.brep(1), topology.brep_p6(1), topology.face_p1(1); unit-SCC #22 (220 units); 179 upstream test entry points reach this unit"
 
 [[unit]]
 id = "topology.face_p3"
@@ -3399,10 +3399,10 @@ soft_depends_on = ["boolean.merge_p2", "boolean.merge_p3", "boolean.merge_p4", "
 est_lines = 2258
 layer = 58
 tests = ["SM_API_test:TestSmCreateSkinPrimitive", "SM_API_test:TestSmPipeSweep", "SM_API_test:TestSmCurveSweepFromFaces", "SM_API_test:TestSmCurveSweepFailureCleanup", "SM_API_test:TestSmCreateDraftSweep", "SM_API_test:TestSmTaperExtrude"]
-status = "todo"
+status = "partial"
 claimed_by = ""
 claimed_at = ""
-notes = "CO-PORTED in sweep.api_brep (PR #110): SmSweepOptions -> solidcore::primitive::primitive_creation::SweepOptions (crates/solidcore/src/primitive/primitive_creation.rs, parent module of p1..p3); 12 fns; largest: SmPrimitiveCreation::CreateTaperExtrude, SmPrimitiveCreation::CreateSweepAlongPlanarPath, sm_CreateSkinPrimitiveInternal, SmPrimitiveCreation::CreateCone; 45 upstream test entry points reach this unit"
+notes = "CO-PORTED in sweep.api_brep (PR #110): SmSweepOptions -> solidcore::primitive::primitive_creation::SweepOptions (crates/solidcore/src/primitive/primitive_creation.rs, parent module of p1..p3); 12 fns; largest: SmPrimitiveCreation::CreateTaperExtrude, SmPrimitiveCreation::CreateSweepAlongPlanarPath, sm_CreateSkinPrimitiveInternal, SmPrimitiveCreation::CreateCone; 45 upstream test entry points reach this unit; PR #250: all twelve owned functions ported through PrimitiveCreationAccess (extends p3's PrimitiveAccess; Unported defaults for B-rep services of unported units), with full tails after unavailable calls. Difftest 283 cases: 127 bit-identical passes (entry-point early exits: cone height/turn/side/axis with the editing flag left on, degenerate sphere/torus radii, full turns through p1, skins of fewer than two profiles with their cleared lists and ownership report, curve sweeps of nothing), 150 deferrals (topology.brep_p3 56, topology.brep_p8 75, topology.brep_p5 19), 6 guarded rejections (UB-193, HANG-32), 0 failures; no absolute floors. Construction tails (partial sweeps, taper, pipe, planar path, skin faces, blend) are not certified. New upstream issues UB-193, HANG-32, WR-191. Caller must supply a concrete PrimitiveCreationAccess. See fixtures/primitive.primitive_creation_p2/README.md and plan/findings.md."
 
 [[unit]]
 id = "blend.fillet_corner_p1"
