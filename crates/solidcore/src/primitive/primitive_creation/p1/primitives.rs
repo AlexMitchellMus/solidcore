@@ -33,7 +33,7 @@ use crate::geom::axis2_placement::Axis2Placement;
 use crate::geom::extent2d::Extent2d;
 use crate::kernel::Kernel;
 use crate::math::Vec3;
-use crate::math::EFF_ZERO;
+use crate::math::{EFF_ZERO, EFF_ZERO_DEG};
 use crate::nurbs::b_spline_curve::p1::{BSplineCurve, NurbCircleParam};
 use crate::nurbs::b_spline_surface::p1::BSplineSurface;
 use crate::nurbs::b_spline_surface::p1::SurfParamType;
@@ -42,6 +42,7 @@ use crate::surface::plane::p1::Plane;
 use crate::surface::sphere::Sphere;
 use crate::surface::surface::Surface;
 use crate::surface::torus::{Torus, TorusOptions};
+use crate::topology::edge::NotifyEnv;
 use crate::topology::{Brep, FaceId, RegionId};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -155,18 +156,29 @@ fn extrusion_face(
     ))
 }
 fn trimmed_face(
-    _k: &Kernel,
-    _b: &mut Brep,
-    _region: Option<RegionId>,
-    _curves: Vec<Curve>,
-    _surface: Surface,
-    _domain: Extent2d,
+    k: &Kernel,
+    b: &mut Brep,
+    region: Option<RegionId>,
+    curves: Vec<Curve>,
+    surface: Surface,
+    domain: Extent2d,
+    notifications: &mut NotifyEnv<'_>,
 ) -> Result<FaceId> {
-    // UNPORTED(topology.brep_p7): SmBrep::MakeFaceWithCurves
-    Err(SolidError::unported(
-        "SmBrep::MakeFaceWithCurves",
-        "topology.brep_p7",
-    ))
+    use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+    detailed_face(
+        k,
+        b,
+        region,
+        crate::topology::face::p2::FaceCurves {
+            curve_loops: vec![4],
+            curve_orients: vec![OrientType::Same; 4],
+            curves_3d: Some(curves),
+            ..Default::default()
+        },
+        surface,
+        domain,
+        notifications,
+    )
 }
 
 fn create_face_id(
@@ -186,19 +198,54 @@ fn face_edges(_k: &Kernel, _b: &Brep, _face: FaceId) -> Result<Vec<crate::topolo
     Err(SolidError::unported("SmFace::GetEdges", "topology.face_p4"))
 }
 pub(super) fn detailed_face(
-    _k: &Kernel,
-    _b: &mut Brep,
-    _region: Option<RegionId>,
-    _boundary: crate::topology::face::p2::FaceCurves,
-    _surface: Surface,
-    _domain: Extent2d,
+    k: &Kernel,
+    b: &mut Brep,
+    region: Option<RegionId>,
+    boundary: crate::topology::face::p2::FaceCurves,
+    surface: Surface,
+    domain: Extent2d,
+    notifications: &mut NotifyEnv<'_>,
 ) -> Result<FaceId> {
-    // UNPORTED(topology.brep_p7): SmBrep::MakeFaceWithCurves
-    Err(SolidError::unported(
-        "SmBrep::MakeFaceWithCurves",
-        "topology.brep_p7",
-    ))
+    use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+    use crate::topology::brep::p7::{make_face_with_curves, FaceCurvesInput};
+    let loops = boundary
+        .curve_loops
+        .into_iter()
+        .map(|count| {
+            usize::try_from(count).map_err(|_| {
+                SolidError::invalid_input(
+                    "primitive::primitive_creation::p1::detailed_face",
+                    "loop count exceeds usize",
+                )
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let input = FaceCurvesInput {
+        loops,
+        curves_3d: boundary
+            .curves_3d
+            .map(|curves| curves.into_iter().map(Some).collect()),
+        uv_curves: boundary.uv_curves,
+        orientations: boundary.curve_orients,
+        loop_points: boundary.loop_points,
+    };
+    let key_of = notifications.key_of;
+    make_face_with_curves(
+        k,
+        b,
+        region,
+        input,
+        surface,
+        &domain,
+        OrientType::Same,
+        None,
+        &|face| key_of(crate::EntityRef::Face(face)),
+        notifications,
+    )?
+    .face
+    .ok_or_else(|| SolidError::null_pointer("primitive::primitive_creation::p1::detailed_face"))
 }
+
 fn drop_uv_curves(
     _k: &Kernel,
     _surface: &Surface,
@@ -357,6 +404,7 @@ impl PrimitiveCreation {
         brep: &mut Brep,
         dimensions: [f64; 5],
         frame: &Axis2Placement,
+        notifications: &mut NotifyEnv<'_>,
     ) -> Result<()> {
         let [length, inner, outer, start, end] = dimensions;
         if !(length > EFF_ZERO
@@ -394,32 +442,28 @@ impl PrimitiveCreation {
         let [a, b, c] = inner_points;
         let [d, e, f] = outer_points;
         let mut placement = *frame;
-        for offset in [Vec3::ZERO, delta] {
-            if offset != Vec3::ZERO {
-                placement.translate(offset);
-            }
+        for top in [false, true] {
+            let (a, b, c, d, e, f) = if top {
+                placement.translate(delta);
+                (
+                    a + delta,
+                    b + delta,
+                    c + delta,
+                    d + delta,
+                    e + delta,
+                    f + delta,
+                )
+            } else {
+                (a, b, c, d, e, f)
+            };
             let mut plane = Plane::create_canonical(&placement)?;
             let domain = Extent2d::from_bounds(-outer, -outer, outer, outer);
             ignore_status(plane.adjust_step_uv_domain(&domain))?;
             let curves = vec![
-                Curve::from(Line::from_points(a + offset, d + offset, 3)),
-                Curve::from(Ellipse::circle_from_3_points(
-                    k,
-                    d + offset,
-                    e + offset,
-                    f + offset,
-                    3,
-                    false,
-                )?),
-                Curve::from(Line::from_points(f + offset, c + offset, 3)),
-                Curve::from(Ellipse::circle_from_3_points(
-                    k,
-                    c + offset,
-                    b + offset,
-                    a + offset,
-                    3,
-                    false,
-                )?),
+                Curve::from(Line::from_points(a, d, 3)),
+                Curve::from(Ellipse::circle_from_3_points(k, d, e, f, 3, false)?),
+                Curve::from(Line::from_points(f, c, 3)),
+                Curve::from(Ellipse::circle_from_3_points(k, c, b, a, 3, false)?),
             ];
             ignore_status(trimmed_face(
                 k,
@@ -428,6 +472,7 @@ impl PrimitiveCreation {
                 curves,
                 Surface::from(plane),
                 domain,
+                notifications,
             ))?;
         }
         for radial in [start_vec, end_vec] {
@@ -562,6 +607,7 @@ impl PrimitiveCreation {
             &mut crate::topology::topology_traverser::Marks,
             &mut crate::topology::topology_traverser::Marks,
         ),
+        notifications: &mut NotifyEnv<'_>,
     ) -> Result<()> {
         let previous = k.context.doing_boolean();
         let edit_a = a.editing_enabled();
@@ -617,7 +663,7 @@ impl PrimitiveCreation {
                     if !(crate::math::max2(d2, d1) < tolerance * 2.0
                         && first_plane
                             .normal
-                            .is_parallel_to(other.normal, crate::geom::tol::ANG_TOL_DEG))
+                            .is_parallel_to(other.normal, EFF_ZERO_DEG))
                     {
                         return Err(SolidError::invalid_input(
                             op,
@@ -667,7 +713,7 @@ impl PrimitiveCreation {
             })();
             a.face_mut(first)?.surface = Some(first_surface);
             covered?;
-            super::boolean::finish(k, a, b, first, operation, output, marks)?;
+            super::boolean::finish(k, a, b, first, operation, output, marks, notifications)?;
             selected_result = true;
             Ok(())
         })();
@@ -808,6 +854,7 @@ impl PrimitiveCreation {
         radius: f64,
         center: Vec3,
         tolerance: f64,
+        notifications: &mut NotifyEnv<'_>,
     ) -> Result<()> {
         use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
         use crate::nurbs::crv_basic::ConicType;
@@ -894,6 +941,7 @@ impl PrimitiveCreation {
                 boundary,
                 surface,
                 domain,
+                notifications,
             ))?;
         }
         let status = match stitch_faces(k, brep, 10.0 * tolerance) {
@@ -1132,5 +1180,159 @@ pub fn analytic_rotational_sweep(
         Ok(_) => Ok(()),
         Err(e) if e.is_unported() => Err(e),
         Err(_) => Err(SolidError::sm_err(op)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    fn notification_object(entity: crate::EntityRef) -> crate::geom::object::ObjectRef {
+        let (kind, index) = match entity {
+            crate::EntityRef::Brep(v) => (16011, v.index()),
+            crate::EntityRef::Shell(v) => (16013, v.index()),
+            crate::EntityRef::Face(v) => (16002, v.index()),
+            crate::EntityRef::Loop(v) => (16003, v.index()),
+            crate::EntityRef::Edge(v) => (16016, v.index()),
+            crate::EntityRef::Vertex(v) => (16021, v.index()),
+            crate::EntityRef::Region(v) => (16012, v.index()),
+            crate::EntityRef::Faceuse(v) => (16022, v.index()),
+            crate::EntityRef::Loopuse(v) => (16004, v.index()),
+            crate::EntityRef::Edgeuse(v) => (16005, v.index()),
+            crate::EntityRef::Vertexuse(v) => (16006, v.index()),
+        };
+        crate::geom::object::ObjectRef {
+            key: crate::geom::attribute::ObjectKey((kind as u64) << 32 | u64::from(index)),
+            type_code: kind,
+        }
+    }
+    use super::*;
+    use crate::topology::topology_traverser::Marks;
+    use crate::topology::{Face, ShellId};
+
+    fn plane_brep(angle: f64) -> Brep {
+        let angle = angle.to_radians();
+        let frame = Axis2Placement::new(
+            Vec3::ZERO,
+            Vec3::X,
+            Vec3::new(0.0, angle.cos(), angle.sin()),
+        );
+        let mut b = Brep::new();
+        let mut face = Face::new(ShellId::from_index(0));
+        face.uv_domain = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
+        let mut plane = Plane::create_canonical(&frame).unwrap();
+        plane.adjust_step_uv_domain(&face.uv_domain).unwrap();
+        face.surface = Some(Surface::from(plane));
+        b.add_face_record(face).unwrap();
+        b
+    }
+
+    #[test]
+    fn boolean_2d_covers_plane_domains_before_intersection() {
+        let mut k = Kernel::default();
+        let mut a = plane_brep(0.0);
+        let mut b = plane_brep(0.0);
+        let fa = a.face_list()[0];
+        let fb = b.face_list()[0];
+        let domain = Extent2d::from_bounds(-2.0, -3.0, 4.0, 5.0);
+        b.face_mut(fb).unwrap().uv_domain = domain;
+        b.face_mut(fb)
+            .unwrap()
+            .surface
+            .as_mut()
+            .unwrap()
+            .adjust_step_uv_domain(&k, &domain)
+            .unwrap();
+        let mut marks_a = Marks::default();
+        let mut marks_b = Marks::default();
+        let error = PrimitiveCreation::new(None, 17, true)
+            .boolean_2d(
+                &mut k,
+                &mut a,
+                &mut b,
+                Boolean2d::Union,
+                &mut None,
+                (&mut marks_a, &mut marks_b),
+                &mut NotifyEnv {
+                    records: &mut std::collections::BTreeMap::default(),
+                    attributes: &mut crate::geom::attribute::AttributeStore::default(),
+                    context: None,
+                    key_of: &notification_object,
+                },
+            )
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            SolidError::Unported {
+                unit: "boolean.topology_intersector_p2",
+                ..
+            }
+        ));
+        let covered_a = a
+            .face(fa)
+            .unwrap()
+            .surface
+            .as_ref()
+            .unwrap()
+            .natural_uv_domain();
+        let covered_b = b
+            .face(fb)
+            .unwrap()
+            .surface
+            .as_ref()
+            .unwrap()
+            .natural_uv_domain();
+        assert!(covered_a.min().x <= -2.0 && covered_a.min().y <= -3.0);
+        assert!(covered_a.max().x >= 4.0 && covered_a.max().y >= 5.0);
+        assert_eq!(covered_a, covered_b);
+    }
+
+    #[test]
+    fn boolean_2d_uses_vector_default_parallel_tolerance_and_restores_state() {
+        for (angle, invalid) in [
+            (0.0, false),
+            (0.00005, false),
+            (0.0002, true),
+            (0.01, true),
+            (180.0, false),
+        ] {
+            let mut k = Kernel::default();
+            let mut a = plane_brep(0.0);
+            let mut b = plane_brep(angle);
+            b.set_editing_enabled(true);
+            let mut output = Some(Brep::new());
+            let mut marks_a = Marks::default();
+            let mut marks_b = Marks::default();
+            let error = PrimitiveCreation::new(None, 17, true)
+                .boolean_2d(
+                    &mut k,
+                    &mut a,
+                    &mut b,
+                    Boolean2d::Union,
+                    &mut output,
+                    (&mut marks_a, &mut marks_b),
+                    &mut NotifyEnv {
+                        records: &mut std::collections::BTreeMap::default(),
+                        attributes: &mut crate::geom::attribute::AttributeStore::default(),
+                        context: None,
+                        key_of: &notification_object,
+                    },
+                )
+                .unwrap_err();
+            if invalid {
+                assert!(
+                    matches!(error, SolidError::InvalidInput { .. }),
+                    "{angle}: {error}"
+                );
+            } else {
+                assert!(error.is_unported(), "{angle}: {error}");
+            }
+            assert!(!a.editing_enabled());
+            assert!(b.editing_enabled());
+            assert!(!k.context.doing_boolean());
+            assert!(output.is_some());
+            assert!(a
+                .face_list()
+                .iter()
+                .all(|f| a.face(*f).unwrap().surface.is_some()));
+        }
     }
 }

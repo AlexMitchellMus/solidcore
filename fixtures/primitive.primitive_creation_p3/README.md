@@ -56,3 +56,25 @@ with a cached NURB differing by two ULPs, checking profile evaluation without a
 plane intersection and path evaluation after an intersection. Both distinguish
 the correct analytic result from a sliced B-spline. They do not add a native
 comparison of the deferred swung construction/topology tail.
+
+Curve-sweep scale-reference dispatch is also covered by a Rust regression.
+`create_curve_sweep` and `prepare_curve_sweep` accept the original `Curve` reference;
+the sampled scale law uses its virtual interval, point solve and evaluation.
+Path and scale-curve inputs remain B-spline copies, matching the explicit native
+copy constructors. An imported analytic line with a two-ULP cached-NURB offset
+produces an exact endpoint scale of 2; deliberately slicing that reference changes
+the endpoint and fails the exact assertion. This exercises preparation through
+its public API; it is not an additional native/topology comparison.
+
+The native shim still builds B-spline lines/arcs. Real `SmLine`/`SmCircle` fixtures
+must be added when the corresponding construction paths stop deferring, so these
+derived dispatch branches can be compared through the native entry points too.
+
+The swung builder also mirrors `CreateSwungSurface`'s
+`GetOrCreateGwNurbPointer`: it obtains the section NURB before the trajectory
+NURB and materializes only a missing analytic cache, using the caller's Kernel
+and original owner. Existing cached NURBs are retained bit for bit. Explicit
+B-spline copy-constructor paths in curve-sweep preparation are unchanged.
+Two Rust regressions compare 25 surface samples for lazy profile/path/both
+against eagerly built line NURBs and pin an existing two-ULP cache discrepancy.
+These are builder/dispatch regressions, not native topology comparisons.

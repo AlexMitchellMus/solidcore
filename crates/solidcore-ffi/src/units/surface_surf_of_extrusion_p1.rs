@@ -37,6 +37,7 @@
 //! `SM_SO_MAXIMIZE`, `SM_SO_NORMALIZE` (the ones it documents) and generator
 //! intersections with a finite other vector and ordered interval.
 
+use crate::validate::{bad, NOW};
 use crate::{call_with_buffer, FfiError};
 
 /// Largest control point index accepted.
@@ -45,9 +46,6 @@ pub const MAX_INDEX: usize = 256;
 pub const MAX_DEGREE: usize = 9;
 /// Largest STEP derivative order accepted.
 pub const MAX_ORDER: usize = 7;
-
-/// `NL_NOW`: the weight of a non-rational control point.
-const NOW: f64 = -f64::MAX;
 
 mod sys {
     extern "C" {
@@ -81,6 +79,13 @@ pub enum Gen {
     BSpline(BSplineData),
     /// `SmLine(a, b, 3)` with its NURB made.
     Line {
+        /// Start point.
+        a: [f64; 3],
+        /// End point.
+        b: [f64; 3],
+    },
+    /// `SmLine(a, b, 3)` with its NURB left lazy.
+    LazyLine {
         /// Start point.
         a: [f64; 3],
         /// End point.
@@ -313,10 +318,6 @@ impl Op {
     }
 }
 
-fn bad(msg: impl Into<String>) -> FfiError {
-    FfiError::InvalidArgument(msg.into())
-}
-
 pub(crate) fn finite(v: &[f64], what: &str) -> Result<(), FfiError> {
     if v.iter().all(|x| x.is_finite()) {
         Ok(())
@@ -459,7 +460,7 @@ fn push_gen(o: &mut Vec<f64>, g: &Gen) -> Result<(), FfiError> {
             }
             o.extend_from_slice(&c.knots);
         }
-        Gen::Line { a, b } => {
+        Gen::Line { a, b } | Gen::LazyLine { a, b } => {
             finite(a, "line")?;
             finite(b, "line")?;
             let [ax, ay, az] = *a;
@@ -467,7 +468,11 @@ fn push_gen(o: &mut Vec<f64>, g: &Gen) -> Result<(), FfiError> {
             if len([bx - ax, by - ay, bz - az]) <= 0.0 {
                 return Err(bad("line: degenerate"));
             }
-            o.push(1.0);
+            o.push(if matches!(g, Gen::LazyLine { .. }) {
+                6.0
+            } else {
+                1.0
+            });
             o.extend_from_slice(a);
             o.extend_from_slice(b);
         }

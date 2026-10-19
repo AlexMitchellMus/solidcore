@@ -1,6 +1,7 @@
 //! Curve-sweep, swung, skinned and blended primitive orchestration.
 //!
-//! Upstream: `source/SMLib/src/SmPrimitiveCreation.cpp`.
+//! Upstream: `source/SMLib/src/SmPrimitiveCreation.cpp`,
+//! `source/SMLib/src/SmBSplineSurfaceNLib.cpp` (`CreateSwungSurface`).
 //!
 //! | Rust | Upstream |
 //! |------|----------|
@@ -9,9 +10,11 @@
 //! | [`PrimitiveCreation::create_skin_from_faces`] | `CreateSkinFromFaces` |
 //! | [`PrimitiveCreation::create_blend_primitive`] | `CreateBlendPrimitive` |
 //! | `swung_curve_scale` (private) | `CreateSwungPrimitive` scale initialization |
+//! | `swung_surface` (private) | `CreateSwungSurface` virtual NURB acquisition |
 //!
 //! Deviations: typed service resolution replaces pointers. Output face lists
-//! preserve partial results; owned geometry handles cleanup. No recursion.
+//! preserve partial results; owned geometry handles cleanup. Missing analytic
+//! NURBs are generated on owned copies with caller context/owner. No recursion.
 
 use super::{
     geometry::{prepare_curve_sweep, GeometryHandle},
@@ -20,7 +23,7 @@ use super::{
 use crate::curve::composite_curve::CompositeCurve;
 use crate::curve::curve::p2::CurvePropertyType;
 use crate::curve::curve::p7::PropertyAnalysisOptions;
-use crate::curve::curve::Curve;
+use crate::curve::curve::{Curve, CurveKind};
 use crate::error::{ignore_status, Result, SolidError};
 use crate::math::Vec3;
 use crate::nurbs::b_spline_curve::p1::BSplineCurve;
@@ -94,6 +97,53 @@ fn swung_curve_scale(
     Ok((1.0 / point.x).abs())
 }
 
+// CreateSwungSurface queries GetOrCreateGwNurbPointer on each original
+// derived curve. Copying a lazy SmLine's empty base would lose its MakeNurb.
+fn swung_nurb(kernel: &crate::kernel::Kernel, curve: &Curve) -> Result<BSplineCurve> {
+    let base = super::geometry::bspline(curve)
+        .ok_or_else(|| SolidError::invalid_input(OP, "non B-spline swung input"))?;
+    if base.gw_nurb().is_some() {
+        return Ok(base);
+    }
+    // GetOrCreateGwNurbPointer ignores MakeNurb's ordinary status. Keep the
+    // caller's owner/context for analytic generation and propagate Unported.
+    match curve.kind() {
+        CurveKind::Line(line) => {
+            let mut line = line.clone();
+            ignore_status(line.make_nurb_owned(curve.owner()))?;
+            Ok(line.base().clone())
+        }
+        CurveKind::Ellipse(ellipse) => {
+            let mut ellipse = ellipse.clone();
+            ignore_status(ellipse.make_nurb_owned(kernel, curve.owner()))?;
+            Ok(ellipse.base().clone())
+        }
+        CurveKind::Parabola(parabola) => {
+            let mut parabola = parabola.clone();
+            ignore_status(parabola.make_nurb(curve.owner()))?;
+            Ok(parabola.base().clone())
+        }
+        CurveKind::Hyperbola(hyperbola) => {
+            let mut hyperbola = hyperbola.clone();
+            ignore_status(hyperbola.make_nurb(curve.owner()))?;
+            Ok(hyperbola.base().clone())
+        }
+        _ => Ok(base),
+    }
+}
+
+fn swung_surface(
+    kernel: &crate::kernel::Kernel,
+    path: &Curve,
+    profile: &Curve,
+    scale: f64,
+) -> Result<BSplineSurface> {
+    // The native builder obtains section data before trajectory data.
+    let profile = swung_nurb(kernel, profile)?;
+    let path = swung_nurb(kernel, path)?;
+    BSplineSurface::create_swung_surface(&profile, &path, scale)
+}
+
 impl PrimitiveCreation {
     /// Build swung surfaces for every B-spline-compatible path/profile pair.
     /// Only pair (0,0) initializes the scale, even if earlier slots were skipped.
@@ -114,24 +164,20 @@ impl PrimitiveCreation {
             let Some(path) = path.as_ref() else {
                 continue;
             };
-            let Some(path_nurb) = super::geometry::bspline(path) else {
+            if !path.is_kind_of(BSplineCurve::TYPE) {
                 continue;
-            };
+            }
             for (j, profile) in profiles.iter().enumerate() {
                 let Some(profile) = profile.as_ref() else {
                     continue;
                 };
-                let Some(profile_nurb) = super::geometry::bspline(profile) else {
+                if !profile.is_kind_of(BSplineCurve::TYPE) {
                     continue;
-                };
+                }
                 if i == 0 && j == 0 {
                     curve_scale = swung_curve_scale(a.kernel(brep)?, path, profile, approx_tol)?;
                 }
-                let surface = BSplineSurface::create_swung_surface(
-                    &profile_nurb,
-                    &path_nurb,
-                    scale * curve_scale,
-                )?;
+                let surface = swung_surface(a.kernel(brep)?, path, profile, scale * curve_scale)?;
                 let surface = Surface::from(surface);
                 let domain = surface.natural_uv_domain();
                 a.surface_faces(brep, surface, domain, &mut faces)?;
@@ -249,13 +295,15 @@ impl PrimitiveCreation {
 
     /// Sweep copies of the profiles along the path, optionally scaling and capping.
     /// Only `side_faces` is reset; cap output slots retain their upstream lifetime.
+    /// The scale reference retains its derived curve dispatch; path and scale use
+    /// B-spline copies, as in the upstream constructor.
     pub fn create_curve_sweep(
         &mut self,
         a: &mut impl PrimitiveAccess,
         brep: BrepId,
         profiles: &[Option<Curve>],
         path: &BSplineCurve,
-        scale_reference: Option<&BSplineCurve>,
+        scale_reference: Option<&Curve>,
         scale_curve: Option<&BSplineCurve>,
         approx_tol: f64,
         options: SweepOptions,
@@ -395,6 +443,63 @@ mod tests {
             scale,
             false,
         ))
+    }
+
+    #[test]
+    fn swung_builder_materializes_lazy_line_nurbs() -> Result<()> {
+        let p0 = Vec3::new(1.0, 0.0, 0.0);
+        let p1 = Vec3::new(1.0, 0.0, 1.0);
+        let t0 = Vec3::new(2.0, -1.0, 0.0);
+        let t1 = Vec3::new(2.0, 1.0, 0.0);
+        let profile = Line::create_line_segment(3, p0, p1, None)?;
+        let path = Line::create_line_segment(3, t0, t1, None)?;
+        let expected = Surface::from(BSplineSurface::create_swung_surface(
+            profile.base(),
+            path.base(),
+            0.5,
+        )?);
+        let lazy_profile = Line::from_points(p0, p1, 3);
+        let lazy_path = Line::from_points(t0, t1, 3);
+        assert!(lazy_profile.base().gw_nurb().is_none());
+        assert!(lazy_path.base().gw_nurb().is_none());
+        // Each input must reach its own virtual MakeNurb, including when both
+        // caches are empty. The old base copies fail before building a surface.
+        for (profile, path) in [
+            (lazy_profile.clone(), path.clone()),
+            (profile, lazy_path.clone()),
+            (lazy_profile, lazy_path),
+        ] {
+            let surface = Surface::from(swung_surface(
+                &Kernel::default(),
+                &Curve::from(path),
+                &Curve::from(profile),
+                0.5,
+            )?);
+            let domain = surface.natural_uv_domain();
+            assert_eq!(domain, expected.natural_uv_domain());
+            for i in 0..=4 {
+                for j in 0..=4 {
+                    let uv = domain.evaluate(f64::from(i) / 4.0, f64::from(j) / 4.0);
+                    assert_eq!(surface.evaluate_point(uv)?, expected.evaluate_point(uv)?,);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn swung_builder_keeps_an_existing_cached_nurb() -> Result<()> {
+        let kernel = Kernel::default();
+        let profile = imported_line(Vec3::new(2.0, 0.0, 0.0), Vec3::Z, 1.0);
+        let path = Curve::from(Line::from_points(Vec3::X, Vec3::X + Vec3::Y, 3));
+        let surface = Surface::from(swung_surface(&kernel, &path, &profile, 1.0)?);
+        let uv = surface.natural_uv_domain().min();
+        let point = surface.evaluate_point(uv)?;
+        // Surface construction uses the existing NURB, even though scale
+        // initialization above must use the original analytic evaluations.
+        assert_eq!(point.x, f64::from_bits(2.0_f64.to_bits() + 2));
+        assert_ne!(point.x, 2.0);
+        Ok(())
     }
 
     #[test]

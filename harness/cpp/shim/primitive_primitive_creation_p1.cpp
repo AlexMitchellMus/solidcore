@@ -55,6 +55,21 @@ SmBSplineCurve* pc1_curve(const double* data) {
     }
     return curve;
 }
+// Sweep fixtures cover the IsAnalytic/STEP-interval branch as well as B-splines.
+SmCurve* pc1_sweep_curve(const double* data, bool analytic) {
+    if(!analytic) return pc1_curve(data);
+    const SmVector3d origin(data[1],data[2],data[3]);
+    if(data[0]==0) return new(the_context()) SmLine(origin,
+        SmVector3d(data[4],data[5],data[6]),3,&the_context());
+    SmAxis2Placement frame(origin,SmVector3d(1,0,0),SmVector3d(0,1,0));
+    SmExtent1d interval(data[5],data[6]);
+    SmCircle* circle=nullptr;
+    if(SmCircle::CreateCanonical(the_context(),frame,data[4],circle,&interval)!=SM_SUCCESS) {
+        delete circle;
+        return nullptr;
+    }
+    return circle;
+}
 // N_CrvExtendByDist's G1 fallback reads a third control point after a
 // failed normalization, including on two-point lines. Check only the exact
 // extension stages selected by ExtendPathCurves; unextended huge lines remain
@@ -121,7 +136,7 @@ void pc1_samples(std::vector<double>& out, SmCurve* curve) {
 // op3 profile: count output_count tol, path block, profile blocks, existing output blocks.
 SC_EXPORT int32_t sc_primitive_primitive_creation_p1_eval(int32_t op, const double* data,
     int64_t n, double* out, int64_t cap, int64_t* len) {
-    if (!data || op<0 || op>5) return SC_ERR_ARG;
+    if (!data || op<0 || op>6) return SC_ERR_ARG;
     SC_TRY
     std::vector<double> values;
     if (op==0) {
@@ -197,7 +212,7 @@ SC_EXPORT int32_t sc_primitive_primitive_creation_p1_eval(int32_t op, const doub
         values.push_back(positioned.GetSize());
         for(ULONG i=0;i<positioned.GetSize();++i) pc1_samples(values,positioned[i]);
     } else if(op==4) {
-        if(n!=19 || data[0]<0 || data[0]>10) return SC_ERR_ARG;
+        if(n<19 || data[0]<0 || data[0]>10) return SC_ERR_ARG;
         const int shape=(int)data[0];
         SmAxis2Placement frame(SmVector3d(data[8],data[9],data[10]),SmVector3d(data[11],data[12],data[13]),SmVector3d(data[14],data[15],data[16]));
         auto record=[&](SmStatus status,SmBrep* b, Pc1Probe* p) {
@@ -237,11 +252,74 @@ SC_EXPORT int32_t sc_primitive_primitive_creation_p1_eval(int32_t op, const doub
             if(shape==5) status=primitive.CreateSphere(data[1],frame);
             if(shape==6) status=primitive.CreateTorus(data[1],data[2],frame);
             if(shape==7) { SmBrep* target=&b;status=primitive.CreateSphereNoPole(&the_context(),data[1],frame.GetOrigin(),data[7],target); }
-            if(shape==8) { SmBrep* target=&b;status=primitive.CreateConeEllipticEnds(data[1],data[2],data[3],data[4],data[5],data[6],0,data[7]!=0,target); }
-            if(shape==9) { SmTArray<SmCurve*> empty;status=primitive.CreateLinearSweep(empty,frame.GetZAxis(),data[1],data[7]!=0); }
+            if(shape==8) { SmBrep* target=&b;status=primitive.CreateConeEllipticEnds(data[1],data[2],data[3],data[4],data[5],data[6],n==20?data[19]:0,data[7]!=0,target); }
+            if(shape==9) {
+                SmTArray<SmCurve*> curves;
+                SmObjsDelete<SmCurve*> cleanup(&curves);
+                if(n!=19) {
+                    if(n<20 || data[19]<0 || data[19]>32 || data[19]!=(int)data[19] || n!=20+7*(int)data[19]) return SC_ERR_ARG;
+                    for(int i=0;i<(int)data[19];++i) {
+                        auto curve=pc1_sweep_curve(data+20+7*i,data[6]!=0);
+                        if(!curve) return -1010;
+                        curves.Add(curve);
+                    }
+                }
+                if(data[1]<0) {
+                    // The full-circle/cylinder branch hangs on its reversed V
+                    // domain. Preserve negative line/open-arc sweeps: only this
+                    // exact upstream branch is excluded (plan/upstream-issues.md).
+                    for(ULONG i=0;i<curves.GetSize();++i) {
+                        if(curves[i]->IsLinear()) continue;
+                        SmAxis2Placement arc_frame;
+                        double radius=0,start=0,end=0;
+                        if(curves[i]->IsArc(8,b.GetTolerance(),arc_frame,radius,start,end)
+                           && end-start<360.0+b.GetTolerance() && end-start>360.0-b.GetTolerance()
+                           && arc_frame.GetZAxis().IsParallelTo(frame.GetZAxis(),0.5)) return -1010;
+                    }
+                }
+                cleanup.Clear(); // CreateLinearSweep consumes every input, including on error.
+                status=primitive.CreateLinearSweep(curves,frame.GetZAxis(),data[1],data[7]!=0);
+            }
             if(shape==10) { SmBrep other(SM_USE_DEFAULT,SM_USE_DEFAULT,const_cast<SmContext*>(&the_context()));SmBrep initial(SM_USE_DEFAULT,SM_USE_DEFAULT,const_cast<SmContext*>(&the_context()));SmBrep* result=data[6]!=0?&initial:nullptr;status=primitive.Boolean2D(&b,&other,(sc_pc1_BooleanType)(int)data[1],result);values.push_back(result?1.0:0.0); }
             record(status,&b,&primitive);
         }
+    } else if(op==6) {
+        if(n<7 || data[4]<0 || data[4]>4 || data[5]<0 || data[5]>4 ||
+           data[4]!=(int)data[4] || data[5]!=(int)data[5] || n!=7+7*((int)data[4]+(int)data[5])) return SC_ERR_ARG;
+        SmBrep a(SM_USE_DEFAULT,SM_USE_DEFAULT,const_cast<SmContext*>(&the_context()));
+        auto b=new(the_context()) SmBrep(SM_USE_DEFAULT,SM_USE_DEFAULT,const_cast<SmContext*>(&the_context()));
+        SmObjDelete clean_b(b);
+        int at=7;
+        for(auto pair : {std::make_pair(&a,(int)data[4]),std::make_pair(b,(int)data[5])}) {
+            for(int i=0;i<pair.second;++i,at+=7) {
+                auto f=data+at;
+                const auto angle=SM_DEG2RAD(f[1]);
+                SmAxis2Placement frame(SmVector3d(0,0,f[2]),SmVector3d(1,0,0),SmVector3d(0,smos_Cosine(angle),smos_Sine(angle)));
+                SmSurface* surface=nullptr;
+                if(f[0]==0) {
+                    SmPlane* plane=nullptr;SmPlane::CreateCanonical(the_context(),frame,plane);
+                    if(!plane) return -1010;
+                    plane->AdjustSTEPUVDomain(SmExtent2d(f[3],f[4],f[5],f[6]));surface=plane;
+                } else {
+                    SmSphere* sphere=nullptr;SmSphere::CreateCanonical(the_context(),frame,1,sphere);
+                    if(!sphere) return -1010;
+                    surface=sphere;
+                }
+                SmExtent2d domain(f[3],f[4],f[5],f[6]);
+                SmFace* face=nullptr;
+                if(pair.first->CreateFaceFromSurface(surface,domain,face)!=SM_SUCCESS) return -1010;
+            }
+        }
+        a.SetTolerance(data[6]); b->SetTolerance(data[6]);
+        a.m_bEditingEnabled=data[2]!=0; b->m_bEditingEnabled=data[3]!=0;
+        Pc1Probe primitive(a.GetInfiniteRegion(),17,true);
+        SmBrep initial(SM_USE_DEFAULT,SM_USE_DEFAULT,const_cast<SmContext*>(&the_context()));
+        SmBrep* result=data[1]!=0?&initial:nullptr;
+        auto status=primitive.Boolean2D(&a,b,(sc_pc1_BooleanType)(int)data[0],result);
+        // On success Boolean2D deletes B and returns A. On error/empty input B survives.
+        const bool consumed=result==&a;
+        if(consumed) clean_b.Clear();
+        values.insert(values.end(),{st(status),flg(a.m_bEditingEnabled),consumed?-1.0:flg(b->m_bEditingEnabled),result?1.0:0.0});
     } else {
         if(n!=13) return SC_ERR_ARG;
         SmBSplineCurve* curve=pc1_curve(data); SmObjDelete clean_curve(curve);

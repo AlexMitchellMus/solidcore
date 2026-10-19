@@ -68,6 +68,7 @@ pub(super) fn finish(
     operation: Boolean2d,
     result: &mut Option<Brep>,
     marks: (&mut Marks, &mut Marks),
+    notifications: &mut edge::NotifyEnv<'_>,
 ) -> Result<()> {
     let tolerance = crate::math::max2(a.tolerance(), b.tolerance());
     // Preserve the constructor's explicit tolerances when wiring the pending
@@ -187,7 +188,15 @@ pub(super) fn finish(
                     original.clone_for_evaluation()?
                 };
                 let domain = surface.natural_uv_domain();
-                covering = detailed_face(k, a, a.infinite_region(), boundary, surface, domain)?;
+                covering = detailed_face(
+                    k,
+                    a,
+                    a.infinite_region(),
+                    boundary,
+                    surface,
+                    domain,
+                    notifications,
+                )?;
             }
         }
         ignore_status(delete_faces(k, a, &mut intersections, &delete))?;

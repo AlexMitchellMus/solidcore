@@ -67,9 +67,11 @@ fn endpoints(a: &impl SweepAccess, edge: EdgeRef) -> Result<(VertexRef, VertexRe
     Ok(((edge.0, first), (edge.0, second)))
 }
 fn set_edge_tolerance(a: &mut impl SweepAccess, edge: EdgeRef, tolerance: f64) -> Result<()> {
+    let tolerance = crate::geom::tol::zone_tol3d(a.kernel(edge.0)?, tolerance);
     edge::set_tolerance(a.brep_mut(edge.0)?, edge.1, tolerance, true, true)
 }
 fn set_vertex_tolerance(a: &mut impl SweepAccess, vertex: VertexRef, tolerance: f64) -> Result<()> {
+    let tolerance = crate::geom::tol::zone_tol3d(a.kernel(vertex.0)?, tolerance);
     vertex::set_tolerance(a.brep_mut(vertex.0)?, vertex.1, tolerance, true, true)
 }
 fn add_unique<T: PartialEq>(list: &mut Vec<T>, item: T) {
@@ -588,7 +590,9 @@ impl TopologySweep {
         })?;
         a.set_face_tolerance(built.face, tolerance)?;
         for (i, old) in originals.into_iter().enumerate() {
-            let new = required(built.curve_edges.get(i).copied().flatten())?;
+            let Some(new) = required(built.curve_edges.get(i).copied())? else {
+                continue;
+            };
             set_edge_tolerance(a, new, required(tolerances.get(i).copied())?)?;
             self.set_same(Some(e(old)), Some(e(new)));
             let (s, t) = endpoints(a, old)?;
@@ -1219,9 +1223,34 @@ mod tests {
     use crate::sweep::trans_sweep_geometry::TranslationalSweepGeometry;
     use crate::topology::{Brep, BrepId, EdgeId, FaceId, Region, RegionId, ShellId};
 
+    fn notification_object(entity: crate::EntityRef) -> crate::geom::object::ObjectRef {
+        let (kind, index) = match entity {
+            crate::EntityRef::Brep(v) => (16011, v.index()),
+            crate::EntityRef::Shell(v) => (16013, v.index()),
+            crate::EntityRef::Face(v) => (16002, v.index()),
+            crate::EntityRef::Loop(v) => (16003, v.index()),
+            crate::EntityRef::Edge(v) => (16016, v.index()),
+            crate::EntityRef::Vertex(v) => (16021, v.index()),
+            crate::EntityRef::Region(v) => (16012, v.index()),
+            crate::EntityRef::Faceuse(v) => (16022, v.index()),
+            crate::EntityRef::Loopuse(v) => (16004, v.index()),
+            crate::EntityRef::Edgeuse(v) => (16005, v.index()),
+            crate::EntityRef::Vertexuse(v) => (16006, v.index()),
+        };
+        crate::geom::object::ObjectRef {
+            key: crate::geom::attribute::ObjectKey((kind as u64) << 32 | u64::from(index)),
+            type_code: kind,
+        }
+    }
+
     #[derive(Default)]
     struct Access {
         kernel: Kernel,
+        notification_records: std::collections::BTreeMap<
+            crate::geom::attribute::ObjectKey,
+            crate::topology::topology::Topology,
+        >,
+        notification_attributes: crate::geom::attribute::AttributeStore,
         breps: Vec<Brep>,
         deleted: Vec<BrepId>,
         deleted_merges: usize,
@@ -1262,13 +1291,109 @@ mod tests {
             }
             Ok(&mut self.kernel)
         }
+        fn with_brep_mut<T>(
+            &mut self,
+            id: BrepId,
+            body: impl FnOnce(
+                &mut Kernel,
+                &mut Brep,
+                &dyn Fn(FaceId) -> crate::geom::object::ObjectRef,
+                &mut edge::NotifyEnv<'_>,
+            ) -> Result<T>,
+        ) -> Result<T> {
+            let brep = self
+                .breps
+                .get_mut(id.index() as usize)
+                .ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
+            let face_objects = |face: FaceId| crate::geom::object::ObjectRef {
+                type_code: crate::geom::assert_array::labels::FACE_TYPE,
+                key: crate::geom::attribute::ObjectKey(
+                    100_000 + u64::from(id.index()) * 10_000 + u64::from(face.index()) * 97,
+                ),
+            };
+            let key_of = |entity: crate::EntityRef| {
+                if let crate::EntityRef::Face(face) = entity {
+                    face_objects(face)
+                } else {
+                    notification_object(entity)
+                }
+            };
+            let mut notifications = edge::NotifyEnv {
+                records: &mut self.notification_records,
+                attributes: &mut self.notification_attributes,
+                context: None,
+                key_of: &key_of,
+            };
+            body(&mut self.kernel, brep, &face_objects, &mut notifications)
+        }
+        fn with_breps_mut<T>(
+            &mut self,
+            source: BrepId,
+            destination: BrepId,
+            body: impl FnOnce(
+                &mut Kernel,
+                &mut Brep,
+                &mut Brep,
+                &dyn Fn(FaceId) -> crate::geom::object::ObjectRef,
+                &mut edge::NotifyEnv<'_>,
+            ) -> Result<T>,
+        ) -> Result<T> {
+            let si = source.index() as usize;
+            let di = destination.index() as usize;
+            if si == di {
+                return Err(SolidError::invalid_input(
+                    "sweep test model",
+                    "aliased B-reps",
+                ));
+            }
+            let (left, right) = self
+                .breps
+                .split_at_mut_checked(si.max(di))
+                .ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
+            let (src, dst) = if si < di {
+                (left.get_mut(si), right.first_mut())
+            } else {
+                (right.first_mut(), left.get_mut(di))
+            };
+            let src = src.ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
+            let dst = dst.ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
+            let face_objects = |face: FaceId| crate::geom::object::ObjectRef {
+                type_code: crate::geom::assert_array::labels::FACE_TYPE,
+                key: crate::geom::attribute::ObjectKey(
+                    100_000
+                        + u64::from(destination.index()) * 10_000
+                        + u64::from(face.index()) * 97,
+                ),
+            };
+            let key_of = |entity: crate::EntityRef| {
+                if let crate::EntityRef::Face(face) = entity {
+                    face_objects(face)
+                } else {
+                    notification_object(entity)
+                }
+            };
+            let mut notifications = edge::NotifyEnv {
+                records: &mut self.notification_records,
+                attributes: &mut self.notification_attributes,
+                context: None,
+                key_of: &key_of,
+            };
+            body(
+                &mut self.kernel,
+                src,
+                dst,
+                &face_objects,
+                &mut notifications,
+            )
+        }
         fn new_brep(&mut self, _: BrepId) -> Result<BrepId> {
             let id = BrepId::from_index(self.breps.len() as u32);
             let mut brep = Brep::new();
-            brep.add_region_record(Region {
+            let region = brep.add_region_record(Region {
                 in_brep: true,
-                ..Default::default()
+                ..Region::default()
             })?;
+            brep.set_infinite_region(Some(region));
             self.breps.push(brep);
             Ok(id)
         }
@@ -1370,8 +1495,8 @@ mod tests {
                 Ok(Vec::new())
             } else {
                 Err(SolidError::Unported {
-                    unit: "topology.brep_p6",
-                    upstream: "SmBrep::CopyEdges",
+                    unit: "topology.brep_p5",
+                    upstream: "SmBrep::CreateWireEdgeFromCurve",
                 })
             }
         }
@@ -1443,7 +1568,7 @@ mod tests {
         assert!(matches!(
             result,
             Err(SolidError::Unported {
-                unit: "topology.brep_p6",
+                unit: "topology.brep_p5",
                 ..
             })
         ));
@@ -1541,6 +1666,64 @@ mod tests {
             ]
         );
         assert!(!access.kernel.context.doing_boolean());
+    }
+    #[test]
+    fn tolerance_helpers_apply_zone_conversion_in_the_entity_context() {
+        use crate::topology::{Edge, Edgeuse, Vertex, Vertexuse};
+        for (input, expected) in [
+            (-0.25, 0.25),
+            (crate::geom::tol::USE_DEFAULT, 0.125),
+            (0.03125, 0.03125),
+        ] {
+            let mut access = Access::new();
+            access.kernel.tolerances.zone_tol_3d = 0.125;
+            let b = BrepId::from_index(0);
+            let brep = access.brep_mut(b).unwrap();
+            let v1 = brep.add_vertex_record(Vertex::default()).unwrap();
+            let v2 = brep.add_vertex_record(Vertex::default()).unwrap();
+            let v3 = brep.add_vertex_record(Vertex::default()).unwrap();
+            let vu1 = brep
+                .add_vertexuse_record(Vertexuse {
+                    vertex: Some(v1),
+                    ..Vertexuse::default()
+                })
+                .unwrap();
+            let vu2 = brep
+                .add_vertexuse_record(Vertexuse {
+                    vertex: Some(v2),
+                    ..Vertexuse::default()
+                })
+                .unwrap();
+            let e = EdgeId::from_index(0);
+            let eu1 = brep
+                .add_edgeuse_record(Edgeuse {
+                    edge: Some(e),
+                    vertexuse: Some(vu1),
+                    ..Edgeuse::default()
+                })
+                .unwrap();
+            let eu2 = brep
+                .add_edgeuse_record(Edgeuse {
+                    edge: Some(e),
+                    vertexuse: Some(vu2),
+                    ..Edgeuse::default()
+                })
+                .unwrap();
+            brep.add_edge_record(Edge {
+                vertices: [v1, v2],
+                edgeuses: vec![eu1, eu2],
+                tolerance: 0.0,
+                ..Edge::new([v1, v2])
+            })
+            .unwrap();
+            set_edge_tolerance(&mut access, (b, e), input).unwrap();
+            set_vertex_tolerance(&mut access, (b, v3), input).unwrap();
+            let brep = access.brep(b).unwrap();
+            assert_eq!(brep.edge(e).unwrap().tolerance, expected);
+            for vertex in [v1, v2, v3] {
+                assert_eq!(brep.vertex(vertex).unwrap().tolerance, expected);
+            }
+        }
     }
     #[test]
     fn merge_notifications_are_released_after_an_error() {

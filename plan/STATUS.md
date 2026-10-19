@@ -1,20 +1,47 @@
 # solidcore status
 
 Last updated: 2026-10-19, PR #250 (`primitive.primitive_creation_p2` partial: 127 bit-identical passes, 150 deferred, 6 guarded rejections). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
+Last updated: 2026-10-19, PR #233 second review (`primitive.primitive_creation_p3` partial: 284 bit-identical passes, 8 deferred, 1 UB-78 rejection). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
 Latest port: `primitive.primitive_creation_p2` ([PR #250](https://github.com/tangency-labs/solidcore/pull/250)) implements all twelve owned functions through `PrimitiveCreationAccess`, stacked on #233. Native comparisons certify the entry checks and the state they leave; construction tails await the B-rep units. Building the harness found UB-195, HANG-35 and WR-191. See the final validation entry below.
 
 Previous port: `primitive.primitive_creation_p3` ([PR #233](https://github.com/tangency-labs/solidcore/pull/233)) implements all eight owned functions through `PrimitiveAccess`/`SweepAccess`. Native comparisons certify the ruled-surface helper and early/empty entry paths; successful construction and topology tails await dependencies and a concrete adapter.
 
-Previous port integration: `sweep.topology_sweep` ([PR #222](https://github.com/tangency-labs/solidcore/pull/222)) implements the complete sweep orchestration through an explicit `SweepAccess` service boundary. The 567-case gate compares maps, stitch-callback decisions, options and edge-profile tags; topology creation and whole-B-rep/HCR/merge/stitch paths await dependencies and are not claimed as differential coverage. Safety regression tests cover failed traversal progress, temporary ownership, context restoration and consuming union across repetitions. A concrete production access adapter remains integration work; see `plan/findings.md`.
+Previous port integration: `sweep.topology_sweep` ([PR #222](https://github.com/tangency-labs/solidcore/pull/222)) implements the complete sweep orchestration through an explicit `SweepAccess` service boundary. The 568-case gate compares maps, stitch-callback decisions, options and edge-profile tags; topology creation and whole-B-rep/HCR/merge/stitch paths await dependencies and are not claimed as differential coverage. Safety regression tests cover failed traversal progress, temporary ownership, context restoration and consuming union across repetitions. Review integration wires available B-rep/shell queries, copying, face construction and binormal evaluation, corrects the stitch owner to `heal.stitch_p2`, and converts edge/vertex tolerances through the owning kernel. A concrete production access adapter remains integration work, tracked in [issue #255](https://github.com/tangency-labs/solidcore/issues/255); see `plan/findings.md`.
+
 
 Last updated: 2026-10-17, PR #213 (`primitive.primitive_creation_p1` partial: 661 bit-identical passes, 17 dependency deferrals, one UB-57 construction preflight rejection). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
+
+Last updated: 2026-10-19, PR #213 review (`primitive.primitive_creation_p1` partial: 689 exact passes, 75 dependency deferrals, 9 rejected native fixtures). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
 Latest topology integration: `topology.brep_p6` partial (PR #169, after its dependency #154: 498 cases, 450 pass, 48 deferred, 0 failed; 206 units, 113 green and 93 partial); before: `topology.shell` partial (PR #154, continuing @0xlillith's PR #80: 192 ported units, 109 green and 83 partial); before: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green); before: `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
 
 Latest main integration: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green).
 
 Latest unit: `intersect.curve_class_p9` ([PR #151](https://github.com/bherbruck/solidcore/pull/151)) is partial on a standalone official-main base: review validation has 424 differential cases, 225 bit-identical passes, 197 dependency deferrals, 2 native setup rejections and zero failures. It ports edge and trim-boundary intersections with concrete query handle mappings. Pole lookup now matches the native FALSE default; collapsed caches, wider input ranges and positive endpoint classification are covered. Interior partition insertion awaits part 2. No open dependency PR is bundled. The manifest has 195 ported units (108 green, 87 partial); final integration results are recorded in the PR checks.
+
+
+## Port review note (2026-10-18, issue #210)
+
+Carry forward [issue #210](https://github.com/tangency-labs/solidcore/issues/210)
+when extending or reviewing partial ports:
+
+- Stub the missing call and retain the upstream logic after it. A function that stops
+  at its first missing callee does not establish completion of its assigned body.
+- Separate successful operations that change geometry/topology from refusals, empty
+  results, no-ops and guard assertions. `partial`, `max_rel_err=0` and `with_values`
+  alone do not certify the success paths; record the unexercised operations explicitly.
+- Treat B-rep `Notify` integration as a critical dependency for meaningful topology
+  coverage, and coordinate the canonical `Brep` fields and editing state across ports.
+- Review defaults and unreachable tails against upstream before their dependencies
+  land. Merge current main before readiness, wire stale stubs, and rerun affected
+  topology units with expanded seeds when the shared dependencies become available.
+
+These are review/handoff notes from the issue, not a claim that its proposed process
+or reporting changes have already been implemented. For cone follow-up #207, the
+rejection fixtures compare only the native guard (Rust runs on them but its result is
+not compared) and the missing general Cone adapter remains an explicit dependency
+deferral.
 
 
 ## Integration update (2026-10-15, PR #119)
@@ -1023,19 +1050,23 @@ Review verification: the extended 256-seed run has 380 cases, 291 bit-identical
 passes, zero failures and 89 query deferrals. Perturbation detects every compared
 case (108/108 default, 291/291 extended).
 
-## primitive.primitive_creation_p1 — PR #213 (2026-10-17)
+## primitive.primitive_creation_p1 — PR #213 (review, 2026-10-19)
 
-Partial port of the primitive state/maps, pivot and planar-path helpers, primitive
-constructors, analytic rotational sweep, pole-free sphere assembly, elliptic-ended
-cone and planar boolean control. Dependency PR #145 is merged into this branch;
-its B-rep state and ordered collections are reused.
+Ports primitive state/maps and all owned non-debug control flow, including the
+pivot/path helpers, primitive constructors, analytic sweep and planar boolean.
+Merged canonical main `5040b0b2`, retaining its current B-rep p1 code and reports;
+dependency #145 has landed. The two `MakeFaceWithCurves` adapters now use p7.
+`Boolean2D` uses upstream's 0.0001-degree normal tolerance. Added kernel tests for
+that boundary, edit/context/result restoration, and plane coverage before the
+intersection dependency. The bottom cylindrical-box points retain signed zero.
 
-Default native differential result: 689 cases, 667 passes with zero relative
-error, zero failures, 17 deferred and five native preflight rejections (UB-57 and the
-two-point G1 fallback). Passing
-cases compare geometry helper outputs or real error/status/state records; primitive
-construction/topology mutations remain deferred and are not claimed as certified.
-See `plan/findings.md` for branch witnesses and the exact dependency breakdown.
+Native differential result: 773 cases, 689 exact passes, zero failures,
+75 deferred and nine rejected. New fixtures include 32 nonempty/empty boolean
+validation cases, four independent rear-X tilts and 48 nonempty sweeps with B-spline and real analytic generators (four
+negative full-circle inputs reproduce a native hang and are rejected precisely
+at the analytic-cylinder branch). No primitive topology, cap mutation or
+post-intersection boolean mutation is certified by deferred cases. Details and
+the native GDB trace are summarized in `plan/findings.md` / `upstream-issues.md`.
 
 Validation: fmt, normal/native Clippy, 1,292 kernel tests, wasm32, four native FFI
 tests, all 667 perturbations detected and 1,000 fuzz mutations with zero
@@ -1076,6 +1107,40 @@ Review sensitivity: 284/284 perturbations detected. The 300-mutation campaign
 executes 78 cases, rejects 163 and classifies 59 as malformed, with zero
 differences, crashes, panics or timeouts. This is bounded harness coverage.
 
+Validation after the p10 integration: fmt, default/native Clippy, 1398 kernel
+tests, wasm32, five native FFI tests, p7/p10 differential reruns, 689/689
+perturbations detected, and two focused 500-case fuzz runs with no differences,
+crashes, panics or timeouts.
+
+The analytic sweep fixtures exposed lazy-line NURB construction and owner-side
+reparameterization in surface.surf_of_extrusion_p1. Both now follow the virtual
+upstream path, preserving the IsLinear domain snapshot before GetEnds. Six new
+regressions bring its exact differential passes to 2061/2061. The final local
+--green gate completed: 213 units, 114 passed, 99 partial, zero failed.
+
+
+## PR #233 scale-reference dispatch review (2026-10-19)
+
+Curve-sweep scaling keeps the caller's original Curve for virtual queries; path,
+profile and scale-curve NURB copies retain the explicit upstream behavior. A third
+exact derived-dispatch regression exercises public preparation and distinguishes
+an analytic line from its cached NURB. The swung builder also fills missing
+analytic NURBs in native section/trajectory order, preserving existing caches.
+Two regressions cover lazy profile/path/both and an existing two-ULP cache.
+Native derived construction remains deferred.
+Canonical main 4db3d660 and dependency heads #213 92005b59 / #222 86c7eb33 are
+integrated. Caller notification state and mutable destination contexts follow
+their current B-rep contracts; available p3 service defaults call the existing ports.
+
+Validation: fmt (including included runners), plain/native Clippy, 1,442 kernel
+tests, wasm32 and the native p3 FFI guard test pass. Affected native gates:
+p3 293/284 passed/8 deferred/1 rejected; p1 773/689/75/9;
+topology sweep 568/554/14/0; API B-rep 573/306/267/0;
+API surfaces 882/831/51/0; B-rep p7 316/197/119/0. All have zero failures
+and maximum relative error zero. P3 sensitivity detects 284/284 comparisons.
+The 300-mutation harness run executes 78 cases, rejects 163 and classifies 59
+as malformed: zero differences, crashes, panics or timeouts. These results do
+not certify the deferred construction or production-adapter paths.
 PR #250 (`primitive.primitive_creation_p2`): twelve owned functions implemented
 through `PrimitiveCreationAccess` (extends p3's `PrimitiveAccess`); final
 differential gate 283 cases, 127 exact passes (entry checks and the state they
