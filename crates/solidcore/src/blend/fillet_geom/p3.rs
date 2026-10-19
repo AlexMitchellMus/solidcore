@@ -517,7 +517,8 @@ impl FilletBrep {
     /// # Errors
     ///
     /// `SM_ERR_NULL_POINTER` for a use without fillet geometry, a geometry without
-    /// fillet surface, or a missing primary edge use, mate, vertex or solver; `SM_ERR`
+    /// fillet surface, a missing primary edge use, mate, vertex or solver, or (without a
+    /// 3D curve) an edge without fillet corner (upstream reads its context); `SM_ERR`
     /// when neither end vertex is processed, or (status
     /// `SM_FE_END_PNT_DROP_FAILURE`) when an end point does not drop onto the curve;
     /// [`SolidError::InvalidInput`] for a solver missing from `solvers`; those of
@@ -600,6 +601,8 @@ impl FilletBrep {
             let start_pnt = self.vertex_point(start_fv)?;
             let end_pnt = self.vertex_point(end_fv)?;
             let dir = end_pnt - start_pnt;
+            // m_cpCorner->GetContext(): the edge's own corner is dereferenced
+            self.fillet_edge(e)?.fillet_corner().ok_or_else(nul)?;
             // UNPORTED(blend.fillet_geom_p2): sm_SrfSrfIntersection
             return unported_on(
                 (
@@ -820,13 +823,11 @@ impl FilletBrep {
                     let tol = EFF_ZERO;
                     let mut tsect = self.fillet_vertexuse(vu)?.tsect_pnt().clone();
                     let mut uv = tsect.uv_pos(SrfIndex::First);
-                    let base_surf1 = off(&*solver, 0)?;
-                    if check_seam_out(base_surf1.base_surface(), &mut uv, tol, surf_closure1) {
+                    if check_seam_out(surf1.base_surface(), &mut uv, tol, surf_closure1) {
                         *tsect.uv_pos_mut(SrfIndex::First) = uv;
                     }
                     let mut uv = tsect.uv_pos(SrfIndex::Second);
-                    let base_surf2 = off(&*solver, 1)?;
-                    if check_seam_out(base_surf2.base_surface(), &mut uv, tol, surf_closure2) {
+                    if check_seam_out(surf2.base_surface(), &mut uv, tol, surf_closure2) {
                         *tsect.uv_pos_mut(SrfIndex::Second) = uv;
                     }
                     self.fillet_vertexuse_mut(vu)?.set_tsect_pnt(&tsect);
@@ -943,12 +944,8 @@ impl FilletBrep {
         if !fillet_created {
             let fi_surf1 = offset_as_surface(&off(&*solver, 0)?);
             let fi_surf2 = offset_as_surface(&off(&*solver, 1)?);
-            solver
-                .solver()
-                .setup_offset_extension(k, &fi_surf1, &mut domain1)?;
-            solver
-                .solver()
-                .setup_offset_extension(k, &fi_surf2, &mut domain2)?;
+            solver.setup_offset_extension(k, &fi_surf1, &mut domain1)?;
+            solver.setup_offset_extension(k, &fi_surf2, &mut domain2)?;
             // Setup FilletIntersector
             let mut fi = FilletIntersector::new(&fi_surf1, &domain1, &fi_surf2, &domain2, Some(g))?;
 
@@ -1119,13 +1116,13 @@ impl FilletBrep {
         target: &Brep,
     ) -> Result<FilletGeomId> {
         // 1. initialize output value - a new SmFilletGeom (the 2nd child geom)
-        let new_fillet_geom =
-            self.add_geom(new_solver_fillet_geom(k, solver_id, solver, new_geom_type)?);
-
-        // GetFilletExecutive()->GetPseudoBrep() is this pseudo B-rep
+        // GetFilletExecutive()->GetPseudoBrep() is this pseudo B-rep (checked first, so
+        // the error path leaves no orphan geometry; upstream dereferences NULL here)
         if solver.executive.is_none() {
             return Err(invalid(OP_SPLIT, "solver without fillet executive"));
         }
+        let new_fillet_geom =
+            self.add_geom(new_solver_fillet_geom(k, solver_id, solver, new_geom_type)?);
 
         let geom_type = self.geom(g)?.fillet_geom_type();
         let mut new_vert = [None; 2];
@@ -1358,7 +1355,9 @@ fn add_fillet_vertex(corner: FilletCornerId, v: VertexId) -> Result<()> {
     )
 }
 
-/// `SmFilletCorner::GetCornerType` (unit `blend.fillet_corner_p1`).
+/// `SmFilletCorner::GetCornerType` (unit `blend.fillet_corner_p1`): an inline pure
+/// virtual of `SmFilletCorner.h` with no owner in `harness/callgraph/units.json`; it is
+/// tagged with the unit that ports `SmFilletCorner`, whose corners implement it.
 fn corner_type(corner: FilletCornerId) -> Result<FilletCornerType> {
     // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::GetCornerType
     unported_on(
@@ -1496,6 +1495,8 @@ mod tests {
             )
             .unwrap_err();
         assert!(matches!(e, SolidError::InvalidInput { .. }), "{e:?}");
+        // no orphan geometry is left behind
+        assert_eq!(fb.geoms().len(), 1);
     }
 
     #[test]
