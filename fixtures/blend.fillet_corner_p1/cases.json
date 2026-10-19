@@ -1,0 +1,1764 @@
+{
+ "cases": [
+  {
+   "name": "planar_triangle",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "planar",
+    "points": [
+     [
+      0,
+      0,
+      0
+     ],
+     [
+      1,
+      0,
+      0
+     ],
+     [
+      0,
+      1,
+      0
+     ]
+    ],
+    "tol": 1e-06
+   }
+  },
+  {
+   "name": "planar_triangle_tilted",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "planar",
+    "points": [
+     [
+      1,
+      2,
+      3
+     ],
+     [
+      4,
+      -1,
+      0.5
+     ],
+     [
+      -2,
+      0.3,
+      7
+     ]
+    ],
+    "tol": 0.0
+   }
+  },
+  {
+   "name": "planar_bilinear",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "planar",
+    "points": [
+     [
+      0,
+      0,
+      0
+     ],
+     [
+      1,
+      0,
+      0
+     ],
+     [
+      1,
+      1,
+      0.2
+     ],
+     [
+      0,
+      1,
+      0
+     ]
+    ],
+    "tol": 1e-06
+   }
+  },
+  {
+   "name": "planar_collinear",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "planar",
+    "points": [
+     [
+      0,
+      0,
+      0
+     ],
+     [
+      1,
+      1,
+      1
+     ],
+     [
+      2,
+      2,
+      2
+     ]
+    ],
+    "tol": 1e-06
+   }
+  },
+  {
+   "name": "planar_coincident",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "planar",
+    "points": [
+     [
+      1,
+      1,
+      1
+     ],
+     [
+      1,
+      1,
+      1
+     ],
+     [
+      1,
+      1,
+      1
+     ]
+    ],
+    "tol": 1e-06
+   }
+  },
+  {
+   "name": "planar_two_points",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "planar",
+    "points": [
+     [
+      0,
+      0,
+      0
+     ],
+     [
+      1,
+      0,
+      0
+     ]
+    ],
+    "tol": 1e-06
+   }
+  },
+  {
+   "name": "planar_five_points",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "planar",
+    "points": [
+     [
+      0,
+      0,
+      0
+     ],
+     [
+      1,
+      0,
+      0
+     ],
+     [
+      1,
+      1,
+      0
+     ],
+     [
+      0,
+      1,
+      0
+     ],
+     [
+      0.5,
+      1.5,
+      0
+     ]
+    ],
+    "tol": 1e-06
+   }
+  },
+  {
+   "name": "planar_none",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "planar",
+    "points": [],
+    "tol": 1e-06
+   }
+  },
+  {
+   "name": "planar_tiny_scale",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "planar",
+    "points": [
+     [
+      0,
+      0,
+      0
+     ],
+     [
+      1e-07,
+      0,
+      0
+     ],
+     [
+      0,
+      1e-07,
+      0
+     ]
+    ],
+    "tol": 0.0
+   }
+  },
+  {
+   "name": "planar_huge_scale",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "planar",
+    "points": [
+     [
+      0,
+      0,
+      0
+     ],
+     [
+      100000000.0,
+      0,
+      0
+     ],
+     [
+      0,
+      100000000.0,
+      30000000.0
+     ]
+    ],
+    "tol": 0.0
+   }
+  },
+  {
+   "name": "revolution_cylinder_quarter",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "revolution",
+    "curves": [
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        1,
+        0,
+        0,
+        1.0
+       ],
+       [
+        1,
+        0,
+        1,
+        1.0
+       ]
+      ],
+      "p": 1,
+      "u": [
+       0,
+       0,
+       1,
+       1
+      ]
+     },
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        1,
+        0,
+        1,
+        1
+       ],
+       [
+        0.7071067811865476,
+        0.7071067811865476,
+        0.7071067811865476,
+        0.7071067811865476
+       ],
+       [
+        0,
+        1,
+        1,
+        1
+       ]
+      ],
+      "p": 2,
+      "u": [
+       0,
+       0,
+       0,
+       1,
+       1,
+       1
+      ]
+     },
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        0,
+        1,
+        1,
+        1.0
+       ],
+       [
+        0,
+        1,
+        0,
+        1.0
+       ]
+      ],
+      "p": 1,
+      "u": [
+       0,
+       0,
+       1,
+       1
+      ]
+     },
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        0,
+        1,
+        0,
+        1
+       ],
+       [
+        0.7071067811865476,
+        0.7071067811865476,
+        0,
+        0.7071067811865476
+       ],
+       [
+        1,
+        0,
+        0,
+        1
+       ]
+      ],
+      "p": 2,
+      "u": [
+       0,
+       0,
+       0,
+       1,
+       1,
+       1
+      ]
+     }
+    ],
+    "major": 1,
+    "tol": 1e-06
+   }
+  },
+  {
+   "name": "revolution_cylinder_major_bottom",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "revolution",
+    "curves": [
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        1,
+        0,
+        0,
+        1.0
+       ],
+       [
+        1,
+        0,
+        1,
+        1.0
+       ]
+      ],
+      "p": 1,
+      "u": [
+       0,
+       0,
+       1,
+       1
+      ]
+     },
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        1,
+        0,
+        1,
+        1
+       ],
+       [
+        0.7071067811865476,
+        0.7071067811865476,
+        0.7071067811865476,
+        0.7071067811865476
+       ],
+       [
+        0,
+        1,
+        1,
+        1
+       ]
+      ],
+      "p": 2,
+      "u": [
+       0,
+       0,
+       0,
+       1,
+       1,
+       1
+      ]
+     },
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        0,
+        1,
+        1,
+        1.0
+       ],
+       [
+        0,
+        1,
+        0,
+        1.0
+       ]
+      ],
+      "p": 1,
+      "u": [
+       0,
+       0,
+       1,
+       1
+      ]
+     },
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        0,
+        1,
+        0,
+        1
+       ],
+       [
+        0.7071067811865476,
+        0.7071067811865476,
+        0,
+        0.7071067811865476
+       ],
+       [
+        1,
+        0,
+        0,
+        1
+       ]
+      ],
+      "p": 2,
+      "u": [
+       0,
+       0,
+       0,
+       1,
+       1,
+       1
+      ]
+     }
+    ],
+    "major": 3,
+    "tol": 1e-06
+   }
+  },
+  {
+   "name": "revolution_major_not_arc",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "revolution",
+    "curves": [
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        1,
+        0,
+        0,
+        1.0
+       ],
+       [
+        1,
+        0,
+        1,
+        1.0
+       ]
+      ],
+      "p": 1,
+      "u": [
+       0,
+       0,
+       1,
+       1
+      ]
+     },
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        1,
+        0,
+        1,
+        1
+       ],
+       [
+        0.7071067811865476,
+        0.7071067811865476,
+        0.7071067811865476,
+        0.7071067811865476
+       ],
+       [
+        0,
+        1,
+        1,
+        1
+       ]
+      ],
+      "p": 2,
+      "u": [
+       0,
+       0,
+       0,
+       1,
+       1,
+       1
+      ]
+     },
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        0,
+        1,
+        1,
+        1.0
+       ],
+       [
+        0,
+        1,
+        0,
+        1.0
+       ]
+      ],
+      "p": 1,
+      "u": [
+       0,
+       0,
+       1,
+       1
+      ]
+     },
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        0,
+        1,
+        0,
+        1
+       ],
+       [
+        0.7071067811865476,
+        0.7071067811865476,
+        0,
+        0.7071067811865476
+       ],
+       [
+        1,
+        0,
+        0,
+        1
+       ]
+      ],
+      "p": 2,
+      "u": [
+       0,
+       0,
+       0,
+       1,
+       1,
+       1
+      ]
+     }
+    ],
+    "major": 0,
+    "tol": 1e-06
+   }
+  },
+  {
+   "name": "revolution_cone_pole",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "revolution",
+    "curves": [
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        0,
+        0,
+        0,
+        1.0
+       ],
+       [
+        1,
+        0,
+        1,
+        1.0
+       ]
+      ],
+      "p": 1,
+      "u": [
+       0,
+       0,
+       1,
+       1
+      ]
+     },
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        1,
+        0,
+        1,
+        1
+       ],
+       [
+        0.7071067811865476,
+        0.7071067811865476,
+        0.7071067811865476,
+        0.7071067811865476
+       ],
+       [
+        0,
+        1,
+        1,
+        1
+       ]
+      ],
+      "p": 2,
+      "u": [
+       0,
+       0,
+       0,
+       1,
+       1,
+       1
+      ]
+     },
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        0,
+        1,
+        1,
+        1.0
+       ],
+       [
+        0,
+        0,
+        0,
+        1.0
+       ]
+      ],
+      "p": 1,
+      "u": [
+       0,
+       0,
+       1,
+       1
+      ]
+     }
+    ],
+    "major": 1,
+    "tol": 1e-06
+   }
+  },
+  {
+   "name": "revolution_single_arc",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "revolution",
+    "curves": [
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        1,
+        0,
+        1,
+        1
+       ],
+       [
+        0.7071067811865476,
+        0.7071067811865476,
+        0.7071067811865476,
+        0.7071067811865476
+       ],
+       [
+        0,
+        1,
+        1,
+        1
+       ]
+      ],
+      "p": 2,
+      "u": [
+       0,
+       0,
+       0,
+       1,
+       1,
+       1
+      ]
+     }
+    ],
+    "major": 0,
+    "tol": 1e-06
+   }
+  },
+  {
+   "name": "revolution_other_off_surface",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "revolution",
+    "curves": [
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        1,
+        0,
+        0,
+        1.0
+       ],
+       [
+        1,
+        0,
+        1,
+        1.0
+       ]
+      ],
+      "p": 1,
+      "u": [
+       0,
+       0,
+       1,
+       1
+      ]
+     },
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        1,
+        0,
+        1,
+        1
+       ],
+       [
+        0.7071067811865476,
+        0.7071067811865476,
+        0.7071067811865476,
+        0.7071067811865476
+       ],
+       [
+        0,
+        1,
+        1,
+        1
+       ]
+      ],
+      "p": 2,
+      "u": [
+       0,
+       0,
+       0,
+       1,
+       1,
+       1
+      ]
+     },
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        0,
+        1.1,
+        1,
+        1.0
+       ],
+       [
+        0,
+        1.1,
+        0,
+        1.0
+       ]
+      ],
+      "p": 1,
+      "u": [
+       0,
+       0,
+       1,
+       1
+      ]
+     },
+     {
+      "dim": 3,
+      "cpts": [
+       [
+        0,
+        1,
+        0,
+        1
+       ],
+       [
+        0.7071067811865476,
+        0.7071067811865476,
+        0,
+        0.7071067811865476
+       ],
+       [
+        1,
+        0,
+        0,
+        1
+       ]
+      ],
+      "p": 2,
+      "u": [
+       0,
+       0,
+       0,
+       1,
+       1,
+       1
+      ]
+     }
+    ],
+    "major": 1,
+    "tol": 1e-06
+   }
+  },
+  {
+   "name": "fillet_radius_quarter",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "fillet_radius",
+    "p1": [
+     1,
+     0,
+     0
+    ],
+    "n1": [
+     1,
+     0,
+     0
+    ],
+    "p2": [
+     0,
+     1,
+     0
+    ],
+    "n2": [
+     0,
+     1,
+     0
+    ],
+    "orient": -1.0
+   }
+  },
+  {
+   "name": "fillet_radius_flipped",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "fillet_radius",
+    "p1": [
+     1,
+     0,
+     0
+    ],
+    "n1": [
+     1,
+     0,
+     0
+    ],
+    "p2": [
+     0,
+     1,
+     0
+    ],
+    "n2": [
+     0,
+     1,
+     0
+    ],
+    "orient": 1.0
+   }
+  },
+  {
+   "name": "fillet_radius_parallel_normals",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "fillet_radius",
+    "p1": [
+     0,
+     0,
+     0
+    ],
+    "n1": [
+     0,
+     0,
+     1
+    ],
+    "p2": [
+     1,
+     0,
+     0
+    ],
+    "n2": [
+     0,
+     0,
+     1
+    ],
+    "orient": 0.0
+   }
+  },
+  {
+   "name": "fillet_radius_opposite_normals",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "fillet_radius",
+    "p1": [
+     0,
+     0,
+     0
+    ],
+    "n1": [
+     0,
+     0,
+     1
+    ],
+    "p2": [
+     0,
+     0,
+     2
+    ],
+    "n2": [
+     0,
+     0,
+     -1
+    ],
+    "orient": -1.0
+   }
+  },
+  {
+   "name": "fillet_radius_same_point",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "fillet_radius",
+    "p1": [
+     1,
+     1,
+     1
+    ],
+    "n1": [
+     1,
+     0,
+     0
+    ],
+    "p2": [
+     1,
+     1,
+     1
+    ],
+    "n2": [
+     0,
+     1,
+     0
+    ],
+    "orient": -1.0
+   }
+  },
+  {
+   "name": "seam_out_plane_neither",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "seam_out",
+    "surface": {
+     "plane": {
+      "o": [
+       0,
+       0,
+       0
+      ],
+      "n": [
+       0,
+       0,
+       1
+      ]
+     }
+    },
+    "uv": [
+     5.0,
+     5.0
+    ],
+    "tol": 1e-06,
+    "closure": 4
+   }
+  },
+  {
+   "name": "closure_plane",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "closure",
+    "surface": {
+     "plane": {
+      "o": [
+       0,
+       0,
+       0
+      ],
+      "n": [
+       0,
+       0,
+       1
+      ]
+     }
+    },
+    "dom": [
+     -1,
+     -1,
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "name": "concavity_l_shaped_box_0",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/l_shaped_box.smb",
+     "rebuild": false
+    },
+    "v": 0,
+    "eu1": 0,
+    "eu2": 1,
+    "ref": -1
+   }
+  },
+  {
+   "name": "g1_l_shaped_box_0",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "g1",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/l_shaped_box.smb",
+     "rebuild": false
+    },
+    "v": 0,
+    "e1": 0,
+    "e2": 1,
+    "tol": 5.0
+   }
+  },
+  {
+   "name": "face_by_two_l_shaped_box_0",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "face_by_two",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/l_shaped_box.smb",
+     "rebuild": false
+    },
+    "v": 0,
+    "eu1": 0,
+    "eu2": 1,
+    "eu3": -1
+   }
+  },
+  {
+   "name": "concavity_l_shaped_box_1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/l_shaped_box.smb",
+     "rebuild": false
+    },
+    "v": 5,
+    "eu1": 0,
+    "eu2": 1,
+    "ref": -1
+   }
+  },
+  {
+   "name": "g1_l_shaped_box_1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "g1",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/l_shaped_box.smb",
+     "rebuild": false
+    },
+    "v": 5,
+    "e1": 0,
+    "e2": 1,
+    "tol": 5.0
+   }
+  },
+  {
+   "name": "face_by_two_l_shaped_box_1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "face_by_two",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/l_shaped_box.smb",
+     "rebuild": false
+    },
+    "v": 5,
+    "eu1": 0,
+    "eu2": 1,
+    "eu3": -1
+   }
+  },
+  {
+   "name": "concavity_l_shaped_box_2",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/l_shaped_box.smb",
+     "rebuild": false
+    },
+    "v": 10,
+    "eu1": 0,
+    "eu2": 1,
+    "ref": -1
+   }
+  },
+  {
+   "name": "g1_l_shaped_box_2",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "g1",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/l_shaped_box.smb",
+     "rebuild": false
+    },
+    "v": 10,
+    "e1": 0,
+    "e2": 1,
+    "tol": 5.0
+   }
+  },
+  {
+   "name": "face_by_two_l_shaped_box_2",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "face_by_two",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/l_shaped_box.smb",
+     "rebuild": false
+    },
+    "v": 10,
+    "eu1": 0,
+    "eu2": 1,
+    "eu3": -1
+   }
+  },
+  {
+   "name": "tangential_l_shaped_box",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/l_shaped_box.smb",
+     "rebuild": false
+    },
+    "eu": 3,
+    "tol": 2.0
+   }
+  },
+  {
+   "name": "concavity_box_w_slot_0",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_w_slot.smb",
+     "rebuild": false
+    },
+    "v": 0,
+    "eu1": 0,
+    "eu2": 1,
+    "ref": -1
+   }
+  },
+  {
+   "name": "g1_box_w_slot_0",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "g1",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_w_slot.smb",
+     "rebuild": false
+    },
+    "v": 0,
+    "e1": 0,
+    "e2": 1,
+    "tol": 5.0
+   }
+  },
+  {
+   "name": "face_by_two_box_w_slot_0",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "face_by_two",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_w_slot.smb",
+     "rebuild": false
+    },
+    "v": 0,
+    "eu1": 0,
+    "eu2": 1,
+    "eu3": -1
+   }
+  },
+  {
+   "name": "concavity_box_w_slot_1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_w_slot.smb",
+     "rebuild": false
+    },
+    "v": 5,
+    "eu1": 0,
+    "eu2": 1,
+    "ref": -1
+   }
+  },
+  {
+   "name": "g1_box_w_slot_1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "g1",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_w_slot.smb",
+     "rebuild": false
+    },
+    "v": 5,
+    "e1": 0,
+    "e2": 1,
+    "tol": 5.0
+   }
+  },
+  {
+   "name": "face_by_two_box_w_slot_1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "face_by_two",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_w_slot.smb",
+     "rebuild": false
+    },
+    "v": 5,
+    "eu1": 0,
+    "eu2": 1,
+    "eu3": -1
+   }
+  },
+  {
+   "name": "concavity_box_w_slot_2",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_w_slot.smb",
+     "rebuild": false
+    },
+    "v": 10,
+    "eu1": 0,
+    "eu2": 1,
+    "ref": -1
+   }
+  },
+  {
+   "name": "g1_box_w_slot_2",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "g1",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_w_slot.smb",
+     "rebuild": false
+    },
+    "v": 10,
+    "e1": 0,
+    "e2": 1,
+    "tol": 5.0
+   }
+  },
+  {
+   "name": "face_by_two_box_w_slot_2",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "face_by_two",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_w_slot.smb",
+     "rebuild": false
+    },
+    "v": 10,
+    "eu1": 0,
+    "eu2": 1,
+    "eu3": -1
+   }
+  },
+  {
+   "name": "tangential_box_w_slot",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_w_slot.smb",
+     "rebuild": false
+    },
+    "eu": 3,
+    "tol": 2.0
+   }
+  },
+  {
+   "name": "concavity_box1x1x2_b_0",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box1x1x2.smb",
+     "rebuild": false
+    },
+    "v": 0,
+    "eu1": 0,
+    "eu2": 1,
+    "ref": -1
+   }
+  },
+  {
+   "name": "g1_box1x1x2_b_0",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "g1",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box1x1x2.smb",
+     "rebuild": false
+    },
+    "v": 0,
+    "e1": 0,
+    "e2": 1,
+    "tol": 5.0
+   }
+  },
+  {
+   "name": "face_by_two_box1x1x2_b_0",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "face_by_two",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box1x1x2.smb",
+     "rebuild": false
+    },
+    "v": 0,
+    "eu1": 0,
+    "eu2": 1,
+    "eu3": -1
+   }
+  },
+  {
+   "name": "concavity_box1x1x2_b_1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box1x1x2.smb",
+     "rebuild": false
+    },
+    "v": 5,
+    "eu1": 0,
+    "eu2": 1,
+    "ref": -1
+   }
+  },
+  {
+   "name": "g1_box1x1x2_b_1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "g1",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box1x1x2.smb",
+     "rebuild": false
+    },
+    "v": 5,
+    "e1": 0,
+    "e2": 1,
+    "tol": 5.0
+   }
+  },
+  {
+   "name": "face_by_two_box1x1x2_b_1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "face_by_two",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box1x1x2.smb",
+     "rebuild": false
+    },
+    "v": 5,
+    "eu1": 0,
+    "eu2": 1,
+    "eu3": -1
+   }
+  },
+  {
+   "name": "concavity_box1x1x2_b_2",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box1x1x2.smb",
+     "rebuild": false
+    },
+    "v": 10,
+    "eu1": 0,
+    "eu2": 1,
+    "ref": -1
+   }
+  },
+  {
+   "name": "g1_box1x1x2_b_2",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "g1",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box1x1x2.smb",
+     "rebuild": false
+    },
+    "v": 10,
+    "e1": 0,
+    "e2": 1,
+    "tol": 5.0
+   }
+  },
+  {
+   "name": "face_by_two_box1x1x2_b_2",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "face_by_two",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box1x1x2.smb",
+     "rebuild": false
+    },
+    "v": 10,
+    "eu1": 0,
+    "eu2": 1,
+    "eu3": -1
+   }
+  },
+  {
+   "name": "tangential_box1x1x2_b",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box1x1x2.smb",
+     "rebuild": false
+    },
+    "eu": 3,
+    "tol": 2.0
+   }
+  },
+  {
+   "name": "concavity_nurb_box_0",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/nurb_box.smb",
+     "rebuild": false
+    },
+    "v": 0,
+    "eu1": 0,
+    "eu2": 1,
+    "ref": -1
+   }
+  },
+  {
+   "name": "g1_nurb_box_0",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "g1",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/nurb_box.smb",
+     "rebuild": false
+    },
+    "v": 0,
+    "e1": 0,
+    "e2": 1,
+    "tol": 5.0
+   }
+  },
+  {
+   "name": "face_by_two_nurb_box_0",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "face_by_two",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/nurb_box.smb",
+     "rebuild": false
+    },
+    "v": 0,
+    "eu1": 0,
+    "eu2": 1,
+    "eu3": -1
+   }
+  },
+  {
+   "name": "concavity_nurb_box_1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/nurb_box.smb",
+     "rebuild": false
+    },
+    "v": 5,
+    "eu1": 0,
+    "eu2": 1,
+    "ref": -1
+   }
+  },
+  {
+   "name": "g1_nurb_box_1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "g1",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/nurb_box.smb",
+     "rebuild": false
+    },
+    "v": 5,
+    "e1": 0,
+    "e2": 1,
+    "tol": 5.0
+   }
+  },
+  {
+   "name": "face_by_two_nurb_box_1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "face_by_two",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/nurb_box.smb",
+     "rebuild": false
+    },
+    "v": 5,
+    "eu1": 0,
+    "eu2": 1,
+    "eu3": -1
+   }
+  },
+  {
+   "name": "concavity_nurb_box_2",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/nurb_box.smb",
+     "rebuild": false
+    },
+    "v": 10,
+    "eu1": 0,
+    "eu2": 1,
+    "ref": -1
+   }
+  },
+  {
+   "name": "g1_nurb_box_2",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "g1",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/nurb_box.smb",
+     "rebuild": false
+    },
+    "v": 10,
+    "e1": 0,
+    "e2": 1,
+    "tol": 5.0
+   }
+  },
+  {
+   "name": "face_by_two_nurb_box_2",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "face_by_two",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/nurb_box.smb",
+     "rebuild": false
+    },
+    "v": 10,
+    "eu1": 0,
+    "eu2": 1,
+    "eu3": -1
+   }
+  },
+  {
+   "name": "tangential_nurb_box",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/nurb_box.smb",
+     "rebuild": false
+    },
+    "eu": 3,
+    "tol": 2.0
+   }
+  },
+  {
+   "name": "g1_null_vertex",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "g1",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box1x1x2.smb",
+     "rebuild": false
+    },
+    "v": -1,
+    "e1": 0,
+    "e2": 1,
+    "tol": 5.0
+   }
+  },
+  {
+   "name": "g1_same_edge",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "g1",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box1x1x2.smb",
+     "rebuild": false
+    },
+    "v": 0,
+    "e1": 0,
+    "e2": 0,
+    "tol": 5.0
+   }
+  },
+  {
+   "name": "face_by_two_skip",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "face_by_two",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box1x1x2.smb",
+     "rebuild": false
+    },
+    "v": 0,
+    "eu1": 0,
+    "eu2": 1,
+    "eu3": 0
+   }
+  },
+  {
+   "name": "concavity_with_ref",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/l_shaped_box.smb",
+     "rebuild": false
+    },
+    "v": 0,
+    "eu1": 0,
+    "eu2": 2,
+    "ref": 1
+   }
+  }
+ ]
+}
