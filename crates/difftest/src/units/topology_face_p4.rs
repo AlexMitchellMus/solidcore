@@ -449,7 +449,45 @@ impl LoopObject for H {
 
 /// The B-rep behind the `Seam` handles.
 struct Objects<'a> {
+    k: &'a Kernel,
     brep: &'a Brep,
+    /// A copy of `brep` for the vertex/face gaps, made at the first lookup: upstream's
+    /// `const` `GetVertexFaceGap` fills the vertex use's lazy cache.
+    gaps: RefCell<Option<Brep>>,
+    /// The first error of a gap lookup (its `Unported` defers the case).
+    gap_error: RefCell<Option<SolidError>>,
+}
+
+impl<'a> Objects<'a> {
+    fn new(k: &'a Kernel, brep: &'a Brep) -> Self {
+        Self {
+            k,
+            brep,
+            gaps: RefCell::new(None),
+            gap_error: RefCell::new(None),
+        }
+    }
+
+    /// The face whose surface is `surface`.
+    fn face_of_surface(&self, surface: &Surface) -> Option<FaceId> {
+        self.brep
+            .faces()
+            .iter()
+            .find(|(_, r)| r.surface.as_ref().is_some_and(|s| std::ptr::eq(s, surface)))
+            .map(|(f, _)| f)
+    }
+
+    /// `pVertex->GetVertexuseOfFace(pFace)->GetVertexFaceGap()`: its `GetLength()`, or
+    /// `0.0` without a gap.
+    fn gap(&self, v: VertexId, f: FaceId) -> Result<Option<f64>, SolidError> {
+        let Some(vu) = solidcore::topology::vertex::vertexuse_of_face(self.brep, v, Some(f))? else {
+            return Ok(None);
+        };
+        let mut gaps = self.gaps.borrow_mut();
+        let b = gaps.get_or_insert_with(|| self.brep.clone());
+        let gap = solidcore::topology::vertexuse::vertex_face_gap(self.k, b, vu, false)?;
+        Ok(Some(gap.map_or(0.0, |g| g.gap_3d)))
+    }
 }
 
 impl CurveOnClassifyObjects<H> for Objects<'_> {
@@ -502,6 +540,23 @@ impl ClassGeometry<H> for Objects<'_> {
             H::Face(f) => self.brep.face(f).ok().map(|f| f.tolerance),
             H::Edge(e) => self.brep.edge(e).ok().map(|e| e.tolerance),
             _ => None,
+        }
+    }
+    fn vertex_face_gap(&self, vertex: H, surface: &Surface, face: Option<H>) -> Option<f64> {
+        let H::Vertex(v) = vertex else {
+            return None;
+        };
+        let f = match face {
+            Some(H::Face(f)) => f,
+            Some(_) => return None,
+            None => self.face_of_surface(surface)?,
+        };
+        match self.gap(v, f) {
+            Ok(g) => g,
+            Err(e) => {
+                self.gap_error.borrow_mut().get_or_insert(e);
+                None
+            }
         }
     }
     fn curve(&self, o: H) -> Option<&Curve> {
@@ -717,8 +772,14 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
                 periodic_v: known(*periodic_v),
                 face_props: None,
             };
-            let objects = Objects { brep: &b };
-            let s = fp4::has_seam_problem(&k, &b, f, &objects, opts).map_err(|e| fail(&e))?;
+            let objects = Objects::new(&k, &b);
+            let s = fp4::has_seam_problem(&k, &b, f, &objects, opts).map_err(|e| {
+                // a failed gap lookup surfaces as part 5's unresolved-gap error
+                match objects.gap_error.borrow_mut().take() {
+                    Some(g) => fail(&g),
+                    None => fail(&e),
+                }
+            })?;
             o.extend([
                 flag(s.has_problem),
                 f64::from(s.problem.crossed as i32),

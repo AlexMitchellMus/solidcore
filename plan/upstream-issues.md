@@ -136,6 +136,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** crash/UB (type confusion).
 - **Rust port:** Returns `InvalidInput`.
 
+#### UB-164. `SmBrep::MakeTopologyFromData` uses the cross-reference indices of an accepted `.smb` unchecked [PSIRT]
+- **Location:** `source/SMLib/src/SmBrep.cpp:19284`-`20660` `SmBrep::MakeTopologyFromData`, reached from `SmBrep::ReadFromFile` after `SmBrepData::ReadFromFile` succeeds. For example `:20343` indexes `m_vFaces[rFaceuseData.m_lFace]` and dereferences the face it finds; `:20342` indexes `m_vFaceuses` with the shell's `m_lFaceuseStart + kk`, and the non-manifold edge use links (`m_lNextEU`, `m_lMateNextEU`, `:20247`-`:20263`) index `m_vEdgeuses` with file values the same way, as do `m_vSurfaces[rF.m_lSurface]` and `m_vShells[rR.m_lStartShell + jj]`. `SmTArray::operator[]` checks the index only under `SM_DEBUG_CODE` (`SmTArray.h:454`).
+- **What happens:** `SmBrepData::ReadFromFile` checks the stream syntax, not the cross-references between its sections. `MakeTopologyFromData` then indexes the section arrays with the face, faceuse and edge use indices read from the file, without range checks, and follows the pointers it finds there.
+- **Trigger:** An ASCII `.smb` with one index field overwritten so that `SmBrepData::ReadFromFile` still succeeds, e.g. `plane_square.smb` with faceuse 0's face index `0` changed to `9` (the file has one face).
+- **How found:** crash in the C++ reference run (`topology.brep_p7` difftest, guard disabled for the measurement). gdb: SIGSEGV in `SmBrep::MakeTopologyFromData` <- `SmBrep::ReadFromFile`.
+- **Confirmed:** yes. Single-byte overwrites (digits, `-`, `.`) accepted by `SmBrepData::ReadFromFile`, run one per process: 11 of 600 crashed with SIGSEGV (rc=139; 100 streams each of `Endcap`, `Mouse`, `box_with_large_fillet`, `cone`, `disk`, `ellips_ts2`: 2, 1, 2, 4, 1, 1). A batch of 100 such streams per file crashed in 13 of the 15 `pt_TestFiles` (all but `torus`, `vase_rev`).
+- **Severity:** crash/UB (out-of-bounds read, wild pointer dereference).
+- **Rust port:** `MakeTopologyFromData` belongs to `topology.brep_p10` (unported; `p7::read_from_file` defers there). Its port must range-check every cross-reference index and return `InvalidInput`. The `topology.brep_p7` difftest keeps such streams away from the C++ side (`cpp-guard:unvalidated-topology`).
+
 ### NLib: knots and basis functions
 
 #### UB-7. `N_BasisEval` uses an uninitialised span for an unknown side flag
@@ -955,6 +964,24 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** crash/UB (null dereference).
 - **Rust port:** Represents optional tolerances with `Option`; coincident-boundary calls currently defer to the missing Cone/Cylinder adapter in `surface.surface_p2` (#76/#133); the boundary algorithm itself merged in #120. The FFI adapter rejects exactly the native undefined path before its boundary calls.
 
+#### UB-153. `SmCone::CreateOffsetSurface` dereferences an unchecked `CreateCanonical` result
+- **Location:** `source/SMLib/src/SmCone.cpp:624`-`641`, the apex-truncation branch of `SmCone::CreateOffsetSurface` (def. `:533`).
+- **What happens:** When one new radius falls below the tolerance, the truncated cone is made by `SmCone::CreateCanonical`, whose status is ignored; `pOffCone->GetSTEPUVDomain()` and the following calls then dereference it. The new height is `dNewRadius * dHeight / dOldRadius`: an old radius of `0` gives an infinite or NaN height, for which the bounded constructor's NURB construction recurses without bound; a failed `MakeNurb` leaves `pOffCone` `NULL`.
+- **Trigger:** A bounded cone with bottom radius `0` and a negative top radius, offset so that the new bottom radius is at least the tolerance and the new top radius below it.
+- **How found:** read during porting (`surface.cone_p2`, PR #153).
+- **Confirmed:** no. The shim tries the same `CreateCanonical` first (with the same formulas) and refuses the input when it fails or the height is not finite.
+- **Severity:** crash/UB (null dereference, unbounded recursion).
+- **Rust port:** `create_canonical`'s error is returned; no recursion.
+
+#### UB-154. `sm_GetEllipseTrimIntervals` reads the parameter of a failed line/plane intersection
+- **Location:** `source/SMLib/src/SmCone.cpp:5399`-`5405` and `:5463`-`5477`, `sm_GetEllipseTrimIntervals` (def. `:5282`, file static).
+- **What happens:** The statuses of `smgu_LinePlaneIntersect` for the two seam lines are ignored and `dParam[0]`, `dParam[1]` (uninitialised) are then compared and used. The same happens with the domain of a failed `ConvertDomainFromNURBSToSTEP` (default-constructed).
+- **Trigger:** A seam line of the trimmed cone parallel to the ellipse plane (or of zero length, a zero-height trim domain).
+- **How found:** read during porting (`surface.cone_p2`, PR #153).
+- **Confirmed:** no. The shim runs the same calls first and refuses such inputs.
+- **Severity:** UB (uninitialised read).
+- **Rust port:** The errors are returned.
+
 ### Intersection
 
 #### UB-89. `SmVolume::ReadFromDB` fills NULL volumes and uses unread map types [PSIRT]
@@ -1001,6 +1028,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** no (the harness keeps these calls away from the C++).
 - **Severity:** crash/UB.
 - **Rust port:** Treats a point like any other non-topology object (system zone tolerance, not connected, not mergeable).
+
+#### UB-158. `SmCurveClassification::InsertAt(0, ..)` into a non-empty classification never ends its shift loop
+- **Location:** `SmCurveClass.cpp:5349` (`InsertAt`: `for(i1=m_lSize-1,ii=i1-nCount;ii>=nIndex;ii--,i1--)`).
+- **What happens:** `ii` and `nIndex` are `ULONG`. With `nIndex == 0` the test `ii >= 0` is always true: after `ii = 0` the loop decrements `ii` to `ULONG_MAX` and copies `m_pData[ULONG_MAX]` into `m_pData[0]`, then keeps walking down memory.
+- **Trigger:** `InsertAt(0, interval)` on a classification with at least one interval.
+- **How found:** read during porting.
+- **Confirmed:** no (the harness keeps this call away from the C++).
+- **Severity:** crash/UB.
+- **Rust port:** `CurveClassification::insert_at` returns `InvalidInput`.
 
 #### UB-93. `SmSurfOfExtrusion::IntersectWithCylinder` makes the iso circle of an unbounded cylinder from unset values
 - **Location:** `source/SMLib/src/SmSurfOfExtrusion.cpp:3223` `SmSurfOfExtrusion::IntersectWithCylinder` (def. `:3164`), then `:3255` `sm_IntersectGenerators(*this, dTol, *pOtherGenCurve, ...)`.
@@ -1372,6 +1408,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** no (source inspection only; the shim never runs it).
 - **Severity:** crash/UB.
 - **Rust port:** `topology::brep::p1::redistribute_seam_uv_trim_curves` returns `InvalidInput` for an edge with fewer than four edge uses.
+
+#### UB-165. `SmBrep::MakeFaceWithCurves` with `pbOptCrvOnSurf` and no UV curves dereferences a null array
+- **Location:** `source/SMLib/src/SmBrep.cpp:16591-16606` `SmBrep::MakeFaceWithCurves` (the `pbOptCrvOnSurf && *pbOptCrvOnSurf == TRUE` block after `MakeFace`).
+- **What happens:** The UV curve array `cpOptUVCurves` is optional (only one of the 3D and UV arrays must be given), but the curve-on-surface block copies `cpOptUVCurves->GetAt(ii)` for `ii < cpOptUVCurves->GetSize()` without a null check, so a call with 3D curves only and `*pbOptCrvOnSurf == TRUE` dereferences null as soon as `MakeFace` succeeds (even for one empty loop).
+- **Trigger:** `MakeFaceWithCurves(region, {0}, &curves3d, NULL, orients, {}, plane, domain, SM_OT_SAME, .., &TRUE)` (difftest cases `face_curves_cos_no_uv_*` of `topology.brep_p7`).
+- **How found:** crash in the C++ reference run (pre-review fuzz of PR #155).
+- **Confirmed:** yes (SIGSEGV).
+- **Severity:** crash.
+- **Rust port:** `SolidError::InvalidInput`; the difftest shim keeps such calls away from upstream.
 
 ### Healer target management
 
@@ -2237,6 +2282,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes (the C++ run returns 1 with the proto vertex still listed).
 - **Severity:** wrong result.
 - **Rust port:** Same result (`true`), for parity.
+
+#### WR-153. `SmCone::IsNurbSurfaceCone` returns an error status as its `SmBoolean`
+- **Location:** `source/SMLib/src/SmCone.cpp:4406`, `:4415`, `:4494` (`SER` around `CreateIsoParametricCurve`), `SmCone::IsNurbSurfaceCone` (def. `:4305`).
+- **What happens:** `SER` returns the failing `SmStatus` (e.g. `SM_ERR` = 1001) from a function returning `SmBoolean`, so callers such as `SmBSplineSurface::CopyAndAddAnalytics` read it as `TRUE` with a `NULL` cone and return success without a surface.
+- **Trigger:** An iso-curve extraction failure on a candidate cone NURB (e.g. a knot multiplicity above the degree).
+- **How found:** read during porting (`surface.cone_p2`, PR #153).
+- **Confirmed:** no.
+- **Severity:** wrong result.
+- **Rust port:** Returns the error.
 
 #### WR-160. `SmOffsetSurface` third derivatives use wrong coefficients in `Cuuv` and `Cuvv`
 - **Location:** `source/SMLib/src/SmOffsetSurface.cpp:1468` and `:1479`, `SmOffsetSurface::EvaluatePlainOrSimple`.
