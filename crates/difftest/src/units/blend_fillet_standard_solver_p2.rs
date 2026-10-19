@@ -1220,17 +1220,16 @@ fn gen_corner(rng: &mut Rng) -> (SrfIn, SrfIn, Vec3, Vec3) {
 }
 
 fn gen_solver(rng: &mut Rng, cls: usize, corner: Option<(SrfIn, SrfIn)>) -> SolverIn {
-    let (a, b) = match corner {
-        Some((a, b)) => (a, Some(b)),
-        None => {
-            let a = gen_surface(rng);
-            let b = if rng.chance(0.1) {
-                None
-            } else {
-                Some(gen_surface(rng))
-            };
-            (a, b)
-        }
+    let (a, b) = if let Some((a, b)) = corner {
+        (a, Some(b))
+    } else {
+        let a = gen_surface(rng);
+        let b = if rng.chance(0.1) {
+            None
+        } else {
+            Some(gen_surface(rng))
+        };
+        (a, b)
     };
     let r0 = rng.uniform(0.05, 0.5);
     let r1 = if rng.chance(0.7) {
@@ -1249,7 +1248,7 @@ fn gen_solver(rng: &mut Rng, cls: usize, corner: Option<(SrfIn, SrfIn)>) -> Solv
 }
 
 fn gen_cr_init(rng: &mut Rng) -> Inputs {
-    let cls = if rng.chance(0.75) { 1 } else { 0 };
+    let cls = usize::from(rng.chance(0.75));
     let corner = if rng.chance(0.4) {
         let (a, b, _, _) = gen_corner(rng);
         Some((a, b))
