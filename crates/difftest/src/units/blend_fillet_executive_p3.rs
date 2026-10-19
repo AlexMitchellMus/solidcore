@@ -251,9 +251,15 @@ fn output(values: &[f64]) -> Result<Output, HarnessError> {
             .map(|v| *v as i64)
             .collect(),
     );
-    out.ints.insert("comment_bytes".into(), values.get(13..)
-        .ok_or_else(|| HarnessError::new("short comment bytes"))?
-        .iter().map(|v| *v as i64).collect());
+    out.ints.insert(
+        "comment_bytes".into(),
+        values
+            .get(13..)
+            .ok_or_else(|| HarnessError::new("short comment bytes"))?
+            .iter()
+            .map(|v| *v as i64)
+            .collect(),
+    );
     Ok(out)
 }
 
@@ -391,7 +397,14 @@ fn rust(input: &Inputs) -> Result<Output, HarnessError> {
         executive.error.comment.len() as f64,
         error_out.comment.len() as f64,
     ];
-    values.extend(executive.error.comment.bytes().chain(error_out.comment.bytes()).map(f64::from));
+    values.extend(
+        executive
+            .error
+            .comment
+            .bytes()
+            .chain(error_out.comment.bytes())
+            .map(f64::from),
+    );
     output(&values)
 }
 
