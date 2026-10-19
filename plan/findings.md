@@ -8340,3 +8340,9 @@ and four checked FFI tests all pass. No host crash or reported leak/error.
 Full local `--green --no-report` after integration (`e28e6dbf`): 214 units,
 114 passed, 100 partial, 0 failed. The worker-exit follow-up changes only the native
 process completion; the affected p5 native comparisons are rechecked separately.
+
+Canonical main `5040b0b2` (including #130, topology.brep_p10) was subsequently
+merged, retaining both sides of the findings history. Post-integration fmt,
+plain workspace Clippy, 1426 kernel tests and wasm32 check pass. The 214-unit
+full-sweep result above is scoped to the earlier integrated candidate; PR #208
+records the refreshed differential sweep and exact-head CI results.
