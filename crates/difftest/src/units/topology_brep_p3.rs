@@ -1332,13 +1332,13 @@ fn run_rust_op_in(
             };
             let s = if which == 0 {
                 status(bp3::make_wire_edge(
-                    k, b, &mut env, region, v1, v2, &crv, &ivl, orient,
+                    k, b, &mut env, region, v1, v2, crv, &ivl, orient,
                 ))?
                 .0
             } else {
                 let p = Vec3::new(end[0], end[1], end[2]);
                 status(bp3::make_wire_edge_vertex(
-                    k, b, &mut env, region, v1, &crv, &ivl, orient, p,
+                    k, b, &mut env, region, v1, crv, &ivl, orient, p,
                 ))?
                 .0
             };

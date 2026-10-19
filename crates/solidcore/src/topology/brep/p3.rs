@@ -58,12 +58,19 @@
 //!   (`SM_NO_DESTRUCTION` / `SM_NO_CONSTRUCTION` at `SmObject` level; `new_brep`'s own
 //!   construction is reported); faces, edges and vertices do.
 //! - **Geometry identities.** Upstream notifies the edge curves as objects of their own
-//!   (`m_pCurve`). A curve carries the identity it is notified under
-//!   ([`Curve::notify_key`]), given the first time an edit names it from the kernel
-//!   context's geometry keys (`Context::new_geometry_key`, a range above the caller's
-//!   own keys): unique for as long as the context, and so its callbacks, live. A copy
-//!   (`Clone`, upstream's copy constructor) is another object without one; a curve the
-//!   caller hands `MakeWireEdge` keeps its own, as upstream binds that object.
+//!   (`m_pCurve`), told apart by address. The invariant here: *a geometry key is only
+//!   valid in the context domain that issued it, and no caller key is in the geometry
+//!   range*. A curve carries its identity, key and issuing domain
+//!   ([`Curve::notify_identity`]); `Context::geometry_identity` keeps it for the issuing
+//!   context and gives a fresh key of its own domain in any other (the curve enters
+//!   that kernel), so keys are unique among the live curves any one context's
+//!   callbacks see. Geometry keys have both top bits set
+//!   (`GEOMETRY_KEY_BASE`); every edit that notifies curves refuses (`InvalidInput`) a
+//!   caller key in that range before it notifies anything ([`check_caller_keys`], and
+//!   `brep_notify` for objects the edit makes). A copy (`Clone`, upstream's copy
+//!   constructor) is a new object without an identity; `MakeWireEdge(Vertex)` take the
+//!   caller's unowned curve by value, as upstream binds that object (so it cannot be
+//!   bound twice), and copy an edge-owned one.
 //! - **Notification identities.** The ids of two B-reps overlap, so `MergeBrep`,
 //!   `CopyVertices` and the copy constructors take the notification identity of the
 //!   source B-rep's objects (`source_key`) beside `env.key_of` for the destination's.
@@ -387,7 +394,8 @@ fn brep_notify(
     // first time the edit names the object (seed_topology_records covers the rest)
     for d in data.into_iter().flatten() {
         if let NotifyArg::Entity(e) = d {
-            env.records.entry((env.key_of)(e).key).or_default();
+            let key = checked_key((env.key_of)(e))?.key;
+            env.records.entry(key).or_default();
         }
     }
     env.records.entry(p2::brep_ref(b).key).or_default();
@@ -1849,33 +1857,71 @@ fn wire_curve(curve: &Curve) -> Curve {
 }
 
 /// The identity `curve` is notified under: the curve object's own
-/// ([`Curve::notify_key`]), given from the kernel context's geometry keys the first
-/// time a notification names it ([`crate::geom::context::Context::new_geometry_key`]).
-/// Upstream passes the `SmCurve` object itself, so the identity lives with the object
-/// (a copy is a new one) and the context the callbacks are installed in hands out the
-/// keys: no edit, healer or registry restarts them.
+/// ([`Curve::notify_identity`]) when `k`'s context issued it, else a fresh one of that
+/// context's domain, stored on the curve ([`crate::geom::context::Context::geometry_identity`]).
+/// Upstream passes the `SmCurve` object itself; here the identity lives with the
+/// object (a copy is a new one), its key is of the reserved geometry range (disjoint
+/// from the caller's keys, [`check_caller_keys`]) and only the issuing context accepts
+/// it, so no two live curves present one key to a context's callbacks.
 fn curve_identity(k: &mut Kernel, curve: &mut Curve) -> ObjectRef {
-    let key = if let Some(x) = curve.notify_key() {
-        x
-    } else {
-        let x = k.context.new_geometry_key();
-        curve.set_notify_key(Some(x));
-        x
-    };
+    let identity = k.context.geometry_identity(curve.notify_identity());
+    let key = identity.key();
+    curve.set_notify_identity(Some(identity));
     ObjectRef {
         type_code: curve.type_code(),
         key,
     }
 }
 
-/// The identity edge `e`'s curve is notified under (its [`Curve::notify_key`], given
-/// from `k`'s context on first use), `None` without a curve.
+/// The identity edge `e`'s curve is notified under in `k`'s context
+/// ([`curve_identity`]), `None` without a curve.
 ///
 /// # Errors
 ///
 /// [`SolidError::NotFound`] for a dangling id.
 pub fn edge_curve_identity(k: &mut Kernel, b: &mut Brep, e: EdgeId) -> Result<Option<ObjectRef>> {
     Ok(b.edge_mut(e)?.curve.as_mut().map(|c| curve_identity(k, c)))
+}
+
+/// The refusal of a caller key in the reserved geometry range.
+const RESERVED_KEY: SolidError = SolidError::InvalidInput {
+    operation: "topology::brep::p3",
+    reason: "a topology key of the caller is in the reserved geometry key range",
+};
+
+/// Refuses a caller identity in the reserved geometry key range
+/// ([`crate::geom::context::GEOMETRY_KEY_BASE`]): a topology object notified under
+/// such a key could alias a curve.
+fn checked_key(r: ObjectRef) -> Result<ObjectRef> {
+    if crate::geom::context::is_reserved_key(r.key) {
+        return Err(RESERVED_KEY);
+    }
+    Ok(r)
+}
+
+/// Every key the caller gives `b`'s objects and the B-rep (`env.key_of`,
+/// [`p2::brep_ref`]) is outside the reserved geometry range: checked before an edit
+/// that notifies geometry, so a topology object and a curve never share a key.
+///
+/// # Errors
+///
+/// `InvalidInput` for a key in the range.
+fn check_caller_keys(b: &Brep, env: &NotifyEnv<'_>) -> Result<()> {
+    let mut all = Vec::new();
+    all.extend(b.regions().iter().map(|(x, _)| EntityRef::Region(x)));
+    all.extend(b.shells().iter().map(|(x, _)| EntityRef::Shell(x)));
+    all.extend(b.faceuses().iter().map(|(x, _)| EntityRef::Faceuse(x)));
+    all.extend(b.faces().iter().map(|(x, _)| EntityRef::Face(x)));
+    all.extend(b.loopuses().iter().map(|(x, _)| EntityRef::Loopuse(x)));
+    all.extend(b.loops().iter().map(|(x, _)| EntityRef::Loop(x)));
+    all.extend(b.edgeuses().iter().map(|(x, _)| EntityRef::Edgeuse(x)));
+    all.extend(b.edges().iter().map(|(x, _)| EntityRef::Edge(x)));
+    all.extend(b.vertexuses().iter().map(|(x, _)| EntityRef::Vertexuse(x)));
+    all.extend(b.vertices().iter().map(|(x, _)| EntityRef::Vertex(x)));
+    for e in all {
+        checked_key((env.key_of)(e))?;
+    }
+    checked_key(p2::brep_ref(b)).map(drop)
 }
 
 /// Binds `curve` (owned by nobody, or copied) to the new edge `e` (`SetCurve(.., FALSE)`
@@ -1885,19 +1931,18 @@ fn bind_wire_curve(
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
     e: EdgeId,
-    curve: &Curve,
+    curve: Curve,
 ) -> Result<()> {
     let mut new_curve = if curve
         .owner()
         .is_some_and(|o| o.type_code == edge_type_code())
     {
         // (a copy: another object, of an identity of its own)
-        wire_curve(curve)
+        wire_curve(&curve)
     } else {
-        // upstream binds the caller's curve object itself: it keeps its identity
-        let mut c = curve.clone();
-        c.set_notify_key(curve.notify_key());
-        c
+        // upstream binds the caller's curve object itself: it is moved in, with its
+        // identity, and no second binding can reuse it
+        curve
     };
     let _ = new_curve.set_owner(None, None);
     let new_ref = curve_identity(k, &mut new_curve);
@@ -1934,7 +1979,8 @@ const fn edge_type_code() -> i64 {
 /// # Errors
 ///
 /// Those of [`p2::make_edge_topology`], of the curve evaluation and of the tolerance
-/// refresh.
+/// refresh; `InvalidInput` for a caller key
+/// in the reserved geometry key range (`GEOMETRY_KEY_BASE`).
 #[allow(clippy::too_many_arguments)]
 pub fn make_wire_edge(
     k: &mut Kernel,
@@ -1943,7 +1989,7 @@ pub fn make_wire_edge(
     region: Option<RegionId>,
     start: VertexId,
     end: VertexId,
-    curve: &Curve,
+    curve: Curve,
     interval: &Extent1d,
     orientation: OrientType,
 ) -> Result<EdgeId> {
@@ -1952,6 +1998,8 @@ pub fn make_wire_edge(
 
     // make new edge connected to vertices and region
     let e = p2::make_edge_topology(k, b, region, start, end)?;
+    // (the caller's keys, the new objects' included, stay off the curves' range)
+    check_caller_keys(b, env)?;
 
     // Set edge parameters
     let t = b.tolerance();
@@ -1962,14 +2010,22 @@ pub fn make_wire_edge(
     // bind the curve (or a copy of it) to the new edge
     bind_wire_curve(k, b, env, e, curve)?;
 
-    // set vertex tolerances to include edge end points
-    let p_start = curve.evaluate_point(interval.min())?;
+    // set vertex tolerances to include edge end points (pCurve: the bound curve, the
+    // caller's object moved in, or its identical copy)
+    let bound = b
+        .edge(e)?
+        .curve
+        .as_ref()
+        .ok_or(null_deref("wire edge without curve"))?;
+    let (p_start, p_end) = (
+        bound.evaluate_point(interval.min())?,
+        bound.evaluate_point(interval.max())?,
+    );
     let mut tol_sq = b.tolerance();
     tol_sq = (tol_sq / 4.0) * (tol_sq / 4.0);
     if p_start.distance_squared(vertex::point(b, start)?) > tol_sq {
         vertex::refresh_tolerance(b, start, false)?;
     }
-    let p_end = curve.evaluate_point(interval.max())?;
     if p_end.distance_squared(vertex::point(b, end)?) > tol_sq {
         vertex::refresh_tolerance(b, end, false)?;
     }
@@ -1991,7 +2047,8 @@ pub fn make_wire_edge(
 ///
 /// # Errors
 ///
-/// Those of [`p2::make_edge_vertex_topology`] and of the tolerance refresh.
+/// Those of [`p2::make_edge_vertex_topology`] and of the tolerance refresh; `InvalidInput` for a caller key
+/// in the reserved geometry key range (`GEOMETRY_KEY_BASE`).
 #[allow(clippy::too_many_arguments)]
 pub fn make_wire_edge_vertex(
     k: &mut Kernel,
@@ -1999,7 +2056,7 @@ pub fn make_wire_edge_vertex(
     env: &mut NotifyEnv<'_>,
     region: Option<RegionId>,
     start: VertexId,
-    curve: &Curve,
+    curve: Curve,
     interval: &Extent1d,
     orientation: OrientType,
     end_point: Point3,
@@ -2008,6 +2065,8 @@ pub fn make_wire_edge_vertex(
     let region = region_or_infinite(b, region);
 
     let (e, v) = p2::make_edge_vertex_topology(b, region, start)?;
+    // (the caller's keys, the new objects' included, stay off the curves' range)
+    check_caller_keys(b, env)?;
     let vref = (env.key_of)(EntityRef::Vertex(v));
     let uref = |vu: VertexuseId| (env.key_of)(EntityRef::Vertexuse(vu));
     vertex::set_point(
@@ -2065,7 +2124,8 @@ pub fn make_wire_edge_vertex(
 /// `SM_ERR` when `survivor` is not a vertex of `e`, `e` is closed, or a wire edge's
 /// other vertex has fewer than two edges (or that edge fewer than two uses);
 /// [`SolidError::Unported`]: `SmFace::Notify` (`topology.face_p3`) for an edge in a
-/// face; `InvalidInput` for a corrupt shell list.
+/// face; `InvalidInput` for a corrupt shell list or a caller key in the reserved
+/// geometry key range (`GEOMETRY_KEY_BASE`).
 #[allow(clippy::too_many_lines)]
 pub fn squeeze_edge(
     k: &mut Kernel,
@@ -2074,6 +2134,9 @@ pub fn squeeze_edge(
     e: EdgeId,
     survivor: VertexId,
 ) -> Result<()> {
+    // (the caller's keys stay off the range of the curves it notifies)
+    check_caller_keys(b, env)?;
+
     // get edge vertices
     let v1 = edge::vertex(b, e)?;
     let v2 = edge::other_vertex(b, e, v1)?;
@@ -2337,8 +2400,11 @@ const fn as_bspline_surface(s: &Surface) -> Option<&BSplineSurface> {
 /// [`SolidError::Unported`] from [`p2::replace_surface`] (`topology.face_p3`) for any
 /// face with an analytic surface; those of the curve lift / approximation;
 /// `SM_ERR_NULL_POINTER` when a curve could not be made a B-spline or an offset's base
-/// is not a B-spline kind (`NER`); those of the offset's bounding box and extension.
+/// is not a B-spline kind (`NER`); those of the offset's bounding box and extension; `InvalidInput` for a caller key
+/// in the reserved geometry key range (`GEOMETRY_KEY_BASE`).
 pub fn turn_to_nurbs(k: &mut Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Result<()> {
+    // (the caller's keys stay off the range of the curves it notifies)
+    check_caller_keys(b, env)?;
     ignore_soft(brep_notify(
         b,
         env,
@@ -3101,6 +3167,90 @@ mod tests {
         let rc = curve_identity(&mut k, &mut copy);
         assert!(rc.key != r0.key && rc.key != r1.key);
         assert!(r0.key.0 >= crate::geom::context::GEOMETRY_KEY_BASE);
+    }
+
+    /// M1: binding moves the caller's unowned curve in with its identity (upstream binds
+    /// that object), so a second wire edge needs a curve value of its own: a copy, a
+    /// new object with a key of its own.
+    #[test]
+    fn bound_curves_never_share_a_key() {
+        use crate::curve::line::Line;
+        use crate::topology::Edge;
+        let mut k = Kernel::default();
+        let mut b = Brep::new();
+        let edge = |b: &mut Brep| {
+            b.add_edge_record(Edge {
+                vertices: [VertexId::from_index(0); 2],
+                edgeuses: Vec::new(),
+                interval: Extent1d::from_min_max(0.0, 1.0),
+                tolerance: 1e-6,
+                curve: None,
+            })
+            .unwrap()
+        };
+        let (e1, e2) = (edge(&mut b), edge(&mut b));
+        let mut c = Curve::from(Line::from_points(Vec3::ZERO, Vec3::X, 3));
+        let original = curve_identity(&mut k, &mut c);
+        let second_use = c.clone();
+        with_env(|env| bind_wire_curve(&mut k, &mut b, env, e1, c)).unwrap();
+        with_env(|env| bind_wire_curve(&mut k, &mut b, env, e2, second_use)).unwrap();
+        let key = |b: &Brep, e| b.edge(e).unwrap().curve.as_ref().and_then(Curve::notify_key);
+        assert_eq!(key(&b, e1), Some(original.key));
+        assert!(key(&b, e2).is_some() && key(&b, e2) != key(&b, e1));
+    }
+
+    /// M2: a caller key in the reserved geometry range is refused before an edit
+    /// notifies anything, so a topology object can never share a curve's key.
+    #[test]
+    fn caller_keys_in_the_geometry_range_are_refused() {
+        use crate::geom::context::GEOMETRY_KEY_BASE;
+        let mut b = Brep::new();
+        let v = b.add_vertex(Vec3::ZERO).unwrap();
+        let mut records = BTreeMap::new();
+        let mut attributes = crate::geom::attribute::AttributeStore::default();
+        let reserved = |e: EntityRef| ObjectRef {
+            type_code: 0,
+            key: ObjectKey(match e {
+                EntityRef::Vertex(_) => GEOMETRY_KEY_BASE + 1,
+                _ => 1,
+            }),
+        };
+        let env = NotifyEnv {
+            records: &mut records,
+            attributes: &mut attributes,
+            context: None,
+            key_of: &reserved,
+        };
+        assert_eq!(check_caller_keys(&b, &env), Err(RESERVED_KEY));
+        let mut env = env;
+        let r = brep_notify(
+            &b,
+            &mut env,
+            NotifyOperation::AddToBrep,
+            [arg(EntityRef::Vertex(v)), None, None],
+        );
+        assert_eq!(r, Err(RESERVED_KEY));
+        // keys below the range pass
+        with_env(|env| check_caller_keys(&b, env)).unwrap();
+    }
+
+    /// M3: a key is only valid in the context that issued it: a curve keyed by K1 that
+    /// then meets K2 gets a key of K2's domain, so it never shares one with a curve K2
+    /// keyed itself, even though both contexts count from the start.
+    #[test]
+    fn curve_keys_belong_to_their_context() {
+        use crate::curve::line::Line;
+        let (mut k1, mut k2) = (Kernel::default(), Kernel::default());
+        let mut a = Curve::from(Line::from_points(Vec3::ZERO, Vec3::X, 3));
+        let mut b = Curve::from(Line::from_points(Vec3::ZERO, Vec3::Y, 3));
+        let a1 = curve_identity(&mut k1, &mut a);
+        let a2 = curve_identity(&mut k2, &mut a);
+        let b2 = curve_identity(&mut k2, &mut b);
+        assert_ne!(a2.key, b2.key);
+        // (both contexts count from the start: K2 gave A its own first key, which has
+        // K1's first number but K2's domain, instead of keeping K1's)
+        assert_eq!(a1.key, a2.key);
+        assert_eq!(curve_identity(&mut k2, &mut a), a2);
     }
 
     /// `DeleteFace` after region nesting merged the face's two shells: upstream's

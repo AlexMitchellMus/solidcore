@@ -12,7 +12,7 @@
 //! | [`Context`]                               | `SmContext`                                     |
 //! | [`Context::new`], [`Context::default`]    | `SmContext::SmContext(double, double)` (no `SM_USE_GLOBAL_CACHE`) |
 //! | [`Context::doing_boolean`]                | `SmContext::GetDoingBoolean`                    |
-//! | [`Context::new_geometry_key`], [`GEOMETRY_KEY_BASE`] | (none: geometry identities for notifications; CO-PORTED by `topology.brep_p3`) |
+//! | [`Context::geometry_identity`], [`GeometryIdentity`], [`GEOMETRY_KEY_BASE`], [`is_reserved_key`] | (none: geometry identities for notifications; CO-PORTED by `topology.brep_p3`) |
 //! | [`Context::doing_boolean_mut`]            | `SmContext::GetDoingBooleanRef`                 |
 //! | [`Context::set_doing_boolean`]            | `SmContext::SetDoingBoolean`                    |
 //! | [`Context::user_notify_callback`]         | `SmContext::GetUserNotifyCallback`              |
@@ -71,6 +71,8 @@
 //!   (`&mut Option<Context>`) from the caller.
 //! - The attribute-callback list, global user data (`void*`), `operator new/delete`,
 //!   `Dump`, `GetTypeString` and `IsLockedMark` are unused upstream and not ported.
+
+use std::sync::Arc;
 
 use crate::error::{Result, SolidError};
 use crate::geom::attribute::ObjectKey;
@@ -197,13 +199,52 @@ pub struct Context {
     user_notify_callback: Option<Box<dyn NotifyCallback>>,
     /// `m_pSysNotifyCallBack`.
     sys_notify_callback: Option<Box<dyn NotifyCallback>>,
-    /// Geometry notification keys handed out so far ([`Context::new_geometry_key`]).
-    geometry_keys: u64,
+    /// This context's geometry identity domain ([`Context::geometry_identity`]).
+    geometry: GeometryDomain,
 }
 
-/// The first notification key [`Context::new_geometry_key`] hands out: the range from
-/// it up is the context's, so a caller's own keys (`NotifyEnv::key_of`) stay below it.
-pub const GEOMETRY_KEY_BASE: u64 = 0xffff << 48;
+/// The reserved range of notification keys: both top bits set. Geometry keys
+/// ([`Context::geometry_identity`]) are in it; a caller's own keys (topology identities,
+/// `NotifyEnv::key_of`) must not be, which the edits that notify geometry check
+/// ([`is_reserved_key`]).
+pub const GEOMETRY_KEY_BASE: u64 = 0b11 << 62;
+
+/// Whether `key` is in the reserved geometry range ([`GEOMETRY_KEY_BASE`]).
+#[must_use]
+pub const fn is_reserved_key(key: ObjectKey) -> bool {
+    key.0 >= GEOMETRY_KEY_BASE
+}
+
+/// The token of one context's geometry identity domain. Each [`Context`] makes its own
+/// (it is not `Clone`), and tokens are told apart only by `Arc::ptr_eq` (never ordered
+/// or hashed), so no two contexts share a domain.
+#[derive(Debug)]
+pub struct GeometryDomainToken(());
+
+#[derive(Debug)]
+struct GeometryDomain {
+    token: Arc<GeometryDomainToken>,
+    issued: u64,
+}
+
+/// The identity a geometry object is notified under (upstream passes the object
+/// itself): a key of the reserved range and the domain that issued it. A key is only
+/// valid in that domain: [`Context::geometry_identity`] keeps it for the issuing
+/// context and gives a fresh one in any other, so two live objects never present
+/// one key to a context's callbacks.
+#[derive(Debug, Clone)]
+pub struct GeometryIdentity {
+    domain: Arc<GeometryDomainToken>,
+    key: ObjectKey,
+}
+
+impl GeometryIdentity {
+    /// The notification key.
+    #[must_use]
+    pub const fn key(&self) -> ObjectKey {
+        self.key
+    }
+}
 
 impl Default for Context {
     /// `SmContext()`: both sizes [`tol::USE_DEFAULT`].
@@ -213,14 +254,22 @@ impl Default for Context {
 }
 
 impl Context {
-    /// A fresh identity for a geometry object to be notified under (upstream passes
-    /// the object itself, `this` / `pData*`): unique among every key this context has
-    /// handed out, for as long as the context lives, so callbacks installed in it
-    /// never see two geometry objects under one key. Keys start at
-    /// [`GEOMETRY_KEY_BASE`].
-    pub fn new_geometry_key(&mut self) -> ObjectKey {
-        self.geometry_keys = self.geometry_keys.wrapping_add(1);
-        ObjectKey(GEOMETRY_KEY_BASE | (self.geometry_keys & ((1 << 48) - 1)))
+    /// The identity a geometry object is notified under in this context: `current`
+    /// (the object's) when this context issued it, else a fresh key of this context's
+    /// domain (the object enters it). Keys are in the reserved range
+    /// ([`GEOMETRY_KEY_BASE`]) and unique among those this context has issued, for as
+    /// long as it (and so its callbacks) lives.
+    pub fn geometry_identity(&mut self, current: Option<&GeometryIdentity>) -> GeometryIdentity {
+        if let Some(c) = current {
+            if Arc::ptr_eq(&c.domain, &self.geometry.token) {
+                return c.clone();
+            }
+        }
+        self.geometry.issued = self.geometry.issued.wrapping_add(1);
+        GeometryIdentity {
+            domain: Arc::clone(&self.geometry.token),
+            key: ObjectKey(GEOMETRY_KEY_BASE | (self.geometry.issued & !GEOMETRY_KEY_BASE)),
+        }
     }
 
     /// Creates a context (`SmContext::SmContext(double, double)`): every mark at 1 and
@@ -238,7 +287,10 @@ impl Context {
             zone_tol_3d: tol::size_estimate_to_zone_tol_3d(model_size_estimate),
             user_notify_callback: None,
             sys_notify_callback: None,
-            geometry_keys: 0,
+            geometry: GeometryDomain {
+                token: Arc::new(GeometryDomainToken(())),
+                issued: 0,
+            },
         }
     }
 

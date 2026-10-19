@@ -1640,24 +1640,28 @@ mod tests {
         assert_eq!(b.vertex(a).unwrap().vertexuses.len(), 1);
     }
 
-    /// Curve identities belong to the curves and come from the kernel context, which
-    /// outlives any healer: through the public `fix_degen_edges`, a healer H1 squeezing
-    /// AB of A--B--C (oriented from B, so B is kept; refused after its removal
-    /// notification, both curves live), then a fresh H2 and a clone of H1 squeezing
-    /// BC, never notify two curves under one key (a registry per healer restarted at
-    /// `(16 << 32) | 1` for each).
-    #[test]
-    fn curve_identities_survive_healer_instances() {
+    /// The A--B--C chain of [`wire_chain`] with line curves and AB's uses reversed (its
+    /// first edge use at B, so `GetVertex`, the vertex `FixDegenEdges` keeps, is B), a
+    /// kernel with a recording user callback, and healers queueing AB and BC.
+    #[allow(clippy::type_complexity)]
+    fn two_healer_setup() -> (
+        Brep,
+        Kernel,
+        std::sync::Arc<std::sync::Mutex<Vec<ObjectKey>>>,
+        HealData<L>,
+        HealData<L>,
+    ) {
         use crate::curve::curve::Curve;
         use crate::curve::line::Line;
-        use crate::geom::context::{NotifyCallback, GEOMETRY_KEY_BASE};
+        use crate::geom::context::{is_reserved_key, NotifyCallback};
         use crate::geom::object::{NotifyOperation, ObjectRef};
         use crate::heal::face_props::Tri;
         use crate::heal::heal_data::p2::EdgeProps;
+        use crate::topology::VertexuseId;
         use std::sync::{Arc, Mutex};
 
         #[derive(Debug)]
-        struct Rec(Arc<Mutex<Vec<(ObjectKey, ObjectKey)>>>);
+        struct Rec(Arc<Mutex<Vec<ObjectKey>>>);
         impl NotifyCallback for Rec {
             fn execute(
                 &mut self,
@@ -1667,12 +1671,10 @@ mod tests {
                 data2: Option<ObjectRef>,
                 data3: Option<ObjectRef>,
             ) -> Result<()> {
-                // (the object a notification is about, and the curve it names)
                 let mut seen = self.0.lock().unwrap();
                 for x in [Some(caller), data1, data2, data3].into_iter().flatten() {
-                    if x.key.0 >= GEOMETRY_KEY_BASE {
-                        let about = data1.map_or(caller.key, |d| d.key);
-                        seen.push((about, x.key));
+                    if is_reserved_key(x.key) {
+                        seen.push(x.key);
                     }
                 }
                 Ok(())
@@ -1688,8 +1690,14 @@ mod tests {
         }
 
         let (mut b, [a, bv, c], [e0, e1]) = wire_chain();
-        // AB runs from B to A, so FixDegenEdges keeps B (its start vertex)
+        // reverse AB: edge use 0 (SAME) at B, edge use 1 at A
+        let (vu0, vu1) = (VertexuseId::from_index(0), VertexuseId::from_index(1));
+        b.vertexuse_mut(vu0).unwrap().vertex = Some(bv);
+        b.vertexuse_mut(vu1).unwrap().vertex = Some(a);
+        b.vertex_mut(a).unwrap().vertexuses = vec![vu1];
+        b.vertex_mut(bv).unwrap().vertexuses = vec![vu0, VertexuseId::from_index(2)];
         b.edge_mut(e0).unwrap().vertices = [bv, a];
+        assert_eq!(edge::start_end_vertices(&b, e0).unwrap().0, Some(bv));
         for (e, p, q) in [(e0, bv, a), (e1, bv, c)] {
             let (pp, qq) = (b.vertex(p).unwrap().point, b.vertex(q).unwrap().point);
             b.edge_mut(e).unwrap().curve = Some(Curve::from(Line::from_points(pp, qq, 3)));
@@ -1698,37 +1706,57 @@ mod tests {
         let seen = Arc::new(Mutex::new(Vec::new()));
         k.context
             .set_user_notify_callback(Some(Box::new(Rec(Arc::clone(&seen)))));
-        let mut h1 = queue(e0);
-        let _ = h1.fix_degen_edges(&mut k, &mut b, HealerOpType::FixDegenEdges);
-        let mut h2 = queue(e1);
-        let mut h1_clone = h1.clone();
-        h1_clone.bad_edge_props_degen_edges = h2.bad_edge_props_degen_edges.clone();
-        h1_clone.edge_props = h2.edge_props.clone();
-        let _ = h2.fix_degen_edges(&mut k, &mut b, HealerOpType::FixDegenEdges);
-        let _ = h1_clone.fix_degen_edges(&mut k, &mut b, HealerOpType::FixDegenEdges);
-        let seen = seen.lock().unwrap().clone();
-        assert!(!seen.is_empty());
-        // one key per curve: no key names two different curves' notifications
-        let curve_keys: std::collections::BTreeSet<ObjectKey> = seen.iter().map(|x| x.1).collect();
-        let c0 = b
-            .edge(e0)
-            .unwrap()
-            .curve
-            .as_ref()
-            .and_then(Curve::notify_key);
-        let c1 = b
-            .edge(e1)
-            .unwrap()
-            .curve
-            .as_ref()
-            .and_then(Curve::notify_key);
-        if let (Some(x), Some(y)) = (c0, c1) {
-            assert_ne!(x, y);
-        }
+        (b, k, seen, queue(e0), queue(e1))
+    }
+
+    /// The two edits' curve keys, as the callback saw them.
+    fn keys_of_two_edits(
+        seen: &std::sync::Mutex<Vec<ObjectKey>>,
+        first_len: usize,
+    ) -> (Vec<ObjectKey>, Vec<ObjectKey>) {
+        let all = seen.lock().unwrap().clone();
+        (all[..first_len].to_vec(), all[first_len..].to_vec())
+    }
+
+    /// Curve identities outlive every healer: through the public `fix_degen_edges`, H1
+    /// squeezing AB while keeping B (refused with `SM_ERR` after its removal
+    /// notification, both curves still live), then a fresh H2 squeezing BC (keeping B,
+    /// succeeds), notify the two curves under distinct keys.
+    #[test]
+    fn curve_identities_survive_a_fresh_healer() {
+        let (mut b, mut k, seen, mut h1, mut h2) = two_healer_setup();
+        let r1 = h1.fix_degen_edges(&mut k, &mut b, HealerOpType::FixDegenEdges);
         assert!(
-            curve_keys.len() >= 2,
-            "the two edges' curves shared a key: {seen:?}"
+            matches!(r1, Err(SolidError::Upstream { code: SM_ERR, .. })),
+            "{r1:?}"
         );
-        assert!(k.context.take_notify_callbacks().0.is_some());
+        let first = seen.lock().unwrap().len();
+        h2.fix_degen_edges(&mut k, &mut b, HealerOpType::FixDegenEdges)
+            .unwrap();
+        let (one, two) = keys_of_two_edits(&seen, first);
+        assert!(!one.is_empty() && !two.is_empty());
+        assert!(two.iter().all(|x| !one.contains(x)), "{one:?} {two:?}");
+    }
+
+    /// The same with a clone of H1 made before H1's edit (re-queued on BC): cloned
+    /// healer state cannot restart the identities either.
+    #[test]
+    fn curve_identities_survive_a_cloned_healer() {
+        let (mut b, mut k, seen, mut h1, h2) = two_healer_setup();
+        let mut h1_clone = h1.clone();
+        h1_clone.edge_props = h2.edge_props.clone();
+        h1_clone.bad_edge_props_degen_edges = h2.bad_edge_props_degen_edges.clone();
+        let r1 = h1.fix_degen_edges(&mut k, &mut b, HealerOpType::FixDegenEdges);
+        assert!(
+            matches!(r1, Err(SolidError::Upstream { code: SM_ERR, .. })),
+            "{r1:?}"
+        );
+        let first = seen.lock().unwrap().len();
+        h1_clone
+            .fix_degen_edges(&mut k, &mut b, HealerOpType::FixDegenEdges)
+            .unwrap();
+        let (one, two) = keys_of_two_edits(&seen, first);
+        assert!(!one.is_empty() && !two.is_empty());
+        assert!(two.iter().all(|x| !one.contains(x)), "{one:?} {two:?}");
     }
 }
