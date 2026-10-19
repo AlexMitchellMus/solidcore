@@ -62,6 +62,11 @@
 //!   handle only prints a message upstream and falls through to `TRUE`; here
 //!   it is silently `true`. `SM_ASSERT`s, `Dump` and the `SM_DEBUG_CODE`
 //!   drawing blocks are not ported.
+//! - **Recursion.** `SolveBranch` nests once per subdivision, so its depth is the
+//!   summed height of the trees, which only their build tolerances limit. The base
+//!   traversal counts it in [`GlobalSolver::solve_depth`] and returns
+//!   [`SolidError::InvalidInput`] past [`MAX_SOLVE_DEPTH`] (2048; surface trees are
+//!   capped at 512 levels each). A cyclic tree hits the same bound.
 //! - `SM_SO_SURFACE_PROJECTED_INTERSECT` samples an `SmCrvOnSurf` owner of the
 //!   second tree, which is not ported yet: once the box tests cannot decide,
 //!   a tree without an owner object answers `false` (as upstream) and any
@@ -80,6 +85,10 @@ use crate::math::{max2, max3, Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT,
 
 /// `SM_GS_MAX_TREES`: most trees a global solver traverses together.
 pub const MAX_SOLVER_TREES: usize = 3;
+
+/// Deepest nesting of [`GlobalSolve::solve_branch`] accepted (see the module's
+/// Deviations).
+pub const MAX_SOLVE_DEPTH: usize = 2048;
 
 /// One node per traversed tree (`SmTreeNode* apBranch[SM_GS_MAX_TREES]`);
 /// `None` is a null pointer. Slots past the solver's tree count are `None`.
@@ -377,6 +386,9 @@ pub struct GlobalSolver<'t, O> {
     pub opt_vectors: Vec<Vec3>,
     /// `*m_pSolutions`: the sorted solutions.
     pub solutions: SolutionArray<O>,
+    /// (port) Current nesting of the base [`solve_branch`], bounded by
+    /// [`MAX_SOLVE_DEPTH`].
+    pub solve_depth: usize,
 }
 
 /// Error for a branch slot, tree or child that upstream would dereference as
@@ -408,6 +420,7 @@ impl<'t, O: SolutionObject> GlobalSolver<'t, O> {
             at_distance_sq: 0.0,
             opt_vectors: Vec::new(),
             solutions: SolutionArray::new(),
+            solve_depth: 0,
         }
     }
 
@@ -1385,8 +1398,28 @@ fn combine_min_max<O: SolutionObject>(
 ///
 /// # Errors
 ///
-/// Those of the hooks.
+/// Those of the hooks; [`SolidError::InvalidInput`] nested deeper than
+/// [`MAX_SOLVE_DEPTH`].
 pub fn solve_branch<'t, O, S>(solver: &mut S, branch: &Branch) -> Result<()>
+where
+    O: SolutionObject + 't,
+    S: GlobalSolve<'t, O> + ?Sized,
+{
+    let depth = solver.solver().solve_depth;
+    if depth >= MAX_SOLVE_DEPTH {
+        return Err(SolidError::invalid_input(
+            "geom::global_solver::solve_branch",
+            "solve nesting exceeds MAX_SOLVE_DEPTH",
+        ));
+    }
+    solver.solver_mut().solve_depth = depth + 1;
+    let result = solve_branch_body(solver, branch);
+    solver.solver_mut().solve_depth = depth;
+    result
+}
+
+/// The body of [`solve_branch`] at one nesting level.
+fn solve_branch_body<'t, O, S>(solver: &mut S, branch: &Branch) -> Result<()>
 where
     O: SolutionObject + 't,
     S: GlobalSolve<'t, O> + ?Sized,

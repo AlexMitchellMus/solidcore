@@ -1213,7 +1213,7 @@ impl SurfOfRevolution {
                 crate::surface::surface::p1::StepSurface::new(
                     crate::surface::surface::Surface::from(self.clone_exact()),
                     false,
-                ),
+                )?,
             );
             let point_3d = self.base.evaluate_point(nurbs_uv)?;
             let domain = step_surface.natural_uv_domain();

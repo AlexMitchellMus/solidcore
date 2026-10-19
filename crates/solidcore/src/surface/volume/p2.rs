@@ -1628,7 +1628,8 @@ mod tests {
             VolumeKind::Transform(scaled()),
             Some(shift(v(10.0, 0.0, 0.0))),
             Some(tv(shift(v(0.0, 0.0, 5.0)))),
-        );
+        )
+        .unwrap();
         let p = vol.evaluate_point(v(1.0, 1.0, 1.0), true).unwrap();
         let q = vol.evaluate_point(v(1.0, 1.0, 1.0), false).unwrap();
         assert!(close(p - q, v(0.0, 0.0, 5.0)));
@@ -1664,7 +1665,7 @@ mod tests {
 
     #[test]
     fn bounding_boxes_of_a_transform() {
-        let vol = Volume::with_maps(VolumeKind::Transform(scaled()), None, None);
+        let vol = Volume::with_maps(VolumeKind::Transform(scaled()), None, None).unwrap();
         let ppb = PseudoBox::new();
         let mut out = Extent3d::new();
         let mut in_box = Extent3d::new();
@@ -1704,7 +1705,7 @@ mod tests {
     fn base_sampler_samples_the_compound_map() {
         // a plain volume with a transform next map: the sampler's evaluations fail
         // (the plain simple map), so every sample is the undefined point
-        let vol = Volume::with_maps(VolumeKind::Base, None, Some(tv(scaled())));
+        let vol = Volume::with_maps(VolumeKind::Base, None, Some(tv(scaled()))).unwrap();
         let mut b = Extent3d::new();
         let mut pb = PseudoBox::new();
         vol.evaluate_bounding_box_simple(&unit_box(), None, Some(&mut b), Some(&mut pb))
@@ -1735,7 +1736,8 @@ mod tests {
             VolumeKind::Transform(scaled()),
             Some(shift(v(10.0, 0.0, 0.0))),
             Some(tv(shift(v(0.0, 0.0, 5.0)))),
-        );
+        )
+        .unwrap();
         let target = vol.evaluate_point(v(0.25, 0.5, 0.75), true).unwrap();
         let k = Kernel::default();
         let r = vol
@@ -1776,7 +1778,8 @@ mod tests {
 
     #[test]
     fn discontinuities_of_chains() {
-        let vol = Volume::with_maps(VolumeKind::Transform(scaled()), None, Some(tv(scaled())));
+        let vol =
+            Volume::with_maps(VolumeKind::Transform(scaled()), None, Some(tv(scaled()))).unwrap();
         let mut d = Discontinuities3d::new();
         d.set_unaligned();
         assert!(!vol.has_discontinuities(Some(&mut d), true).unwrap());

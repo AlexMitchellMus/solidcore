@@ -63,8 +63,13 @@
 //! | [`IsoCurveLengthIntegrand`]                       | `SmIsoCurveLengthIFEO` (constructor)             |
 //!
 //! Deviations:
-//! - Evaluation copies check all owned surface, curve and volume branches against a
-//!   64-level depth bound before invoking recursive copies. The surface evaluator
+//! - **Nesting.** [`MAX_GEOMETRY_NESTING`] (64; upstream fixtures nest at most 3)
+//!   bounds wrapper geometry across curves, surfaces and volumes. Every wrapper
+//!   constructor and setter checks its inner geometry with the non-recursive
+//!   `check_geometry_nesting`, so the recursive dispatch below, `Clone` and `Drop`
+//!   stay bounded (no limit upstream).
+//! - Evaluation copies check all owned surface, curve and volume branches against
+//!   the same bound before invoking recursive copies. The surface evaluator
 //!   also bounds its wrapper traversal to 64 levels and retains B-spline output
 //!   written before zero-tangent correction fails, as upstream accessors do.
 //! - **Object model.** `SmSurface` is not abstract upstream, but every ported surface
@@ -314,87 +319,124 @@ impl Surface {
     /// Check every owned geometry branch before invoking recursive `Clone` impls.
     /// This includes trim curves and volume chains, not only the surface basis.
     pub(crate) fn check_evaluation_copy_depth(&self, initial_depth: usize) -> Result<()> {
-        use crate::curve::curve::CurveKind;
-        enum Geometry<'a> {
-            Surface(&'a Surface),
-            Curve(&'a Curve),
-            Volume(&'a crate::surface::volume::Volume),
+        check_geometry_nesting(
+            NestedGeometry::Surface(self),
+            initial_depth,
+            "surface::surface::p2::clone_for_evaluation",
+        )
+    }
+}
+
+/// Maximum nesting of wrapper geometry (offset, STEP, curve-bounded, in-volume and
+/// generated surfaces; offset, projected, on-surface, in-volume, iso and composite
+/// curves; volume map chains), counted across curves, surfaces and volumes.
+///
+/// Every wrapper constructor and setter checks it, so the recursive dispatch,
+/// cloning and destruction of nested geometry stay bounded on wasm32 (no stack
+/// guard page). Upstream fixtures nest at most 3 levels.
+pub const MAX_GEOMETRY_NESTING: usize = 64;
+
+/// A root for [`check_geometry_nesting`].
+#[derive(Clone, Copy)]
+pub(crate) enum NestedGeometry<'a> {
+    /// A surface and everything it owns.
+    Surface(&'a Surface),
+    /// A curve and everything it owns.
+    Curve(&'a Curve),
+    /// A volume map and the rest of its chain.
+    Volume(&'a crate::surface::volume::Volume),
+}
+
+/// Walk `root` without recursion and fail when any owned geometry lies deeper than
+/// [`MAX_GEOMETRY_NESTING`], counting `root` itself at `initial_depth`. A wrapper
+/// constructor passes its new inner geometry at depth 1.
+///
+/// # Errors
+///
+/// `InvalidInput` (at `op`) past [`MAX_GEOMETRY_NESTING`].
+pub(crate) fn check_geometry_nesting(
+    root: NestedGeometry<'_>,
+    initial_depth: usize,
+    op: &'static str,
+) -> Result<()> {
+    use crate::curve::curve::CurveKind;
+    type Geometry<'a> = NestedGeometry<'a>;
+    let mut pending = vec![(root, initial_depth)];
+    while let Some((geometry, depth)) = pending.pop() {
+        if depth > MAX_GEOMETRY_NESTING {
+            return Err(SolidError::invalid_input(
+                op,
+                "owned geometry nesting exceeds 64",
+            ));
         }
-        let mut pending = vec![(Geometry::Surface(self), initial_depth)];
-        while let Some((geometry, depth)) = pending.pop() {
-            if depth >= 64 {
-                return Err(SolidError::invalid_input(
-                    "surface::surface::p2::clone_for_evaluation",
-                    "owned geometry nesting exceeds 64",
-                ));
-            }
-            let mut push = |geometry| pending.push((geometry, depth + 1));
-            match geometry {
-                Geometry::Surface(surface) => match surface.kind() {
-                    SurfaceKind::BSpline(_) | SurfaceKind::Plane(_) => {}
-                    SurfaceKind::SurfOfRevolution(s) => {
-                        if let Some(c) = s.gen_curve() {
-                            push(Geometry::Curve(c));
-                        }
+        let mut push = |geometry| pending.push((geometry, depth + 1));
+        match geometry {
+            Geometry::Surface(surface) => match surface.kind() {
+                SurfaceKind::BSpline(_) | SurfaceKind::Plane(_) => {}
+                SurfaceKind::SurfOfRevolution(s) => {
+                    if let Some(c) = s.gen_curve() {
+                        push(Geometry::Curve(c));
                     }
-                    SurfaceKind::Step(s) => {
-                        if let Some(s) = s.surface() {
-                            push(Geometry::Surface(s));
-                        }
+                }
+                SurfaceKind::Step(s) => {
+                    if let Some(s) = s.surface() {
+                        push(Geometry::Surface(s));
                     }
-                    SurfaceKind::CurveBounded(s) => {
-                        for c in s.boundaries_3d().iter().chain(s.boundaries_uv()) {
-                            push(Geometry::Curve(c));
-                        }
-                        push(Geometry::Surface(s.basis()));
+                }
+                SurfaceKind::CurveBounded(s) => {
+                    for c in s.boundaries_3d().iter().chain(s.boundaries_uv()) {
+                        push(Geometry::Curve(c));
                     }
-                    SurfaceKind::SrfInVolume(s) => {
-                        push(Geometry::Volume(s.volume()));
-                        push(Geometry::Surface(s.surface()));
+                    push(Geometry::Surface(s.basis()));
+                }
+                SurfaceKind::SrfInVolume(s) => {
+                    push(Geometry::Volume(s.volume()));
+                    push(Geometry::Surface(s.surface()));
+                }
+                SurfaceKind::OffsetSurface(s) => {
+                    push(Geometry::Surface(s.base_surface()));
+                    if let Some(e) = s.extended_base_surface() {
+                        push(Geometry::Surface(e));
                     }
-                    SurfaceKind::OffsetSurface(s) => {
-                        push(Geometry::Surface(s.base_surface()));
-                        if let Some(e) = s.extended_base_surface() {
-                            push(Geometry::Surface(e));
-                        }
+                }
+            },
+            Geometry::Curve(curve) => match curve.kind() {
+                CurveKind::Projected(c) => push(Geometry::Curve(c.curve())),
+                CurveKind::Iso(c) => push(Geometry::Surface(c.surface())),
+                CurveKind::Offset(c) => {
+                    if let Some(c) = c.base_curve() {
+                        push(Geometry::Curve(c));
                     }
-                },
-                Geometry::Curve(curve) => match curve.kind() {
-                    CurveKind::Projected(c) => push(Geometry::Curve(c.curve())),
-                    CurveKind::Iso(c) => push(Geometry::Surface(c.surface())),
-                    CurveKind::Offset(c) => {
-                        if let Some(c) = c.base_curve() {
-                            push(Geometry::Curve(c));
-                        }
+                }
+                CurveKind::CrvInVolume(c) => {
+                    push(Geometry::Volume(c.volume()));
+                    push(Geometry::Curve(c.curve()));
+                }
+                CurveKind::CrvOnSurf(c) => push(Geometry::Curve(c.uv_curve())),
+                CurveKind::Composite(c) => {
+                    for segment in c.segments() {
+                        push(Geometry::Curve(&segment.curve));
                     }
-                    CurveKind::CrvInVolume(c) => {
-                        push(Geometry::Volume(c.volume()));
-                        push(Geometry::Curve(c.curve()));
-                    }
-                    CurveKind::CrvOnSurf(c) => push(Geometry::Curve(c.uv_curve())),
-                    CurveKind::Composite(c) => {
-                        for segment in c.segments() {
-                            push(Geometry::Curve(&segment.curve));
-                        }
-                    }
-                    CurveKind::BSpline(_)
-                    | CurveKind::Hermite(_)
-                    | CurveKind::Hyperbola(_)
-                    | CurveKind::Conic(_)
-                    | CurveKind::Line(_)
-                    | CurveKind::Ellipse(_)
-                    | CurveKind::Parabola(_) => {}
-                },
-                Geometry::Volume(volume) => {
-                    if let Some(next) = volume.next_map() {
-                        push(Geometry::Volume(next));
-                    }
+                }
+                CurveKind::BSpline(_)
+                | CurveKind::Hermite(_)
+                | CurveKind::Hyperbola(_)
+                | CurveKind::Conic(_)
+                | CurveKind::Line(_)
+                | CurveKind::Ellipse(_)
+                | CurveKind::Parabola(_) => {}
+            },
+            Geometry::Volume(volume) => {
+                if let Some(next) = volume.next_map() {
+                    push(Geometry::Volume(next));
                 }
             }
         }
-        Ok(())
     }
+    Ok(())
+}
 
+impl Surface {
     /// Bounded traversal of compound surfaces for an evaluation copy (at most 64).
     pub(crate) fn clone_for_evaluation_depth(&self, depth: usize) -> Result<Self> {
         self.check_evaluation_copy_depth(depth)?;
@@ -4501,13 +4543,12 @@ mod tests {
     #[test]
     fn evaluation_copy_bounds_compound_surface_nesting() {
         let mut surface = Surface::from(BSplineSurface::new());
-        for _ in 0..63 {
-            surface = Surface::from(StepSurface::new(surface, true));
+        for _ in 0..MAX_GEOMETRY_NESTING {
+            surface = Surface::from(StepSurface::new(surface, true).unwrap());
         }
         assert!(surface.clone_for_evaluation().is_ok());
-        surface = Surface::from(StepSurface::new(surface, true));
         assert!(matches!(
-            surface.clone_for_evaluation(),
+            StepSurface::new(surface.clone(), true),
             Err(SolidError::InvalidInput { .. })
         ));
         // The general iso constructor checks before clamping through nested bases.
@@ -4522,32 +4563,40 @@ mod tests {
     }
 
     #[test]
-    fn evaluation_copy_bounds_nested_trim_curves_and_volume_maps() {
+    fn constructors_bound_nested_trim_curves_and_volume_maps() {
         use crate::curve::offset_curve::OffsetCurve;
         use crate::surface::volume::{Volume, VolumeKind};
         let mut curve = Curve::from(BSplineCurve::new(3));
-        for _ in 0..64 {
-            curve = Curve::from(OffsetCurve::new(
-                3,
-                curve,
-                Extent1d::from_raw(0.0, 1.0),
-                Vec3::Z,
-                1.0,
+        for _ in 0..MAX_GEOMETRY_NESTING - 1 {
+            curve = Curve::from(
+                OffsetCurve::new(3, curve, Extent1d::from_raw(0.0, 1.0), Vec3::Z, 1.0, true)
+                    .unwrap(),
+            );
+        }
+        let bounded = |curve| {
+            CurveBoundedSurface::new(
+                Surface::from(BSplineSurface::new()),
+                vec![curve],
+                vec![],
                 true,
-            ));
-        }
-        let surface = Surface::from(CurveBoundedSurface::new(
-            Surface::from(BSplineSurface::new()),
-            vec![curve],
-            vec![],
-            true,
+            )
+        };
+        let surface = Surface::from(bounded(curve.clone()).unwrap());
+        assert!(surface.clone_for_evaluation().is_ok());
+        let curve = Curve::from(
+            OffsetCurve::new(3, curve, Extent1d::from_raw(0.0, 1.0), Vec3::Z, 1.0, true).unwrap(),
+        );
+        assert!(matches!(
+            bounded(curve),
+            Err(SolidError::InvalidInput { .. })
         ));
-        assert!(surface.clone_for_evaluation().is_err());
+
+        // a chain of 64 maps fits below a wrapper, 65 only on its own
         let mut volume = Volume::new(VolumeKind::Base);
-        for _ in 0..64 {
-            volume = Volume::with_maps(VolumeKind::Base, None, Some(volume));
+        for _ in 0..MAX_GEOMETRY_NESTING - 1 {
+            volume = Volume::with_maps(VolumeKind::Base, None, Some(volume)).unwrap();
         }
-        let surface = Surface::from(
+        let in_volume = |volume| {
             SrfInVolume::new(
                 &Kernel::default(),
                 Surface::from(BSplineSurface::new()),
@@ -4556,9 +4605,27 @@ mod tests {
                 0,
                 3,
             )
-            .unwrap(),
-        );
-        assert!(surface.clone_for_evaluation().is_err());
+        };
+        let surface = Surface::from(in_volume(volume.clone()).unwrap());
+        assert!(surface.clone_for_evaluation().is_ok());
+        volume
+            .add_next_map(Volume::new(VolumeKind::Base), 2)
+            .unwrap();
+        assert!(matches!(
+            in_volume(volume.clone()),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        // a chain at the limit refuses one more map, leaving it unchanged
+        let before = volume.clone();
+        assert!(matches!(
+            volume.add_next_map(Volume::new(VolumeKind::Base), 2),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        assert_eq!(format!("{volume:?}"), format!("{before:?}"));
+        assert!(matches!(
+            Volume::with_maps(VolumeKind::Base, None, Some(volume)),
+            Err(SolidError::InvalidInput { .. })
+        ));
     }
 
     /// An offset chain is walked into its base by the evaluation copy (and bounded).

@@ -44,6 +44,10 @@
 //! | [`trim_first_break`], [`trim_last_break`], [`insert_sorted_breaks`] | `sm_TrimFirstBreak`, `sm_TrimLastBreak`, `sm_InsertSortedBreaks` (static) |
 //!
 //! Deviations:
+//! - **Nesting.** `with_curves` return `InvalidInput` when every segment curve would nest
+//!   deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
+//!   (64; upstream fixtures nest at most 3), which bounds the recursive dispatch,
+//!   cloning and dropping of nested geometry (no limit upstream).
 //! - **Object model.** `SmCompositeCurve` derives from `SmCurve`; here it is the
 //!   [`CurveKind::Composite`] variant of [`Curve`], whose dispatch calls the
 //!   overrides ported here and runs the base-class defaults for the rest (a
@@ -133,6 +137,7 @@ use crate::nurbs::b_spline_curve::{
 };
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::surface::surface::p2::{check_geometry_nesting, NestedGeometry};
 
 const OP: &str = "curve::composite_curve::p1::CompositeCurve";
 const OP_NEW: &str = "curve::composite_curve::p1::CompositeCurve::with_curves";
@@ -429,7 +434,9 @@ impl CompositeCurve {
     /// # Errors
     ///
     /// `InvalidInput` for fewer senses or gaps than curves, or gaps for a closed
-    /// composite without curves (upstream reads past the arrays).
+    /// composite without curves (upstream reads past the arrays), or when a curve
+    /// nests deeper than
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING) - 1.
     pub fn with_curves(
         dim: u64,
         curves: Vec<Curve>,
@@ -446,6 +453,9 @@ impl CompositeCurve {
         }
         if gaps.is_some_and(|g| g.len() < n) {
             return Err(SolidError::invalid_input(OP_NEW, "fewer gaps than curves"));
+        }
+        for curve in &curves {
+            check_geometry_nesting(NestedGeometry::Curve(curve), 1, OP_NEW)?;
         }
 
         // for every curve segment - load the SmCompositeCurveSegment object

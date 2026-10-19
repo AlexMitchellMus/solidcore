@@ -30,6 +30,10 @@
 //! | `SetContext` (dropped)                         | `SetContext`                                      |
 //!
 //! Deviations:
+//! - **Nesting.** `new` return `InvalidInput` when the curve and the volume would nest
+//!   deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
+//!   (64; upstream fixtures nest at most 3), which bounds the recursive dispatch,
+//!   cloning and dropping of nested geometry (no limit upstream).
 //! - **Volumes.** The volume is a [`Volume`] (units `surface.volume_p1`, `_p2`);
 //!   the queries of the unported volume kinds return [`SolidError::Unported`].
 //! - **Curve classification.** `GetKnots` classifies the base curve against the
@@ -95,6 +99,7 @@ use crate::geom::vector3d::{Point3, Vec3};
 use crate::kernel::Kernel;
 use crate::math::{max2, BIG_DOUBLE, BOUNDED_INFINITE_PARAM, EFF_ZERO};
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
+use crate::surface::surface::p2::{check_geometry_nesting, NestedGeometry};
 use crate::surface::volume::p1::{
     lift_first_derivative, lift_second_derivative, lift_third_derivative,
 };
@@ -205,14 +210,20 @@ impl CrvInVolume {
     /// A curve in `volume` (the constructor). `copy_flag` bit 1 (curve) and bit 2
     /// (volume) ask for copies, which upstream then owns: here they set those owner
     /// bits (the parts are held by value). `owner_flag` is the initial owner flag.
-    #[must_use]
-    pub const fn new(
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` when `curve` or `volume` nests deeper than
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING) - 1.
+    pub fn new(
         curve: Curve,
         in_param_space: bool,
         volume: Volume,
         copy_flag: u64,
         owner_flag: u64,
-    ) -> Self {
+    ) -> Result<Self> {
+        check_geometry_nesting(NestedGeometry::Curve(&curve), 1, OP)?;
+        check_geometry_nesting(NestedGeometry::Volume(&volume), 1, OP)?;
         let mut owner_flag = owner_flag;
         // When Curve is to be copied - copy it
         if copy_flag == 1 || copy_flag == 3 {
@@ -222,7 +233,7 @@ impl CrvInVolume {
         if copy_flag == 2 || copy_flag == 3 {
             owner_flag |= 2;
         }
-        Self {
+        Ok(Self {
             curve,
             in_param_space,
             volume,
@@ -230,7 +241,7 @@ impl CrvInVolume {
             breaks: Vec::new(),
             conts: Vec::new(),
             owner_flag,
-        }
+        })
     }
 
     /// The copy constructor (`Copy`): copies both parts, keeps the break cache when
@@ -1213,6 +1224,7 @@ mod tests {
             0,
             owner,
         )
+        .unwrap()
     }
 
     fn cached(owner: u64) -> CrvInVolume {
@@ -1238,7 +1250,8 @@ mod tests {
             Volume::new(VolumeKind::Bend(BendVolume::new())),
             3,
             0,
-        );
+        )
+        .unwrap();
         assert_eq!(c.owner_flag(), 3);
         assert!(c.owns_curve() && c.owns_volume());
         let c = CrvInVolume::new(
@@ -1247,7 +1260,8 @@ mod tests {
             Volume::new(VolumeKind::Bend(BendVolume::new())),
             1,
             4,
-        );
+        )
+        .unwrap();
         assert_eq!(c.owner_flag(), 5);
         assert!(!c.owns_curve() && !c.owns_volume());
         assert_eq!(c.copy().owner_flag(), 0);

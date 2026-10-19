@@ -54,6 +54,10 @@
 //! | [`CsIntersectEnfo`], [`CsNormalizeEnfo`], [`FindPsNormalEnfo`], [`SspIntersectEnfo`], [`SsiNormalizeEnfo`], [`SsNormalizeEnfo`], [`SssIntersectEnfo`] | the constructors of `SmCSIntersectENFO`, `SmCSNormalizeENFO`, `SmFindPSNormalENFO`, `SmSSPIntersectENFO`, `SmSSINormalizeENFO`, `SmSSNormalizeENFO`, `SmSSSIntersectENFO` |
 //!
 //! Deviations:
+//! - **Nesting.** `StepSurface::new` return `InvalidInput` when the base surface would nest
+//!   deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
+//!   (64; upstream fixtures nest at most 3), which bounds the recursive dispatch,
+//!   cloning and dropping of nested geometry (no limit upstream).
 //! - **STEP surfaces.** `m_pSurface` is an owned copy ([`Box<Surface>`]) whether or not
 //!   upstream owns it (`m_bOwnsSurface` is kept as a flag); `None` is the empty
 //!   constructor's null pointer, where upstream would crash the methods return
@@ -137,9 +141,10 @@ use crate::surface::trim_srf_cache::TrimSrfCache;
 use crate::topology::database_io::{DatabaseReader, FileType};
 
 use super::p2::{
-    cs_are_perpen_disjoint, evaluate_geometric, intersect_curve_and_split, original_surface,
-    DropCurveFail, IsoCurveLengthIntegrand, LsiGlobalSolver, SurfaceEval, SurfaceEvaluate,
-    STEP_SURFACE_TYPE, SURF_OF_EXTRUSION_TYPE, SURF_OF_REVOLUTION_TYPE,
+    check_geometry_nesting, cs_are_perpen_disjoint, evaluate_geometric, intersect_curve_and_split,
+    original_surface, DropCurveFail, IsoCurveLengthIntegrand, LsiGlobalSolver, NestedGeometry,
+    SurfaceEval, SurfaceEvaluate, STEP_SURFACE_TYPE, SURF_OF_EXTRUSION_TYPE,
+    SURF_OF_REVOLUTION_TYPE,
 };
 use super::p7::{SpGlobalSolver, SsGlobalSolver};
 use super::{Surface, SurfaceKind};
@@ -361,12 +366,21 @@ impl StepSurface {
     pub const CLASS_STRING: &'static str = "SmSTEPSurface";
 
     /// `SmSTEPSurface(rSurface, bOwnsSurface)`.
-    #[must_use]
-    pub fn new(surface: Surface, owns_surface: bool) -> Self {
-        Self {
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` when `surface` nests deeper than
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING) - 1.
+    pub fn new(surface: Surface, owns_surface: bool) -> Result<Self> {
+        check_geometry_nesting(
+            NestedGeometry::Surface(&surface),
+            1,
+            "surface::surface::p1::StepSurface::new",
+        )?;
+        Ok(Self {
             surface: Some(Box::new(surface)),
             owns_surface,
-        }
+        })
     }
 
     /// The empty constructor for I/O (`SmSTEPSurface()`): no base surface.
@@ -585,7 +599,7 @@ impl StepSurface {
         let base = Surface::read_from_db(k, base_type, db, version)?;
 
         // load object
-        Ok(Self::new(base, true))
+        Self::new(base, true)
     }
 }
 
@@ -3352,7 +3366,9 @@ mod tests {
     #[test]
     fn step_surface_wraps_base() {
         let base = bilinear();
-        let st = Surface::new(SurfaceKind::Step(StepSurface::new(base.clone(), true)));
+        let st = Surface::new(SurfaceKind::Step(
+            StepSurface::new(base.clone(), true).unwrap(),
+        ));
         assert_eq!(st.type_code(), STEP_SURFACE_TYPE);
         assert!(st.is_kind_of(STEP_SURFACE_TYPE).unwrap());
         let uv = Point2::new(0.5, 0.5);

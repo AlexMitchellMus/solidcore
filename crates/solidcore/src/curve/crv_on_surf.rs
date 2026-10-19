@@ -39,6 +39,10 @@
 //! | `SetContext` (dropped)                          | `SetContext`                                   |
 //!
 //! Deviations:
+//! - **Nesting.** `new` and `set_uv_curve` return `InvalidInput` when the UV curve would nest
+//!   deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
+//!   (64; upstream fixtures nest at most 3), which bounds the recursive dispatch,
+//!   cloning and dropping of nested geometry (no limit upstream).
 //! - **Surface.** `m_pSurface` is an `SmSurface*`; the only ported surface class is
 //!   [`BSplineSurface`], so the curve holds one, by value. The surface virtuals resolve
 //!   to its overrides (`GetNaturalUVDomain`, `Evaluate`, `EvaluatePoint`,
@@ -124,7 +128,7 @@ use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface::BSplineSurface;
 use crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
 use crate::nurbs::knots::Side;
-use crate::surface::surface::p2::{Surface, SurfaceKind};
+use crate::surface::surface::p2::{check_geometry_nesting, NestedGeometry, Surface, SurfaceKind};
 use crate::topology::database_io::{DatabaseReader, FileType};
 
 const OP: &str = "curve::crv_on_surf::CrvOnSurf";
@@ -350,7 +354,9 @@ impl CrvOnSurf {
     ///
     /// # Errors
     ///
-    /// Those of the UV curve's `Copy` (owner flags 1 and 2).
+    /// `InvalidInput` when `uv_curve` nests deeper than
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING) - 1;
+    /// those of the UV curve's `Copy` (owner flags 1 and 2).
     pub fn new(
         k: &Kernel,
         uv_curve: Curve,
@@ -358,6 +364,7 @@ impl CrvOnSurf {
         uv_domain: Option<Extent2d>,
         owner_flag: u64,
     ) -> Result<Self> {
+        check_geometry_nesting(NestedGeometry::Curve(&uv_curve), 1, OP)?;
         let mut c = Self::bare(uv_curve, surface, owner_flag);
 
         // set m_vUVDomain
@@ -534,8 +541,16 @@ impl CrvOnSurf {
     }
 
     /// Replaces the UV curve (`SetUVCurve`); the caches are kept, as upstream.
-    pub fn set_uv_curve(&mut self, uv_curve: Curve) {
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` when `uv_curve` nests deeper than
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING) - 1
+    /// (the UV curve is left unchanged).
+    pub fn set_uv_curve(&mut self, uv_curve: Curve) -> Result<()> {
+        check_geometry_nesting(NestedGeometry::Curve(&uv_curve), 1, OP)?;
         *self.uv_curve = uv_curve;
+        Ok(())
     }
 
     /// `IsAnalytic`: never.

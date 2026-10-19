@@ -120,7 +120,8 @@ use crate::nurbs::srf_adv::p1::{eval_pt_derivs_unbounded, UnboundedExtension};
 use crate::nurbs::srf_adv::p3::ExtendContinuity;
 use crate::surface::surface::p1::SurfaceBoxes;
 use crate::surface::surface::p2::{
-    is_kind_of as surface_is_kind_of, SurfaceEvaluate, B_SPLINE_SURFACE_TYPE, OFFSET_SURFACE_TYPE,
+    check_geometry_nesting, is_kind_of as surface_is_kind_of, NestedGeometry, SurfaceEvaluate,
+    B_SPLINE_SURFACE_TYPE, MAX_GEOMETRY_NESTING, OFFSET_SURFACE_TYPE,
 };
 use crate::surface::surface::p7::base_evaluate_normal;
 use crate::surface::surface::{Surface, SurfaceKind};
@@ -1708,34 +1709,13 @@ impl OffsetSurface {
 
 /// Maximum wrapper depth accepted by offset construction and restoration.
 ///
-/// Bounds recursive domain queries, edits, cloning and destruction on wasm32.
-pub const MAX_SURFACE_NESTING: usize = 64;
+/// Bounds recursive domain queries, edits, cloning and destruction on wasm32. The
+/// crate-wide [`MAX_GEOMETRY_NESTING`], counted across curves, surfaces and volumes.
+pub const MAX_SURFACE_NESTING: usize = MAX_GEOMETRY_NESTING;
 
-/// Walk wrappers in base-before-extension order, checking before recursive descent.
+/// Check `surface` (at `depth`) and everything it owns, without recursion.
 fn check_surface_nesting(surface: &Surface, depth: usize, op: &'static str) -> Result<()> {
-    if depth > MAX_SURFACE_NESTING {
-        return Err(SolidError::invalid_input(
-            op,
-            "surface nesting limit exceeded",
-        ));
-    }
-    match surface.kind() {
-        SurfaceKind::OffsetSurface(off) => {
-            check_surface_nesting(off.base_surface(), depth + 1, op)?;
-            if let Some(extended) = off.extended_base_surface() {
-                check_surface_nesting(extended, depth + 1, op)?;
-            }
-        }
-        SurfaceKind::CurveBounded(s) => check_surface_nesting(s.basis(), depth + 1, op)?,
-        SurfaceKind::SrfInVolume(s) => check_surface_nesting(s.surface(), depth + 1, op)?,
-        SurfaceKind::Step(s) => {
-            if let Some(base) = s.surface() {
-                check_surface_nesting(base, depth + 1, op)?;
-            }
-        }
-        SurfaceKind::BSpline(_) | SurfaceKind::Plane(_) | SurfaceKind::SurfOfRevolution(_) => {}
-    }
-    Ok(())
+    check_geometry_nesting(NestedGeometry::Surface(surface), depth, op)
 }
 
 /// `GetNaturalUVDomain` of an offset over `base` with `extended`.
@@ -2241,9 +2221,8 @@ mod tests {
             OffsetSurface::new(&k, 1.0, surface, true, 0),
             Err(SolidError::InvalidInput { .. })
         ));
-        let wrapped = Surface::from(crate::surface::surface::p1::StepSurface::new(copy, true));
         assert!(matches!(
-            OffsetSurface::new(&k, 1.0, wrapped, true, 0),
+            crate::surface::surface::p1::StepSurface::new(copy, true),
             Err(SolidError::InvalidInput { .. })
         ));
     }

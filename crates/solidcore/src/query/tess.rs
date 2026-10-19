@@ -63,6 +63,11 @@
 //! - **Loops.** The parent walks of `MarkFaceContainment` stop with
 //!   [`SolidError::InvalidInput`] after as many steps as the tree has nodes (a cyclic
 //!   parent chain, which upstream follows forever).
+//! - **Recursion.** `BuildTree` implants the boundary through `GetTree`, which builds
+//!   again when there is no tree. When the (ignored) base-class build left no tree,
+//!   upstream recurses forever; here `GetTree` returns [`SolidError::InvalidInput`]
+//!   when it finds no tree while a build is under way. Every other `GetTree` inside a
+//!   build finds the tree, so the nesting is at most 1.
 //! - **Undefined behaviour.** Where upstream dereferences a null tree, top node,
 //!   poly B-rep, poly face or tessellation driver, or a node without
 //!   `SmBezierAux2d` data, the port returns `SM_ERR_NULL_POINTER` or
@@ -696,6 +701,13 @@ impl TessSrfCache {
             .owner()
             .is_some_and(|o| o.type_code == FACE_TYPE);
         let b = self.base();
+        let building = b.face_containment_done
+            == crate::surface::surface_cache::p1::FaceContainment::UnderConstruction;
+        // (port) a missing tree mid-build means the build in progress already failed
+        // (softly); building again would repeat it and recurse without end
+        if b.tree().is_none() && building {
+            return Err(invalid(OP_GET_TREE, "tree build re-entered without a tree"));
+        }
         if b.tree().is_none()
             || (!b.have_t_surface_cache
                 && face_owned

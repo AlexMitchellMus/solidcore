@@ -117,7 +117,7 @@ impl IsoCurve {
         from_left: bool,
         clamp_input: bool,
     ) -> Result<Self> {
-        surface.check_evaluation_copy_depth(0)?;
+        surface.check_evaluation_copy_depth(1)?;
         Ok(Self::from_surface_inner(
             surface,
             surf_param,

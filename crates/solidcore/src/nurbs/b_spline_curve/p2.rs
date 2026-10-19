@@ -256,7 +256,7 @@ fn offset_curve_approximation(
         normal,
         distance,
         false,
-    );
+    )?;
     let breaks = [interval.min(), interval.max()];
     approximate_curve(
         k,

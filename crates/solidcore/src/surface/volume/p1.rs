@@ -55,6 +55,10 @@
 //! | [`concat_evals`]                                       | `smvol_ConcatEvals`                              |
 //!
 //! Deviations:
+//! - **Nesting.** `with_maps` and `add_next_map` return `InvalidInput` when the next-map chain would nest
+//!   deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
+//!   (64; upstream fixtures nest at most 3), which bounds the recursive dispatch,
+//!   cloning and dropping of nested geometry (no limit upstream).
 //! - **Kinds.** The class hierarchy is the [`VolumeKind`] enum: [`VolumeKind::Base`]
 //!   is a plain `SmVolume` (as made by the slicing copy in `IsLineInParamDomain`),
 //!   [`VolumeKind::Transform`] holds the [`Transform`] matrix of an `SmTransform`,
@@ -118,6 +122,7 @@ use crate::kernel::Kernel;
 use crate::math::{max2, EFF_ZERO, EFF_ZERO_SQ};
 use crate::surface::b_spline_volume::{BSplineVolume, VolumeParam};
 use crate::surface::bend_volume::BendVolume;
+use crate::surface::surface::p2::{check_geometry_nesting, NestedGeometry};
 use crate::surface::twist_volume::TwistVolume;
 use crate::surface::unbend_volume::UnbendVolume;
 
@@ -126,6 +131,8 @@ const OP_EVAL: &str = "surface::volume::p1::Volume::evaluate";
 const OP_MAP: &str = "surface::volume::p1::Volume::map";
 const OP_ORIENT: &str = "surface::volume::p1::Volume::orient";
 const OP_CONCAT: &str = "surface::volume::p1::concat_evals";
+const OP_WITH_MAPS: &str = "surface::volume::p1::Volume::with_maps";
+const OP_ADD_NEXT_MAP: &str = "surface::volume::p1::Volume::add_next_map";
 const OP_PV: &str = "surface::volume::p1::FindPvIntersect::evaluate";
 
 pub use crate::geom::assert_array::labels::{
@@ -341,21 +348,39 @@ impl Volume {
     }
 
     /// `kind` oriented by `orient` (the orient map set as `SetOrientMap` does, with
-    /// [`Volume::refresh_inv_orient_map`]) and compounded with `next` (which
-    /// becomes the whole next-map chain, owned: owner flag 2).
+    /// [`Volume::refresh_inv_orient_map`]), without next maps.
     #[must_use]
-    pub fn with_maps(kind: VolumeKind, orient: Option<Transform>, next: Option<Self>) -> Self {
+    pub fn oriented(kind: VolumeKind, orient: Option<Transform>) -> Self {
         let mut v = Self::new(kind);
-        if let Some(next) = next {
-            v.next_map = Some(Box::new(next));
-            v.next_owner_flag = 2;
-        }
         if let Some(o) = orient {
             v.orient_map = Some(o);
             // an orient map is present: the refresh cannot fail
             let _ = v.refresh_inv_orient_map();
         }
         v
+    }
+
+    /// [`Volume::oriented`] compounded with `next` (which becomes the whole
+    /// next-map chain, owned: owner flag 2).
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` when the chain would be longer than
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING).
+    pub fn with_maps(
+        kind: VolumeKind,
+        orient: Option<Transform>,
+        next: Option<Self>,
+    ) -> Result<Self> {
+        if let Some(next) = &next {
+            check_geometry_nesting(NestedGeometry::Volume(next), 1, OP_WITH_MAPS)?;
+        }
+        let mut v = Self::oriented(kind, orient);
+        if let Some(next) = next {
+            v.next_map = Some(Box::new(next));
+            v.next_owner_flag = 2;
+        }
+        Ok(v)
     }
 
     /// The copy constructor `SmVolume(const SmVolume&, SmBoolean)` with the derived
@@ -646,8 +671,18 @@ impl Volume {
     ///
     /// # Errors
     ///
-    /// The failed `Copy` of `next` when it is added here.
+    /// The failed `Copy` of `next` when it is added here; `InvalidInput` (nothing
+    /// is added) when the chain would be longer than
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING).
     pub fn add_next_map(&mut self, next: Self, owner_flag: u64) -> Result<()> {
+        // (port) bound the chain: `next` lands below every map already in it
+        let mut depth = 1;
+        let mut map = self.next_map.as_deref();
+        while let Some(m) = map {
+            depth += 1;
+            map = m.next_map.as_deref();
+        }
+        check_geometry_nesting(NestedGeometry::Volume(&next), depth, OP_ADD_NEXT_MAP)?;
         // branch on existence of m_pNextMap
         match self.next_map.as_deref_mut() {
             None => {
@@ -791,7 +826,7 @@ impl Volume {
             simple.kind = VolumeKind::Base;
             let line = Line::from_points(start_in, end_in, 3);
             let next_in_space_curve =
-                Curve::from(CrvInVolume::new(Curve::from(line), false, simple, 0, 0));
+                Curve::from(CrvInVolume::new(Curve::from(line), false, simple, 0, 0)?);
 
             // Check the NextInSpaceCurve
             is_in &= next.is_curve_in_in_space_domain(k, &next_in_space_curve, true)?;
@@ -830,7 +865,7 @@ impl Volume {
                 }
             };
             // project Curve to 1st OutSpace = Next InSpace
-            let out_space_curve = Curve::from(CrvInVolume::new(curve.clone(), true, simple, 0, 0));
+            let out_space_curve = Curve::from(CrvInVolume::new(curve.clone(), true, simple, 0, 0)?);
             // Check the NextInSpaceCurve
             is_in &= next.is_curve_in_in_space_domain(k, &out_space_curve, true)?;
         }
@@ -859,7 +894,7 @@ impl Volume {
                     Self::new(VolumeKind::Transform(*inv)),
                     0,
                     0,
-                ));
+                )?);
                 self.is_curve_in_param_domain(k, &param_space_curve, with_compounding)
             }
             // InSpaceCurve == ParamSpaceCurve
@@ -2301,7 +2336,7 @@ mod tests {
             v(0.0, 2.0, 0.0),
             v(0.0, 0.0, 1.0),
         );
-        let vol = Volume::with_maps(VolumeKind::Transform(t1), Some(r), Some(tv(t2)));
+        let vol = Volume::with_maps(VolumeKind::Transform(t1), Some(r), Some(tv(t2))).unwrap();
         let p = v(0.3, -0.7, 1.1);
         let d = vol.evaluate(p, 3, &EvalOptions::default()).unwrap();
         assert_eq!(d.len(), 64);
@@ -2334,7 +2369,8 @@ mod tests {
     #[test]
     fn map_inverts_the_orientation_first() {
         let r = rot_z();
-        let vol = Volume::with_maps(VolumeKind::Transform(Transform::IDENTITY), Some(r), None);
+        let vol =
+            Volume::with_maps(VolumeKind::Transform(Transform::IDENTITY), Some(r), None).unwrap();
         // Orient(Identity(InvOrient(p))) = p
         let p = v(2.0, -1.0, 4.0);
         let d = vol.map(p, 1, &EvalOptions::default()).unwrap();
@@ -2382,12 +2418,9 @@ mod tests {
         let chain = Volume::with_maps(
             VolumeKind::Transform(sample()),
             None,
-            Some(Volume::with_maps(
-                VolumeKind::Base,
-                None,
-                Some(tv(Transform::IDENTITY)),
-            )),
-        );
+            Some(Volume::with_maps(VolumeKind::Base, None, Some(tv(Transform::IDENTITY))).unwrap()),
+        )
+        .unwrap();
         let full = chain.copy(false).unwrap();
         assert!(full.next_map().is_none());
         let simple = chain.copy(true).unwrap();
@@ -2408,9 +2441,9 @@ mod tests {
 
     #[test]
     fn equality() {
-        let a = Volume::with_maps(VolumeKind::Transform(sample()), Some(rot_z()), None);
-        let b = Volume::with_maps(VolumeKind::Transform(sample()), Some(rot_z()), None);
-        let c = Volume::with_maps(VolumeKind::Transform(sample()), None, None);
+        let a = Volume::with_maps(VolumeKind::Transform(sample()), Some(rot_z()), None).unwrap();
+        let b = Volume::with_maps(VolumeKind::Transform(sample()), Some(rot_z()), None).unwrap();
+        let c = Volume::with_maps(VolumeKind::Transform(sample()), None, None).unwrap();
         assert!(a.approx_eq(&b).unwrap());
         assert!(!a.approx_eq(&c).unwrap());
         assert!(!a.approx_eq(&Volume::new(VolumeKind::Base)).unwrap());
@@ -2424,7 +2457,8 @@ mod tests {
         let t = tv(sample());
         assert!(!t.is_bounded().unwrap());
         let line = Curve::from(Line::from_points(Vec3::ZERO, v(1.0, 0.0, 0.0), 3));
-        let chain = Volume::with_maps(VolumeKind::Transform(sample()), Some(rot_z()), Some(t));
+        let chain =
+            Volume::with_maps(VolumeKind::Transform(sample()), Some(rot_z()), Some(t)).unwrap();
         let k = Kernel::default();
         assert!(chain.is_curve_in_param_domain(&k, &line, true).unwrap());
         assert!(chain.is_curve_in_in_space_domain(&k, &line, true).unwrap());
@@ -2435,7 +2469,8 @@ mod tests {
             VolumeKind::Transform(sample()),
             None,
             Some(Volume::new(VolumeKind::Base)),
-        );
+        )
+        .unwrap();
         assert!(!with_base
             .is_line_in_param_domain(&k, Vec3::ZERO, v(1.0, 0.0, 0.0), true)
             .unwrap());
@@ -2456,7 +2491,8 @@ mod tests {
 
     #[test]
     fn refresh_and_make_simple() {
-        let mut a = Volume::with_maps(VolumeKind::Transform(sample()), Some(sample()), None);
+        let mut a =
+            Volume::with_maps(VolumeKind::Transform(sample()), Some(sample()), None).unwrap();
         let inv = *a.inv_orient_map().unwrap();
         let p = v(0.5, 0.25, -1.0);
         let q = inv
@@ -2473,7 +2509,7 @@ mod tests {
             v(1.0, 0.0, 0.0),
             v(0.0, 0.0, 1.0),
         );
-        let b = Volume::with_maps(VolumeKind::Base, Some(s), None);
+        let b = Volume::with_maps(VolumeKind::Base, Some(s), None).unwrap();
         assert_eq!(b.inv_orient_map(), Some(&s));
     }
 
@@ -2609,7 +2645,7 @@ mod tests {
 
     #[test]
     fn orient_directional_derivs() {
-        let vol = Volume::with_maps(VolumeKind::Base, Some(sample()), None);
+        let vol = Volume::with_maps(VolumeKind::Base, Some(sample()), None).unwrap();
         let d = vol
             .orient_directional_derivs(Vec3::ZERO, v(0.0, 0.0, 2.0), 3, [true; 3])
             .unwrap();

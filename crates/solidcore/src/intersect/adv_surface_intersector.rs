@@ -49,7 +49,8 @@
 //!   detached point ([`AdvSurfaceIntersector::compute_singularity_point_on`]).
 //!   Its unused UV argument is kept. The fixed array of eight singular directions
 //!   is kept: a ninth direction (upstream writes past the array) is
-//!   [`SolidError::InvalidInput`].
+//!   [`SolidError::InvalidInput`], as is nesting past the base solver's
+//!   [`MAX_SOLVE_DEPTH`](crate::geom::global_solver::MAX_SOLVE_DEPTH).
 //! - **Arguments.** Out-params become return values ([`Dupin`],
 //!   [`InteriorCurves`], the `(index, swap)` pair). `MakeDupin`'s conics are owned
 //!   [`Conic`]s instead of context-allocated pointers.
@@ -62,7 +63,8 @@
 //!   (`intersect.surface_intersector_p4`) return [`SolidError::Unported`].
 //! - **Recursion.** `SolveBranch` nests at most once per tree node; deeper nesting
 //!   (cyclic tree links, which recurse forever upstream) is
-//!   [`SolidError::InvalidInput`].
+//!   [`SolidError::InvalidInput`], as is nesting past the base solver's
+//!   [`MAX_SOLVE_DEPTH`](crate::geom::global_solver::MAX_SOLVE_DEPTH).
 //! - **Not ported.** `Dump` and the `SM_DEBUG_CODE` drawing blocks; `SM_ASSERT`s.
 
 use crate::curve::conic::{Conic, ConicType};
@@ -1292,7 +1294,8 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for AdvSurfaceIntersector<'_
             .flatten()
             .map(|t| t.nodes().len())
             .sum::<usize>()
-            + 2;
+            .saturating_add(2)
+            .min(global_solver::MAX_SOLVE_DEPTH);
         if self.solve_depth > limit {
             return Err(SolidError::invalid_input(OP_SOLVE, "tree links are cyclic"));
         }

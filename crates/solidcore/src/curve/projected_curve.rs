@@ -29,6 +29,10 @@
 //! | [`ProjectedCurve::is_kind_of`]               | `IsKindOf`                                       |
 //!
 //! Deviations:
+//! - **Nesting.** `new` return `InvalidInput` when the projected curve would nest
+//!   deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
+//!   (64; upstream fixtures nest at most 3), which bounds the recursive dispatch,
+//!   cloning and dropping of nested geometry (no limit upstream).
 //! - **Base curve.** Upstream keeps a pointer to the projected curve that it owns
 //!   or merely borrows (`m_bOwnsCurve`). Here the projected curve always holds its
 //!   own [`Curve`] (callers that borrowed a curve upstream pass a clone); the
@@ -78,6 +82,7 @@ use crate::kernel::Kernel;
 use crate::math::EFF_ZERO;
 use crate::nurbs::b_spline_curve::ProjectionType;
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
+use crate::surface::surface::p2::{check_geometry_nesting, NestedGeometry};
 use crate::topology::database_io::{DatabaseReader, FileType, InputStream};
 
 const OP: &str = "curve::projected_curve::ProjectedCurve";
@@ -123,7 +128,11 @@ impl ProjectedCurve {
     /// A projection of `curve` (constructor). Data not given keeps the member
     /// initialiser ([`Vec3::UNDEF`]); when `proj_vec` is given the vectors go
     /// through [`Self::make_ortho_normal`], whose status is ignored as upstream.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` when `curve` nests deeper than
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING) - 1.
     pub fn new(
         curve: Curve,
         proj_point: Option<Point3>,
@@ -131,7 +140,8 @@ impl ProjectedCurve {
         aux_data: Option<Vec3>,
         proj_type: ProjectionType,
         owns_curve: OwnsCurve,
-    ) -> Self {
+    ) -> Result<Self> {
+        check_geometry_nesting(NestedGeometry::Curve(&curve), 1, OP)?;
         let mut c = Self {
             curve: Box::new(curve),
             proj_point: proj_point.unwrap_or(Vec3::UNDEF),
@@ -143,7 +153,7 @@ impl ProjectedCurve {
         if proj_vec.is_some() {
             let _ = c.make_ortho_normal();
         }
-        c
+        Ok(c)
     }
 
     /// The curve being projected.
@@ -701,7 +711,8 @@ mod tests {
             None,
             ProjectionType::Parallel,
             OwnsCurve::No,
-        );
+        )
+        .unwrap();
         assert_eq!(c.proj_vec(), Vec3::new(0.0, 0.0, 2.0));
         assert!(c.make_ortho_normal().is_err());
     }
@@ -715,7 +726,8 @@ mod tests {
             Some(Vec3::new(0.0, 0.0, 0.0)),
             ProjectionType::Rotation,
             OwnsCurve::No,
-        );
+        )
+        .unwrap();
         assert_eq!(c.proj_vec(), Vec3::Z);
         assert_eq!(c.aux_data(), Vec3::Z);
         // (0, 0, 1) is not zero: a second call fails, as upstream
@@ -731,7 +743,8 @@ mod tests {
             None,
             ProjectionType::Parallel,
             OwnsCurve::No,
-        );
+        )
+        .unwrap();
         let mut c2 = c.clone();
         c2.proj_vec = Vec3::Z;
         let p = c2.evaluate_point(0.5).expect("eval");
@@ -755,7 +768,8 @@ mod tests {
             None,
             ProjectionType::Parallel,
             OwnsCurve::No,
-        );
+        )
+        .unwrap();
         assert!(c
             .edit_parameterization(&k, &Extent1d::from_min_max(0.0, 2.0))
             .is_err());
