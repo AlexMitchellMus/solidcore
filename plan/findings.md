@@ -9046,3 +9046,27 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   unchanged with 0 flips: 300/206/0/94, 1000 seeds 1284/868/0/410, perturb 333/333, fuzz 2000 pass.
   valgrind with `harness/valgrind/ub11.supp` gives 0 errors on the simple, unify, select and split
   samples.
+
+## blend.fillet_standard_solver_p2 (`SmFilletStandardSolver.cpp` part 2, PR #265, 2026-10-19; blocked on one disagreement)
+
+Difftest (400 generated + 5 fixtures; 3000 seeds: 2394 pass, 1 failed, 605 deferred). Every
+other compared case is bit-identical.
+
+- **Disagreement (unexplained).** `SmConstantRadiusFS::LoadInitialValues` on an
+  `SmSurfaceSurfaceFS` (fixture `fx_a`, generated case `gen0180`, seed `7089733659915066011`):
+  rail 1, `crSrf1Offset` = `GetSurface(1)` (offset of a plane), the other rail a bicubic x
+  linear B-spline patch offset by `0.391`, extension factor `0.1`, guess `(0.7491, 0.3096)`.
+  The new UV guess on the other surface agrees in u, but its v is `2.3112246736941722e-1`
+  (C++) against `2.3103818605745594e-1` (Rust), rel. err `3.6e-4`; fixture `fx_d_guess`
+  (guess `(0.7, 0.3)`) differs the same way. With extension factor `0` or `0.5`, or radius
+  `0.3`, the same input agrees bit for bit (`fx_b_ext05`, `fx_c_ext0`, `fx_e_r03`).
+- **Suspected cause.** The value is the `LocalPointSolve` of the other rail's offset inside
+  the base domain grown by `SmSurfaceSurfaceFS::SetupOffsetExtension` (`[-0.1, 1.1]`): only
+  with that factor does the solve end on (or step through) the grown boundary outside the
+  base domain, where the offset evaluates through `sm_ExtendSurface` /
+  `CreateExtendedSurface` on a base whose out-of-bounds evaluation is on
+  (`SmTemporaryChangeValue`). That path is not compared by `surface.offset_surface`'s own
+  difftest (its shim refuses every `CreateExtendedSurface` step, UB-107 / HANG-6 / HANG-22),
+  and UB-107 (the halving retry reading a half-written extension) may make the C++ value
+  undefined. Not yet traced to either side.
+- Fixtures `fx_*` in `fixtures/blend.fillet_standard_solver_p2/cases.json` keep the inputs.

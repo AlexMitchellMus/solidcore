@@ -762,7 +762,10 @@ fn rust_init(
             if let Some(out) = Output::unported(e) {
                 return Ok(out);
             }
-            o.extend([status(e), -1.0, 999.0]);
+            // (upstream sets rpSurface2 = GetSurface(1 - lRailIndex) before anything
+            // can fail, and leaves the index unchanged)
+            let s2 = if rail <= 1 { (1 - rail) as f64 } else { -1.0 };
+            o.extend([status(e), s2, 999.0]);
         }
     }
     for i in 0..intervals.len() {
