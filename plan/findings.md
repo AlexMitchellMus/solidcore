@@ -8414,5 +8414,10 @@ The canonical enum is not on main c5c8395a yet. This branch therefore builds on
 #147 (fillet_geom_p1 head 4a987837), merged as-is per AGENTS.md rather than copying
 the claimed enum. The p3 dependency on geom-p1 is now hard because its type is
 required. Incoming #147 code, co-port notes and regenerated reports are preserved;
-no geometry-p1 algorithm is reimplemented. Validation of the new merge and enum
-boundary observations is pending.
+no geometry-p1 algorithm is reimplemented. Validation before the #259 batch merge: fmt/includes, clippy x2, core 1431/1431
+(19 executive tests), FFI 4/4 and wasm pass. Paired 291/116/0/175,
+with_values=116 no_values=0 max_rel_err=0; perturb detects 116/116 changes.
+Fuzz 2000: rejected=1720 malformed=16 ran=264 differs=0 crashes=0 panics=0
+timeouts=0. Valgrind: 52 actual programs, both engines, baseline equal, zero
+errors and zero definite/indirect/possible lost bytes, no suppressions. Main then
+merged #259 during verification; its integration and final gates are pending.
