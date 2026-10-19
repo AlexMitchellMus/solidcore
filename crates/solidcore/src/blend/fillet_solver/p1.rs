@@ -123,7 +123,7 @@ use crate::surface::cone::Cone;
 use crate::surface::offset_surface::SS_UNKNOWN;
 use crate::surface::sphere::Sphere;
 use crate::surface::surface::p1::evaluate_1st_derivatives;
-use crate::surface::surface::p2::drop_vectors;
+use crate::surface::surface::p2::{drop_vectors, SurfaceKind};
 use crate::surface::surface::Surface;
 use crate::surface::torus::Torus;
 use crate::topology::edgeuse::p1 as eu;
@@ -1984,8 +1984,9 @@ impl<'a> FilletSphereSolveEnfo<'a> {
 /// surfaces; `crX = [t u v ...]` with `t` on the UV curve and `(u, v)` the rail's UV
 /// point.
 pub struct RailUvCurveIntersectEnfo<'a> {
-    /// `m_crUVCurve`.
-    pub uv_curve: &'a BSplineCurve,
+    /// `m_crUVCurve` (an `SmBSplineCurve&`; `Evaluate` is virtual, so any
+    /// `SmBSplineCurve`-derived kind such as an `SmLine` dispatches on its own kind).
+    pub uv_curve: &'a Curve,
     /// `m_vInterval`.
     pub interval: Extent1d,
     /// `m_lRailIndex`.
@@ -1997,7 +1998,7 @@ impl<'a> RailUvCurveIntersectEnfo<'a> {
     /// `SmRailUVCurveIntersectENFO(crUVCurve, crInterval, crSurfaceOfCurve, lRailIndex,
     /// crFilletSolver)` (the surface of the curve is only drawn upstream).
     pub fn new(
-        uv_curve: &'a BSplineCurve,
+        uv_curve: &'a Curve,
         interval: Extent1d,
         rail_index: usize,
         solver: &'a mut dyn FilletSolverOps,
@@ -2588,8 +2589,10 @@ pub enum AnalyticTestSurface<'a> {
 ///
 /// # Errors
 ///
-/// Those of `IsPlanar`; [`SolidError::Unported`] for the cone test of a non-planar
-/// surface (`SmCone::IsNurbSurfaceCone`).
+/// Those of `IsPlanar` and of the cone test (`SmCone::IsNurbSurfaceCone`), except a
+/// failing iso curve status, which upstream returns as the `SmBoolean` and which
+/// reads as `true`; `InvalidInput` for a surface kind that is not an
+/// `SmBSplineSurface`.
 pub fn test_analytic_surface(k: &Kernel, surface: AnalyticTestSurface<'_>) -> Result<bool> {
     use crate::surface::surface::p2::{CONE_TYPE, PLANE_TYPE};
     let type_code = match surface {
@@ -2615,11 +2618,32 @@ pub fn test_analytic_surface(k: &Kernel, surface: AnalyticTestSurface<'_>) -> Re
     if planar.is_planar {
         return Ok(true);
     }
-    // UNPORTED(surface.cone_p2): SmCone::IsNurbSurfaceCone
-    Err(SolidError::unported(
-        "SmCone::IsNurbSurfaceCone",
-        "surface.cone_p2",
-    ))
+    // test NurbSurface to see if its a canonical cone (the SmBSplineSurface part of the
+    // surface, default dToleranceScale = 1)
+    let bss = match surface {
+        AnalyticTestSurface::Surface(s) => match s.kind() {
+            SurfaceKind::BSpline(b) => b,
+            SurfaceKind::Plane(p) => p.base(),
+            SurfaceKind::SurfOfRevolution(r) => r.base(),
+            // not an SmBSplineSurface: upstream's parameter type excludes these
+            _ => {
+                return Err(SolidError::InvalidInput {
+                    operation: "blend::fillet_solver::test_analytic_surface",
+                    reason: "surface is not an SmBSplineSurface",
+                })
+            }
+        },
+        AnalyticTestSurface::Cone(c) => c.rev().base(),
+        AnalyticTestSurface::Sphere(s) => s.base().base(),
+        AnalyticTestSurface::Torus(t) => t.base.base(),
+    };
+    match Cone::is_nurb_surface_cone(k, bss, 1.0) {
+        Ok(None) => Ok(false),
+        // upstream returns the iso curve status as the SmBoolean: a failing (non-zero)
+        // status reads as TRUE
+        Ok(Some(_)) | Err(SolidError::Upstream { .. }) => Ok(true),
+        Err(e) => Err(e),
+    }
 }
 
 /// `SE(pEU->EvaluateBinormal(dParameter, FALSE, rPnt, rBinVec, NULL, &rFaceuseNormal))`
@@ -2790,13 +2814,17 @@ pub fn trim_rail(k: &Kernel, b: &mut Brep, rail: EdgeId, trim_interval: &Extent1
     // tolerance (`SM_USE_OLDTOL`), not the system zone tolerance the owner-less
     // `Curve::trim` reads from its kernel. All three curves belong to the rail, so
     // they trim with a kernel whose zone tolerance is the rail's tolerance.
-    let tk = Kernel::new(&crate::kernel::KernelOptions {
+    let mut tk = Kernel::new(&crate::kernel::KernelOptions {
         tolerances: crate::kernel::Tolerances {
             zone_tol_3d: edge::tolerance(b, rail)?,
             ..k.tolerances
         },
         ..crate::kernel::KernelOptions::default()
     });
+    // the caller's random state carries over; the caller's `context` (marks, notify
+    // callbacks owned by boxed trait objects) cannot be cloned and nothing on the trim
+    // path reads it
+    tk.rng = k.rng.clone();
     b.edge_mut(rail)?
         .curve
         .as_mut()

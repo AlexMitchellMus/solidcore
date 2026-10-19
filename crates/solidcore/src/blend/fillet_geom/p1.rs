@@ -1077,10 +1077,10 @@ impl FilletGeom {
         let mut off_surfs = [None, None];
         for (slot, i) in off_surfs.iter_mut().zip(0..2usize) {
             if let Some((_, fs)) = solver {
-                *slot = match fs.solver.surface(i)?.map(|slot| &slot.surface) {
+                *slot = match fs.solver.surfaces.get(i).and_then(Option::as_ref) {
                     // SmOffsetSurface::Copy() returns an SmSurface*, not SmOffsetSurface*;
                     // its status is ignored, so a failed copy leaves NULL
-                    Some(off_srf) => match offset_surface_copy(k, off_srf) {
+                    Some(off_srf) => match offset_surface_copy(k, &off_srf.surface) {
                         Ok(new_surf) => Some(new_surf),
                         Err(e) if e.is_unported() => return Err(e),
                         Err(_) => None,
@@ -1194,7 +1194,12 @@ impl FilletGeom {
             return Ok(Some(s));
         }
         let fs = solver.ok_or_else(|| SolidError::null_pointer(OP_OFFSET))?;
-        Ok(fs.solver.surface(rail_index)?.map(|slot| &slot.surface))
+        Ok(fs
+            .solver
+            .surfaces
+            .get(rail_index)
+            .and_then(Option::as_ref)
+            .map(|slot| &slot.surface))
     }
 
     /// `SetOffsetSurface(lWhichSrf, pNewOffSrf)`: replaces (deleting) the rail's offset
@@ -2903,8 +2908,12 @@ pub fn create_cubic_rail_rail_interpolant(
             .ok_or_else(|| SolidError::null_pointer(OP))
     };
     // First, calculate the intersection of two rails
-    let rail_index = find_index_of_rail_on_face(fil_solver1, face)?;
-    let other_rail_index = find_index_of_rail_on_face(fil_solver2, face)?;
+    let rail_index = fil_solver1
+        .solver
+        .find_index_of_rail_on_face(brep, Some(face))?;
+    let other_rail_index = fil_solver2
+        .solver
+        .find_index_of_rail_on_face(brep, Some(face))?;
     // Derive guess uv point here
     let mut eu = solver_edgeuse(fil_solver1, rail_index)?;
     let eu_vertex = |brep: &Brep, eu: EdgeuseId| -> Result<(VertexuseId, Option<VertexId>)> {
@@ -2967,18 +2976,6 @@ pub fn create_cubic_rail_rail_interpolant(
         weights: None,
         trim: None,
     })
-}
-
-/// `SmFilletSolver::FindIndexOfRailOnFace(pOrigFace)` (unit `blend.fillet_solver_p1`).
-fn find_index_of_rail_on_face(
-    _solver: &ConstantRadiusAssistedFs,
-    _orig_face: FaceId,
-) -> Result<usize> {
-    // UNPORTED(blend.fillet_solver_p1): SmFilletSolver::FindIndexOfRailOnFace
-    Err(SolidError::unported(
-        "SmFilletSolver::FindIndexOfRailOnFace",
-        "blend.fillet_solver_p1",
-    ))
 }
 
 /// `SmFilletSolver::RailRailIntersect(crUVGuess, lRailIndex, pOtherFillet,
@@ -3318,11 +3315,13 @@ fn drop_rail_onto_offset_surface(
 ) -> Result<()> {
     let solver = adjust_solver.ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?;
     // SmFilletSolver::GetSurface(k); NER(pOffsetSurf)
-    let offset_surf = &mut solver
+    let offset_surf = solver
         .solver
-        .surface_mut(rail_index)?
-        .ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?
-        .surface;
+        .surfaces
+        .get_mut(rail_index)
+        .and_then(Option::as_mut)
+        .map(|slot| &mut slot.surface)
+        .ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?;
     let orig_offset_dist = offset_surf.offset_distance();
     offset_surf.set_offset_distance(0.0);
 
