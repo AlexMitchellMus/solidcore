@@ -1055,7 +1055,7 @@ impl FilletSolver {
             *tsect.uv_pos_mut(SrfIndex::Second) =
                 Point2::new(sol_at(x, surf2_index)?, sol_at(x, surf2_index + 1)?);
             for i in 4..x.len() {
-                // upstream has no SM_MAX_USER_DOUBLES check here
+                // upstream has no SM_MAX_USER_DOUBLES check here (UB-192)
                 let slot = tsect
                     .user_doubles
                     .get_mut(i - 4)
@@ -1455,7 +1455,8 @@ impl FilletSolver {
     ) -> Result<()> {
         let filleted = filleted_edge_opt(self, b)?;
 
-        // Collect all existing fillet surfaces and rail curves
+        // Collect all existing fillet surfaces and rail curves (upstream adds rail 0
+        // where it tests rail 1, WR-190)
         let geoms = self.fillet_geoms();
         if let Some(g) = geoms.first() {
             let _ = g;
