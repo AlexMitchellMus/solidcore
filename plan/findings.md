@@ -8093,10 +8093,10 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
 
 ## blend.fillet_solver_p3 (`SmFilletSolver.cpp` part 3: `StepSolve`, `SplitAndTrimFilletSurface`, `ProcessFullRollOver`, ...; PR #236, 2026-10-18; partial, no disagreements)
 
-Built on the open dependency PRs #147 (`blend.fillet_geom_p1`) and #192
+Built on the open dependency PRs #147 (`blend.fillet_geom_p1`, head `b396cdd3`) and #192
 (`blend.fillet_solver_p1`, head `a88c62af`), merged into the branch; #192 carries its own
 reconciliation with main's `surface.offset_surface`. With both, the affected difftests have
-0 failures (`fillet_solver_p1` 280 passed / 53 deferred, `fillet_geom_p1` 429/19,
+0 failures (`fillet_solver_p1` 303 passed / 40 deferred, `fillet_geom_p1` 446/21,
 `fillet_custom_solver` 401/47).
 
 - **`StepSolve` difftest.** Every library solver belongs to an unported unit, so the shim
