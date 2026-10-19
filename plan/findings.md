@@ -9241,11 +9241,11 @@ topological parity remains pending the setup and geometry owners.
 
 Metadata getters are intentionally lazy: non-blending/non-tangent corners never
 request solver metadata, and corner names/type are queried only on error.
-`SmFace::Notify` is an explicit executive-adapter back-edge to `topology.face_p3`,
+`SmFace::Notify` is a required executive adapter to `topology::face::p3::notify`,
 with `PreEdit`, the face, null and null forwarded as separate arguments.
 `SM_NO_GET_BREP(face)` expands to a null object (`SmTypes.h:659`), not `GetBrep()`.
 
-UNPORTED audit for #244 (after merging main; no existing p3 back-edges were found):
+Current UNPORTED audit for #244 (main batch #259 integrated; 38 symbols / 15 owners):
 
 - `blend.fillet_corner_p1` (`todo`): `SmFilletCorner::GetFilletSolvers`, `SmFillet4x3Corner::AdjustTopology`, `SmFilletNxNCorner::AdjustTopology`, `SmFilletCorner::AdjustTangentCorner`, `SmFilletCorner::AdjustTopology`, `SmFilletCorner::CalcCornerEdgeGeom`, `SmFilletCorner::CalcCornerVertGeom`, `SmFilletCorner::CheckAndFixDegeneracy`, `SmFilletCorner::InsertIntersectionTopology`, `SmFilletCorner::ReInitializeCornerEdges`.
 - `blend.fillet_corner_p2` (`todo`): `SmFilletConvexNxNCorner::AdjustTopology`, `SmFilletNx1ClosedCorner::AdjustTangentCorner`.
@@ -9258,12 +9258,10 @@ UNPORTED audit for #244 (after merging main; no existing p3 back-edges were foun
 - `blend.fillet_solver_p4` (`todo`): `SmFilletSolver::CalcFilletGeom`.
 - `blend.fillet_standard_solver_p2` (`todo`): `SmSurfaceSurfaceFS::CalcFilletGeom`.
 - `blend.fillet_solver_p5` (`todo`): `SmFilletSolver::TestRollOver`.
-- `boolean.topology_intersector_p2` (`todo`): `SmTopologyIntersector::DeleteFaces`, `SmTopologyIntersector::IntersectInsertRelate`.
 - `heal.stitch_p2` (`todo`): `SmStitch::DoStitching`.
 - `topology.brep_p2` (`todo`): `SmBrep::SetTolerance`.
 - `topology.brep_p3` (`todo`): `SmBrep::MergeBrep`, `SmBrep::OrientTrimmedSurfaces`.
 - `topology.brep_p4` (`todo`): `SmBrep::StitchFaces`.
-- `topology.face_p3` (`todo`): `SmFace::Notify`.
 
 Direct-state output also compares both full comment byte sequences (not merely
 lengths). Fixture intersector setup preserves the executive constructor's
@@ -9468,3 +9466,22 @@ Fuzz 2000: rejected=1720 malformed=16 ran=264 differs=0 crashes=0 panics=0
 timeouts=0. Valgrind: 52 actual programs, both engines, baseline equal, zero
 errors and zero definite/indirect/possible lost bytes, no suppressions. Main then
 merged #259 during verification; its integration and final gates are pending.
+
+
+### blend.fillet_executive_p3 — main batch #259 compatibility
+
+Merged main 4db3d6602, retaining #147's canonical enum and cache changes and both
+sides' upstream issue entries. The existing mate-map test initializer remains
+cfg(test)-only. The now-ported `SmFace::Notify`,
+`SmTopologyIntersector::DeleteFaces` and `IntersectInsertRelate` no longer have
+`UNPORTED` defaults: like the existing ported BooleanPostProcess hook, these are
+required storage adapters. Their contracts name the canonical APIs and require
+the live records, attributes, cache and intersector world/identity. No dependency
+algorithm is copied. The empty-B-rep runner cannot supply those nonexistent face
+handles or a geometry/intersector world and explicitly rejects them, as its
+other topology accessors do; no passing native fixture reaches these adapters.
+Scripted tests override them only to exercise p3 continuation order. A concrete
+executive p1/p2 object adapter is still needed for geometric integration; this
+change does not claim a new geometric pass. The current UNPORTED inventory is
+38 symbols across 15 owners; all remaining tagged callees are still unported.
+Final integrated-tree checks pending.

@@ -321,19 +321,18 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     ) -> Result<T>;
     /// `SmFace::ShrinkGeometry()` with its header defaults; status is ignored.
     fn shrink_face(&mut self, k: &mut Kernel, face: O) -> Result<()>;
-    /// `SmFace::Notify`; all notification arguments are retained, including null.
+    /// `SmFace::Notify`, adapting to `topology::face::p3::notify` with the
+    /// caller's live notification records, attributes and surface trim cache.
+    /// All notification arguments are retained, including null.
     fn notify_face(
         &mut self,
-        _k: &mut Kernel,
-        _face: O,
-        _operation: NotifyOperation,
-        _data1: Option<O>,
-        _data2: Option<O>,
-        _data3: Option<O>,
-    ) -> Result<()> {
-        // UNPORTED(topology.face_p3): SmFace::Notify
-        Err(SolidError::unported("SmFace::Notify", "topology.face_p3"))
-    }
+        k: &mut Kernel,
+        face: O,
+        operation: NotifyOperation,
+        data1: Option<O>,
+        data2: Option<O>,
+        data3: Option<O>,
+    ) -> Result<()>;
     /// `SmMerge::BooleanPostProcess`, using its actual intersector and recorded
     /// intersection lists (the implementation is already ported in merge p1).
     fn boolean_post_process(
@@ -623,18 +622,15 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         ))
     }
 
-    /// `SmTopologyIntersector::IntersectInsertRelate`; waiting for `boolean.topology_intersector_p2`.
+    /// Delegate to the live intersector's already ported
+    /// `TopologyIntersector::intersect_insert_relate` (boolean intersector p2),
+    /// using this adapter's `IntersectorBrep` view and stable intersector handle.
+    /// Preserve its mutations on error; p3 does not consume its deleted list.
     fn intersect_insert_relate(
         &mut self,
-        _k: &mut Kernel,
-        _intersector: &mut TopologyIntersector<O>,
-    ) -> Result<()> {
-        // UNPORTED(boolean.topology_intersector_p2): SmTopologyIntersector::IntersectInsertRelate
-        Err(SolidError::unported(
-            "SmTopologyIntersector::IntersectInsertRelate",
-            "boolean.topology_intersector_p2",
-        ))
-    }
+        k: &mut Kernel,
+        intersector: &mut TopologyIntersector<O>,
+    ) -> Result<()>;
 
     /// `SmFilletGeom::TrimOriginalSurfaces`; waiting for `blend.fillet_geom_p6`.
     fn trim_original_surfaces(
@@ -653,20 +649,16 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         ))
     }
 
-    /// `SmTopologyIntersector::DeleteFaces`; waiting for `boolean.topology_intersector_p2`.
+    /// Delegate to the live intersector's already ported
+    /// `TopologyIntersector::delete_faces` (boolean intersector p2), using this
+    /// adapter's `IntersectorBrep` view and preserving every argument.
     fn delete_faces(
         &mut self,
-        _k: &mut Kernel,
-        _intersector: &mut TopologyIntersector<O>,
-        _faces: &[O],
-        _keep_as_wires: Option<&[O]>,
-    ) -> Result<()> {
-        // UNPORTED(boolean.topology_intersector_p2): SmTopologyIntersector::DeleteFaces
-        Err(SolidError::unported(
-            "SmTopologyIntersector::DeleteFaces",
-            "boolean.topology_intersector_p2",
-        ))
-    }
+        k: &mut Kernel,
+        intersector: &mut TopologyIntersector<O>,
+        faces: &[O],
+        keep_as_wires: Option<&[O]>,
+    ) -> Result<()>;
 
     /// `SmBrep::MergeBrep`; waiting for `topology.brep_p3`.
     fn merge_brep(

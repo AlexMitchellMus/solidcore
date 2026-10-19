@@ -60,6 +60,36 @@ fn missing<T>() -> SolidResult<T> {
     Err(missing_error())
 }
 impl ExecutiveAccess<Handle> for Access {
+    // This empty-B-rep fixture has no face handles or intersector world. These
+    // required adapters reject nonexistent objects; they are not UNPORTED calls
+    // to the now-ported face p3 or topology intersector p2 implementations.
+    fn notify_face(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: solidcore::geom::object::NotifyOperation,
+        _: Option<Handle>,
+        _: Option<Handle>,
+        _: Option<Handle>,
+    ) -> SolidResult<()> {
+        missing()
+    }
+    fn intersect_insert_relate(
+        &mut self,
+        _: &mut Kernel,
+        _: &mut TopologyIntersector<Handle>,
+    ) -> SolidResult<()> {
+        missing()
+    }
+    fn delete_faces(
+        &mut self,
+        _: &mut Kernel,
+        _: &mut TopologyIntersector<Handle>,
+        _: &[Handle],
+        _: Option<&[Handle]>,
+    ) -> SolidResult<()> {
+        missing()
+    }
     fn make_corner_topology(
         &mut self,
         _: &mut Kernel,
