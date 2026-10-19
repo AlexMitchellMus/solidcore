@@ -171,7 +171,7 @@ fn outer_loop_edges(b: &Brep, f: FaceId) -> Result<Vec<EdgeId>> {
 
 /// `this->GetBrep() ? this->GetBrep()->GetTolerance() : 0.0`.
 fn brep_tolerance(b: &Brep, f: FaceId) -> Result<f64> {
-    Ok(crate::topology::face::p4::brep(b, f)?.map_or(0.0, |br| br.tolerance()))
+    Ok(crate::topology::face::p4::brep(b, f)?.map_or(0.0, Brep::tolerance))
 }
 
 /// `new SmCurveClassification(pCurve, sInterval, pUVCurve, sSrcZoneTol3d)`.
