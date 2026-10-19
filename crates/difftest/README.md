@@ -148,7 +148,9 @@ checks, run on every unit that does not already fail, close that gap
 
 * **Ratchet** (`--baseline D`): the run is compared case by case, by name, with
   the unit's earlier report `D/<unit>.json`. CI uses the reports committed on the
-  base commit (main for a PR, the previous main for a push). A **GATE-FAIL** is
+  base commit (main for a PR, the previous main for a push), extracted by
+  `scripts/ci/difftest-baseline.sh`; if that fails, the job fails (only a push
+  without a base commit, or a manual run, skips the ratchet). A **GATE-FAIL** is
   printed when a case that **passed** there is missing, now deferred or rejected,
   or compared values there but compares nothing now (e.g. both sides now return
   the same error); when a **deferred or failing** case is missing; or, with
