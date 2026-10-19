@@ -1887,7 +1887,7 @@ mod tests {
         let (a, b) = surfaces();
         let d = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
         let mut s = solver(&a, &b);
-        let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, ()> =
+        let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, FilletGeomRef> =
             FilletIntersector::new(&a, &d, &b, &d, None).unwrap();
         let p = fi
             .base
@@ -1921,7 +1921,7 @@ mod tests {
         let (a, b) = surfaces();
         let d = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
         let mut s = solver(&a, &b);
-        let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, ()> =
+        let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, FilletGeomRef> =
             FilletIntersector::new(&a, &d, &b, &d, None).unwrap();
         let p = fi
             .base
@@ -1951,7 +1951,7 @@ mod tests {
         let (a, b) = surfaces();
         let d = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
         let mut s = solver(&a, &b);
-        let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, ()> =
+        let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, FilletGeomRef> =
             FilletIntersector::new(&a, &d, &b, &d, None).unwrap();
         let mut t = pnt([0.1, 0.0], [0.1, 0.0], [1.0, 0.0, 0.0], 0.0);
         t.point_type = IntersectionPointType::TangentCurve;
@@ -2164,7 +2164,7 @@ mod tests {
         let (a, b) = surfaces();
         let d = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
         let mut s = solver(&a, &b);
-        let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, ()> =
+        let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, FilletGeomRef> =
             FilletIntersector::new(&a, &d, &b, &d, None).unwrap();
         let mut out = TsectCurves::default();
         // no points: SM_ERR_NULL_POINTER
@@ -2183,7 +2183,8 @@ mod tests {
         assert!(fi.base.base.curve_points().is_empty());
         assert!(out.curve_types.is_empty());
         // two points evaluate the offset rails, then reach the solver's
-        // self-intersection handler (blend.fillet_solver_p1)
+        // self-intersection handler, which is the missing executive's member
+        // (a NULL dereference upstream)
         let p = fi
             .base
             .base
@@ -2197,17 +2198,51 @@ mod tests {
         let e = fi
             .flush_curve(&mut s, &Kernel::default(), &mut out)
             .unwrap_err();
-        assert!(
-            matches!(
-                e,
-                SolidError::Unported {
-                    unit: "blend.fillet_solver_p1",
-                    ..
-                }
-            ),
-            "{e:?}"
-        );
+        assert!(matches!(e, SolidError::InvalidInput { .. }), "{e:?}");
         assert!(!fi.curr_fillet_touch_boundary());
+    }
+
+    #[test]
+    fn base_members_delegate_to_the_solver_base() {
+        use crate::blend::fillet_solver::p1::FilletExecutiveRef;
+        let (a, b) = surfaces();
+        let mut s = solver(&a, &b);
+        let k = Kernel::default();
+
+        s.set_status(FilStatus::SurfSkinningFailure).unwrap();
+        assert_eq!(s.solver.status(), BaseFilStatus::SurfSkinningFailure);
+        s.set_status(FilStatus::Processed).unwrap();
+        assert_eq!(s.solver.status(), BaseFilStatus::Processed);
+
+        assert!(!s.has_surface_generator().unwrap());
+        assert_eq!(s.last_fillet_geom().unwrap(), FilletGeomRef { index: 0 });
+
+        // the handler is the executive's member
+        assert!(matches!(
+            s.self_intersection_handler().unwrap_err(),
+            SolidError::InvalidInput { .. }
+        ));
+        s.solver.set_fillet_executive(Some(FilletExecutiveRef));
+        assert!(matches!(
+            s.self_intersection_handler().unwrap_err(),
+            SolidError::Unported {
+                unit: "blend.fillet_executive_p1",
+                ..
+            }
+        ));
+
+        // ComputeSurfaceValues reaches the SmConstantRadiusFS::SetupOffsetValues override
+        let mut p = TsectPnt::new();
+        let e = s
+            .compute_surface_values(&k, [Point2::new(0.5, 0.5); 2], &mut p)
+            .unwrap_err();
+        assert!(matches!(
+            e,
+            SolidError::Unported {
+                unit: "blend.fillet_standard_solver_p1",
+                ..
+            }
+        ));
     }
 
     #[test]
