@@ -25,8 +25,9 @@
 //!   Constructors that allocate upstream objects (`new SmFilletSolver`,
 //!   `new SmFilletSurfaceGenerator`) are adapter calls taking a spec
 //!   ([`SolverSpec`], [`SurfaceGeneratorSpec`]) with every upstream argument.
-//! - **Fillet laws** extend the `FilletLaw` co-ported by `blend.fillet_standard_solver_p1`
-//!   (PR #168). An elliptical B-spline law whose interpolation fails keeps a null law
+//! - **Fillet laws** build on the `FilletLaw` co-ported by `blend.fillet_standard_solver_p1`
+//!   (PR #168), with the edge map, arc length and extended law curve of
+//!   `blend.fillet_executive_p1` (PR #260, commit 38c5677c, a declared dependency). An elliptical B-spline law whose interpolation fails keeps a null law
 //!   curve upstream (`SE` only logs), which every later use dereferences; the port
 //!   returns that interpolation error instead (UB-198 in `plan/upstream-issues.md`).
 //! - **RAII.** `SmTemporaryRadiusChange`'s destructor is
@@ -191,7 +192,10 @@ impl FilletLaw {
             false,
             ParamMethod::ChordLength,
         )?;
-        let mut law = Self::new(FilletLawKind::BSpline { law_curve });
+        let mut law = Self::new(FilletLawKind::BSpline {
+            law_curve,
+            extended_law: None,
+        });
         law.edge_map = map;
         Ok(law)
     }
@@ -199,7 +203,12 @@ impl FilletLaw {
 
 /// `SmFilletLaw::Evaluate(dParameter, crCurveInterval, bReverseOrientation, dValues)`
 /// (unit `blend.fillet_executive_p1`).
-fn law_evaluate(law: &FilletLaw, parameter: f64, interval: &Extent1d, reverse: bool) -> Result<[f64; 3]> {
+fn law_evaluate(
+    law: &mut FilletLaw,
+    parameter: f64,
+    interval: &Extent1d,
+    reverse: bool,
+) -> Result<[f64; 3]> {
     law.evaluate(parameter, interval, reverse)
 }
 
@@ -1448,11 +1457,10 @@ impl<O: ClassObject + SolutionObject + Ord> TemporaryRadiusChange<O> {
         };
 
         // Evaluate the radius at the proper end (no reversal: already checked).
-        let law = access
-            .variable_radius_solver(self.fs)?
-            .ok_or_else(|| null("solver is no longer variable-radius"))?
-            .fillet_law();
-        let values = law_evaluate(law, edge_t, &edge_ivl, false)?;
+        let vrfs = access
+            .variable_radius_solver_mut(self.fs)?
+            .ok_or_else(|| null("solver is no longer variable-radius"))?;
+        let values = law_evaluate(&mut vrfs.law, edge_t, &edge_ivl, false)?;
         let [end_rad, _, _] = values;
 
         if is_bspline {
@@ -1467,11 +1475,15 @@ impl<O: ClassObject + SolutionObject + Ord> TemporaryRadiusChange<O> {
             let vrfs = access
                 .variable_radius_solver_mut(self.fs)?
                 .ok_or_else(|| null("solver is no longer variable-radius"))?;
-            if let FilletLawKind::BSpline { law_curve } = &mut vrfs.law.kind {
-                // Swap the new radius function info in.
+            if let FilletLawKind::BSpline {
+                law_curve,
+                extended_law,
+            } = &mut vrfs.law.kind
+            {
+                // Swap the new radius function info in; drop the old extension.
                 self.saved_bsp = Some(core::mem::replace(law_curve, const_bsp));
+                *extended_law = None;
             }
-            vrfs.law.extended_law = None;
         } else {
             let vrfs = access
                 .variable_radius_solver_mut(self.fs)?
@@ -1512,12 +1524,15 @@ impl<O: ClassObject + SolutionObject + Ord> TemporaryRadiusChange<O> {
             return Ok(());
         };
         if let Some(saved) = self.saved_bsp.take() {
-            let law = &mut vrfs.law;
-            let FilletLawKind::BSpline { law_curve } = &mut law.kind else {
+            let FilletLawKind::BSpline {
+                law_curve,
+                extended_law,
+            } = &mut vrfs.law.kind
+            else {
                 return Ok(());
             };
             *law_curve = saved;
-            law.extended_law = None;
+            *extended_law = None;
         } else if self.start_rad > -EFF_ZERO && self.end_rad > -EFF_ZERO {
             // 0.0 is ok...
             let FilletLawKind::Linear {
@@ -1580,7 +1595,7 @@ mod tests {
     #[test]
     fn elliptical_law_is_quadratic() {
         let law = FilletLaw::bspline_elliptical(1.0, 2.0, 3.0, PI / 2.0, 0.0, 0.0, None).unwrap();
-        let FilletLawKind::BSpline { law_curve } = &law.kind else {
+        let FilletLawKind::BSpline { law_curve, .. } = &law.kind else {
             panic!("not a B-spline law");
         };
         assert_eq!(law_curve.degree().unwrap(), 2);
