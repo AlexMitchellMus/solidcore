@@ -9391,3 +9391,26 @@ API B-rep 573/306/267/0; API surfaces 882/831/51/0; B-rep p7 316/197/119/0.
 Sensitivity detects all 284 comparable p3 cases. Fuzz 300: 78 executed, 163
 rejected, 59 malformed; zero differences, crashes, panics or timeouts. The
 full-gate/CI evidence for the tested PR head is recorded in the PR discussion.
+
+
+### Further PR #233 audit: virtual NURB acquisition in swung construction
+
+`SmBSplineSurfaceNLib.cpp:6224-6225` calls `GetOrCreateGwNurbPointer` on the
+original section and trajectory objects, in that order. A bounded `SmLine`
+constructed without its NURB is valid there: the virtual `MakeNurb` fills the
+cache. Copying its empty B-spline base first loses that virtual constructor and
+makes Rust fail before the topology dependency. Swung type checks now retain
+the derived objects through scale initialization; the builder then requests the
+section NURB and trajectory NURB in upstream order. Only missing analytic caches
+are generated on owned copies. The original owner and caller Kernel are forwarded,
+ordinary MakeNurb status is ignored as upstream, and Unported remains explicit.
+Existing cached NURBs are never regenerated. Curve-sweep path/profile/scale
+copy-constructor semantics remain unchanged.
+
+Two direct Rust regressions pass: lazy line profile, trajectory and both together
+produce 25 surface samples identical to eagerly built NURBs in each variant;
+a cached line whose X differs by two ULPs retains that exact difference in the
+constructed surface. The total kernel gate now passes 1,442 tests, alongside
+normal/native Clippy, wasm32 and the native p3 FFI guard regression. Updated
+native/full-gate/CI evidence is reported for the final PR head. Successful
+native topology and production-adapter coverage remain deferred.

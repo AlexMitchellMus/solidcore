@@ -1121,12 +1121,15 @@ regressions bring its exact differential passes to 2061/2061. The final local
 Curve-sweep scaling keeps the caller's original Curve for virtual queries; path,
 profile and scale-curve NURB copies retain the explicit upstream behavior. A third
 exact derived-dispatch regression exercises public preparation and distinguishes
-an analytic line from its cached NURB. Native derived construction remains deferred.
+an analytic line from its cached NURB. The swung builder also fills missing
+analytic NURBs in native section/trajectory order, preserving existing caches.
+Two regressions cover lazy profile/path/both and an existing two-ULP cache.
+Native derived construction remains deferred.
 Canonical main 4db3d660 and dependency heads #213 92005b59 / #222 86c7eb33 are
 integrated. Caller notification state and mutable destination contexts follow
 their current B-rep contracts; available p3 service defaults call the existing ports.
 
-Validation: fmt (including included runners), plain/native Clippy, 1,440 kernel
+Validation: fmt (including included runners), plain/native Clippy, 1,442 kernel
 tests, wasm32 and the native p3 FFI guard test pass. Affected native gates:
 p3 293/284 passed/8 deferred/1 rejected; p1 773/689/75/9;
 topology sweep 568/554/14/0; API B-rep 573/306/267/0;

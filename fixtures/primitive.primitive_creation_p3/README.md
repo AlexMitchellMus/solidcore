@@ -69,3 +69,12 @@ its public API; it is not an additional native/topology comparison.
 The native shim still builds B-spline lines/arcs. Real `SmLine`/`SmCircle` fixtures
 must be added when the corresponding construction paths stop deferring, so these
 derived dispatch branches can be compared through the native entry points too.
+
+The swung builder also mirrors `CreateSwungSurface`'s
+`GetOrCreateGwNurbPointer`: it obtains the section NURB before the trajectory
+NURB and materializes only a missing analytic cache, using the caller's Kernel
+and original owner. Existing cached NURBs are retained bit for bit. Explicit
+B-spline copy-constructor paths in curve-sweep preparation are unchanged.
+Two Rust regressions compare 25 surface samples for lazy profile/path/both
+against eagerly built line NURBs and pin an existing two-ULP cache discrepancy.
+These are builder/dispatch regressions, not native topology comparisons.
