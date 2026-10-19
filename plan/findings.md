@@ -7392,11 +7392,11 @@ two-B-rep scripts): 433 pass bit for bit (`max_rel_err 0`), 0 fail, 433 deferred
 where both sides reject the script. 430 passes compare an upstream result; 3 (`gen0264`,
 `gen0685`, `network_vertex_three_edges`) are guard agreements: the shim refuses the only op as an upstream null
 dereference, so no C++ runs and both sides compare `[0, op, -2]` (they count under
-`with_values=428 no_values=0` because the record has three values). Deferred, by the unit that blocks: `topology.brep_p2` 166,
-`surface.surface_cache_p2` 78, `harness:analytic-geometry-export` 70, `topology.face_p3` 42,
+`with_values=433 no_values=0` because the record has three values). Deferred, by the unit that blocks: `topology.brep_p2` 166,
+`surface.surface_cache_p2` 78, `harness:analytic-geometry-export` 70, `topology.face_p4` 42,
 `intersect.surface_drop_curve` 27, `curve.crv_on_surf` 25, `topology.face_p2` 12,
 `intersect.surface_drop_lib_p3` 7, `blend.fillet_standard_solver_p1` 4, `surface.sphere` 2.
-Success-path coverage (counted at this head): 211 of the 428 passes complete at least one
+Success-path coverage (counted at this head): 222 of the 433 passes complete at least one
 successful call among the unit's ops (the rest compare matching `-2` refusals or matching
 upstream error statuses). Per op, the passing cases that contain a success / a refusal / an
 upstream error (a case can count in several): `FaceuseOffset` 30 / 15 / 0, `VertexOffset`
@@ -7425,8 +7425,8 @@ accepts `n = 0` (upstream evaluates once at `0 / 0`; `cone_have_tangent_gaps_no_
 `nurbs.b_spline_surface_p2` (touched): 764 cases, 759 pass, 5 deferred; its
 `three_arcs_about_two_centres` case (arcs about two centres, the first two sharing their
 start point) compares 94 values and fails with the first arc's centre captured by value, so
-it pins WR-103. All green/partial units: `green-par: 213 units, failed=0` on main 61670af3 +
-#147 (b396cdd3) + this PR.
+it pins WR-103. All green/partial units: `green-par: 222 units, failed=0` on main fb58ea76 +
+this PR (#147 merged).
 
 ## boolean.topology_intersector_p1 (`SmTopologyIntersector.cpp` part 1, PR #146, 2026-10-16; partial, no disagreements)
 
