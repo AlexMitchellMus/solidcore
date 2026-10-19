@@ -52,8 +52,8 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 - [ ] 🔨 `primitive.primitive_creation_p3` (1842 lines) — in progress: #233 @damgru (ready for review)
 - [ ] 🔨 `blend.fillet_executive_p3` (1608 lines) — in progress: #244 @bluecmd (ready for review)
 - [ ] 🔨 `boolean.merge_p2` (1967 lines) — in progress: #229 @Pluto-XI (ready for review)
-- [ ] 🔨 `boolean.merge_p4` (2590 lines) — in progress: #243 @bluecmd (draft)
-- [ ] 🔨 `boolean.merge_p3` (1152 lines) — in progress: #245 @bluecmd (draft)
+- [ ] 🔨 `boolean.merge_p4` (2590 lines) — in progress: #243 @bluecmd (ready for review)
+- [ ] 🔨 `boolean.merge_p3` (1152 lines) — in progress: #245 @bluecmd (ready for review)
 - [ ] 🔨 `blend.fillet_executive_p1` (2063 lines) — in progress: #260 @H1D (draft)
 - [ ] 🔨 `primitive.primitive_creation_p2` (2258 lines) — in progress: #250 @CamWight (ready for review)
 - [ ] 🔨 `blend.fillet_solver_p2` (1939 lines) — in progress: #249 @froglemonade2 (draft)
@@ -341,8 +341,8 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 - [ ] 🟡 `boolean.merge_p1` (993 lines) — partial, 248 cases
 - [ ] 🔨 `boolean.merge_p2` (1967 lines) — in progress: #229 @Pluto-XI (ready for review)
 - [ ] 🟡 `boolean.merge_p5` (475 lines) — partial, 140 cases
-- [ ] 🔨 `boolean.merge_p4` (2590 lines) — in progress: #243 @bluecmd (draft)
-- [ ] 🔨 `boolean.merge_p3` (1152 lines) — in progress: #245 @bluecmd (draft)
+- [ ] 🔨 `boolean.merge_p4` (2590 lines) — in progress: #243 @bluecmd (ready for review)
+- [ ] 🔨 `boolean.merge_p3` (1152 lines) — in progress: #245 @bluecmd (ready for review)
 - [ ] 🟡 `boolean.api_brep` (410 lines) — partial, 284 cases
 
 ### blend (2/22)

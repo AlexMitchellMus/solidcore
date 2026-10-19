@@ -1188,17 +1188,22 @@ void tt_brep_op(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
     }
     case OP_B_DEFERRED:
     {
-        // SplitAtSeams, CreateUVTrimCurves: always deferred in Rust. ClearUVTrimCurves
-        // (void): `0` then every edge use's UV trim curve.
+        // SplitAtSeams: always deferred in Rust. ClearUVTrimCurves (void): `0`, and
+        // CreateUVTrimCurves: its status; then every edge use's UV trim curve.
         int64_t kind = rd.idx();
         SmFace* f = g.faces.at((size_t)rd.idx());
-        if (kind != 1)
+        if (kind == 0)
         {
             o.push_back(TT_NOT_RUN);
             break;
         }
-        SmTrimmingTools::ClearUVTrimCurves(f);
-        o.push_back(0.0);
+        if (kind == 1)
+        {
+            SmTrimmingTools::ClearUVTrimCurves(f);
+            o.push_back(0.0);
+        }
+        else
+            o.push_back(st(SmTrimmingTools::CreateUVTrimCurves(f)));
         tt_put_uv_curves(o, g);
         break;
     }

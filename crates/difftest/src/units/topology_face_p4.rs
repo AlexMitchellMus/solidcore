@@ -420,6 +420,8 @@ enum H {
     Trim(EdgeuseId),
     Surface(FaceId),
     Loop(LoopId),
+    Faceuse(FaceuseId),
+    Loopuse(LoopuseId),
     Temp(usize),
 }
 
@@ -434,6 +436,8 @@ impl ClassObject for H {
             Self::EdgeCurve(_) | Self::Trim(_) | Self::Temp(_) => ClassObjectKind::Curve,
             Self::Surface(_) => ClassObjectKind::Surface,
             Self::Loop(_) => ClassObjectKind::Loop,
+            Self::Faceuse(_) => ClassObjectKind::Faceuse,
+            Self::Loopuse(_) => ClassObjectKind::Loopuse,
         }
     }
     fn temporary(index: usize, kind: ClassObjectKind) -> Option<Self> {
@@ -541,6 +545,33 @@ impl ClassGeometry<H> for Objects<'_> {
             H::Edge(e) => self.brep.edge(e).ok().map(|e| e.tolerance),
             _ => None,
         }
+    }
+    fn topology_entity(&self, o: H) -> Option<(&Brep, EntityRef)> {
+        let e = match o {
+            H::Face(f) => EntityRef::Face(f),
+            H::Vertex(v) => EntityRef::Vertex(v),
+            H::Edge(e) => EntityRef::Edge(e),
+            H::Vertexuse(vu) => EntityRef::Vertexuse(vu),
+            H::Edgeuse(eu) => EntityRef::Edgeuse(eu),
+            H::Loop(l) => EntityRef::Loop(l),
+            H::Faceuse(fu) => EntityRef::Faceuse(fu),
+            H::Loopuse(lu) => EntityRef::Loopuse(lu),
+            H::EdgeCurve(_) | H::Trim(_) | H::Surface(_) | H::Temp(_) => return None,
+        };
+        Some((self.brep, e))
+    }
+    fn topology_handle(&self, e: EntityRef) -> Option<H> {
+        Some(match e {
+            EntityRef::Face(f) => H::Face(f),
+            EntityRef::Vertex(v) => H::Vertex(v),
+            EntityRef::Edge(e) => H::Edge(e),
+            EntityRef::Vertexuse(vu) => H::Vertexuse(vu),
+            EntityRef::Edgeuse(eu) => H::Edgeuse(eu),
+            EntityRef::Loop(l) => H::Loop(l),
+            EntityRef::Faceuse(fu) => H::Faceuse(fu),
+            EntityRef::Loopuse(lu) => H::Loopuse(lu),
+            _ => return None,
+        })
     }
     fn vertex_face_gap(&self, vertex: H, surface: &Surface, face: Option<H>) -> Option<f64> {
         let H::Vertex(v) = vertex else {

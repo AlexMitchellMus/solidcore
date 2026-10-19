@@ -64,9 +64,11 @@
 //!   themselves, as `SetProps_Stage2` does. The seam curves are temporaries of the
 //!   caller's handle type ([`ClassObject::temporary`]).
 //! - **Unported callees.** `sm_FaceClassifyUVLine` and `SmFace::SectorClassifyCurveOn`
-//!   (`query.face_p3`), `SmCurveClassification::GetLoopCrossings`
-//!   (`intersect.curve_class_p4`) return [`SolidError::Unported`]; the code after them is
-//!   ported.
+//!   (`query.face_p3`) return [`SolidError::Unported`]; the code after them is ported.
+//! - **`GetLoopCrossings`** (`intersect.curve_class_p4`) returns its touch lists, which
+//!   `HasSeamProblem` stores in the face properties' U or V lists; its status is ignored
+//!   as upstream (an ignored error leaves both lists empty, as its own initialisation
+//!   does).
 
 use crate::curve::crv_on_surf::CrvOnSurf;
 use crate::curve::curve::Curve;
@@ -1201,6 +1203,12 @@ impl<M: ClassGeometry<O>, O: ClassObject> ClassGeometry<O> for WithSeam<'_, M, O
     fn vertex_face_gap(&self, vertex: O, surface: &Surface, face: Option<O>) -> Option<f64> {
         self.inner.vertex_face_gap(vertex, surface, face)
     }
+    fn topology_entity(&self, object: O) -> Option<(&Brep, EntityRef)> {
+        self.inner.topology_entity(object)
+    }
+    fn topology_handle(&self, entity: EntityRef) -> Option<O> {
+        self.inner.topology_handle(entity)
+    }
     fn owner_of(&self, owner: ObjectRef) -> Option<ObjectRef> {
         self.inner.owner_of(owner)
     }
@@ -1279,19 +1287,31 @@ pub struct SeamCheck<O> {
     pub problem: SeamProblem,
 }
 
-/// `SmCurveClassification::GetLoopCrossings(loops, props, &counts, &rawTouchList,
-/// &doneTouchList)`.
-fn get_loop_crossings<O: LoopObject>(
-    _class: &CurveClassification<O>,
-    _loops: &[LoopId],
-    _props: &mut FaceProps<O>,
-    _dir: SurfParamType,
+/// `SmCurveClassification::GetLoopCrossings(loops, props, &counts,
+/// &props->m_sRawTouchList<dir>, &props->m_sDoneTouchList<dir>)` (status ignored; the
+/// counts are unused).
+fn get_loop_crossings<O: LoopObject, G: ClassGeometry<O>>(
+    k: &Kernel,
+    geometry: &G,
+    class: &CurveClassification<O>,
+    loops: &[LoopId],
+    props: &mut FaceProps<O>,
+    dir: SurfParamType,
 ) -> Result<()> {
-    // UNPORTED(intersect.curve_class_p4): SmCurveClassification::GetLoopCrossings
-    Err(SolidError::unported(
-        "SmCurveClassification::GetLoopCrossings",
-        "intersect.curve_class_p4",
-    ))
+    let handles: Vec<O> = loops.iter().map(|&l| O::from_loop(l)).collect();
+    let (raw, done) = match class.get_loop_crossings(k, geometry, &handles, Some(props)) {
+        Ok(c) => (c.raw_touches, c.done_touches),
+        Err(e) if must_propagate(&e) => return Err(e),
+        Err(_) => (Vec::new(), Vec::new()),
+    };
+    if dir == SurfParamType::U {
+        props.raw_touch_list_u = raw;
+        props.done_touch_list_u = done;
+    } else {
+        props.raw_touch_list_v = raw;
+        props.done_touch_list_v = done;
+    }
+    Ok(())
 }
 
 /// `SM_SP_BOTH` / `U` / `V` / `NEITHER` of two flags.
@@ -1379,10 +1399,10 @@ fn classify_seam<O: LoopObject, M: CurveOnClassifyObjects<O>>(
     }
 
     // How many times is the Seam crossed by loop
-    get_loop_crossings(&class, loops, props, dir)?;
+    get_loop_crossings(k, &objects, &class, loops, props, dir)?;
 
     // Find and Fix False SeamEdge EndPoint Classifications (status ignored)
-    match review_start_and_stop_on_seam_crv_classifies(&mut class) {
+    match review_start_and_stop_on_seam_crv_classifies(&objects, &mut class) {
         Err(e) if must_propagate(&e) => return Err(e),
         _ => {}
     }

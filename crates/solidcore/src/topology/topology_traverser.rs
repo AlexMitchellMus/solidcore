@@ -11,7 +11,7 @@
 //! | [`remove_shell`], [`faceuse_shell_replacement`] | `RemoveShell`, `FaceuseShellReplacement` |
 //! | [`shell_traversal`], `shell_connectivity` (private) | `ShellTraversal`, `sm_ShellConnectivity` |
 //! | [`is_inner_shell`] | `IsInnerShell`, `IsOdd` |
-//! | [`has_lamina_edge`] | `SmFace::HasLaminaEdge` (CO-PORTED, `topology.face_p3`) |
+//! | [`has_lamina_edge`] | `SmFace::HasLaminaEdge` (CO-PORTED, `topology.face_p3`; re-exported there) |
 //! | [`face_edges`] | `SmFace::GetEdges` (CO-PORTED, `topology.face_p4`, default arguments) |
 //!
 //! Deviations: stateless constructor/destructor become free functions. Marks are
@@ -279,7 +279,12 @@ pub fn faceuse_traversal(
     Ok(closed)
 }
 
-/// Whether any edge of the face is lamina (`SmFace::HasLaminaEdge`, co-ported).
+/// `SmFace::HasLaminaEdge` (CO-PORTED from `topology.face_p3`): whether any edge of the
+/// face is lamina.
+///
+/// # Errors
+///
+/// Those of [`face_edges`] and the lamina test.
 pub fn has_lamina_edge(b: &Brep, f: FaceId) -> Result<bool> {
     for e in face_edges(b, f)? {
         if eu::edge_is_lamina(b, e)? {
