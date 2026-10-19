@@ -18,6 +18,7 @@
 //! | [`orient_trimmed_surfaces`]     | `SmBrep::OrientTrimmedSurfaces`                  |
 //! | [`squeeze_edge`]                | `SmBrep::SqueezeEdge`                            |
 //! | [`turn_to_nurbs`]               | `SmBrep::TurnToNURBS`                            |
+//! | [`GeometryIds`]                 | (the `m_pCurve` objects' identities, for the notifications) |
 //! | [`seed_topology_records`]       | (the `SmTopology` members every object carries; for callers of the edits) |
 //! | `Brep::remove_from_*_list` (crate) | `SmOwningTopology::Remove` on the B-rep's list heads (and `~SmTopology`) |
 //!
@@ -56,6 +57,11 @@
 //!   constructors of uses, loops, shells and regions do not notify
 //!   (`SM_NO_DESTRUCTION` / `SM_NO_CONSTRUCTION` at `SmObject` level; `new_brep`'s own
 //!   construction is reported); faces, edges and vertices do.
+//! - **Geometry identities.** Upstream notifies the edge curves as objects of their own
+//!   (`m_pCurve`); the arena has no curve ids, so the edits that notify curves
+//!   (`SqueezeEdge`, `MakeWireEdge(Vertex)`, `TurnToNURBS`) take a [`GeometryIds`]
+//!   registry whose keys the caller allocates, disjoint from its topology keys; a
+//!   replacement curve gets a key of its own.
 //! - **Notification identities.** The ids of two B-reps overlap, so `MergeBrep`,
 //!   `CopyVertices` and the copy constructors take the notification identity of the
 //!   source B-rep's objects (`source_key`) beside `env.key_of` for the destination's.
@@ -374,6 +380,15 @@ fn brep_notify(
     operation: NotifyOperation,
     data: [Option<NotifyArg>; 3],
 ) -> Result<()> {
+    // an object made by the edit has its (default) SmTopology record from its
+    // constructor upstream; the arena's live in the caller's map, so one is added the
+    // first time the edit names the object (seed_topology_records covers the rest)
+    for d in data.into_iter().flatten() {
+        if let NotifyArg::Entity(e) = d {
+            env.records.entry((env.key_of)(e).key).or_default();
+        }
+    }
+    env.records.entry(p2::brep_ref(b).key).or_default();
     p2::notify(b, env, None, operation, data)
 }
 
@@ -1831,29 +1846,75 @@ fn wire_curve(curve: &Curve) -> Curve {
     curve.clone()
 }
 
-/// Bit that turns an edge's notification key into its curve's (see [`curve_ref`]).
-const CURVE_KEY_BIT: u64 = 1 << 56;
+/// The identities the edits notify geometry objects under: the edge curves
+/// (`m_pCurve`), which upstream passes as distinct objects of their own (never the
+/// edge). The caller supplies `fresh`, which returns a new key in a namespace of its
+/// own, disjoint from its topology keys (as `NotifyEnv::key_of`'s keys are the
+/// caller's): every curve object gets one, a replacement curve included, so two
+/// curves never share an identity. An edge's current curve keeps its identity
+/// across edits that share this registry.
+pub struct GeometryIds<'a> {
+    curves: BTreeMap<EdgeId, ObjectRef>,
+    fresh: &'a mut dyn FnMut() -> ObjectKey,
+}
 
-/// The identity of edge `e`'s curve for notifications: the curve object upstream
-/// passes (`m_pCurve`), not the edge, so a callback (the tracker's `Execute`) sees
-/// geometry: the curve's type code (a B-spline when the edge has none yet) and the
-/// edge's key with [`CURVE_KEY_BIT`] set.
-fn curve_ref(b: &Brep, env: &NotifyEnv<'_>, e: EdgeId) -> ObjectRef {
-    let type_code = b
-        .edge(e)
-        .ok()
-        .and_then(|x| x.curve.as_ref())
-        .map_or(BSplineCurve::TYPE, Curve::type_code);
-    let edge = (env.key_of)(EntityRef::Edge(e));
-    ObjectRef {
-        type_code,
-        key: ObjectKey(edge.key.0 | CURVE_KEY_BIT),
+impl core::fmt::Debug for GeometryIds<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("GeometryIds")
+            .field("curves", &self.curves)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<'a> GeometryIds<'a> {
+    /// A registry whose new identities come from `fresh`.
+    pub fn new(fresh: &'a mut dyn FnMut() -> ObjectKey) -> Self {
+        Self {
+            curves: BTreeMap::new(),
+            fresh,
+        }
+    }
+
+    /// The identity of edge `e`'s current curve (one is given on first use; the type
+    /// code is the curve's, a B-spline's when the edge has none).
+    pub fn edge_curve(&mut self, b: &Brep, e: EdgeId) -> ObjectRef {
+        if let Some(&r) = self.curves.get(&e) {
+            return r;
+        }
+        let type_code = b
+            .edge(e)
+            .ok()
+            .and_then(|x| x.curve.as_ref())
+            .map_or(BSplineCurve::TYPE, Curve::type_code);
+        let r = ObjectRef {
+            type_code,
+            key: (self.fresh)(),
+        };
+        self.curves.insert(e, r);
+        r
+    }
+
+    /// The identity of a new curve object (of type `type_code`) that becomes edge
+    /// `e`'s curve: always a fresh one.
+    pub fn new_edge_curve(&mut self, e: EdgeId, type_code: i64) -> ObjectRef {
+        let r = ObjectRef {
+            type_code,
+            key: (self.fresh)(),
+        };
+        self.curves.insert(e, r);
+        r
     }
 }
 
 /// Binds `curve` (owned by nobody, or copied) to the new edge `e` (`SetCurve(.., FALSE)`
 /// then `SetOwner(edge)`).
-fn bind_wire_curve(b: &mut Brep, env: &mut NotifyEnv<'_>, e: EdgeId, curve: &Curve) -> Result<()> {
+fn bind_wire_curve(
+    b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+    geometry: &mut GeometryIds<'_>,
+    e: EdgeId,
+    curve: &Curve,
+) -> Result<()> {
     let mut new_curve = if curve
         .owner()
         .is_some_and(|o| o.type_code == edge_type_code())
@@ -1863,10 +1924,7 @@ fn bind_wire_curve(b: &mut Brep, env: &mut NotifyEnv<'_>, e: EdgeId, curve: &Cur
         curve.clone()
     };
     let _ = new_curve.set_owner(None, None);
-    let new_ref = ObjectRef {
-        type_code: new_curve.type_code(),
-        ..curve_ref(b, env, e)
-    };
+    let new_ref = geometry.new_edge_curve(e, new_curve.type_code());
     edge::set_curve(
         b,
         e,
@@ -1906,6 +1964,7 @@ pub fn make_wire_edge(
     k: &mut Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
+    geometry: &mut GeometryIds<'_>,
     region: Option<RegionId>,
     start: VertexId,
     end: VertexId,
@@ -1926,7 +1985,7 @@ pub fn make_wire_edge(
     edge::set_orientation(b, e, orientation)?;
 
     // bind the curve (or a copy of it) to the new edge
-    bind_wire_curve(b, env, e, curve)?;
+    bind_wire_curve(b, env, geometry, e, curve)?;
 
     // set vertex tolerances to include edge end points
     let p_start = curve.evaluate_point(interval.min())?;
@@ -1962,6 +2021,7 @@ pub fn make_wire_edge(
 pub fn make_wire_edge_vertex(
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
+    geometry: &mut GeometryIds<'_>,
     region: Option<RegionId>,
     start: VertexId,
     curve: &Curve,
@@ -1996,7 +2056,7 @@ pub fn make_wire_edge_vertex(
     edge::set_orientation(b, e, orientation)?;
 
     // bind the curve (or a copy of it) to the new edge
-    bind_wire_curve(b, env, e, curve)?;
+    bind_wire_curve(b, env, geometry, e, curve)?;
 
     vertex::refresh_tolerance(b, start, false)?;
     vertex::refresh_tolerance(b, v, false)?;
@@ -2036,6 +2096,7 @@ pub fn squeeze_edge(
     k: &mut Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
+    geometry: &mut GeometryIds<'_>,
     e: EdgeId,
     survivor: VertexId,
 ) -> Result<()> {
@@ -2069,7 +2130,11 @@ pub fn squeeze_edge(
         NotifyOperation::PreEdit,
         [Some(eref), Some(bref), None],
     ))?;
-    let cref = b.edge(e)?.curve.as_ref().map(|_| curve_ref(b, env, e));
+    let cref = if b.edge(e)?.curve.is_some() {
+        Some(geometry.edge_curve(b, e))
+    } else {
+        None
+    };
     ignore_soft(brep_notify(
         b,
         env,
@@ -2303,7 +2368,12 @@ const fn as_bspline_surface(s: &Surface) -> Option<&BSplineSurface> {
 /// face with an analytic surface; those of the curve lift / approximation;
 /// `SM_ERR_NULL_POINTER` when a curve could not be made a B-spline or an offset's base
 /// is not a B-spline kind (`NER`); those of the offset's bounding box and extension.
-pub fn turn_to_nurbs(k: &Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Result<()> {
+pub fn turn_to_nurbs(
+    k: &Kernel,
+    b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+    geometry: &mut GeometryIds<'_>,
+) -> Result<()> {
     ignore_soft(brep_notify(
         b,
         env,
@@ -2469,11 +2539,9 @@ pub fn turn_to_nurbs(k: &Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Resul
         let bsc = bsc.ok_or_else(ner)?;
 
         // Update the edge: drop the old curve (TRUE = delete preExisting Curve)
-        let old_ref = curve_ref(b, env, e);
-        let r = ObjectRef {
-            type_code: bsc.type_code(),
-            ..old_ref
-        };
+        // (the new curve exists while the old one does: distinct identities)
+        let old_ref = geometry.edge_curve(b, e);
+        let r = geometry.new_edge_curve(e, bsc.type_code());
         edge::set_curve(
             b,
             e,
@@ -3017,6 +3085,60 @@ mod tests {
             .is_some());
     }
 
+    /// An object an edit makes has no record in the caller's map yet; the first
+    /// notification that names it gives it its default `SmTopology` record (upstream's
+    /// constructor makes one), so `SM_NO_MERGE_IN_BREP` of two such vertices works.
+    #[test]
+    fn new_objects_get_their_records_when_notified() {
+        let mut b = Brep::new();
+        let v0 = b.add_vertex(Vec3::ZERO).unwrap();
+        let v1 = b.add_vertex(Vec3::X).unwrap();
+        let r = with_env(|env| {
+            assert!(env.records.is_empty());
+            let r = brep_notify(
+                &b,
+                env,
+                NotifyOperation::MergeInBrep,
+                [
+                    arg(EntityRef::Vertex(v0)),
+                    arg(EntityRef::Vertex(v1)),
+                    brep_arg(&b),
+                ],
+            );
+            for v in [v0, v1] {
+                assert!(env
+                    .records
+                    .contains_key(&(env.key_of)(EntityRef::Vertex(v)).key));
+            }
+            r
+        });
+        r.unwrap();
+    }
+
+    /// Every curve object gets an identity of its own from the caller's allocator:
+    /// an edge's current curve keeps it; a replacement gets a new one (the old curve
+    /// still exists when upstream makes it); different edges never share one, whatever
+    /// their keys.
+    #[test]
+    fn curve_identities_are_distinct() {
+        let mut n = 0u64;
+        let mut fresh = || {
+            n += 1;
+            ObjectKey(1000 + n)
+        };
+        let mut ids = GeometryIds::new(&mut fresh);
+        let b = Brep::new();
+        let (e0, e1) = (EdgeId::from_index(0), EdgeId::from_index(1));
+        let c0 = ids.edge_curve(&b, e0);
+        let c1 = ids.edge_curve(&b, e1);
+        assert_ne!(c0.key, c1.key);
+        assert_eq!(ids.edge_curve(&b, e0), c0);
+        let replacement = ids.new_edge_curve(e0, BSplineCurve::TYPE);
+        assert_ne!(replacement.key, c0.key);
+        assert_ne!(replacement.key, c1.key);
+        assert_eq!(ids.edge_curve(&b, e0), replacement);
+    }
+
     /// `DeleteFace` after region nesting merged the face's two shells: upstream's
     /// explicit `Remove` takes off only `pFU` (`pOtherShell` is gone), and `delete
     /// pOtherFU`'s destructor removes the mate from the surviving shell. A closed
@@ -3168,7 +3290,13 @@ mod tests {
     fn turn_to_nurbs_of_an_empty_brep_is_a_no_op() {
         let k = Kernel::default();
         let mut b = Brep::new();
-        with_env(|env| turn_to_nurbs(&k, &mut b, env)).unwrap();
+        let mut n = 0u64;
+        let mut fresh = || {
+            n += 1;
+            ObjectKey(n)
+        };
+        let mut geometry = GeometryIds::new(&mut fresh);
+        with_env(|env| turn_to_nurbs(&k, &mut b, env, &mut geometry)).unwrap();
         assert!(b.faces().is_empty());
     }
 

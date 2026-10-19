@@ -980,17 +980,56 @@ fn wrap_in_offsets(k: &Kernel, b: &mut Brep, faces: &[FaceId], d: f64) -> Result
     Ok(())
 }
 
-/// The shim's `put_tracked`, by identity only: the B-rep as `-10 0`; a topology object
-/// that existed before the op or that the walk after it reaches: its kind's type code,
-/// then for a face / edge / vertex its index before the op (or 100000 + its index in
-/// the walk after it), for another kind `-5`; anything else `-2 -5`; `-1 -1` for null.
-fn put_tracked(
-    o: &mut Vec<f64>,
-    key: Option<ObjectKey>,
-    pre: &[usize; 10],
-    post: &Walk,
+/// The kind of the runner's geometry keys ([`bp3::GeometryIds`]), above every
+/// [`key_of`] kind.
+const GEOMETRY_KIND: u64 = 12;
+
+/// The shim's `GeomRecorder`: a user notify callback that keeps every geometry key a
+/// notification names (the shim's tells geometry from topology while it is live).
+#[derive(Debug, Default)]
+struct GeomRecorder(std::sync::Arc<std::sync::Mutex<Vec<ObjectKey>>>);
+
+impl solidcore::geom::context::NotifyCallback for GeomRecorder {
+    fn execute(
+        &mut self,
+        _operation: solidcore::geom::object::NotifyOperation,
+        caller: ObjectRef,
+        data1: Option<ObjectRef>,
+        data2: Option<ObjectRef>,
+        data3: Option<ObjectRef>,
+    ) -> Result<(), SolidError> {
+        let mut seen = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for x in [Some(caller), data1, data2, data3].into_iter().flatten() {
+            if x.key.0 >> 32 == GEOMETRY_KIND && !seen.contains(&x.key) {
+                seen.push(x.key);
+            }
+        }
+        Ok(())
+    }
+}
+
+/// What the shim's `Tracked` holds: the arena lengths before the op, the walk after
+/// it, the B-rep's key, each pre-op edge curve's key, the geometry the notifications
+/// named and that geometry numbered by first appearance in the output.
+struct Tracked<'a> {
+    pre: [usize; 10],
+    post: Walk,
     brep: ObjectKey,
-) {
+    pre_curves: &'a BTreeMap<ObjectKey, usize>,
+    geometry: &'a [ObjectKey],
+    numbered: Vec<ObjectKey>,
+}
+
+/// The shim's `put_tracked`, by identity only: `-1 -1` null, `-10 0` the B-rep; a
+/// topology object that existed before the op or that the walk after it reaches: its
+/// kind's type code, then for a face / edge / vertex its index before the op (or
+/// 100000 + its index in the walk after it), for another kind `-5`; an edge's pre-op
+/// curve `-20 edge`; other geometry `-30 n` (by first appearance in the tracker's
+/// lists and events); anything else `-2 -5`.
+fn put_tracked(o: &mut Vec<f64>, key: Option<ObjectKey>, t: &mut Tracked<'_>) {
     const CODES: [f64; 10] = [
         16012.0, 16013.0, 16022.0, 16002.0, 16004.0, 16003.0, 16005.0, 16016.0, 16006.0, 16021.0,
     ];
@@ -998,8 +1037,24 @@ fn put_tracked(
         o.extend([-1.0, -1.0]);
         return;
     };
-    if key == brep {
+    if key == t.brep {
         o.extend([-10.0, 0.0]);
+        return;
+    }
+    if let Some(&e) = t.pre_curves.get(&key) {
+        o.extend([-20.0, e as f64]);
+        return;
+    }
+    if t.geometry.contains(&key) {
+        let n = t
+            .numbered
+            .iter()
+            .position(|&x| x == key)
+            .unwrap_or_else(|| {
+                t.numbered.push(key);
+                t.numbered.len() - 1
+            });
+        o.extend([-30.0, n as f64]);
         return;
     }
     // key_of: (kind << 32) | (1 + index), kinds 1..=10 in the walk's order
@@ -1015,8 +1070,8 @@ fn put_tracked(
         o.extend([-2.0, -5.0]);
         return;
     };
-    let existed = (idx as usize) < pre.get(k).copied().unwrap_or(0);
-    let after = post.find(k, Some(idx));
+    let existed = (idx as usize) < t.pre.get(k).copied().unwrap_or(0);
+    let after = t.post.find(k, Some(idx));
     if !existed && after < 0.0 {
         o.extend([-2.0, -5.0]);
         return;
@@ -1037,25 +1092,21 @@ fn put_tracked(
 fn put_tracker(
     o: &mut Vec<f64>,
     lists: &solidcore::topology::topology::TopologyChangeLists,
-    pre: &[usize; 10],
-    b: &Brep,
-    brep: ObjectKey,
-) -> Result<(), Fail> {
-    let post = walk(b)?;
+    t: &mut Tracked<'_>,
+) {
     for l in [&lists.rm_list, &lists.add_list, &lists.chg_list] {
         o.push(l.len() as f64);
         for &x in l {
-            put_tracked(o, Some(x), pre, &post, brep);
+            put_tracked(o, Some(x), t);
         }
     }
     o.push(lists.notify_events.len() as f64);
     for e in &lists.notify_events {
         o.push(f64::from(e.operation.code()));
         for x in [e.caller, e.data1, e.data2, e.data3] {
-            put_tracked(o, x.map(|x| x.key), pre, &post, brep);
+            put_tracked(o, x.map(|x| x.key), t);
         }
     }
-    Ok(())
 }
 
 /// `run_rust_op_in`, the edits of `b` (as the shim's) under a topology change tracker
@@ -1076,8 +1127,25 @@ fn run_rust_op(
             | OpIn::TurnNurbs
             | OpIn::TurnNurbsOffset { .. }
     );
+    // every curve object's identity: a fresh key of GEOMETRY_KIND
+    let mut n = 0u64;
+    let mut fresh = || {
+        n += 1;
+        ObjectKey((GEOMETRY_KIND << 32) | n)
+    };
+    let mut geometry = bp3::GeometryIds::new(&mut fresh);
     if !tracked {
-        return run_rust_op_in(k, b, second, op, a, None);
+        return run_rust_op_in(k, b, second, op, a, None, &mut geometry);
+    }
+    // the curve each edge has before the op (the shim's pre_curves)
+    let mut pre_curves = BTreeMap::new();
+    let mut owners = Vec::new();
+    for (e, edge) in b.edges().iter() {
+        if edge.curve.is_some() {
+            let c = geometry.edge_curve(b, e);
+            pre_curves.insert(c.key, e.index() as usize);
+            owners.push((c, key_of(EntityRef::Edge(e))));
+        }
     }
     // (arena lengths in the walk's kind order: an imported B-rep's ids are its walk
     // indices, and an op only appends)
@@ -1095,12 +1163,33 @@ fn run_rust_op(
     ];
     let brep = solidcore::topology::brep::p2::brep_ref(b).key;
     let mut ctx = Context::default();
-    let tracker = TrackTopologyChanges::new(Some(BrepId::from_index(0)), 7, true, Some(&mut ctx));
-    let r = run_rust_op_in(k, b, second, op, a, Some(&mut ctx));
+    let recorder = GeomRecorder::default();
+    let seen = std::sync::Arc::clone(&recorder.0);
+    ctx.set_user_notify_callback(Some(Box::new(recorder)));
+    let mut tracker =
+        TrackTopologyChanges::new(Some(BrepId::from_index(0)), 7, true, Some(&mut ctx));
+    // Execute's owner walk: each pre-op curve's GetOwner() is its edge
+    for (c, e) in owners {
+        tracker.set_owner(c, Some(e));
+    }
+    let r = run_rust_op_in(k, b, second, op, a, Some(&mut ctx), &mut geometry);
     let lists = tracker.lists();
     tracker.finish(Some(&mut ctx));
+    let _ = ctx.take_notify_callbacks();
     let mut out = r?;
-    put_tracker(&mut out, &lists, &pre, b, brep)?;
+    let geometry_seen = seen
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    let mut t = Tracked {
+        pre,
+        post: walk(b)?,
+        brep,
+        pre_curves: &pre_curves,
+        geometry: &geometry_seen,
+        numbered: Vec::new(),
+    };
+    put_tracker(&mut out, &lists, &mut t);
     Ok(out)
 }
 
@@ -1112,6 +1201,7 @@ fn run_rust_op_in(
     op: &OpIn,
     a: &[f64],
     context: Option<&mut Context>,
+    geometry: &mut bp3::GeometryIds<'_>,
 ) -> Result<Vec<f64>, Fail> {
     let mut out = vec![0.0];
     let arg = |i: usize| -> Result<f64, Fail> {
@@ -1228,13 +1318,13 @@ fn run_rust_op_in(
             };
             let s = if which == 0 {
                 status(bp3::make_wire_edge(
-                    k, b, &mut env, region, v1, v2, &crv, &ivl, orient,
+                    k, b, &mut env, geometry, region, v1, v2, &crv, &ivl, orient,
                 ))?
                 .0
             } else {
                 let p = Vec3::new(end[0], end[1], end[2]);
                 status(bp3::make_wire_edge_vertex(
-                    b, &mut env, region, v1, &crv, &ivl, orient, p,
+                    b, &mut env, geometry, region, v1, &crv, &ivl, orient, p,
                 ))?
                 .0
             };
@@ -1288,7 +1378,7 @@ fn run_rust_op_in(
                 _ => any,
             };
             let s = match v {
-                Some(v) => status(bp3::squeeze_edge(k, b, &mut env, e, v))?.0,
+                Some(v) => status(bp3::squeeze_edge(k, b, &mut env, geometry, e, v))?.0,
                 // a null survivor is neither vertex of the edge (`SER_MSG(SM_ERR)`)
                 None => f64::from(SM_ERR),
             };
@@ -1306,7 +1396,7 @@ fn run_rust_op_in(
                 wrap_in_offsets(k, b, &faces, d)?;
             }
             let kk: &Kernel = k;
-            let (s, _) = status(bp3::turn_to_nurbs(kk, b, &mut env))?;
+            let (s, _) = status(bp3::turn_to_nurbs(kk, b, &mut env, geometry))?;
             out.push(s);
             for e in edges {
                 put_curve(&mut out, must(b.edge(e))?.curve.as_ref())?;

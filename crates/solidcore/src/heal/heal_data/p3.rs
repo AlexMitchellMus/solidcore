@@ -506,6 +506,16 @@ fn edit_key(e: EntityRef) -> ObjectRef {
     }
 }
 
+/// The kind [`edit_geometry_key`] gives geometry keys: above every [`edit_key`] kind, so
+/// a curve never shares a key with a topology entity.
+const GEOMETRY_KIND: u64 = 16;
+
+/// A fresh geometry key for the edits' [`crate::topology::brep::p3::GeometryIds`]
+/// (the `n`th of this edit).
+const fn edit_geometry_key(n: u64) -> ObjectKey {
+    ObjectKey((GEOMETRY_KIND << 32) | n)
+}
+
 /// The face, edge or vertex [`edit_key`] made `key` for (the only kinds the tracker
 /// records).
 fn edit_entity(key: ObjectKey) -> Option<EntityRef> {
@@ -579,7 +589,13 @@ fn tracked_edit<R>(
 /// `SqueezeEdge(e, survivor)` under the edit tracker ([`tracked_edit`]).
 fn squeeze_edge(k: &mut Kernel, b: &mut Brep, e: EdgeId, survivor: VertexId) -> Result<Changes> {
     let (r, changes) = tracked_edit(k, b, |k, b, env| {
-        crate::topology::brep::p3::squeeze_edge(k, b, env, e, survivor)
+        let mut n = 0u64;
+        let mut fresh = || {
+            n += 1;
+            edit_geometry_key(n)
+        };
+        let mut geometry = crate::topology::brep::p3::GeometryIds::new(&mut fresh);
+        crate::topology::brep::p3::squeeze_edge(k, b, env, &mut geometry, e, survivor)
     });
     r.map(|()| changes)
 }

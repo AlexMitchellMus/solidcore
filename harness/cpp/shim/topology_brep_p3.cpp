@@ -141,47 +141,106 @@ SmBrep* prepare(Rd& rd, const char* path, Graph& g, SmStatus& bst)
 
 void put_graph(std::vector<double>& o, SmBrep* brep);
 
-// An object a tracker list or event names, found by its address only (it may be
-// deleted by the time the lists are read, so it is never dereferenced): `-1 -1` null,
-// `-10 0` the B-rep; a topology object either walk registered: its kind's type code,
-// then for a face / edge / vertex its index before the op (or 100000 + its index in the
-// walk after it), for another kind `-5`; anything else (geometry, an object made and
-// deleted by the op) `-2 -5`.
-void put_tracked(std::vector<double>& o, SmObject* p, Graph& pre, Graph& post, SmBrep* brep)
+// The objects a walk registered, by their SmObject base address (an upcast from each
+// object's own type), so that a saved tracker pointer is compared without a cast or a
+// read: kind (the Graph's 0..9) and index.
+std::map<const void*, std::pair<int, int64_t>> by_base(Graph& g)
+{
+    std::map<const void*, std::pair<int, int64_t>> m;
+    auto add = [&](int k, auto& v) {
+        for (size_t i = 0; i < v.size(); i++)
+            m.emplace((const void*)(SmObject*)v[i], std::make_pair(k, (int64_t)i));
+    };
+    add(0, g.regions);
+    add(1, g.shells);
+    add(2, g.faceuses);
+    add(3, g.faces);
+    add(4, g.loopuses);
+    add(5, g.loops);
+    add(6, g.edgeuses);
+    add(7, g.edges);
+    add(8, g.vertexuses);
+    add(9, g.vertices);
+    return m;
+}
+
+// The user notify callback of an edit: every geometry object (not topology, not the
+// B-rep) a notification names, read while it is live, so that a saved tracker pointer
+// is known to be geometry without reading it later.
+struct GeomRecorder : SmNotifyCallback
+{
+    SmBrep* brep = nullptr;
+    std::map<const void*, int64_t> order;
+    SmNotifyCallback* previous = nullptr;
+    SmStatus Execute(SmNotifyOperation op, SmObject* caller, SmObject* d1, SmObject* d2, SmObject* d3) override
+    {
+        for (SmObject* p : {caller, d1, d2, d3})
+            if (p != nullptr && p != (SmObject*)brep && !p->IsKindOf(SmTopology_TYPE) &&
+                order.find((const void*)p) == order.end())
+                order.emplace((const void*)p, (int64_t)order.size());
+        // (a user callback installed before this one still sees every notification)
+        return previous != nullptr ? previous->Execute(op, caller, d1, d2, d3) : SM_SUCCESS;
+    }
+};
+
+// An object a tracker list or event names, by its saved SmObject address only (it may
+// be deleted by now): `-1 -1` null, `-10 0` the B-rep; a topology object either walk
+// registered: its kind's type code, then for a face / edge / vertex its index before
+// the op (or 100000 + its index in the walk after it), for another kind `-5`; the
+// curve an edge had before the op: `-20 edge`; other geometry: `-30 n`, its first-seen
+// order in the tracker's lists and events (seen live by GeomRecorder); anything else
+// `-2 -5`.
+struct Tracked
+{
+    std::map<const void*, std::pair<int, int64_t>> pre, post;
+    std::map<const void*, int64_t> pre_curves;
+    const std::map<const void*, int64_t>* geometry = nullptr;
+    std::map<const void*, int64_t> numbered; // geometry by first appearance in the output
+    SmBrep* brep = nullptr;
+};
+
+void put_tracked(std::vector<double>& o, SmObject* p, Tracked& t)
 {
     static const double codes[10] = {SmRegion_TYPE,   SmShell_TYPE, SmFaceuse_TYPE,   SmFace_TYPE,
                                      SmLoopuse_TYPE,  SmLoop_TYPE,  SmEdgeuse_TYPE,   SmEdge_TYPE,
                                      SmVertexuse_TYPE, SmVertex_TYPE};
+    const void* a = (const void*)p;
     if (p == nullptr)
     {
         o.push_back(-1.0);
         o.push_back(-1.0);
         return;
     }
-    if (p == (SmObject*)brep)
+    if (p == (SmObject*)t.brep)
     {
         o.push_back(-10.0);
         o.push_back(0.0);
         return;
     }
-    // the address each walk registered, from the kind's own pointer type (a cast down
-    // from SmObject adjusts the address without reading the object, which may be
-    // deleted by now)
-    const void* as[10] = {(const void*)(SmRegion*)p,   (const void*)(SmShell*)p,    (const void*)(SmFaceuse*)p,
-                          (const void*)(SmFace*)p,     (const void*)(SmLoopuse*)p,  (const void*)(SmLoop*)p,
-                          (const void*)(SmEdgeuse*)p,  (const void*)(SmEdge*)p,     (const void*)(SmVertexuse*)p,
-                          (const void*)(SmVertex*)p};
-    for (int k = 0; k < 10; k++)
+    auto i = t.pre.find(a);
+    auto j = t.post.find(a);
+    if (i != t.pre.end() || j != t.post.end())
     {
-        auto i = pre.index[k].find(as[k]);
-        auto j = post.index[k].find(as[k]);
-        if (i == pre.index[k].end() && j == post.index[k].end())
-            continue;
+        int k = i != t.pre.end() ? i->second.first : j->second.first;
         o.push_back(codes[k]);
         if (k == 3 || k == 7 || k == 9)
-            o.push_back(i != pre.index[k].end() ? (double)i->second : 100000.0 + (double)j->second);
+            o.push_back(i != t.pre.end() ? (double)i->second.second : 100000.0 + (double)j->second.second);
         else
             o.push_back(-5.0);
+        return;
+    }
+    auto c = t.pre_curves.find(a);
+    if (c != t.pre_curves.end())
+    {
+        o.push_back(-20.0);
+        o.push_back((double)c->second);
+        return;
+    }
+    if (t.geometry->find(a) != t.geometry->end())
+    {
+        auto n = t.numbered.emplace(a, (int64_t)t.numbered.size()).first;
+        o.push_back(-30.0);
+        o.push_back((double)n->second);
         return;
     }
     o.push_back(-2.0);
@@ -190,15 +249,16 @@ void put_tracked(std::vector<double>& o, SmObject* p, Graph& pre, Graph& post, S
 
 // The tracker of an edit (SmTrackTopologyChanges on the B-rep): `n rm*`, `n add*`,
 // `n chg*`, then `n` events of `action caller data1 data2 data3` (put_tracked each).
-void put_tracker(std::vector<double>& o, SmTrackTopologyChanges& trk, Graph& pre, SmBrep* brep)
+void put_tracker(std::vector<double>& o, SmTrackTopologyChanges& trk, Tracked& t)
 {
     Graph post;
-    walk(brep, post, true);
+    walk(t.brep, post, true);
+    t.post = by_base(post);
     for (SmTArray<SmTopology*>* l : {trk.GetRmList(), trk.GetAddList(), trk.GetChgList()})
     {
         o.push_back((double)l->GetSize());
         for (ULONG i = 0; i < l->GetSize(); i++)
-            put_tracked(o, (SmObject*)(*l)[i], pre, post, brep); // (SmTopology* up to SmObject*)
+            put_tracked(o, (SmObject*)(*l)[i], t); // (SmTopology* up to SmObject*)
     }
     SmTArray<SmNotifyEvent>* ev = trk.GetNotifyEvents();
     o.push_back((double)ev->GetSize());
@@ -206,10 +266,10 @@ void put_tracker(std::vector<double>& o, SmTrackTopologyChanges& trk, Graph& pre
     {
         SmNotifyEvent& e = (*ev)[i];
         o.push_back((double)e.m_eAction);
-        put_tracked(o, e.m_pCaller, pre, post, brep);
-        put_tracked(o, e.m_pData1, pre, post, brep);
-        put_tracked(o, e.m_pData2, pre, post, brep);
-        put_tracked(o, e.m_pData3, pre, post, brep);
+        put_tracked(o, e.m_pCaller, t);
+        put_tracked(o, e.m_pData1, t);
+        put_tracked(o, e.m_pData2, t);
+        put_tracked(o, e.m_pData3, t);
     }
 }
 
@@ -408,9 +468,24 @@ void run(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
     // the edits of `brep` run under a topology change tracker (SmHealData's), whose
     // lists and events are compared after the op's outputs
     std::unique_ptr<SmTrackTopologyChanges> trk;
+    GeomRecorder rec;
+    Tracked tracked;
+    // (the tracker attaches to the B-rep's context; the recorder goes beside it)
+    SmContext& ctx_ = const_cast<SmContext&>(*brep->GetContext());
     if (op == P3_DELETE_FACE || op == P3_WIRE || op == P3_ORIENT || op == P3_SQUEEZE || op == P3_TURN_NURBS ||
         op == P3_TURN_NURBS_OFFSET)
+    {
+        tracked.brep = brep;
+        tracked.pre = by_base(g);
+        for (size_t i = 0; i < g.edges.size(); i++)
+            if (SmCurve* c = g.edges[i]->GetCurve())
+                tracked.pre_curves.emplace((const void*)(SmObject*)c, (int64_t)i);
+        tracked.geometry = &rec.order;
+        rec.brep = brep;
+        rec.previous = ctx_.GetUserNotifyCallback();
+        ctx_.SetUserNotifyCallback(&rec);
         trk.reset(new SmTrackTopologyChanges(brep, TRUE));
+    }
     switch (op)
     {
     case P3_COPY:
@@ -596,7 +671,8 @@ void run(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
     if (trk)
     {
         trk->StopTracking();
-        put_tracker(o, *trk, g, brep);
+        ctx_.SetUserNotifyCallback(rec.previous);
+        put_tracker(o, *trk, tracked);
     }
 }
 } // namespace

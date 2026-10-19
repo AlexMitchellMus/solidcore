@@ -11,7 +11,14 @@
 //! in that export's order. Every output starts with `0`, or `-1 status` when the B-rep
 //! could not be built. `counts` is `faces edges vertices regions` of the B-rep after
 //! the op (a fresh walk), then per region (list order) `void infinite nshells` and per
-//! shell of it `type size has_head` (`m_tShellType`, `GetSize`, `m_pList != NULL`).
+//! shell of it `type size has_head` (`m_tShellType`, `GetSize`, `m_pList != NULL`),
+//! then the topology graph (the shim's `put_graph`: the ten kind counts of a fresh
+//! fixture walk, then every object's owner / adjacency links as walk indices).
+//! `tracker` follows the outputs of the edits (`DeleteFace`, `Wire`, `Orient`,
+//! `Squeeze`, `TurnNurbs`, `TurnNurbsOffset`), which run under
+//! `SmTrackTopologyChanges` on the B-rep: `n rm*`, `n add*`, `n chg*`, then `n` events
+//! of `action caller data1 data2 data3`, each object as a pair (the shim's
+//! `put_tracked`: by its saved address, never read).
 //!
 //! | [`Op`]          | parameters | outputs |
 //! |-----------------|------------|---------|
@@ -19,13 +26,13 @@
 //! | `Copy`          | `analytics api` | `status tol editing counts` of the copy (`api`: `SmApiBrepCopy`, else the copy constructor with `analytics`) |
 //! | `Merge`         | `analytics` | `status counts` (`MergeBrep` of the B-rep into a second build of it) |
 //! | `CopyVertices`  | `n v*` | `status new counts` (`CopyVertices` into a second build) |
-//! | `DeleteFace`    | `face delete_ev nesting keep_region` (`-1` null) | `status deleted counts` |
-//! | `Wire`          | `which region v1 v2 curve t0 t1 orient end(3)` (`0` `MakeWireEdge`, `1` `MakeWireEdgeVertex`; region `-1` null) | `status counts` |
-//! | `Orient`        | `outward unify n face*` (`n = -1`: no list) | `status maybe_not_closed`, per face `u0 v0 u1 v1 upward_faceuse` |
-//! | `Squeeze`       | `edge which v` (survivor: `0` `GetVertex`, `1` the other vertex, `2` vertex `v`) | `status counts` |
-//! | `TurnNurbs`     |            | `status`, per edge its curve block (the fixture's `put_curve`), per face its surface type |
+//! | `DeleteFace`    | `face delete_ev nesting keep_region` (`-1` null) | `status deleted counts tracker` |
+//! | `Wire`          | `which region v1 v2 curve t0 t1 orient end(3)` (`0` `MakeWireEdge`, `1` `MakeWireEdgeVertex`; region `-1` null) | `status counts tracker` |
+//! | `Orient`        | `outward unify n face*` (`n = -1`: no list) | `status maybe_not_closed`, per face `u0 v0 u1 v1 upward_faceuse`, `counts tracker` |
+//! | `Squeeze`       | `edge which v` (survivor: `0` `GetVertex`, `1` the other vertex, `2` vertex `v`) | `status counts tracker` |
+//! | `TurnNurbs`     |            | `status`, per edge its curve block (the fixture's `put_curve`), per face its surface type, `counts tracker` |
 //! | `ApiCopyNull`   | `0` (no B-rep block) | `0 status` (`SmApiBrepCopy(NULL, ..)`) |
-//! | `TurnNurbsOffset` | `d` | `TurnNurbs` after wrapping every face-owned B-spline kind surface (detached from its face first) in an owning `SmOffsetSurface(d, ..)`; per face also its surface's natural UV domain |
+//! | `TurnNurbsOffset` | `d` | `TurnNurbs` after wrapping every face-owned B-spline kind surface (detached from its face first) in an owning `SmOffsetSurface(d, ..)`; per face also its surface's natural UV domain (before `counts tracker`) |
 //!
 //! [`eval`] accepts only what upstream handles without undefined behaviour: valid
 //! B-rep blocks, indices inside the B-rep (it exports the B-rep once more to count),
