@@ -242,6 +242,38 @@
       "values_compared": 0
     },
     {
+      "max_rel_err": 0.0,
+      "name": "default-sentinel",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p3/states.json#24",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "negative-tolerance",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p3/states.json#25",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "negative-default-magnitude",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p3/states.json#26",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "negative-tiny-tolerance",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p3/states.json#27",
+      "values_compared": 2
+    },
+    {
       "deferred": {
         "symbol": "SmApiCircularFillet",
         "unit": "blend.fillet_executive_p1"
@@ -3001,8 +3033,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 175,
   "cases_failed": 0,
-  "cases_passed": 112,
-  "cases_total": 287,
+  "cases_passed": 116,
+  "cases_total": 291,
   "deferred_by_unit": {
     "blend.fillet_executive_p1": 46,
     "blend.fillet_executive_p2": 129

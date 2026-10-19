@@ -7888,4 +7888,12 @@ log audit confirms zero failures and zero units declared green with deferrals.
   appends geometry during face creation and verifies two visits with zero array
   snapshots, preserving live upstream iteration rather than capturing a stale list.
 
-Validation of this revision is pending; the earlier counts above describe bb84f1a5.
+Validation of this revision: fmt (including included files), both clippy modes,
+1,401 core tests (18 executive tests), four FFI tests and wasm pass. Paired parity:
+291 cases / 116 state-error passes / 0 failures / 175 deferred (p1=46, p2=129),
+with_values=116, no_values=0, max_rel_err=0. All four new constructor-domain cases
+match C++. Perturb detects 116/116 changes. Fuzz 2000: rejected=1720, malformed=16,
+ran=264, differs=0, crashes=0, panics=0, timeouts=0. Valgrind: 52 valid programs
+ran on both engines, baseline protocol equal, zero errors and zero lost bytes
+(definite/indirect/possible), no suppressions. The final full matrix is pending.
+Coverage still establishes zero successful geometric/topological comparisons.
