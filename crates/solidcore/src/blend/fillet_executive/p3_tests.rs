@@ -29,6 +29,7 @@ struct Access {
     stitch_tolerances: Vec<f64>,
     stitch_lamina: u64,
     corner_metadata: Option<CornerView<Handle>>,
+    corner_predicates: [bool; 2],
     corner_point: Point3,
     constant_results: Vec<bool>,
     corner_fail: Option<&'static str>,
@@ -41,17 +42,36 @@ impl ExecutiveAccess<Handle> for Access {
         self.events.push("corner_topology");
         Ok(())
     }
-    fn corner(&self, _: Handle) -> Result<CornerView<Handle>> {
+    fn corner_error_info(&self, _: Handle) -> Result<CornerView<Handle>> {
         self.corner_metadata
             .clone()
             .ok_or_else(|| invalid("no corner metadata"))
     }
-    fn solver(&self, _: Handle) -> Result<SolverView<Handle>> {
-        Ok(SolverView {
-            geoms: vec![],
-            edge: Handle(5),
-            approx_tolerance: 0.125,
-        })
+    fn is_blending_corner(&self, _: Handle) -> Result<bool> {
+        Ok(self.corner_predicates[0])
+    }
+    fn is_tangent_corner(&self, _: Handle) -> Result<bool> {
+        assert!(self.corner_predicates[0]);
+        Ok(self.corner_predicates[1])
+    }
+    fn corner_solvers(&self, _: Handle) -> Result<Vec<Handle>> {
+        assert!(self.corner_predicates[0] && self.corner_predicates[1]);
+        Ok(vec![Handle(3), Handle(4)])
+    }
+    fn corner_vertex(&self, _: Handle) -> Result<Option<Handle>> {
+        Ok(Some(Handle(6)))
+    }
+    fn corner_approx_tolerance(&self, _: Handle) -> Result<f64> {
+        Ok(0.125)
+    }
+    fn solver_geoms(&self, _: Handle) -> Result<Vec<Handle>> {
+        Ok(vec![])
+    }
+    fn solver_edge(&self, _: Handle) -> Result<Handle> {
+        Ok(Handle(5))
+    }
+    fn solver_approx_tolerance(&self, _: Handle) -> Result<f64> {
+        Ok(0.125)
     }
     fn geom_face(&self, _: Handle) -> Result<Option<Handle>> {
         absent()
@@ -126,7 +146,19 @@ impl ExecutiveAccess<Handle> for Access {
     fn shrink_face(&mut self, _: &mut Kernel, _: Handle) -> Result<()> {
         absent()
     }
-    fn notify_face(&mut self, _: &mut Kernel, _: Handle, _: Handle) -> Result<()> {
+    fn notify_face(
+        &mut self,
+        _: &mut Kernel,
+        face: Handle,
+        operation: NotifyOperation,
+        data1: Option<Handle>,
+        data2: Option<Handle>,
+        data3: Option<Handle>,
+    ) -> Result<()> {
+        assert_eq!(operation, NotifyOperation::PreEdit);
+        assert_eq!(data1, Some(face));
+        assert_eq!(data2, Some(Handle(0)));
+        assert!(data3.is_none());
         self.events.push("notify");
         Ok(())
     }
@@ -485,11 +517,7 @@ fn final_stitch_failure_sets_bad_merge_and_stops_before_cleanup_postprocess() {
 
 fn corner() -> CornerView<Handle> {
     CornerView {
-        blending: true,
-        tangent: true,
-        solvers: vec![Handle(3), Handle(4)],
-        vertex: Handle(6),
-        approx_tolerance: 0.125,
+        vertex: Some(Handle(6)),
         corner_type: 9,
         name: "corner name".into(),
     }
@@ -509,6 +537,7 @@ fn tangent_corner_constant_radius_uses_both_distances_and_twice_approx_tolerance
         executive.corners.push(Handle(7));
         let mut access = Access {
             corner_metadata: Some(corner()),
+            corner_predicates: [true, true],
             corner_point: Point3::new(point, 0.0, 0.0),
             ..Access::default()
         };
@@ -560,4 +589,39 @@ fn corner_failure_records_context_and_stops_without_allocating_shell() {
         "Fillet Corner Error: Unable to Compute Geometry"
     );
     assert!(!access.events.contains(&"new"));
+}
+
+#[test]
+fn nonblending_or_nontangent_corners_do_not_read_solver_metadata() {
+    for predicates in [[false, true], [true, false]] {
+        let mut executive = state();
+        executive.corners.push(Handle(7));
+        let mut access = Access {
+            corner_predicates: predicates,
+            ..Access::default()
+        };
+        executive
+            .create_fillet_brep(&mut Kernel::default(), &mut access, None)
+            .unwrap();
+        assert_eq!(access.constant_results, [predicates[0]]);
+    }
+}
+
+#[test]
+fn corner_error_reporting_preserves_a_null_filleted_vertex() {
+    let mut executive = state();
+    executive.corners.push(Handle(7));
+    let mut metadata = corner();
+    metadata.vertex = None;
+    let mut access = Access {
+        corner_metadata: Some(metadata),
+        corner_fail: Some("vertices"),
+        ..Access::default()
+    };
+    assert!(matches!(
+        executive.create_fillet_brep(&mut Kernel::default(), &mut access, None),
+        Err(SolidError::Upstream { code: 1001, .. })
+    ));
+    assert_eq!(executive.error.code, 3);
+    assert!(executive.error.vertex.is_none());
 }

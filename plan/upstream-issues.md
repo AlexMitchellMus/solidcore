@@ -2700,7 +2700,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** docs / debug assertion.
 - **Rust port:** Matches release C++ rather than enforcing the assertion; derivative orders remain bounded to 3.
 
-## UB-182: Fillet executive initialized flag is indeterminate before parameter setup
+## UB-185: Fillet executive initialized flag is indeterminate before parameter setup
 
 - **Unit:** `blend.fillet_executive_p3` (constructor owned by executive p1).
 - **Location:** `source/SMLib/src/SmFilletExecutive.cpp:487-516,1574`.

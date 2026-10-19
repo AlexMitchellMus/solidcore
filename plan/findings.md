@@ -7581,5 +7581,42 @@ that dispatch when their types can first be constructed.
 
 C++ `SmFilletErrorInfo::operator=` does not copy comment, entity name, location,
 side face, fillet-vertex pointers, or fillet curves. Rust retains this exact subset.
-The native fixture always explicitly initializes `m_bIsInitialized` (UB-182), and
+The native fixture always explicitly initializes `m_bIsInitialized` (UB-185), and
 clears intersector references before freeing a leftover preview B-rep.
+
+The seven fixed examples from `tests/SM_API_test/src/TestSmFillets.cpp` are also
+re-expressed as native API fixtures: circular/chamfer on 5×10×15 boxes,
+first-four-edge and per-edge-radius fillets, variable radius on 10³ boxes, and
+round/bevel-corner variants. Rust defers these fixture entrypoints explicitly to
+executive p1; they do not contribute direct p3 passes. Their native outputs are
+status and final entity counts, not complete topology parity. Full geometric and
+topological parity remains pending the setup and geometry owners.
+
+Metadata getters are intentionally lazy: non-blending/non-tangent corners never
+request solver metadata, and corner names/type are queried only on error.
+`SmFace::Notify` is an explicit executive-adapter back-edge to `topology.face_p3`,
+with `PreEdit`, the face, its B-rep and null forwarded as separate arguments.
+
+UNPORTED audit for #244 (after merging main; no existing p3 back-edges were found):
+
+- `blend.fillet_corner_p1` (`todo`): `SmFilletCorner::AdjustTangentCorner`, `SmFilletCorner::AdjustTopology`, `SmFilletCorner::CalcCornerEdgeGeom`, `SmFilletCorner::CalcCornerVertGeom`, `SmFilletCorner::CheckAndFixDegeneracy`, `SmFilletCorner::InsertIntersectionTopology`, `SmFilletCorner::ReInitializeCornerEdges`.
+- `blend.fillet_corner_p3` (`todo`): `SmFilletCorner::CalcCornerGeom`.
+- `blend.fillet_executive_p1` (`todo`): `SmApiChamferFillet`, `SmApiCircularFillet`, `SmApiFilletEdges`, `SmApiFilletEdgesPerEdge`, `SmApiSetBevelCorners`, `SmApiVariableRadiusFillet`, `SmFilletExecutive::CreateFilletCorners`, `SmFilletExecutive::DoPiecewiseMerge`, `SmFilletExecutive::RemoveTopoEdges`.
+- `blend.fillet_executive_p2` (`todo`): `SmFilletExecutive::ProcessSmoothEdgeSequences`, `SmFilletExecutive::SetFilletBrepEdgeMap`.
+- `blend.fillet_geom_p4` (`todo`): `SmFilletGeom::InsertIntersectionTopology`, `SmFilletGeom::MakeFaceBrep`.
+- `blend.fillet_geom_p6` (`todo`): `SmFilletGeom::TrimOriginalSurfaces`.
+- `blend.fillet_solver_p1` (`todo`): `SmFilletSolver::TrimRails`.
+- `blend.fillet_solver_p4` (`todo`): `SmFilletSolver::CalcFilletGeom`.
+- `blend.fillet_solver_p5` (`todo`): `SmFilletSolver::TestRollOver`.
+- `boolean.topology_intersector_p2` (`todo`): `SmTopologyIntersector::DeleteFaces`, `SmTopologyIntersector::IntersectInsertRelate`.
+- `heal.stitch_p2` (`todo`): `SmStitch::DoStitching`.
+- `topology.brep_p2` (`todo`): `SmBrep::SetTolerance`.
+- `topology.brep_p3` (`todo`): `SmBrep::MergeBrep`, `SmBrep::OrientTrimmedSurfaces`.
+- `topology.brep_p4` (`todo`): `SmBrep::StitchFaces`.
+- `topology.face_p3` (`todo`): `SmFace::Notify`.
+
+Direct-state output also compares both full comment byte sequences (not merely
+lengths). Fixture intersector setup preserves the executive constructor's
+`ignore_tangency = true` and `SM_DEG2RAD(30)` operation order. Passing operations
+all return early error statuses; their observed post-error state is compared as
+data rather than being discarded by error-string normalization.

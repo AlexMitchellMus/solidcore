@@ -24,6 +24,7 @@
 
 use crate::boolean::topology_intersector::p1::TopologyIntersector;
 use crate::error::{Result, SolidError};
+use crate::geom::object::NotifyOperation;
 use crate::geom::solution_array::SolutionObject;
 use crate::intersect::point_class::{ClassObject, ClassObjectKind};
 use crate::kernel::Kernel;
@@ -190,34 +191,15 @@ pub struct FilletExecutive<O> {
     pub intersection_vertices: Vec<Option<O>>,
 }
 
-/// A corner's dependency-owned metadata; the view is refreshed after mutations.
+/// Error-only corner metadata, requested only after a corner operation fails.
 #[derive(Debug, Clone)]
 pub struct CornerView<O> {
-    /// `IsBlendingCorner()`.
-    pub blending: bool,
-    /// `IsTangentCorner()`.
-    pub tangent: bool,
-    /// `GetFilletSolvers()`.
-    pub solvers: Vec<O>,
-    /// `GetFilletedVertex()`.
-    pub vertex: O,
-    /// `GetThisApproxTol3d()`.
-    pub approx_tolerance: f64,
+    /// `GetFilletedVertex()`; failure reporting accepts null.
+    pub vertex: Option<O>,
     /// `GetCornerType()`.
     pub corner_type: i32,
-    /// `GetName()`.
+    /// `GetName(sBuff, SM_TBLOCK_SIZE)`.
     pub name: String,
-}
-
-/// A solver's dependency-owned metadata.
-#[derive(Debug, Clone)]
-pub struct SolverView<O> {
-    /// `m_vFilletGeoms`, in order.
-    pub geoms: Vec<O>,
-    /// `GetEdgeuse(0)->GetEdge()`.
-    pub edge: O,
-    /// `GetThisApproxTol3d()`.
-    pub approx_tolerance: f64,
 }
 
 /// Metadata of a recorded fillet edge, owned by fillet-geometry p2.
@@ -248,14 +230,28 @@ pub struct StitchAttempt {
 }
 
 /// Dependency access. Handles must preserve object identity across B-reps and
-/// resolve topology through typed `Brep` arenas. Required methods adapt existing
-/// APIs; default methods are precisely the missing calls, with complete arguments.
+/// resolve topology through typed `Brep` arenas. Required methods read dependency
+/// records or adapt existing APIs; default methods are precisely the missing calls, with complete arguments.
 /// No claimed solver/corner implementation or record is reproduced here.
 pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
-    /// `SmFilletCorner` metadata.
-    fn corner(&self, corner: O) -> Result<CornerView<O>>;
-    /// `SmFilletSolver` metadata.
-    fn solver(&self, solver: O) -> Result<SolverView<O>>;
+    /// `GetName`, `GetCornerType`, `GetFilletedVertex` for error reporting only.
+    fn corner_error_info(&self, corner: O) -> Result<CornerView<O>>;
+    /// `SmFilletCorner::IsBlendingCorner`.
+    fn is_blending_corner(&self, corner: O) -> Result<bool>;
+    /// `SmFilletCorner::IsTangentCorner`; called only for blending corners.
+    fn is_tangent_corner(&self, corner: O) -> Result<bool>;
+    /// `SmFilletCorner::GetFilletSolvers`; called only for tangent blending corners.
+    fn corner_solvers(&self, corner: O) -> Result<Vec<O>>;
+    /// `SmFilletCorner::GetFilletedVertex`.
+    fn corner_vertex(&self, corner: O) -> Result<Option<O>>;
+    /// `SmFilletCorner::GetThisApproxTol3d`.
+    fn corner_approx_tolerance(&self, corner: O) -> Result<f64>;
+    /// `SmFilletSolver::m_vFilletGeoms`, copied only where the caller needs them.
+    fn solver_geoms(&self, solver: O) -> Result<Vec<O>>;
+    /// `SmFilletSolver::GetEdgeuse(0)->GetEdge()`.
+    fn solver_edge(&self, solver: O) -> Result<O>;
+    /// `SmFilletSolver::GetThisApproxTol3d`.
+    fn solver_approx_tolerance(&self, solver: O) -> Result<f64>;
     /// `SmFilletGeom::m_pFilletSurface->GetOwner()`, cast to face.
     fn geom_face(&self, geom: O) -> Result<Option<O>>;
     /// Metadata of `m_vTopoEdges` entries.
@@ -305,8 +301,19 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     ) -> Result<T>;
     /// `SmFace::ShrinkGeometry()` with its header defaults; status is ignored.
     fn shrink_face(&mut self, k: &mut Kernel, face: O) -> Result<()>;
-    /// `SmFace::Notify(SM_NO_PRE_EDIT, face, brep, NULL)`; status ignored.
-    fn notify_face(&mut self, k: &mut Kernel, face: O, brep: O) -> Result<()>;
+    /// `SmFace::Notify`; all notification arguments are retained, including null.
+    fn notify_face(
+        &mut self,
+        _k: &mut Kernel,
+        _face: O,
+        _operation: NotifyOperation,
+        _data1: Option<O>,
+        _data2: Option<O>,
+        _data3: Option<O>,
+    ) -> Result<()> {
+        // UNPORTED(topology.face_p3): SmFace::Notify
+        Err(SolidError::unported("SmFace::Notify", "topology.face_p3"))
+    }
     /// `SmMerge::BooleanPostProcess`, using its actual intersector and recorded
     /// intersection lists (the implementation is already ported in merge p1).
     fn boolean_post_process(
@@ -716,11 +723,11 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         corner: O,
         comment: &str,
     ) -> Result<()> {
-        let view = access.corner(corner)?;
+        let view = access.corner_error_info(corner)?;
         self.error.code = 3; // SM_FILERR_VERTEX_PROBLEM
         self.error.status = 2; // SM_FIL_FAILURE
         self.error.corner_type = view.corner_type;
-        self.error.vertex = Some(view.vertex);
+        self.error.vertex = view.vertex;
         if !self.error.surfaces.contains(&None) {
             self.error.surfaces.push(None);
         }
@@ -737,7 +744,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         status: i32,
         comment: &str,
     ) -> Result<()> {
-        self.error.edge = Some(access.solver(solver)?.edge);
+        self.error.edge = Some(access.solver_edge(solver)?);
         self.error.code = 4; // SM_FILERR_EDGE_PROBLEM
         self.error.status = status;
         self.error.comment = comment.into();
@@ -769,22 +776,26 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                     "Fillet Corner Error: Unable to Make Topology",
                 );
             }
-            let view = access.corner(corner)?;
-            let mut as_constant = view.blending;
-            if as_constant && view.tangent && view.solvers.len() == 2 {
-                let solver = view
-                    .solvers
-                    .first()
-                    .copied()
-                    .ok_or(invalid("missing first solver"))?;
-                let edge = access.solver(solver)?.edge;
-                let (start, end) = access.edge_curve_ends(k, edge)?;
-                let point = access.vertex_point(view.vertex)?;
-                let distance1 = start.distance(point);
-                let distance2 = end.distance(point);
-                let tolerance = 2.0 * view.approx_tolerance;
-                if distance1 > tolerance && distance2 > tolerance {
-                    as_constant = false;
+            let mut as_constant = access.is_blending_corner(corner)?;
+            if as_constant && access.is_tangent_corner(corner)? {
+                let solvers = access.corner_solvers(corner)?;
+                if solvers.len() == 2 {
+                    let solver = solvers
+                        .first()
+                        .copied()
+                        .ok_or(invalid("missing first solver"))?;
+                    let edge = access.solver_edge(solver)?;
+                    let (start, end) = access.edge_curve_ends(k, edge)?;
+                    let vertex = access
+                        .corner_vertex(corner)?
+                        .ok_or(invalid("null tangent corner vertex"))?;
+                    let point = access.vertex_point(vertex)?;
+                    let distance1 = start.distance(point);
+                    let distance2 = end.distance(point);
+                    let tolerance = 2.0 * access.corner_approx_tolerance(corner)?;
+                    if distance1 > tolerance && distance2 > tolerance {
+                        as_constant = false;
+                    }
                 }
             }
             access.set_calc_as_const_rad(corner, as_constant)?;
@@ -902,7 +913,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         }
         let mut index = 0;
         while let Some(solver) = self.solvers.get(index).copied() {
-            let tolerance = access.solver(solver)?.approx_tolerance;
+            let tolerance = access.solver_approx_tolerance(solver)?;
             if access.tolerance(k, fillet, false)? < tolerance
                 && access.tolerance(k, fillet, false)? < tolerance
             {
@@ -910,7 +921,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                 ignore(access.set_brep_tolerance(k, fillet, tolerance, true, true))?;
             }
             let mut geom_index = 0;
-            while let Some(geom) = access.solver(solver)?.geoms.get(geom_index).copied() {
+            while let Some(geom) = access.solver_geoms(solver)?.get(geom_index).copied() {
                 if ignore(access.make_face_brep(k, geom, fillet))?.is_none() {
                     return self.solver_failure(
                         access,
@@ -966,7 +977,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             }
             let mut index = 0;
             while let Some(solver) = self.solvers.get(index).copied() {
-                if let Some(geom) = access.solver(solver)?.geoms.first().copied() {
+                if let Some(geom) = access.solver_geoms(solver)?.first().copied() {
                     if let Some(face) = access.geom_face(geom)? {
                         ignore(access.shrink_face(k, face))?;
                     }
@@ -1024,7 +1035,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             let mut index = 0;
             while let Some(solver) = self.solvers.get(index).copied() {
                 // GetFilletGeoms copies the array before its inner loop.
-                for geom in access.solver(solver)?.geoms {
+                for geom in access.solver_geoms(solver)? {
                     access.insert_geom_topology(k, geom)?;
                 }
                 index += 1;
@@ -1077,7 +1088,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         let mut kept = Vec::new();
         let mut index = 0;
         while let Some(solver) = self.solvers.get(index).copied() {
-            for geom in access.solver(solver)?.geoms {
+            for geom in access.solver_geoms(solver)? {
                 access.trim_original_surfaces(k, geom, &mut kept, &mut deleted, marks)?;
             }
             index += 1;
@@ -1162,7 +1173,14 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             access.remove_topo_edges(k, self)?;
             access.boolean_post_process(k, self, true)?;
             for face in access.faces(target)? {
-                ignore(access.notify_face(k, face, target))?;
+                ignore(access.notify_face(
+                    k,
+                    face,
+                    NotifyOperation::PreEdit,
+                    Some(face),
+                    Some(target),
+                    None,
+                ))?;
             }
             Ok(())
         })();
