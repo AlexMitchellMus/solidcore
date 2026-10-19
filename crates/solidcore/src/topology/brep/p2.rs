@@ -44,6 +44,9 @@
 //! points and scans the intersection curves once.
 //!
 //! Smaller deviations, none reachable as a difference today:
+//! - `ReplaceSurface` edits `pTopFace = pOld->GetFace()` (`SmBrep.cpp:26316`), the owner of
+//!   the face's surface, which can differ from `pFace` when faces share a surface upstream;
+//!   in the arena model every face owns its own surface, so the port edits `f`.
 //! - `MakeShellVertexTopology` / `MakeEdgeVertexTopology` / `MakeEdgeTopology` add their
 //!   records to the arenas as they link them, not all up front; `MakeEdgeTopology`'s
 //!   `TransferChildrenTo` (the one shell call that can fail) runs before any new record
@@ -1414,6 +1417,7 @@ pub fn replace_surface(
     if b.face(f)?.surface.is_none() {
         return Err(null_deref("face without surface"));
     }
+    // pTopFace = pOld->GetFace(): the surface's owner, `f` itself in the arena model
     let top_face = f;
 
     // inform the face
@@ -1816,10 +1820,10 @@ pub struct MergedCurves {
 ///
 /// `SM_ERR` when editing is not enabled or a coincident-maybe test is `UNSURE`;
 /// errors of the classification; [`SolidError::InvalidInput`] for a curve handle that
-/// does not resolve or a missing UV curve; [`SolidError::Unported`] from the curve
-/// classification constructor and `ConnectIntervals` (`intersect.curve_class_p4`,
-/// `_p2`), from `AreCoincidentMaybe`'s edge branch, and from the graph edits
-/// `MergeIntervals` defers.
+/// does not resolve or a missing UV curve; those of `ConnectIntervals` and
+/// `MergeIntervals`; [`SolidError::Unported`] from the curve classification constructor
+/// (`intersect.curve_class_p4`), from `AreCoincidentMaybe`'s edge branch, and from the
+/// graph edits `MergeIntervals` defers.
 #[allow(clippy::too_many_arguments)]
 pub fn merge_curves_on_surface<O: ClassObject + Copy>(
     k: &mut Kernel,
@@ -1970,18 +1974,14 @@ fn new_curve_classification<O: ClassObject + Copy>(
     ))
 }
 
-/// `ConnectIntervals(index, ePos, FALSE)` (unit `intersect.curve_class_p2`).
-fn connect_intervals<O>(
+/// `SER(ConnectIntervals(index, ePos, FALSE))` (`SmBrep.cpp:22072`;
+/// [`CurveClassification::connect_intervals`]).
+fn connect_intervals<O: ClassObject>(
     cc: &mut CurveClassification<O>,
     index: usize,
     pos: IntervalPosition,
 ) -> Result<()> {
-    let _ = (cc, index, pos);
-    // UNPORTED(intersect.curve_class_p2): SmCurveClassification::ConnectIntervals
-    Err(SolidError::unported(
-        "SmCurveClassification::ConnectIntervals",
-        "intersect.curve_class_p2",
-    ))
+    cc.connect_intervals(index, pos, false)
 }
 
 /// `MergeIntervals(&newFaces, NULL, NULL, pFace)` (unit `intersect.curve_class_p5`,

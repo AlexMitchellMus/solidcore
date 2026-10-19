@@ -472,11 +472,8 @@ fn make_topology(
 
     // Set isManifold after all objects are created and connected to one another
     if calculate_is_manifold {
-        // UNPORTED(topology.brep_p2): SmBrep::IsManifoldSolid
-        return Err(SolidError::Unported {
-            upstream: "SmBrep::IsManifoldSolid",
-            unit: "topology.brep_p2",
-        });
+        // pBrepData->m_bManifold = IsManifoldSolid()
+        data.manifold = i32::from(crate::topology::brep::p2::is_manifold_solid(b)?);
     }
 
     // When requested and needed - find and heal common AssertValid problems
@@ -1718,19 +1715,114 @@ fn create_parallel_projection_curves(
     })
 }
 
-fn merge_curves_on_surface(
-    _k: &mut Kernel,
-    _b: &mut Brep,
-    _face: FaceId,
-    _tol: f64,
+/// A classification handle over the B-rep's cache: what `query.brep`'s cache world will
+/// name (no value exists until then).
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum CacheHandle {}
+
+impl crate::intersect::point_class::ClassObject for CacheHandle {
+    fn class_kind(&self) -> crate::intersect::point_class::ClassObjectKind {
+        match *self {}
+    }
+}
+
+/// The `MergeCurvesObjects` world over the B-rep's cache that `MergeCurvesOnSurface`
+/// classifies through (`query.brep`, todo): uninhabited, so [`merge_curves_world`] is
+/// the one place the gap is.
+enum CacheMergeWorld {}
+
+impl crate::intersect::point_class::ClassGeometry<CacheHandle> for CacheMergeWorld {
+    fn curve(&self, _o: CacheHandle) -> Option<&Curve> {
+        match *self {}
+    }
+    fn surface(&self, _o: CacheHandle) -> Option<&Surface> {
+        match *self {}
+    }
+    fn volume(&self, _o: CacheHandle) -> Option<&crate::surface::volume::Volume> {
+        match *self {}
+    }
+    fn point(&self, _o: CacheHandle) -> Option<Point3> {
+        match *self {}
+    }
+}
+
+impl crate::query::face::p2::CurveOnClassifyObjects<CacheHandle> for CacheMergeWorld {
+    fn face(&self, _f: FaceId) -> CacheHandle {
+        match *self {}
+    }
+    fn vertex(&self, _v: VertexId) -> CacheHandle {
+        match *self {}
+    }
+    fn edge(&self, _e: EdgeId) -> CacheHandle {
+        match *self {}
+    }
+    fn vertexuse(&self, _vu: VertexuseId) -> CacheHandle {
+        match *self {}
+    }
+    fn edgeuse(&self, _eu: EdgeuseId) -> CacheHandle {
+        match *self {}
+    }
+    fn edge_curve(&self, _e: EdgeId) -> CacheHandle {
+        match *self {}
+    }
+    fn trim_curve(&self, _eu: EdgeuseId) -> CacheHandle {
+        match *self {}
+    }
+    fn face_surface(&self, _f: FaceId) -> Option<CacheHandle> {
+        match *self {}
+    }
+    fn loop_id(&self, _tgt_loop: CacheHandle) -> Option<LoopId> {
+        match *self {}
+    }
+}
+
+impl crate::topology::brep::p2::MergeCurvesObjects<CacheHandle> for CacheMergeWorld {
+    fn edge_of(&self, _object: CacheHandle) -> Option<EdgeId> {
+        match *self {}
+    }
+    fn face_of(&self, _object: CacheHandle) -> Option<FaceId> {
+        match *self {}
+    }
+}
+
+/// The classification world over `b`'s cache with handles for the 3D and UV curves.
+fn merge_curves_world(
+    _b: &Brep,
     _curves_3d: &[Curve],
     _uv_curves: &[Curve],
-) -> Result<(Vec<FaceId>, Vec<EdgeId>)> {
-    // UNPORTED(topology.brep_p2): SmBrep::MergeCurvesOnSurface
+) -> Result<(CacheMergeWorld, Vec<CacheHandle>, Vec<CacheHandle>)> {
+    // UNPORTED(query.brep): MergeCurvesObjects world over the B-rep cache
     Err(SolidError::Unported {
-        upstream: "SmBrep::MergeCurvesOnSurface",
-        unit: "topology.brep_p2",
+        upstream: "SmBrep::MergeCurvesOnSurface classification world over the B-rep cache",
+        unit: "query.brep",
     })
+}
+
+/// `SER(MergeCurvesOnSurface(*pSurf, dTol, s3DCurves, &sUVCurves, sNewFaces,
+/// sCurveEdges))` (`SmBrep.cpp:25074`; header defaults `bUseProjection = FALSE`, no
+/// intersection surface, `bUVSpaceOkay = TRUE`):
+/// [`crate::topology::brep::p2::merge_curves_on_surface`] through the B-rep cache's
+/// classification world, which only `query.brep` provides ([`merge_curves_world`]).
+fn merge_curves_on_surface(
+    k: &mut Kernel,
+    b: &mut Brep,
+    face: FaceId,
+    tol: f64,
+    curves_3d: &[Curve],
+    uv_curves: &[Curve],
+) -> Result<(Vec<FaceId>, Vec<EdgeId>)> {
+    let (world, curves, uv) = merge_curves_world(b, curves_3d, uv_curves)?;
+    let merged = crate::topology::brep::p2::merge_curves_on_surface(
+        k,
+        b,
+        &world,
+        face,
+        tol,
+        &curves,
+        Some(&uv),
+        crate::topology::brep::p2::MergeCurvesOptions::default(),
+    )?;
+    Ok((merged.new_faces, merged.edges))
 }
 
 /// `sm_FindSideOfCurve` (unit `topology.brep_p1`): the `SmBoolean` it sets on success.
@@ -1773,12 +1865,9 @@ fn brep_bounding_box(_k: &Kernel, _b: &Brep) -> Result<Extent3d> {
     })
 }
 
-fn point_from_solution(_solution: &Solution<CacheObject>, _start: usize) -> Result<Point3> {
-    // UNPORTED(topology.brep_p2): sm_GetPointFromSol
-    Err(SolidError::Unported {
-        upstream: "sm_GetPointFromSol",
-        unit: "topology.brep_p2",
-    })
+/// `sm_GetPointFromSol(sSol, start)` ([`crate::topology::brep::p2::point_from_solution`]).
+fn point_from_solution(b: &Brep, solution: &Solution<CacheObject>, start: usize) -> Result<Point3> {
+    crate::topology::brep::p2::point_from_solution(b, solution, start)
 }
 
 fn remove_faces(_k: &mut Kernel, _b: &mut Brep, _faces: &[FaceId]) -> Result<()> {
@@ -1993,7 +2082,7 @@ fn faces_to_delete(
             let Some(first) = solutions.as_slice().first() else {
                 continue;
             };
-            let p = point_from_solution(first, 1)?;
+            let p = point_from_solution(b, first, 1)?;
             let tol1 = 5.0 * (b.face(face)?.tolerance + tol);
             match ignored(find_side_of_curve(k, curve, p, direction, tol1))? {
                 Some(side) => face_right_side = side,
@@ -2027,12 +2116,9 @@ fn delete_edge(_k: &mut Kernel, _b: &mut Brep, _e: EdgeId) -> Result<()> {
     })
 }
 
-fn brep_shell_vertices(_b: &Brep) -> Result<Vec<VertexId>> {
-    // UNPORTED(topology.brep_p2): SmBrep::GetShellVertices
-    Err(SolidError::Unported {
-        upstream: "SmBrep::GetShellVertices",
-        unit: "topology.brep_p2",
-    })
+/// `GetShellVertices` ([`crate::topology::brep::p2::shell_vertices`], no attribute filter).
+fn brep_shell_vertices(b: &Brep) -> Result<Vec<VertexId>> {
+    crate::topology::brep::p2::shell_vertices(b, None)
 }
 
 fn delete_vertex(_k: &mut Kernel, _b: &mut Brep, _v: VertexId) -> Result<()> {
@@ -2440,7 +2526,7 @@ mod tests {
     }
 
     #[test]
-    fn healing_runs_and_manifold_is_unported() {
+    fn healing_runs_and_manifold_is_computed() {
         // HealBrep (topology.brep_p1) runs; only the healer's own later stubs defer
         let mut d = square(1);
         d.healer_version = 0;
@@ -2456,10 +2542,10 @@ mod tests {
             ..MakeTopologyOptions::default()
         };
         assert!(build(&mut d, opts).is_ok());
+        // an UNSURE manifold flag is computed (IsManifoldSolid): a sheet is not a
+        // manifold solid
         let mut d = square(UNSURE);
-        assert!(build(&mut d, MakeTopologyOptions::default())
-            .unwrap_err()
-            .is_unported());
+        assert!(build(&mut d, MakeTopologyOptions::default()).is_ok());
         assert_eq!(d.manifold, 0);
         // sm_AddAttributes: an index past rAllAttributes (empty here)
         let mut d = square(1);
