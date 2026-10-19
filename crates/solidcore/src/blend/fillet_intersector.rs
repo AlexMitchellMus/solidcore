@@ -230,32 +230,20 @@ pub trait FilletSolverOps {
     ///
     /// # Errors
     ///
-    /// The solver's failure; [`SolidError::Unported`] until ported.
+    /// The solver's failure.
     fn compute_surface_values(
         &mut self,
-        _k: &Kernel,
-        _uv_values: [Point2; 2],
-        _point: &mut TsectPnt,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_solver_p1): SmFilletSolver::ComputeSurfaceValues
-        Err(SolidError::unported(
-            "SmFilletSolver::ComputeSurfaceValues",
-            "blend.fillet_solver_p1",
-        ))
-    }
+        k: &Kernel,
+        uv_values: [Point2; 2],
+        point: &mut TsectPnt,
+    ) -> Result<()>;
 
     /// `ComputeUVVectors(rTsectPnt)`: the UV tangents of the point.
     ///
     /// # Errors
     ///
-    /// The solver's failure; [`SolidError::Unported`] until ported.
-    fn compute_uv_vectors(&mut self, _k: &Kernel, _point: &mut TsectPnt) -> Result<()> {
-        // UNPORTED(blend.fillet_solver_p1): SmFilletSolver::ComputeUVVectors
-        Err(SolidError::unported(
-            "SmFilletSolver::ComputeUVVectors",
-            "blend.fillet_solver_p1",
-        ))
-    }
+    /// The solver's failure.
+    fn compute_uv_vectors(&mut self, k: &Kernel, point: &mut TsectPnt) -> Result<()>;
 
     /// `StepSolve(rTsectPnt, rdStep, crUVDomain1, crUVDomain2, rbFoundAnswer,
     /// rbClipped, rbBoundaryHit, rNextTSP)`: the UV points of the next point, written
@@ -315,27 +303,15 @@ pub trait FilletSolverOps {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] until ported.
-    fn set_surfaces_to_zero_offset(&mut self) -> Result<()> {
-        // UNPORTED(blend.fillet_solver_p1): SmFilletSolver::SetSurfacesToZeroOffset
-        Err(SolidError::unported(
-            "SmFilletSolver::SetSurfacesToZeroOffset",
-            "blend.fillet_solver_p1",
-        ))
-    }
+    /// The solver's failure.
+    fn set_surfaces_to_zero_offset(&mut self) -> Result<()>;
 
     /// `ReloadSurfaceOffsets()`: restores the saved offsets (`void` upstream).
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] until ported.
-    fn reload_surface_offsets(&mut self) -> Result<()> {
-        // UNPORTED(blend.fillet_solver_p1): SmFilletSolver::ReloadSurfaceOffsets
-        Err(SolidError::unported(
-            "SmFilletSolver::ReloadSurfaceOffsets",
-            "blend.fillet_solver_p1",
-        ))
-    }
+    /// The solver's failure.
+    fn reload_surface_offsets(&mut self) -> Result<()>;
 
     /// `GetSurface(rail)->Evaluate1stDerivatives(uv, TRUE, TRUE, ..)`: the point and
     /// first partials of the rail's offset surface.
@@ -353,14 +329,8 @@ pub trait FilletSolverOps {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] until ported.
-    fn set_status(&mut self, _status: FilStatus) -> Result<()> {
-        // UNPORTED(blend.fillet_solver_p1): SmFilletSolver::SetStatus
-        Err(SolidError::unported(
-            "SmFilletSolver::SetStatus",
-            "blend.fillet_solver_p1",
-        ))
-    }
+    /// The solver's failure.
+    fn set_status(&mut self, status: FilStatus) -> Result<()>;
 
     /// `GetLastFilletGeom()`.
     ///
@@ -413,14 +383,8 @@ pub trait FilletSolverOps {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] until ported.
-    fn has_surface_generator(&self) -> Result<bool> {
-        // UNPORTED(blend.fillet_solver_p1): SmFilletSolver::GetFilletSurfaceGenerator
-        Err(SolidError::unported(
-            "SmFilletSolver::GetFilletSurfaceGenerator",
-            "blend.fillet_solver_p1",
-        ))
-    }
+    /// The solver's failure.
+    fn has_surface_generator(&self) -> Result<bool>;
 
     /// `m_pFSG->CreateSurface(*this, pCenterLine, pCurve1, pCurve2, sPnts, pSur[0],
     /// pUV1, pSur[1], pUV2, pFilletSurface)`: the fillet surface (the generator may
