@@ -7895,5 +7895,6 @@ with_values=116, no_values=0, max_rel_err=0. All four new constructor-domain cas
 match C++. Perturb detects 116/116 changes. Fuzz 2000: rejected=1720, malformed=16,
 ran=264, differs=0, crashes=0, panics=0, timeouts=0. Valgrind: 52 valid programs
 ran on both engines, baseline protocol equal, zero errors and zero lost bytes
-(definite/indirect/possible), no suppressions. The final full matrix is pending.
+(definite/indirect/possible), no suppressions. The final 211-unit matrix passes;
+its per-unit log audit confirms zero failures and green_but_deferred=0.
 Coverage still establishes zero successful geometric/topological comparisons.
