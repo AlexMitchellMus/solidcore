@@ -7894,7 +7894,7 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   zero differing results, crashes, panics or timeouts. This covers the bounded script
   API, not the dependency-blocked construction paths or a general crash guarantee.
 
-- **Review integration (2026-10-19).** Merged canonical main `28cd7d9a` without
+- **Review integration (2026-10-19).** Merged canonical main through `5387f70c` (including `topology.brep_p10`) without
   rebasing the published branch; preserved both appended findings sections. Available
   `SweepAccess` defaults now call `Brep::infinite_region`, owning-list face/wire
   queries, region/shell traversals, part 6 edge copying, part 7 face construction and
