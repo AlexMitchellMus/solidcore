@@ -123,7 +123,7 @@ impl<O> Default for ErrorInfo<O> {
 }
 
 impl<O: Copy> ErrorInfo<O> {
-    fn assign(&mut self, source: &Self) {
+    pub(crate) fn assign(&mut self, source: &Self) {
         self.code = source.code;
         self.status = source.status;
         self.corner_type = source.corner_type;
@@ -194,6 +194,9 @@ pub struct FilletExecutive<O> {
     pub intersection_edges: Vec<Option<O>>,
     /// Inherited `m_sIntersectionVertices` (null casts retained).
     pub intersection_vertices: Vec<Option<O>>,
+    /// `m_sLawSequenceEdgeList`: the edge sequences `CreateSequenceOfLaws` set up, each
+    /// in order (added by `blend.fillet_executive_p2`).
+    pub law_sequence_edges: Vec<Vec<O>>,
 }
 
 /// Error-only corner metadata, requested only after a corner operation fails.
@@ -356,17 +359,13 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         ))
     }
 
-    /// `SmFilletExecutive::ProcessSmoothEdgeSequences`; waiting for `blend.fillet_executive_p2`.
+    /// `SmFilletExecutive::ProcessSmoothEdgeSequences` (`blend.fillet_executive_p2`).
     fn process_smooth_edge_sequences(
         &mut self,
-        _k: &mut Kernel,
-        _executive: &mut FilletExecutive<O>,
+        k: &mut Kernel,
+        executive: &mut FilletExecutive<O>,
     ) -> Result<()> {
-        // UNPORTED(blend.fillet_executive_p2): SmFilletExecutive::ProcessSmoothEdgeSequences
-        Err(SolidError::unported(
-            "SmFilletExecutive::ProcessSmoothEdgeSequences",
-            "blend.fillet_executive_p2",
-        ))
+        executive.process_smooth_edge_sequences(k, self)
     }
 
     /// Pure virtual `SmFilletCorner::MakeCornerTopology` dispatch. Concrete
@@ -581,17 +580,13 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         ))
     }
 
-    /// `SmFilletExecutive::SetFilletBrepEdgeMap`; waiting for `blend.fillet_executive_p2`.
+    /// `SmFilletExecutive::SetFilletBrepEdgeMap` (`blend.fillet_executive_p2`).
     fn set_fillet_brep_edge_map(
         &mut self,
-        _k: &mut Kernel,
-        _executive: &mut FilletExecutive<O>,
+        k: &mut Kernel,
+        executive: &mut FilletExecutive<O>,
     ) -> Result<()> {
-        // UNPORTED(blend.fillet_executive_p2): SmFilletExecutive::SetFilletBrepEdgeMap
-        Err(SolidError::unported(
-            "SmFilletExecutive::SetFilletBrepEdgeMap",
-            "blend.fillet_executive_p2",
-        ))
+        executive.set_fillet_brep_edge_map(k, self)
     }
 
     /// `SmFilletGeom::InsertIntersectionTopology`; waiting for `blend.fillet_geom_p4`.
@@ -723,6 +718,156 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         Err(SolidError::unported(
             "SmBrep::OrientTrimmedSurfaces",
             "topology.brep_p3",
+        ))
+    }
+
+    // ---- added by blend.fillet_executive_p2 (PR #267) --------------------------------
+
+    /// `SmFilletGeom::GetFilletSurface() != NULL`.
+    fn geom_has_surface(&self, geom: O) -> Result<bool>;
+    /// The rails of a fillet geometry in `SetFilletBrepEdgeMap`'s order:
+    /// `m_vRails[0]`, `m_vRails[1]`, then `m_vOtherRails1` and `m_vOtherRails2`
+    /// (`None` for a null entry).
+    fn geom_rails(&self, geom: O) -> Result<Vec<Option<O>>>;
+    /// `SmFilletGeom::m_vSideEUs`, in order.
+    fn geom_side_edgeuses(&self, geom: O) -> Result<Vec<O>>;
+    /// `SmEdgeuse::GetEdge()` / the edge use's owning edge (`None` for null).
+    fn edgeuse_edge(&self, edgeuse: O) -> Result<Option<O>>;
+    /// `SmFilletEdge::GetOriginalFace()`.
+    fn fillet_edge_original_face(&self, fillet_edge: O) -> Result<Option<O>>;
+    /// `SmFilletEdge::GetOriginalEdge()`.
+    fn fillet_edge_original_edge(&self, fillet_edge: O) -> Result<Option<O>>;
+    /// `SmFilletEdge::FindFilletBrepEdge(crEdges, bFindMultipleEdges)` (the
+    /// `blend.fillet_geom_p1` port, `FilletBrep::find_fillet_brep_edge`).
+    fn find_fillet_brep_edge(
+        &mut self,
+        k: &mut Kernel,
+        fillet_edge: O,
+        edges: &[O],
+        find_multiple_edges: bool,
+    ) -> Result<()>;
+    /// `SmFilletCorner::m_vEdges` (`None` for a null entry).
+    fn corner_edges(&self, corner: O) -> Result<Vec<Option<O>>>;
+    /// `SmEdge::GetBlendEdgeuse` (`crate::topology::edge::blend_edgeuse`).
+    fn blend_edgeuse(&mut self, k: &mut Kernel, edge: O) -> Result<Option<O>>;
+    /// `SmEdge::GetTolerance`.
+    fn edge_tolerance(&self, edge: O) -> Result<f64>;
+    /// `SmEdge::GetStartVertex()` and `GetOtherVertex(start)`.
+    fn edge_vertices(&self, edge: O) -> Result<(Option<O>, Option<O>)>;
+    /// `SM_CAST_PTR(SmVariableRadiusFS, solver)`: the solver's variable-radius data,
+    /// `None` for any other solver class.
+    fn variable_radius_solver(
+        &self,
+        solver: O,
+    ) -> Result<Option<&crate::blend::fillet_standard_solver::p1::VariableRadiusFs>>;
+    /// The same cast, for writing the law (`SmTemporaryRadiusChange`).
+    fn variable_radius_solver_mut(
+        &mut self,
+        solver: O,
+    ) -> Result<Option<&mut crate::blend::fillet_standard_solver::p1::VariableRadiusFs>>;
+
+    /// `SmFilletSolver::GetEdgeuse(lIndex)`; waiting for `blend.fillet_solver_p1`.
+    fn solver_edgeuse(&self, _solver: O, _index: usize) -> Result<Option<O>> {
+        // UNPORTED(blend.fillet_solver_p1): SmFilletSolver::GetEdgeuse
+        Err(SolidError::unported(
+            "SmFilletSolver::GetEdgeuse",
+            "blend.fillet_solver_p1",
+        ))
+    }
+
+    /// `SmFilletSolver::GetFilletCorner(lIndex)`; waiting for `blend.fillet_solver_p2`.
+    fn solver_corner(&self, _solver: O, _index: usize) -> Result<Option<O>> {
+        // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::GetFilletCorner
+        Err(SolidError::unported(
+            "SmFilletSolver::GetFilletCorner",
+            "blend.fillet_solver_p2",
+        ))
+    }
+
+    /// `SmFilletSolver::GetOtherFilletCorner(pCorner)`; waiting for
+    /// `blend.fillet_solver_p3`.
+    fn solver_other_corner(&self, _solver: O, _corner: O) -> Result<Option<O>> {
+        // UNPORTED(blend.fillet_solver_p3): SmFilletSolver::GetOtherFilletCorner
+        Err(SolidError::unported(
+            "SmFilletSolver::GetOtherFilletCorner",
+            "blend.fillet_solver_p3",
+        ))
+    }
+
+    /// `SmFilletCorner::GetTangentFilletSolver(pFS)`; waiting for
+    /// `blend.fillet_corner_p1`.
+    fn corner_tangent_solver(&self, _corner: O, _solver: O) -> Result<Option<O>> {
+        // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::GetTangentFilletSolver
+        Err(SolidError::unported(
+            "SmFilletCorner::GetTangentFilletSolver",
+            "blend.fillet_corner_p1",
+        ))
+    }
+
+    /// `SmFilletCorner::GetSetBackDist`; waiting for `blend.fillet_corner_p1`.
+    fn corner_setback_distance(&self, _corner: O) -> Result<f64> {
+        // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::GetSetBackDist
+        Err(SolidError::unported(
+            "SmFilletCorner::GetSetBackDist",
+            "blend.fillet_corner_p1",
+        ))
+    }
+
+    /// `new SmLinearCrossSectionFSG` / `SmCircularCrossSectionFSG(bApproximateArcs,
+    /// dTolPercentRadius, bMirror, bComplement)` / `SmBlendCurveCrossSectionFSG(
+    /// dBlendScale, lContinuity)` in the executive context; waiting for
+    /// `blend.fillet_solver_p1`.
+    fn new_surface_generator(
+        &mut self,
+        _k: &mut Kernel,
+        _spec: super::p2::SurfaceGeneratorSpec,
+    ) -> Result<O> {
+        // UNPORTED(blend.fillet_solver_p1): SmLinearCrossSectionFSG::SmLinearCrossSectionFSG / SmCircularCrossSectionFSG::SmCircularCrossSectionFSG / SmBlendCurveCrossSectionFSG::SmBlendCurveCrossSectionFSG
+        Err(SolidError::unported(
+            "SmFilletSurfaceGenerator constructors",
+            "blend.fillet_solver_p1",
+        ))
+    }
+
+    /// The fillet solver constructors `SetFilletParameters` and `SurfaceSurfaceFillet`
+    /// call, dispatched on the spec: `SmConstantRadiusFS` (unit
+    /// `blend.fillet_standard_solver_p1`), `SmConstantDistanceFS`, `SmVariableRadiusFS`
+    /// and `SmSurfaceSurfaceFS` (unit `blend.fillet_standard_solver_p2`). Adapters must
+    /// return the owning unit's `Unported` while it is missing.
+    // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusFS::SmConstantRadiusFS
+    // UNPORTED(blend.fillet_standard_solver_p2): SmConstantDistanceFS::SmConstantDistanceFS / SmVariableRadiusFS::SmVariableRadiusFS / SmSurfaceSurfaceFS::SmSurfaceSurfaceFS
+    fn new_fillet_solver(
+        &mut self,
+        _k: &mut Kernel,
+        spec: &super::p2::SolverSpec<'_, O>,
+    ) -> Result<O> {
+        Err(match spec {
+            super::p2::SolverSpec::ConstantRadius { .. } => SolidError::unported(
+                "SmConstantRadiusFS::SmConstantRadiusFS",
+                "blend.fillet_standard_solver_p1",
+            ),
+            super::p2::SolverSpec::ConstantDistance { .. } => SolidError::unported(
+                "SmConstantDistanceFS::SmConstantDistanceFS",
+                "blend.fillet_standard_solver_p2",
+            ),
+            super::p2::SolverSpec::VariableRadius { .. } => SolidError::unported(
+                "SmVariableRadiusFS::SmVariableRadiusFS",
+                "blend.fillet_standard_solver_p2",
+            ),
+            super::p2::SolverSpec::SurfaceSurface { .. } => SolidError::unported(
+                "SmSurfaceSurfaceFS::SmSurfaceSurfaceFS",
+                "blend.fillet_standard_solver_p2",
+            ),
+        })
+    }
+
+    /// `SmFilletSolver::SetFilletSurfaceGenerator(pFSG)`; waiting for
+    /// `blend.fillet_solver_p1`.
+    fn set_surface_generator(&mut self, _solver: O, _generator: O) -> Result<()> {
+        // UNPORTED(blend.fillet_solver_p1): SmFilletSolver::SetFilletSurfaceGenerator
+        Err(SolidError::unported(
+            "SmFilletSolver::SetFilletSurfaceGenerator",
+            "blend.fillet_solver_p1",
         ))
     }
 }
