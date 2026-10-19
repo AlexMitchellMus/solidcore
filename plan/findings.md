@@ -7911,3 +7911,57 @@ max_rel_err 0. Deferrals are now topology.brep_p3 (5), topology.brep_p7 (1) and
 topology.brep_p8 (11). This does not certify primitive topology or the deferred
 sphere face construction. Refreshed integration counts and dependency breakdowns
 for the affected units are in `plan/modules.toml` and `reports/difftest/`.
+
+### PR #213 maintainer review fixes (2026-10-19)
+
+Merged canonical main `28cd7d9a` and retained main's complete `topology.brep_p1`
+implementation, wiring and reports. The remaining PR diff adds primitive p1 and
+its sweep constructor markers/map payload; it does not carry the older p1 co-port.
+
+Both primitive `MakeFaceWithCurves` adapters now call `topology::brep::p7`:
+`trimmed_face` supplies one four-curve loop with SAME orientations, and
+`detailed_face` forwards each loop, 3D curve, UV curve, orientation and loop point.
+Both pass the given region/domain, SAME surface orientation and the upstream
+null optional curve-on-surface flag. The cylindrical-box witness now reaches
+`SmBrep::MakeShellVertex` in `topology.brep_p9`, rather than stopping at p7.
+The pole-free sphere and downstream boolean call sites still cannot complete
+the earlier missing dependencies and remain uncertified.
+
+`Boolean2D` now uses `EFF_ZERO_DEG`, the default of upstream `IsParallelTo`
+(`SmVector3d.h:143`), instead of the 0.5-degree zone angle. The 0.01-degree
+regression returns actual invalid-input status on both engines. The new 32
+boolean fixtures compare non-planar first/later surfaces, later primary and
+secondary faces, plane offsets and normal tilts around the actual thresholds,
+all five operations, empty operands and preserved seeded result slots. Ten
+valid coplanar cases execute the C++ and reach Rust's intersection dependency;
+they are deferred, not geometry/mutation comparisons. Rust's non-planar fixture
+retains the canonical sphere's analytic revolution base (the available Surface
+variant); native uses SmSphere. Rust's validation fixture builds surface/face
+records while C++ constructs trimmed faces: only validation status, restored
+edit flags and result presence are compared, not those fixture topologies.
+
+Two kernel tests pin the angular rejection (including 0.01 degrees), restore
+edit/context/result state on error, and observe both plane domains after
+coverage and before `IntersectInsertRelate`. These tests prevent a deferred
+result from masking regression of the validation prefix. The angular test
+accepts 0, 0.00005 and 180 degrees up to the intersection dependency, while
+0.0002 and 0.01 degrees must be invalid input.
+
+Rear X tilt is read at op4 index 19 in Rust and C++; four new cone cases vary it
+independently. The nonempty sweep layout appends its checked count and curve
+blocks; 24 cases cover line, full circle, open arc and skew line with/without
+caps and distance 0, 2 or -1. The two negative full-circle cases hang in native
+`N_CreateEllipticalArcAngTypeTol` via `SmCone::AdjustSTEPUVDomain` (confirmed in
+GDB; see `plan/upstream-issues.md`). An exact native preflight repeats the
+upstream full-circle and axis-parallel branch tests and rejects that negative
+cylinder branch, preserving accepted negative line/open-arc fixtures. The native
+harness transfers sweep curve ownership once, and accounts for Boolean2D
+consuming B on success. Deferred nonempty sweeps/cones do not certify their
+constructed surfaces or topology. Bottom cylindrical-box points are no longer
+added to Vec3::ZERO, preserving negative-zero components.
+
+Current differential gate: **749 cases, 689 pass, 0 fail, 53 deferred, 7 rejected,
+max_rel_err 0**, no absolute floors. Deferrals: boolean.topology_intersector_p2
+10, topology.brep_p3 5, topology.brep_p8 37, topology.brep_p9 1. The original five
+preflight rejections remain, plus the two negative-circle hangs. Every pass
+compares real helper values or returned status/state records; no empty passes.

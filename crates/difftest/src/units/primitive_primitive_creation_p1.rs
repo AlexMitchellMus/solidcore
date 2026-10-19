@@ -72,6 +72,36 @@ fn maps_record(maps: &EntityMaps, out: &mut Vec<f64>) {
         }
     }
 }
+fn boolean_face(brep: &mut Brep, k: &Kernel, data: &[f64]) -> solidcore::Result<()> {
+    use solidcore::geom::extent2d::Extent2d;
+    use solidcore::surface::{plane::p1::Plane, sphere::Sphere, surface::Surface};
+    use solidcore::topology::{Face, ShellId};
+    let angle = value(data, 1).to_radians();
+    let frame = Axis2Placement::new(
+        Vec3::new(0.0, 0.0, value(data, 2)),
+        Vec3::X,
+        Vec3::new(0.0, angle.cos(), angle.sin()),
+    );
+    let domain = Extent2d::from_bounds(
+        value(data, 3),
+        value(data, 4),
+        value(data, 5),
+        value(data, 6),
+    );
+    let surface = if value(data, 0) == 0.0 {
+        let mut plane = Plane::create_canonical(&frame)?;
+        plane.adjust_step_uv_domain(&domain)?;
+        Surface::from(plane)
+    } else {
+        Surface::from(Sphere::create_canonical(k, &frame, 1.0)?.base().clone())
+    };
+    let mut face = Face::new(ShellId::from_index(0));
+    face.surface = Some(surface);
+    face.uv_domain = domain;
+    brep.add_face_record(face)?;
+    Ok(())
+}
+
 fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
     let mut k = Kernel::default();
     let v = &i.data;
@@ -246,14 +276,20 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
                         tilt_y_front: value(v, 4),
                         tilt_y_rear: value(v, 5),
                         tilt_x_front: value(v, 6),
-                        tilt_x_rear: 0.0,
+                        tilt_x_rear: v.get(19).copied().unwrap_or(0.0),
                     },
                     value(v, 7) != 0.0,
                 ),
                 9 => primitive.create_linear_sweep(
                     &mut k,
                     &mut brep,
-                    Vec::new(),
+                    v.get(20..)
+                        .unwrap_or_default()
+                        .as_chunks::<7>()
+                        .0
+                        .iter()
+                        .map(|chunk| curve(chunk).map(Curve::from))
+                        .collect::<solidcore::Result<Vec<_>>>()?,
                     frame.z_axis(),
                     value(v, 1),
                     value(v, 7) != 0.0,
@@ -321,12 +357,59 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
             ]);
         }
 
+        6 => {
+            let mut a = Brep::new();
+            let mut b = Brep::new();
+            let split = 7 + 7 * value(v, 4) as usize;
+            for face in v.get(7..split).unwrap_or_default().as_chunks::<7>().0 {
+                boolean_face(&mut a, &k, face)?;
+            }
+            for face in v.get(split..).unwrap_or_default().as_chunks::<7>().0 {
+                boolean_face(&mut b, &k, face)?;
+            }
+            a.set_tolerance(value(v, 6));
+            b.set_tolerance(value(v, 6));
+            a.set_editing_enabled(value(v, 2) != 0.0);
+            b.set_editing_enabled(value(v, 3) != 0.0);
+            let mut output = (value(v, 1) != 0.0).then(Brep::new);
+            let mut marks_a = solidcore::topology::topology_traverser::Marks::default();
+            let mut marks_b = solidcore::topology::topology_traverser::Marks::default();
+            let operation = match value(v, 0) as i32 {
+                0 => api::Boolean2d::Union,
+                1 => api::Boolean2d::Intersection,
+                2 => api::Boolean2d::Difference,
+                3 => api::Boolean2d::ExclusiveOr,
+                _ => api::Boolean2d::Merge,
+            };
+            let result = PrimitiveCreation::new(None, 17, true).boolean_2d(
+                &mut k,
+                &mut a,
+                &mut b,
+                operation,
+                &mut output,
+                (&mut marks_a, &mut marks_b),
+            );
+            let status = match result {
+                Ok(()) => 0,
+                Err(e) if e.is_unported() => return Err(e),
+                Err(solidcore::SolidError::InvalidInput { .. }) => 1007,
+                Err(solidcore::SolidError::Upstream { code, .. }) => code,
+                Err(_) => solidcore::error::SM_ERR,
+            };
+            record.extend([
+                f64::from(status),
+                f64::from(a.editing_enabled()),
+                f64::from(b.editing_enabled()),
+                f64::from(output.is_some()),
+            ]);
+        }
+
         _ => unreachable!(),
     }
     Ok(record)
 }
 fn output(op: i32, data: Vec<f64>) -> Result<Output, HarnessError> {
-    if op == 0 || op == 4 || op == 5 {
+    if op == 0 || op == 4 || op == 5 || op == 6 {
         Ok(Output::new().ints(
             "maps",
             data.into_iter().map(|v| v as i64).collect::<Vec<_>>(),

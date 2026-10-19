@@ -12,6 +12,10 @@
 //! fixtures use radius at least `0.1` and tolerance `1e-8..=1e-3`; elliptic-ended
 //! cones use radii/height above `0.1` and tilts below ten degrees. These are the
 //! fixture construction domain, not a claim of parity for other primitive inputs.
+//! Selector 8 optionally appends rear X tilt; selector 9 optionally appends a
+//! curve count and seven-number curve blocks. Op 6 builds up to four faces per
+//! operand (planes or unit spheres) for `Boolean2D` validation; its layout is in
+//! `fixtures/primitive.primitive_creation_p1/README.md`.
 
 use crate::{call_with_buffer, FfiError};
 
@@ -110,8 +114,9 @@ pub fn validate(op: i32, data: &[f64]) -> Result<(), FfiError> {
                     .all(|chunk| curve(chunk))
         }
         4 => {
-            if data.len() != 19
+            if data.len() < 19
                 || !integer(value(data, 0), 0.0, 10.0)
+                || (value(data, 0) != 8.0 && value(data, 0) != 9.0 && data.len() != 19)
                 || data.iter().any(|v| v.abs() > 1e6)
             {
                 false
@@ -132,14 +137,27 @@ pub fn validate(op: i32, data: &[f64]) -> Result<(), FfiError> {
                         2 => data.get(1..4).unwrap_or_default().iter().all(|v| *v > 1e-4),
                         // Native preflight checks the exact three-point circles
                         // after the primitive's own validation early returns.
-                        1 | 3..=6 | 9 => true,
+                        1 | 3..=6 => data.len() == 19,
+                        9 => {
+                            data.len() == 19
+                                || (integer(value(data, 19), 0.0, 32.0)
+                                    && data.len() == 20 + 7 * value(data, 19) as usize
+                                    && data
+                                        .get(20..)
+                                        .unwrap_or_default()
+                                        .as_chunks::<7>()
+                                        .0
+                                        .iter()
+                                        .all(|chunk| curve(chunk)))
+                        }
                         7 => {
                             value(data, 1) >= 0.1
                                 && value(data, 7) >= 1e-8
                                 && value(data, 7) <= 1e-3
                         }
                         8 => {
-                            value(data, 1) > 0.1
+                            (data.len() == 19 || (data.len() == 20 && value(data, 19).abs() < 10.0))
+                                && value(data, 1) > 0.1
                                 && value(data, 2) > 0.1
                                 && value(data, 3) > 0.1
                                 && data
@@ -168,6 +186,32 @@ pub fn validate(op: i32, data: &[f64]) -> Result<(), FfiError> {
                     .map(|v| v * v)
                     .sum::<f64>()
                     > 1e-20
+        }
+        6 => {
+            data.len() >= 7
+                && integer(value(data, 0), 0.0, 4.0)
+                && data
+                    .get(1..4)
+                    .unwrap_or_default()
+                    .iter()
+                    .all(|v| integer(*v, 0.0, 1.0))
+                && integer(value(data, 4), 0.0, 4.0)
+                && integer(value(data, 5), 0.0, 4.0)
+                && (1e-8..=1e-3).contains(&value(data, 6))
+                && data.len() == 7 + 7 * (value(data, 4) + value(data, 5)) as usize
+                && data
+                    .get(7..)
+                    .unwrap_or_default()
+                    .as_chunks::<7>()
+                    .0
+                    .iter()
+                    .all(|face| {
+                        integer(face[0], 0.0, 1.0)
+                            && face[1].abs() <= 180.0
+                            && face.iter().skip(2).all(|v| v.abs() <= 100.0)
+                            && face[5] - face[3] >= 0.1
+                            && face[6] - face[4] >= 0.1
+                    })
         }
         _ => false,
     };
@@ -203,7 +247,7 @@ mod tests {
     use super::*;
     #[test]
     fn native_boundary_rejects_null_and_short_layouts() {
-        for op in 0..=5 {
+        for op in 0..=6 {
             let mut length = 0;
             // SAFETY: each call must reject before reading the null input or
             // output pointer, because the layout is empty.
@@ -256,8 +300,35 @@ mod tests {
         Ok(())
     }
     #[test]
+    fn review_layouts_bound_every_appended_record() {
+        let mut cone = vec![
+            8.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, -9.0,
+        ];
+        assert!(validate(4, &cone).is_ok());
+        cone[19] = 10.0;
+        assert!(validate(4, &cone).is_err());
+        cone[0] = 9.0;
+        cone[19] = 1.0;
+        assert!(validate(4, &cone).is_err());
+        cone.extend([0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+        assert!(validate(4, &cone).is_ok());
+        cone[19] = 33.0;
+        assert!(validate(4, &cone).is_err());
+        let mut boolean = vec![
+            0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1e-5, 0.0, 0.01, 0.0, 0.0, 0.0, 1.0, 1.0,
+        ];
+        assert!(validate(6, &boolean).is_ok());
+        boolean[5] = 1.0;
+        assert!(validate(6, &boolean).is_err());
+        boolean[5] = 0.0;
+        boolean[4] = 5.0;
+        assert!(validate(6, &boolean).is_err());
+    }
+
+    #[test]
     fn guard_rejects_short_inputs_and_oversized_lists() {
-        for op in 0..=5 {
+        for op in 0..=6 {
             assert!(validate(op, &[]).is_err());
         }
         assert!(validate(2, &[0.0, 0.0, 1.0, 33.0]).is_err());
