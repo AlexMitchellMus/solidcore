@@ -1,0 +1,138 @@
+//! FFI wrappers for unit `blend.fillet_geom_p5`.
+//!
+//! Shim: `harness/cpp/shim/blend_fillet_geom_p5_static.inc` (`sc_blend_fillet_geom_p5_eval`),
+//! compiled inside `blend_fillet_geom_p1.cpp`, the one translation unit that compiles
+//! upstream `SmFilletGeom.cpp` (every op builds `blend.fillet_geom_p1`'s pseudo-B-rep
+//! model and `blend.fillet_geom_p4`'s base solvers there); `blend_fillet_geom_p5.cpp` only
+//! documents that. Upstream: `source/SMLib/src/SmFilletGeom.cpp`.
+//!
+//! Every op starts with `blend.fillet_geom_p1`'s pseudo-B-rep block (layout in
+//! [`super::blend_fillet_geom_p1`]), then `blend.fillet_geom_p4`'s solvers (`ns`, per
+//! solver `approx ang tang`, then per geometry its solver index or `-1`). Then the op's
+//! parameters:
+//!
+//! | [`Op`]        | upstream                                   | parameters | outputs (after the status) |
+//! |---------------|--------------------------------------------|------------|----------------------------|
+//! | `IntFillet`   | `SmFilletVertex::CalcFilletIntFillet`      | `v`        | `pnt[3] status` of the vertex |
+//! | `CrossSection`| `SmFilletEdge::CalcCrossSection(ctx, NULL)` | `e`       | edge curve, primary and mate UV curves (`has ...`), per geometry its side-use count |
+//! | `SideFace`    | `SmFilletEdge::CalcFilletIntSideFace(ctx, NULL)` | `e`  | edge status, per geometry its side-use count |
+//! | `ExtEdge`     | `SmFilletEdge::CalcEdgeOnExtendedEdge(ctx, NULL)` | `e` | (none) |
+//! | `TrimRails`   | `SmFilletGeom::TrimRailCurves`             | `g`        | per rail: `has`, then its curve, interval, primary and mate UV curves, both vertex uses' UV points |
+//! | `SplitFace`   | `SmFilletGeom::UpdateSplitFace(NULL, NULL)` | `g`       | (none) |
+//! | `MakeEdge`    | `SmFilletEdge::MakeFilletEdge(pseudo, vs, ve, e, NULL)` | `vs ve` (`-1`: NULL) | the edge count |
+//! | `RailEdge`    | `SmFilletGeom::MakeRailEdge(pseudo, rail, e)` | `g rail` | the edge count |
+//! | `EndCurve`    | `SmFilletGeom::CreateEndCurve(end, trim, pseudo)` | `g end trim` | the edge count |
+//!
+//! Refusals (`SC_ERR_ARG`, decided by the shim on the built model): a fillet corner that
+//! would be dereferenced (corners are opaque tags), a solver, rail or curve upstream
+//! dereferences without a check, and a `CrossSection` whose `sm_CreateUVCurve` succeeds
+//! without any curve (upstream then dereferences the missing UV curve).
+
+use crate::{call_with_buffer, FfiError};
+
+use super::blend_fillet_geom_p1::{validate_block, Reader, MAX_LIST, MAX_SOLVER_MAGNITUDE};
+
+/// The shim's ops.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(missing_docs)]
+pub enum Op {
+    IntFillet = 0,
+    CrossSection = 1,
+    SideFace = 2,
+    ExtEdge = 3,
+    TrimRails = 4,
+    SplitFace = 5,
+    MakeEdge = 6,
+    RailEdge = 7,
+    EndCurve = 8,
+}
+
+mod sys {
+    extern "C" {
+        pub fn sc_blend_fillet_geom_p5_eval(
+            op: i32,
+            input: *const f64,
+            n_in: i64,
+            out: *mut f64,
+            cap: i64,
+            out_len: *mut i64,
+        ) -> i32;
+    }
+}
+
+fn bad(msg: impl Into<String>) -> FfiError {
+    FfiError::InvalidArgument(msg.into())
+}
+
+/// Checks an input program: the model block, the solvers and the op's parameters.
+/// Magnitudes are bounded as for `blend.fillet_geom_p4`'s `UvCurve` (the surface point
+/// solves of `sm_CreateUVCurve`, the curve drops and solves).
+///
+/// # Errors
+///
+/// [`FfiError::InvalidArgument`] for a malformed program.
+pub fn validate(op: Op, input: &[f64]) -> Result<(), FfiError> {
+    let mut rd = Reader {
+        cursor: crate::reader::Cursor::new(input),
+        bound: MAX_SOLVER_MAGNITUDE,
+    };
+    let b = validate_block(&mut rd)?;
+
+    let ns = rd.index(MAX_LIST)?;
+    for _ in 0..ns {
+        rd.finites(3)?;
+    }
+    for _ in 0..b.ng() {
+        rd.opt_index(ns)?;
+    }
+
+    match op {
+        Op::IntFillet => {
+            rd.opt_index(b.nv())?.ok_or_else(|| bad("vertex -1"))?;
+        }
+        Op::CrossSection | Op::SideFace | Op::ExtEdge => {
+            rd.opt_index(b.ne())?.ok_or_else(|| bad("edge -1"))?;
+        }
+        Op::TrimRails | Op::SplitFace => {
+            rd.opt_index(b.ng())?.ok_or_else(|| bad("geometry -1"))?;
+        }
+        Op::MakeEdge => {
+            rd.opt_index(b.nv())?;
+            rd.opt_index(b.nv())?;
+        }
+        Op::RailEdge => {
+            rd.opt_index(b.ng())?.ok_or_else(|| bad("geometry -1"))?;
+            rd.index(2)?;
+        }
+        Op::EndCurve => {
+            rd.opt_index(b.ng())?.ok_or_else(|| bad("geometry -1"))?;
+            rd.index(2)?;
+            rd.index(5)?;
+        }
+    }
+    rd.done()
+}
+
+/// Runs one op.
+///
+/// # Errors
+///
+/// [`FfiError::InvalidArgument`] for an input [`validate`] or the shim refuses; the
+/// other [`FfiError`]s of the call.
+pub fn eval(op: Op, input: &[f64]) -> Result<Vec<f64>, FfiError> {
+    validate(op, input)?;
+    call_with_buffer(4096, |buf, len| {
+        // SAFETY: `input` is valid for `input.len()` reads, `buf` for `buf.len()`
+        // writes and `len` is a valid out-pointer; the shim checks every count.
+        unsafe {
+            sys::sc_blend_fillet_geom_p5_eval(
+                op as i32,
+                input.as_ptr(),
+                input.len() as i64,
+                buf.as_mut_ptr(),
+                buf.len() as i64,
+                &raw mut *len,
+            )
+        }
+    })
+}
