@@ -1375,7 +1375,7 @@ fn gen_case(rng: &mut Rng) -> OpIn {
     }
 }
 
-/// Cases whose C++ result depends on an uninitialised Jacobian (UB-178, #94): the generator
+/// Cases whose C++ result depends on an uninitialised Jacobian (UB-198, #94): the generator
 /// keeps them away from the C++ side, like an input the FFI guard rejects.
 ///
 /// `SM_SO_3D_SIGNED_DIRECTED_MINIMIZE` (9) runs `SmCurve::LocalCurveIntersect` on the two projected
