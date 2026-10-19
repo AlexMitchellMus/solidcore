@@ -908,13 +908,9 @@ impl ProtoBrep<H> for Two {
         }
         let b = self.brep_m(brep)?;
         with_edit_env(b, |b, env| {
-            // curve identities in a kind of their own, above the entity kinds
-            let mut n = 0u64;
-            let mut fresh = || {
-                n += 1;
-                ObjectKey((32 << 32) | n)
-            };
-            let mut geometry = bp3::GeometryIds::new(&mut fresh);
+            // curve identities in a kind of their own, above the entity kinds (no
+            // callback watches these edits, so each gets a registry of its own)
+            let mut geometry = bp3::GeometryIds::new(32);
             bp3::squeeze_edge(k, b, env, &mut geometry, eid(edge), vid(survivor))
         })
     }

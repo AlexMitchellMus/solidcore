@@ -1019,6 +1019,7 @@ struct Tracked<'a> {
     post: Walk,
     brep: ObjectKey,
     pre_curves: &'a BTreeMap<ObjectKey, usize>,
+    post_curves: BTreeMap<ObjectKey, usize>,
     geometry: &'a [ObjectKey],
     numbered: Vec<ObjectKey>,
 }
@@ -1027,7 +1028,8 @@ struct Tracked<'a> {
 /// topology object that existed before the op or that the walk after it reaches: its
 /// kind's type code, then for a face / edge / vertex its index before the op (or
 /// 100000 + its index in the walk after it), for another kind `-5`; an edge's pre-op
-/// curve `-20 edge`; other geometry `-30 n` (by first appearance in the tracker's
+/// curve `-20 edge`; else an edge's curve after the op `-21 edge` (its index in the
+/// walk after the op); other geometry `-30 n` (by first appearance in the tracker's
 /// lists and events); anything else `-2 -5`.
 fn put_tracked(o: &mut Vec<f64>, key: Option<ObjectKey>, t: &mut Tracked<'_>) {
     const CODES: [f64; 10] = [
@@ -1043,6 +1045,10 @@ fn put_tracked(o: &mut Vec<f64>, key: Option<ObjectKey>, t: &mut Tracked<'_>) {
     }
     if let Some(&e) = t.pre_curves.get(&key) {
         o.extend([-20.0, e as f64]);
+        return;
+    }
+    if let Some(&e) = t.post_curves.get(&key) {
+        o.extend([-21.0, e as f64]);
         return;
     }
     if t.geometry.contains(&key) {
@@ -1127,13 +1133,9 @@ fn run_rust_op(
             | OpIn::TurnNurbs
             | OpIn::TurnNurbsOffset { .. }
     );
-    // every curve object's identity: a fresh key of GEOMETRY_KIND
-    let mut n = 0u64;
-    let mut fresh = || {
-        n += 1;
-        ObjectKey((GEOMETRY_KIND << 32) | n)
-    };
-    let mut geometry = bp3::GeometryIds::new(&mut fresh);
+    // every curve object's identity: a fresh key of GEOMETRY_KIND (one registry per
+    // case: the case's callbacks watch one op)
+    let mut geometry = bp3::GeometryIds::new(GEOMETRY_KIND);
     if !tracked {
         return run_rust_op_in(k, b, second, op, a, None, &mut geometry);
     }
@@ -1181,11 +1183,23 @@ fn run_rust_op(
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .clone();
+    let post = walk(b)?;
+    // the curve each edge has after the op, by the edge's index in that walk
+    let mut post_curves = BTreeMap::new();
+    for j in 0..post.len(7) {
+        let e = EdgeId::from_index(post.at(7, j)?);
+        if must(b.edge(e))?.curve.is_some() {
+            if let Some(c) = geometry.current(e) {
+                post_curves.insert(c.key, j);
+            }
+        }
+    }
     let mut t = Tracked {
         pre,
-        post: walk(b)?,
+        post,
         brep,
         pre_curves: &pre_curves,
+        post_curves,
         geometry: &geometry_seen,
         numbered: Vec::new(),
     };
@@ -1201,7 +1215,7 @@ fn run_rust_op_in(
     op: &OpIn,
     a: &[f64],
     context: Option<&mut Context>,
-    geometry: &mut bp3::GeometryIds<'_>,
+    geometry: &mut bp3::GeometryIds,
 ) -> Result<Vec<f64>, Fail> {
     let mut out = vec![0.0];
     let arg = |i: usize| -> Result<f64, Fail> {
@@ -1607,6 +1621,60 @@ mod tests {
     /// plan notes quote. Run from the repository with the C++ reference:
     /// `cargo test --profile difftest -p difftest --features cpp classify_passes --
     /// --ignored --nocapture`.
+    /// The tracker serialisation tells geometry objects apart by an anchor of their
+    /// own (an edge's curve before or after the op), not by the output: swapping the
+    /// new and old curve of one `SM_NO_CHANGE_GEOMETRY` changes the output.
+    #[test]
+    fn swapped_geometry_changes_the_output() {
+        use solidcore::geom::object::NotifyOperation;
+        use solidcore::topology::topology::{NotifyEvent, TopologyChangeLists};
+        let g = |n: u64| ObjectRef {
+            type_code: BSplineCurve::TYPE,
+            key: ObjectKey((GEOMETRY_KIND << 32) | n),
+        };
+        let edge = key_of(EntityRef::Edge(EdgeId::from_index(0)));
+        let (a, b) = (g(1), g(2));
+        let lists = |new: ObjectRef, old: ObjectRef| TopologyChangeLists {
+            notify_events: vec![NotifyEvent {
+                operation: NotifyOperation::ChangeGeometry,
+                caller: Some(edge),
+                data1: Some(new),
+                data2: None,
+                data3: Some(old),
+            }],
+            ..TopologyChangeLists::default()
+        };
+        let pre_curves = BTreeMap::new();
+        let geometry = vec![a.key, b.key];
+        let run = |l: &TopologyChangeLists, post_curves: BTreeMap<ObjectKey, usize>| {
+            let mut t = Tracked {
+                pre: [0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+                post: Walk::default(),
+                brep: ObjectKey(u64::MAX),
+                pre_curves: &pre_curves,
+                post_curves,
+                geometry: &geometry,
+                numbered: Vec::new(),
+            };
+            let mut o = Vec::new();
+            put_tracker(&mut o, l, &mut t);
+            o
+        };
+        // anchored (each curve some edge's after the op): the swap shows
+        let anchored: BTreeMap<_, _> = [(a.key, 0), (b.key, 1)].into_iter().collect();
+        assert_ne!(
+            run(&lists(a, b), anchored.clone()),
+            run(&lists(b, a), anchored)
+        );
+        // geometry attached to no edge before or after the op is numbered by its first
+        // appearance, so a swap of two such objects within one event does not show:
+        // the documented boundary
+        assert_eq!(
+            run(&lists(a, b), BTreeMap::new()),
+            run(&lists(b, a), BTreeMap::new())
+        );
+    }
+
     /// Prints both sides' outputs of one fixture case from its tail (`DUMP=<file>#<i>`,
     /// `DUMP_TAIL=<n>` values, default 120), for debugging a disagreement: `DUMP=...
     /// cargo test --profile difftest -p difftest --features cpp dump_case -- --ignored

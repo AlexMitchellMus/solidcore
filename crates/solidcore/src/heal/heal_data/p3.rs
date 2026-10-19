@@ -446,6 +446,7 @@ impl<O: LoopObject> HealData<O> {
                 squeeze_edge(
                     k,
                     b,
+                    &mut self.curve_ids,
                     e,
                     a.ok_or_else(|| invalid("edge without start vertex"))?,
                 )?
@@ -506,15 +507,9 @@ fn edit_key(e: EntityRef) -> ObjectRef {
     }
 }
 
-/// The kind [`edit_geometry_key`] gives geometry keys: above every [`edit_key`] kind, so
-/// a curve never shares a key with a topology entity.
-const GEOMETRY_KIND: u64 = 16;
-
-/// A fresh geometry key for the edits' [`crate::topology::brep::p3::GeometryIds`]
-/// (the `n`th of this edit).
-const fn edit_geometry_key(n: u64) -> ObjectKey {
-    ObjectKey((GEOMETRY_KIND << 32) | n)
-}
+/// The key kind of the healer's curve identities ([`HealData::curve_ids`]): above every
+/// [`edit_key`] kind, so a curve never shares a key with a topology entity.
+pub(super) const EDIT_GEOMETRY_KIND: u64 = 16;
 
 /// The face, edge or vertex [`edit_key`] made `key` for (the only kinds the tracker
 /// records).
@@ -587,15 +582,17 @@ fn tracked_edit<R>(
     (r, changes)
 }
 /// `SqueezeEdge(e, survivor)` under the edit tracker ([`tracked_edit`]).
-fn squeeze_edge(k: &mut Kernel, b: &mut Brep, e: EdgeId, survivor: VertexId) -> Result<Changes> {
+/// `curves` are the run's curve identities ([`HealData::curve_ids`]), shared by its
+/// edits.
+fn squeeze_edge(
+    k: &mut Kernel,
+    b: &mut Brep,
+    curves: &mut crate::topology::brep::p3::GeometryIds,
+    e: EdgeId,
+    survivor: VertexId,
+) -> Result<Changes> {
     let (r, changes) = tracked_edit(k, b, |k, b, env| {
-        let mut n = 0u64;
-        let mut fresh = || {
-            n += 1;
-            edit_geometry_key(n)
-        };
-        let mut geometry = crate::topology::brep::p3::GeometryIds::new(&mut fresh);
-        crate::topology::brep::p3::squeeze_edge(k, b, env, &mut geometry, e, survivor)
+        crate::topology::brep::p3::squeeze_edge(k, b, env, curves, e, survivor)
     });
     r.map(|()| changes)
 }
@@ -1640,7 +1637,8 @@ mod tests {
     fn healer_squeeze_of_a_wire_chain_completes_under_its_tracker() {
         let (mut b, [a, bv, _], [e0, _]) = wire_chain();
         let mut k = Kernel::default();
-        let changes = squeeze_edge(&mut k, &mut b, e0, a).unwrap();
+        let mut curves = crate::topology::brep::p3::GeometryIds::new(EDIT_GEOMETRY_KIND);
+        let changes = squeeze_edge(&mut k, &mut b, &mut curves, e0, a).unwrap();
         assert_eq!(
             changes.removed,
             vec![
@@ -1654,5 +1652,61 @@ mod tests {
         // other use (of the second edge) moved to the survivor
         assert!(b.edge(e0).unwrap().edgeuses.is_empty());
         assert_eq!(b.vertex(a).unwrap().vertexuses.len(), 1);
+    }
+
+    /// The run's curve identities outlive one edit: a callback watching two squeezes
+    /// of A--B--C (AB keeping B, refused after its removal notification, both curves
+    /// still live; then BC keeping B) sees the two coexisting curves under distinct
+    /// keys (each edit restarting its own allocator gave both `(16 << 32) | 1`).
+    #[test]
+    fn healer_curve_identities_persist_across_edits() {
+        use crate::curve::curve::Curve;
+        use crate::curve::line::Line;
+        use crate::geom::context::NotifyCallback;
+        use crate::geom::object::{NotifyOperation, ObjectRef};
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Debug)]
+        struct Rec(Arc<Mutex<Vec<ObjectKey>>>);
+        impl NotifyCallback for Rec {
+            fn execute(
+                &mut self,
+                _operation: NotifyOperation,
+                caller: ObjectRef,
+                data1: Option<ObjectRef>,
+                data2: Option<ObjectRef>,
+                data3: Option<ObjectRef>,
+            ) -> Result<()> {
+                let mut seen = self.0.lock().unwrap();
+                for x in [Some(caller), data1, data2, data3].into_iter().flatten() {
+                    if x.key.0 >> 32 == EDIT_GEOMETRY_KIND {
+                        seen.push(x.key);
+                    }
+                }
+                Ok(())
+            }
+        }
+
+        let (mut b, [a, bv, c], [e0, e1]) = wire_chain();
+        for (e, p, q) in [(e0, a, bv), (e1, bv, c)] {
+            let (pp, qq) = (b.vertex(p).unwrap().point, b.vertex(q).unwrap().point);
+            b.edge_mut(e).unwrap().curve = Some(Curve::from(Line::from_points(pp, qq, 3)));
+        }
+        let mut k = Kernel::default();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        k.context
+            .set_user_notify_callback(Some(Box::new(Rec(Arc::clone(&seen)))));
+        let mut curves = crate::topology::brep::p3::GeometryIds::new(EDIT_GEOMETRY_KIND);
+        let _ = squeeze_edge(&mut k, &mut b, &mut curves, e0, bv);
+        let first: Vec<ObjectKey> = seen.lock().unwrap().clone();
+        let _ = squeeze_edge(&mut k, &mut b, &mut curves, e1, bv);
+        let all: Vec<ObjectKey> = seen.lock().unwrap().clone();
+        let second: Vec<ObjectKey> = all[first.len()..].to_vec();
+        assert!(!first.is_empty() && !second.is_empty());
+        for x in &second {
+            assert!(!first.contains(x), "a coexisting curve repeated a key");
+        }
+        // the callbacks went back to the kernel context
+        assert!(k.context.take_notify_callbacks().0.is_some());
     }
 }

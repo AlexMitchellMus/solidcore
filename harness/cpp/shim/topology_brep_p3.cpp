@@ -183,17 +183,38 @@ struct GeomRecorder : SmNotifyCallback
     }
 };
 
+// Installs a user notify callback in a context and puts the previous one back on every
+// exit (an exception included). Declared after the recorder and the Built B-rep, it is
+// destroyed first: the B-rep's destructor notifies through whatever is installed.
+struct UserCallbackGuard
+{
+    SmContext* ctx = nullptr;
+    SmNotifyCallback* previous = nullptr;
+    void install(SmContext& c, SmNotifyCallback* cb)
+    {
+        ctx = &c;
+        previous = c.GetUserNotifyCallback();
+        c.SetUserNotifyCallback(cb);
+    }
+    ~UserCallbackGuard()
+    {
+        if (ctx != nullptr)
+            ctx->SetUserNotifyCallback(previous);
+    }
+};
+
 // An object a tracker list or event names, by its saved SmObject address only (it may
 // be deleted by now): `-1 -1` null, `-10 0` the B-rep; a topology object either walk
 // registered: its kind's type code, then for a face / edge / vertex its index before
 // the op (or 100000 + its index in the walk after it), for another kind `-5`; the
-// curve an edge had before the op: `-20 edge`; other geometry: `-30 n`, its first-seen
+// curve an edge had before the op: `-20 edge`; else the curve an edge has after it:
+// `-21 edge` (its index in the walk after the op); other geometry: `-30 n`, its first-seen
 // order in the tracker's lists and events (seen live by GeomRecorder); anything else
 // `-2 -5`.
 struct Tracked
 {
     std::map<const void*, std::pair<int, int64_t>> pre, post;
-    std::map<const void*, int64_t> pre_curves;
+    std::map<const void*, int64_t> pre_curves, post_curves;
     const std::map<const void*, int64_t>* geometry = nullptr;
     std::map<const void*, int64_t> numbered; // geometry by first appearance in the output
     SmBrep* brep = nullptr;
@@ -236,6 +257,13 @@ void put_tracked(std::vector<double>& o, SmObject* p, Tracked& t)
         o.push_back((double)c->second);
         return;
     }
+    auto pc = t.post_curves.find(a);
+    if (pc != t.post_curves.end())
+    {
+        o.push_back(-21.0);
+        o.push_back((double)pc->second);
+        return;
+    }
     if (t.geometry->find(a) != t.geometry->end())
     {
         auto n = t.numbered.emplace(a, (int64_t)t.numbered.size()).first;
@@ -254,6 +282,10 @@ void put_tracker(std::vector<double>& o, SmTrackTopologyChanges& trk, Tracked& t
     Graph post;
     walk(t.brep, post, true);
     t.post = by_base(post);
+    // (the live curves of the B-rep after the op, by their edge)
+    for (size_t i = 0; i < post.edges.size(); i++)
+        if (SmCurve* c = post.edges[i]->GetCurve())
+            t.post_curves.emplace((const void*)(SmObject*)c, (int64_t)i);
     for (SmTArray<SmTopology*>* l : {trk.GetRmList(), trk.GetAddList(), trk.GetChgList()})
     {
         o.push_back((double)l->GetSize());
@@ -469,6 +501,7 @@ void run(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
     // lists and events are compared after the op's outputs
     std::unique_ptr<SmTrackTopologyChanges> trk;
     GeomRecorder rec;
+    UserCallbackGuard guard; // (after rec and b: restores before either goes)
     Tracked tracked;
     // (the tracker attaches to the B-rep's context; the recorder goes beside it)
     SmContext& ctx_ = const_cast<SmContext&>(*brep->GetContext());
@@ -483,7 +516,7 @@ void run(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
         tracked.geometry = &rec.order;
         rec.brep = brep;
         rec.previous = ctx_.GetUserNotifyCallback();
-        ctx_.SetUserNotifyCallback(&rec);
+        guard.install(ctx_, &rec);
         trk.reset(new SmTrackTopologyChanges(brep, TRUE));
     }
     switch (op)
@@ -671,7 +704,6 @@ void run(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
     if (trk)
     {
         trk->StopTracking();
-        ctx_.SetUserNotifyCallback(rec.previous);
         put_tracker(o, *trk, tracked);
     }
 }

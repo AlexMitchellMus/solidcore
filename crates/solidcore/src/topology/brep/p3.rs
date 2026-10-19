@@ -1848,31 +1848,34 @@ fn wire_curve(curve: &Curve) -> Curve {
 
 /// The identities the edits notify geometry objects under: the edge curves
 /// (`m_pCurve`), which upstream passes as distinct objects of their own (never the
-/// edge). The caller supplies `fresh`, which returns a new key in a namespace of its
-/// own, disjoint from its topology keys (as `NotifyEnv::key_of`'s keys are the
-/// caller's): every curve object gets one, a replacement curve included, so two
-/// curves never share an identity. An edge's current curve keeps its identity
-/// across edits that share this registry.
-pub struct GeometryIds<'a> {
+/// edge). Keys are `(kind << 32) | n` for a `kind` the caller chooses above its
+/// topology key kinds (as `NotifyEnv::key_of`'s keys are the caller's) and `n`
+/// counting up: every curve object gets one, a replacement curve included, so two
+/// curves never share an identity. A caller whose callbacks watch several edits keeps
+/// one registry across them, so an edge's current curve keeps its identity and a new
+/// curve never repeats an earlier key. (A curve replaced outside these edits keeps the
+/// old identity in the registry; the old curve is gone by then.)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeometryIds {
+    kind: u64,
+    next: u64,
     curves: BTreeMap<EdgeId, ObjectRef>,
-    fresh: &'a mut dyn FnMut() -> ObjectKey,
 }
 
-impl core::fmt::Debug for GeometryIds<'_> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("GeometryIds")
-            .field("curves", &self.curves)
-            .finish_non_exhaustive()
-    }
-}
-
-impl<'a> GeometryIds<'a> {
-    /// A registry whose new identities come from `fresh`.
-    pub fn new(fresh: &'a mut dyn FnMut() -> ObjectKey) -> Self {
+impl GeometryIds {
+    /// An empty registry whose keys are of kind `kind` (`kind << 32` and up).
+    #[must_use]
+    pub const fn new(kind: u64) -> Self {
         Self {
+            kind,
+            next: 0,
             curves: BTreeMap::new(),
-            fresh,
         }
+    }
+
+    fn fresh(&mut self) -> ObjectKey {
+        self.next = self.next.wrapping_add(1);
+        ObjectKey((self.kind << 32) | (self.next & 0xffff_ffff))
     }
 
     /// The identity of edge `e`'s current curve (one is given on first use; the type
@@ -1888,7 +1891,7 @@ impl<'a> GeometryIds<'a> {
             .map_or(BSplineCurve::TYPE, Curve::type_code);
         let r = ObjectRef {
             type_code,
-            key: (self.fresh)(),
+            key: self.fresh(),
         };
         self.curves.insert(e, r);
         r
@@ -1899,10 +1902,16 @@ impl<'a> GeometryIds<'a> {
     pub fn new_edge_curve(&mut self, e: EdgeId, type_code: i64) -> ObjectRef {
         let r = ObjectRef {
             type_code,
-            key: (self.fresh)(),
+            key: self.fresh(),
         };
         self.curves.insert(e, r);
         r
+    }
+
+    /// The identity this registry gave edge `e`'s current curve, if any.
+    #[must_use]
+    pub fn current(&self, e: EdgeId) -> Option<ObjectRef> {
+        self.curves.get(&e).copied()
     }
 }
 
@@ -1911,7 +1920,7 @@ impl<'a> GeometryIds<'a> {
 fn bind_wire_curve(
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
-    geometry: &mut GeometryIds<'_>,
+    geometry: &mut GeometryIds,
     e: EdgeId,
     curve: &Curve,
 ) -> Result<()> {
@@ -1964,7 +1973,7 @@ pub fn make_wire_edge(
     k: &mut Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
-    geometry: &mut GeometryIds<'_>,
+    geometry: &mut GeometryIds,
     region: Option<RegionId>,
     start: VertexId,
     end: VertexId,
@@ -2021,7 +2030,7 @@ pub fn make_wire_edge(
 pub fn make_wire_edge_vertex(
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
-    geometry: &mut GeometryIds<'_>,
+    geometry: &mut GeometryIds,
     region: Option<RegionId>,
     start: VertexId,
     curve: &Curve,
@@ -2096,7 +2105,7 @@ pub fn squeeze_edge(
     k: &mut Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
-    geometry: &mut GeometryIds<'_>,
+    geometry: &mut GeometryIds,
     e: EdgeId,
     survivor: VertexId,
 ) -> Result<()> {
@@ -2372,7 +2381,7 @@ pub fn turn_to_nurbs(
     k: &Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
-    geometry: &mut GeometryIds<'_>,
+    geometry: &mut GeometryIds,
 ) -> Result<()> {
     ignore_soft(brep_notify(
         b,
@@ -3121,12 +3130,7 @@ mod tests {
     /// their keys.
     #[test]
     fn curve_identities_are_distinct() {
-        let mut n = 0u64;
-        let mut fresh = || {
-            n += 1;
-            ObjectKey(1000 + n)
-        };
-        let mut ids = GeometryIds::new(&mut fresh);
+        let mut ids = GeometryIds::new(7);
         let b = Brep::new();
         let (e0, e1) = (EdgeId::from_index(0), EdgeId::from_index(1));
         let c0 = ids.edge_curve(&b, e0);
@@ -3290,12 +3294,7 @@ mod tests {
     fn turn_to_nurbs_of_an_empty_brep_is_a_no_op() {
         let k = Kernel::default();
         let mut b = Brep::new();
-        let mut n = 0u64;
-        let mut fresh = || {
-            n += 1;
-            ObjectKey(n)
-        };
-        let mut geometry = GeometryIds::new(&mut fresh);
+        let mut geometry = GeometryIds::new(7);
         with_env(|env| turn_to_nurbs(&k, &mut b, env, &mut geometry)).unwrap();
         assert!(b.faces().is_empty());
     }

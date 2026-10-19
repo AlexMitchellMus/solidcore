@@ -1962,6 +1962,11 @@ pub struct HealData<O: LoopObject> {
     pub new_regions_from_closed_sheets: Vec<RegionId>,
     /// `m_sNewShells_FromClosedSheets`.
     pub new_shells_from_closed_sheets: Vec<ShellId>,
+    /// The identities this run's edits notify curves under (no upstream member: the
+    /// C++ notifies the `SmCurve` objects themselves; CO-PORTED by `topology.brep_p3`,
+    /// PR #204), kept across the run's edits, whose notifications reach the same
+    /// callbacks.
+    pub curve_ids: crate::topology::brep::p3::GeometryIds,
 }
 
 /// `SmZoneTol3d sZoneTol3d = SmTol::GetZoneTol3d(pBrep)` and the other `SmBrep`
@@ -2141,6 +2146,7 @@ impl<O: LoopObject> HealData<O> {
             new_vertices_from_split_face_at_seams: Vec::new(),
             new_regions_from_closed_sheets: Vec::new(),
             new_shells_from_closed_sheets: Vec::new(),
+            curve_ids: crate::topology::brep::p3::GeometryIds::new(super::p3::EDIT_GEOMETRY_KIND),
         };
         // ReSet(TRUE): FreeTargets() (nothing yet) and SetupEmptyProbArrays()
         h.setup_empty_prob_arrays();
