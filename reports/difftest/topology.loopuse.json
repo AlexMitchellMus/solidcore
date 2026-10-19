@@ -115,8 +115,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face00_014_flip",
@@ -391,8 +391,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face02_014_flip",
@@ -811,8 +811,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face06_014_flip",
@@ -943,8 +943,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face08_014_flip",
@@ -1075,8 +1075,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face10_014_flip",
@@ -1207,8 +1207,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face12_014_flip",
@@ -1339,8 +1339,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face14_014_flip",
@@ -1471,8 +1471,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face16_014_flip",
@@ -1603,8 +1603,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face18_014_flip",
@@ -1735,8 +1735,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face20_014_flip",
@@ -1867,8 +1867,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face22_014_flip",
@@ -1999,8 +1999,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face24_014_flip",
@@ -2131,8 +2131,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face26_014_flip",
@@ -2263,8 +2263,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face28_014_flip",
@@ -2395,8 +2395,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face30_014_flip",
@@ -2527,8 +2527,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face32_014_flip",
@@ -2659,8 +2659,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face34_014_flip",
@@ -2791,8 +2791,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face36_014_flip",
@@ -2923,8 +2923,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face38_014_flip",
@@ -3055,8 +3055,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face40_014_flip",
@@ -3187,8 +3187,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face42_014_flip",
@@ -3319,8 +3319,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face44_014_flip",
@@ -3451,8 +3451,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face46_014_flip",
@@ -3583,8 +3583,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "face48_014_flip",
@@ -3671,8 +3671,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Mouse_0_flip",
@@ -3963,8 +3963,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Mouse_3_flip",
@@ -4063,8 +4063,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Mouse_6_flip",
@@ -4239,8 +4239,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Mouse_9_flip",
@@ -4343,8 +4343,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Mouse_12_flip",
@@ -4515,8 +4515,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Mouse_15_flip",
@@ -4615,8 +4615,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Mouse_18_flip",
@@ -4791,8 +4791,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Mouse_21_flip",
@@ -5011,8 +5011,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Mouse_rb_2_flip",
@@ -5155,8 +5155,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Mouse_rb_5_flip",
@@ -5331,8 +5331,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Mouse_rb_8_flip",
@@ -5431,8 +5431,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Mouse_rb_11_flip",
@@ -5603,8 +5603,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Mouse_rb_14_flip",
@@ -5707,8 +5707,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Mouse_rb_17_flip",
@@ -5883,8 +5883,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Mouse_rb_20_flip",
@@ -5983,8 +5983,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Mouse_rb_23_flip",
@@ -6235,8 +6235,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Endcap_1_flip",
@@ -6415,8 +6415,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Endcap_4_flip",
@@ -6587,8 +6587,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Endcap_7_flip",
@@ -6687,8 +6687,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Endcap_10_flip",
@@ -6859,8 +6859,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Endcap_13_flip",
@@ -6959,8 +6959,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Endcap_16_flip",
@@ -7131,8 +7131,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Endcap_19_flip",
@@ -7231,8 +7231,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Endcap_22_flip",
@@ -7443,8 +7443,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Endcap_rb_0_flip",
@@ -7663,8 +7663,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Endcap_rb_3_flip",
@@ -7835,8 +7835,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Endcap_rb_6_flip",
@@ -7935,8 +7935,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Endcap_rb_9_flip",
@@ -8107,8 +8107,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Endcap_rb_12_flip",
@@ -8207,8 +8207,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Endcap_rb_15_flip",
@@ -8379,8 +8379,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Endcap_rb_18_flip",
@@ -8479,8 +8479,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_Endcap_rb_21_flip",
@@ -8771,8 +8771,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_box_with_large_fillet_2_flip",
@@ -8983,8 +8983,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_box_with_large_fillet_5_flip",
@@ -9083,8 +9083,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_box_with_large_fillet_8_flip",
@@ -9255,8 +9255,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_box_with_large_fillet_11_flip",
@@ -9355,8 +9355,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_box_with_large_fillet_14_flip",
@@ -9527,8 +9527,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_box_with_large_fillet_17_flip",
@@ -9631,8 +9631,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_box_with_large_fillet_20_flip",
@@ -9803,8 +9803,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_box_with_large_fillet_23_flip",
@@ -9983,8 +9983,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_box_with_large_fillet_rb_1_flip",
@@ -10235,8 +10235,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_box_with_large_fillet_rb_4_flip",
@@ -10335,8 +10335,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_box_with_large_fillet_rb_7_flip",
@@ -10507,8 +10507,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_box_with_large_fillet_rb_10_flip",
@@ -10611,8 +10611,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_box_with_large_fillet_rb_13_flip",
@@ -10783,8 +10783,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_box_with_large_fillet_rb_16_flip",
@@ -10883,8 +10883,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_box_with_large_fillet_rb_19_flip",
@@ -11055,8 +11055,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_box_with_large_fillet_rb_22_flip",
@@ -11199,8 +11199,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_cone_0_flip",
@@ -11495,8 +11495,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_cone_3_flip",
@@ -11599,8 +11599,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_cone_6_flip",
@@ -11775,8 +11775,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_cone_9_flip",
@@ -11879,8 +11879,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_cone_12_flip",
@@ -12055,8 +12055,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_cone_15_flip",
@@ -12159,8 +12159,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_cone_18_flip",
@@ -12335,8 +12335,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_cone_21_flip",
@@ -12559,8 +12559,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_cone_rb_2_flip",
@@ -12703,8 +12703,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_cone_rb_5_flip",
@@ -12879,8 +12879,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_cone_rb_8_flip",
@@ -12983,8 +12983,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_cone_rb_11_flip",
@@ -13159,8 +13159,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_cone_rb_14_flip",
@@ -13263,8 +13263,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_cone_rb_17_flip",
@@ -13439,8 +13439,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_cone_rb_20_flip",
@@ -13543,8 +13543,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_cone_rb_23_flip",
@@ -13795,8 +13795,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_disk_1_flip",
@@ -13975,8 +13975,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_disk_4_flip",
@@ -14147,8 +14147,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_disk_7_flip",
@@ -14247,8 +14247,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_disk_10_flip",
@@ -14419,8 +14419,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_disk_13_flip",
@@ -14519,8 +14519,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_disk_16_flip",
@@ -14691,8 +14691,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_disk_19_flip",
@@ -14791,8 +14791,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_disk_22_flip",
@@ -15003,8 +15003,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_disk_rb_0_flip",
@@ -15223,8 +15223,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_disk_rb_3_flip",
@@ -15395,8 +15395,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_disk_rb_6_flip",
@@ -15495,8 +15495,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_disk_rb_9_flip",
@@ -15667,8 +15667,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_disk_rb_12_flip",
@@ -15767,8 +15767,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_disk_rb_15_flip",
@@ -15939,8 +15939,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_disk_rb_18_flip",
@@ -16039,8 +16039,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_disk_rb_21_flip",
@@ -16331,8 +16331,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_ellips_ts2_2_flip",
@@ -16543,8 +16543,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_ellips_ts2_5_flip",
@@ -16643,8 +16643,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_ellips_ts2_8_flip",
@@ -16815,8 +16815,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_ellips_ts2_11_flip",
@@ -16915,8 +16915,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_ellips_ts2_14_flip",
@@ -17087,8 +17087,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_ellips_ts2_17_flip",
@@ -17187,8 +17187,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_ellips_ts2_20_flip",
@@ -17359,8 +17359,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_ellips_ts2_23_flip",
@@ -17539,8 +17539,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_ellips_ts2_rb_1_flip",
@@ -17791,8 +17791,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_ellips_ts2_rb_4_flip",
@@ -17891,8 +17891,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_ellips_ts2_rb_7_flip",
@@ -18063,8 +18063,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_ellips_ts2_rb_10_flip",
@@ -18163,8 +18163,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_ellips_ts2_rb_13_flip",
@@ -18335,8 +18335,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_ellips_ts2_rb_16_flip",
@@ -18435,8 +18435,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_ellips_ts2_rb_19_flip",
@@ -18607,8 +18607,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_ellips_ts2_rb_22_flip",
@@ -18747,8 +18747,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_circ_0_flip",
@@ -19039,8 +19039,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_circ_3_flip",
@@ -19139,8 +19139,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_circ_6_flip",
@@ -19311,8 +19311,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_circ_9_flip",
@@ -19411,8 +19411,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_circ_12_flip",
@@ -19583,8 +19583,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_circ_15_flip",
@@ -19683,8 +19683,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_circ_18_flip",
@@ -19855,8 +19855,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_circ_21_flip",
@@ -20075,8 +20075,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_circ_rb_2_flip",
@@ -20215,8 +20215,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_circ_rb_5_flip",
@@ -20387,8 +20387,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_circ_rb_8_flip",
@@ -20487,8 +20487,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_circ_rb_11_flip",
@@ -20659,8 +20659,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_circ_rb_14_flip",
@@ -20759,8 +20759,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_circ_rb_17_flip",
@@ -20931,8 +20931,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_circ_rb_20_flip",
@@ -21031,8 +21031,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_circ_rb_23_flip",
@@ -21283,8 +21283,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_square_1_flip",
@@ -21463,8 +21463,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_square_4_flip",
@@ -21635,8 +21635,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_square_7_flip",
@@ -21735,8 +21735,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_square_10_flip",
@@ -21907,8 +21907,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_square_13_flip",
@@ -22007,8 +22007,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_square_16_flip",
@@ -22179,8 +22179,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_square_19_flip",
@@ -22279,8 +22279,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_square_22_flip",
@@ -22491,8 +22491,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_square_rb_0_flip",
@@ -22711,8 +22711,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_square_rb_3_flip",
@@ -22883,8 +22883,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_square_rb_6_flip",
@@ -22983,8 +22983,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_square_rb_9_flip",
@@ -23155,8 +23155,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_square_rb_12_flip",
@@ -23255,8 +23255,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_square_rb_15_flip",
@@ -23427,8 +23427,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_square_rb_18_flip",
@@ -23527,8 +23527,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_plane_square_rb_21_flip",
@@ -23823,8 +23823,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_sphere_2_flip",
@@ -24039,8 +24039,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_sphere_5_flip",
@@ -24143,8 +24143,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_sphere_8_flip",
@@ -24319,8 +24319,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_sphere_11_flip",
@@ -24423,8 +24423,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_sphere_14_flip",
@@ -24599,8 +24599,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_sphere_17_flip",
@@ -24703,8 +24703,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_sphere_20_flip",
@@ -24879,8 +24879,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_sphere_23_flip",
@@ -25063,8 +25063,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_sphere_rb_1_flip",
@@ -25319,8 +25319,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_sphere_rb_4_flip",
@@ -25423,8 +25423,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_sphere_rb_7_flip",
@@ -25599,8 +25599,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_sphere_rb_10_flip",
@@ -25703,8 +25703,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_sphere_rb_13_flip",
@@ -25879,8 +25879,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_sphere_rb_16_flip",
@@ -25983,8 +25983,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_sphere_rb_19_flip",
@@ -26159,8 +26159,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_sphere_rb_22_flip",
@@ -26303,8 +26303,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_extrude_0_flip",
@@ -26599,8 +26599,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_extrude_3_flip",
@@ -26703,8 +26703,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_extrude_6_flip",
@@ -26879,8 +26879,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_extrude_9_flip",
@@ -26983,8 +26983,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_extrude_12_flip",
@@ -27159,8 +27159,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_extrude_15_flip",
@@ -27263,8 +27263,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_extrude_18_flip",
@@ -27439,8 +27439,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_extrude_21_flip",
@@ -27663,8 +27663,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_extrude_rb_2_flip",
@@ -27807,8 +27807,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_extrude_rb_5_flip",
@@ -27983,8 +27983,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_extrude_rb_8_flip",
@@ -28087,8 +28087,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_extrude_rb_11_flip",
@@ -28263,8 +28263,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_extrude_rb_14_flip",
@@ -28367,8 +28367,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_extrude_rb_17_flip",
@@ -28543,8 +28543,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_extrude_rb_20_flip",
@@ -28647,8 +28647,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_extrude_rb_23_flip",
@@ -28903,8 +28903,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_1_flip",
@@ -29087,8 +29087,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_4_flip",
@@ -29263,8 +29263,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_7_flip",
@@ -29367,8 +29367,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_10_flip",
@@ -29543,8 +29543,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_13_flip",
@@ -29647,8 +29647,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_16_flip",
@@ -29823,8 +29823,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_19_flip",
@@ -29927,8 +29927,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_22_flip",
@@ -30143,8 +30143,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_rb_0_flip",
@@ -30367,8 +30367,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_rb_3_flip",
@@ -30543,8 +30543,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_rb_6_flip",
@@ -30647,8 +30647,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_rb_9_flip",
@@ -30823,8 +30823,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_rb_12_flip",
@@ -30927,8 +30927,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_rb_15_flip",
@@ -31103,8 +31103,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_rb_18_flip",
@@ -31207,8 +31207,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_rb_21_flip",
@@ -31503,8 +31503,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_sphere150_2_flip",
@@ -31719,8 +31719,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_sphere150_5_flip",
@@ -31823,8 +31823,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_sphere150_8_flip",
@@ -31999,8 +31999,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_sphere150_11_flip",
@@ -32103,8 +32103,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_sphere150_14_flip",
@@ -32279,8 +32279,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_sphere150_17_flip",
@@ -32383,8 +32383,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_sphere150_20_flip",
@@ -32559,8 +32559,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_sphere150_23_flip",
@@ -32743,8 +32743,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_sphere150_rb_1_flip",
@@ -32999,8 +32999,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_sphere150_rb_4_flip",
@@ -33103,8 +33103,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_sphere150_rb_7_flip",
@@ -33279,8 +33279,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_sphere150_rb_10_flip",
@@ -33383,8 +33383,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_sphere150_rb_13_flip",
@@ -33559,8 +33559,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_sphere150_rb_16_flip",
@@ -33663,8 +33663,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_sphere150_rb_19_flip",
@@ -33839,8 +33839,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_surf_sphere150_rb_22_flip",
@@ -33983,8 +33983,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_torus_0_flip",
@@ -34279,8 +34279,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_torus_3_flip",
@@ -34383,8 +34383,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_torus_6_flip",
@@ -34559,8 +34559,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_torus_9_flip",
@@ -34663,8 +34663,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_torus_12_flip",
@@ -34839,8 +34839,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_torus_15_flip",
@@ -34943,8 +34943,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_torus_18_flip",
@@ -35119,8 +35119,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_torus_21_flip",
@@ -35343,8 +35343,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_torus_rb_2_flip",
@@ -35487,8 +35487,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_torus_rb_5_flip",
@@ -35663,8 +35663,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_torus_rb_8_flip",
@@ -35767,8 +35767,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_torus_rb_11_flip",
@@ -35943,8 +35943,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_torus_rb_14_flip",
@@ -36047,8 +36047,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_torus_rb_17_flip",
@@ -36223,8 +36223,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_torus_rb_20_flip",
@@ -36327,8 +36327,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_torus_rb_23_flip",
@@ -36583,8 +36583,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_1_flip",
@@ -36767,8 +36767,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_4_flip",
@@ -36943,8 +36943,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_7_flip",
@@ -37047,8 +37047,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_10_flip",
@@ -37223,8 +37223,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_13_flip",
@@ -37327,8 +37327,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_16_flip",
@@ -37503,8 +37503,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_19_flip",
@@ -37607,8 +37607,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_22_flip",
@@ -37823,8 +37823,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_rb_0_flip",
@@ -38047,8 +38047,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_rb_3_flip",
@@ -38223,8 +38223,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_rb_6_flip",
@@ -38327,8 +38327,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_rb_9_flip",
@@ -38503,8 +38503,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_rb_12_flip",
@@ -38607,8 +38607,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_rb_15_flip",
@@ -38783,8 +38783,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_rb_18_flip",
@@ -38887,8 +38887,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_rb_21_flip",
@@ -39183,8 +39183,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_2_flip",
@@ -39399,8 +39399,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_5_flip",
@@ -39503,8 +39503,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_8_flip",
@@ -39679,8 +39679,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_11_flip",
@@ -39783,8 +39783,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_14_flip",
@@ -39959,8 +39959,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_17_flip",
@@ -40063,8 +40063,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_20_flip",
@@ -40239,8 +40239,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_23_flip",
@@ -40423,8 +40423,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_rb_1_flip",
@@ -40679,8 +40679,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_rb_4_flip",
@@ -40783,8 +40783,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_rb_7_flip",
@@ -40959,8 +40959,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_rb_10_flip",
@@ -41063,8 +41063,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_rb_13_flip",
@@ -41239,8 +41239,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_rb_16_flip",
@@ -41343,8 +41343,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_rb_19_flip",
@@ -41519,8 +41519,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_rb_22_flip",
@@ -59259,8 +59259,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "Mouse_044_flip",
@@ -59311,8 +59311,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "Mouse_050_flip",
@@ -59363,8 +59363,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "Mouse_056_flip",
@@ -59499,8 +59499,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "Mouse_rebuilt_014_flip",
@@ -59871,8 +59871,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_044_flip",
@@ -59923,8 +59923,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_050_flip",
@@ -59975,8 +59975,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_056_flip",
@@ -60107,8 +60107,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_rebuilt_014_flip",
@@ -60479,8 +60479,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_044_flip",
@@ -60531,8 +60531,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_050_flip",
@@ -60583,8 +60583,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_056_flip",
@@ -60715,8 +60715,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_rebuilt_014_flip",
@@ -61103,8 +61103,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "cone_044_flip",
@@ -61155,8 +61155,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "cone_050_flip",
@@ -61207,8 +61207,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "cone_056_flip",
@@ -61343,8 +61343,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "cone_rebuilt_014_flip",
@@ -61715,8 +61715,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "disk_044_flip",
@@ -61767,8 +61767,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "disk_050_flip",
@@ -61819,8 +61819,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "disk_056_flip",
@@ -61951,8 +61951,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "disk_rebuilt_014_flip",
@@ -62323,8 +62323,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "ellips_ts2_044_flip",
@@ -62375,8 +62375,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "ellips_ts2_050_flip",
@@ -62427,8 +62427,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "ellips_ts2_056_flip",
@@ -62559,8 +62559,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "ellips_ts2_rebuilt_014_flip",
@@ -62931,8 +62931,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ_044_flip",
@@ -62983,8 +62983,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ_050_flip",
@@ -63035,8 +63035,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ_056_flip",
@@ -63167,8 +63167,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ_rebuilt_014_flip",
@@ -63539,8 +63539,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "plane_square_044_flip",
@@ -63591,8 +63591,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "plane_square_050_flip",
@@ -63643,8 +63643,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "plane_square_056_flip",
@@ -63775,8 +63775,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "plane_square_rebuilt_014_flip",
@@ -64163,8 +64163,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "sphere_044_flip",
@@ -64215,8 +64215,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "sphere_050_flip",
@@ -64267,8 +64267,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "sphere_056_flip",
@@ -64403,8 +64403,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "sphere_rebuilt_014_flip",
@@ -64791,8 +64791,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "surf_extrude_044_flip",
@@ -64843,8 +64843,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "surf_extrude_050_flip",
@@ -64895,8 +64895,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "surf_extrude_056_flip",
@@ -65031,8 +65031,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "surf_extrude_rebuilt_014_flip",
@@ -65419,8 +65419,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_044_flip",
@@ -65471,8 +65471,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_050_flip",
@@ -65523,8 +65523,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_056_flip",
@@ -65659,8 +65659,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_rebuilt_014_flip",
@@ -66047,8 +66047,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_044_flip",
@@ -66099,8 +66099,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_050_flip",
@@ -66151,8 +66151,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_056_flip",
@@ -66287,8 +66287,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_rebuilt_014_flip",
@@ -66675,8 +66675,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "torus_044_flip",
@@ -66727,8 +66727,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "torus_050_flip",
@@ -66779,8 +66779,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "torus_056_flip",
@@ -66915,8 +66915,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "torus_rebuilt_014_flip",
@@ -67303,8 +67303,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_044_flip",
@@ -67355,8 +67355,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_050_flip",
@@ -67407,8 +67407,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_056_flip",
@@ -67543,8 +67543,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_rebuilt_014_flip",
@@ -67931,8 +67931,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_044_flip",
@@ -67983,8 +67983,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_050_flip",
@@ -68035,8 +68035,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_056_flip",
@@ -68171,8 +68171,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_rebuilt_014_flip",
@@ -68208,8 +68208,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0002",
@@ -68350,8 +68350,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00003",
@@ -68379,8 +68379,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00006",
@@ -68472,8 +68472,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00017",
@@ -68541,8 +68541,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00025",
@@ -68665,8 +68665,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00040",
@@ -68677,8 +68677,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00041",
@@ -68689,8 +68689,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00042",
@@ -68806,8 +68806,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00056",
@@ -69076,8 +69076,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00089",
@@ -69228,8 +69228,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00107",
@@ -69600,8 +69600,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00151",
@@ -69612,8 +69612,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00152",
@@ -69640,8 +69640,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00155",
@@ -69742,8 +69742,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00167",
@@ -69818,8 +69818,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00176",
@@ -69904,8 +69904,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00186",
@@ -70038,8 +70038,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00202",
@@ -70214,8 +70214,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00222",
@@ -70242,8 +70242,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00225",
@@ -70453,8 +70453,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00250",
@@ -70676,8 +70676,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00277",
@@ -70704,8 +70704,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00280",
@@ -70740,8 +70740,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00284",
@@ -71176,8 +71176,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00337",
@@ -71188,8 +71188,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00338",
@@ -71257,8 +71257,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00346",
@@ -71326,8 +71326,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00354",
@@ -71362,8 +71362,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00358",
@@ -71423,8 +71423,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00365",
@@ -71605,8 +71605,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00387",
@@ -71633,8 +71633,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00390",
@@ -71670,8 +71670,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00394",
@@ -71970,8 +71970,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00430",
@@ -72030,8 +72030,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00437",
@@ -72123,8 +72123,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00448",
@@ -72180,8 +72180,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00454",
@@ -72200,8 +72200,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00456",
@@ -72374,8 +72374,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00477",
@@ -72386,8 +72386,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00478",
@@ -72536,8 +72536,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00496",
@@ -72711,8 +72711,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetUpwardEdgeuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "extra00517",
@@ -73401,7 +73401,7 @@
     "surface.sphere": 45,
     "surface.surf_of_extrusion_p2": 33,
     "topology.brep_p10": 87,
-    "topology.face_p3": 366
+    "topology.face_p4": 366
   },
   "max_rel_err": 0.0,
   "pass": true,
