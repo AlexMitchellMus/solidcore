@@ -24,8 +24,8 @@
 //! the split curve array, the dereference behind UB-112) or a curve shorter than
 //! `2e-5` (UB-112), a planar path without path curves (`rPathCurves[0]`), skin
 //! profile counts past the curves (`r3DCurves[lCount]`), a partial cone or torus that
-//! sweeps a profile edge shorter than the zone tolerance (UB-193, use after free), and
-//! a full or near-full sphere, torus or cone a few zone tolerances across (HANG-32).
+//! sweeps a profile edge shorter than the zone tolerance (UB-195, use after free), and
+//! a sphere, torus or cone a few zone tolerances across, at any turn (HANG-35).
 //! Values are finite with magnitude at most `1e6`, frames nondegenerate, lists at
 //! most 32 curves.
 
@@ -106,7 +106,7 @@ const ZONE_TOL: f64 = 1e-5;
 /// From this turn (degrees) up, p3's `CreateRotationalSweep` builds analytic faces
 /// instead of sweeping the profile edges; p2's full turns are among them.
 const ANALYTIC_TURN: f64 = 359.99999;
-/// HANG-32 ends here: every probe from this size up returned in milliseconds, while a
+/// HANG-35 ends here: every probe from this size up returned in milliseconds, while a
 /// sphere of `1e-4` over 359 degrees took 20 s (fuzz allows 20 s per case).
 const HANG_MAX: f64 = 1.5e-4;
 
@@ -160,7 +160,7 @@ fn cone_lines(d: &[f64]) -> Option<Vec<f64>> {
     (lines.len() >= 3).then_some(lines)
 }
 
-/// UB-193: a turn below [`ANALYTIC_TURN`] sweeps the profile edges, and
+/// UB-195: a turn below [`ANALYTIC_TURN`] sweeps the profile edges, and
 /// `SweepEdgeHigh` uses an edge's curve after the face build freed it for being
 /// shorter than the zone tolerance. A sphere's line lies on the axis and its arc's
 /// face fails the degenerate-surface test first, so spheres never reach it.
@@ -172,7 +172,7 @@ fn sweeps_a_short_edge(op: i32, d: &[f64]) -> bool {
     }
 }
 
-/// HANG-32: a closed shell a few zone tolerances across takes minutes to place in
+/// HANG-35: a closed shell a few zone tolerances across takes minutes to place in
 /// its region (the ray fire of `FindInfiniteRegion`), whether it is an analytic face
 /// or a stitched sweep, at any turn. Cones that fail first (no height or turn, a
 /// partial profile that is not built) and zero radii are kept.
@@ -317,7 +317,7 @@ mod tests {
 
     #[test]
     fn short_swept_edges_are_rejected_and_early_exits_kept() {
-        // UB-193 at its native edges: a 9e-6 cone line segfaults, 1e-5 does not
+        // UB-195 at its native edges: a 9e-6 cone line segfaults, 1e-5 does not
         assert!(primitive(1, &[1., 1., 9e-6], 0., 90.).is_err());
         assert!(primitive(1, &[2e-6, 1., 1.], 0., 90.).is_err());
         assert!(primitive(1, &[1., 1., 1e-5], 0., 90.).is_ok());
@@ -338,7 +338,7 @@ mod tests {
 
     #[test]
     fn tiny_closed_shells_are_rejected() {
-        // HANG-32: a sphere of 1e-5 takes 87 s, 1e-4 over 359 degrees 20 s; 4e-6 and
+        // HANG-35: a sphere of 1e-5 takes 87 s, 1e-4 over 359 degrees 20 s; 4e-6 and
         // 1.5e-4 take milliseconds, at any turn
         assert!(primitive(2, &[1e-5], 0., 360.).is_err());
         assert!(primitive(2, &[5e-5], 30., 390.000_000_003_6).is_err());

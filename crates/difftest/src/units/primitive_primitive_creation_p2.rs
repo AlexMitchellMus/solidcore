@@ -387,7 +387,7 @@ fn generated(rng: &mut Rng) -> (i32, Vec<f64>) {
         }
         3 => {
             // a skin of zero, one or two profiles of one circle each, at scale 1e-3 or
-            // more (smaller skins take seconds to minutes natively, HANG-32)
+            // more (smaller skins take seconds to minutes natively, HANG-35)
             let side = scale.max(1e-3);
             let profiles = rng.below(3) as usize;
             let mut d = vec![edit, 0., 1. + rng.below(3) as f64, f64::from(rng.below(2) != 0)];

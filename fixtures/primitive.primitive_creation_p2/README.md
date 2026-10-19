@@ -59,8 +59,8 @@ Two guards come from isolated native probes (one process per input, 20-25 s limi
 
 | Guard | Upstream issue | Rejected |
 | --- | --- | --- |
-| A swept profile edge shorter than the zone tolerance (`1e-5`) | UB-193: `SweepEdgeHigh` uses the edge's curve after `MakeFaceWithCurves` freed it (segfault) | partial cones (turn below `359.99999`) that build a profile line below `1e-5`, mirroring the cone's own early failures; partial tori whose minor circle is below `1e-5` |
-| A closed shell from half the zone tolerance to `1.5e-4` across | HANG-32: the ray fire that places the shell in its region takes minutes | spheres, tori and cones of that size at any turn (analytic faces from `359.99999`, stitched sweeps below) |
+| A swept profile edge shorter than the zone tolerance (`1e-5`) | UB-195: `SweepEdgeHigh` uses the edge's curve after `MakeFaceWithCurves` freed it (segfault) | partial cones (turn below `359.99999`) that build a profile line below `1e-5`, mirroring the cone's own early failures; partial tori whose minor circle is below `1e-5` |
+| A closed shell from half the zone tolerance to `1.5e-4` across | HANG-35: the ray fire that places the shell in its region takes minutes | spheres, tori and cones of that size at any turn (analytic faces from `359.99999`, stitched sweeps below) |
 
 Early failures stay compared: a cone without height or turn, a zero side, a radius
 within the scaled zero (not built), zero radii. Partial spheres are not guarded: their
@@ -68,7 +68,7 @@ axis line sweeps to no face and their arc's face fails the degenerate-surface te
 first, so no probe crashed. Every rejected case that reaches the native sweep defers in
 Rust today (`topology.brep_p8`), so the guards remove no compared value. The generator
 draws again when the wrapper refuses an input (as `curve.curve_p1`). Tapers (UB-112),
-skins and planar paths (seconds to minutes natively below that, HANG-32) stay at
+skins and planar paths (seconds to minutes natively below that, HANG-35) stay at
 scale `1e-3` or more. `guarded.json` keeps the crashing and hanging generated cases as
 expected rejections.
 

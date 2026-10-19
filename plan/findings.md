@@ -8113,3 +8113,85 @@ passing/deferred counts.
 Review sensitivity: 284/284 perturbations detected. The 300-mutation campaign
 executes 78 cases, rejects 163 and classifies 59 as malformed, with zero
 differences, crashes, panics or timeouts. This is bounded harness coverage.
+
+## primitive.primitive_creation_p2 (PR #250, 2026-10-19; partial)
+
+All twelve owned functions of `SmPrimitiveCreation.cpp` are ported with their tails
+after dependency calls: the partial cone, sphere and torus, the taper extrusion, the
+curve sweeps from edges and faces, the pipe sweep, the static planar-path sweep and its
+`SweepProfilesAlongPath`, the skin and `sm_CreateSkinPrimitiveInternal`, and the face
+blend. `PrimitiveCreationAccess` extends p3's `PrimitiveAccess` with the face copy, the
+offset-map attribute store and defaults that return `Unported` for B-rep services of
+units not ported yet (tolerance, shrink, lamina test, face deletion, stitch,
+edge/vertex cleanup, manifold test, boolean trees). `SmTrimType` and `ProjectAndTrim`
+come from `topology.brep_p10` (#130); `project_and_trim` is a required access method,
+like p3's `axis_inside_face`, because it needs the caller's `ProjectEnv` identities. The 8-argument `CreateSkinPrimitive` has no caller and is
+out of scope. `USE_NEW_ANALYTICS` is active, so full turns go to p1's analytic
+constructors. No recursion; loops are bounded by their input lists.
+
+The native gate is 283 cases / 127 pass / 0 fail / 150 deferred / 6 rejected, maximum
+relative error zero, no absolute floors. Deferrals: 56 at `SmBrep::SmBrep`
+(`topology.brep_p3`: the scratch B-reps of skin, taper and planar path), 75 at
+`topology.brep_p8` (planar faces of the profiles, `CreateFaceFromSurface` of the analytic
+faces, `CreateFacesFromSurface` of the sweep faces) and 19 at `SmBrep::Transform`
+(`topology.brep_p5`, in p3's curve sweep that the pipe calls). The six rejections are
+the guarded regression fixtures of `guarded.json` (UB-195, HANG-35), never passes.
+
+Comparable cases are early exits: the cone's height, turn, zero-side and axis checks
+with the editing flag they leave on, degenerate sphere/torus radii (line or circle
+construction fails after edit mode is on), full turns with degenerate radii through p1,
+skins of fewer than two profiles (cleared lists, sized and all-false ownership report),
+curve sweeps of no edges or faces. Every case that builds topology defers: the scratch
+B-reps of the skin, taper and planar path (`SmBrep::SmBrep`, `topology.brep_p3`), and
+the sweep faces of the partial primitives and the pipe (`topology.brep_p8`). The upstream
+skin, draft-sweep, taper and pipe tests run the real C++ and defer in Rust; they certify
+nothing past those calls. Kernel unit tests check the entry checks on a B-rep with only
+its infinite region (a removed check cannot hide behind a deferral).
+
+Deviations, none compared yet:
+- **Skin ownership report.** An open profile is passed to `build_composites_from_curves`
+  as a whole, and every curve of it is marked transferred; upstream marks only the curves
+  its composite builder consumed, which can differ for a lone curve shorter than the
+  tolerance. Exact parity needs the composite builder to report its input indices
+  (an option, not built).
+- **Taper.** Analytic offsets stay B-splines (upstream casts `SmCurve*` to
+  `SmBSplineCurve*` after `CreateTrimmedOffsets`); split curves are found among the
+  segments by exact interval and ends; a single split curve gives an empty second
+  ruled interval (`Extent1d::new()`) where upstream reads past its array (UB-112).
+- **Upstream null dereferences** (a missing edge curve, a failed copy) are errors.
+
+Native defects found while building the harness (see `plan/upstream-issues.md`):
+- **UB-195:** `SweepEdgeHigh` uses an edge's curve after `MakeFaceWithCurves` freed it
+  (partial cones with a profile line below the zone tolerance, partial tori with a small
+  minor circle). The FFI rejects those, mirroring the cone's own early failures.
+- **HANG-35:** closed shells a few zone tolerances across take minutes to place in their
+  region. The FFI rejects spheres, tori and cones from `5e-6` to `1.5e-4` at any turn;
+  the generator keeps skins and planar paths at `1e-3` or more.
+- **WR-191:** a failed `SmMerge::ManifoldBoolean` leaves the context in boolean mode; it
+  leaked from a failing planar-path case into the next three generated cases. The shim
+  clears the flag before each case.
+- The partial sphere's and torus's lack of a zero-turn check (only the cone has one) is
+  upstream behaviour and is ported as is.
+
+These were found with about 450 isolated native probes (one process each, 20-60 s
+limits), backtraces from a scratch `SIGSEGV`/`SIGPROF` handler (no debugger here), and
+a Python copy of the generator to recover the inputs of deferred cases.
+
+Back-edges wired: six `sweep.api_brep` sites and the `sweep.api_surfaces` skin now name
+the B-rep constructor they still need; the offset executive's pipe site now names
+`SmBrep::CreateFacesFromSurface` (`topology.brep_p8`). No p2 stub remains.
+
+Validation (after merging #233's head `df186660` and `origin/main` `0cf3e290`):
+formatting, workspace and native-feature Clippy, 1,411 kernel tests, wasm32 and the
+three native FFI guard tests pass. Perturbation detects all 127 comparable p2 cases. The
+1,000-mutation campaign has 282 executed, 511 rejected and 207 malformed cases, with
+zero differences, crashes, panics or timeouts. All six touched units pass with their
+remaining deferrals: p1 667/17/5 rejected, p3 284/8/1 rejected, B-rep sweep API 306/267,
+surface sweep API 831/51, offset executive p1 675/17/1 rejected, topology sweep 553/14
+(pass/deferred). Nine planted faults (cone height, turn and edit flag; skin report,
+profile count and output reset; pipe output reset; the full-turn window; the UB-195
+guard) are each caught by the kernel tests; six also fail the difftest, and the other
+three cannot show there (one turns compared cases into deferrals, two reset lists the
+runner always passes empty).
+
+The full `--green --no-report` gate completes with 216 units: 114 passed, 102 partial, 0 failed.
