@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Compiled separately by solidcore-ffi/build.rs; runs after exec in a fresh image.
+#include <cstdlib>
 #include "../shim/blend_fillet_solver_p5.cpp"
 static int rollover_worker_main() {
 #if defined(__linux__)
@@ -9,7 +10,8 @@ static int rollover_worker_main() {
        request.count<0 || request.count>static_cast<int64_t>(input.size()) ||
        !sc_rollover::read_all(STDIN_FILENO,input.data(),request.count*sizeof(double))) return 2;
 #ifdef SC_ROLLOVER_FAULT_TEST
-    if(request.signal>=0) ::raise(request.signal==0?SIGSEGV:SIGABRT);
+    if(request.signal==2) test_exit_trap=true;
+    else if(request.signal>=0) ::raise(request.signal==0?SIGSEGV:SIGABRT);
     new_failure=request.fail_new;calloc_failure=request.fail_calloc;
 #endif
     std::array<double,sc_rollover::OUTPUT_LIMIT> output{};
@@ -28,5 +30,8 @@ static int rollover_worker_main() {
 #endif
 }
 #ifndef SC_ROLLOVER_FAULT_TEST
-int main() { return rollover_worker_main(); }
+// The in-process functions already destroyed every fixture object before
+// producing the reply. Skip global SMLib finalizers after the reply: waitpid
+// must not wait on more unbounded C++ work outside the protocol read timeout.
+int main() { std::_Exit(rollover_worker_main()); }
 #endif

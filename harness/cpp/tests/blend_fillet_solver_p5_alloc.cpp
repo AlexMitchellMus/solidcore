@@ -20,6 +20,9 @@
 #include <new>
 #include <cstring>
 static long new_failure=-1,calloc_failure=-1;
+static bool test_exit_trap=false;
+struct ExitTrap { ~ExitTrap() { if(test_exit_trap) std::abort(); } };
+static ExitTrap exit_trap;
 void* operator new(std::size_t size) {
     if(new_failure==0) {new_failure=-1; throw std::bad_alloc();}
     if(new_failure>0) --new_failure;
@@ -38,7 +41,7 @@ extern "C" void* __wrap_calloc(std::size_t n,std::size_t size) {
 #define SC_ROLLOVER_WORKER_PATH "/proc/self/exe"
 #include "../worker/rollover.cpp"
 int main(int argc,char**argv) {
-    if(argc==2 && std::strcmp(argv[1],"--rollover-worker")==0) return rollover_worker_main();
+    if(argc==2 && std::strcmp(argv[1],"--rollover-worker")==0) std::_Exit(rollover_worker_main());
     if(argc<3) return 2;
     const long value=std::strtol(argv[2],nullptr,10);
     double input[]={0,0,-1,0,1,0,1,102,1,0,1,103};
@@ -67,6 +70,12 @@ int main(int argc,char**argv) {
         if(!safe_process_rail_copies(geom)) return 3; // blend early return
         std::printf("GUARD PASS: branch-specific null curve check\n");
         return 0;
+    }
+    if(std::strcmp(argv[1],"exit")==0) {
+        sc_rollover::test_signal=2; // arm a failing global destructor after the reply
+        int status=sc_rollover::isolated(0,input,12,out,128,&len);
+        std::printf("post-response global destructor skipped: status=%d\n",status);
+        return status==SC_OK?0:3;
     }
     if(std::strcmp(argv[1],"signal")==0) {
         sc_rollover::test_signal=value;

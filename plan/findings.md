@@ -8270,3 +8270,20 @@ runs: solver_p1 343/303 pass/40 deferred, geom_p1 480/446 pass/21 deferred/13
 rejected, custom_solver 448/401 pass/47 deferred; no failures. Kernel 1420 tests
 pass, including 18 rollover tests. Native guard/parser/capacity/concurrent-worker
 tests: 4 pass. Fmt, explicit runner/FFI rustfmt, Clippy and wasm32 pass.
+
+### Worker completion and late global finalizers
+
+The fresh worker must not run SMLib global destructors after sending its reply:
+that would put C++ work outside the parent's protocol-read timeout, before the
+blocking reap. It now calls `std::_Exit` after `rollover_worker_main` returns.
+All per-call fixture destructors have already executed inside the in-process
+functions, before the reply is produced; direct ASan/LSan still exercises normal
+destruction. A standalone regression arms a global destructor that aborts and
+requires a successful worker response: post-response global finalization must
+not run. Rechecked: 1200 allocation probes (818 success / 382 contained errors),
+SIGSEGV/SIGABRT containment, the new exit regression, four direct ASan/LSan calls
+and four checked FFI tests all pass. No host crash or reported leak/error.
+
+Full local `--green --no-report` after integration (`e28e6dbf`): 214 units,
+114 passed, 100 partial, 0 failed. The worker-exit follow-up changes only the native
+process completion; the affected p5 native comparisons are rechecked separately.
