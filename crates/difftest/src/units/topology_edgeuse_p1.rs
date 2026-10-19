@@ -1526,7 +1526,7 @@ pub(crate) fn bspline_of(c: &CrvIn) -> Result<BSplineCurve, HarnessError> {
     Ok(BSplineCurve::from_nurb(cur, c.dim, false))
 }
 
-fn surface_of(s: &SrfIn) -> Result<Surface, HarnessError> {
+pub(crate) fn surface_of(s: &SrfIn) -> Result<Surface, HarnessError> {
     match s {
         SrfIn::Plane { o, n } => Ok(Surface::from(Plane::from_normal(
             Vec3::from_array(*o),

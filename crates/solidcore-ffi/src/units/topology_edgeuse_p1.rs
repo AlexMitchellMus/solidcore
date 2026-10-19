@@ -225,10 +225,10 @@ fn check_points(rd: &mut Reader<'_>, k: usize, planar: bool, what: &str) -> Resu
 }
 
 /// The parameter domain `[u0, v0, u1, v1]` of a surface block, `None` for a plane.
-type Domain = Option<[f64; 4]>;
+pub(crate) type Domain = Option<[f64; 4]>;
 
 /// A surface block; returns its domain.
-fn surface(rd: &mut Reader<'_>) -> Result<Domain, FfiError> {
+pub(crate) fn surface(rd: &mut Reader<'_>) -> Result<Domain, FfiError> {
     let kind = rd.index(1)?;
     if kind == 1 {
         rd.vec3()?;
