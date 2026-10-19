@@ -45,6 +45,20 @@
 //! on the assisted solver (`cls 2`). `CalcFilletGeom` past its parallel-normal exit would
 //! step along the fillet and dereference the solver's `NULL` executive: the shim runs it
 //! only when the offset normals at the guesses are parallel (its first exit).
+//!
+//! [`eval_edgeuse`] (shim `harness/cpp/shim/blend_fillet_standard_solver_p2_eu.cpp`,
+//! `sc_blend_fillet_standard_solver_p2_eu_eval`) runs the `SmConstantDistanceFS`
+//! constructor on a B-rep block of unit `topology.edgeuse_p1`
+//! ([`super::topology_edgeuse_p1`]) followed by `eu tol ang tan dist fu fv`: the edge use's
+//! index in the export's traversal order, the constructor's tolerances and distance and
+//! the UV fractions of each offset surface's natural domain where it is evaluated.
+//! Output: `0`, or `-1 status` when the B-rep could not be built; then `-2` when upstream
+//! would dereference null (the edge use or its radial is not a loop edge use with edge,
+//! curve, face use, face, surface, vertex uses and vertices), or `0 built o0 o1 distance`
+//! (`built` `0` when the constructor signalled tangent surfaces and cleared its edge
+//! uses) and when built per rail `eu offset face base_is_face_surface status P[3]`; then
+//! the edge use's and its radial's `put_eu_state` (`EvaluateBinormal` may attach a UV
+//! trim curve).
 
 use crate::{call_with_buffer, FfiError};
 
@@ -91,6 +105,14 @@ impl Op {
 
 mod sys {
     extern "C" {
+        pub fn sc_blend_fillet_standard_solver_p2_eu_eval(
+            path: *const std::ffi::c_char,
+            input: *const f64,
+            n_in: i64,
+            out: *mut f64,
+            cap: i64,
+            out_len: *mut i64,
+        ) -> i32;
         pub fn sc_blend_fillet_standard_solver_p2_eval(
             op: i32,
             input: *const f64,
@@ -365,6 +387,57 @@ pub fn eval(op: Op, input: &[f64]) -> Result<Vec<f64>, FfiError> {
         unsafe {
             sys::sc_blend_fillet_standard_solver_p2_eval(
                 op.code(),
+                input.as_ptr(),
+                input.len() as i64,
+                buf.as_mut_ptr(),
+                buf.len() as i64,
+                &raw mut *len,
+            )
+        }
+    })
+}
+
+/// Runs the `SmConstantDistanceFS` edge-use constructor (layout in the module docs);
+/// `path` is the `.smb` file of a file B-rep block (ignored otherwise).
+///
+/// # Errors
+///
+/// [`FfiError::InvalidArgument`] for a malformed B-rep block, an edge use index outside
+/// the export, non-finite arguments or UV fractions outside `[0, 1]`;
+/// [`FfiError::Status`] for a shim failure.
+pub fn eval_edgeuse(path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
+    use super::topology_edgeuse_p1 as p1;
+    let mut rd = p1::Reader { input, at: 0 };
+    p1::brep_block(&mut rd, path)?;
+    let block = input.get(..rd.at).ok_or_else(|| bad("input too short"))?;
+    let export = p1::eval(p1::Op::Export, path, block)?;
+    let Some(c) = p1::counts(&export) else {
+        // the B-rep could not be built: the op reports the same failure
+        return Ok(export);
+    };
+    let n_eu = c.get(6).copied().unwrap_or(0);
+    rd.below(n_eu)?;
+    for _ in 0..4 {
+        rd.finite()?;
+    }
+    for _ in 0..2 {
+        let f = rd.finite()?;
+        if !(0.0..=1.0).contains(&f) {
+            return Err(bad("UV fraction outside [0, 1]"));
+        }
+    }
+    rd.done()?;
+    let cpath = std::ffi::CString::new(path).map_err(|_| bad("path has a NUL byte"))?;
+    call_with_buffer(4096, |buf, len| {
+        // SAFETY: cpath is a valid NUL-terminated string; input is valid for
+        // input.len() reads and holds what the shim reads (validated above: the B-rep
+        // block topology.edgeuse_p1 accepts, an edge use index inside its export and
+        // finite arguments; the shim checks the pointers the constructor dereferences);
+        // buf is valid for buf.len() writes and the shim honours the capacity; len is
+        // valid.
+        unsafe {
+            sys::sc_blend_fillet_standard_solver_p2_eu_eval(
+                cpath.as_ptr(),
                 input.as_ptr(),
                 input.len() as i64,
                 buf.as_mut_ptr(),

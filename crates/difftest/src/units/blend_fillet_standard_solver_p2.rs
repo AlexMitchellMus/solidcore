@@ -29,8 +29,8 @@ use serde_json::Value;
 
 use solidcore::blend::fillet_custom_solver::{OffsetSurface, SurfaceId};
 use solidcore::blend::fillet_standard_solver::p1::{
-    ConstantRadiusFs, CurveBasedFs, FilletLaw, FilletLawKind, SurfaceSurfaceFs, VariableRadiusFs,
-    CONSTANT_RADIUS_ASSISTED_FS_TYPE,
+    ConstantDistanceFs, ConstantRadiusFs, CurveBasedFs, FilletLaw, FilletLawKind, SurfaceSurfaceFs,
+    VariableRadiusFs, CONSTANT_RADIUS_ASSISTED_FS_TYPE,
 };
 use solidcore::blend::fillet_standard_solver::p2::constant_radius_assisted_is_kind_of;
 use solidcore::geom::axis2_placement::Axis2Placement;
@@ -49,8 +49,16 @@ use solidcore::nurbs::srf_basic::Surface as NurbSurface;
 use solidcore::surface::offset_surface::SS_UNKNOWN;
 use solidcore::surface::plane::Plane;
 use solidcore::surface::surface::Surface;
+use solidcore::topology::edgeuse::p1 as eu1;
+use solidcore::topology::{Brep, EdgeuseId};
 use solidcore::SolidError;
 use solidcore_ffi::units::blend_fillet_standard_solver_p2::{self as ffi, Op};
+use solidcore_ffi::units::topology_edgeuse_p1 as ffi1;
+
+use super::topology_edgeuse_p1::{
+    brep_block_of, gen_brep, import_with_types, path_of, sel, BrepIn, FILES,
+};
+use super::topology_edgeuse_p2::{inexact_geometry, put_eu_state, Setup};
 
 use crate::case::CaseContext;
 use crate::runner::default_cases;
@@ -154,17 +162,32 @@ enum Inputs {
     Types {
         kinds: Vec<i64>,
     },
+    /// The `SmConstantDistanceFS` edge-use constructor on a `topology.edgeuse_p1` B-rep.
+    CdEu {
+        brep: BrepIn,
+        /// Edge use selector (modulo the edge use count).
+        eu: i64,
+        tol: f64,
+        ang: f64,
+        tan: f64,
+        dist: f64,
+        /// UV fractions of the offset surfaces' natural domains where they are evaluated.
+        fu: f64,
+        fv: f64,
+    },
 }
 
 impl Inputs {
-    fn ffi(&self) -> Op {
-        match self {
+    /// The shim op (`None` for the edge-use constructor, which has its own entry point).
+    fn ffi(&self) -> Option<Op> {
+        Some(match self {
             Inputs::CrInit { .. } => Op::CrInit,
             Inputs::Guess { .. } => Op::Guess,
             Inputs::Plane { .. } => Op::Plane,
             Inputs::Ss { .. } => Op::Ss,
             Inputs::Types { .. } => Op::Types,
-        }
+            Inputs::CdEu { .. } => return None,
+        })
     }
 }
 
@@ -301,14 +324,278 @@ fn cpp_input(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
             push_kinds(&mut o, kinds);
         }
         Inputs::Types { kinds } => push_kinds(&mut o, kinds),
+        Inputs::CdEu { .. } => return Err(harness("the edge-use op has its own input")),
     }
     Ok(o)
 }
 
 fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
+    let Some(op) = i.ffi() else {
+        return cpp_edgeuse(i);
+    };
     let input = cpp_input(i)?;
-    let flat = ffi::eval(i.ffi(), &input).map_err(|e| harness(e.to_string()))?;
+    let flat = ffi::eval(op, &input).map_err(|e| harness(e.to_string()))?;
     Ok(to_output(&flat))
+}
+
+// ---- the edge-use constructor ------------------------------------------------------
+
+/// The case's B-rep: the C++ export, the imported Rust B-rep and the selected edge
+/// use; `Err(output)` when the B-rep cannot be built or has no edge use (as unit
+/// `topology.edgeuse_p3`'s runner).
+fn eu_setup(brep: &BrepIn, eu: i64) -> Result<Result<Setup, Output>, HarnessError> {
+    let path = path_of(Some(brep))?;
+    let block = brep_block_of(Some(brep), false, false)?;
+    let ex = ffi1::eval(ffi1::Op::Export, &path, &block)
+        .map_err(|e| harness(format!("c++ export: {e}")))?;
+    let Some(c) = ffi1::counts(&ex) else {
+        let st = ex.get(1).copied().unwrap_or(0.0);
+        return Ok(Err(Output::err(format!("brep_build_status_{st}"))));
+    };
+    let n_eu = c.get(6).copied().unwrap_or(0);
+    let s = sel(eu, n_eu);
+    if s < 0 {
+        return Ok(Err(Output::err("no_entity_of_that_kind")));
+    }
+    let (brep, types) = import_with_types(&ex)?;
+    let eu = EdgeuseId::from_index(u32::try_from(s).map_err(|_| harness("index"))?);
+    Ok(Ok(Setup {
+        path,
+        block,
+        brep,
+        eu,
+        types,
+    }))
+}
+
+/// The output of the constructor's record after the build status, as both sides build
+/// it: `-2` (upstream would dereference null) is an error output.
+fn eu_output(body: &[f64]) -> Output {
+    let first = body.first().copied().unwrap_or(f64::NAN);
+    if first == -2.0 {
+        return Output::err("null_deref");
+    }
+    Output::new()
+        .int("status", first as i64)
+        .values("out", body.get(1..).unwrap_or(&[]).to_vec())
+}
+
+fn cpp_edgeuse(i: &Inputs) -> Result<Output, HarnessError> {
+    let Inputs::CdEu {
+        brep,
+        eu,
+        tol,
+        ang,
+        tan,
+        dist,
+        fu,
+        fv,
+    } = i
+    else {
+        return Err(harness("not the edge-use op"));
+    };
+    let s = match eu_setup(brep, *eu)? {
+        Ok(s) => s,
+        Err(o) => return Ok(o),
+    };
+    let mut input = s.block.clone();
+    input.extend([f64::from(s.eu.index()), *tol, *ang, *tan, *dist, *fu, *fv]);
+    let out = ffi::eval_edgeuse(&s.path, &input).map_err(|e| harness(format!("c++: {e}")))?;
+    let body = out.get(1..).ok_or_else(|| harness("c++: empty output"))?;
+    Ok(eu_output(body))
+}
+
+/// Whether the edge use has the edge's primary edge use (`GetMate` / `GetRadial`).
+fn has_prim(b: &Brep, eu: EdgeuseId) -> Result<bool, SolidError> {
+    if eu1::is_shell_edgeuse(b, eu)? {
+        return Ok(true);
+    }
+    Ok(match eu1::edge(b, eu)? {
+        Some(e) => eu1::primary_edgeuse(b, e)?.is_some(),
+        None => false,
+    })
+}
+
+/// The shim's `eu_safe`: every pointer `EvaluateBinormal` and the constructor
+/// dereference for a loop edge use.
+fn eu_safe(b: &Brep, eu: Option<EdgeuseId>) -> Result<bool, SolidError> {
+    let Some(eu) = eu else {
+        return Ok(false);
+    };
+    let Some(e) = eu1::edge(b, eu)? else {
+        return Ok(false);
+    };
+    let has_surface = match eu1::face(b, eu)? {
+        Some(f) => b.face(f)?.surface.is_some(),
+        None => false,
+    };
+    if !eu1::is_loop_edgeuse(b, eu)?
+        || b.edge(e)?.curve.is_none()
+        || eu1::faceuse(b, eu)?.is_none()
+        || eu1::loopuse(b, eu)?.is_none()
+        || !has_surface
+        || eu1::vertexuse(b, eu)?.is_none()
+        || !has_prim(b, eu)?
+    {
+        return Ok(false);
+    }
+    let Some(prim) = eu1::primary_edgeuse(b, e)? else {
+        return Ok(false);
+    };
+    let Some(pm) = eu1::mate(b, prim)? else {
+        return Ok(false);
+    };
+    if eu1::vertexuse(b, prim)?.is_none() || eu1::vertexuse(b, pm)?.is_none() {
+        return Ok(false);
+    }
+    if let Some(mate) = eu1::mate(b, eu)? {
+        if eu1::vertexuse(b, mate)?.is_none() {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// The Rust record body of the constructor; `Err` for an error that is not an
+/// upstream status.
+#[allow(clippy::too_many_arguments)]
+fn rust_edgeuse_body(
+    b: &mut Brep,
+    eu: EdgeuseId,
+    tol: f64,
+    ang: f64,
+    tan: f64,
+    dist: f64,
+    fu: f64,
+    fv: f64,
+) -> Result<Vec<f64>, SolidError> {
+    let k = Kernel::default();
+    let radial = if has_prim(b, eu)? {
+        eu1::radial(b, eu)?
+    } else {
+        None
+    };
+    if !eu_safe(b, Some(eu))? || !eu_safe(b, radial)? {
+        return Ok(vec![-2.0]);
+    }
+    let mut v = Vec::new();
+    let fs = ConstantDistanceFs::from_edgeuse(&k, b, tol, ang, tan, dist, eu)?;
+    v.push(0.0);
+    let built = fs.solver.edgeuses[0].is_some();
+    v.push(flag(built));
+    v.extend(fs.solver.orientations);
+    v.push(fs.distance);
+    if built {
+        for i in 0..2 {
+            let e = fs.solver.edgeuses.get(i).copied().flatten();
+            v.push(e.map_or(-1.0, |e| f64::from(e.index())));
+            let s = fs.solver.surface(i)?;
+            v.push(s.offset_distance());
+            let face = match e {
+                Some(e) => eu1::face(b, e)?,
+                None => None,
+            };
+            v.push(face.map_or(-1.0, |f| f64::from(f.index())));
+            v.push(flag(face.is_some_and(|f| s.base_id == SurfaceId::Face(f))));
+            let d = s.surface.natural_uv_domain();
+            let uv = Point2::new(
+                d.min().x + fu * (d.max().x - d.min().x),
+                d.min().y + fv * (d.max().y - d.min().y),
+            );
+            match s.surface.evaluate_point(uv) {
+                Ok(p) => v.extend([0.0, p.x, p.y, p.z]),
+                Err(e) if e.is_unported() => return Err(e),
+                Err(e) => {
+                    let st = match e {
+                        SolidError::Upstream { code, .. } => f64::from(code),
+                        _ => return Err(e),
+                    };
+                    v.extend([st, 0.0, 0.0, 0.0]);
+                }
+            }
+        }
+    }
+    put_eu_state(&mut v, b, Some(eu))?;
+    put_eu_state(&mut v, b, radial)?;
+    Ok(v)
+}
+
+fn rust_edgeuse(i: &Inputs) -> Result<Output, HarnessError> {
+    let Inputs::CdEu {
+        brep,
+        eu,
+        tol,
+        ang,
+        tan,
+        dist,
+        fu,
+        fv,
+    } = i
+    else {
+        return Err(harness("not the edge-use op"));
+    };
+    let mut s = match eu_setup(brep, *eu)? {
+        Ok(s) => s,
+        Err(o) => return Ok(o),
+    };
+    if let Some(o) = inexact_geometry(&s) {
+        return Ok(o);
+    }
+    // the radial's face and edge too
+    if has_prim(&s.brep, s.eu).map_err(|e| he(&e))? {
+        if let Some(radial) = eu1::radial(&s.brep, s.eu).map_err(|e| he(&e))? {
+            let probe = Setup {
+                path: String::new(),
+                block: Vec::new(),
+                brep: s.brep.clone(),
+                eu: radial,
+                types: s.types.clone(),
+            };
+            if let Some(o) = inexact_geometry(&probe) {
+                return Ok(o);
+            }
+        }
+    }
+    match rust_edgeuse_body(&mut s.brep, s.eu, *tol, *ang, *tan, *dist, *fu, *fv) {
+        Ok(body) => Ok(eu_output(&body)),
+        Err(e) => {
+            if let Some(o) = Output::unported(&e) {
+                return Ok(o);
+            }
+            match e {
+                SolidError::InvalidInput { .. } => Ok(Output::err("null_deref")),
+                e => Err(harness(format!("rust: {e}"))),
+            }
+        }
+    }
+}
+
+fn gen_cd_eu(rng: &mut Rng) -> Inputs {
+    // Mostly the upstream solid B-reps (their edges have radial face uses); see the
+    // `blend.fillet_standard_solver_p1` runner's `gen_cr_eu`.
+    let brep = match rng.below(10) {
+        0..=5 => BrepIn::File {
+            file: "box_with_large_fillet.smb".to_string(),
+            rebuild: rng.chance(0.25),
+        },
+        6..=8 => BrepIn::File {
+            file: (*rng.choose(&FILES).unwrap_or(&"Mouse.smb")).to_string(),
+            rebuild: rng.chance(0.25),
+        },
+        _ => gen_brep(rng),
+    };
+    Inputs::CdEu {
+        brep,
+        eu: rng.below(1 << 20) as i64,
+        tol: *rng.choose(&[1e-6, 1e-3, 0.0, 1e-9]).unwrap_or(&1e-6),
+        ang: 30.0 * DEG,
+        tan: *rng.choose(&[2.0 * DEG, 0.0, 0.1]).unwrap_or(&0.0),
+        dist: *rng
+            .choose(&[0.1, 0.5, 1.0, 2.5, -0.3, 0.0, 1e-7, 50.0])
+            .unwrap_or(&0.5),
+        fu: *rng.choose(&[0.0, 0.25, 0.5, 1.0, 0.9]).unwrap_or(&0.5),
+        fv: *rng.choose(&[0.0, 0.4, 0.5, 1.0, 0.1]).unwrap_or(&0.5),
+    }
 }
 
 /// Splits a flat record into `status` and `out`.
@@ -724,11 +1011,15 @@ fn rust_record(i: &Inputs) -> Result<Rec, HarnessError> {
             push_types(&mut o, ss.type_code(), |t| ss.is_kind_of(t), kinds);
             push_types(&mut o, vr.type_code(), |t| vr.is_kind_of(t), kinds);
         }
+        Inputs::CdEu { .. } => return Err(harness("the edge-use op runs apart")),
     }
     Ok(Ok(o))
 }
 
 fn rust(i: &Inputs) -> Result<Output, HarnessError> {
+    if i.ffi().is_none() {
+        return rust_edgeuse(i);
+    }
     Ok(match rust_record(i)? {
         Ok(flat) => to_output(&flat),
         Err(out) => *out,
@@ -885,7 +1176,10 @@ fn gen_surface(rng: &mut Rng) -> SrfIn {
         0 | 1 => gen_plane(rng),
         2 => gen_closed_surface(rng).unwrap_or_else(|| gen_plane(rng)),
         3 => gen_singular_surface(rng),
-        _ => gen_bspline_surface(rng, rng.uniform(0.5, 2.0)),
+        _ => {
+            let z0 = rng.uniform(0.5, 2.0);
+            gen_bspline_surface(rng, z0)
+        }
     }
 }
 
@@ -1102,11 +1396,12 @@ fn gen_ss(rng: &mut Rng) -> Inputs {
 }
 
 fn gen_case(rng: &mut Rng) -> Inputs {
-    match rng.below(20) {
+    match rng.below(22) {
         0..=7 => gen_cr_init(rng),
         8..=12 => gen_plane_solve(rng, true),
         13..=14 => gen_plane_solve(rng, false),
         15..=18 => gen_ss(rng),
+        19..=20 => gen_cd_eu(rng),
         _ => Inputs::Types {
             kinds: type_kinds(rng),
         },
