@@ -3511,10 +3511,10 @@ soft_depends_on = ["blend.fillet_corner_p1", "blend.fillet_executive_p1", "blend
 est_lines = 1032
 layer = 60
 tests = ["SM_API_test:TestSmFilletPreview", "SM_API_test:TestSmSurfaceSurfaceFillet", "SM_API_test:TestSmCircularFillet", "SM_API_test:TestSmChamferFillet", "SM_API_test:TestSmFilletEdges", "SM_API_test:TestSmFilletEdgesPerEdge"]
-status = "todo"
+status = "partial"
 claimed_by = ""
 claimed_at = ""
-notes = "6 fns; largest: SmFilletGeom::ReCalcFilletGeom, SmFilletGeom::TopologySplit, SmFilletEdge::CalcFilletIntFillet, SmFilletVertex::CalcMateGeom; cycle back-edges (call into later units; stub or co-port): blend.fillet_geom_p5(9), blend.fillet_geom_p2(7), blend.fillet_geom_p6(4), blend.fillet_geom_p4(2), blend.fillet_solver_p2(2), blend.fillet_corner_p2(1); unit-SCC #22 (220 units); 31 upstream test entry points reach this unit"
+notes = "6 fns; largest: SmFilletGeom::ReCalcFilletGeom, SmFilletGeom::TopologySplit, SmFilletEdge::CalcFilletIntFillet, SmFilletVertex::CalcMateGeom; cycle back-edges (call into later units; stub or co-port): blend.fillet_geom_p5(9), blend.fillet_geom_p2(7), blend.fillet_geom_p6(4), blend.fillet_geom_p4(2), blend.fillet_solver_p2(2), blend.fillet_corner_p2(1); unit-SCC #22 (220 units); 31 upstream test entry points reach this unit; PR #242 partial: 315 cases (11 fixture + 4 expected_rejection regressions in fixtures/blend.fillet_geom_p3/cases.json, 300 generated: mates, on-vertex, fillet x fillet edges, corner-edge no-ops, ReCalcFilletGeom), 283 passed, 28 deferred (blend.fillet_intersector 13: SmFilletIntersector in ReCalcFilletGeom; blend.fillet_geom_p5 11: CalcCrossSection, the vertex CalcFilletIntFillet; blend.fillet_geom_p2 4: sm_SrfSrfIntersection), 4 rejected, 0 failed, max_rel_err=3.7e-14, no absolute floors; --perturb SENSITIVE 283/283; --fuzz 5000 FUZZ-PASS. Built on #147 and #192 (heads f0240ceb, 7a93010b, merged). TopologySplit is kernel-tested only (upstream needs a real SmFilletExecutive). ReCalcFilletGeom never reaches success before blend.fillet_intersector lands. Back-edge UNPORTED(blend.fillet_geom_p3) TopologySplit in blend/fillet_solver/p1.rs is not wired: it sits behind an earlier blend.fillet_geom_p6 stub and uses the solver's opaque FilletGeomRef. Upstream issues UB-175 (CalcVertOnVert NULL/wrong-kind object), UB-176 (unbounded mate recursion; MAX_MATE_DEPTH = 64)."
 
 [[unit]]
 id = "blend.fillet_geom_p4"
@@ -3626,7 +3626,7 @@ tests = ["SM_API_test:TestSmFilletPreview", "SM_API_test:TestSmSurfaceSurfaceFil
 status = "todo"
 claimed_by = ""
 claimed_at = ""
-notes = "13 fns; largest: SmFilletGeom::TrimCliffRails, SmFilletGeom::TrimRailCurves, SmFilletEdge::CalcCrossSection, SmFilletVertex::CalcFilletIntFillet; cycle back-edges (call into later units; stub or co-port): blend.fillet_corner_p2(1); unit-SCC #22 (220 units); 31 upstream test entry points reach this unit"
+notes = "13 fns; largest: SmFilletGeom::TrimCliffRails, SmFilletGeom::TrimRailCurves, SmFilletEdge::CalcCrossSection, SmFilletVertex::CalcFilletIntFillet; cycle back-edges (call into later units; stub or co-port): blend.fillet_corner_p2(1); unit-SCC #22 (220 units); 31 upstream test entry points reach this unit; CO-PORTED in blend.fillet_geom_p3 (PR #242): SmFilletGeom(SmFilletSolver*, SmFilletGeomType) for a base SmFilletSolver -> blend::fillet_geom::p3::new_solver_fillet_geom"
 
 [[unit]]
 id = "blend.fillet_corner_p2"

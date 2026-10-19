@@ -70,7 +70,7 @@ fn harness(msg: impl Into<String>) -> HarnessError {
     HarnessError::new(msg)
 }
 
-fn h(e: SolidError) -> HarnessError {
+fn h(e: impl std::fmt::Display) -> HarnessError {
     harness(e.to_string())
 }
 
@@ -1302,9 +1302,8 @@ fn gen_fif(rng: &mut Rng) -> Inputs {
     let mut ps = point_on(&curve, ta);
     let mut pe = point_on(&curve, tb);
     let (na, nb) = (noise(rng), noise(rng));
-    for i in 0..3 {
-        ps[i] += na[i];
-        pe[i] += nb[i];
+    for (p, n) in ps.iter_mut().zip(na).chain(pe.iter_mut().zip(nb)) {
+        *p += n;
     }
     let mut vs = vertex(FilletVertexType::FilletXFillet, FilStatus::Processed);
     vs.point = ps;
