@@ -19,6 +19,7 @@
 //! | [`squeeze_edge`]                | `SmBrep::SqueezeEdge`                            |
 //! | [`turn_to_nurbs`]               | `SmBrep::TurnToNURBS`                            |
 //! | [`edge_curve_identity`]         | (the `m_pCurve` object's identity in the notifications) |
+//! | [`with_kernel_callbacks`]       | (for callers without notification state: the B-rep context's callbacks) |
 //! | [`seed_topology_records`]       | (the `SmTopology` members every object carries; for callers of the edits) |
 //! | `Brep::remove_from_*_list` (crate) | `SmOwningTopology::Remove` on the B-rep's list heads (and `~SmTopology`) |
 //!
@@ -601,6 +602,45 @@ pub fn seed_topology_records(
         records.entry(key_of(e).key).or_default();
     }
     records.entry(p2::brep_ref(b).key).or_default();
+}
+
+/// Runs `edit` for a caller that keeps no notification state of its own (upstream's
+/// objects carry it): with an environment whose context holds the kernel context's
+/// notify callbacks (lent for the edit and given back, as upstream notifies through
+/// the B-rep's context), every object's default `SmTopology` record
+/// ([`seed_topology_records`]), `key_of` for the identities and an empty attribute
+/// store (attribute propagation is not modelled for such callers). Geometry
+/// identities still come from `k`'s context.
+///
+/// # Errors
+///
+/// Those of `edit`.
+pub fn with_kernel_callbacks<R>(
+    k: &mut Kernel,
+    b: &mut Brep,
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+    edit: impl FnOnce(&mut Kernel, &mut Brep, &mut NotifyEnv<'_>) -> Result<R>,
+) -> Result<R> {
+    let mut ctx = crate::geom::context::Context::default();
+    let (user, sys) = k.context.take_notify_callbacks();
+    ctx.set_user_notify_callback(user);
+    ctx.set_sys_notify_callback(sys);
+    let mut records = BTreeMap::new();
+    seed_topology_records(&mut records, b, key_of);
+    let mut attributes = crate::geom::attribute::AttributeStore::default();
+    let r = {
+        let mut env = NotifyEnv {
+            records: &mut records,
+            attributes: &mut attributes,
+            context: Some(&mut ctx),
+            key_of,
+        };
+        edit(k, b, &mut env)
+    };
+    let (user, sys) = ctx.take_notify_callbacks();
+    k.context.set_user_notify_callback(user);
+    k.context.set_sys_notify_callback(sys);
+    r
 }
 
 /// `SmApiBrepCopy`: a copy of `brep` that preserves its surface types (the copy
