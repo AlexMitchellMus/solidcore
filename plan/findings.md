@@ -23,6 +23,12 @@ are also logged, one entry each, in `plan/upstream-issues.md` for the upstream m
 - **JSON can't hold NaN or inf.** difftest inputs are JSON, so generated cases can't contain
   non-finite parameters (serde turns NaN into `null`). Test robustness to non-finite input in
   Rust unit tests. Outputs may still be non-finite.
+- **Shims: one argument-reader call per statement.** C++ leaves the evaluation order of
+  function and constructor arguments unspecified: `SmPoint3d p(ad.num(), ad.num(),
+  ad.num())` reads `(x, y, z)` on arm64 g++ but `(z, y, x)` on x86-64 g++. The
+  `topology.face_p4` line op passed on arm64 and failed 326 cases on x86-64 CI (lines through
+  permuted points). Read each value into a named local first (`double x = ad.num(), y =
+  ad.num();` is sequenced).
 - **difftest report `seeds` field.** It records the `--seeds` CLI value, not the number of
   generated cases a runner actually produced. `nlib.knots` overrides `cases()` to always
   generate at least 1200.

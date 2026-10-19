@@ -248,8 +248,12 @@ void fp4_brep_op(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
     }
     case FP4_OP_LINE:
     {
-        SmPoint3d p(ad.num(), ad.num(), ad.num());
-        SmVector3d v(ad.num(), ad.num(), ad.num());
+        // One reader call per statement: the evaluation order of constructor arguments
+        // is unspecified (x86-64 g++ reads them right to left).
+        double px = ad.num(), py = ad.num(), pz = ad.num();
+        double vx = ad.num(), vy = ad.num(), vz = ad.num();
+        SmPoint3d p(px, py, pz);
+        SmVector3d v(vx, vy, vz);
         bool has_ivl = ad.flag();
         double t0 = ad.num(), t1 = ad.num();
         SmBoolean fire = ad.bflag();
