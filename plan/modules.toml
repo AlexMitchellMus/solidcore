@@ -3427,10 +3427,10 @@ soft_depends_on = ["curve.curve_p1", "curve.curve_p4", "curve.curve_p5", "curve.
 est_lines = 1939
 layer = 59
 tests = ["prog_test:my_test_parallel_projection", "prog_test:my_test_tsurf_projection", "prog_test:my_test_surface_interface", "prog_test:my_test_ssi", "prog_test:my_test_tsurf_section", "prog_test:my_test_planar_section"]
-status = "todo"
+status = "partial"
 claimed_by = ""
 claimed_at = ""
-notes = "WIP in PR #249 (stacked on #192): module written, harness not yet; UB-192, WR-190. 10 fns; largest: SmFilletSolver::CreateCliffRollOverSideFG, SmFilletSolver::CalcTorusFilletGeom, sm_FindRolloverSideEdge, SmFilletSolver::CalcCylinderFilletGeom; cycle back-edges (call into later units; stub or co-port): blend.fillet_geom_p2(3), blend.fillet_geom_p5(2), blend.fillet_executive_p2(1), blend.fillet_geom_p6(1); unit-SCC #22 (220 units); 150 upstream test entry points reach this unit"
+notes = "PR #249 (stacked on #192, draft): all 10 fns ported (sm_FindRolloverSideEdge and CreateCliffRollOverSideFG in full, UNPORTED stubs at each fillet-geometry/executive call site). Difftest 300 cases: 187 pass (149 compare 3+ values), 0 failed, 113 deferred (intersect.surface_drop_lib_p3 56: GetOrCreateUVTrimCurve of the side edge use; surface.cone_p2 35: CopyAndAddAnalytics of the cylinder patch; blend.fillet_geom_p1 18: torus rail-end checks, RecordFilletError; blend.fillet_executive_p2 4: SmTemporaryRadiusChange); perturb 187/187. The solves run a rolling-ball test solver mirrored by shim and runner (the library solvers inherit GetJacobianSize etc. from unported units). UB-192, WR-190. Deviation: RailUvCurveIntersectEnfo (p1) takes a BSplineCurve, so SmLine/SmEllipse UV trim curves are evaluated in B-spline form there. 10 fns; largest: SmFilletSolver::CreateCliffRollOverSideFG, SmFilletSolver::CalcTorusFilletGeom, sm_FindRolloverSideEdge, SmFilletSolver::CalcCylinderFilletGeom; cycle back-edges (call into later units; stub or co-port): blend.fillet_geom_p2(3), blend.fillet_geom_p5(2), blend.fillet_executive_p2(1), blend.fillet_geom_p6(1); unit-SCC #22 (220 units); 150 upstream test entry points reach this unit"
 
 [[unit]]
 id = "blend.fillet_solver_p3"
