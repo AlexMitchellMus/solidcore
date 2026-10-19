@@ -1,0 +1,3804 @@
+{
+  "abs_floors": [],
+  "cases": [
+    {
+      "inputs": {
+        "do2": true,
+        "guess": [0.7491014699847068, 0.30963392997936773],
+        "intervals": [
+          [0.058176579443409704, 0.891505726588832],
+          [0.33216023745837897, 2.2703191428955183],
+          [0.41281539716130844, 1.9286804718309671],
+          [-0.4208623450736584, 0.45213917610263255],
+          [-0.050845880640934094, 0.041854382976778015]
+        ],
+        "op": "cr_init",
+        "per": [],
+        "rail": 1,
+        "s1_index": 0,
+        "sel1": 2,
+        "solver": {
+          "a": {
+            "kind": "bspline",
+            "net": [
+              [
+                [0.0, 0.0, 0.9241567905387933, -1.7976931348623157e+308],
+                [0.0, 4.0, 0.931138157614579, -1.7976931348623157e+308]
+              ],
+              [
+                [1.0, 0.0, 1.1920373841319347, -1.7976931348623157e+308],
+                [1.0, 4.0, 1.1811935752345446, -1.7976931348623157e+308]
+              ],
+              [
+                [2.0, 0.0, 1.1988093079042825, -1.7976931348623157e+308],
+                [2.0, 4.0, 0.9821703440014194, -1.7976931348623157e+308]
+              ],
+              [
+                [3.0, 0.0, 0.9977023217754346, -1.7976931348623157e+308],
+                [3.0, 4.0, 1.4938289652610923, -1.7976931348623157e+308]
+              ],
+              [
+                [4.0, 0.0, 1.0803109861406763, -1.7976931348623157e+308],
+                [4.0, 4.0, 1.417256210834502, -1.7976931348623157e+308]
+              ]
+            ],
+            "p": 3,
+            "q": 1,
+            "u": [0.0, 0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0],
+            "v": [0.0, 0.0, 1.0, 1.0]
+          },
+          "b": {
+            "domain": [0.0, 0.0, 0.9965097766702014, 1.2882427716621658],
+            "kind": "plane",
+            "o": [-0.2734124533866762, 1.001694190151103, 1.3608458036353883],
+            "scale": [1.173877106073038, 0.8693956814014507],
+            "x": [-0.5770088324970374, 0.28771178517067425, -0.7643838930107762],
+            "y": [0.8155745626218304, 0.15303842432564324, -0.5580478236532552]
+          },
+          "cls": 1,
+          "ext": 0.1,
+          "o": [true, true],
+          "r": [0.3910658901853881, 0.3910658901853881]
+        }
+      },
+      "max_rel_err": 0.0003646608350999029,
+      "mismatch_count": 1,
+      "mismatches": [
+        {
+          "cpp": "2.3112246736941722e-1",
+          "field": "values.out[19]",
+          "rel_err": 0.0003646608350999029,
+          "rust": "2.3103818605745594e-1"
+        }
+      ],
+      "name": "fx_a",
+      "outcome": "fail",
+      "pass": false,
+      "source": "fixture:fixtures/blend.fillet_standard_solver_p2/cases.json#0",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "fx_b_ext05",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_standard_solver_p2/cases.json#1",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "fx_c_ext0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_standard_solver_p2/cases.json#2",
+      "values_compared": 23
+    },
+    {
+      "inputs": {
+        "do2": true,
+        "guess": [0.7, 0.3],
+        "intervals": [
+          [0.058176579443409704, 0.891505726588832],
+          [0.33216023745837897, 2.2703191428955183],
+          [0.41281539716130844, 1.9286804718309671],
+          [-0.4208623450736584, 0.45213917610263255],
+          [-0.050845880640934094, 0.041854382976778015]
+        ],
+        "op": "cr_init",
+        "per": [],
+        "rail": 1,
+        "s1_index": 0,
+        "sel1": 2,
+        "solver": {
+          "a": {
+            "kind": "bspline",
+            "net": [
+              [
+                [0.0, 0.0, 0.9241567905387933, -1.7976931348623157e+308],
+                [0.0, 4.0, 0.931138157614579, -1.7976931348623157e+308]
+              ],
+              [
+                [1.0, 0.0, 1.1920373841319347, -1.7976931348623157e+308],
+                [1.0, 4.0, 1.1811935752345446, -1.7976931348623157e+308]
+              ],
+              [
+                [2.0, 0.0, 1.1988093079042825, -1.7976931348623157e+308],
+                [2.0, 4.0, 0.9821703440014194, -1.7976931348623157e+308]
+              ],
+              [
+                [3.0, 0.0, 0.9977023217754346, -1.7976931348623157e+308],
+                [3.0, 4.0, 1.4938289652610923, -1.7976931348623157e+308]
+              ],
+              [
+                [4.0, 0.0, 1.0803109861406763, -1.7976931348623157e+308],
+                [4.0, 4.0, 1.417256210834502, -1.7976931348623157e+308]
+              ]
+            ],
+            "p": 3,
+            "q": 1,
+            "u": [0.0, 0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0],
+            "v": [0.0, 0.0, 1.0, 1.0]
+          },
+          "b": {
+            "domain": [0.0, 0.0, 0.9965097766702014, 1.2882427716621658],
+            "kind": "plane",
+            "o": [-0.2734124533866762, 1.001694190151103, 1.3608458036353883],
+            "scale": [1.173877106073038, 0.8693956814014507],
+            "x": [-0.5770088324970374, 0.28771178517067425, -0.7643838930107762],
+            "y": [0.8155745626218304, 0.15303842432564324, -0.5580478236532552]
+          },
+          "cls": 1,
+          "ext": 0.1,
+          "o": [true, true],
+          "r": [0.3910658901853881, 0.3910658901853881]
+        }
+      },
+      "max_rel_err": 0.0005157053388304489,
+      "mismatch_count": 1,
+      "mismatches": [
+        {
+          "cpp": "2.2672555024052707e-1",
+          "field": "values.out[19]",
+          "rel_err": 0.0005157053388304489,
+          "rust": "2.2660862666381876e-1"
+        }
+      ],
+      "name": "fx_d_guess",
+      "outcome": "fail",
+      "pass": false,
+      "source": "fixture:fixtures/blend.fillet_standard_solver_p2/cases.json#3",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "fx_e_r03",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_standard_solver_p2/cases.json#4",
+      "values_compared": 23
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0000",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065831",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0001",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065832",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0002",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065833",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0003",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065834",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0004",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065835",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0005",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065836",
+      "values_compared": 21
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0006",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065837",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0007",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065838",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0008",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065839",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0009",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065840",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0010",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065841",
+      "values_compared": 23
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0011",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065842",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0012",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065843",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0013",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065844",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0014",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065845",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0015",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065846",
+      "values_compared": 4
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0016",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065847",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0017",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065848",
+      "values_compared": 4
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0018",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065849",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0019",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065850",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0020",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065851",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0021",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065852",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0022",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065853",
+      "values_compared": 8
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0023",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065854",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0024",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065855",
+      "values_compared": 8
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0025",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065856",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0026",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065857",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0027",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065858",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0028",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065859",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0029",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065860",
+      "values_compared": 45
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0030",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065861",
+      "values_compared": 31
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0031",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065862",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0032",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065863",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0033",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065864",
+      "values_compared": 40
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0034",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065865",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0035",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065866",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0036",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065867",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0037",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065868",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0038",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065869",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0039",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065870",
+      "values_compared": 56
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0040",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065871",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0041",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065872",
+      "values_compared": 4
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0042",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065873",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0043",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065874",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0044",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065875",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0045",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065876",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0046",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065877",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0047",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065878",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0048",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065879",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0049",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065880",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0050",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065881",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0051",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065882",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0052",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065883",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0053",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065884",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0054",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065885",
+      "values_compared": 21
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0055",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065886",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0056",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065887",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0057",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065888",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0058",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065889",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0059",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065890",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0060",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065891",
+      "values_compared": 40
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0061",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065892",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0062",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065893",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0063",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065894",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0064",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065895",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0065",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065896",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0066",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065897",
+      "values_compared": 21
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0067",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065898",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0068",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065899",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0069",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065900",
+      "values_compared": 21
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0070",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065901",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0071",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065902",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0072",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065903",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0073",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065904",
+      "values_compared": 45
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0074",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065905",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0075",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065906",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0076",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065907",
+      "values_compared": 25
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0077",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065908",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0078",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065909",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0079",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065910",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0080",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065911",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0081",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065912",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0082",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065913",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0083",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065914",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0084",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065915",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0085",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065916",
+      "values_compared": 4
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0086",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065917",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0087",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065918",
+      "values_compared": 27
+    },
+    {
+      "deferred": {
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0088",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065919",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0089",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065920",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0090",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065921",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0091",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065922",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0092",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065923",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0093",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065924",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0094",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065925",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0095",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065926",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0096",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065927",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0097",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065928",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0098",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065929",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0099",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065930",
+      "values_compared": 34
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0100",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065931",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0101",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065932",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0102",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065933",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0103",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065934",
+      "values_compared": 40
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0104",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065935",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0105",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065936",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0106",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065937",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0107",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065938",
+      "values_compared": 23
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0108",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065939",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0109",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065940",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0110",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065941",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0111",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065942",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0112",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065943",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0113",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065944",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0114",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065945",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0115",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065946",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0116",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065947",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0117",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065948",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0118",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065949",
+      "values_compared": 23
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0119",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065950",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0120",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065951",
+      "values_compared": 8
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0121",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065952",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0122",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065953",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0123",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065954",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0124",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065955",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0125",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065956",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0126",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065957",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0127",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065958",
+      "values_compared": 56
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0128",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065959",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0129",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065960",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0130",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065961",
+      "values_compared": 31
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0131",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065962",
+      "values_compared": 40
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0132",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065963",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0133",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065964",
+      "values_compared": 40
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0134",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065965",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0135",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065966",
+      "values_compared": 45
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0136",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065967",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0137",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065968",
+      "values_compared": 45
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0138",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065969",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0139",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065970",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0140",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065971",
+      "values_compared": 8
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0141",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065972",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0142",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065973",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0143",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065974",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0144",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065975",
+      "values_compared": 17
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0145",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065976",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0146",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065977",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0147",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065978",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0148",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065979",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0149",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065980",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0150",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065981",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0151",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065982",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0152",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065983",
+      "values_compared": 23
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0153",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065984",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0154",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065985",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0155",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065986",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0156",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065987",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0157",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065988",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0158",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065989",
+      "values_compared": 8
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0159",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065990",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0160",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065991",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0161",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065992",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0162",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065993",
+      "values_compared": 40
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0163",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915065994",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0164",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065995",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0165",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065996",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0166",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065997",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0167",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065998",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0168",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915065999",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0169",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066000",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0170",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066001",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0171",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066002",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0172",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066003",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0173",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066004",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0174",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066005",
+      "values_compared": 8
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0175",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066006",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0176",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066007",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0177",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066008",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0178",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066009",
+      "values_compared": 56
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0179",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066010",
+      "values_compared": 34
+    },
+    {
+      "inputs": {
+        "do2": true,
+        "guess": [0.7491014699847068, 0.30963392997936773],
+        "intervals": [
+          [0.058176579443409704, 0.891505726588832],
+          [0.33216023745837897, 2.2703191428955183],
+          [0.41281539716130844, 1.9286804718309671],
+          [-0.4208623450736584, 0.45213917610263255],
+          [-0.050845880640934094, 0.041854382976778015]
+        ],
+        "op": "cr_init",
+        "per": [],
+        "rail": 1,
+        "s1_index": 0,
+        "sel1": 2,
+        "solver": {
+          "a": {
+            "kind": "bspline",
+            "net": [
+              [
+                [0.0, 0.0, 0.9241567905387933, -1.7976931348623157e+308],
+                [0.0, 4.0, 0.931138157614579, -1.7976931348623157e+308]
+              ],
+              [
+                [1.0, 0.0, 1.1920373841319347, -1.7976931348623157e+308],
+                [1.0, 4.0, 1.1811935752345446, -1.7976931348623157e+308]
+              ],
+              [
+                [2.0, 0.0, 1.1988093079042825, -1.7976931348623157e+308],
+                [2.0, 4.0, 0.9821703440014194, -1.7976931348623157e+308]
+              ],
+              [
+                [3.0, 0.0, 0.9977023217754346, -1.7976931348623157e+308],
+                [3.0, 4.0, 1.4938289652610923, -1.7976931348623157e+308]
+              ],
+              [
+                [4.0, 0.0, 1.0803109861406763, -1.7976931348623157e+308],
+                [4.0, 4.0, 1.417256210834502, -1.7976931348623157e+308]
+              ]
+            ],
+            "p": 3,
+            "q": 1,
+            "u": [0.0, 0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0],
+            "v": [0.0, 0.0, 1.0, 1.0]
+          },
+          "b": {
+            "domain": [0.0, 0.0, 0.9965097766702014, 1.2882427716621658],
+            "kind": "plane",
+            "o": [-0.2734124533866762, 1.001694190151103, 1.3608458036353883],
+            "scale": [1.173877106073038, 0.8693956814014507],
+            "x": [-0.5770088324970374, 0.28771178517067425, -0.7643838930107762],
+            "y": [0.8155745626218304, 0.15303842432564324, -0.5580478236532552]
+          },
+          "cls": 1,
+          "ext": 0.1,
+          "o": [true, true],
+          "r": [0.3910658901853881, 0.3910658901853881]
+        }
+      },
+      "max_rel_err": 0.0003646608350999029,
+      "mismatch_count": 1,
+      "mismatches": [
+        {
+          "cpp": "2.3112246736941722e-1",
+          "field": "values.out[19]",
+          "rel_err": 0.0003646608350999029,
+          "rust": "2.3103818605745594e-1"
+        }
+      ],
+      "name": "gen0180",
+      "outcome": "fail",
+      "pass": false,
+      "source": "generated:seed=7089733659915066011",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0181",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066012",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0182",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066013",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0183",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066014",
+      "values_compared": 17
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0184",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066015",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0185",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066016",
+      "values_compared": 40
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0186",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066017",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0187",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066018",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0188",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066019",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0189",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066020",
+      "values_compared": 21
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0190",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066021",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0191",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066022",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0192",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066023",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0193",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066024",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0194",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066025",
+      "values_compared": 21
+    },
+    {
+      "deferred": {
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0195",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066026",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0196",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066027",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0197",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066028",
+      "values_compared": 31
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0198",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066029",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0199",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066030",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0200",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066031",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0201",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066032",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0202",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066033",
+      "values_compared": 8
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0203",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066034",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0204",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066035",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0205",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066036",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0206",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066037",
+      "values_compared": 82
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0207",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066038",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0208",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066039",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0209",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066040",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0210",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066041",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0211",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066042",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0212",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066043",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0213",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066044",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0214",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066045",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0215",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066046",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0216",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066047",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0217",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066048",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0218",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066049",
+      "values_compared": 82
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0219",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066050",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0220",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066051",
+      "values_compared": 21
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0221",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066052",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0222",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066053",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0223",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066054",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0224",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066055",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0225",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066056",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0226",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066057",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0227",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066058",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0228",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066059",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0229",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066060",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0230",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066061",
+      "values_compared": 31
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0231",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066062",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0232",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066063",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0233",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066064",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0234",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066065",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0235",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066066",
+      "values_compared": 8
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0236",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066067",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0237",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066068",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0238",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066069",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0239",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066070",
+      "values_compared": 34
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0240",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066071",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0241",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066072",
+      "values_compared": 27
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0242",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066073",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0243",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066074",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0244",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066075",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0245",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066076",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0246",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066077",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0247",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066078",
+      "values_compared": 31
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0248",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066079",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0249",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066080",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0250",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066081",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0251",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066082",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0252",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066083",
+      "values_compared": 21
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0253",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066084",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0254",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066085",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0255",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066086",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0256",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066087",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0257",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066088",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0258",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066089",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0259",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066090",
+      "values_compared": 45
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0260",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066091",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0261",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066092",
+      "values_compared": 8
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0262",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066093",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0263",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066094",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0264",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066095",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0265",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066096",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0266",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066097",
+      "values_compared": 40
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0267",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066098",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0268",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066099",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0269",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066100",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0270",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066101",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0271",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066102",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0272",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066103",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0273",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066104",
+      "values_compared": 34
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0274",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066105",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0275",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066106",
+      "values_compared": 56
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0276",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066107",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0277",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066108",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0278",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066109",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0279",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066110",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0280",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066111",
+      "values_compared": 19
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0281",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066112",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0282",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066113",
+      "values_compared": 8
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0283",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066114",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0284",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066115",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0285",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066116",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0286",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066117",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0287",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066118",
+      "values_compared": 56
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0288",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066119",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0289",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066120",
+      "values_compared": 56
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0290",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066121",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0291",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066122",
+      "values_compared": 40
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0292",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066123",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0293",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066124",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0294",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066125",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0295",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066126",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0296",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066127",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0297",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066128",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0298",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066129",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0299",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066130",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0300",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066131",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0301",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066132",
+      "values_compared": 29
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0302",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066133",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0303",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066134",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0304",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066135",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0305",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066136",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0306",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066137",
+      "values_compared": 8
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0307",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066138",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0308",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066139",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0309",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066140",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0310",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066141",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0311",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066142",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0312",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066143",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0313",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066144",
+      "values_compared": 34
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0314",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066145",
+      "values_compared": 21
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0315",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066146",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0316",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066147",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0317",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066148",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0318",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066149",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0319",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066150",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0320",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066151",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0321",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066152",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0322",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066153",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0323",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066154",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0324",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066155",
+      "values_compared": 40
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0325",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066156",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0326",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066157",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0327",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066158",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0328",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066159",
+      "values_compared": 23
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0329",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066160",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0330",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066161",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0331",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066162",
+      "values_compared": 27
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0332",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066163",
+      "values_compared": 8
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0333",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066164",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0334",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066165",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0335",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066166",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0336",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066167",
+      "values_compared": 19
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0337",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066168",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0338",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066169",
+      "values_compared": 82
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0339",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066170",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0340",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066171",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0341",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066172",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0342",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066173",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0343",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066174",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0344",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066175",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0345",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066176",
+      "values_compared": 40
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0346",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066177",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0347",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066178",
+      "values_compared": 31
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0348",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066179",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0349",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066180",
+      "values_compared": 31
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0350",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066181",
+      "values_compared": 4
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0351",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066182",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0352",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066183",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0353",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066184",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0354",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066185",
+      "values_compared": 4
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0355",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066186",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0356",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066187",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0357",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066188",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0358",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066189",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0359",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066190",
+      "values_compared": 23
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0360",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066191",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 8.93846722973474e-16,
+      "name": "gen0361",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066192",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0362",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066193",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 6.98322766596592e-16,
+      "name": "gen0363",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066194",
+      "values_compared": 23
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0364",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066195",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0365",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066196",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0366",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066197",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0367",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066198",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0368",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066199",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0369",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066200",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0370",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066201",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0371",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066202",
+      "values_compared": 40
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0372",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066203",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0373",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066204",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0374",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066205",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0375",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066206",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0376",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066207",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0377",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066208",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0378",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066209",
+      "values_compared": 23
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0379",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066210",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0380",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066211",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0381",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066212",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0382",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066213",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0383",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066214",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0384",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066215",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0385",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066216",
+      "values_compared": 8
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0386",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066217",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0387",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066218",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0388",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066219",
+      "values_compared": 25
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0389",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066220",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0390",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066221",
+      "values_compared": 40
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0391",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066222",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0392",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066223",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0393",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066224",
+      "values_compared": 8
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0394",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066225",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0395",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066226",
+      "values_compared": 45
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0396",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066227",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0397",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066228",
+      "values_compared": 8
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::SetupOffsetExtension",
+        "unit": "blend.fillet_solver_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0398",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=7089733659915066229",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0399",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7089733659915066230",
+      "values_compared": 29
+    }
+  ],
+  "cases_both_errored": 0,
+  "cases_deferred": 84,
+  "cases_failed": 3,
+  "cases_passed": 318,
+  "cases_total": 405,
+  "deferred_by_unit": {
+    "blend.fillet_solver_p1": 67,
+    "intersect.surface_drop_lib_p3": 2,
+    "surface.cone_p1": 7,
+    "surface.sphere": 2,
+    "surface.surf_of_extrusion_p2": 1,
+    "topology.brep_p10": 5
+  },
+  "max_rel_err": 0.0005157053388304489,
+  "pass": false,
+  "rel_tol": 1e-9,
+  "seeds": 16,
+  "status": "fail",
+  "unit": "blend.fillet_standard_solver_p2"
+}
