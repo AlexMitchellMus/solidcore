@@ -18,20 +18,24 @@
 //! the imported model with the C++ records, which proves the encodings agree while the
 //! operations still defer.
 use super::topology_vertexuse::{self as shared, BrepIn};
+use crate::case::CaseContext;
 use crate::output::Topology;
+use crate::runner::default_cases;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use solidcore::error::{EntityRef, SolidError};
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
 use solidcore::geom::object::ObjectRef;
-use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use solidcore::kernel::Kernel;
+use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use solidcore::surface::surface::Surface;
 use solidcore::topology::brep::p4::{self, DeleteEnv};
+use solidcore::topology::brep_cache::{arena_identity, CacheObject};
 use solidcore::topology::topology::Topology as SmTopologyRecord;
 use solidcore::topology::{
-    ArenaId, Brep, EdgeId, EdgeuseOwner, FaceId, LoopuseStart, VertexId, VertexuseId, VertexuseOwner,
+    ArenaId, Brep, EdgeId, EdgeuseOwner, FaceId, LoopuseStart, VertexId, VertexuseId,
+    VertexuseOwner,
 };
 use solidcore_ffi::units::topology_brep_p4::{self as ffi, Op, Request};
 use solidcore_ffi::units::topology_vertexuse::counts;
@@ -120,7 +124,9 @@ fn request(i: &Inputs) -> Request {
 }
 
 /// The imported fixture with the vertex use lists in their raw order.
-fn import(f: &solidcore_ffi::units::topology_topology_traverser::Fixture) -> Result<Brep, HarnessError> {
+fn import(
+    f: &solidcore_ffi::units::topology_topology_traverser::Fixture,
+) -> Result<Brep, HarnessError> {
     let (mut b, _) = shared::import(&f.graph)?;
     for (i, list) in f.vertexuses.iter().enumerate() {
         b.vertex_mut(VertexId::from_index(i as u32))
@@ -145,7 +151,6 @@ fn record_counts(b: &Brep) -> [usize; 10] {
         b.vertices().len(),
     ]
 }
-
 
 // ---- the records ---------------------------------------------------------------------------
 
@@ -322,7 +327,8 @@ fn orient(o: OrientType) -> i64 {
 /// counts before the operation.
 fn rust_records(b: &Brep, pre: [usize; 10]) -> Model {
     let lb = Labels { pre };
-    let (mut regions, mut shells, mut faceuses, mut faces) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let (mut regions, mut shells, mut faceuses, mut faces) =
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     let (mut loopuses, mut loops, mut edgeuses) = (Vec::new(), Vec::new(), Vec::new());
     let (mut edges, mut vertexuses, mut vertices) = (Vec::new(), Vec::new(), Vec::new());
     for (id, r) in b.regions().iter() {
@@ -510,7 +516,12 @@ fn canonicalize(m: &mut Model) {
 /// A link to record `x` of a kind, with a new record named by its class.
 fn renamed(class: &[BTreeMap<i64, i64>], kind: usize, x: i64) -> i64 {
     if x >= NEW_BASE {
-        NEW_BASE + class.get(kind).and_then(|c| c.get(&x)).copied().unwrap_or(0)
+        NEW_BASE
+            + class
+                .get(kind)
+                .and_then(|c| c.get(&x))
+                .copied()
+                .unwrap_or(0)
     } else {
         x
     }
@@ -555,12 +566,54 @@ fn rust_status(e: &SolidError) -> Result<Output, HarnessError> {
     }
 }
 
-/// The owner of the surface of face `index`, as the importer names it.
+/// Generated cases per run (the default 16 hardly reach every operation).
+const MIN_GENERATED: usize = 160;
+
+/// A one-face B-rep for `ShrinkGeometry` whose trim domain lies inside, across or
+/// wholly outside the surface's natural domain (the disjoint case makes
+/// `SmExtent2d::Intersect` fail and `Init()` the face domain).
+fn shrink_face(rng: &mut Rng) -> BrepIn {
+    let surface = shared::gen_surface(rng);
+    let [u0, v0, u1, v1] = shared::domain(&surface);
+    let (du, dv) = (u1 - u0, v1 - v0);
+    let dom = match rng.below(3) {
+        // inside, within a thousandth of the size of the natural boundary (snapped)
+        0 => [
+            u0 + du * 1e-4,
+            v0 + dv * 2e-4,
+            u1 - du * 1e-4,
+            v1 - dv * 3e-4,
+        ],
+        // across the natural boundary
+        1 => [u0 - du * 0.25, v0 + dv * 0.1, u1 - du * 0.5, v1 + dv * 0.2],
+        // wholly outside (disjoint)
+        _ => [u1 + du * 0.5, v1 + dv * 0.5, u1 + du * 1.5, v1 + dv * 1.5],
+    };
+    BrepIn::Face { surface, dom }
+}
+
+/// The owner of the surface of face `index`: the face's arena identity, which
+/// `SmBrep::GetSurfaces` (`topology::brep::p1::surfaces`) tests the owner against.
 fn face_owner(index: u32) -> ObjectRef {
-    ObjectRef {
-        type_code: solidcore::topology::face::p2::TYPE,
-        key: ObjectKey(1 + u64::from(index)),
+    arena_identity(CacheObject::Face(FaceId::from_index(index)))
+}
+
+/// The importer names an owned surface's face `1 + index`; the B-rep names it by its
+/// arena identity ([`face_owner`]). Surfaces the C++ face owns stay owned.
+fn own_surfaces(b: &mut Brep) -> Result<(), HarnessError> {
+    let ids: Vec<FaceId> = b.faces().ids().collect();
+    for f in ids {
+        let imported = ObjectRef {
+            type_code: solidcore::topology::face::p2::TYPE,
+            key: ObjectKey(1 + u64::from(f.index())),
+        };
+        if let Some(s) = b.face_mut(f).map_err(|e| err(&e))?.surface.as_mut() {
+            if s.owner() == Some(imported) {
+                let _ = s.set_owner(Some(face_owner(f.index())));
+            }
+        }
     }
+    Ok(())
 }
 
 fn key_of(e: EntityRef) -> ObjectRef {
@@ -622,6 +675,7 @@ impl UnitDiff for Runner {
             return Ok(Output::new());
         }
         let mut b = import(&f)?;
+        own_surfaces(&mut b)?;
         b.set_editing_enabled(i.editing);
         let pre = record_counts(&b);
         let mut k = Kernel::default();
@@ -636,15 +690,24 @@ impl UnitDiff for Runner {
         let target = u32::try_from(i.target).unwrap_or(u32::MAX);
         let r = match i.op {
             OpIn::DeleteEdge => {
-                p4::delete_edge(&mut k, &mut b, &mut env, EdgeId::from_index(target), keep).map(|()| None)
+                p4::delete_edge(&mut k, &mut b, &mut env, EdgeId::from_index(target), keep)
+                    .map(|()| None)
             }
             OpIn::DeleteVertex => {
-                p4::delete_vertex(&mut k, &mut b, &mut env, VertexId::from_index(target)).map(|()| None)
+                p4::delete_vertex(&mut k, &mut b, &mut env, VertexId::from_index(target))
+                    .map(|()| None)
             }
             OpIn::ShrinkGeometry => p4::shrink_geometry(&k, &mut b).map(|()| None),
             OpIn::StitchFaces => {
                 let faces = [keep];
-                p4::stitch_faces(&mut b, i.tol, keep.is_some().then_some(&faces[..]), i.flag).map(|s| {
+                p4::stitch_faces(
+                    &mut k,
+                    &mut b,
+                    i.tol,
+                    keep.is_some().then_some(&faces[..]),
+                    i.flag,
+                )
+                .map(|s| {
                     Some(vec![
                         f64::from(s.stitched_edges),
                         f64::from(s.lamina_edges),
@@ -670,7 +733,10 @@ impl UnitDiff for Runner {
                 if let Some(x) = extra {
                     o = o.values("stitch", x);
                 }
-                let counts = record_counts(&b).iter().map(|&n| n as i64).collect::<Vec<_>>();
+                let counts = record_counts(&b)
+                    .iter()
+                    .map(|&n| n as i64)
+                    .collect::<Vec<_>>();
                 let mut model = rust_records(&b, pre);
                 canonicalize(&mut model);
                 Ok(records_output(o.ints("counts", counts), &model))
@@ -679,19 +745,31 @@ impl UnitDiff for Runner {
         }
     }
 
+    fn cases(&self, ctx: &CaseContext) -> Result<Vec<Case>, HarnessError> {
+        let ctx = CaseContext {
+            seeds: ctx.seeds.max(MIN_GENERATED),
+            ..ctx.clone()
+        };
+        default_cases(self, &ctx)
+    }
+
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
-        let brep = shared::gen_brep(rng);
+        let op = match rng.below(14) {
+            0..=4 => OpIn::DeleteEdge,
+            5..=6 => OpIn::DeleteVertex,
+            7..=9 => OpIn::ShrinkGeometry,
+            10 => OpIn::StitchFaces,
+            11 => OpIn::Destroy,
+            _ => OpIn::Check,
+        };
+        let brep = if op == OpIn::ShrinkGeometry && rng.chance(0.5) {
+            shrink_face(rng)
+        } else {
+            shared::gen_brep(rng)
+        };
         let (path, blk) = block(&brep).ok()?;
         let f = ffi::export(&path, &blk).ok()?;
         let c = counts(&f.graph)?;
-        let op = match rng.below(12) {
-            0..=4 => OpIn::DeleteEdge,
-            5..=6 => OpIn::DeleteVertex,
-            7 => OpIn::ShrinkGeometry,
-            8 => OpIn::StitchFaces,
-            9 => OpIn::Destroy,
-            _ => OpIn::Check,
-        };
         let n = match op {
             OpIn::DeleteEdge => c[7],
             OpIn::DeleteVertex => c[9],

@@ -22,8 +22,15 @@
 //!   owner's `Vec` (`PostInsert` appends) and the member's back link is cleared / set.
 //!   A `Remove` whose member is not owned by the owner is `SM_ERR` with nothing
 //!   changed, as upstream; `DeleteEdge` and `DeleteVertex` ignore that status, as upstream.
-//!   The B-rep's face, edge and vertex lists are the arenas, so `m_p*ListHead->Remove`
-//!   and the following `delete` are one record removal.
+//!   `m_p*ListHead->Remove` and the following `delete` are one record removal, which
+//!   also takes the id off the B-rep's face, edge or vertex list
+//!   ([`Brep::face_list`] and siblings, unit `topology.brep_p1`).
+//! - **Shell lists.** A shell's `m_pList` / `m_tShellType` are
+//!   [`crate::topology::Shell::members`] / `shell_type` (unit `topology.shell`); the
+//!   direct member writes of `DeleteEdge` (`m_pList = ..; UpdateListSize()`, the list
+//!   size is not a record) set them as upstream. A face use's `Remove` / `PostInsert`
+//!   on a shell edit the face-use list (and the shell's face list with it); face uses
+//!   with literal sibling links are relinked to the list order.
 //! - **Surface identity.** Upstream compares `SmSurface*` pointers. As in
 //!   [`crate::topology::edge`], a surface is named by the face holding it: two faces
 //!   have the same surface when they are the same face (both with a surface).
@@ -36,16 +43,17 @@
 //!   `SmFace::SetSurface` (ported in `topology.face_p1`, which moves an owned
 //!   `Surface`): the swap takes the surface out of the deleted face and hands the
 //!   replaced one back.
-//! - **`SmLockBrepBox`** is RAII upstream. `LockBrepBox::scoped` is the scope: it locks,
-//!   runs the body and unlocks once on every path out of it (`StitchFaces`).
+//! - **`SmLockBrepBox`** is RAII upstream; `StitchFaces` holds `topology.brep_p1`'s
+//!   [`LockBrepBox`] guard (unlocked on drop, on every path). Its lock
+//!   (`SmBrep::LockBoundingBox`, unit `query.brep`) is not ported yet.
+//! - **Collections.** `GetFaces` / `GetEdges` / `GetVertices` / `GetRegions` /
+//!   `GetSurfaces` / `GetCurves` are `topology.brep_p1`'s; a surface (curve) is named
+//!   by the face (edge) holding it (identity of the returned reference).
 //! - **Notifications** go to the ported handlers (`SmEdge::Notify`,
 //!   `SmVertex::Notify`) with the caller's [`DeleteEnv`]; `SmBrep::Notify` (unit
 //!   `topology.brep_p2`) and `SmFace::Notify` (unit `topology.face_p3`) are not
 //!   ported yet. Their statuses are ignored upstream; [`SolidError::Unported`]
 //!   propagates.
-//! - **Shell lists.** The shell's `m_pList` / `m_tShellType` (unit `topology.shell`)
-//!   are not in the arena model yet; reading or writing them returns
-//!   [`SolidError::Unported`] naming that unit.
 //! - **Loops.** A loop made by splitting a loop gets the split face as
 //!   [`crate::topology::Loop::face`]; `Loop::edges` stays empty (the loop uses carry
 //!   the topology).
@@ -53,6 +61,8 @@
 //!   enabled, the context's boolean flag set for the duration and restored, the
 //!   notifications) and empties the arenas; Rust drops the records themselves.
 //!   The flag is restored on every return, including [`SolidError::Unported`].
+//! - **Stitching.** `StitchFaces` builds the `SmStitch` (`heal.stitch_p1`) with its
+//!   options; `SmStitch::DoStitching` (unit `heal.stitch_p2`) is not ported yet.
 //! - **Bounds.** No recursion; every loop is bounded by a record list. The edge-use
 //!   walks are those of the ported `CollectEdgeuses` (bounded there).
 
@@ -62,15 +72,19 @@ use crate::geom::context::{MarkLock, ALL_MARKS};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::object::{NotifyOperation, ObjectRef};
+use crate::heal::stitch::p1::{DefaultStitchCallback, Stitch};
 use crate::kernel::Kernel;
 use crate::math::{Point2, Vec3, EFF_ZERO};
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::nurbs::knots::Side;
+use crate::topology::brep::p1::{self as brep1, LockBrepBox};
 use crate::topology::edge::{self, NotifyEnv};
 use crate::topology::edgeuse::p1 as eu1;
+use crate::topology::edgeuse::p3 as eu3;
 use crate::topology::face::p1 as face1;
 use crate::topology::face::p2 as face2;
+use crate::topology::shell::{self, ShellMembers, ShellType};
 use crate::topology::topology::Topology;
 use crate::topology::topology_traverser::{shell_traversal, Entity, Marks};
 use crate::topology::{
@@ -118,15 +132,6 @@ fn face_notify(_b: &Brep, _f: FaceId, _operation: NotifyOperation) -> Result<()>
     Err(SolidError::unported("SmFace::Notify", "topology.face_p3"))
 }
 
-/// `SmEdgeuse::NormalizedEvaluate(t, TRUE, ..)`: the UV point at normalized `t`.
-fn edgeuse_normalized_evaluate_uv(_b: &Brep, _eu: EdgeuseId, _t: f64) -> Result<Vec3> {
-    // UNPORTED(topology.edgeuse_p3): SmEdgeuse::NormalizedEvaluate
-    Err(SolidError::unported(
-        "SmEdgeuse::NormalizedEvaluate",
-        "topology.edgeuse_p3",
-    ))
-}
-
 /// `SmFace::ComputeLoopOrientation(loop, orient)` (default domain and flags).
 fn face_compute_loop_orientation(_b: &Brep, _f: FaceId, _l: Option<LoopId>) -> Result<OrientType> {
     // UNPORTED(topology.face_p3): SmFace::ComputeLoopOrientation
@@ -151,153 +156,154 @@ fn face_edges(_b: &Brep, _f: FaceId) -> Result<Vec<EdgeId>> {
     Err(SolidError::unported("SmFace::GetEdges", "topology.face_p4"))
 }
 
+// ---- shell and region lists (topology.shell) -----------------------------------------------
+
 /// `SmShell::GetRegion`.
-fn shell_region(_b: &Brep, _s: ShellId) -> Result<Option<RegionId>> {
-    // UNPORTED(topology.shell): SmShell::GetRegion
-    Err(SolidError::unported("SmShell::GetRegion", "topology.shell"))
+fn shell_region(b: &Brep, s: ShellId) -> Result<Option<RegionId>> {
+    shell::shell_region(b, s)
 }
 
 /// `SmShell::IsWireShell`.
-fn shell_is_wire_shell(_b: &Brep, _s: ShellId) -> Result<bool> {
-    // UNPORTED(topology.shell): SmShell::IsWireShell
-    Err(SolidError::unported(
-        "SmShell::IsWireShell",
-        "topology.shell",
-    ))
+fn shell_is_wire_shell(b: &Brep, s: ShellId) -> Result<bool> {
+    Ok(b.shell(s)?.is_wire_shell())
 }
 
-/// A shell's list head and type (`m_pList`, `m_tShellType`) as a vertex-use or edge-use
-/// head: whether it is `head`.
-fn shell_list_is(_b: &Brep, _s: ShellId, _head: EntityRef) -> Result<bool> {
-    // UNPORTED(topology.shell): SmShell::m_tShellType
-    Err(SolidError::unported(
-        "SmShell::m_tShellType",
-        "topology.shell",
-    ))
+/// A shell's list head (`m_pList`): its first face use, its edge use or its vertex
+/// use; `None` for a `NULL` head.
+fn shell_head(b: &Brep, s: ShellId) -> Result<Option<EntityRef>> {
+    Ok(match &b.shell(s)?.members {
+        ShellMembers::Empty => None,
+        ShellMembers::Faceuses(list) => list.first().copied().map(EntityRef::Faceuse),
+        ShellMembers::Edgeuse(eu) => Some(EntityRef::Edgeuse(*eu)),
+        ShellMembers::Vertexuse(vu) => Some(EntityRef::Vertexuse(*vu)),
+    })
 }
 
-/// Sets a shell's list head and type (`m_pList`, `UpdateListSize`, `m_tShellType`):
-/// a vertex-use or edge-use head, or a face-use shell (`None`, type only).
-fn shell_set_list(_b: &mut Brep, _s: ShellId, _head: Option<EntityRef>) -> Result<()> {
-    // UNPORTED(topology.shell): SmShell::m_pList
-    Err(SolidError::unported("SmShell::m_pList", "topology.shell"))
-}
-
-/// `SmOwningTopology::Remove(shell)` on a region's shell list (`m_pList`, not in the
-/// arena model yet).
-fn region_remove_shell(_b: &mut Brep, _r: Option<RegionId>, _s: ShellId) -> Result<()> {
-    // UNPORTED(topology.shell): SmRegion::m_pList
-    Err(SolidError::unported("SmRegion::m_pList", "topology.shell"))
-}
-
-/// `SmRegion::GetShells(shells)`.
-fn region_shells(_b: &Brep, _r: RegionId) -> Result<Vec<ShellId>> {
-    // UNPORTED(topology.shell): SmRegion::GetShells
-    Err(SolidError::unported(
-        "SmRegion::GetShells",
-        "topology.shell",
-    ))
-}
-
-/// `SmBrep::GetFaces(faces)` (no filter).
-fn brep_get_faces(_b: &Brep) -> Result<Vec<FaceId>> {
-    // UNPORTED(topology.brep_p1): SmBrep::GetFaces
-    Err(SolidError::unported("SmBrep::GetFaces", "topology.brep_p1"))
-}
-
-/// `SmBrep::GetEdges(edges)` (no filter).
-fn brep_get_edges(_b: &Brep) -> Result<Vec<EdgeId>> {
-    // UNPORTED(topology.brep_p1): SmBrep::GetEdges
-    Err(SolidError::unported("SmBrep::GetEdges", "topology.brep_p1"))
-}
-
-/// `SmBrep::GetVertices(vertices)` (no filter).
-fn brep_get_vertices(_b: &Brep) -> Result<Vec<VertexId>> {
-    // UNPORTED(topology.brep_p1): SmBrep::GetVertices
-    Err(SolidError::unported(
-        "SmBrep::GetVertices",
-        "topology.brep_p1",
-    ))
-}
-
-/// `SmBrep::GetRegions(regions)` (no filter).
-fn brep_get_regions(_b: &Brep) -> Result<Vec<RegionId>> {
-    // UNPORTED(topology.brep_p1): SmBrep::GetRegions
-    Err(SolidError::unported(
-        "SmBrep::GetRegions",
-        "topology.brep_p1",
-    ))
-}
-
-/// `SmBrep::GetSurfaces(surfaces)`: each surface named by the face holding it.
-fn brep_get_surfaces(_b: &Brep) -> Result<Vec<FaceId>> {
-    // UNPORTED(topology.brep_p1): SmBrep::GetSurfaces
-    Err(SolidError::unported(
-        "SmBrep::GetSurfaces",
-        "topology.brep_p1",
-    ))
-}
-
-/// `SmBrep::GetCurves(curves)`: each curve named by the edge holding it.
-fn brep_get_curves(_b: &Brep) -> Result<Vec<EdgeId>> {
-    // UNPORTED(topology.brep_p1): SmBrep::GetCurves
-    Err(SolidError::unported(
-        "SmBrep::GetCurves",
-        "topology.brep_p1",
-    ))
-}
-
-/// `SmLockBrepBox::SmLockBrepBox(brep)`: locks the B-rep's bounding box
-/// (`SmBrep::LockBoundingBox`, unit `query.brep`, inlined into the constructor).
-fn lock_brep_box(_b: &Brep) -> Result<()> {
-    // UNPORTED(topology.brep_p1): SmLockBrepBox::SmLockBrepBox
-    Err(SolidError::unported(
-        "SmLockBrepBox::SmLockBrepBox",
-        "topology.brep_p1",
-    ))
-}
-
-/// `SmLockBrepBox`: the scope guard of the B-rep's bounding box lock. Upstream
-/// `~SmLockBrepBox` unlocks it when the guard goes out of scope, so every return path
-/// of the scope unlocks exactly once.
-///
-/// The guard cannot hold the B-rep (the scope edits it) and so cannot unlock from
-/// `Drop`; [`LockBrepBox::scoped`] is the scope: it locks, runs the body and unlocks
-/// on the way out, whatever the body returned. [`LockBrepBox::unlock`] consumes the
-/// guard, so it unlocks once.
-#[derive(Debug)]
-struct LockBrepBox;
-
-impl LockBrepBox {
-    /// `SmLockBrepBox lockit(brep)`.
-    fn lock(b: &Brep) -> Result<Self> {
-        lock_brep_box(b)?;
-        Ok(Self)
+/// `pShell->m_pList = head; pShell->UpdateListSize()` (the list size is not a record
+/// of the arena model), then `pShell->m_tShellType = ty` when given.
+fn set_shell_head(
+    b: &mut Brep,
+    s: ShellId,
+    head: ShellMembers,
+    ty: Option<ShellType>,
+) -> Result<()> {
+    let shell = b.shell_mut(s)?;
+    shell.members = head;
+    if let Some(ty) = ty {
+        shell.shell_type = ty;
     }
+    Ok(())
+}
 
-    /// `~SmLockBrepBox()`: unlocks (`SmBrep::UnLockBoundingBox`); the destructor
-    /// cannot fail, so the status is dropped.
-    fn unlock(self, b: &mut Brep) -> Result<()> {
-        let Self = self; // the guard ends here
-        ignore_status(unlock_bounding_box(b))
+/// A vertex-use list head (`NULL` for `None`).
+fn vu_head(vu: Option<VertexuseId>) -> ShellMembers {
+    vu.map_or(ShellMembers::Empty, ShellMembers::Vertexuse)
+}
+
+/// An edge-use list head (`NULL` for `None`).
+fn eu_head(eu: Option<EdgeuseId>) -> ShellMembers {
+    eu.map_or(ShellMembers::Empty, ShellMembers::Edgeuse)
+}
+
+/// `pRegion->PostInsert(pShell)` with `pRegion = pOldShell->GetRegion()` (dereferenced
+/// unchecked upstream): the shell joins the end of the region's shell list.
+fn region_post_insert(b: &mut Brep, r: Option<RegionId>, s: ShellId) -> Result<()> {
+    let r = deref(r, OP_DELETE_EDGE)?;
+    b.region_mut(r)?.shells.push(s);
+    b.shell_mut(s)?.region = Some(r);
+    Ok(())
+}
+
+/// `SmRegion::GetShells(shells)` (no filter).
+fn region_shells(b: &Brep, r: RegionId) -> Result<Vec<ShellId>> {
+    b.region(r)?.get_shells(None, |_, _| Ok(true))
+}
+
+/// Face uses with literal sibling links (`Faceuse::sibling_links`) keep them in step
+/// with the shell's face-use list after a `Remove` / `PostInsert` (upstream relinks
+/// the neighbours); lists whose members derive their links from the list are left so.
+fn sync_faceuse_links(b: &mut Brep, s: ShellId) -> Result<()> {
+    let members = b.shell(s)?.get_faceuses()?;
+    let mut literal = false;
+    for &fu in &members {
+        literal |= b.faceuse(fu)?.sibling_links.is_some();
     }
+    if !literal {
+        return Ok(());
+    }
+    let mut previous = members.last().copied();
+    for (&member, &next) in members.iter().zip(members.iter().cycle().skip(1)) {
+        b.faceuse_mut(member)?.sibling_links = Some((Some(next), previous));
+        previous = Some(member);
+    }
+    Ok(())
+}
 
-    /// Runs `body` with the lock held and unlocks after it, on success and on error.
-    ///
-    /// [`SolidError::Unported`] outranks everything else: from the body it is the
-    /// result as is; from the unlock (not ported yet) it replaces the body's result,
-    /// which cannot be told to be upstream's without it. A lock that fails (while it
-    /// is not ported) never runs the body and has nothing to unlock.
-    fn scoped<T>(b: &mut Brep, body: impl FnOnce(&mut Brep) -> Result<T>) -> Result<T> {
-        let guard = Self::lock(b)?;
-        let result = body(b);
-        let unlocked = guard.unlock(b);
-        match (result, unlocked) {
-            (Err(e), _) if e.is_unported() => Err(e),
-            (_, Err(e)) => Err(e),
-            (result, Ok(())) => result,
+/// `SmOwningTopology::PostInsert` of a face use at the end of a shell's list (the
+/// arena model's face list of the shell follows).
+fn shell_post_insert_faceuse(b: &mut Brep, s: ShellId, fu: FaceuseId) -> Result<()> {
+    let members = &mut b.shell_mut(s)?.members;
+    match members {
+        ShellMembers::Empty => *members = ShellMembers::Faceuses(vec![fu]),
+        ShellMembers::Faceuses(list) => list.push(fu),
+        // upstream would splice the face use into the edge-use / vertex-use ring
+        _ => {
+            return Err(SolidError::invalid_input(
+                OP_DELETE_EDGE,
+                "face use inserted into a wire or vertex shell list",
+            ))
         }
     }
+    let face = b.faceuse(fu)?.face;
+    b.faceuse_mut(fu)?.shell = Some(s);
+    if let Some(f) = face {
+        b.shell_mut(s)?.faces.push(f);
+    }
+    sync_faceuse_links(b, s)
+}
+
+// ---- B-rep collections (topology.brep_p1) --------------------------------------------------
+
+/// `SmBrep::GetSurfaces(surfaces)` (no filter): each surface named by the face holding
+/// it (the faces whose surface is owned by the face, in face order).
+fn brep_get_surfaces(b: &Brep) -> Result<Vec<FaceId>> {
+    let surfaces = brep1::surfaces(b, None)?;
+    let faces = brep1::faces(b, None)?;
+    let mut out = Vec::new();
+    for s in surfaces {
+        for &f in &faces {
+            if b.face(f)?
+                .surface
+                .as_ref()
+                .is_some_and(|x| core::ptr::eq(x, s))
+            {
+                out.push(f);
+                break;
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// `SmBrep::GetCurves(curves)` (no filter): each curve named by the edge holding it
+/// (the edges whose curve is owned by the edge, in edge order).
+fn brep_get_curves(b: &Brep) -> Result<Vec<EdgeId>> {
+    let curves = brep1::curves(b, None)?;
+    let edges = brep1::edges(b, None)?;
+    let mut out = Vec::new();
+    for c in curves {
+        for &e in &edges {
+            if b.edge(e)?
+                .curve
+                .as_ref()
+                .is_some_and(|x| core::ptr::eq(x, c))
+            {
+                out.push(e);
+                break;
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// `SmBrep::UnLockBoundingBox`.
@@ -454,18 +460,36 @@ fn faceuse_post_insert(b: &mut Brep, fu: FaceuseId, lu: LoopuseId) -> Result<()>
     Ok(())
 }
 
-/// `SmOwningTopology::Remove` of a face use from its shell (the arena model keeps
-/// the shell's faces: a face leaves it when its face use does).
+/// `SmOwningTopology::Remove` of a face use from its shell's list (`m_pList`; the head
+/// moves to the next member when it is removed, the list empties to `NULL`). The arena
+/// model's face list of the shell follows. `SM_ERR` with nothing changed when the face
+/// use is not on the shell's list, as upstream.
 fn shell_remove_faceuse(b: &mut Brep, s: ShellId, fu: FaceuseId, op: &'static str) -> Result<()> {
     if b.faceuse(fu)?.shell != Some(s) {
         return Err(SolidError::sm_err(op));
     }
+    let members = &mut b.shell_mut(s)?.members;
+    let ShellMembers::Faceuses(list) = members else {
+        // no sibling links on a list of another kind (`m_pNext == NULL`)
+        return Err(SolidError::sm_err(op));
+    };
+    let Some(at) = list.iter().position(|&x| x == fu) else {
+        return Err(SolidError::sm_err(op));
+    };
+    list.remove(at);
+    if list.is_empty() {
+        *members = ShellMembers::Empty;
+    }
     let face = b.faceuse(fu)?.face;
-    b.faceuse_mut(fu)?.shell = None;
+    {
+        let r = b.faceuse_mut(fu)?;
+        r.shell = None;
+        r.sibling_links = None;
+    }
     if let Some(f) = face {
         b.shell_mut(s)?.faces.retain(|&x| x != f);
     }
-    Ok(())
+    sync_faceuse_links(b, s)
 }
 
 /// A vertex use becomes the vertex use of loop use `lu` (`m_tVertexuseType`,
@@ -562,7 +586,7 @@ pub fn delete_edge(
     let eu_mate = deref(eu1::mate(b, eu)?, OP)?;
 
     if is_manifold {
-        delete_manifold_edge(b, env.key_of, e, eu, eu_mate, surface_to_keep)
+        delete_manifold_edge(k, b, env.key_of, e, eu, eu_mate, surface_to_keep)
     } else if edge::is_lamina(b, e)? {
         delete_lamina_edge(b, e, eu, eu_mate)
     } else {
@@ -572,6 +596,7 @@ pub fn delete_edge(
 
 /// The manifold branch of [`delete_edge`].
 fn delete_manifold_edge(
+    k: &Kernel,
     b: &mut Brep,
     key_of: &dyn Fn(EntityRef) -> ObjectRef,
     e: EdgeId,
@@ -592,8 +617,9 @@ fn delete_manifold_edge(
     let srf = surface_of(b, srf_face)?;
     let srf_rad = surface_of(b, srf_rad_face)?;
     if srf != srf_rad {
-        let norm1 = edgeuse_normal(b, eu, srf, OP)?;
-        let norm2 = edgeuse_normal(b, eu_rad, srf_rad, OP)?;
+        let mut uv3 = Vec3::UNDEF; // sUV3d
+        let norm1 = edgeuse_normal(k, b, eu, srf, &mut uv3, OP)?;
+        let norm2 = edgeuse_normal(k, b, eu_rad, srf_rad, &mut uv3, OP)?;
         let dot = norm1.dot(norm2);
         if dot < 0.0 {
             flip_face = true;
@@ -943,11 +969,22 @@ fn delete_manifold_edge(
 }
 
 /// The normal of surface `srf` (named by its face) at the UV point of edge use `eu`
-/// at its middle (`NormalizedEvaluate(0.5, TRUE, ..)`, `EvaluateNormal(uv, FALSE,
-/// FALSE, ..)`, both statuses ignored: a failed evaluation leaves the undefined
-/// vector).
-fn edgeuse_normal(b: &Brep, eu: EdgeuseId, srf: Option<FaceId>, op: &'static str) -> Result<Vec3> {
-    let uv3 = ignored(edgeuse_normalized_evaluate_uv(b, eu, 0.5))?.unwrap_or(Vec3::UNDEF);
+/// at its middle (`NormalizedEvaluate(0.5, TRUE, sUV3d)` with the header defaults, then
+/// `EvaluateNormal(uv, FALSE, FALSE, ..)`). Both statuses are ignored upstream:
+/// `sUV3d` is shared by the two calls of `DeleteEdge`, so a failed evaluation leaves
+/// the previous point (undefined before the first); a failed normal is the undefined
+/// vector.
+fn edgeuse_normal(
+    k: &Kernel,
+    b: &mut Brep,
+    eu: EdgeuseId,
+    srf: Option<FaceId>,
+    uv3: &mut Vec3,
+    op: &'static str,
+) -> Result<Vec3> {
+    if let Some(e) = ignored(eu3::normalized_evaluate(k, b, eu, 0.5, true, false, true))? {
+        *uv3 = e.point;
+    }
     let uv = Point2::new(uv3.x, uv3.y);
     let f = deref(srf, op)?;
     let s = deref(b.face(f)?.surface.as_ref(), op)?;
@@ -1017,17 +1054,17 @@ fn delete_lamina_edge(b: &mut Brep, e: EdgeId, eu: EdgeuseId, eu_mate: EdgeuseId
 }
 
 /// A new vertex-use shell holding `vu` (`None`: upstream warns that the vertex use
-/// has been deleted) in the region of `shell`.
+/// has been deleted), posted at the end of the region of `shell`.
 fn new_vertex_shell(b: &mut Brep, shell: ShellId, vu: Option<VertexuseId>) -> Result<()> {
     let s = b.add_shell_record(Shell::default())?;
-    shell_set_list(b, s, vu.map(EntityRef::Vertexuse))?;
+    set_shell_head(b, s, vu_head(vu), None)?;
     if let Some(vu) = vu {
         b.vertexuse_mut(vu)?.owner = VertexuseOwner::Shell(Some(s));
     }
     // else WARN: the vertex use has been deleted
+    b.shell_mut(s)?.shell_type = ShellType::Vertex;
     let region = shell_region(b, shell)?;
-    b.shell_mut(s)?.region = region;
-    Ok(())
+    region_post_insert(b, region, s)
 }
 
 /// The wire branch of [`delete_edge`].
@@ -1070,12 +1107,14 @@ fn delete_wire_edge(
 
     if v1 == v2 {
         if vertex::is_shell_vertex(b, v1)? {
+            // reset the shell parameters to be a vertexShell
             let head = vertex::primary_vertexuse(b, v1)?;
-            shell_set_list(b, shell, head.map(EntityRef::Vertexuse))?;
+            set_shell_head(b, shell, vu_head(head), Some(ShellType::Vertex))?;
         } else if shell_is_wire_shell(b, shell)? {
+            // give the shell a new primary Edgeuse
             let vu = deref(vertex::primary_vertexuse(b, v1)?, OP)?;
             let head = vertexuse::edgeuse(b, vu)?;
-            shell_set_list(b, shell, head.map(EntityRef::Edgeuse))?;
+            set_shell_head(b, shell, eu_head(head), None)?;
         }
         delete_edgeuse(b, eu)?;
         delete_edgeuse(b, eu_mate)?;
@@ -1085,7 +1124,8 @@ fn delete_wire_edge(
     let v1_shell = vertex::is_shell_vertex(b, v1)?;
     let v2_shell = vertex::is_shell_vertex(b, v2)?;
     if v1_shell && v2_shell {
-        shell_set_list(b, shell, vu1.map(EntityRef::Vertexuse))?;
+        // give V1 to the existing shell and create a new shell for V2
+        set_shell_head(b, shell, vu_head(vu1), Some(ShellType::Vertex))?;
         new_vertex_shell(b, shell, vu2)?;
         delete_edgeuse(b, eu)?;
         delete_edgeuse(b, eu_mate)?;
@@ -1099,10 +1139,10 @@ fn delete_wire_edge(
             if let Some(&start_wire) = edges.first() {
                 // the shell remains a wire shell and needs a new primary edge use
                 let head = eu1::primary_edgeuse(b, start_wire)?;
-                shell_set_list(b, shell, head.map(EntityRef::Edgeuse))?;
+                set_shell_head(b, shell, eu_head(head), None)?;
             } else {
                 let head = vertex::primary_vertexuse(b, v_other)?;
-                shell_set_list(b, shell, head.map(EntityRef::Vertexuse))?;
+                set_shell_head(b, shell, vu_head(head), Some(ShellType::Vertex))?;
             }
         }
         delete_edgeuse(b, eu)?;
@@ -1145,7 +1185,7 @@ fn wire_split_shell(
     if split_shell {
         let new_shell = b.add_shell_record(Shell::default())?;
         let region = shell_region(b, shell)?;
-        b.shell_mut(new_shell)?.region = region;
+        region_post_insert(b, region, new_shell)?;
         let mut edgeuses2 = Vec::new();
         let mut faceuses2 = Vec::new();
         shell_traversal(
@@ -1159,36 +1199,38 @@ fn wire_split_shell(
             lock,
         )?;
         if faceuses2.is_empty() {
-            shell_set_list(
-                b,
-                new_shell,
-                edgeuses2.first().map(|&x| EntityRef::Edgeuse(x)),
-            )?;
+            // NewShell is a wireShell - set first edge and ShellType (an empty
+            // edge-use list keeps the NULL head; upstream only asserts)
+            if let Some(&first) = edgeuses2.first() {
+                set_shell_head(b, new_shell, ShellMembers::Edgeuse(first), None)?;
+            }
+            b.shell_mut(new_shell)?.shell_type = ShellType::Wire;
         } else {
             // the first face is set later by PostInsert(pFU)
-            shell_set_list(b, new_shell, None)?;
+            b.shell_mut(new_shell)?.shell_type = ShellType::Faceuse;
         }
         for &x in &edgeuses2 {
             if eu1::is_shell_edgeuse(b, x)? {
                 b.edgeuse_mut(x)?.owner = EdgeuseOwner::Shell(Some(new_shell));
             }
         }
+        // transfer faceuses from the old shell to the new shell
         for &fu in &faceuses2 {
             ignore_status(shell_remove_faceuse(b, shell, fu, OP))?;
-            let face = b.faceuse(fu)?.face;
-            b.faceuse_mut(fu)?.shell = Some(new_shell);
-            if let Some(f) = face {
-                b.shell_mut(new_shell)?.faces.push(f);
-            }
+            shell_post_insert_faceuse(b, new_shell, fu)?;
         }
     }
-    if shell_list_is(b, shell, EntityRef::Edgeuse(eu))?
-        || shell_list_is(b, shell, EntityRef::Edgeuse(eu_mate))?
+    // when pShell points to a deleted edgeuse (wireshell case) or is a wireshell
+    // after a shell split, ensure it has a valid first edge
+    let head = shell_head(b, shell)?;
+    if head == Some(EntityRef::Edgeuse(eu))
+        || head == Some(EntityRef::Edgeuse(eu_mate))
         || (faceuses1.is_empty() && split_shell)
     {
         if let Some(&first) = edgeuses1.first() {
-            shell_set_list(b, shell, Some(EntityRef::Edgeuse(first)))?;
+            set_shell_head(b, shell, ShellMembers::Edgeuse(first), None)?;
         }
+        b.shell_mut(shell)?.shell_type = ShellType::Wire;
     }
     delete_edgeuse(b, eu)?;
     delete_edgeuse(b, eu_mate)?;
@@ -1247,9 +1289,11 @@ pub fn delete_vertex(
         };
         let shell = deref(shell, OP)?;
         // The vertex to delete may not actually own a shell.
-        if shell_list_is(b, shell, EntityRef::Vertexuse(vu))? {
-            let region = shell_region(b, shell)?;
-            ignore_status(region_remove_shell(b, region, shell))?;
+        if b.shell(shell)?.is_vertex_shell()
+            && shell_head(b, shell)? == Some(EntityRef::Vertexuse(vu))
+        {
+            let region = deref(shell_region(b, shell)?, OP)?;
+            ignore_status(shell::region_remove_shell(b, region, shell))?;
             b.remove_shell_record(shell)?;
         }
         ignore_status(vertex_remove(b, v, vu, OP))?;
@@ -1315,16 +1359,20 @@ pub struct StitchOutcome {
     pub max_edge_face_trim_curve_gap: f64,
 }
 
-/// `SmStitch::DoStitching` with the options `StitchFaces` sets.
+/// `sStitch.DoStitching(this, pVertices, pEdges, ..)`.
 fn do_stitching(
-    _b: &mut Brep,
-    _xsect_tol_3d: f64,
-    _allow_spine_edges: bool,
-    _vertices: Option<&[VertexId]>,
-    _edges: Option<&[EdgeId]>,
+    k: &mut Kernel,
+    b: &mut Brep,
+    stitch: &mut Stitch<'_>,
+    vertices: Option<&[VertexId]>,
+    edges: Option<&[EdgeId]>,
 ) -> Result<StitchOutcome> {
-    // UNPORTED(heal.stitch_p1): SmStitch::SmStitch
-    Err(SolidError::unported("SmStitch::SmStitch", "heal.stitch_p1"))
+    let _ = (k, b, stitch, vertices, edges);
+    // UNPORTED(heal.stitch_p2): SmStitch::DoStitching
+    Err(SolidError::unported(
+        "SmStitch::DoStitching",
+        "heal.stitch_p2",
+    ))
 }
 
 /// `SmBrep::StitchFaces`: glues coincident vertex and edge pairs of the B-rep (of the
@@ -1333,35 +1381,49 @@ fn do_stitching(
 ///
 /// # Errors
 ///
-/// Those of the stitcher; [`SolidError::Unported`] while the bounding-box lock, the
-/// face queries and the stitcher are not ported. The lock is released on every path.
+/// Those of the stitcher; [`SolidError::Unported`] while the bounding-box lock
+/// (`SmBrep::LockBoundingBox`, unit `query.brep`), the face queries and
+/// `SmStitch::DoStitching` are not ported. The lock ([`LockBrepBox`]) is released when
+/// it goes out of scope, on every path.
 pub fn stitch_faces(
+    k: &mut Kernel,
     b: &mut Brep,
     xsect_tol_3d: f64,
     faces: Option<&[Option<FaceId>]>,
     allow_spine_edges: bool,
 ) -> Result<StitchOutcome> {
-    // lock brep bounding box, until goes out of scope (every return below unlocks)
-    LockBrepBox::scoped(b, |b| {
-        let mut lists = None;
-        if let Some(faces) = faces {
-            let mut vertices = Vec::new();
-            let mut edges = Vec::new();
-            for f in faces.iter().flatten() {
-                vertices.extend(face_vertices(b, *f)?);
-                edges.extend(face_edges(b, *f)?);
-            }
-            lists = Some((vertices, edges));
+    // lock brep bounding box, until goes out of scope
+    let mut lockit = LockBrepBox::new(k, b)?;
+    let b = lockit.brep();
+
+    // StitchCallback has SelectTopologyToKeep(): pick KeepItem and DeleteItem
+    let mut callback = DefaultStitchCallback::new();
+    // construct Stitch manager using default coincident keep/delete logic
+    let mut stitch = Stitch::new(&mut callback, xsect_tol_3d, true, true);
+    stitch.fast_edge_compare = true;
+    stitch.ignore_problems = true;
+    stitch.squeeze_small_edges = true;
+    stitch.making_manifold_solid = !allow_spine_edges;
+    stitch.remove_laminar_slivers = true;
+
+    let mut lists = None;
+    if let Some(faces) = faces {
+        let mut vertices = Vec::new();
+        let mut edges = Vec::new();
+        for f in faces.iter().flatten() {
+            vertices.extend(face_vertices(b, *f)?);
+            edges.extend(face_edges(b, *f)?);
         }
-        // pass the stitch call along (SER: its status is returned as is)
-        do_stitching(
-            b,
-            xsect_tol_3d,
-            allow_spine_edges,
-            lists.as_ref().map(|(v, _)| v.as_slice()),
-            lists.as_ref().map(|(_, e)| e.as_slice()),
-        )
-    })
+        lists = Some((vertices, edges));
+    }
+    // pass the stitch call along (SER: its status is returned as is)
+    do_stitching(
+        k,
+        b,
+        &mut stitch,
+        lists.as_ref().map(|(v, _)| v.as_slice()),
+        lists.as_ref().map(|(_, e)| e.as_slice()),
+    )
 }
 
 // ---- ShrinkGeometry ------------------------------------------------------------------------
@@ -1375,7 +1437,7 @@ pub fn stitch_faces(
 /// Those of the curve trims; [`SolidError::Unported`] while the B-rep and face
 /// queries it uses are not ported.
 pub fn shrink_geometry(k: &Kernel, b: &mut Brep) -> Result<()> {
-    for f in brep_get_faces(b)? {
+    for f in brep1::faces(b, None)? {
         let Some(face_domain) = ignored(face_calculate_uv_domain(k, b, f))? else {
             continue;
         };
@@ -1454,7 +1516,7 @@ fn destroy_records(b: &mut Brep) -> Result<()> {
     ignore_status(brep_notify(b, NotifyOperation::Destruction))?;
 
     // faces
-    for f in brep_get_faces(b)? {
+    for f in brep1::faces(b, None)? {
         let fu1 = deref(b.face(f)?.faceuse, OP)?;
         let fu2 = b.faceuse(fu1)?.mate;
         for l in face2::loops(b, f, false, None)? {
@@ -1475,7 +1537,7 @@ fn destroy_records(b: &mut Brep) -> Result<()> {
     }
 
     // edges
-    for e in brep_get_edges(b)? {
+    for e in brep1::edges(b, None)? {
         for eu in b.edge(e)?.edgeuses.clone() {
             delete_edgeuse(b, eu)?;
         }
@@ -1483,7 +1545,7 @@ fn destroy_records(b: &mut Brep) -> Result<()> {
     }
 
     // vertices
-    for v in brep_get_vertices(b)? {
+    for v in brep1::vertices(b, None)? {
         for vu in b.vertex(v)?.vertexuses.clone() {
             b.remove_vertexuse_record(vu)?;
         }
@@ -1491,7 +1553,7 @@ fn destroy_records(b: &mut Brep) -> Result<()> {
     }
 
     // regions
-    for r in brep_get_regions(b)? {
+    for r in brep1::regions(b, None)? {
         for s in region_shells(b, r)? {
             b.remove_shell_record(s)?;
         }
@@ -1506,15 +1568,56 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lock_scope_does_not_run_the_body_when_the_lock_is_unported() {
+    fn stitch_stops_at_the_unported_bounding_box_lock() {
+        let mut k = Kernel::default();
         let mut b = Brep::new();
-        let mut ran = false;
-        let r = LockBrepBox::scoped(&mut b, |_| {
-            ran = true;
-            Ok(())
-        });
-        assert!(matches!(r, Err(ref e) if e.is_unported()));
-        assert!(!ran);
+        let r = stitch_faces(&mut k, &mut b, 1e-3, None, false);
+        assert!(matches!(
+            r,
+            Err(SolidError::Unported {
+                unit: "query.brep",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn removing_a_faceuse_moves_the_shell_head_and_keeps_the_faces_in_step() {
+        let mut b = Brep::new();
+        let s = b.add_shell_record(Shell::default()).unwrap();
+        let mut fus = Vec::new();
+        for _ in 0..3 {
+            let f = b.add_face_record(crate::topology::Face::new(s)).unwrap();
+            let fu = b
+                .add_faceuse_record(crate::topology::Faceuse::default())
+                .unwrap();
+            b.faceuse_mut(fu).unwrap().face = Some(f);
+            b.shell_mut(s).unwrap().shell_type = ShellType::Faceuse;
+            shell_post_insert_faceuse(&mut b, s, fu).unwrap();
+            fus.push(fu);
+        }
+        assert_eq!(shell_head(&b, s).unwrap(), Some(EntityRef::Faceuse(fus[0])));
+        shell_remove_faceuse(&mut b, s, fus[0], OP_DELETE_EDGE).unwrap();
+        assert_eq!(shell_head(&b, s).unwrap(), Some(EntityRef::Faceuse(fus[1])));
+        assert_eq!(b.shell(s).unwrap().faces.len(), 2);
+        assert_eq!(b.faceuse(fus[0]).unwrap().shell, None);
+        // not on the list any more: SM_ERR, nothing changed
+        assert!(shell_remove_faceuse(&mut b, s, fus[0], OP_DELETE_EDGE).is_err());
+        assert_eq!(
+            b.shell(s).unwrap().get_faceuses().unwrap(),
+            vec![fus[1], fus[2]]
+        );
+    }
+
+    #[test]
+    fn removed_faces_leave_the_brep_face_list() {
+        let mut b = Brep::new();
+        let s = b.add_shell_record(Shell::default()).unwrap();
+        let f0 = b.add_face_record(crate::topology::Face::new(s)).unwrap();
+        let f1 = b.add_face_record(crate::topology::Face::new(s)).unwrap();
+        b.remove_face_record(f0).unwrap();
+        assert_eq!(brep1::faces(&b, None).unwrap(), vec![f1]);
+        b.set_face_list(vec![f1]).unwrap();
     }
 
     #[test]

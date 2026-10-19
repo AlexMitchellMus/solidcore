@@ -64,7 +64,7 @@ fn classify_region(
 }
 
 fn delete_edge(_brep: &mut Brep, _edge: EdgeId) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge
+    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge (justified: plan/findings.md "topology.brep_p4: back-edges without a notification environment")
     Err(SolidError::unported(
         "SmBrep::DeleteEdge",
         "topology.brep_p4",
@@ -72,7 +72,7 @@ fn delete_edge(_brep: &mut Brep, _edge: EdgeId) -> Result<()> {
 }
 
 fn delete_vertex(_brep: &mut Brep, _vertex: VertexId) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteVertex
+    // UNPORTED(topology.brep_p4): SmBrep::DeleteVertex (justified: plan/findings.md "topology.brep_p4: back-edges without a notification environment")
     Err(SolidError::unported(
         "SmBrep::DeleteVertex",
         "topology.brep_p4",

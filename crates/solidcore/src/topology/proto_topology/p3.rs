@@ -185,7 +185,7 @@ fn brep_squeeze_edge<O>(_which: i32, _edge: O, _vertex: O) -> Result<()> {
 
 /// `SmBrep::DeleteEdge` of B-rep `which`.
 fn brep_delete_edge<O>(_which: i32, _edge: O) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge
+    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge (justified: plan/findings.md "topology.brep_p4: back-edges without a notification environment")
     Err(SolidError::unported(
         "SmBrep::DeleteEdge",
         "topology.brep_p4",

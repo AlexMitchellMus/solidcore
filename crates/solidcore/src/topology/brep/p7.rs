@@ -218,7 +218,7 @@ fn make_wire_edge_vertex(
 
 /// `DeleteEdge(edge)`.
 fn delete_edge(_b: &mut Brep, _e: EdgeId) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge
+    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge (justified: plan/findings.md "topology.brep_p4: back-edges without a notification environment")
     Err(SolidError::unported(
         "SmBrep::DeleteEdge",
         "topology.brep_p4",

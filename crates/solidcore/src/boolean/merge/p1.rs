@@ -434,7 +434,7 @@ pub fn boolean_post_process(
                 endpoints.push(v);
             }
         }
-        // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge
+        // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge (justified: plan/findings.md "topology.brep_p4: back-edges without a notification environment")
         let (): () = unavailable("SmBrep::DeleteEdge", "topology.brep_p4")?;
         // The native output starts as a default SmExtent2d and is written back
         // unconditionally, even if IsTopological left it untouched.
@@ -456,7 +456,7 @@ pub fn boolean_post_process(
             continue;
         }
         if vertex::is_loop_vertex(brep, v)? {
-            // UNPORTED(topology.brep_p4): SmBrep::DeleteVertex
+            // UNPORTED(topology.brep_p4): SmBrep::DeleteVertex (justified: plan/findings.md "topology.brep_p4: back-edges without a notification environment")
             let (): () = unavailable("SmBrep::DeleteVertex", "topology.brep_p4")?;
             continue;
         }

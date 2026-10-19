@@ -394,7 +394,7 @@ impl OffsetExecutive {
         // Continuation cpp:1978–2035: enumerate offset surfaces, approximate their
         // extended-or-original B-spline bases, then notify/replace each surface.
         // Neither shrink nor offset surfaces (#62) may be bypassed or co-ported here.
-        // UNPORTED(topology.brep_p4): SmBrep::ShrinkGeometry
+        // UNPORTED(topology.brep_p4): SmBrep::ShrinkGeometry (justified: plan/findings.md "topology.brep_p4: back-edges without a notification environment")
         Err(SolidError::unported(
             "SmBrep::ShrinkGeometry",
             "topology.brep_p4",
@@ -764,7 +764,7 @@ impl OffsetExecutive {
         // Continuation cpp:2429–2474: construct a merge B-rep with the original
         // tolerance, editing enabled; SmMerge uses 20*PI/180 angular tolerance,
         // PiecewiseMerge(&no_ssi, TRUE, TRUE). It keeps the original offset B-rep.
-        // UNPORTED(topology.brep_p4): SmBrep::ShrinkGeometry
+        // UNPORTED(topology.brep_p4): SmBrep::ShrinkGeometry (justified: plan/findings.md "topology.brep_p4: back-edges without a notification environment")
         Err(SolidError::unported(
             "SmBrep::ShrinkGeometry",
             "topology.brep_p4",

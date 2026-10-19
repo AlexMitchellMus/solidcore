@@ -452,7 +452,7 @@ fn squeeze_edge(_b: &mut Brep, _e: EdgeId, _survivor: VertexId) -> Result<Change
     ))
 }
 fn delete_edge(_b: &mut Brep, _e: EdgeId) -> Result<Changes> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge
+    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge (justified: plan/findings.md "topology.brep_p4: back-edges without a notification environment")
     Err(SolidError::unported(
         "SmBrep::DeleteEdge",
         "topology.brep_p4",
@@ -968,7 +968,7 @@ fn squeeze_face(_b: &mut Brep, _f: FaceId) -> Result<(Vec<EdgeId>, Vec<EdgeId>, 
     ))
 }
 fn delete_vertex(_b: &mut Brep, _v: VertexId) -> Result<Changes> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteVertex
+    // UNPORTED(topology.brep_p4): SmBrep::DeleteVertex (justified: plan/findings.md "topology.brep_p4: back-edges without a notification environment")
     Err(SolidError::unported(
         "SmBrep::DeleteVertex",
         "topology.brep_p4",

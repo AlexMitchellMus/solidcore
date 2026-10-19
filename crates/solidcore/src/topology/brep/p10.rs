@@ -2019,7 +2019,7 @@ fn brep_wire_edges(b: &Brep) -> Result<Vec<EdgeId>> {
 }
 
 fn delete_edge(_k: &mut Kernel, _b: &mut Brep, _e: EdgeId) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge
+    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge (justified: plan/findings.md "topology.brep_p4: back-edges without a notification environment")
     Err(SolidError::Unported {
         upstream: "SmBrep::DeleteEdge",
         unit: "topology.brep_p4",
@@ -2035,7 +2035,7 @@ fn brep_shell_vertices(_b: &Brep) -> Result<Vec<VertexId>> {
 }
 
 fn delete_vertex(_k: &mut Kernel, _b: &mut Brep, _v: VertexId) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteVertex
+    // UNPORTED(topology.brep_p4): SmBrep::DeleteVertex (justified: plan/findings.md "topology.brep_p4: back-edges without a notification environment")
     Err(SolidError::Unported {
         upstream: "SmBrep::DeleteVertex",
         unit: "topology.brep_p4",
