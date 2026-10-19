@@ -1628,35 +1628,22 @@ pub enum FilletLawKind {
 }
 
 /// A fillet law (`SmFilletLaw`, CO-PORTED from unit `blend.fillet_executive_p1`): the
-/// radius along the filleted edge and the extended edge curve it keeps. The edge map,
-/// arc length and extended law curve were added by `blend.fillet_executive_p2` (PR
-/// #267), whose law constructors are in `blend::fillet_executive::p2`.
+/// radius along the filleted edge and the extended edge curve it keeps.
 #[derive(Debug, Clone)]
 pub struct FilletLaw {
     /// The law's class and its data.
     pub kind: FilletLawKind,
     /// `m_pExtended`: the extended edge curve.
     pub extended: Option<BSplineCurve>,
-    /// `m_vEdgeMap`: the part of the law (`[0, 1]` as given) that maps to the edge.
-    pub edge_map: Extent1d,
-    /// `m_dEdgeArcLength`.
-    pub edge_arc_length: f64,
-    /// `SmBSplineFilletLaw::m_pExtendedLaw`: the G1/G2 extension of the law curve
-    /// `Evaluate` creates (only for a B-spline law).
-    pub extended_law: Option<BSplineCurve>,
 }
 
 impl FilletLaw {
-    /// A law of `kind` with the `SmFilletLaw()` defaults: edge map `[0, 1]`, edge arc
-    /// length 0, no extended edge curve or extended law curve.
+    /// A law of `kind` without extended edge curve.
     #[must_use]
     pub const fn new(kind: FilletLawKind) -> Self {
         Self {
             kind,
             extended: None,
-            edge_map: Extent1d::from_raw(0.0, 1.0),
-            edge_arc_length: 0.0,
-            extended_law: None,
         }
     }
 
