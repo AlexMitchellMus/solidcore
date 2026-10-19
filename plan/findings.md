@@ -8098,3 +8098,40 @@ per-unit log audit confirms zero declared-green units with deferrals.
 The three paired control paths remain precondition exits, with no geometric
 success comparisons. Latest main 0cf3e290 is merged; unrelated plan entries are
 unchanged from main (only executive p1 co-port notes and this unit differ).
+
+
+### blend.fillet_executive_p3 — clean re-check and readiness integration (PR #244)
+
+The Opus re-check of 612c6631 is CLEAN. Its runner-error nit is folded in:
+`adjust_topology`, `adjust_tangent_corner` and `calc_fillet_geom` now return
+`SolidError::Unported` for the base corner-p1 / solver-p4 symbols instead of
+`InvalidInput` through `missing()`. This empty-B-rep fixture constructs no concrete
+corner or solver; future fixtures must dispatch real derived objects to their
+actual owners. Explicit UNPORTED tags sit on each runner stub body, and the
+complete override-owner tags remain discoverable at the required trait methods.
+The audit counts 41 distinct upstream symbols / 17 owners, including required
+virtual-dispatch targets, not 41 independently implemented stub bodies.
+
+Merged origin/main 46ddc4ff (#179 blend.fillet_intersector), preserving both
+`fillet_executive` and `fillet_intersector` exports in the sorted blend module list.
+None of this unit's 41 deferred callee symbols is among #179's 12 owned functions
+or its solver `SetSurfacesToZeroOffset` / `ReloadSurfaceOffsets` co-ports; no
+executive-p3 stub points at fillet_intersector. No new call can therefore be wired
+here. The intersector's internal solver/geometry integration remains with those
+owners. The main merge retains the incoming fillet intersector/custom-solver code
+and all unrelated plan entries unchanged.
+
+The subsequent main 8e79624a update changes only generated PROGRESS.md and is
+also merged; the tested kernel and 214-unit plan are unchanged from 46ddc4ff.
+
+Readiness validation after this merge: fmt (including include!-ed files), both
+workspace clippy configurations, 1,422 core tests (19 executive regressions),
+four FFI tests and wasm pass. Paired results remain 291 cases / 116 passes /
+0 failures / 175 deferrals (executive p1=46, p2=129), with_values=116,
+no_values=0, max_rel_err=0. Perturb detects 116/116 changes. Fuzz 2000:
+rejected=1720, malformed=16, ran=264, differs=0, crashes=0, panics=0,
+timeouts=0. Valgrind: all 52 valid programs actually ran on both engines,
+protocol equal to baseline, 0 errors and 0 definite/indirect/possible lost bytes,
+no suppressions. The final 214-unit matrix passes, with zero declared-green
+units carrying deferrals in the strict per-unit log audit. Coverage remains three
+paired p3 precondition paths and zero geometric-success comparisons.
