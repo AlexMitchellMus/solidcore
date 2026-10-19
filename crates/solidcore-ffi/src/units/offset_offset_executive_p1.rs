@@ -8,6 +8,7 @@
 //! | [`config`] | constructor/destructor, `Get/SetInset`, `Get/SetExtendConvexEdges`, `SetMergeResults`, `SetCreateOffsetSolid`, `GetTangencyTolDegrees`, `GetOffsetBrep`, `Get/SetShellFaces`, `GetOffsetEdgeuse` |
 //! | [`synchronize`] | `SyncronizeOffsetEdgeuses`, indirectly `sm_RemoveSmallStuff`, `sm_InsertBreaks`, `sm_SortEdgeuses`, `sm_ExtractGaps` |
 //! | [`extend`] | `GetCreateExtendedSurface` |
+//! | [`face_tail`] | `BuildOffsetOfFaceuse` (contained-domain branch), `MapEdgeuses`, `MakeFaceWithCurves` (fixture) |
 //! | [`probe`] | `ReplaceImplicitOffsets`, `RemoveExcessFaces`, `BuildSideWallOfEdgeuse`, `BuildOffsetOfEdgeuses`, `FillGapEdgeuses`, `BuildOffsetOfVertex`, `BuildOffsetOfFaceuse`, `PiecewiseMerge`, `MapEdgeuses`; `sm_NotifyEdgeAndVertices` indirectly via `MapEdgeuses` |
 //!
 //! Deviations: caller-owned flat snapshots instead of pointers/out-parameters;
@@ -93,6 +94,12 @@
 //!   Clear records: `2, previous_cache_count, 0`.
 //! * `probe`: `0, status, curve_count, orientation_count, has_surface,
 //!   has_result_brep, has_offset_brep, counted_original_to_offset_EU_lookups`.
+//! * `face_tail`: `0, status, related_face_count`, per related face
+//!   `uv_domain[4], edge_count` (sorted by domain), then the offset B-rep's
+//!   `face_count, edge_count, vertex_count`, its vertex points `xyz[3]` sorted
+//!   lexicographically, and `number_original_edgeuses` (the measured face use's
+//!   `GetEdgeuses`) with per use `-1` when `GetOffsetEdgeuse` is null, else
+//!   `1, start_xyz[3], mate_start_xyz[3]` of the offset use.
 //!
 //! **Relation ordering:** this checkout uses pointer-hashed `unordered_set`
 //! values in `SmRelation`. We preserve actual `GetSeconds` order; equal-minimum
@@ -300,6 +307,31 @@ pub enum Probe {
     /// `BuildOffsetOfEdgeuses` on a real planar face edge and its radial mate,
     /// with no mapped offsets (no geometry-creator branch is entered).
     EdgeusesUnmapped = 12,
+}
+
+/// A [`face_tail`] fixture: the unit-square plane face `z = 0` (made by
+/// `MakeFaceWithCurves` from 3D and UV lines) offset onto the plane
+/// `z = offset_distance` over `domain`.
+// Independent native setters are boolean toggles, not states of one machine.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, Clone, PartialEq)]
+pub struct FaceTail {
+    /// Geometry-creation distance; also the offset plane's height.
+    pub offset_distance: f64,
+    /// Geometry-creation approximation tolerance.
+    pub approx_tol: f64,
+    /// The offset plane's natural domain `umin, vmin, umax, vmax` (strictly increasing).
+    pub domain: [f64; 4],
+    /// `SM_OO_LOCAL_OPERATION` instead of `SM_OO_SOLID_OFFSET`.
+    pub local: bool,
+    /// `SetExtendConvexEdges`.
+    pub extend_convex: bool,
+    /// `SetMergeResults`.
+    pub merge_results: bool,
+    /// Offset the downward face use instead of the upward one.
+    pub mate: bool,
+    /// One self-intersection segment `u0, v0, u1, v1` on the offset plane.
+    pub self_intersection: Option<[f64; 4]>,
 }
 
 mod sys {
@@ -693,6 +725,38 @@ pub fn extend(input: &Extension) -> Result<Vec<f64>, FfiError> {
 pub fn probe(operation: Probe, approx_tol: f64) -> Result<Vec<f64>, FfiError> {
     finite(&[approx_tol])?;
     run(3, &Pack(vec![f64::from(operation as i32), approx_tol]))
+}
+
+fn face_tail_input(input: &FaceTail) -> Result<Pack, FfiError> {
+    let [u0, v0, u1, v1] = input.domain;
+    finite(&[input.offset_distance, input.approx_tol])?;
+    finite(&input.domain)?;
+    if !(u0 < u1 && v0 < v1) {
+        return Err(bad("offset domain must be strictly increasing"));
+    }
+    let mut pack = Pack::default();
+    pack.add(&[input.offset_distance, input.approx_tol])?;
+    pack.add(&input.domain)?;
+    for flag in [
+        input.local,
+        input.extend_convex,
+        input.merge_results,
+        input.mate,
+        input.self_intersection.is_some(),
+    ] {
+        pack.add(&[f64::from(u8::from(flag))])?;
+    }
+    if let Some(segment) = input.self_intersection {
+        finite(&segment)?;
+        pack.add(&segment)?;
+    }
+    Ok(pack)
+}
+
+/// Offsets a real plane face use onto a real offset plane through the native
+/// `BuildOffsetOfFaceuse`. See the module-level protocol for the returned record.
+pub fn face_tail(input: &FaceTail) -> Result<Vec<f64>, FfiError> {
+    run(4, &face_tail_input(input)?)
 }
 
 #[cfg(test)]

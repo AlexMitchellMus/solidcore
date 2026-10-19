@@ -44,10 +44,16 @@ use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use solidcore::nurbs::knots::Side;
 use solidcore::nurbs::math::CPoint;
 use solidcore::nurbs::srf_basic::Surface as NurbSurface;
+use solidcore::error::EntityRef;
 use solidcore::offset::offset_executive::p1::{OffsetExecutive, OffsetOperation};
+use solidcore::offset::offset_geometry_creation::SsiData;
 use solidcore::surface::plane::Plane;
 use solidcore::surface::surface::{Surface, SurfaceKind};
+use solidcore::topology::brep::p1 as brep_p1;
+use solidcore::topology::brep::p7::{self as brep_p7, FaceCurvesInput};
 use solidcore::topology::edge::NotifyEnv;
+use solidcore::topology::edgeuse::p1::{faceuse_edgeuses, mate as edgeuse_mate};
+use solidcore::topology::topology_traverser::face_edges;
 use solidcore::topology::{
     Brep, Edge, EdgeId, Edgeuse, EdgeuseId, EdgeuseOwner, Face, FaceId, Faceuse, FaceuseId, Loop,
     LoopEdge, Loopuse, LoopuseStart, Shell, Vertex, VertexId, Vertexuse, VertexuseOwner,
@@ -73,6 +79,39 @@ enum Inputs {
     Synchronize(Synchronize),
     Extend(Extension),
     Probe { branch: Probe, approx_tol: f64 },
+    FaceTail(FaceTailIn),
+}
+
+/// `BuildOffsetOfFaceuse` of a unit-square plane face onto the plane
+/// `z = offset_distance` (see [`ffi::FaceTail`]).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)] // Independent upstream settings.
+#[serde(deny_unknown_fields)]
+struct FaceTailIn {
+    offset_distance: f64,
+    approx_tol: f64,
+    domain: [f64; 4],
+    local: bool,
+    extend_convex: bool,
+    merge_results: bool,
+    mate: bool,
+    #[serde(default)]
+    self_intersection: Option<[f64; 4]>,
+}
+
+impl FaceTailIn {
+    fn ffi(&self) -> ffi::FaceTail {
+        ffi::FaceTail {
+            offset_distance: self.offset_distance,
+            approx_tol: self.approx_tol,
+            domain: self.domain,
+            local: self.local,
+            extend_convex: self.extend_convex,
+            merge_results: self.merge_results,
+            mate: self.mate,
+            self_intersection: self.self_intersection,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -589,6 +628,41 @@ fn decode(input: &Inputs, raw: &[f64]) -> HResult<Output> {
                 .ints("probe", snapshot.integers(6)?)
                 .ints("lookups", snapshot.list()?);
         }
+        Inputs::FaceTail(_) => {
+            let status = snapshot.integer()?;
+            let related = snapshot.count()?;
+            let mut domains = Vec::new();
+            let mut edge_counts = Vec::new();
+            for _ in 0..related {
+                domains.extend_from_slice(snapshot.take(4)?);
+                edge_counts.push(snapshot.integer()?);
+            }
+            let counts = [snapshot.count()?, snapshot.count()?, snapshot.count()?];
+            let points = snapshot.take(3 * counts[2])?.to_vec();
+            let uses = snapshot.count()?;
+            let mut mapped = Vec::new();
+            let mut ends = Vec::new();
+            for _ in 0..uses {
+                let flag = snapshot.integer()?;
+                match flag {
+                    -1 => {}
+                    1 => ends.extend_from_slice(snapshot.take(6)?),
+                    _ => return Err(bad("invalid mapped-use flag in native snapshot")),
+                }
+                mapped.push(flag);
+            }
+            output = face_tail_output(
+                status,
+                FaceTailRecord {
+                    domains,
+                    edge_counts,
+                    counts: counts.map(|n| n as i64),
+                    points,
+                    mapped,
+                    ends,
+                },
+            );
+        }
     }
     snapshot.done()?;
     normalize_sync_ties(output)
@@ -1027,13 +1101,13 @@ fn rust_config(input: &Config) -> HResult<Output> {
 
 // Notification identities for the offset B-rep. No runner record observes them;
 // they only keep split notifications distinct per entity and curve.
-fn notify_key(entity: solidcore::error::EntityRef) -> ObjectRef {
+fn notify_key(entity: EntityRef) -> ObjectRef {
     match entity {
-        solidcore::error::EntityRef::Edge(id) => ObjectRef {
+        EntityRef::Edge(id) => ObjectRef {
             key: ObjectKey(100 + u64::from(id.index())),
             type_code: solidcore::topology::edge::TYPE,
         },
-        solidcore::error::EntityRef::Vertex(id) => ObjectRef {
+        EntityRef::Vertex(id) => ObjectRef {
             key: ObjectKey(200 + u64::from(id.index())),
             type_code: solidcore::topology::vertex::TYPE,
         },
@@ -1282,6 +1356,252 @@ fn rust_extend(input: &Extension) -> RResult<Output> {
     Ok(output)
 }
 
+/// The measured state after `BuildOffsetOfFaceuse` (see [`ffi::FaceTail`]).
+struct FaceTailRecord {
+    domains: Vec<f64>,
+    edge_counts: Vec<i64>,
+    counts: [i64; 3],
+    points: Vec<f64>,
+    mapped: Vec<i64>,
+    ends: Vec<f64>,
+}
+
+fn face_tail_output(status: i64, record: FaceTailRecord) -> Output {
+    Output::new()
+        .int("status", status)
+        .values("related.domains", record.domains)
+        .ints("related.edge_counts", record.edge_counts)
+        .ints("offset.counts", record.counts.to_vec())
+        .values("offset.vertices", record.points)
+        .ints("mapped", record.mapped)
+        .values("mapped.ends", record.ends)
+}
+
+/// Distinct notification identities for the original (`base` 1) and offset
+/// (`base` 2) B-reps, typed as the entity kinds upstream notifies.
+fn entity_key(entity: EntityRef, base: u64) -> ObjectRef {
+    let (type_code, index) = match entity {
+        EntityRef::Face(id) => (solidcore::topology::face::p2::TYPE, id.index()),
+        EntityRef::Edge(id) => (solidcore::topology::edge::TYPE, id.index()),
+        EntityRef::Vertex(id) => (solidcore::topology::vertex::TYPE, id.index()),
+        _ => (0, 0),
+    };
+    ObjectRef {
+        key: ObjectKey((base << 40) + (type_code.unsigned_abs() << 24) + u64::from(index)),
+        type_code,
+    }
+}
+
+/// The shim's `curve_face`: `MakeFaceWithCurves` of the unit square from 3D lines
+/// over `[0, 1]` and 2D B-spline UV lines on the plane `z = 0`.
+fn curve_face(
+    kernel: &Kernel,
+    brep: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+) -> RResult<FaceId> {
+    let corners = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]];
+    let mut curves_3d = Vec::new();
+    let mut uv_curves = Vec::new();
+    for pair in corners.windows(2) {
+        let [[x0, y0], [x1, y1]] = [*at(pair, 0)?, *at(pair, 1)?];
+        curves_3d.push(Some(
+            CurveIn::Line {
+                start: [x0, y0, 0.0],
+                end: [x1, y1, 0.0],
+                domain: [0.0, 1.0],
+            }
+            .rust()?,
+        ));
+        uv_curves.push(Curve::from(
+            BSplineCurve::create_line_segment(2, Vec3::new(x0, y0, 0.0), Vec3::new(x1, y1, 0.0))
+                .map_err(setup)?,
+        ));
+    }
+    let input = FaceCurvesInput {
+        loops: vec![4],
+        curves_3d: Some(curves_3d),
+        uv_curves: Some(uv_curves),
+        orientations: vec![OrientType::Same; 4],
+        loop_points: Vec::new(),
+    };
+    let region = brep.infinite_region();
+    let this_face = |face| key_of(EntityRef::Face(face));
+    let made = brep_p7::make_face_with_curves(
+        kernel,
+        brep,
+        region,
+        input,
+        plane(0.0),
+        &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+        OrientType::Same,
+        None,
+        &this_face,
+        env,
+    )
+    .map_err(RunError::Kernel)?;
+    Ok(made.face.ok_or_else(|| bad("MakeFaceWithCurves made no face"))?)
+}
+
+fn rust_face_tail(input: &FaceTailIn) -> RResult<Output> {
+    let mut kernel = Kernel::default();
+    let mut original = Brep::new_with_infinite_region().map_err(setup)?;
+    let mut records = BTreeMap::new();
+    let mut attributes = AttributeStore::default();
+    let original_key = |entity| entity_key(entity, 1);
+    let offset_key = |entity| entity_key(entity, 2);
+    let mut env = NotifyEnv {
+        records: &mut records,
+        attributes: &mut attributes,
+        context: None,
+        key_of: &original_key,
+    };
+    let face = curve_face(&kernel, &mut original, &mut env, &original_key)?;
+    let upward = original
+        .face(face)
+        .map_err(setup)?
+        .faceuse
+        .ok_or_else(|| bad("face has no upward use"))?;
+    let faceuse = if input.mate {
+        original
+            .faceuse(upward)
+            .map_err(setup)?
+            .mate
+            .ok_or_else(|| bad("face use has no mate"))?
+    } else {
+        upward
+    };
+    let operation_type = if input.local {
+        OffsetOperation::LocalOperation
+    } else {
+        OffsetOperation::SolidOffset
+    };
+    let mut executive =
+        OffsetExecutive::new(operation_type, input.offset_distance, input.approx_tol);
+    executive.set_offset_brep(Brep::new_with_infinite_region().map_err(setup)?);
+    executive.set_extend_convex_edges(input.extend_convex);
+    executive.set_merge_results(input.merge_results);
+    let mut intersections = SsiData::default();
+    let d = input.offset_distance;
+    if let Some([u0, v0, u1, v1]) = input.self_intersection {
+        intersections.curves_3d.push(
+            CurveIn::Line {
+                start: [u0, v0, d],
+                end: [u1, v1, d],
+                domain: [0.0, 1.0],
+            }
+            .rust()?,
+        );
+        let trim =
+            BSplineCurve::create_line_segment(2, Vec3::new(u0, v0, 0.0), Vec3::new(u1, v1, 0.0))
+                .map_err(setup)?;
+        intersections
+            .uv_curves1
+            .push(Some(Curve::from(trim.clone())));
+        intersections.uv_curves2.push(Some(Curve::from(trim)));
+    }
+    let [u0, v0, u1, v1] = input.domain;
+    let mut surface = Some(Surface::from(Plane::new(
+        Vec3::new(0.0, 0.0, d),
+        Vec3::X,
+        Vec3::Y,
+        Vec2::new(1.0, 1.0),
+        &Extent2d::from_bounds(u0, v0, u1, v1),
+    )));
+    let result = executive.build_offset_of_faceuse(
+        &mut kernel,
+        &mut original,
+        Some(faceuse),
+        &mut surface,
+        &intersections,
+        &mut env,
+        &offset_key,
+    );
+    let (status, _) = operation(result)?;
+    let brep = executive
+        .offset_brep()
+        .ok_or_else(|| bad("offset B-rep was released"))?;
+    let mut summaries = Vec::new();
+    for related in executive.offset_faces(faceuse) {
+        let d = brep.face(related).map_err(setup)?.uv_domain;
+        let edges = face_edges(brep, related).map_err(setup)?.len();
+        summaries.push([d.min().x, d.min().y, d.max().x, d.max().y, edges as f64]);
+    }
+    summaries.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mut domains = Vec::new();
+    let mut edge_counts = Vec::new();
+    for summary in &summaries {
+        domains.extend_from_slice(summary.get(0..4).ok_or_else(|| bad("face summary"))?);
+        edge_counts.push(*at(summary, 4)? as i64);
+    }
+    let mut points = Vec::new();
+    for vertex in brep_p1::vertices(brep, None).map_err(setup)? {
+        let point = brep.vertex(vertex).map_err(setup)?.point;
+        points.push([point.x, point.y, point.z]);
+    }
+    points.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let counts = [
+        brep_p1::faces(brep, None).map_err(setup)?.len() as i64,
+        brep_p1::edges(brep, None).map_err(setup)?.len() as i64,
+        points.len() as i64,
+    ];
+    let mut mapped = Vec::new();
+    let mut ends = Vec::new();
+    for original_use in faceuse_edgeuses(&original, faceuse, false, None).map_err(setup)? {
+        let Some(offset) = executive.offset_edgeuse(original_use) else {
+            mapped.push(-1);
+            continue;
+        };
+        mapped.push(1);
+        let mate = edgeuse_mate(brep, offset)
+            .map_err(setup)?
+            .ok_or_else(|| bad("offset use has no mate"))?;
+        for use_id in [offset, mate] {
+            let point = vertex_point(brep, use_id)?;
+            ends.extend_from_slice(&[point.x, point.y, point.z]);
+        }
+    }
+    Ok(face_tail_output(
+        status,
+        FaceTailRecord {
+            domains,
+            edge_counts,
+            counts,
+            points: points.concat(),
+            mapped,
+            ends,
+        },
+    ))
+}
+
+fn vertex_point(brep: &Brep, edgeuse: EdgeuseId) -> HResult<Vec3> {
+    let vertexuse = brep
+        .edgeuse(edgeuse)
+        .map_err(setup)?
+        .vertexuse
+        .ok_or_else(|| bad("edge use has no vertex use"))?;
+    let vertex = brep
+        .vertexuse(vertexuse)
+        .map_err(setup)?
+        .vertex
+        .ok_or_else(|| bad("vertex use has no vertex"))?;
+    Ok(brep.vertex(vertex).map_err(setup)?.point)
+}
+
+/// A notification environment keyed like [`rust_face_tail`]'s.
+fn probe_env<R>(run: impl FnOnce(&mut NotifyEnv<'_>, &dyn Fn(EntityRef) -> ObjectRef) -> R) -> R {
+    let mut records = BTreeMap::new();
+    let mut attributes = AttributeStore::default();
+    let original_key = |entity| entity_key(entity, 1);
+    let mut env = NotifyEnv {
+        records: &mut records,
+        attributes: &mut attributes,
+        context: None,
+        key_of: &original_key,
+    };
+    run(&mut env, &|entity| entity_key(entity, 2))
+}
+
 fn rust_probe(branch: Probe, tolerance: f64) -> RResult<Output> {
     let mut kernel = Kernel::default();
     let mut original = Brep::new();
@@ -1351,7 +1671,17 @@ fn rust_probe(branch: Probe, tolerance: f64) -> RResult<Output> {
             } else {
                 None
             };
-            executive.build_offset_of_faceuse(&kernel, &mut original, faceuse, &mut None)
+            probe_env(|env, offset_key_of| {
+                executive.build_offset_of_faceuse(
+                    &mut kernel,
+                    &mut original,
+                    faceuse,
+                    &mut None,
+                    &SsiData::default(),
+                    env,
+                    offset_key_of,
+                )
+            })
         }
         Probe::PiecewiseEmpty => executive
             .piecewise_merge(&mut kernel, &mut original)
@@ -1365,7 +1695,9 @@ fn rust_probe(branch: Probe, tolerance: f64) -> RResult<Output> {
             // Native passes the original face itself as the offset face. The safe
             // API resolves result IDs through its own B-rep, so install its clone.
             executive.set_offset_brep(original.clone());
-            executive.map_edgeuses(&kernel, &original, faceuse, face)
+            probe_env(|env, offset_key_of| {
+                executive.map_edgeuses(&kernel, &mut original, faceuse, face, env, offset_key_of)
+            })
         }
         Probe::EdgeusesUnmapped => {
             plane_face(&mut original, 0.0)?;
@@ -1380,11 +1712,11 @@ fn rust_probe(branch: Probe, tolerance: f64) -> RResult<Output> {
             let mut records = BTreeMap::new();
             let mut attributes = AttributeStore::default();
             let key_of = |entity| match entity {
-                solidcore::error::EntityRef::Edge(id) => ObjectRef {
+                EntityRef::Edge(id) => ObjectRef {
                     key: ObjectKey(100 + u64::from(id.index())),
                     type_code: solidcore::topology::edge::TYPE,
                 },
-                solidcore::error::EntityRef::Vertex(id) => ObjectRef {
+                EntityRef::Vertex(id) => ObjectRef {
                     key: ObjectKey(200 + u64::from(id.index())),
                     type_code: solidcore::topology::vertex::TYPE,
                 },
@@ -1435,6 +1767,7 @@ impl UnitDiff for Runner {
             Inputs::Synchronize(input) => ffi::synchronize(&input.ffi()),
             Inputs::Extend(input) => ffi::extend(&input.ffi()),
             Inputs::Probe { branch, approx_tol } => ffi::probe(branch.ffi(), *approx_tol),
+            Inputs::FaceTail(input) => ffi::face_tail(&input.ffi()),
         }
         .map_err(|error| bad(format!("native adapter: {error}")))?;
         decode(&input, &raw)
@@ -1445,6 +1778,7 @@ impl UnitDiff for Runner {
             Inputs::Synchronize(input) => rust_sync(&input),
             Inputs::Extend(input) => rust_extend(&input),
             Inputs::Probe { branch, approx_tol } => rust_probe(branch, approx_tol),
+            Inputs::FaceTail(input) => rust_face_tail(&input),
         };
         match result {
             Ok(output) => normalize_sync_ties(output),
