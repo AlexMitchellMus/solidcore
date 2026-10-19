@@ -45,7 +45,7 @@ pub fn validate(op: i32, data: &[f64]) -> Result<(), FfiError> {
         return Err(bad());
     }
     if op == 0 {
-        let [corner, has_map, index, other, intersection, missing, unmarried0, unmarried1, tol, same, _offset, _ox, _oy, _oz, xx, xy, xz, yx, yy, yz, rest @ ..] =
+        let [corner, has_map, index, other, intersection, missing, unmarried0, unmarried1, _tol, _same, _offset, _ox, _oy, _oz, xx, xy, xz, yx, yy, yz, rest @ ..] =
             data
         else {
             return Err(bad());
@@ -63,8 +63,6 @@ pub fn validate(op: i32, data: &[f64]) -> Result<(), FfiError> {
             ]
             .iter()
             .all(|v| integer(*v, 1.0))
-            || *tol < 0.0
-            || *same < 0.0
             || !rest.as_chunks::<7>().0.iter().all(|chunk| curve(chunk))
         {
             return Err(bad());
@@ -98,7 +96,7 @@ pub fn validate(op: i32, data: &[f64]) -> Result<(), FfiError> {
             4 if data.len() == 10 || !integer(data[1], 16.0) || data[1] < 1.0 || data[0] < 0.0 => {
                 return Err(bad())
             }
-            5 if data[0] <= 0.0 || !integer(data[1], 1.0) => return Err(bad()),
+            5 if !integer(data[1], 1.0) => return Err(bad()),
             6 if !integer(data[2], ((data.len() - 10) / 7) as f64) || data[1] < 0.0 => {
                 return Err(bad())
             }

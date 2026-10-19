@@ -281,6 +281,62 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "negative_rule_tolerance",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/primitive.primitive_creation_p3/review.json#0 (upstream source/SMLib/src/SmPrimitiveCreation.cpp:3293)",
+      "values_compared": 190
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "negative_same_point_tolerance",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/primitive.primitive_creation_p3/review.json#1 (upstream source/SMLib/src/SmPrimitiveCreation.cpp:3293)",
+      "values_compared": 190
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "negative_both_tolerances",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/primitive.primitive_creation_p3/review.json#2 (upstream source/SMLib/src/SmPrimitiveCreation.cpp:3293)",
+      "values_compared": 190
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "zero_rule_tolerances",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/primitive.primitive_creation_p3/review.json#3 (upstream source/SMLib/src/SmPrimitiveCreation.cpp:3293)",
+      "values_compared": 190
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFacesFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "zero_curve_sweep_approximation_tolerance",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p3/review.json#4 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFacesFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "negative_curve_sweep_approximation_tolerance",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p3/review.json#5 (upstream source/SMLib/src/SmPrimitiveCreation.cpp)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -2329,13 +2385,13 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 6,
+  "cases_deferred": 8,
   "cases_failed": 0,
-  "cases_passed": 280,
+  "cases_passed": 284,
   "cases_rejected": 1,
-  "cases_total": 287,
+  "cases_total": 293,
   "deferred_by_unit": {
-    "topology.brep_p8": 6
+    "topology.brep_p8": 8
   },
   "max_rel_err": 0.0,
   "pass": true,

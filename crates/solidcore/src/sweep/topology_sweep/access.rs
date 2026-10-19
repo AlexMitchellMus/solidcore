@@ -412,7 +412,7 @@ pub trait SweepAccess {
         "boolean.merge_p3",
         "SmMerge::PiecewiseMerge"
     );
-    // UNPORTED(heal.stitch_p1): SmStitch::DoStitching
+    // UNPORTED(heal.stitch_p2): SmStitch::DoStitching
     deferred!(
         /// Sweep callback, default targets, non-manifold mode.
         fn stitch(
@@ -421,7 +421,7 @@ pub trait SweepAccess {
             tolerance: f64,
             making_manifold_solid: bool,
         ) -> ();,
-        "heal.stitch_p1",
+        "heal.stitch_p2",
         "SmStitch::DoStitching"
     );
     // UNPORTED(topology.brep_p3): SmBrep::OrientTrimmedSurfaces

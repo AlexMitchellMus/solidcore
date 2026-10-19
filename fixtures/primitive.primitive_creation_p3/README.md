@@ -16,7 +16,7 @@ seeds and scales from 1e-6 through 1e6.
 | Invalid capped repetition counts, empty curve sweep, null blend edge uses | Entry-point status and edit/context/output-list state; these are early exits, not geometry coverage |
 | Swung primitive with no profiles | Successful empty-loop return and unchanged state, not a constructed surface |
 
-The six nontrivial construction fixtures execute the real C++ public entry
+The eight nontrivial construction fixtures execute the real C++ public entry
 points. Rust defers at `CreatePlanarFacesWith3DCurves`, `CreateFaceFromSurface`
 or `CreateFacesFromSurface`; no topology or later transformations are compared
 for those cases. All eight owned functions have full Rust bodies, including
@@ -42,3 +42,17 @@ Legacy sweep APIs remain blocked at their earlier `SmBrep` constructor. Their
 outdated p3 blocker labels now identify that actual missing dependency. Five
 read-only sweep services resolve the integrated B-rep/region/shell accessors;
 no arena-order replacement is used.
+
+
+Review regressions (`review.json`) allow finite zero/negative rule tolerances and
+zero/negative curve-sweep approximation tolerance through the checked FFI. Four
+helper cases compare real values on both sides; two curve-sweep cases still defer
+at topology construction. The updated gate has 293 cases: 284 pass, 8 deferred,
+1 UB-78 rejection and 0 failures.
+
+Swung scaling retains the original derived `Curve` for virtual point evaluation
+and global property analysis. Two Rust regressions use imported analytic lines
+with a cached NURB differing by two ULPs, checking profile evaluation without a
+plane intersection and path evaluation after an intersection. Both distinguish
+the correct analytic result from a sliced B-spline. They do not add a native
+comparison of the deferred swung construction/topology tail.

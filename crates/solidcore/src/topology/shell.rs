@@ -40,9 +40,9 @@
 //! Face-use sibling links survive a cleared owner head, as in native self-transfer.
 //! `SmOwningTopology::Remove` / `PostInsert` of a face use are CO-PORTED on the
 //! typed face-use list (`move_faceuse`; unit `topology.proto_topology_p1` works on
-//! object-key records). `SmBrep::GetEdges` without a filter (unit `topology.brep_p1`)
-//! is CO-PORTED as `brep_get_edges`: the B-rep's explicit edge list in traversal order
-//! (`m_pEdgeListHead`).
+//! object-key records). `SmBrep::GetEdges` (unit `topology.brep_p1`) is its owner's
+//! port `topology::brep::p1::edges` (the `m_pEdgeListHead` list order), which replaced
+//! the earlier co-port.
 //! `TransferChildrenTo` ignores the status of `Remove`/`PostInsert` (`SE(...)`) and goes on;
 //! here a face use whose owner is not the source (or a `Remove` that cannot find it)
 //! returns `InvalidInput` instead. That state needs an inconsistent graph (a face use
@@ -474,7 +474,8 @@ pub fn wire_edges(kernel: &mut Kernel, brep: &Brep, id: ShellId) -> Result<Vec<E
     }
     // GetBrep is required even when the edge list happens to be empty.
     let owner = shell_brep(brep, id)?.ok_or(invalid_members())?;
-    for edge in brep_get_edges(owner) {
+    // SmBrep::GetEdges (unit topology.brep_p1, which replaced the co-port)
+    for edge in crate::topology::brep::p1::edges(owner, None)? {
         if crate::topology::edge::is_wire(owner, edge)? {
             let primary = crate::topology::edgeuse::p1::primary_edgeuse(owner, edge)?
                 .ok_or(invalid_members())?;
@@ -484,12 +485,6 @@ pub fn wire_edges(kernel: &mut Kernel, brep: &Brep, id: ShellId) -> Result<Vec<E
         }
     }
     Ok(output)
-}
-
-/// `SmBrep::GetEdges` without a filter (unit `topology.brep_p1`), preserving
-/// the explicit `m_pEdgeListHead` order, including reordered or detached records.
-pub(crate) fn brep_get_edges(brep: &Brep) -> Vec<EdgeId> {
-    brep.edge_list().to_vec()
 }
 
 /// `pRegion->Remove(pShell)` (`SmOwningTopology::Remove`, inline in

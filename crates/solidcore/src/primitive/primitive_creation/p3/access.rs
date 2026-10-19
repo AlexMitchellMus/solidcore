@@ -169,10 +169,10 @@ pub trait PrimitiveAccess: SweepAccess {
         tolerance: f64,
     ) -> Result<()> {
         let _ = (brep, sweep, tolerance);
-        // UNPORTED(heal.stitch_p1): SmStitch::DoStitching
+        // UNPORTED(heal.stitch_p2): SmStitch::DoStitching
         Err(SolidError::unported(
             "SmStitch::DoStitching",
-            "heal.stitch_p1",
+            "heal.stitch_p2",
         ))
     }
 }
