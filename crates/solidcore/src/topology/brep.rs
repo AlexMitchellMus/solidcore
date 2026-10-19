@@ -6,6 +6,7 @@
 //! | Rust      | Upstream                                                        |
 //! |-----------|-----------------------------------------------------------------|
 //! | [`p1`]    | see the module                                                  |
+//! | [`p2`]    | see the module                                                  |
 //! | [`p6`]    | see the module                                                  |
 //! | [`p7`]    | see the module                                                  |
 //! | [`p10`]   | `MakeTopologyFromData`, `ProjectAndTrim`, `RemoveAllTopology`, `TestClosureSplitRegion` (edge version) |

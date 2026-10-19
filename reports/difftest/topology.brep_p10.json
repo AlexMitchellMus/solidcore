@@ -579,8 +579,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Notify",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "adv_spine_doubled_p_manifold3_closure",
@@ -3687,8 +3687,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Notify",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "closure_noinf_spine_doubled",
@@ -3699,8 +3699,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Notify",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "closure_inf_spine_doubled",
@@ -4167,8 +4167,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Notify",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "review_spine_doubled_m1_closure_False",
@@ -4179,8 +4179,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Notify",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "review_spine_doubled_m1_closure_True",
@@ -13500,11 +13500,12 @@
   "cases_passed": 839,
   "cases_total": 1404,
   "deferred_by_unit": {
+    "query.brep": 5,
     "surface.cone_p1": 41,
     "surface.sphere": 328,
     "surface.surf_of_extrusion_p2": 10,
     "surface.surface_p2": 96,
-    "topology.brep_p2": 19,
+    "topology.brep_p2": 14,
     "topology.brep_p5": 8,
     "topology.face_p2": 63
   },

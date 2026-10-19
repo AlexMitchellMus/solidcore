@@ -92,6 +92,7 @@ use crate::topology::brep::p1;
 use crate::topology::brep::p6;
 use crate::topology::brep_cache::{make_brep_cache, BrepObjects, CacheObject, CacheSource};
 use crate::topology::brep_data::{BrepData, TopologyData, NO_OBJECT, UNSURE};
+use crate::topology::edge::NotifyEnv;
 use crate::topology::edgeuse::p1 as eu1;
 use crate::topology::shell::{ShellMembers, ShellType};
 use crate::topology::topology::Topology;
@@ -2089,6 +2090,7 @@ pub struct ClosureSplit {
 fn test_closure_split_region_at_faceuse(
     k: &mut Kernel,
     b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
     do_infinite_region_testing: bool,
     faceuse: Option<FaceuseId>,
 ) -> Result<Option<(Option<ShellId>, Option<RegionId>)>> {
@@ -2097,8 +2099,14 @@ fn test_closure_split_region_at_faceuse(
         OP_CLOSURE,
         "edge use without face use",
     ))?;
-    match p6::test_closure_split_region(k, b, &mut Marks::default(), do_infinite_region_testing, fu)
-    {
+    match p6::test_closure_split_region(
+        k,
+        b,
+        &mut Marks::default(),
+        env,
+        do_infinite_region_testing,
+        fu,
+    ) {
         Ok(v) => Ok(Some(v)),
         Err(SolidError::Upstream { .. }) => Ok(None),
         Err(e) => Err(e),
@@ -2131,7 +2139,8 @@ fn cw(b: &Brep, eu: EdgeuseId) -> Result<EdgeuseId> {
 /// `SmBrep::TestClosureSplitRegion` (edge version): when `test_edge` is a spine edge
 /// (six or more edge uses) whose edge use loops pair up around the same edges, tests
 /// each paired loop's face uses for a region they close off and splits it; with
-/// `do_infinite_region_testing` the infinite region is found again.
+/// `do_infinite_region_testing` the infinite region is found again. `env` is the
+/// notification state the face use version's `SmBrep::Notify` calls go through.
 ///
 /// # Errors
 ///
@@ -2141,6 +2150,7 @@ fn cw(b: &Brep, eu: EdgeuseId) -> Result<EdgeuseId> {
 pub fn test_closure_split_region(
     k: &mut Kernel,
     b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
     do_infinite_region_testing: bool,
     test_edge: EdgeId,
 ) -> Result<ClosureSplit> {
@@ -2225,7 +2235,7 @@ pub fn test_closure_split_region(
             let fu = eu1::faceuse(b, eu)?;
             // Note: don't SER here; no region nesting in these calls.
             if let Some((shell, Some(region))) =
-                test_closure_split_region_at_faceuse(k, b, false, fu)?
+                test_closure_split_region_at_faceuse(k, b, env, false, fu)?
             {
                 out.new_shells.push(shell);
                 out.new_regions.push(region);
@@ -2626,15 +2636,23 @@ mod tests {
         let mut b = build(&mut d, opts).unwrap();
         let mut k = Kernel::default();
         assert_eq!(b.edge(EdgeId::from_index(0)).unwrap().edgeuses.len(), 6);
+        let mut state = crate::topology::brep::p2::RegionNotifyState::new(&b);
         for e in b.edges().ids().collect::<Vec<_>>() {
-            let r = test_closure_split_region(&mut k, &mut b, true, e).unwrap();
+            let r = test_closure_split_region(&mut k, &mut b, &mut state.env(), true, e).unwrap();
             assert_eq!(r, ClosureSplit::default());
         }
         // a doubled triangle: its loops traverse the same edges, so the face use
         // version (unported) is reached
         let mut d = triangles(&pts, &[[0, 1, 2], [0, 1, 2], [0, 1, 3]]);
         let mut b = build(&mut d, opts).unwrap();
-        let r = test_closure_split_region(&mut k, &mut b, false, EdgeId::from_index(0));
+        let mut state = crate::topology::brep::p2::RegionNotifyState::new(&b);
+        let r = test_closure_split_region(
+            &mut k,
+            &mut b,
+            &mut state.env(),
+            false,
+            EdgeId::from_index(0),
+        );
         assert!(r.unwrap_err().is_unported());
     }
 
@@ -2643,7 +2661,15 @@ mod tests {
         let mut d = square(1);
         let mut b = build(&mut d, MakeTopologyOptions::default()).unwrap();
         let mut k = Kernel::default();
-        let r = test_closure_split_region(&mut k, &mut b, true, EdgeId::from_index(0)).unwrap();
+        let mut state = crate::topology::brep::p2::RegionNotifyState::new(&b);
+        let r = test_closure_split_region(
+            &mut k,
+            &mut b,
+            &mut state.env(),
+            true,
+            EdgeId::from_index(0),
+        )
+        .unwrap();
         assert_eq!(r, ClosureSplit::default());
         assert!(remove_all_topology(&mut k, &mut b).is_err());
         b.set_editing_enabled(true);
