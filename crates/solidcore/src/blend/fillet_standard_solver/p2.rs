@@ -1326,8 +1326,9 @@ impl VariableRadiusFs {
 
         // pCurve = pOptRefCurve; NER(pCurve);
         let curve = ref_curve.ok_or_else(|| SolidError::null_pointer(OP))?;
+        // (sIvl = pCurve->GetNaturalInterval(), dTol = m_dThisApproxTol3d and
+        // dScale = sIvl.GetLength() are read inside the rail loop)
         let _ivl = curve.natural_interval();
-        let _tol = self.curve_based.solver.approx_tol_3d;
 
         // for each rail of m_vFilletGeoms[0]: sAllRails.Add(pFilletGeom->GetRail(i))
         // UNPORTED(blend.fillet_geom_p1): SmFilletGeom::GetRail
@@ -1403,14 +1404,14 @@ impl VariableRadiusFs {
         s0.set_offset_distance(offset_distance * o0);
         let (sf, sduf, sdvf) = offset_evaluate_1st(s0, uv)?;
         let mut sn = sduf.cross(sdvf).unitize()?;
-        sn = sn * o0;
+        sn *= o0;
 
         let uv2 = Point2::new(at(x, surf2_off, OP)?, at(x, plus(surf2_off, 1, OP)?, OP)?);
         let s1 = self.surface_mut(1)?;
         s1.set_offset_distance(offset_distance * o1);
         let (sg, sdug, sdvg) = offset_evaluate_1st(s1, uv2)?;
         let mut sn2 = sdug.cross(sdvg).unitize()?;
-        sn2 = sn2 * o1;
+        sn2 *= o1;
 
         if sduf.length_squared() < EFF_ZERO_SQ
             || sdvf.length_squared() < EFF_ZERO_SQ
@@ -1598,7 +1599,7 @@ impl VariableRadiusFs {
             *slot = fillet_edge_t; // SetupOffsetValues() looks for this here.
         }
         let radius = self.setup_offset_values(&tsect)?;
-        pnt = match surface1.as_deref_mut() {
+        pnt = match surface1 {
             Some(s) => offset_evaluate_point(s, uv)?,
             None => offset_evaluate_point(self.surface_mut(rail_index)?, uv)?,
         };
@@ -1921,7 +1922,7 @@ impl SurfaceSurfaceFs {
             }
         }
 
-        let _tsect_pnts = [stepped.next];
+        let tsect_pnts = [stepped.next];
         let mut domain1 = domain1;
         let mut domain2 = domain2;
         let base1 = Surface::from(self.base.surface(0)?.surface.clone());
@@ -1930,13 +1931,30 @@ impl SurfaceSurfaceFs {
         ConstantRadiusOps::setup_offset_extension(self, k, &base2, &mut domain2)?;
 
         // (m_vFilletGeoms holds the geometry the solver's constructor made)
-        // SmFilletBrep * pBrep = m_pExecutive->GetPseudoBrep();
-        // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::GetPseudoBrep
-        Err(SolidError::unported(
-            "SmFilletExecutive::GetPseudoBrep",
-            "blend.fillet_executive_p1",
-        ))
+        fillet_geom_from_points(self, &tsect_pnts, &domain1, &domain2)
     }
+}
+
+/// The rest of `CalcFilletGeom` from `pBrep = m_pExecutive->GetPseudoBrep()`: the rail
+/// edges of the fillet geometry, the fillet intersection through `crTsectPnts` inside the
+/// two domains, the rails' curve classification and UV curves and
+/// `SplitAndTrimFilletSurface`.
+///
+/// # Errors
+///
+/// [`SolidError::Unported`] (`SmFilletExecutive::GetPseudoBrep`, unit
+/// `blend.fillet_executive_p1`).
+fn fillet_geom_from_points(
+    _solver: &mut SurfaceSurfaceFs,
+    _tsect_pnts: &[TsectPnt],
+    _domain1: &Extent2d,
+    _domain2: &Extent2d,
+) -> Result<()> {
+    // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::GetPseudoBrep
+    Err(SolidError::unported(
+        "SmFilletExecutive::GetPseudoBrep",
+        "blend.fillet_executive_p1",
+    ))
 }
 
 /// The outputs of `StepSolve` `CalcFilletGeom` reads.
