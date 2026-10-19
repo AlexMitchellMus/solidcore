@@ -7449,6 +7449,22 @@ PR #203 (on main's #146). Part 2 of `SmTopologyIntersector.cpp`: `RegisterExisti
   --fuzz 2000` reports FUZZ-PASS with 3 `differs` notes, all `sm_SetEdgeClass` with a
   mutated tolerance of -1e300 (C++ classifies an end to `SM_PC_VERTEX`, the port to
   `SM_PC_EDGE`): part 1's code, untouched by this PR.
+- **CloseIntersectionLoop co-port.** `SmTopologyIntersector::CloseIntersectionLoop`
+  (`SmTopologyIntersector.cpp:6108-6354`, called from `SmMerge.cpp:2958`) and its only
+  callee `IIREdgeBrep` (`:2836-2971`) are listed by no unit in `units.json`; per the
+  overseer they are co-ported into this unit (`close_intersection_loop`,
+  `iir_edge_brep`). `IIREdgeBrep`'s `MergeCurveClasses` stays
+  `UNPORTED(boolean.topology_intersector_p3)` (draft #211 ports it). Script op 52 runs it;
+  it is not drawn by the generator (16 edge cases on a planar face and its copy plus 48
+  seeded scripts, `close_loop_*`, so the 841 earlier cases are unchanged); on success it
+  reports the other mate of each edge of the vertex (`GetMappedBrepObjects` cannot
+  follow an op that may change topology). 58 compare: 11
+  `SM_ERR_NULL_POINTER` early returns, 28 successes without new topology (every edge
+  mated, or the far vertices unmated), 19 that relate the edge pair whose midpoint drops
+  onto the mated vertices' only common edge; 6 reach the coincidence test and defer in
+  `BrepCurveSolve` (`SmBrep::CalculateBoundingBox`, `query.brep`). The shim refuses a
+  vertex whose edges lack a curve or vertices (or, for the B-rep vertex, a primary edge
+  use) and the FFI requires both B-reps.
 - Upstream issues: UB-184 (`RegisterExistingSSI` failure leaves the table's lists out of
   step), UB-175 [PSIRT] (`~SmProtoTopologyManager` use-after-free), HANG-25 (zero
   tolerance), WR-170 (copies of registered curves and a failed manager leak).

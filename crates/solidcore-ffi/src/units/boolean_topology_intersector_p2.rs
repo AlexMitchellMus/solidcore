@@ -23,22 +23,26 @@
 //! | 49 | `FixupSplitVertexPair`      | `index cc cc`            | `status changed ccf ccf` |
 //! | 50 | `EdgeEdgeIntersect`         | `n h* n h* manifold ignore` | `status n h*(split1) n_new1 n h*(split2) n_new2 n_verts max min` |
 //! | 51 | `EdgeFaceCoincidence`       | `n h* n h* ignore nesting` | `status n h*(imprinted) n h*(processed) n_new n h*(split) max min` |
+//! | 52 | `CloseIntersectionLoop`     | `h`                      | `status made_new_topology n h*` (the other mate of each edge of the vertex) |
 //!
-//! `ccf` is `n (a b pcf pcf pcf)*`. Ops 42 to 44 and 47 to 51 emit their outputs only
-//! on a success status. Ops 42 to 44, 47, 50 and 51 may change topology.
+//! `ccf` is `n (a b pcf pcf pcf)*`. Ops 42 to 44 and 47 to 52 emit their outputs only
+//! on a success status. Ops 42 to 44, 47 and 50 to 52 may change topology (52 through
+//! `IIREdgeBrep`), so 52 reports the relationships it can make itself.
 //!
 //! [`eval`] accepts only what upstream handles without undefined behaviour, on top of
 //! part 1's rules: vertex handles where upstream calls vertex members (42, 44, 51; a
 //! vertex classification of 48/49 must name a vertex), faces (43), edges with a
 //! curve and vertices (50), an interval index inside both classifications (49), a
-//! classification curve; no handle-taking op may follow an op that may change
-//! topology; 45 and 46 need the manager (45 both intersector
+//! classification curve; a vertex or null for 52, with both intersector B-reps; no
+//! handle-taking op may follow an op that may change topology; 45 and 46 need the
+//! manager (45 both intersector
 //! B-reps, 47 the maps of constructor 0), 47 both B-reps, a nonzero approximation
 //! tolerance (HANG-25) and B-rep blocks below [`HANG_COORD`] (HANG-16's class: the
 //! full upstream intersection does not finish otherwise) and it must be the last op.
 //! The shim checks what depends on the B-reps' and the manager's state (mates that
 //! are not vertices where upstream dereferences them, edges of a vertex without
-//! curve, faces without surface, 46 without the maps reaching `Relate`'s insert) and
+//! curve, faces without surface, 46 without the maps reaching `Relate`'s insert, 52's
+//! edges without curve, vertices or (the B-rep vertex's) primary edge use) and
 //! answers `-2`; it also answers `-2` for a 47 whose manager teardown would read a
 //! freed proto edge (UB-175: the shim runs a verbatim copy of
 //! `IntersectInsertRelate` that unlinks the stale entries first).
@@ -75,6 +79,7 @@ pub enum ScriptOp2 {
     FixupSplitVertexPair = 49,
     EdgeEdge = 50,
     EdgeFaceCoincidence = 51,
+    CloseIntersectionLoop = 52,
 }
 
 impl ScriptOp2 {
@@ -92,7 +97,7 @@ impl ScriptOp2 {
             FixupSplitVertexPair, IntersectInsertRelate, IntersectTopology, RemoveRelationship,
             SetRelationships, Squeeze,
         };
-        const ALL: [ScriptOp2; 11] = [
+        const ALL: [ScriptOp2; 12] = [
             RemoveRelationship,
             Squeeze,
             DeleteFaces,
@@ -104,6 +109,7 @@ impl ScriptOp2 {
             FixupSplitVertexPair,
             EdgeEdge,
             EdgeFaceCoincidence,
+            ScriptOp2::CloseIntersectionLoop,
         ];
         ALL.iter().copied().find(|o| o.code() == code)
     }
@@ -119,6 +125,7 @@ impl ScriptOp2 {
                 | Self::IntersectInsertRelate
                 | Self::EdgeEdge
                 | Self::EdgeFaceCoincidence
+                | Self::CloseIntersectionLoop
         )
     }
 }
@@ -173,7 +180,7 @@ struct Part2;
 
 impl ExtraOps for Part2 {
     fn max_code(&self) -> i64 {
-        51
+        52
     }
 
     fn op(
@@ -269,6 +276,13 @@ impl ExtraOps for Part2 {
                 c.list(rd, &[Edge], true)?;
                 rd.flag()?;
                 rd.flag()?;
+            }
+            ScriptOp2::CloseIntersectionLoop => {
+                // (BrepCurveSolve and the edge lists read both B-reps)
+                if !st.have_breps[0] || !st.have_breps[1] {
+                    return Err(bad("CloseIntersectionLoop needs both B-reps"));
+                }
+                c.handle_of(rd, &[Vertex], true)?;
             }
         }
         if op.mutates() {

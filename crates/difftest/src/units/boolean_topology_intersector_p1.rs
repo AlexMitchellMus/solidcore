@@ -89,6 +89,7 @@ use solidcore::topology::brep::p7;
 use solidcore::topology::brep_cache::{arena_identity, BrepCache, CacheObject, CacheSource};
 use solidcore::topology::edge as ed;
 use solidcore::topology::edgeuse::p1 as eu1;
+use solidcore::topology::edgeuse::p3 as eu3;
 use solidcore::topology::face::p2 as fp2;
 use solidcore::topology::face::p3 as fp3;
 use solidcore::topology::face::p3::{FaceIntersectOptions, IntersectObject};
@@ -373,7 +374,7 @@ pub(super) enum OpIn {
         capture: f64,
         override_tol: f64,
     },
-    // ---- part 2 (unit boolean.topology_intersector_p2; shim ops 41 to 51) ----
+    // ---- part 2 (unit boolean.topology_intersector_p2; shim ops 41 to 52) ----
     RemoveRel {
         a: Hin,
         b: Hin,
@@ -413,6 +414,9 @@ pub(super) enum OpIn {
         excluded: Vec<Hin>,
         ignore: bool,
         nesting: bool,
+    },
+    CloseLoop {
+        v: Hin,
     },
 }
 
@@ -1928,6 +1932,9 @@ fn resolve(ops: &[OpIn], c: &Counts, two: &Two, start: Start) -> Result<Vec<ROp>
         if matches!(op, OpIn::SetRels) && !has_mgr {
             return Err(fail("set_relationships"));
         }
+        if matches!(op, OpIn::CloseLoop { .. }) && (!have_breps[0] || !have_breps[1]) {
+            return Err(fail("close_intersection_loop"));
+        }
         if matches!(op, OpIn::Iir) && (i_ctor != 0 || !have_breps[0] || !have_breps[1]) {
             return Err(fail("intersect_insert_relate"));
         }
@@ -2248,6 +2255,9 @@ fn resolve(ops: &[OpIn], c: &Counts, two: &Two, start: Start) -> Result<Vec<ROp>
                 ignore: *ignore,
                 nesting: *nesting,
             },
+            OpIn::CloseLoop { v } => OpIn::CloseLoop {
+                v: hk(*v, &[K_VERTEX], true)?,
+            },
         };
         if matches!(
             r,
@@ -2264,6 +2274,7 @@ fn resolve(ops: &[OpIn], c: &Counts, two: &Two, start: Start) -> Result<Vec<ROp>
                 | OpIn::Iir
                 | OpIn::EdgeEdge { .. }
                 | OpIn::EdgeFaceCoin { .. }
+                | OpIn::CloseLoop { .. }
         ) {
             mutated = true;
         }
@@ -2608,6 +2619,10 @@ fn encode(i: &Inputs, ops: &[ROp]) -> Result<Vec<f64>, HarnessError> {
                 push_list(&mut v, verts);
                 push_list(&mut v, excluded);
                 v.extend([flag(*ignore), flag(*nesting)]);
+            }
+            OpIn::CloseLoop { v: bv } => {
+                v.push(52.0);
+                push_h(&mut v, *bv);
             }
         }
     }
@@ -3553,6 +3568,43 @@ fn run_part2_op(
             o.push(r.max_edge_gap);
             o.push(r.this_min_unstitched);
         }
+        OpIn::CloseLoop { v } => {
+            o.push(52.0);
+            let bv = triple_to_h(*v);
+            // (the shim's close_loop_edges_ok: the edges of both vertices have a curve and
+            // vertices, the B-rep vertex's a primary edge use)
+            if let Some(bv) = bv {
+                let mut ok = vertex_edges_ok(two, bv)?;
+                for e in two.vertex_edges(bv)? {
+                    if two.edge_primary_edgeuse_orientation(e)?.is_none() {
+                        ok = false;
+                    }
+                }
+                if let Some(ov) = ti
+                    .other_mate(Some(bv))
+                    .filter(|m| m.class_kind() == ClassObjectKind::Vertex)
+                {
+                    if !vertex_edges_ok(two, ov)? {
+                        ok = false;
+                    }
+                }
+                if !ok {
+                    o.push(NULL_DEREF);
+                    return Ok(());
+                }
+            }
+            let Some(made) = status(ti.close_intersection_loop(k, two, bv), o)? else {
+                return Ok(());
+            };
+            o.push(flag(made));
+            // (the shim's read-back: the other mate of each edge of the vertex)
+            let bv = bv.ok_or_else(|| Fail::Harness(harness("success without a vertex")))?;
+            let edges = two.vertex_edges(bv)?;
+            o.push(edges.len() as f64);
+            for e in edges {
+                put_h(o, ti.other_mate(Some(e)));
+            }
+        }
         _ => return Err(Fail::Harness(harness("part 1 op in part 2's dispatch"))),
     }
     Ok(())
@@ -3614,6 +3666,18 @@ impl IntersectorBrepP2<H> for Two {
             Some(&mut notify),
         )?;
         Ok(deleted_edge.map(|e| hd(brep.b, K_EDGE, e.index())))
+    }
+    fn edge_normalized_evaluate(
+        &mut self,
+        k: &Kernel,
+        edge: H,
+        t: f64,
+    ) -> solidcore::Result<Point3> {
+        let b = self.brep_m(edge)?;
+        let eu = eu1::primary_edgeuse(b, eid(edge))?
+            .ok_or_else(|| invalid("edge without primary edge use"))?;
+        // (pOptFirstDeriv NULL, bOKToMakeUVTrimCurve TRUE by default)
+        Ok(eu3::normalized_evaluate(k, b, eu, t, false, false, true)?.point)
     }
     fn vertex_edges(&self, vertex: H) -> solidcore::Result<Vec<H>> {
         let b = self.brep_r(vertex)?;
