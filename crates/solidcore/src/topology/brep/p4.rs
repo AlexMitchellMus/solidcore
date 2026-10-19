@@ -1736,9 +1736,14 @@ mod tests {
 
     #[test]
     fn remove_loop_without_loop_notifies_first() {
-        // the notification (unported) comes before the null dereference upstream
+        // the notification comes before the null dereference upstream: it resets the
+        // face's rectangular-trim flag, then the null loop is the dereference error
         let mut b = Brep::new();
-        let r = face_remove_loop(&mut b, FaceId::from_index(0), None);
-        assert!(matches!(r, Err(ref e) if e.is_unported()));
+        let s = b.add_shell_record(Shell::default()).unwrap();
+        let f = b.add_face_record(crate::topology::Face::new(s)).unwrap();
+        b.face_mut(f).unwrap().rectangular_trim = face2::UNSURE + 1;
+        let r = face_remove_loop(&mut b, f, None);
+        assert!(matches!(r, Err(SolidError::InvalidInput { .. })));
+        assert_eq!(b.face(f).unwrap().rectangular_trim, face2::UNSURE);
     }
 }

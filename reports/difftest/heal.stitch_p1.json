@@ -115,8 +115,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::StitchFaces",
-        "unit": "topology.brep_p4"
+        "symbol": "SmBrep::LockBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "box_stitch_and_orient",
@@ -2681,9 +2681,8 @@
   "cases_total": 300,
   "deferred_by_unit": {
     "harness:analytic-geometry-export": 1,
-    "query.brep": 8,
+    "query.brep": 9,
     "topology.brep_p2": 7,
-    "topology.brep_p4": 1,
     "topology.face_p2": 49,
     "topology.face_p4": 2
   },

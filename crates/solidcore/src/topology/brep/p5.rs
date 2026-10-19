@@ -960,7 +960,7 @@ pub fn glue_with_notifications(
         crate::error::ignore_status(vertex::set_tolerance(b, survivor, radius, true, true))?;
     }
     if vertex::is_shell_vertex(b, deleted)? {
-        delete_vertex(k, b, deleted, notifications.as_deref_mut())?;
+        delete_vertex(k, b, deleted, notifications)?;
         return Ok(());
     }
     if vertex::is_shell_vertex(b, survivor)? {

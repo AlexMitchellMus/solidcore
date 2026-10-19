@@ -159,8 +159,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::StitchFaces",
-        "unit": "topology.brep_p4"
+        "symbol": "SmBrep::LockBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "isolated_op10_editing_False",
@@ -171,8 +171,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::StitchFaces",
-        "unit": "topology.brep_p4"
+        "symbol": "SmBrep::LockBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "isolated_op10_editing_True",
@@ -6624,9 +6624,9 @@
   "cases_passed": 737,
   "cases_total": 797,
   "deferred_by_unit": {
+    "query.brep": 2,
     "topology.brep_p1": 10,
     "topology.brep_p2": 46,
-    "topology.brep_p4": 2,
     "topology.brep_p9": 2
   },
   "max_rel_err": 0.0,
