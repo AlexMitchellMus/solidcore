@@ -52,9 +52,8 @@
 
 use crate::blend::fillet_custom_solver::{InitialValues, OffsetSurface};
 use crate::blend::fillet_solver::p1::{
-    check_edge_curve_domains, FilletGeomRef, FilletSolver, FilletSolverOps,
-    FilletSphereSolveEnfo, FilletSurfaceGeneratorType, RailRailIntersectEnfo,
-    RailUvCurveIntersectEnfo,
+    check_edge_curve_domains, FilletGeomRef, FilletSolver, FilletSolverOps, FilletSphereSolveEnfo,
+    FilletSurfaceGeneratorType, RailRailIntersectEnfo, RailUvCurveIntersectEnfo,
 };
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::Curve;
@@ -218,8 +217,14 @@ fn has_surface(s: &FilletSolver, rail: usize) -> Result<bool> {
 /// `pCurve->Evaluate(t, 1, TRUE, sPV)`: point and first derivative.
 fn curve_pv(c: &Curve, t: f64) -> Result<(Point3, Vec3)> {
     let pv = c.evaluate(t, 1, true, false)?;
-    let p = pv.first().copied().ok_or_else(|| invalid("short curve evaluation"))?;
-    let d = pv.get(1).copied().ok_or_else(|| invalid("short curve evaluation"))?;
+    let p = pv
+        .first()
+        .copied()
+        .ok_or_else(|| invalid("short curve evaluation"))?;
+    let d = pv
+        .get(1)
+        .copied()
+        .ok_or_else(|| invalid("short curve evaluation"))?;
     Ok((p, d))
 }
 
@@ -242,7 +247,10 @@ fn checked_edge_curve(k: &Kernel, s: &FilletSolver, b: &Brep, e: EdgeId) -> Resu
 }
 
 fn is_circular_fsg(s: &FilletSolver) -> Result<bool> {
-    let fsg = s.fsg.as_ref().ok_or_else(|| invalid("no fillet surface generator"))?;
+    let fsg = s
+        .fsg
+        .as_ref()
+        .ok_or_else(|| invalid("no fillet surface generator"))?;
     Ok(fsg.fillet_surface_generator_type() == FilletSurfaceGeneratorType::Circular)
 }
 
@@ -261,7 +269,11 @@ fn offset_radius(ops: &mut dyn FilletSolverOps, t: &TsectPnt) -> Result<f64> {
 }
 
 /// Stores the parts into the fillet geometry (`pFilletGeom` or `m_vFilletGeoms[0]`).
-fn store_parts(s: &FilletSolver, fillet_geom: Option<FilletGeomRef>, parts: FilletGeomParts) -> Result<()> {
+fn store_parts(
+    s: &FilletSolver,
+    fillet_geom: Option<FilletGeomRef>,
+    parts: FilletGeomParts,
+) -> Result<()> {
     let fg = match fillet_geom {
         Some(fg) => fg,
         None => s.first_fillet_geom()?,
@@ -598,8 +610,13 @@ impl FilletSolver {
         let gen_curve = BSplineCurve::create_line_segment(3, start_pnt0, end_pnt0)?;
 
         // Now, create surface of revolution
-        let mut cone =
-            SurfOfRevolution::create_canonical(k, Curve::from(gen_curve), center0, axis_of_revolution, false)?;
+        let mut cone = SurfOfRevolution::create_canonical(
+            k,
+            Curve::from(gen_curve),
+            center0,
+            axis_of_revolution,
+            false,
+        )?;
         let mut step_domain = cone.step_uv_domain();
         let mut uv_max = step_domain.max;
         uv_max.x = angle;
@@ -623,8 +640,15 @@ impl FilletSolver {
 
         // Calc Rail1
         let rail_crv1 = Curve::from(
-            cone.create_iso_parametric_curve(k, SurfParamType::V, uv_domain.max.y, 0.0, None, false)?
-                .curve,
+            cone.create_iso_parametric_curve(
+                k,
+                SurfParamType::V,
+                uv_domain.max.y,
+                0.0,
+                None,
+                false,
+            )?
+            .curve,
         );
         let crv_ivl1 = rail_crv1.natural_interval();
 
@@ -701,7 +725,8 @@ impl FilletSolver {
         if !is_circular_fsg(s)? {
             return Err(sm_err());
         }
-        let Some((ref_frame, _arc_radius, start_ang, _end_ang)) = curve.is_arc(11, ANALYTIC_TOL)? else {
+        let Some((ref_frame, _arc_radius, start_ang, _end_ang)) = curve.is_arc(11, ANALYTIC_TOL)?
+        else {
             return Err(sm_err());
         };
 
@@ -810,13 +835,20 @@ impl FilletSolver {
             // for both filletSector->edgeuses
             for i in 0..2 {
                 let eu_i = s.edgeuse(i)?.ok_or_else(|| invalid("no edge use"))?;
-                let vu = eu::vertexuse(b, eu_i)?.ok_or_else(|| invalid("edge use without vertex use"))?;
-                let _v = vertexuse::vertex(b, vu)?.ok_or_else(|| invalid("vertex use without vertex"))?;
+                let vu = eu::vertexuse(b, eu_i)?
+                    .ok_or_else(|| invalid("edge use without vertex use"))?;
+                let _v = vertexuse::vertex(b, vu)?
+                    .ok_or_else(|| invalid("vertex use without vertex"))?;
                 let orient = eu::orientation(b, eu_i)?;
-                if (orient == OrientType::Same && !s.extend_before) || orient == OrientType::Opposite {
+                if (orient == OrientType::Same && !s.extend_before)
+                    || orient == OrientType::Opposite
+                {
                     let _ = fillet_geom;
                     // UNPORTED(blend.fillet_geom_p1): SmFilletGeom::GetRail
-                    return Err(SolidError::unported("SmFilletGeom::GetRail", "blend.fillet_geom_p1"));
+                    return Err(SolidError::unported(
+                        "SmFilletGeom::GetRail",
+                        "blend.fillet_geom_p1",
+                    ));
                 }
             }
         }
@@ -858,8 +890,13 @@ impl FilletSolver {
         }
 
         // create surface of revolution
-        let mut torus =
-            SurfOfRevolution::create_canonical(k, Curve::from(arc), origin, axis_of_revolution, false)?;
+        let mut torus = SurfOfRevolution::create_canonical(
+            k,
+            Curve::from(arc),
+            origin,
+            axis_of_revolution,
+            false,
+        )?;
 
         // extend the torus uvDomain as needed
         let mut step_domain = torus.step_uv_domain();
@@ -882,13 +919,27 @@ impl FilletSolver {
         let uv_domain = torus.natural_uv_domain();
         let rail_crv0 = Curve::from(
             torus
-                .create_iso_parametric_curve(k, SurfParamType::V, uv_domain.min.y, 0.0, None, false)?
+                .create_iso_parametric_curve(
+                    k,
+                    SurfParamType::V,
+                    uv_domain.min.y,
+                    0.0,
+                    None,
+                    false,
+                )?
                 .curve,
         );
         let crv_ivl0 = rail_crv0.natural_interval();
         let rail_crv1 = Curve::from(
             torus
-                .create_iso_parametric_curve(k, SurfParamType::V, uv_domain.max.y, 0.0, None, false)?
+                .create_iso_parametric_curve(
+                    k,
+                    SurfParamType::V,
+                    uv_domain.max.y,
+                    0.0,
+                    None,
+                    false,
+                )?
                 .curve,
         );
         let crv_ivl1 = rail_crv1.natural_interval();
@@ -929,10 +980,26 @@ impl FilletSolver {
         // Now Set up Solver
         let jacobian_size = ops.jacobian_size()?;
         let mut intervals = ExtentNd::new(jacobian_size);
-        set_interval(&mut intervals, 0, Extent1d::from_min_max(uv_domain1.min.x, uv_domain1.max.x));
-        set_interval(&mut intervals, 1, Extent1d::from_min_max(uv_domain1.min.y, uv_domain1.max.y));
-        set_interval(&mut intervals, 2, Extent1d::from_min_max(uv_domain2.min.x, uv_domain2.max.x));
-        set_interval(&mut intervals, 3, Extent1d::from_min_max(uv_domain2.min.y, uv_domain2.max.y));
+        set_interval(
+            &mut intervals,
+            0,
+            Extent1d::from_min_max(uv_domain1.min.x, uv_domain1.max.x),
+        );
+        set_interval(
+            &mut intervals,
+            1,
+            Extent1d::from_min_max(uv_domain1.min.y, uv_domain1.max.y),
+        );
+        set_interval(
+            &mut intervals,
+            2,
+            Extent1d::from_min_max(uv_domain2.min.x, uv_domain2.max.x),
+        );
+        set_interval(
+            &mut intervals,
+            3,
+            Extent1d::from_min_max(uv_domain2.min.y, uv_domain2.max.y),
+        );
 
         let mut periodicities = vec![false, false, false, false];
         let mut guess_t = vec![uv1.x, uv1.y, uv2.x, uv2.y];
@@ -1059,8 +1126,16 @@ impl FilletSolver {
             .ok_or_else(|| invalid("no offset surface"))?;
         let mut domain = base.natural_uv_domain();
         ops.solver().setup_offset_extension(k, &base, &mut domain)?;
-        set_interval(&mut intervals, 1, Extent1d::from_min_max(domain.min.x, domain.max.x));
-        set_interval(&mut intervals, 2, Extent1d::from_min_max(domain.min.y, domain.max.y));
+        set_interval(
+            &mut intervals,
+            1,
+            Extent1d::from_min_max(domain.min.x, domain.max.x),
+        );
+        set_interval(
+            &mut intervals,
+            2,
+            Extent1d::from_min_max(domain.min.y, domain.max.y),
+        );
 
         let mut periodicities = vec![false, false, false];
         let mut guess_t = vec![guess_edge_parameter, uv_guess.x, uv_guess.y];
@@ -1084,12 +1159,17 @@ impl FilletSolver {
         put_surface(ops.solver_mut(), rail_index, surface1)?;
         let loaded = loaded?;
 
-        let side_tol = edge::tolerance(b, side_edge.ok_or_else(|| invalid("edge use without edge"))?)?;
+        let side_tol = edge::tolerance(
+            b,
+            side_edge.ok_or_else(|| invalid("edge use without edge"))?,
+        )?;
         let tol = ops.solver().approx_tol_3d + side_tol;
 
         // specify the rail/curve intersection evaluate function for the NewtonRaphson Solver
         let ivl = uv_curve.natural_interval();
-        let mut eval = RailUvEval(RailUvCurveIntersectEnfo::new(&uv_curve, ivl, rail_index, ops));
+        let mut eval = RailUvEval(RailUvCurveIntersectEnfo::new(
+            &uv_curve, ivl, rail_index, ops,
+        ));
         let mut ls = LocalSolveNd::new(&mut eval, Some(&intervals), Some(&periodicities));
         ls.set_desired_accuracy(EFF_ZERO_SQ);
         ls.set_boundary_handler(BoundaryHandler::TotalBoundaryHits, 8);
@@ -1109,8 +1189,10 @@ impl FilletSolver {
         let edgeuse_parameter = sol_at(x, 0)?;
 
         // set intersection point
-        *tsect.uv_pos_mut(rail_srf) = Point2::new(sol_at(x, surf1_index)?, sol_at(x, surf1_index + 1)?);
-        *tsect.uv_pos_mut(other_srf) = Point2::new(sol_at(x, surf2_index)?, sol_at(x, surf2_index + 1)?);
+        *tsect.uv_pos_mut(rail_srf) =
+            Point2::new(sol_at(x, surf1_index)?, sol_at(x, surf1_index + 1)?);
+        *tsect.uv_pos_mut(other_srf) =
+            Point2::new(sol_at(x, surf2_index)?, sol_at(x, surf2_index + 1)?);
         tsect.curve_parameter = edgeuse_parameter; // Just throw this into here for now.
 
         // Set this here, otherwise it will be ignored in LoadInitialValues().
@@ -1187,8 +1269,16 @@ impl FilletSolver {
         let mut domain = base.natural_uv_domain();
         ops.solver().setup_offset_extension(k, &base, &mut domain)?;
         let mut intervals = ExtentNd::new(jacobian_size);
-        set_interval(&mut intervals, 0, Extent1d::from_min_max(domain.min.x, domain.max.x));
-        set_interval(&mut intervals, 1, Extent1d::from_min_max(domain.min.y, domain.max.y));
+        set_interval(
+            &mut intervals,
+            0,
+            Extent1d::from_min_max(domain.min.x, domain.max.x),
+        );
+        set_interval(
+            &mut intervals,
+            1,
+            Extent1d::from_min_max(domain.min.y, domain.max.y),
+        );
 
         // mark periodicities for TargetRail->Surface
         let mut periodicities = vec![false, false];
@@ -1240,7 +1330,12 @@ impl FilletSolver {
         let tol = ops.solver().approx_tol_3d + other.solver().approx_tol_3d;
 
         // Set Solver Manager
-        let mut eval = RailRailEval(RailRailIntersectEnfo::new(rail_index, ops, other_rail_index, other));
+        let mut eval = RailRailEval(RailRailIntersectEnfo::new(
+            rail_index,
+            ops,
+            other_rail_index,
+            other,
+        ));
         let mut ls = LocalSolveNd::new(&mut eval, Some(&intervals), Some(&periodicities));
         ls.set_desired_accuracy(EFF_ZERO_SQ);
         ls.set_boundary_handler(BoundaryHandler::TotalBoundaryHits, 8);
@@ -1261,7 +1356,8 @@ impl FilletSolver {
         let x = &sol.x;
         let rail_srf = srf_of_rail(rail_index)?;
         let rail_other_srf = srf_of_rail(1 - rail_index)?;
-        *tsect.uv_pos_mut(rail_srf) = Point2::new(sol_at(x, surf1_index)?, sol_at(x, surf1_index + 1)?);
+        *tsect.uv_pos_mut(rail_srf) =
+            Point2::new(sol_at(x, surf1_index)?, sol_at(x, surf1_index + 1)?);
         *tsect.uv_pos_mut(rail_other_srf) =
             Point2::new(sol_at(x, surf2_index)?, sol_at(x, surf2_index + 1)?);
 
@@ -1279,9 +1375,12 @@ impl FilletSolver {
 
         let o_srf = srf_of_rail(other_rail_index)?;
         let o_other_srf = srf_of_rail(1 - other_rail_index)?;
-        *other_tsect.uv_pos_mut(o_srf) = Point2::new(sol_at(x, surf1_index)?, sol_at(x, surf1_index + 1)?);
-        *other_tsect.uv_pos_mut(o_other_srf) =
-            Point2::new(sol_at(x, other_surf2_index)?, sol_at(x, other_surf2_index + 1)?);
+        *other_tsect.uv_pos_mut(o_srf) =
+            Point2::new(sol_at(x, surf1_index)?, sol_at(x, surf1_index + 1)?);
+        *other_tsect.uv_pos_mut(o_other_srf) = Point2::new(
+            sol_at(x, other_surf2_index)?,
+            sol_at(x, other_surf2_index + 1)?,
+        );
 
         // Load values into rOtherTsectPnt.
         let mut cnt = 0;
@@ -1323,7 +1422,13 @@ impl FilletSolver {
         if self.executive.is_none() {
             return Err(invalid("no fillet executive"));
         }
-        let _ = (rail_end_v, side_edge, side_face, trim_side_faces, extension_dist);
+        let _ = (
+            rail_end_v,
+            side_edge,
+            side_face,
+            trim_side_faces,
+            extension_dist,
+        );
         // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::GetPseudoBrep
         Err(SolidError::unported(
             "SmFilletExecutive::GetPseudoBrep",
@@ -1406,7 +1511,6 @@ fn unported_temporary_radius_change() -> Result<()> {
 /// [`SolidError::Unported`] from the rail's original face
 /// (`SmFilletEdge::GetOriginalFace`, unit `blend.fillet_geom_p1`) on; those of the
 /// rail's vertex queries.
-#[allow(clippy::too_many_arguments)]
 pub fn find_rollover_side_edge<O: ClassObject>(
     pseudo: &Brep,
     _b: &Brep,
