@@ -7552,3 +7552,34 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   unchanged with 0 flips: 300/206/0/94, 1000 seeds 1284/868/0/410, perturb 333/333, fuzz 2000 pass.
   valgrind with `harness/valgrind/ub11.supp` gives 0 errors on the simple, unify, select and split
   samples.
+
+### blend.fillet_executive_p3 — dependency and coverage boundaries (PR #244)
+
+All three executive control-flow bodies are present, including the continuation
+following every missing call. Dependency objects remain in adapters, following the
+existing topology-intersector handle model; metadata views never clone a B-rep.
+The p1 executive/error-info data needed by these methods is co-ported in
+`blend::fillet_executive::p3::{FilletExecutive, ErrorInfo}`; p1/p2 algorithms and
+claimed solver/corner/geometry records are not copied.
+
+Native parity currently covers explicit control states over **empty B-reps**.
+Passing cases are precondition failures with status/state/tolerance observations;
+there are **zero successful geometric fillets**. Construction paths defer at
+`SmFilletExecutive::ProcessSmoothEdgeSequences` (executive p2), and initialized
+`DoFillet` defers at `CreateFilletCorners` (executive p1). The upstream API fillet
+examples listed for this unit require those setup/corner/solver owners and are
+not represented as passing geometry cases. Control-flow unit tests with scripted
+dependencies check ignored statuses, deferral propagation, both temporary-flag
+restorations, selective error-info assignment, and the five stitching attempts;
+these are not substitutes for native geometry parity.
+
+Callgraph ownership gap: `SmFilletCorner::MakeCornerTopology` is pure virtual;
+its concrete overrides are listed in `unused_functions.txt`, not in units.json.
+`ExecutiveAccess::make_corner_topology` is a required virtual-dispatch adapter
+method, with no fabricated UNPORTED owner. The future corner adapters must supply
+that dispatch when their types can first be constructed.
+
+C++ `SmFilletErrorInfo::operator=` does not copy comment, entity name, location,
+side face, fillet-vertex pointers, or fillet curves. Rust retains this exact subset.
+The native fixture always explicitly initializes `m_bIsInitialized` (UB-182), and
+clears intersector references before freeing a leftover preview B-rep.

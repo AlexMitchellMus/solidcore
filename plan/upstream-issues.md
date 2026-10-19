@@ -2699,3 +2699,16 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes for the release build: the sweep-only boundary solve returns U `158.85355268828013`; the assertion conflict and sentinel initialization were confirmed by source inspection. Debug builds were not run.
 - **Severity:** docs / debug assertion.
 - **Rust port:** Matches release C++ rather than enforcing the assertion; derivative orders remain bounded to 3.
+
+## UB-182: Fillet executive initialized flag is indeterminate before parameter setup
+
+- **Unit:** `blend.fillet_executive_p3` (constructor owned by executive p1).
+- **Location:** `source/SMLib/src/SmFilletExecutive.cpp:487-516,1574`.
+- **Trigger:** Construct `SmFilletExecutive` and call `DoFillet` before parameter
+  setup. Its constructor never initializes `m_bIsInitialized`, but `DoFillet`
+  immediately reads that member for its precondition check.
+- **How found:** Source inspection while porting the three executive methods.
+- **Confirmed:** no; no uninitialized native read was executed.
+- **Guard:** The native fixture's derived executive explicitly writes
+  `m_bIsInitialized` for every case before invoking an operation. Rust requires
+  callers to supply an initialized `bool` in the executive state.
