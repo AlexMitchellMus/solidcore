@@ -1,7 +1,7 @@
 {
  "cases": [
   {
-   "name": "ub195_partial_torus_tiny_circle_tiny_turn",
+   "name": "ub202_partial_torus_tiny_circle_tiny_turn",
    "inputs": {
     "expected_rejection": true,
     "op": 3,
@@ -9,7 +9,7 @@
    }
   },
   {
-   "name": "ub195_partial_torus_tiny_circle_far_origin",
+   "name": "ub202_partial_torus_tiny_circle_far_origin",
    "inputs": {
     "expected_rejection": true,
     "op": 3,
@@ -17,7 +17,7 @@
    }
   },
   {
-   "name": "ub195_partial_cone_top_line_9e-6",
+   "name": "ub202_partial_cone_top_line_9e-6",
    "inputs": {
     "expected_rejection": true,
     "op": 1,
@@ -25,7 +25,7 @@
    }
   },
   {
-   "name": "ub195_partial_cone_apex_top_line_1e-6",
+   "name": "ub202_partial_cone_apex_top_line_1e-6",
    "inputs": {
     "expected_rejection": true,
     "op": 1,

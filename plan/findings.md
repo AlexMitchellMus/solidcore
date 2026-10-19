@@ -10010,9 +10010,10 @@ The native gate is 283 cases / 127 pass / 0 fail / 150 deferred / 6 rejected, ma
 relative error zero, no absolute floors. Deferrals: 56 at `SmBrep::SmBrep`
 (`topology.brep_p3`: the scratch B-reps of skin, taper and planar path), 75 at
 `topology.brep_p8` (planar faces of the profiles, `CreateFaceFromSurface` of the analytic
-faces, `CreateFacesFromSurface` of the sweep faces) and 19 at `SmBrep::Transform`
-(`topology.brep_p5`, in p3's curve sweep that the pipe calls). The six rejections are
-the guarded regression fixtures of `guarded.json` (UB-195, HANG-35), never passes.
+faces, `CreateFacesFromSurface` of the sweep faces) and 19 at `SmBrep::Notify`
+(`topology.brep_p2`, inside the ported `SmBrep::Transform` of p3's curve sweep that the
+pipe calls). The six rejections are
+the guarded regression fixtures of `guarded.json` (UB-202, HANG-35), never passes.
 
 Comparable cases are early exits: the cone's height, turn, zero-side and axis checks
 with the editing flag they leave on, degenerate sphere/torus radii (line or circle
@@ -10038,7 +10039,7 @@ Deviations, none compared yet:
 - **Upstream null dereferences** (a missing edge curve, a failed copy) are errors.
 
 Native defects found while building the harness (see `plan/upstream-issues.md`):
-- **UB-195:** `SweepEdgeHigh` uses an edge's curve after `MakeFaceWithCurves` freed it
+- **UB-202:** `SweepEdgeHigh` uses an edge's curve after `MakeFaceWithCurves` freed it
   (partial cones with a profile line below the zone tolerance, partial tori with a small
   minor circle). The FFI rejects those, mirroring the cone's own early failures.
 - **HANG-35:** closed shells a few zone tolerances across take minutes to place in their
@@ -10058,17 +10059,18 @@ Back-edges wired: six `sweep.api_brep` sites and the `sweep.api_surfaces` skin n
 the B-rep constructor they still need; the offset executive's pipe site now names
 `SmBrep::CreateFacesFromSurface` (`topology.brep_p8`). No p2 stub remains.
 
-Validation (after merging #233's head `df186660` and `origin/main` `0cf3e290`):
-formatting, workspace and native-feature Clippy, 1,411 kernel tests, wasm32 and the
+Validation (after merging #233's head `c33cc6d3` and `origin/main` `fb58ea76`):
+formatting, workspace and native-feature Clippy, 1,464 kernel tests, wasm32 and the
 three native FFI guard tests pass. Perturbation detects all 127 comparable p2 cases. The
 1,000-mutation campaign has 282 executed, 511 rejected and 207 malformed cases, with
 zero differences, crashes, panics or timeouts. All six touched units pass with their
-remaining deferrals: p1 667/17/5 rejected, p3 284/8/1 rejected, B-rep sweep API 306/267,
-surface sweep API 831/51, offset executive p1 675/17/1 rejected, topology sweep 553/14
+remaining deferrals: p1 689/75/9 rejected, p3 284/8/1 rejected, B-rep sweep API 306/267,
+surface sweep API 831/51, offset executive p1 687/5/1 rejected, topology sweep 554/14
 (pass/deferred). Nine planted faults (cone height, turn and edit flag; skin report,
-profile count and output reset; pipe output reset; the full-turn window; the UB-195
+profile count and output reset; pipe output reset; the full-turn window; the UB-202
 guard) are each caught by the kernel tests; six also fail the difftest, and the other
 three cannot show there (one turns compared cases into deferrals, two reset lists the
-runner always passes empty).
+runner always passes empty). `topology.face_p3` and `topology.brep_p5` became partial on
+main, so the lamina-edge test and the edge/vertex cleanup now call their ports.
 
-The full `--green --no-report` gate completes with 216 units: 114 passed, 102 partial, 0 failed.
+The full `--green --no-report` gate completes with 226 units: 114 passed, 112 partial, 0 failed.

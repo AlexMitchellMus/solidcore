@@ -208,7 +208,7 @@
         "op": 3
       },
       "max_rel_err": 0.0,
-      "name": "ub195_partial_torus_tiny_circle_tiny_turn",
+      "name": "ub202_partial_torus_tiny_circle_tiny_turn",
       "outcome": "rejected",
       "pass": false,
       "rejected": "guarded native crash or hang (fixtures README)",
@@ -222,7 +222,7 @@
         "op": 3
       },
       "max_rel_err": 0.0,
-      "name": "ub195_partial_torus_tiny_circle_far_origin",
+      "name": "ub202_partial_torus_tiny_circle_far_origin",
       "outcome": "rejected",
       "pass": false,
       "rejected": "guarded native crash or hang (fixtures README)",
@@ -236,7 +236,7 @@
         "op": 1
       },
       "max_rel_err": 0.0,
-      "name": "ub195_partial_cone_top_line_9e-6",
+      "name": "ub202_partial_cone_top_line_9e-6",
       "outcome": "rejected",
       "pass": false,
       "rejected": "guarded native crash or hang (fixtures README)",
@@ -250,7 +250,7 @@
         "op": 1
       },
       "max_rel_err": 0.0,
-      "name": "ub195_partial_cone_apex_top_line_1e-6",
+      "name": "ub202_partial_cone_apex_top_line_1e-6",
       "outcome": "rejected",
       "pass": false,
       "rejected": "guarded native crash or hang (fixtures README)",
@@ -355,8 +355,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Transform",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0006",
@@ -651,8 +651,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Transform",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0035",
@@ -783,8 +783,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Transform",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0047",
@@ -1267,8 +1267,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Transform",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0096",
@@ -1355,8 +1355,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Transform",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0105",
@@ -1383,8 +1383,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Transform",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0108",
@@ -1547,8 +1547,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Transform",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0123",
@@ -1619,8 +1619,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Transform",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0130",
@@ -1667,8 +1667,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Transform",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0135",
@@ -1723,8 +1723,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Transform",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0141",
@@ -1775,8 +1775,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Transform",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0147",
@@ -1839,8 +1839,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Transform",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0153",
@@ -2067,8 +2067,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Transform",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0175",
@@ -2247,8 +2247,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Transform",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0192",
@@ -2375,8 +2375,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Transform",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0204",
@@ -2639,8 +2639,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Transform",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0230",
@@ -2723,8 +2723,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Transform",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0238",
@@ -2807,8 +2807,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Transform",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0247",
@@ -2819,8 +2819,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Transform",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0248",
@@ -2909,8 +2909,8 @@
   "cases_rejected": 6,
   "cases_total": 283,
   "deferred_by_unit": {
+    "topology.brep_p2": 19,
     "topology.brep_p3": 56,
-    "topology.brep_p5": 19,
     "topology.brep_p8": 75
   },
   "max_rel_err": 0.0,

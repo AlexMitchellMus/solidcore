@@ -37,7 +37,7 @@ Rust side defers (no value is compared):
 | --- | --- | --- |
 | skin (two or more profiles), taper extrude, planar path | the scratch / piece B-rep (`SmBrep::SmBrep`) | `topology.brep_p3` |
 | partial cone, sphere and torus (valid input) | p3's rotational sweep: planar faces of the profile | `topology.brep_p8` |
-| pipe sweep | p3's curve sweep: the profile's placement (`SmBrep::Transform`) or the faces of the sweep surface | `topology.brep_p5`, `topology.brep_p8` |
+| pipe sweep | p3's curve sweep: the profile's placement (`SmBrep::Notify` inside `SmBrep::Transform`) or the faces of the sweep surface | `topology.brep_p2`, `topology.brep_p8` |
 | full-turn primitives (valid input) | p1's analytic face | `topology.brep_p8` |
 
 The upstream skin (`TestSmCreateSkinPrimitive`), draft sweep (`TestSmCreateDraftSweep`),
@@ -59,7 +59,7 @@ Two guards come from isolated native probes (one process per input, 20-25 s limi
 
 | Guard | Upstream issue | Rejected |
 | --- | --- | --- |
-| A swept profile edge shorter than the zone tolerance (`1e-5`) | UB-195: `SweepEdgeHigh` uses the edge's curve after `MakeFaceWithCurves` freed it (segfault) | partial cones (turn below `359.99999`) that build a profile line below `1e-5`, mirroring the cone's own early failures; partial tori whose minor circle is below `1e-5` |
+| A swept profile edge shorter than the zone tolerance (`1e-5`) | UB-202: `SweepEdgeHigh` uses the edge's curve after `MakeFaceWithCurves` freed it (segfault) | partial cones (turn below `359.99999`) that build a profile line below `1e-5`, mirroring the cone's own early failures; partial tori whose minor circle is below `1e-5` |
 | A closed shell from half the zone tolerance to `1.5e-4` across | HANG-35: the ray fire that places the shell in its region takes minutes | spheres, tori and cones of that size at any turn (analytic faces from `359.99999`, stitched sweeps below) |
 
 Early failures stay compared: a cone without height or turn, a zero side, a radius
