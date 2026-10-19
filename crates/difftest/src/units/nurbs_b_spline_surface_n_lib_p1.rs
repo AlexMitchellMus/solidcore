@@ -277,7 +277,10 @@ struct Inputs {
 fn numbers(path: &str) -> Result<Vec<f64>, HarnessError> {
     let text = std::fs::read_to_string(path).map_err(|e| harness(format!("{path}: {e}")))?;
     text.split_whitespace()
-        .map(|t| t.parse::<f64>().map_err(|e| harness(format!("{path}: {e}"))))
+        .map(|t| {
+            t.parse::<f64>()
+                .map_err(|e| harness(format!("{path}: {e}")))
+        })
         .collect()
 }
 
@@ -294,7 +297,10 @@ fn int(path: &str, v: f64) -> Result<usize, HarnessError> {
 fn read_sms(path: &str) -> Result<InlineSrf, HarnessError> {
     let v = numbers(path)?;
     let mut it = v.into_iter();
-    let mut num = || it.next().ok_or_else(|| harness(format!("{path}: truncated")));
+    let mut num = || {
+        it.next()
+            .ok_or_else(|| harness(format!("{path}: truncated")))
+    };
     let n = int(path, num()?)?;
     let m = int(path, num()?)?;
     let p = int(path, num()?)?;
@@ -310,8 +316,12 @@ fn read_sms(path: &str) -> Result<InlineSrf, HarnessError> {
         }
         net.push(row);
     }
-    let u = (0..n + p + 2).map(|_| num()).collect::<Result<Vec<_>, _>>()?;
-    let v = (0..m + q + 2).map(|_| num()).collect::<Result<Vec<_>, _>>()?;
+    let u = (0..n + p + 2)
+        .map(|_| num())
+        .collect::<Result<Vec<_>, _>>()?;
+    let v = (0..m + q + 2)
+        .map(|_| num())
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(InlineSrf { net, p, q, u, v })
 }
 
@@ -320,7 +330,10 @@ fn read_sms(path: &str) -> Result<InlineSrf, HarnessError> {
 fn read_smc(path: &str) -> Result<InlineCrv, HarnessError> {
     let v = numbers(path)?;
     let mut it = v.into_iter();
-    let mut num = || it.next().ok_or_else(|| harness(format!("{path}: truncated")));
+    let mut num = || {
+        it.next()
+            .ok_or_else(|| harness(format!("{path}: truncated")))
+    };
     let n = int(path, num()?)?;
     let p = int(path, num()?)?;
     let rat = num()? != 0.0;
@@ -333,7 +346,9 @@ fn read_smc(path: &str) -> Result<InlineCrv, HarnessError> {
         let w = if rat { num()? } else { NOW };
         cpts.push([x, y, z, w]);
     }
-    let u = (0..n + p + 2).map(|_| num()).collect::<Result<Vec<_>, _>>()?;
+    let u = (0..n + p + 2)
+        .map(|_| num())
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(InlineCrv { cpts, p, u })
 }
 
@@ -352,9 +367,15 @@ fn crv(c: &CrvIn) -> Result<InlineCrv, HarnessError> {
 }
 
 fn shape(s: &InlineSrf) -> Result<(usize, usize), HarnessError> {
-    let n = s.net.len().checked_sub(1).ok_or_else(|| harness("empty net"))?;
+    let n = s
+        .net
+        .len()
+        .checked_sub(1)
+        .ok_or_else(|| harness("empty net"))?;
     let cols = s.net.first().map_or(0, Vec::len);
-    let m = cols.checked_sub(1).ok_or_else(|| harness("empty net row"))?;
+    let m = cols
+        .checked_sub(1)
+        .ok_or_else(|| harness("empty net row"))?;
     if s.net.iter().any(|r| r.len() != cols) {
         return Err(harness("net rows differ in length"));
     }
@@ -374,8 +395,15 @@ fn v3(a: [f64; 3]) -> Vec3 {
 fn push_srf(o: &mut Vec<f64>, s: &InlineSrf) -> Result<(), HarnessError> {
     let (n, m) = shape(s)?;
     o.extend(
-        [n, m, s.p, s.q, s.u.len().saturating_sub(1), s.v.len().saturating_sub(1)]
-            .map(|x| x as f64),
+        [
+            n,
+            m,
+            s.p,
+            s.q,
+            s.u.len().saturating_sub(1),
+            s.v.len().saturating_sub(1),
+        ]
+        .map(|x| x as f64),
     );
     for row in &s.net {
         for p in row {
@@ -389,7 +417,12 @@ fn push_srf(o: &mut Vec<f64>, s: &InlineSrf) -> Result<(), HarnessError> {
 
 fn push_crv(o: &mut Vec<f64>, c: &InlineCrv) {
     let n = c.cpts.len().saturating_sub(1);
-    o.extend([3.0, n as f64, c.p as f64, c.u.len().saturating_sub(1) as f64]);
+    o.extend([
+        3.0,
+        n as f64,
+        c.p as f64,
+        c.u.len().saturating_sub(1) as f64,
+    ]);
     for p in &c.cpts {
         o.extend_from_slice(p);
     }
@@ -417,7 +450,12 @@ fn cpp_input(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
             dir,
             dist,
             cont,
-        } => o.extend([flag(*dir_overload), f64::from(*dir), *dist, f64::from(*cont)]),
+        } => o.extend([
+            flag(*dir_overload),
+            f64::from(*dir),
+            *dist,
+            f64::from(*cont),
+        ]),
         OpIn::Join { other, dir, tol } => {
             push_srf(&mut o, &srf(other)?)?;
             o.extend([f64::from(*dir), *tol]);
@@ -629,7 +667,10 @@ impl Split<'_> {
                 return Err(harness(format!("bad surface dims {dims:?}")));
             }
             self.put(&format!("{pfx}dims"), dims);
-            self.vals(&format!("{pfx}cpts"), 4 * (n as usize + 1) * (m as usize + 1))?;
+            self.vals(
+                &format!("{pfx}cpts"),
+                4 * (n as usize + 1) * (m as usize + 1),
+            )?;
             self.vals(&format!("{pfx}u"), r as usize + 1)?;
             self.vals(&format!("{pfx}v"), s as usize + 1)?;
         }
@@ -730,7 +771,11 @@ fn surface_of(s: &InlineSrf) -> Result<Surface, HarnessError> {
     let net = s
         .net
         .iter()
-        .map(|r| r.iter().map(|&[x, y, z, w]| CPoint::new(x, y, z, w)).collect())
+        .map(|r| {
+            r.iter()
+                .map(|&[x, y, z, w]| CPoint::new(x, y, z, w))
+                .collect()
+        })
         .collect();
     Surface::new(net, s.p, s.q, s.u.clone(), s.v.clone())
         .map_err(|e| harness(format!("surface input: {e}")))
@@ -872,7 +917,10 @@ fn fail(e: &SolidError) -> Fail {
 }
 
 /// Runs a member op; returns the flat record.
-fn rust_member(this: &mut BSplineSurface, op: &OpIn) -> Result<Result<Vec<f64>, Fail>, HarnessError> {
+fn rust_member(
+    this: &mut BSplineSurface,
+    op: &OpIn,
+) -> Result<Result<Vec<f64>, Fail>, HarnessError> {
     let mut o = vec![0.0];
     let new = |o: &mut Vec<f64>, r: solidcore::Result<BSplineSurface>| match r {
         Ok(s) => {
@@ -905,13 +953,15 @@ fn rust_member(this: &mut BSplineSurface, op: &OpIn) -> Result<Result<Vec<f64>, 
             let mut other = BSplineSurface::from_nurb(surface_of(&srf(other)?)?, false);
             new(&mut o, this.join_surface(&mut other, param_of(*dir)?, *tol))
         }
-        OpIn::ExtEval { uv } => match this.evaluate_point_on_extended_surface(Point2::new(uv[0], uv[1])) {
-            Ok(p) => {
-                push3(&mut o, p);
-                Ok(())
+        OpIn::ExtEval { uv } => {
+            match this.evaluate_point_on_extended_surface(Point2::new(uv[0], uv[1])) {
+                Ok(p) => {
+                    push3(&mut o, p);
+                    Ok(())
+                }
+                Err(e) => Err(fail(&e)),
             }
-            Err(e) => Err(fail(&e)),
-        },
+        }
         OpIn::EvalPoint { uv } => match this.evaluate_point(Point2::new(uv[0], uv[1])) {
             Ok(p) => {
                 push3(&mut o, p);
@@ -957,8 +1007,14 @@ fn rust_member(this: &mut BSplineSurface, op: &OpIn) -> Result<Result<Vec<f64>, 
             u_left,
             v_left,
             upper,
-        } => match this.evaluate_simple(Point2::new(uv[0], uv[1]), *hu, *hv, *u_left, *v_left, *upper)
-        {
+        } => match this.evaluate_simple(
+            Point2::new(uv[0], uv[1]),
+            *hu,
+            *hv,
+            *u_left,
+            *v_left,
+            *upper,
+        ) {
             Ok(d) => {
                 for i in 0..=*hu {
                     for j in 0..=*hv {
@@ -1087,9 +1143,11 @@ fn rust_static(op: &OpIn) -> Result<Result<Vec<f64>, Fail>, HarnessError> {
             let uv = uv.as_ref().map(|c| curve_of(&crv(c)?)).transpose()?;
             let base = base
                 .as_ref()
-                .map(|s| -> Result<BSplineSurface, HarnessError> {
-                    Ok(BSplineSurface::from_nurb(surface_of(&srf(s)?)?, false))
-                })
+                .map(
+                    |s| -> Result<solidcore::surface::surface::Surface, HarnessError> {
+                        Ok(BSplineSurface::from_nurb(surface_of(&srf(s)?)?, false).into())
+                    },
+                )
                 .transpose()?;
             let k = solidcore::kernel::Kernel::default();
             match create_non_rational_curve(&k, &c, uv.as_ref(), base.as_ref(), *tol) {
@@ -1125,8 +1183,15 @@ fn rust_static(op: &OpIn) -> Result<Result<Vec<f64>, Fail>, HarnessError> {
             dir,
         } => {
             let d = Extent2d::from_bounds(dom[0], dom[1], dom[2], dom[3]);
-            match check_trim_boundaries(knots, *tmin, *min_idx, *tmax, *max_idx, &d, param_of(*dir)?)
-            {
+            match check_trim_boundaries(
+                knots,
+                *tmin,
+                *min_idx,
+                *tmax,
+                *max_idx,
+                &d,
+                param_of(*dir)?,
+            ) {
                 Ok((a, b)) => {
                     o.extend([a, b]);
                     Ok(())
@@ -1214,7 +1279,9 @@ fn gen_knots(rng: &mut Rng, n: usize, p: usize, a: f64, b: f64) -> Vec<f64> {
     let interior = n - p;
     let mut inner: Vec<f64> = (0..interior).map(|_| rng.uniform(0.05, 0.95)).collect();
     if rng.chance(0.4) {
-        inner = (1..=interior).map(|i| i as f64 / (interior + 1) as f64).collect();
+        inner = (1..=interior)
+            .map(|i| i as f64 / (interior + 1) as f64)
+            .collect();
     }
     inner.sort_by(f64::total_cmp);
     // keep interior knots distinct (multiplicity 1)
@@ -1360,7 +1427,9 @@ fn coons_data(s: &InlineSrf) -> (Vec<InlineCrv>, Vec<InlineCrv>) {
     let fv0 = q / (kat(v, s.q + 1) - kat(v, 0));
     let fv1 = q / (kat(v, m + s.q + 1) - kat(v, m));
     let d_l = InlineCrv {
-        cpts: (0..=m).map(|j| diff_pts(cp(s, 1, j), cp(s, 0, j), fu0)).collect(),
+        cpts: (0..=m)
+            .map(|j| diff_pts(cp(s, 1, j), cp(s, 0, j), fu0))
+            .collect(),
         p: s.q,
         u: s.v.clone(),
     };
@@ -1372,7 +1441,9 @@ fn coons_data(s: &InlineSrf) -> (Vec<InlineCrv>, Vec<InlineCrv>) {
         u: s.v.clone(),
     };
     let d_b = InlineCrv {
-        cpts: (0..=n).map(|i| diff_pts(cp(s, i, 1), cp(s, i, 0), fv0)).collect(),
+        cpts: (0..=n)
+            .map(|i| diff_pts(cp(s, i, 1), cp(s, i, 0), fv0))
+            .collect(),
         p: s.p,
         u: s.u.clone(),
     };
@@ -1384,7 +1455,12 @@ fn coons_data(s: &InlineSrf) -> (Vec<InlineCrv>, Vec<InlineCrv>) {
         u: s.u.clone(),
     };
     (
-        vec![row_curve(s, 0), row_curve(s, n), col_curve(s, 0), col_curve(s, m)],
+        vec![
+            row_curve(s, 0),
+            row_curve(s, n),
+            col_curve(s, 0),
+            col_curve(s, m),
+        ],
         vec![d_l, d_r, d_b, d_t],
     )
 }
@@ -1466,7 +1542,11 @@ fn gen_nsided(rng: &mut Rng) -> OpIn {
     let center = if rng.chance(0.3) {
         Some([
             [0.0, 0.0, rng.uniform(-0.2, 0.2)],
-            [rng.uniform(-0.2, 0.2), rng.uniform(-0.2, 0.2), rng.uniform(0.5, 2.0)],
+            [
+                rng.uniform(-0.2, 0.2),
+                rng.uniform(-0.2, 0.2),
+                rng.uniform(0.5, 2.0),
+            ],
         ])
     } else {
         None
@@ -1757,7 +1837,11 @@ fn gen_member(rng: &mut Rng) -> Inputs {
             OpIn::EvalSimple {
                 uv: uv_in(rng, &s, 0.2),
                 hu: if big { 18 } else { rng.below(5) as usize },
-                hv: if rng.chance(0.03) { 5 } else { rng.below(5) as usize },
+                hv: if rng.chance(0.03) {
+                    5
+                } else {
+                    rng.below(5) as usize
+                },
                 u_left: rng.chance(0.5),
                 v_left: rng.chance(0.5),
                 upper: rng.chance(0.3),

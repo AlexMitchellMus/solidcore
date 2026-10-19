@@ -28,7 +28,7 @@ use solidcore::geom::vector2d::Point2;
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::nurbs::b_spline_surface::{BSplineSurface, BSplineSurfaceForm, SurfParamType};
 use solidcore::nurbs::b_spline_surface_n_lib::p2::{
-    EvaluateFlags, OrientType, SkinnedSurfaceOptions,
+    BlendNeighbour, EvaluateFlags, OrientType, SkinnedSurfaceOptions,
 };
 use solidcore::nurbs::crv_basic::Curve;
 use solidcore::nurbs::knots::Side;
@@ -789,7 +789,20 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                 .iter()
                 .map(|s| s.as_ref().map(bss_of).transpose())
                 .collect::<Result<Vec<_>, _>>()?;
-            let sr: Vec<Option<&BSplineSurface>> = ss.iter().map(Option::as_ref).collect();
+            // the shim passes plain unowned `SmBSplineSurface`s
+            let whole: Vec<Option<solidcore::surface::surface::Surface>> = ss
+                .iter()
+                .map(|s| s.as_ref().map(|s| s.clone_exact().into()))
+                .collect();
+            let sr: Vec<Option<BlendNeighbour<'_>>> = ss
+                .iter()
+                .zip(&whole)
+                .map(|(b, s)| {
+                    b.as_ref()
+                        .zip(s.as_ref())
+                        .map(|(b_spline, surface)| BlendNeighbour { surface, b_spline })
+                })
+                .collect();
             let kernel = solidcore::kernel::Kernel::default();
             BSplineSurface::create_corner_blend(&kernel, &c3, &ors, &uv, &sr, *tol, *ang, *bilinear)
                 .map(|patches| {
