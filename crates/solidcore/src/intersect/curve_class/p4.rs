@@ -58,8 +58,12 @@
 //!   `GetMaxUV`) are [`CurveClassification::reset`], [`CurveClassification::connect_intervals`]
 //!   and [`CurveClassification::interval_min_uv`] / [`CurveClassification::interval_max_uv`]
 //!   (wired when `intersect.curve_class_p2`, PR #85, was merged with this unit).
-//! - **Callees in units not ported yet** return [`SolidError::Unported`]:
-//!   `topology.edgeuse_p3` (`SmEdgeuse::EvaluateBinormal`, the stub in `topology::edge`).
+//! - **`EvaluateBinormal`** takes `&mut Brep` in the port; with `bUse3DOnly` true it
+//!   creates nothing, so it runs on a copy of the B-rep, as `ComputeUVSector` does. Both
+//!   upstream call sites ignore its status: a failure keeps the out-vectors as upstream
+//!   leaves them (an edge use outside a loop touches neither; any later failure sets the
+//!   point to `(0,0,0)` and keeps the binormal), and only [`SolidError::Unported`] and
+//!   [`SolidError::InvalidInput`] (a null dereference upstream) propagate.
 //! - **Recursion.** None.
 
 use crate::curve::curve::p2::Curve;
@@ -93,6 +97,7 @@ use crate::surface::surface::p7::drop_vectors_at;
 use crate::surface::surface::Surface;
 use crate::topology::edge as topo_edge;
 use crate::topology::edgeuse::p1 as eu1;
+use crate::topology::edgeuse::p3 as topo_eu3;
 use crate::topology::face::p2 as face_p2;
 use crate::topology::loopuse;
 use crate::topology::vertex as topo_vertex;
@@ -171,15 +176,6 @@ struct UvSectorIo<O> {
     end_edge_uv_tan: Vec2,
     /// `m_bVertexOnPole`.
     vertex_on_pole: bool,
-}
-
-/// `SmEdgeuse::EvaluateBinormal(param, TRUE, ...)`: point and binormal.
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct Binormal {
-    /// The edge use point.
-    point: Vec3,
-    /// The binormal (pointing into the face).
-    binormal: Vec3,
 }
 
 /// The handle of the face surface inside this unit's point drops.
@@ -419,24 +415,54 @@ fn edgeuse_orientation<O: ClassObject, G: ClassGeometry<O>>(
     eu1::orientation(b, eu)
 }
 
-/// `SmEdgeuse::EvaluateBinormal(param, TRUE, ...)` (unit `topology.edgeuse_p3`).
-/// `topology::edgeuse::p3::evaluate_binormal` is ported but takes the kernel and a
-/// mutable B-rep (it can build a missing UV trim curve), while this part reaches the
-/// B-rep read-only through [`ClassGeometry::topology_entity`]; until that is bridged (a
-/// snapshot, or a mutable hook) the call stays deferred, as it was through the former
-/// stub in `topology::edge`.
+/// `pEdgeuse->EvaluateBinormal(param, TRUE, point, binormal, &dir, &normal)` (unit
+/// `topology.edgeuse_p3`) with the status ignored, as both upstream call sites do. The
+/// two out-vectors are the caller's `point` and `binormal`: on success both are written;
+/// on a failing status they keep what upstream leaves:
+/// - an edge use that is not a loop edge use fails (`SER(SM_ERR_INVALID_INPUT)`) before
+///   any output is initialised: both keep their contents;
+/// - every later failure (curve or surface evaluation, no usable tangent or binormal,
+///   edge point not on the surface) comes after `rBinormalPoint.Set(0,0,0)` and before
+///   `rBinormal` is assigned: `point` is `(0,0,0)`, `binormal` keeps its contents.
+///
+/// Only [`SolidError::Unported`] and [`SolidError::InvalidInput`] propagate: the latter is
+/// a null pointer upstream dereferences inside the call (UB, as in `set_props_stage_2`),
+/// not a status.
+///
+/// With `bUse3DOnly` true no UV trim curve is created, so the port runs it on a copy of
+/// the B-rep (it takes `&mut Brep`).
 fn edgeuse_evaluate_binormal<O: ClassObject, G: ClassGeometry<O>>(
+    k: &Kernel,
     geometry: &G,
     edgeuse: O,
     param: f64,
-) -> Result<Binormal> {
-    let (_b, _eu) = edgeuse_id(geometry, edgeuse, OP_CROSS)?;
-    let _ = param;
-    // UNPORTED(topology.edgeuse_p3): SmEdgeuse::EvaluateBinormal (needs &mut Brep, see above)
-    Err(SolidError::unported(
-        "SmEdgeuse::EvaluateBinormal",
-        "topology.edgeuse_p3",
-    ))
+    point: &mut Vec3,
+    binormal: &mut Vec3,
+) -> Result<()> {
+    let (b, eu) = edgeuse_id(geometry, edgeuse, OP_CROSS)?;
+    if !eu1::is_loop_edgeuse(b, eu)? {
+        return Ok(());
+    }
+    let mut scratch = b.clone();
+    match topo_eu3::evaluate_binormal(
+        k,
+        &mut scratch,
+        eu,
+        param,
+        true,
+        &topo_eu3::BinormalOptions::default(),
+    ) {
+        Ok(r) => {
+            *point = r.point;
+            *binormal = r.binormal;
+            Ok(())
+        }
+        Err(e @ (SolidError::Unported { .. } | SolidError::InvalidInput { .. })) => Err(e),
+        Err(_) => {
+            *point = Vec3::ZERO;
+            Ok(())
+        }
+    }
 }
 
 /// `SmVertex::GetVertexusesOfFace(face, vertexuses, faceuse)` (unit `topology.vertex`).
@@ -502,12 +528,19 @@ fn vertexuse_compute_uv_sector<O: ClassObject, G: ClassGeometry<O>>(
 /// `UNDEF`).
 fn eval_pn(curve: &Curve, t: f64) -> Result<[Vec3; 2]> {
     let mut pn = [Vec3::UNDEF; 2];
+    eval_pn_into(curve, t, &mut pn)?;
+    Ok(pn)
+}
+
+/// [`eval_pn`] into the caller's array: a failing status leaves the array as it was (the
+/// previous sample's values when the array outlives the loop that fills it).
+fn eval_pn_into(curve: &Curve, t: f64, pn: &mut [Vec3; 2]) -> Result<()> {
     if let Some(d) = ignored(curve.evaluate(t, 1, true, true))? {
         for (o, v) in pn.iter_mut().zip(d) {
             *o = v;
         }
     }
-    Ok(pn)
+    Ok(())
 }
 
 /// `pSurface->DropPoint(pt, domain, guess, ..., op, seamSide)` with the status ignored:
@@ -867,9 +900,9 @@ impl<O: ClassObject> CurveClassification<O> {
     /// [`SolidError::InvalidInput`] for a face without surface or a classification without
     /// curve (upstream dereferences them before its `NULL` checks, UB-124), a loop without
     /// face when stage 2 is computed (UB-131) and a topology handle `geometry` does not
-    /// resolve; those of `SetProps_Stage2` and
-    /// [`CurveClassification::point_classifies_connected_to`]; [`SolidError::Unported`] for
-    /// `SmEdgeuse::EvaluateBinormal` (`topology.edgeuse_p3`).
+    /// resolve, a null pointer `SmEdgeuse::EvaluateBinormal` dereferences, and those of
+    /// `SetProps_Stage2` and [`CurveClassification::point_classifies_connected_to`]; the
+    /// status of `EvaluateBinormal` itself is ignored as upstream.
     #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn get_loop_crossings<G: ClassGeometry<O>>(
         &self,
@@ -1547,16 +1580,30 @@ impl<O: ClassObject> CurveClassification<O> {
                         let smp_classify_crv_step = (if kk == 0 { 1.0 } else { -1.0 })
                             * speed_ratio
                             * smp_edgeuse_step.abs();
+                        // Upstream declares `sClassifyCrvPN`, `sTgtEdgeusePoint` and
+                        // `sTgtEdgeuseBiNorm` (default `UNDEF`) once per `kk` pass, outside
+                        // the sampling loop, and ignores the status of both samples. A
+                        // failing `Evaluate` / `EvaluateBinormal` therefore leaves the
+                        // previous iteration's values (`UNDEF` on the first), except that a
+                        // failure after `EvaluateBinormal` initialised its outputs leaves
+                        // the point at `(0,0,0)` and the binormal as it was
+                        // (`edgeuse_evaluate_binormal`).
+                        let mut smp_pn = [Vec3::UNDEF; 2];
+                        let mut bn_point = Vec3::UNDEF;
+                        let mut bn_binormal = Vec3::UNDEF;
                         for _ in 0..10 {
-                            let smp_pn = eval_pn(c.classify_crv, smp_classify_crv_param)?;
-                            let bn = edgeuse_evaluate_binormal(
+                            eval_pn_into(c.classify_crv, smp_classify_crv_param, &mut smp_pn)?;
+                            edgeuse_evaluate_binormal(
+                                c.k,
                                 c.geometry,
                                 tgt_edgeuse,
                                 smp_edgeuse_param,
+                                &mut bn_point,
+                                &mut bn_binormal,
                             )?;
-                            let gap = smp_pn[0] - bn.point;
+                            let gap = smp_pn[0] - bn_point;
                             if !is_degenerate_vec3(c.k, gap, None) {
-                                let dir = if bn.binormal.dot(gap) > 0.0 {
+                                let dir = if bn_binormal.dot(gap) > 0.0 {
                                     CrvDirOnFaceType::In
                                 } else {
                                     CrvDirOnFaceType::Out
@@ -1702,12 +1749,26 @@ impl<O: ClassObject> CurveClassification<O> {
                         }
 
                         for _ in 0..smp_cnt {
+                            // Upstream declares the sample outputs inside the loop body
+                            // (default `UNDEF` each iteration) and ignores the status of
+                            // both samples: a failing `Evaluate` leaves `UNDEF`, a failing
+                            // `EvaluateBinormal` leaves `UNDEF` for the binormal and for the
+                            // point too, unless it failed after initialising its outputs, when
+                            // the point is `(0,0,0)` (`edgeuse_evaluate_binormal`).
                             let smp_pn = eval_pn(c.classify_crv, smp_classify_crv_param)?;
-                            let bn =
-                                edgeuse_evaluate_binormal(c.geometry, edgeuse, smp_edgeuse_param)?;
-                            let gap = smp_pn[0] - bn.point;
+                            let mut bn_point = Vec3::UNDEF;
+                            let mut bn_binormal = Vec3::UNDEF;
+                            edgeuse_evaluate_binormal(
+                                c.k,
+                                c.geometry,
+                                edgeuse,
+                                smp_edgeuse_param,
+                                &mut bn_point,
+                                &mut bn_binormal,
+                            )?;
+                            let gap = smp_pn[0] - bn_point;
                             if !is_degenerate_vec3(c.k, gap, None) {
-                                let dir = if bn.binormal.dot(gap) > 0.0 {
+                                let dir = if bn_binormal.dot(gap) > 0.0 {
                                     CrvDirOnFaceType::In
                                 } else {
                                     CrvDirOnFaceType::Out
