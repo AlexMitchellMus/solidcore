@@ -8004,10 +8004,13 @@ Coverage still establishes zero successful geometric/topological comparisons.
   Added GetFilletSolvers; added seven derived symbols and two new owners; removed
   no dependency owners. Required-but-owned-elsewhere corner accessors are also
   explicit: `IsBlendingCorner`, virtual `IsTangentCorner` (all current overrides
-  in corner p1), `SetCalcAsConstRad`, `GetFilletedVertex`, `GetCornerType`, and
+  in corner p1), `SetCalcAsConstRad`, `GetFilletedVertex`, and
   corner `GetThisApproxTol3d` are inline corner-p1 record accesses; solver
-  `GetThisApproxTol3d` is an inline solver record access. They must use those
+  `GetThisApproxTol3d` is an inline `blend.fillet_solver_p1` record access. They must use those
   owners' records and concrete dispatch when wired, never supply fake metadata.
+  `GetCornerType` is pure virtual, with inline derived constants in
+  `SmFilletCorner.h`; those symbols are omitted from units.json. Error metadata
+  must use the actual derived type, without inventing a callgraph owner.
   Error-only `GetName` uses the object's real name. These required reads do not
   have default `Unported` implementations and are separate from the 41 tags.
   `MakeCornerTopology` retains its previously documented callgraph ownership gap.
@@ -8030,4 +8033,16 @@ Coverage still establishes zero successful geometric/topological comparisons.
   Likewise executive p1 must allocate the actual `m_pAttributeE` on construction;
   the runner's current `edge_attribute: None` is unreachable before deferral.
 
-Validation of this revision: pending pod gates.
+Validation of this revision on sc-builder-7: fmt (including include!-ed files),
+both workspace clippy configurations, 1,414 core tests (19 executive regressions),
+four FFI guard tests and wasm pass. Paired results: 291 cases / 116 passes /
+0 failures / 175 deferrals (executive p1=46, p2=129), with_values=116,
+no_values=0, max_rel_err=0. Perturb detects 116/116 changes. Fuzz 2000:
+rejected=1720, malformed=16, ran=264, differs=0, crashes=0, panics=0,
+timeouts=0. Valgrind: all 52 valid programs actually ran on both engines,
+protocol equal to baseline, 0 errors and 0 definite/indirect/possible lost bytes,
+no suppressions. The final 213-unit green/partial matrix passes; the strict
+per-unit log audit confirms zero declared-green units with deferrals.
+The three paired control paths remain precondition exits, with no geometric
+success comparisons. Latest main 0cf3e290 is merged; unrelated plan entries are
+unchanged from main (only executive p1 co-port notes and this unit differ).
