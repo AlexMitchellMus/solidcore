@@ -342,7 +342,31 @@ fn cpp_input(i: &Inputs, c: Option<&BrepCase>) -> Result<Vec<f64>, HarnessError>
     Ok(o)
 }
 
+/// Rejects (on both sides) the solver sizes the FFI refuses: `extra` above
+/// [`ffi::MAX_EXTRA`] and more than [`ffi::MAX_TSECTS`] tsect points (the Rust test
+/// solver would allocate intervals of that size).
+fn check_sizes(i: &Inputs) -> Result<(), HarnessError> {
+    let cfgs: Vec<&Cfg> = match i {
+        Inputs::Plane { cfg, .. }
+        | Inputs::RailEu { cfg, .. }
+        | Inputs::Geom { cfg, .. }
+        | Inputs::Corner { cfg, .. }
+        | Inputs::Record { cfg, .. } => vec![cfg],
+        Inputs::RailRail { cfg, .. } => cfg.iter().collect(),
+    };
+    if cfgs.iter().any(|c| c.extra > ffi::MAX_EXTRA) {
+        return Err(harness("extra above MAX_EXTRA"));
+    }
+    if let Inputs::Geom { tsects, .. } = i {
+        if tsects.len() > ffi::MAX_TSECTS {
+            return Err(harness("more tsect points than MAX_TSECTS"));
+        }
+    }
+    Ok(())
+}
+
 fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
+    check_sizes(i)?;
     let case = match i.brep() {
         Some(brep) => match brep_case(brep)? {
             Ok(c) => Some(c),
@@ -936,6 +960,7 @@ fn rust_run(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, Harn
 }
 
 fn rust(i: &Inputs) -> Result<Output, HarnessError> {
+    check_sizes(i)?;
     // the C++ side reports a B-rep that cannot be built
     if let Some(brep) = i.brep() {
         if let Err(out) = brep_case(brep)? {
