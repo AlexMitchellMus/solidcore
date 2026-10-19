@@ -1069,7 +1069,7 @@
       "outcome": "rejected",
       "pass": false,
       "rejected": "shim_rejected_model",
-      "source": "fixture:fixtures/blend.fillet_geom_p3/cases.json#15 (upstream source/SMLib/src/SmFilletGeom.cpp (ReCalcFilletGeom reads sTsectPnts[0] of an empty array without a march direction: UB-195))",
+      "source": "fixture:fixtures/blend.fillet_geom_p3/cases.json#15 (upstream source/SMLib/src/SmFilletGeom.cpp (ReCalcFilletGeom reads sTsectPnts[0] of an empty array without a march direction: UB-199))",
       "values_compared": 0
     },
     {
@@ -1321,7 +1321,7 @@
       "outcome": "rejected",
       "pass": false,
       "rejected": "shim_rejected_model",
-      "source": "fixture:fixtures/blend.fillet_geom_p3/cases.json#16 (upstream source/SMLib/src/SmFilletGeom.cpp (ReCalcFilletGeom reads sTsectPnts[0] of an empty array without a march direction: UB-195))",
+      "source": "fixture:fixtures/blend.fillet_geom_p3/cases.json#16 (upstream source/SMLib/src/SmFilletGeom.cpp (ReCalcFilletGeom reads sTsectPnts[0] of an empty array without a march direction: UB-199))",
       "values_compared": 0
     },
     {
@@ -1577,7 +1577,7 @@
       "outcome": "rejected",
       "pass": false,
       "rejected": "shim_rejected_model",
-      "source": "fixture:fixtures/blend.fillet_geom_p3/cases.json#22 (upstream source/SMLib/src/SmFilletGeom.cpp (CalcFilletIntFillet without a 3D curve calls sm_SrfSrfIntersection with m_cpCorner->GetContext() of an edge without corner: UB-196; generated seed 748 of the 2000-seed sweep))",
+      "source": "fixture:fixtures/blend.fillet_geom_p3/cases.json#22 (upstream source/SMLib/src/SmFilletGeom.cpp (CalcFilletIntFillet without a 3D curve calls sm_SrfSrfIntersection with m_cpCorner->GetContext() of an edge without corner: UB-200; generated seed 748 of the 2000-seed sweep))",
       "values_compared": 0
     },
     {
