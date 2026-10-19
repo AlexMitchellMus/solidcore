@@ -33,6 +33,9 @@
 //! or indirect owner chains are explicitly unsupported rather than silently skipped.
 //! Result-edge enumeration uses arena order, not `SmBrep::GetEdges` linked-list order
 //! (owned by `topology.brep_p1`); nonempty queries still defer at `NormalizedEvaluate`.
+//! Edge-offset preparation and gap handling are shared with p2 without notifications;
+//! live mapped pairs still require the caller's real notification records, context and
+//! distinct original/result identities before geometry creation.
 //! No new input-driven recursion; existing topology walks are cycle-bounded.
 
 use std::collections::BTreeMap;
@@ -500,16 +503,11 @@ impl OffsetExecutive {
         notifications: &mut NotifyEnv<'_>,
         offset_key_of: &dyn Fn(EntityRef) -> ObjectRef,
     ) -> Result<()> {
-        let edge = edge_of(original, edgeuse)?;
-        let first_face = eu::face(original, edgeuse)?;
-        let other_face = eu::face(original, other)?;
-        if first_face.is_some_and(|id| self.shell_faces.contains(&id))
-            && other_face.is_some_and(|id| self.shell_faces.contains(&id))
-            && !self.extend_convex_edges
-        {
+        let Some((edge, synchronized)) =
+            self.prepare_offset_edgeuses(kernel, original, edgeuse, other)?
+        else {
             return Ok(());
-        }
-        let synchronized = self.synchronize_offset_edgeuses(kernel, Some(edgeuse), Some(other))?;
+        };
         // Geometry creation is unconditional on the first pair, so no later
         // iteration is reachable until EdgeuseOffset is available.
         if let Some(offset) = synchronized.edgeuses.first() {
@@ -540,6 +538,40 @@ impl OffsetExecutive {
             ));
         }
 
+        self.fill_offset_edgeuse_gaps(kernel, original, edge, &synchronized)
+    }
+
+    /// Notification-free `BuildOffsetOfEdgeuses` prefix, shared with p2.
+    /// `None` is the selected-shell-face no-op, not an empty synchronization.
+    pub(super) fn prepare_offset_edgeuses(
+        &mut self,
+        kernel: &Kernel,
+        original: &Brep,
+        edgeuse: EdgeuseId,
+        other: EdgeuseId,
+    ) -> Result<Option<(EdgeId, SynchronizedEdgeuses)>> {
+        let edge = edge_of(original, edgeuse)?;
+        let first_face = eu::face(original, edgeuse)?;
+        let other_face = eu::face(original, other)?;
+        if first_face.is_some_and(|id| self.shell_faces.contains(&id))
+            && other_face.is_some_and(|id| self.shell_faces.contains(&id))
+            && !self.extend_convex_edges
+        {
+            return Ok(None);
+        }
+        let synchronized = self.synchronize_offset_edgeuses(kernel, Some(edgeuse), Some(other))?;
+        Ok(Some((edge, synchronized)))
+    }
+
+    /// Notification-free tail after the synchronized pair loop, shared with p2.
+    /// Both gap calls run before either status is inspected, as upstream.
+    pub(super) fn fill_offset_edgeuse_gaps(
+        &mut self,
+        kernel: &Kernel,
+        original: &Brep,
+        edge: EdgeId,
+        synchronized: &SynchronizedEdgeuses,
+    ) -> Result<()> {
         let first = self.fill_gap_edgeuses(kernel, edge, &synchronized.gaps, &[]);
         let second = self.fill_gap_edgeuses(kernel, edge, &synchronized.other_gaps, &[]);
         let mut problems = false;
@@ -1810,6 +1842,87 @@ mod tests {
     }
 
     #[test]
+    fn shared_edge_preparation_preserves_shell_skip_and_validation_order() {
+        let kernel = Kernel::default();
+        let (mut original, edge, first_face, other_face) = excess_face_fixture();
+        let first = original.edge(edge).unwrap().edgeuses[0];
+        let other = original.edge(edge).unwrap().edgeuses[1];
+        let mut exec = executive();
+        assert_eq!(
+            exec.prepare_offset_edgeuses(&kernel, &original, first, other),
+            Ok(Some((edge, SynchronizedEdgeuses::default())))
+        );
+        exec.set_shell_faces(&[first_face, other_face]);
+        let missing = EdgeuseId::from_index(99);
+        exec.relate_edgeuses(first, missing);
+        exec.set_offset_brep(Brep::new());
+        // The selected-face no-op precedes synchronization of the stale mapping.
+        assert_eq!(
+            exec.prepare_offset_edgeuses(&kernel, &original, first, other),
+            Ok(None)
+        );
+        exec.set_extend_convex_edges(true);
+        assert!(matches!(
+            exec.prepare_offset_edgeuses(&kernel, &original, first, other),
+            Err(SolidError::NotFound { entity: EntityRef::Edgeuse(id), .. }) if id == missing
+        ));
+        // A missing first edge is checked before even reading the other face.
+        original.edgeuse_mut(first).unwrap().edge = None;
+        assert!(matches!(
+            exec.prepare_offset_edgeuses(&kernel, &original, first, missing),
+            Err(SolidError::Upstream {
+                code: crate::error::SM_ERR_NULL_POINTER,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn shared_gap_tail_keeps_empty_success_deferred_errors_and_pipe_fallback() {
+        let kernel = Kernel::default();
+        let mut original = Brep::new();
+        let original_use = add_use(&mut original, 0.0, 1.0, 1.0);
+        let edge = edge_of(&original, original_use).unwrap();
+        let mut exec = executive();
+        assert_eq!(
+            exec.fill_offset_edgeuse_gaps(
+                &kernel,
+                &original,
+                edge,
+                &SynchronizedEdgeuses::default(),
+            ),
+            Ok(())
+        );
+        assert!(exec.offset_brep().is_none());
+        let mut result = Brep::new();
+        let live = add_use(&mut result, 0.0, 1.0, 1.0);
+        let missing = EdgeuseId::from_index(99);
+        exec.set_offset_brep(result);
+        for (first, second) in [(missing, live), (live, missing)] {
+            let synchronized = SynchronizedEdgeuses {
+                gaps: vec![first],
+                other_gaps: vec![second],
+                ..SynchronizedEdgeuses::default()
+            };
+            assert_dependency(
+                exec.fill_offset_edgeuse_gaps(&kernel, &original, edge, &synchronized),
+                "SmEdgeuse::NormalizedEvaluate",
+                "topology.edgeuse_p3",
+            );
+        }
+        let synchronized = SynchronizedEdgeuses {
+            gaps: vec![missing],
+            other_gaps: vec![missing],
+            ..SynchronizedEdgeuses::default()
+        };
+        assert_dependency(
+            exec.fill_offset_edgeuse_gaps(&kernel, &original, edge, &synchronized),
+            "SmPrimitiveCreation::CreatePipeSweep",
+            "primitive.primitive_creation_p2",
+        );
+    }
+
+    #[test]
     fn excess_face_collection_requires_one_solution_and_strict_distance() {
         let (result, edge_id, first_face, second_face) = excess_face_fixture();
         let min_distance = 2.0 * 0.95;
@@ -2309,6 +2422,32 @@ mod tests {
             &offset_key,
         )
         .unwrap();
+        // The public helper must still use these actual records and distinct
+        // arena keys before returning the geometry-creation dependency.
+        for entity in [
+            EntityRef::Edge(EdgeId::from_index(0)),
+            EntityRef::Vertex(VertexId::from_index(0)),
+            EntityRef::Vertex(VertexId::from_index(1)),
+        ] {
+            env.records
+                .insert(offset_key(entity).key, topology::Topology::default());
+        }
+        let mut exec = executive();
+        exec.set_offset_brep(result);
+        exec.relate_edgeuses(old, new);
+        assert_dependency(
+            exec.build_offset_of_edgeuses(
+                &Kernel::default(),
+                &original,
+                old,
+                old,
+                MarkType::Mark,
+                &mut env,
+                &offset_key,
+            ),
+            "SmOffsetGeometryCreation::EdgeuseOffset",
+            "offset.offset_geometry_creation",
+        );
         for (entity, expected) in [
             (EntityRef::Edge(EdgeId::from_index(0)), 37),
             (EntityRef::Vertex(VertexId::from_index(0)), 53),

@@ -74,7 +74,11 @@
 //! origin xyz and size xyz. Selection origins are `0` source, `1` foreign,
 //! `2` null (with index `-1`). There are no caller-supplied knots or weights.
 //!
-//! Output is `[-1, status]` ONLY for an actual fixture-construction rejection.
+//! Output is `[-1, status]` ONLY for a fixture-construction rejection. A box
+//! constructor can report success after ignoring face-creation failures; actual
+//! face/edge/vertex counts other than 6/12/8 are rejected with `SM_ERR` (`1001`).
+//! This check applies to source and foreign boxes, without size-based cutoffs.
+//! Malformed inputs and adapter exceptions remain transport errors, not rejections.
 //! Built fixtures always produce:
 //!
 //! ```text
@@ -352,9 +356,10 @@ pub struct Snapshot {
 /// Native fixture rejection is distinct from an ordinary operation failure.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outcome {
-    /// An actual native fixture constructor rejected the geometry before execution.
+    /// Native fixture construction failed before execution, including incomplete boxes.
     Rejected {
-        /// Unmodified constructor status; not an FFI argument/exception status.
+        /// Constructor status, or `SM_ERR` (1001) for incomplete box topology.
+        /// Never an FFI argument/exception status.
         status: i32,
     },
     /// Fixture built; includes actual before/after data even for native errors.
@@ -1133,6 +1138,112 @@ mod tests {
                 assert_eq!(snapshot.source_lifetime, 1);
                 assert!(snapshot.result.is_none());
             }
+        }
+    }
+
+    #[cfg(feature = "cpp")]
+    #[test]
+    fn native_incomplete_source_boxes_are_constructor_rejections() {
+        for (origin, size) in [([0.0; 3], [1e-6; 3]), ([1e6; 3], [1e-3; 3])] {
+            for selection in [FaceSelection::Null, FaceSelection::Source(0)] {
+                let mut r = request(Operation::ApiShell);
+                r.source = Some(Fixture::Box { origin, size });
+                r.faces = vec![selection];
+                r.tolerance = 1e-9;
+                r.config.offset_distance = 0.5;
+                assert_eq!(eval(&r).unwrap(), Outcome::Rejected { status: 1001 });
+
+                // A valid call after each rejection also exercises observer/lock
+                // restoration. Null selection is an operation error, not rejection.
+                r.source = Some(Fixture::Box {
+                    origin: [0.0; 3],
+                    size: [2.0, 3.0, 4.0],
+                });
+                r.faces = vec![FaceSelection::Null];
+                let Outcome::Built(snapshot) = eval(&r).unwrap() else {
+                    panic!("valid box must reach API selection validation")
+                };
+                assert_eq!(snapshot.status, NATIVE_INVALID_INPUT);
+                let counts = &snapshot.source_before.as_ref().unwrap().integers;
+                assert_eq!([counts[2], counts[4], counts[6]], [6, 12, 8]);
+                assert_eq!(snapshot.source_before, snapshot.source_after);
+                assert_eq!(snapshot.selected_before, vec![[2, -1]]);
+                assert_eq!(snapshot.selected_before, snapshot.selected_after);
+                assert_eq!(snapshot.source_lifetime, 1);
+                assert_eq!(snapshot.doing_boolean[0], snapshot.doing_boolean[1]);
+                assert!(snapshot.result.is_none());
+            }
+        }
+    }
+
+    #[cfg(feature = "cpp")]
+    #[test]
+    fn native_incomplete_foreign_boxes_are_constructor_rejections() {
+        for (origin, size) in [([0.0; 3], [1e-6; 3]), ([1e6; 3], [1e-3; 3])] {
+            for selection in [FaceSelection::Null, FaceSelection::Foreign(0)] {
+                let mut r = request(Operation::ApiShell);
+                r.source = Some(Fixture::Box {
+                    origin: [0.0; 3],
+                    size: [2.0, 3.0, 4.0],
+                });
+                r.foreign = Some(Fixture::Box { origin, size });
+                r.faces = vec![selection];
+                r.tolerance = 1e-9;
+                r.config.offset_distance = 0.5;
+                assert_eq!(eval(&r).unwrap(), Outcome::Rejected { status: 1001 });
+
+                // Foreign construction rejects after allocating the source. Both
+                // must be reclaimed without poisoning the next valid invocation.
+                r.foreign = r.source.clone();
+                let Outcome::Built(snapshot) = eval(&r).unwrap() else {
+                    panic!("valid foreign box must reach API selection validation")
+                };
+                assert_eq!(snapshot.status, NATIVE_INVALID_INPUT);
+                let counts = &snapshot.foreign_before.as_ref().unwrap().integers;
+                assert_eq!([counts[2], counts[4], counts[6]], [6, 12, 8]);
+                assert_eq!(snapshot.source_before, snapshot.source_after);
+                assert_eq!(snapshot.foreign_before, snapshot.foreign_after);
+                assert_eq!(snapshot.selected_before, snapshot.selected_after);
+                assert_eq!(snapshot.source_lifetime, 1);
+                assert_eq!(snapshot.doing_boolean[0], snapshot.doing_boolean[1]);
+                assert!(snapshot.result.is_none());
+            }
+        }
+    }
+
+    #[cfg(feature = "cpp")]
+    #[test]
+    fn native_incomplete_box_does_not_hide_malformed_adapter_input() {
+        let mut r = request(Operation::ApiShell);
+        r.source = Some(Fixture::Box {
+            origin: [0.0; 3],
+            size: [1e-6; 3],
+        });
+        r.faces = vec![FaceSelection::Source(0)];
+        r.tolerance = 1e-9;
+        r.config.offset_distance = 0.5;
+        let base = pack(&r).unwrap();
+        let mut invalid_selector = base.clone();
+        *invalid_selector.last_mut().unwrap() = 6.0;
+        let mut trailing_data = base;
+        trailing_data.push(0.0);
+        for input in [invalid_selector, trailing_data] {
+            let mut out = [42.0; 2];
+            let mut len = -1;
+            // SAFETY: buffers are live and correctly sized; only the encoded
+            // selector or trailing data deliberately violates the DTO contract.
+            let status = unsafe {
+                sys::sc_offset_offset_executive_p2_eval(
+                    input.as_ptr(),
+                    input.len() as i64,
+                    out.as_mut_ptr(),
+                    out.len() as i64,
+                    &raw mut len,
+                )
+            };
+            assert_eq!(status, crate::SC_ERR_ARG);
+            assert_eq!(out, [42.0; 2]);
+            assert_eq!(len, -1);
         }
     }
 

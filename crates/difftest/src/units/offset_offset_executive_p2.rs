@@ -1,4 +1,4 @@
-//! Runner for `offset.offset_executive_p2` (draft PR #201).
+//! Runner for `offset.offset_executive_p2` (PR #201).
 //!
 //! Upstream: `source/SMLib/src/SmOffsetExecutive.cpp`,
 //! `source/SM_API/src/SmApiBrep.cpp`; native adapter:
@@ -26,8 +26,9 @@
 //! Input geometry projection compares B-rep tolerance, representable counts and
 //! analytic kinds; sheets additionally compare face/natural domains and three
 //! evaluated points/normals; wires compare natural/trim intervals, endpoint
-//! evaluations and vertex bounds. Per-entity effective tolerances, region void /
-//! infinite-region / editing metadata and traversal adjacency are NOT invented.
+//! evaluations and vertex bounds. The constructor's infinite region is explicitly
+//! designated void for prefix selection; full region/editing metadata, per-entity
+//! effective tolerances and traversal adjacency are not certified by this projection.
 //! The COMPLETE native integer/numeric input blocks must remain bitwise unchanged
 //! on those early paths; independently, Rust checks its complete Debug-visible
 //! arena state and samples before/after the SAME owned input, not a reconstruction.
@@ -49,7 +50,7 @@
 //! All numeric keys have ZERO absolute floor; signed-zero inputs are retained.
 //!
 //! This unit is necessarily PARTIAL: current positive geometry operations reach
-//! genuine missing manifold/copy/infinite-region/void/shrink/merge/stitch work.
+//! genuine missing manifold/copy/face-construction/shrink/merge/stitch work.
 //! Empty rounded offset still calls `ShrinkGeometry`; static shell queries manifold
 //! BEFORE its strict radius guard; valid API shell selections copy BEFORE shelling.
 //! Fixtures retain those native paths for future wiring, not manufactured success.
@@ -688,13 +689,15 @@ fn rectangular_face(
 fn build(fixture: &Fixture, tolerance: f64) -> HResult<Brep> {
     let mut brep = Brep::new();
     brep.set_tolerance(tolerance);
-    // Actual typed region identity, NOT an invented IsVoid or infinite-region flag.
+    // SmBrep.cpp:532–537: the constructor explicitly creates a void infinite region.
     let region = brep
         .add_region_record(Region {
             in_brep: true,
+            is_void: 1,
             ..Region::default()
         })
         .map_err(setup)?;
+    brep.set_infinite_region(Some(region));
     match *fixture {
         Fixture::Empty => {}
         Fixture::Wire {
@@ -1868,7 +1871,7 @@ mod tests {
     }
 
     #[test]
-    fn fixtures_link_regions_and_shells_without_inferring_void_flags() {
+    fn fixtures_designate_native_infinite_region_and_link_shells() {
         for (fixture, regions, shells) in [
             (Fixture::Empty, 1, 0),
             (wire([0.0; 3], 1.0), 1, 1),
@@ -1885,9 +1888,11 @@ mod tests {
             let brep = build(&fixture, 1e-6).unwrap();
             assert_eq!(brep.regions().len(), regions);
             assert_eq!(brep.shells().len(), shells);
+            let infinite = brep.infinite_region().unwrap();
+            assert_eq!(brep.region(infinite).unwrap().is_void(), 1);
             for (region_id, region) in brep.regions().iter() {
                 assert!(region.in_brep);
-                assert_eq!(region.is_void, Region::default().is_void);
+                assert_eq!(region.is_void(), i32::from(region_id == infinite));
                 for &shell in &region.shells {
                     assert_eq!(brep.shell(shell).unwrap().region, Some(region_id));
                 }
@@ -2220,13 +2225,13 @@ mod tests {
                 Operation::Solid,
                 sheet([0.0; 3], 1.0, 0),
                 false,
-                "SmBrep::GetInfiniteRegion",
+                "SmOffsetGeometryCreation::FaceuseOffset",
             ),
             (
                 Operation::Extended,
                 sheet([0.0; 3], 1.0, 0),
                 true,
-                "SmRegion::IsVoid",
+                "SmOffsetGeometryCreation::FaceuseOffset",
             ),
         ] {
             for distance in [0.0, 1.9999999999999995e-6, 2e-6, 2.0000000000000003e-6] {
@@ -2259,6 +2264,42 @@ mod tests {
                 .symbol,
             "SmBrep::SmBrep"
         );
+    }
+
+    #[test]
+    fn incomplete_native_boxes_are_rejected_without_hiding_valid_selection_errors() {
+        let context = CaseContext {
+            root: repo_root(),
+            seeds: 0,
+        };
+        let mut rejected = 0;
+        let mut compared = 0;
+        for case in context.fixture_cases(Runner.id()).unwrap() {
+            if !case.name.starts_with("review_box_") {
+                continue;
+            }
+            let cpp = Runner.run_cpp(&case).unwrap();
+            assert!(cpp.error.is_none() && cpp.deferred.is_none());
+            if case.name.ends_with("_control") {
+                let rust = Runner.run_rust(&case).unwrap();
+                for output in [&cpp, &rust] {
+                    assert!(output.rejected.is_none() && output.error.is_none());
+                    assert!(output.deferred.is_none());
+                    assert_eq!(output.ints["status"], [1007]);
+                    assert_eq!(output.ints["input.pure"], [1, 1]);
+                    assert!(!output.values.is_empty());
+                }
+                compared += 1;
+            } else {
+                assert_eq!(
+                    cpp.rejected.as_deref(),
+                    Some("native fixture constructor status_1001")
+                );
+                assert!(cpp.ints.is_empty() && cpp.values.is_empty());
+                rejected += 1;
+            }
+        }
+        assert_eq!((rejected, compared), (8, 2));
     }
 
     #[test]

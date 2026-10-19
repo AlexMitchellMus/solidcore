@@ -7327,19 +7327,19 @@ with owner-tagged `Unported` errors and documented continuations.
 ## offset.offset_executive_p2 (partial, PR #201, 2026-10-17)
 
 The prerequisite p1 PR #175 merged on 2026-10-18; its reviewed changes and current
-main through `3604a8dc` are integrated here.
+main through `b6b6f7dd` are integrated here.
 All six owned static/member/API entrypoints have real native dispatch and Rust
 executable prefixes. The remaining P2-owned continuations are documented behind
 actual missing callees, not represented by fabricated topology copies or empty
 successful offset/shell geometry.
 
-- **Final integrated native evidence.** After merging p1 `7408ca0e` and upstream
-  main `3604a8dc`, the default unfiltered run completes with 294 cases (54 fixtures
-  and 240 fixed-seed generated cases; default CLI seeds remain 16): 118 passed,
-  0 failed, 0 rejected,
-  176 deferred. All 118 passes compare numerical values; maximum relative error
-  is zero, with the unchanged `1e-9` relative gate and no absolute floors.
-  Sensitivity detects all 118 perturbations. The standard generated report is
+- **Final integrated native evidence.** After review corrections and merging
+  upstream main `b6b6f7dd`, the default unfiltered run completes with 304 cases
+  (64 fixtures and 240 fixed-seed generated cases; default CLI seeds remain 16):
+  120 passed, 0 failed, 8 native constructor rejections, 176 deferred. All 120
+  passes compare numerical values; maximum relative error is zero, with the
+  unchanged `1e-9` relative gate and no absolute floors. Sensitivity detects all
+  120 perturbations. Rejected constructors are not parity passes. The standard generated report is
   `reports/difftest/offset.offset_executive_p2.json`. These totals supersede the
   earlier pre-guard run. Validation uses pinned upstream `c9c5979`, Rust 1.98.0
   and GNU g++ 12.2.0 on Linux ARM64 in local Docker, with the user-approved ten
@@ -7376,12 +7376,12 @@ successful offset/shell geometry.
 
   | Dependency | Cases | First missing call(s) |
   |---|---:|---|
+  | `offset.offset_geometry_creation` | 67 | `SmOffsetGeometryCreation::FaceuseOffset` |
   | `topology.brep_p2` | 58 | `SmBrep::IsManifoldSolid` |
-  | `topology.shell` | 44 | `SmRegion::IsVoid` |
   | `topology.brep_p3` | 32 | `SmBrep::SmBrep` copy constructor |
-  | `topology.brep_p1` | 27 | `SmBrep::GetInfiniteRegion` |
   | `topology.brep_p5` | 6 | `SmBrep::RemoveFaces` |
   | `heal.stitch_p2` | 6 | three each at `StitchIntoShell` / `StitchIntoSolid` |
+  | `topology.brep_p9` | 4 | `SmBrep::MakeShellVertex` |
   | `topology.brep_p4` | 3 | `SmBrep::ShrinkGeometry` |
 
   No `UNPORTED(offset.offset_executive_p2)` back-edge callers were present to
@@ -7457,7 +7457,7 @@ successful offset/shell geometry.
   17 deferred, 1 rejected); p2 remains 118 passed / 176 deferred / zero failures
   across 294 cases. Four generated cases (`gen0022`, `gen0023`, `gen0223`,
   `gen0232`) now advance from `SmEdgeuse::NormalizedEvaluate` to
-  `SmBrep::GetInfiniteRegion`; the report and dependency table above reflect that
+  `SmBrep::GetInfiniteRegion`; the report at that revision reflected dependency
   progress, not newly certified constructive geometry. Sensitivity detects all
   675 p1 and 118 p2 perturbations. A separate native sweep of `harness.selftest`,
   `topology.edgeuse_p2`, `topology.edgeuse_p3`, `topology.face_p2` and
@@ -7465,6 +7465,55 @@ successful offset/shell geometry.
   13003 cases, zero failures. Builds use ten jobs and persistent Linux-native
   caches in the resized local Docker VM. A full local native `--green` sweep is
   not claimed; the push triggers fresh full GitHub CI on this merged tree.
+- **Review corrections (2026-10-19).** The stale `SmRegion::IsVoid` boundary now
+  calls the already-ported getter and tests `!= 0`, preserving C++ truthiness for
+  `FALSE` (0), `TRUE` (1), `UNSURE` (2) and other nonzero values. Tests distinguish
+  each mate direction, inset, rounded identity selection and invalid region IDs.
+  Input fixtures explicitly designate the constructor's infinite region with
+  `is_void = 1`; interior box regions retain the non-void constructor default.
+  This replaces the earlier compile-compatibility-only fixture initialization.
+  The 44 former void-getter deferrals now reach `FaceuseOffset`.
+  Newly merged main also ports infinite-region lookup and `MakeFaceWithCurves`.
+  P2 calls those real APIs, initializes its empty temporary's single void infinite
+  region and editing flag as upstream does, and restores the temporary before
+  propagating construction errors. The 23 former rounded identity deferrals now
+  reach `FaceuseOffset`; four copied-face cases reach `MakeShellVertex` through
+  p7. This advances genuine boundaries, not constructive parity.
+- **Incomplete native box construction (review must-fix 2).** `CreateBox` ignores
+  face-construction statuses and its API may report success for incomplete
+  topology (WR-167 in `plan/upstream-issues.md`). The adapter now verifies actual
+  face/edge/vertex counts of 6/12/8 immediately after construction, before selector
+  resolution or operation execution, and rejects otherwise with `SM_ERR` (1001).
+  It uses no size cutoff. Eight new fixtures cover both reported scales, source
+  and foreign boxes, and null/indexed selectors; two valid-box controls still
+  compare actual API invalid-selection status 1007, geometry and purity.
+  FFI regressions also verify cleanup via subsequent valid calls and ensure
+  malformed transport input remains `SC_ERR_ARG`, not a constructor rejection.
+- **Shared edge prefix (review should-fix).** P1 and p2 now share
+  `prepare_offset_edgeuses` and `fill_offset_edgeuse_gaps`. Empty synchronized
+  lists execute the real gap path instead of unconditionally deferring on
+  `EdgeuseOffset`; validation and error order are unchanged, including both gap
+  calls executing before either status is inspected. Public p1 still performs
+  edge/vertex notifications using real records and distinct arena identities,
+  covered by an extended notification regression. P2's currently unreachable
+  live-pair continuation still requires caller-owned notification state; no dummy
+  `NotifyEnv`, context or attribute store was introduced to force full delegation.
+  The shared native mutex is retained unchanged: observer safety requires
+  exclusion across wrappers, not a p2-only lock.
+- **Review-fix validation on main `b6b6f7dd`.** Formatting (including direct checks
+  of include-generated runner/FFI modules), Clippy with and without C++, wasm,
+  all workspace tests (1417 kernel tests, including 70 offset tests) pass.
+  Tests use the optimized profile with debug assertions/overflow checks retained.
+  C++ library tests: 107 FFI passed / 1 ignored, 162 runner passed / 24 ignored;
+  the targeted offset subsets are 31 and 37 passes respectively. P1's generated
+  report is byte-identical (675 passed, 17 deferred, 1 rejected), with 675/675
+  perturbations detected; p2 reports 120 passed, 176 deferred, 8 rejected across
+  304 cases, with 120/120 perturbations detected. All have zero failures and
+  unchanged tolerances. A native sweep of `topology.brep_p1`, `topology.brep_p7`,
+  `topology.shell` and `topology.face_p2` also passes at partial scope: 6508 cases,
+  zero failures. The previous head `23db8234` passed full GitHub CI run
+  `39119513799`, including `--green`; no full local `--green` run on this new
+  revision is claimed. Fresh CI is required after pushing these corrections.
 
 ## topology.brep_p1 (`SmBrep` members, collections, `sm_*` helpers of `SmBrep.cpp`, PR #145, 2026-10-16; partial, no disagreements)
 

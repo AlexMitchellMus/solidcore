@@ -244,6 +244,16 @@ SmBrep* build(const Spec& s, SmContext& ctx, double tolerance) {
     if (s.kind == 4) {
         constructed(SmApiCreateBox(point(v, 0), v[3], v[4], v[5], result));
         if (!result) throw std::runtime_error("successful box constructor returned null");
+        // CreateBox ignores CreateFaceFromSurface statuses (SmPrimitiveCreation.cpp:
+        // 294-344), so SM_SUCCESS alone does not establish a constructed box.
+        SmTArray<SmFace*> faces;
+        SmTArray<SmEdge*> edges;
+        SmTArray<SmVertex*> vertices;
+        result->GetFaces(faces);
+        result->GetEdges(edges);
+        result->GetVertices(vertices);
+        if (faces.GetSize() != 6 || edges.GetSize() != 12 || vertices.GetSize() != 8)
+            throw Rejected{SM_ERR};
         result->SetTolerance(tolerance, FALSE);
         return result;
     }

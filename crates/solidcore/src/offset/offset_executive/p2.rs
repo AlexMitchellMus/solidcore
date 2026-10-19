@@ -2,6 +2,7 @@
 //!
 //! Upstream: `source/SMLib/src/SmOffsetExecutive.cpp` (100–129, 146–359,
 //! 379–1053, 1062–1924), `source/SMLib/inc/SmOffsetExecutive.h`,
+//! `source/SMLib/src/SmBrep.cpp` (493–537, empty-constructor region metadata),
 //! `source/SM_API/src/SmApiBrep.cpp` (2350–2431, 2438–2463).
 //!
 //! | Rust | Upstream |
@@ -23,12 +24,14 @@
 //! Offset/member inputs are mutable so existing queries can populate lazy UV trim
 //! geometry in the same arena; this adds no constructive capability or topology copy.
 //! Arena order replaces owning face-list order, as in p1. Empty temporary allocation
-//! and tolerance assignment use the existing `Brep` skeleton; its absent editing flag
-//! is not simulated. Region void flags, infinite-region lookup, topology copies,
-//! constructors and geometry creation are not guessed. Continuations after missing
-//! calls are documented at those calls, including ignored-status calls. Scoped
-//! Boolean changes and mark locks are restored on every `Result` exit. There is no
-//! new recursion; all owned loops are bounded by existing arena/relation lengths.
+//! co-ports the empty constructor's single void infinite region and enables editing
+//! as both upstream offset methods do; region insertion errors propagate. Tolerance,
+//! region flags and identity use the real accessors. No offset geometry is fabricated.
+//! Copied faces pass that actual region ID to brep p7. Edge-offset preparation and gap
+//! handling reuse p1; live pairs still need real notification state before construction.
+//! Continuations after missing calls are documented there, including ignored-status
+//! calls. Scoped Boolean changes and mark locks are restored on every `Result` exit.
+//! There is no new recursion; all owned loops are bounded by existing arena/relation lengths.
 
 use std::collections::BTreeSet;
 
@@ -40,9 +43,11 @@ use crate::kernel::Kernel;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::query::api_queries::{brep_is_manifold_solid, BrepRef};
 
+use crate::topology::brep::p7::{make_face_with_curves, FaceCurvesInput};
+use crate::topology::brep_cache::{arena_identity, CacheObject};
 use crate::topology::edgeuse::{p1 as eu, p2 as eu2};
 use crate::topology::face::p2 as face;
-use crate::topology::{Brep, BrepId, EdgeuseId, FaceId, RegionId};
+use crate::topology::{Brep, BrepId, EdgeuseId, FaceId, Region, RegionId};
 
 const OP_OFFSET: &str = "offset::offset_executive::p2::offset_brep";
 const OP_SHELL: &str = "offset::offset_executive::p2::shell_brep";
@@ -202,11 +207,11 @@ impl OffsetExecutive {
         }
         let original = required(original, OP_SOLID)?;
         with_doing_boolean(kernel, |kernel| {
-            self.allocate_offset_brep();
+            self.allocate_offset_brep()?;
             let faces: Vec<_> = original.faces().iter().map(|(id, _)| id).collect();
             for id in faces {
                 if self.shell_faces().contains(&id) {
-                    self.copy_shell_face_prefix(kernel, original, id)?;
+                    self.copy_shell_face_prefix(kernel, original, id, false)?;
                 } else {
                     self.offset_face_prefix(original, id, false)?;
                 }
@@ -245,11 +250,11 @@ impl OffsetExecutive {
         original: Option<&mut Brep>,
     ) -> Result<Brep> {
         let original = required(original, OP_EXTENDED)?;
-        self.allocate_offset_brep();
+        self.allocate_offset_brep()?;
         let faces: Vec<_> = original.faces().iter().map(|(id, _)| id).collect();
         for id in faces {
             if self.shell_faces().contains(&id) {
-                self.copy_shell_face_prefix(kernel, original, id)?;
+                self.copy_shell_face_prefix(kernel, original, id, true)?;
             } else {
                 self.offset_face_prefix(original, id, true)?;
             }
@@ -257,8 +262,8 @@ impl OffsetExecutive {
 
         let mapped = self.mapped_original_edgeuses();
         with_mark_lock(kernel, ALL_MARKS, |kernel, _mark_type| {
-            // No face constructor is reachable past the boundaries above yet.
-            // Thus fresh executives have no mapped edges or result faces here.
+            // The geometry/Copy-notification boundaries above still stop every
+            // nonempty face loop before it can install live result mappings.
             // Still validate caller-installed stale mappings in the native order;
             // the new empty result arena must not make local ids look live.
             let mut marked = BTreeSet::new();
@@ -350,37 +355,84 @@ impl OffsetExecutive {
         })?
     }
 
-    fn allocate_offset_brep(&mut self) {
+    fn allocate_offset_brep(&mut self) -> Result<()> {
         let mut temporary = Brep::new();
+        // SmBrep.cpp:532–537: the empty constructor owns one void infinite region.
+        let region = temporary.add_region_record(Region {
+            in_brep: true,
+            is_void: 1,
+            ..Region::default()
+        })?;
+        temporary.set_infinite_region(Some(region));
         temporary.set_tolerance(self.approximation_tol_3d());
+        // SmOffsetExecutive.cpp:437 / 1073, after constructing the temporary.
+        temporary.set_editing_enabled(true);
         self.set_offset_brep(temporary);
+        Ok(())
     }
 
     fn copy_shell_face_prefix(
-        &self,
+        &mut self,
         kernel: &Kernel,
         original: &mut Brep,
         id: FaceId,
+        extended: bool,
     ) -> Result<()> {
+        let operation = if extended { OP_EXTENDED } else { OP_SOLID };
         // Both the 3D and UV outputs are requested, in this order, upstream.
-        let _curves =
+        let curves =
             face::create_curves_from_face(kernel, original, id, OrientType::Same, true, true)?;
-        let source_surface = required(original.face(id)?.surface.as_ref(), OP_SOLID)?;
-        let _surface = source_surface.copy_and_add_analytics(kernel)?;
-        let temporary = required(self.offset_brep(), OP_SOLID)?;
-        infinite_region(temporary)?;
-
-        // Continuation cpp:482–506 / 1166–1207: MakeFaceWithCurves, using both
-        // copied curve arrays, original UV domain and SAME orientation. Solid uses
-        // the original upward faceuse's region IsVoid to select its mate, without
-        // applying inset. Extended first notifies Copy, then selects by original
-        // GetInfiniteRegion and applies inset. Both relate faceuse->face and call
-        // p1 MapEdgeuses. Do not use a topology/geometry clone as this constructor.
-        // UNPORTED(topology.brep_p7): SmBrep::MakeFaceWithCurves
-        Err(SolidError::unported(
-            "SmBrep::MakeFaceWithCurves",
-            "topology.brep_p7",
-        ))
+        let source_face = original.face(id)?;
+        let source_surface = required(source_face.surface.as_ref(), operation)?;
+        let surface = source_surface.copy_and_add_analytics(kernel)?;
+        let input = FaceCurvesInput {
+            loops: curves
+                .curve_loops
+                .into_iter()
+                .map(|count| usize::try_from(count).map_err(|_| invalid_input(operation)))
+                .collect::<Result<Vec<_>>>()?,
+            curves_3d: curves
+                .curves_3d
+                .map(|curves| curves.into_iter().map(Some).collect()),
+            uv_curves: curves.uv_curves,
+            orientations: curves.curve_orients,
+            loop_points: curves.loop_points,
+        };
+        let mut temporary = required(self.take_offset_brep(), operation)?;
+        let region = temporary.infinite_region();
+        let made = make_face_with_curves(
+            kernel,
+            &mut temporary,
+            region,
+            input,
+            surface,
+            &source_face.uv_domain,
+            OrientType::Same,
+            None,
+            // Surface ownership is local to this result arena, not a cross-arena
+            // Copy notification identity (which needs caller-owned records).
+            &|face| arena_identity(CacheObject::Face(face)),
+        );
+        self.set_offset_brep(temporary);
+        let made = made?;
+        if extended {
+            // cpp:1194 precedes faceuse selection and MapEdgeuses. Preserve the
+            // real Copy notification boundary; no empty attribute store is used.
+            // Continuation cpp:1196–1207: select by infinite-region identity,
+            // apply inset, relate the faceuse and map its edgeuses.
+            // UNPORTED(topology.face_p3): SmFace::Notify
+            return Err(SolidError::unported("SmFace::Notify", "topology.face_p3"));
+        }
+        let new_face = required(made.face, operation)?;
+        let mut faceuse = required(face::upward_faceuse(original, id)?, operation)?;
+        let shell = required(eu::faceuse_shell(original, faceuse)?, operation)?;
+        let region = required(eu::shell_region(original, shell)?, operation)?;
+        if !region_is_void(original, region)? {
+            faceuse = required(eu::faceuse_mate(original, faceuse)?, operation)?;
+        }
+        // cpp:498–506: copied rounded faces do not apply inset.
+        self.relate_faceuse(faceuse, new_face);
+        self.map_edgeuses(kernel, original, faceuse, new_face)
     }
 
     fn offset_face_prefix(&self, original: &Brep, id: FaceId, extended: bool) -> Result<()> {
@@ -389,11 +441,11 @@ impl OffsetExecutive {
         let shell = required(eu::faceuse_shell(original, faceuse)?, operation)?;
         let region = eu::shell_region(original, shell)?;
         // Do not unify these predicates: extended offset tests void, rounded
-        // offset compares region identity. They defer at different real calls.
+        // offset compares region identity (including native null equality).
         let use_mate = if extended {
             !region_is_void(original, required(region, operation)?)?
         } else {
-            region != Some(infinite_region(original)?)
+            region != original.infinite_region()
         };
         if use_mate {
             faceuse = required(eu::faceuse_mate(original, faceuse)?, operation)?;
@@ -424,25 +476,25 @@ impl OffsetExecutive {
         edgeuse: EdgeuseId,
         radial: EdgeuseId,
     ) -> Result<()> {
-        // The executable prefix of p1 BuildOffsetOfEdgeuses. All successful face
-        // constructors above are unavailable, so a preinstalled mapping can only
-        // refer to a stale result id: synchronization detects it before any copy
-        // notification. No empty notification/attribute store is fabricated here.
-        let _edge = required(eu::edge(original, edgeuse)?, OP_EXTENDED)?;
-        let first_face = eu::face(original, edgeuse)?;
-        let second_face = eu::face(original, radial)?;
-        if first_face.is_some_and(|id| self.shell_faces().contains(&id))
-            && second_face.is_some_and(|id| self.shell_faces().contains(&id))
-            && !self.extend_convex_edges()
-        {
+        // The extended face loop stops at geometry creation or Copy notification
+        // before installing live result mappings. Shared p1 preparation validates
+        // caller-installed stale mappings before any edge/vertex notification.
+        // No empty notification/attribute store is fabricated here.
+        let Some((edge, synchronized)) =
+            self.prepare_offset_edgeuses(kernel, original, edgeuse, radial)?
+        else {
             return Ok(());
+        };
+        if synchronized.edgeuses.is_empty() {
+            return self.fill_offset_edgeuse_gaps(kernel, original, edge, &synchronized);
         }
-        self.synchronize_offset_edgeuses(kernel, Some(edgeuse), Some(radial))?;
         // Continuation: invoke p1 BuildOffsetOfEdgeuses with actual original/result
         // notification records once face construction can create live mappings;
         // preserve Copy notifications before the geometry creator and use the
-        // claimed mark without advancing it. There is no live mapped pair at this
-        // boundary in the current prefix, and no geometric success is claimed.
+        // claimed mark without advancing it. That needs caller-owned NotifyEnv
+        // records/attributes and distinct arena keys, plus a split borrow of the
+        // real kernel context (p1 also takes &Kernel). There is no live mapped
+        // pair at this boundary in the current prefix; no success is claimed.
         // UNPORTED(offset.offset_geometry_creation): SmOffsetGeometryCreation::EdgeuseOffset
         Err(SolidError::unported(
             "SmOffsetGeometryCreation::EdgeuseOffset",
@@ -460,9 +512,7 @@ impl OffsetExecutive {
                 let surface = required(face.surface.as_ref(), OP_EXTENDED)?;
                 // A surface is a concrete, face-owned value. The same canonical
                 // arena identity as p1's cache adapter is stable within this run.
-                let key = crate::topology::brep_cache::arena_identity(
-                    crate::topology::brep_cache::CacheObject::Face(id),
-                );
+                let key = arena_identity(CacheObject::Face(id));
                 self.get_create_extended_surface(kernel, key.key.0, surface)?;
                 // Continuation documented at cpp:1613 above. In particular, domain
                 // calculation must not run before the temporary replacement.
@@ -611,18 +661,8 @@ fn select_radial(
     }
 }
 
-fn infinite_region(_brep: &Brep) -> Result<RegionId> {
-    // UNPORTED(topology.brep_p1): SmBrep::GetInfiniteRegion
-    Err(SolidError::unported(
-        "SmBrep::GetInfiniteRegion",
-        "topology.brep_p1",
-    ))
-}
-
 fn region_is_void(brep: &Brep, region: RegionId) -> Result<bool> {
-    brep.region(region)?;
-    // UNPORTED(topology.shell): SmRegion::IsVoid
-    Err(SolidError::unported("SmRegion::IsVoid", "topology.shell"))
+    Ok(brep.region(region)?.is_void() != 0)
 }
 
 fn required<T>(value: Option<T>, operation: &'static str) -> Result<T> {
@@ -646,7 +686,7 @@ mod tests {
     use crate::math::{Vec3, PI};
     use crate::surface::plane::Plane;
     use crate::surface::surface::Surface;
-    use crate::topology::{Faceuse, FaceuseId, Region, Shell};
+    use crate::topology::{Faceuse, FaceuseId, Shell};
 
     fn executive() -> OffsetExecutive {
         OffsetExecutive::new(OffsetOperation::SolidOffset, 0.125, 1.0e-6)
@@ -669,9 +709,11 @@ mod tests {
         let region = brep
             .add_region_record(Region {
                 in_brep: true,
+                is_void: 1,
                 ..Region::default()
             })
             .unwrap();
+        brep.set_infinite_region(Some(region));
         let shell = brep
             .add_shell_record(Shell {
                 region: Some(region),
@@ -715,14 +757,237 @@ mod tests {
     }
 
     #[test]
-    fn one_face_links_region_and_shell_without_inferring_void_flag() {
+    fn one_face_explicitly_sets_infinite_region_and_void_flag() {
         let (brep, face) = one_face(false);
         let shell = brep.face(face).unwrap().shell;
         let region = brep.shell(shell).unwrap().region.unwrap();
+        assert_eq!(brep.infinite_region(), Some(region));
         let region = brep.region(region).unwrap();
         assert!(region.in_brep);
         assert_eq!(region.shells.as_slice(), &[shell]);
-        assert_eq!(region.is_void, Region::default().is_void);
+        assert_eq!(region.is_void(), 1);
+    }
+
+    #[test]
+    fn both_offset_paths_initialize_only_empty_constructor_metadata() {
+        for extended in [false, true] {
+            let (mut original, _) = one_face(false);
+            let mut kernel = Kernel::default();
+            let mut exec = executive();
+            exec.set_extend_convex_edges(extended);
+            assert_dependency(
+                exec.do_solid_offset(
+                    &mut kernel,
+                    Some(&mut original),
+                    SolidOffsetOptions::default(),
+                ),
+                "SmOffsetGeometryCreation::FaceuseOffset",
+                "offset.offset_geometry_creation",
+            );
+            let temporary = exec.offset_brep().unwrap();
+            assert_eq!(temporary.regions().len(), 1);
+            let (id, region) = temporary.regions().iter().next().unwrap();
+            assert_eq!(temporary.infinite_region(), Some(id));
+            assert!(region.in_brep);
+            assert_eq!(region.is_void(), 1);
+            assert!(region.shells.is_empty());
+            assert!(temporary.editing_enabled());
+            assert_eq!(temporary.tolerance(), exec.approximation_tol_3d());
+            assert!(temporary.shells().is_empty());
+            assert!(temporary.faces().is_empty());
+            assert!(temporary.edges().is_empty());
+            assert!(temporary.vertices().is_empty());
+        }
+    }
+
+    #[test]
+    fn allocated_infinite_region_bypasses_p7_none_region_fallback() {
+        let kernel = Kernel::default();
+        let mut exec = executive();
+        exec.allocate_offset_brep().unwrap();
+        let mut temporary = exec.take_offset_brep().unwrap();
+        let region = temporary.infinite_region();
+        assert!(region.is_some());
+        // Nonempty loops pass p7's initial guards. Its curve-count check is after
+        // region lookup, so reaching it proves the stale None fallback was skipped.
+        let input = FaceCurvesInput {
+            loops: vec![3],
+            curves_3d: Some(vec![None]),
+            orientations: vec![OrientType::Same],
+            ..FaceCurvesInput::default()
+        };
+        let result = make_face_with_curves(
+            &kernel,
+            &mut temporary,
+            region,
+            input,
+            Surface::from(Plane::from_normal(Vec3::ZERO, Vec3::Z)),
+            &Extent2d::from_bounds(-1.0, -1.0, 1.0, 1.0),
+            OrientType::Same,
+            None,
+            &|face| arena_identity(CacheObject::Face(face)),
+        );
+        assert!(matches!(
+            result,
+            Err(SolidError::InvalidInput {
+                operation: "topology::brep::p7",
+                ..
+            })
+        ));
+        assert_eq!(temporary.infinite_region(), region);
+        assert_eq!(temporary.regions().len(), 1);
+        assert!(temporary.faces().is_empty());
+    }
+
+    #[test]
+    fn region_void_uses_native_truthiness_and_validates_the_region_id() {
+        let (mut brep, _) = one_face(false);
+        let region = brep.infinite_region().unwrap();
+        for (flag, expected) in [(0, false), (1, true), (2, true), (-1, true)] {
+            brep.region_mut(region).unwrap().is_void = flag;
+            assert_eq!(region_is_void(&brep, region), Ok(expected));
+        }
+        let missing = RegionId::from_index(99);
+        assert!(matches!(
+            region_is_void(&brep, missing),
+            Err(SolidError::NotFound { entity: EntityRef::Region(id), .. }) if id == missing
+        ));
+    }
+
+    #[test]
+    fn extended_void_selection_and_inset_distinguish_each_missing_mate() {
+        for flag in [0, 1, 2, -1] {
+            for inset in [false, true] {
+                // Break each direction separately: an inset after selecting the
+                // first mate must dereference that mate, not the upward use again.
+                for missing_first in [false, true] {
+                    let (mut brep, face) = one_face(false);
+                    let region = brep.infinite_region().unwrap();
+                    brep.region_mut(region).unwrap().is_void = flag;
+                    let first = brep.face(face).unwrap().faceuse.unwrap();
+                    let second = brep.faceuse(first).unwrap().mate.unwrap();
+                    let broken = if missing_first { first } else { second };
+                    brep.faceuse_mut(broken).unwrap().mate = None;
+                    let mut exec = executive();
+                    exec.set_inset(inset);
+                    let result = exec.offset_face_prefix(&brep, face, true);
+                    let needs_broken_mate = if missing_first {
+                        flag == 0 || inset
+                    } else {
+                        flag == 0 && inset
+                    };
+                    if needs_broken_mate {
+                        assert_status(result, SM_ERR_NULL_POINTER);
+                    } else {
+                        assert_dependency(
+                            result,
+                            "SmOffsetGeometryCreation::FaceuseOffset",
+                            "offset.offset_geometry_creation",
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn rounded_selection_uses_identity_not_void_and_then_applies_inset() {
+        for flag in [0, 1, 2, -1] {
+            for infinite_matches in [false, true] {
+                for inset in [false, true] {
+                    for missing_first in [false, true] {
+                        let (mut brep, face) = one_face(false);
+                        let region = brep.infinite_region().unwrap();
+                        brep.region_mut(region).unwrap().is_void = flag;
+                        if !infinite_matches {
+                            let other = brep.add_region_record(Region::default()).unwrap();
+                            brep.set_infinite_region(Some(other));
+                        }
+                        let first = brep.face(face).unwrap().faceuse.unwrap();
+                        let second = brep.faceuse(first).unwrap().mate.unwrap();
+                        let broken = if missing_first { first } else { second };
+                        brep.faceuse_mut(broken).unwrap().mate = None;
+                        let mut exec = executive();
+                        exec.set_inset(inset);
+                        let result = exec.offset_face_prefix(&brep, face, false);
+                        let needs_broken_mate = if missing_first {
+                            !infinite_matches || inset
+                        } else {
+                            !infinite_matches && inset
+                        };
+                        if needs_broken_mate {
+                            assert_status(result, SM_ERR_NULL_POINTER);
+                        } else {
+                            assert_dependency(
+                                result,
+                                "SmOffsetGeometryCreation::FaceuseOffset",
+                                "offset.offset_geometry_creation",
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn rounded_null_region_identity_is_not_an_extended_void_query() {
+        let (mut brep, face) = one_face(false);
+        let shell = brep.face(face).unwrap().shell;
+        let first = brep.face(face).unwrap().faceuse.unwrap();
+        brep.faceuse_mut(first).unwrap().mate = None;
+        brep.set_infinite_region(None);
+        // A non-null shell region differs from a null infinite region.
+        assert_status(
+            executive().offset_face_prefix(&brep, face, false),
+            SM_ERR_NULL_POINTER,
+        );
+        brep.shell_mut(shell).unwrap().region = None;
+        assert_dependency(
+            executive().offset_face_prefix(&brep, face, false),
+            "SmOffsetGeometryCreation::FaceuseOffset",
+            "offset.offset_geometry_creation",
+        );
+        assert_status(
+            executive().offset_face_prefix(&brep, face, true),
+            SM_ERR_NULL_POINTER,
+        );
+    }
+
+    #[test]
+    fn empty_edge_synchronization_is_a_no_op_not_a_geometry_dependency() {
+        let mut original = Brep::new();
+        let start = original.add_vertex(Vec3::ZERO).unwrap();
+        let end = original.add_vertex(Vec3::X).unwrap();
+        let edge = original.add_edge(start, end).unwrap();
+        let first = original
+            .add_edgeuse_record(crate::topology::Edgeuse {
+                edge: Some(edge),
+                ..crate::topology::Edgeuse::default()
+            })
+            .unwrap();
+        let second = original
+            .add_edgeuse_record(crate::topology::Edgeuse {
+                edge: Some(edge),
+                ..crate::topology::Edgeuse::default()
+            })
+            .unwrap();
+        let kernel = Kernel::default();
+        for extended in [false, true] {
+            let mut exec = executive();
+            exec.set_extend_convex_edges(extended);
+            assert_eq!(
+                exec.mapped_edge_prefix(&kernel, &original, first, second),
+                Ok(())
+            );
+            assert!(exec.offset_brep().is_none());
+            assert_eq!(kernel.context.current_mark(MarkType::Mark), 1);
+            let missing = EdgeuseId::from_index(99);
+            assert!(matches!(
+                exec.mapped_edge_prefix(&kernel, &original, first, missing),
+                Err(SolidError::NotFound { entity: EntityRef::Edgeuse(id), .. }) if id == missing
+            ));
+        }
     }
 
     #[test]
@@ -865,8 +1130,8 @@ mod tests {
                         Some(&mut original),
                         SolidOffsetOptions { skip_stitch_merge },
                     ),
-                    "SmRegion::IsVoid",
-                    "topology.shell",
+                    "SmOffsetGeometryCreation::FaceuseOffset",
+                    "offset.offset_geometry_creation",
                 );
                 assert_eq!(kernel.context.doing_boolean(), previous);
                 assert_eq!(exec.offset_brep().unwrap().tolerance(), 1.0e-6);
@@ -902,7 +1167,7 @@ mod tests {
     }
 
     #[test]
-    fn rounded_face_offset_stops_at_real_infinite_region_before_geometry_creation() {
+    fn rounded_face_offset_uses_real_infinite_region_before_geometry_creation() {
         let (mut original, _) = one_face(false);
         let mut kernel = Kernel::default();
         for inset in [false, true] {
@@ -914,8 +1179,8 @@ mod tests {
                     Some(&mut original),
                     SolidOffsetOptions::default(),
                 ),
-                "SmBrep::GetInfiniteRegion",
-                "topology.brep_p1",
+                "SmOffsetGeometryCreation::FaceuseOffset",
+                "offset.offset_geometry_creation",
             );
             assert!(!kernel.context.doing_boolean());
             assert!(exec.offset_brep().unwrap().faces().is_empty());
@@ -938,16 +1203,8 @@ mod tests {
                     Some(&mut original),
                     SolidOffsetOptions::default(),
                 ),
-                if extended {
-                    "SmRegion::IsVoid"
-                } else {
-                    "SmBrep::GetInfiniteRegion"
-                },
-                if extended {
-                    "topology.shell"
-                } else {
-                    "topology.brep_p1"
-                },
+                "SmOffsetGeometryCreation::FaceuseOffset",
+                "offset.offset_geometry_creation",
             );
             let mut exec = executive();
             exec.set_extend_convex_edges(extended);
@@ -996,7 +1253,7 @@ mod tests {
     }
 
     #[test]
-    fn copied_face_requests_real_curves_and_surface_before_infinite_region() {
+    fn copied_face_requests_real_curves_and_surface_before_p7_constructor() {
         let mut kernel = Kernel::default();
         for extended in [false, true] {
             let (mut original, face) = one_face(false);
@@ -1019,15 +1276,22 @@ mod tests {
             let mut exec = executive();
             exec.set_shell_faces(&[face]);
             exec.set_extend_convex_edges(extended);
-            assert_dependency(
-                exec.do_solid_offset(
+            // The loop-free fixture reaches p7's real input guard. The temporary
+            // supplies its actual infinite region, not p7's stale None fallback.
+            let error = exec
+                .do_solid_offset(
                     &mut kernel,
                     Some(&mut original),
                     SolidOffsetOptions::default(),
-                ),
-                "SmBrep::GetInfiniteRegion",
-                "topology.brep_p1",
-            );
+                )
+                .unwrap_err();
+            assert!(matches!(
+                error,
+                SolidError::InvalidInput {
+                    operation: "topology::brep::p7",
+                    ..
+                }
+            ));
             assert!(exec.offset_brep().unwrap().faces().is_empty());
         }
     }
