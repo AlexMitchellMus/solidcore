@@ -37,7 +37,9 @@ use solidcore::blend::fillet_geom::p1::{
     FilletVertexType, FilletVertexuse,
 };
 use solidcore::blend::fillet_geom::p3::new_solver_fillet_geom;
-use solidcore::blend::fillet_geom::p6::{join_two_fillet_verts_by_curves, move_tsp, FilletCornerView};
+use solidcore::blend::fillet_geom::p6::{
+    join_two_fillet_verts_by_curves, move_tsp, FilletCornerView,
+};
 use solidcore::blend::fillet_solver::p1::{
     FilletExecutiveRef, FilletGeomRef, FilletSolver, OffsetSurfaceSlot,
 };
@@ -65,8 +67,8 @@ use solidcore_ffi::units::blend_fillet_geom_p6::{self as ffi, Op};
 use solidcore_ffi::units::topology_edgeuse_p1 as ffi1;
 
 use super::topology_edgeuse_p1::{
-    brep_block_of, bspline_of, clamped_knots, import_with_types, path_of, push_curve,
-    push_surface, sel, surface_of, BrepIn, BssIn, CrvIn, ImportTypes, SrfIn,
+    brep_block_of, bspline_of, clamped_knots, import_with_types, path_of, push_curve, push_surface,
+    sel, surface_of, BrepIn, BssIn, CrvIn, ImportTypes, SrfIn,
 };
 use crate::{HarnessError, Output, Rng, UnitDiff};
 
@@ -514,8 +516,13 @@ impl Target {
 
     /// Whether target face `f`'s surface is imported exactly.
     fn exact_face(&self, f: Option<FaceId>) -> bool {
-        f.and_then(|f| self.types.face_surface_types.get(f.index() as usize).copied())
-            .is_none_or(|t| t < 0 || EXACT_SURFACES.contains(&t))
+        f.and_then(|f| {
+            self.types
+                .face_surface_types
+                .get(f.index() as usize)
+                .copied()
+        })
+        .is_none_or(|t| t < 0 || EXACT_SURFACES.contains(&t))
     }
 
     /// Whether target edge `e`'s curve is imported exactly.
@@ -525,15 +532,21 @@ impl Target {
     }
 
     fn face(&self, s: i64) -> Option<FaceId> {
-        u32::try_from(sel(s, self.n_f())).ok().map(FaceId::from_index)
+        u32::try_from(sel(s, self.n_f()))
+            .ok()
+            .map(FaceId::from_index)
     }
 
     fn edge(&self, s: i64) -> Option<EdgeId> {
-        u32::try_from(sel(s, self.n_e())).ok().map(EdgeId::from_index)
+        u32::try_from(sel(s, self.n_e()))
+            .ok()
+            .map(EdgeId::from_index)
     }
 
     fn edgeuse(&self, s: i64) -> Option<EdgeuseId> {
-        u32::try_from(sel(s, self.n_eu())).ok().map(EdgeuseId::from_index)
+        u32::try_from(sel(s, self.n_eu()))
+            .ok()
+            .map(EdgeuseId::from_index)
     }
 
     /// `(u0, v0, u1, v1)` of the face's surface domain.
@@ -726,7 +739,12 @@ fn model_input(i: &Inputs, tg: &Target) -> Result<Vec<f64>, HarnessError> {
     for v in &m.vertices {
         let r = resolve_vertex(v, tg)?;
         o.extend(r.point);
-        o.extend([v.vtype as f64, v.status as f64, v.corner as f64, v.pc_class as f64]);
+        o.extend([
+            v.vtype as f64,
+            v.status as f64,
+            v.corner as f64,
+            v.pc_class as f64,
+        ]);
         o.extend([r.pc_kind as f64, r.pc_index as f64, r.pc_face as f64]);
         o.extend([r.t, r.uv[0], r.uv[1]]);
     }
@@ -829,7 +847,13 @@ fn model_input(i: &Inputs, tg: &Target) -> Result<Vec<f64>, HarnessError> {
             param,
             pc,
         } => {
-            o.extend([*g as f64, *rail as f64, *end as f64, *param, b(pc.is_some())]);
+            o.extend([
+                *g as f64,
+                *rail as f64,
+                *end as f64,
+                *param,
+                b(pc.is_some()),
+            ]);
             let (class, kind, index, t) = match pc {
                 Some(p) => {
                     let (k, i) = tg.pc(p.kind, p.index);
@@ -1249,7 +1273,9 @@ impl RustModel {
                     g.and_then(|g| self.geoms.iter().position(|&x| x == g))
                         .map_or(-1.0, |i| i as f64),
                 );
-                let vu = r.vertexuse.ok_or_else(|| harness("edge use without vertex use"))?;
+                let vu = r
+                    .vertexuse
+                    .ok_or_else(|| harness("edge use without vertex use"))?;
                 let uv = self.fb.fillet_vertexuse(vu).map_err(h)?.uv_point();
                 o.extend([uv.x, uv.y]);
             }
@@ -1425,7 +1451,10 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
     let k = std::mem::take(&mut m.k);
     let edge = |m: &RustModel, e: usize| m.edges.get(e).copied().ok_or_else(|| harness("edge"));
     let geom = |m: &RustModel, g: usize| m.geoms.get(g).copied().ok_or_else(|| harness("geometry"));
-    let corner_view = |m: &RustModel, e: EdgeId, use_corner: bool| -> Result<Option<FilletCornerView>, HarnessError> {
+    let corner_view = |m: &RustModel,
+                       e: EdgeId,
+                       use_corner: bool|
+     -> Result<Option<FilletCornerView>, HarnessError> {
         if !use_corner {
             return Ok(None);
         }
@@ -1457,8 +1486,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             let e = edge(&m, *e)?;
             let f1 = tg.face(*f1).ok_or_else(|| harness("face"))?;
             let f2 = tg.face(*f2).ok_or_else(|| harness("face"))?;
-            m.fb
-                .should_swap_faces(&k, e, f1, f2, &mut tg.brep, &m.corners)
+            m.fb.should_swap_faces(&k, e, f1, f2, &mut tg.brep, &m.corners)
                 .map(|swap| results.push(b(swap)))
         }
         OpIn::Join {
@@ -1514,8 +1542,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         }
         OpIn::FindTangent { g, rail, end } => {
             let g = geom(&m, *g)?;
-            m.fb
-                .find_edge_tangent_at_point(g, *rail, *end, &tg.brep)
+            m.fb.find_edge_tangent_at_point(g, *rail, *end, &tg.brep)
                 .map(|t| {
                     results.push(b(t.is_some()));
                     let t = t.unwrap_or(Vec3::new(0.0, 0.0, 0.0));
@@ -1532,13 +1559,12 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         OpIn::RailIndexVu { g, e, which } => {
             let g = geom(&m, *g)?;
             let eu = m.edge_use(*e, *which)?;
-            let vu = m
-                .fb
-                .brep()
-                .edgeuse(eu)
-                .map_err(h)?
-                .vertexuse
-                .ok_or_else(|| harness("edge use without vertex use"))?;
+            let vu =
+                m.fb.brep()
+                    .edgeuse(eu)
+                    .map_err(h)?
+                    .vertexuse
+                    .ok_or_else(|| harness("edge use without vertex use"))?;
             let r = m.fb.rail_index_of_vertexuse(g, vu);
             results.push(r.as_ref().map_or(99.0, |&x| x as f64));
             r.map(|_| ())
@@ -1546,7 +1572,12 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         OpIn::RailVertex { g, rail, end } => {
             let g = geom(&m, *g)?;
             m.fb.rail_vertex(g, *rail, *end).map(|v| {
-                results.push(m.vertices.iter().position(|&x| x == v).map_or(-1.0, |x| x as f64));
+                results.push(
+                    m.vertices
+                        .iter()
+                        .position(|&x| x == v)
+                        .map_or(-1.0, |x| x as f64),
+                );
             })
         }
         OpIn::SetUpRailPoint {
@@ -1593,23 +1624,33 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         OpIn::RailEuIntersect { g, rail, eu, guess } => {
             let g = geom(&m, *g)?;
             let eu = tg.edgeuse(*eu).ok_or_else(|| harness("edge use"))?;
-            let si = m
-                .fb
-                .geom(g)
-                .map_err(h)?
-                .fillet_solver()
-                .ok_or_else(|| harness("geometry without solver"))?;
-            let mut solver = m
-                .solvers
-                .get(si.0 as usize)
-                .cloned()
-                .ok_or_else(|| harness("solver"))?;
+            // the geometry's solver; without one the port stops at NER(pFS) before
+            // touching the solver it is given
+            let mut solver = match m.fb.geom(g).map_err(h)?.fillet_solver() {
+                Some(si) => m
+                    .solvers
+                    .get(si.0 as usize)
+                    .cloned()
+                    .ok_or_else(|| harness("solver"))?,
+                None => FilletSolver::new(1e-6, 1e-3, 1e-6),
+            };
             let this_ref = FilletGeomRef {
                 index: 1000 + g.0 as usize,
             };
-            m.fb
-                .rail_edgeuse_intersect(&k, g, this_ref, &mut solver, &tg.brep, *rail, eu, *guess)
-                .map(|(found, _, param)| results.extend([b(found), param]))
+            let r = m.fb.rail_edgeuse_intersect(
+                &k,
+                g,
+                this_ref,
+                &mut solver,
+                &tg.brep,
+                *rail,
+                eu,
+                *guess,
+            );
+            // on a failed status the out-params keep the shim's initial values
+            let (found, param) = r.as_ref().map_or((false, 0.0), |&(f, _, p)| (f, p));
+            results.extend([b(found), param]);
+            r.map(|_| ())
         }
         OpIn::RecordError { g, etype } => {
             let g = geom(&m, *g)?;
@@ -1623,8 +1664,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                 6 => FilletErrorType::BadTrim,
                 _ => FilletErrorType::BadMerge,
             };
-            m.fb
-                .record_fillet_error(g, etype, None, None, None, None, None, &m.solvers)
+            m.fb.record_fillet_error(g, etype, None, None, None, None, None, &m.solvers)
         }
     };
     if let Err(e) = &res {
@@ -1719,7 +1759,11 @@ fn gen_curve_on(rng: &mut Rng, dim: u64, scale: f64, a: f64, b: f64) -> CrvIn {
         .map(|i| {
             let x = i as f64 / n as f64 * scale;
             let y = rng.uniform(-0.3, 0.3) * scale;
-            let z = if dim == 2 { NOZ } else { rng.uniform(-0.3, 0.3) * scale };
+            let z = if dim == 2 {
+                NOZ
+            } else {
+                rng.uniform(-0.3, 0.3) * scale
+            };
             [x, y, z, NOW]
         })
         .collect();
@@ -1834,7 +1878,12 @@ fn gen_edge_on_edge(rng: &mut Rng) -> Inputs {
     let size = *rng.choose(&[0.0, 1e-9, 1e-6, 1e-3, 1.0]).unwrap_or(&0.0);
     vs.noise = noise(rng, size);
     ve.noise = noise(rng, size);
-    let mut e = edge(0, 1, FilletEdgeType::OnEdge, [EuIn::default(), EuIn::default()]);
+    let mut e = edge(
+        0,
+        1,
+        FilletEdgeType::OnEdge,
+        [EuIn::default(), EuIn::default()],
+    );
     e.orig_edge = target_edge;
     e.corner = if rng.chance(0.5) { 0 } else { -1 };
     // a stale UV trim curve the new curve clears
@@ -1885,7 +1934,12 @@ fn gen_fillet_end(rng: &mut Rng) -> Inputs {
         v
     };
     let vertices = vec![side(rng), side(rng)];
-    let mut e = edge(0, 1, FilletEdgeType::FilletEnd, [eu(0, None), EuIn::default()]);
+    let mut e = edge(
+        0,
+        1,
+        FilletEdgeType::FilletEnd,
+        [eu(0, None), EuIn::default()],
+    );
     e.corner = 0;
     if rng.chance(0.05) {
         e.eus[0].geom = -1; // NER
@@ -1926,7 +1980,8 @@ fn gen_set_back_rail(rng: &mut Rng) -> Inputs {
     let at_max = rng.chance(0.5);
     let rail_curve = |rng: &mut Rng| {
         if rng.chance(0.8) {
-            iso_v_boundary(&surface, at_max).unwrap_or_else(|| gen_curve_on(rng, 3, scale, 0.0, 1.0))
+            iso_v_boundary(&surface, at_max)
+                .unwrap_or_else(|| gen_curve_on(rng, 3, scale, 0.0, 1.0))
         } else {
             gen_curve_on(rng, 3, scale, 0.0, 1.0)
         }
@@ -1971,9 +2026,19 @@ fn gen_set_back_rail(rng: &mut Rng) -> Inputs {
     }
     vertices.push(va);
     vertices.push(vb);
-    let mut r0 = edge(0, 1, FilletEdgeType::Rail, [eu(0, rail_uv(rng)), eu(0, rail_uv(rng))]);
+    let mut r0 = edge(
+        0,
+        1,
+        FilletEdgeType::Rail,
+        [eu(0, rail_uv(rng)), eu(0, rail_uv(rng))],
+    );
     r0.curve = Some(c0);
-    let mut r1 = edge(2, 3, FilletEdgeType::Rail, [eu(0, rail_uv(rng)), eu(0, rail_uv(rng))]);
+    let mut r1 = edge(
+        2,
+        3,
+        FilletEdgeType::Rail,
+        [eu(0, rail_uv(rng)), eu(0, rail_uv(rng))],
+    );
     r1.curve = Some(c1);
     let face = rng.below(1000) as i64;
     r0.orig_face = face;
@@ -2040,18 +2105,43 @@ fn gen_blending_rail(rng: &mut Rng) -> Inputs {
     let rail_uv = |rng: &mut Rng| rng.chance(0.7).then(|| gen_curve_on(rng, 2, 1.0, 0.0, 1.0));
     // the rails run into (or out of) the blending rail's ends
     let mut r0 = if rng.chance(0.5) {
-        edge(0, 2, FilletEdgeType::Rail, [EuIn::default(), eu(-1, rail_uv(rng))])
+        edge(
+            0,
+            2,
+            FilletEdgeType::Rail,
+            [EuIn::default(), eu(-1, rail_uv(rng))],
+        )
     } else {
-        edge(2, 0, FilletEdgeType::Rail, [EuIn::default(), eu(-1, rail_uv(rng))])
+        edge(
+            2,
+            0,
+            FilletEdgeType::Rail,
+            [EuIn::default(), eu(-1, rail_uv(rng))],
+        )
     };
     r0.curve = Some(rail_curve(rng));
     let mut r1 = if rng.chance(0.5) {
-        edge(1, 3, FilletEdgeType::Rail, [EuIn::default(), eu(-1, rail_uv(rng))])
+        edge(
+            1,
+            3,
+            FilletEdgeType::Rail,
+            [EuIn::default(), eu(-1, rail_uv(rng))],
+        )
     } else {
-        edge(3, 1, FilletEdgeType::Rail, [EuIn::default(), eu(-1, rail_uv(rng))])
+        edge(
+            3,
+            1,
+            FilletEdgeType::Rail,
+            [EuIn::default(), eu(-1, rail_uv(rng))],
+        )
     };
     r1.curve = Some(rail_curve(rng));
-    let mut bl = edge(0, 1, FilletEdgeType::BlendingRail, [EuIn::default(), EuIn::default()]);
+    let mut bl = edge(
+        0,
+        1,
+        FilletEdgeType::BlendingRail,
+        [EuIn::default(), EuIn::default()],
+    );
     bl.orig_face = if rng.chance(0.97) { face } else { -1 };
     let brep = if rng.chance(0.2) {
         // a bilinear face: the 3D branch (DropCurve)
@@ -2098,7 +2188,12 @@ fn gen_should_swap(rng: &mut Rng) -> Inputs {
         face,
         uv: [rng.uniform(0.1, 0.9), rng.uniform(0.1, 0.9)],
     });
-    let mut e = edge(0, 1, FilletEdgeType::Rail, [EuIn::default(), EuIn::default()]);
+    let mut e = edge(
+        0,
+        1,
+        FilletEdgeType::Rail,
+        [EuIn::default(), EuIn::default()],
+    );
     match rng.below(3) {
         0 => {
             // a curve over an interval: its middle, then its ends
@@ -2173,8 +2268,15 @@ fn gen_join(rng: &mut Rng) -> Inputs {
         } else {
             (i + 1, i, uv(i + 1), a)
         };
-        let mut e = edge(vs, ve, FilletEdgeType::CrossSection, [eu(0, None), eu(-1, None)]);
-        e.curve = rng.chance(0.95).then(|| gen_curve_on(rng, 3, scale, t0, t1));
+        let mut e = edge(
+            vs,
+            ve,
+            FilletEdgeType::CrossSection,
+            [eu(0, None), eu(-1, None)],
+        );
+        e.curve = rng
+            .chance(0.95)
+            .then(|| gen_curve_on(rng, 3, scale, t0, t1));
         if rng.chance(0.9) {
             e.eus[0].uv_curve = Some(uv_line(ua, ub, t0, t1));
         } else if rng.chance(0.5) {
@@ -2186,7 +2288,12 @@ fn gen_join(rng: &mut Rng) -> Inputs {
     }
     // an unconnected side edge
     if rng.chance(0.3) {
-        let mut e = edge(0, 0, FilletEdgeType::CrossSection, [eu(0, None), eu(-1, None)]);
+        let mut e = edge(
+            0,
+            0,
+            FilletEdgeType::CrossSection,
+            [eu(0, None), eu(-1, None)],
+        );
         e.curve = Some(gen_curve_on(rng, 3, scale, 0.0, 1.0));
         e.eus[0].uv_curve = Some(gen_curve_on(rng, 2, 1.0, 0.0, 1.0));
         edges.push(e);
@@ -2294,7 +2401,9 @@ fn gen_copy(rng: &mut Rng) -> Inputs {
         gtype: rng.below(7) as i64,
         solver: 0,
         surface: rng.chance(0.93).then(|| gen_bspline_surface(rng, 1.0, 0.0)),
-        center: rng.chance(0.93).then(|| gen_curve_on(rng, 3, 1.0, 0.0, 1.0)),
+        center: rng
+            .chance(0.93)
+            .then(|| gen_curve_on(rng, 3, 1.0, 0.0, 1.0)),
         devs: [rng.uniform(0.0, 1e-3), rng.uniform(0.0, 1e-3)],
         offs: [off(rng), off(rng)],
         rails: [0, 1],
@@ -2425,12 +2534,15 @@ fn gen_deferred(rng: &mut Rng) -> Inputs {
     rails_of(rng, 0, &mut vertices, &mut edges, true);
     let mut s = solver(rng, 1.0, true);
     s.exec = true;
-    let geom = GeomIn {
+    let mut geom = GeomIn {
         solver: 0,
         rails: [0, 1],
         ..GeomIn::default()
     };
     let op = if rng.chance(0.5) {
+        if rng.chance(0.15) {
+            geom.solver = -1; // NER(pFS)
+        }
         OpIn::RailEuIntersect {
             g: 0,
             rail: rng.below(2) as usize,

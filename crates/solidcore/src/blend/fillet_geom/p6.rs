@@ -1691,9 +1691,9 @@ impl FilletBrep {
     ///
     /// # Errors
     ///
-    /// [`SolidError::InvalidInput`] for a geometry without solver; those of the
-    /// solver's call ([`SolidError::Unported`]: `SmFilletSolver::RailEdgeuseIntersect`,
-    /// unit `blend.fillet_solver_p2`).
+    /// `SM_ERR_NULL_POINTER` for a geometry without solver (upstream's `NER(pFS)`);
+    /// those of the solver's call ([`SolidError::Unported`]:
+    /// `SmFilletSolver::RailEdgeuseIntersect`, unit `blend.fillet_solver_p2`).
     #[allow(clippy::too_many_arguments)]
     pub fn rail_edgeuse_intersect(
         &self,
@@ -1706,8 +1706,9 @@ impl FilletBrep {
         edgeuse: EdgeuseId,
         guess_edge_parameter: f64,
     ) -> Result<(bool, TsectPnt, f64)> {
+        // NER( pFS )
         if self.geom(g)?.fillet_solver().is_none() {
-            return Err(invalid(OP_RAIL_EU, "fillet geometry without solver"));
+            return Err(SolidError::null_pointer(OP_RAIL_EU));
         }
 
         // Tell our FilletSolver to use our surfaces.
@@ -2448,6 +2449,23 @@ mod tests {
             )
             .unwrap_err();
         assert_eq!(unit_of(&err), Some("blend.fillet_solver_p2"));
+        assert_eq!(s.fillet_geom_for_surfaces(), saved);
+
+        // a geometry without solver: NER(pFS), the solver untouched
+        fb.geom_mut(g).unwrap().solver = None;
+        let err = fb
+            .rail_edgeuse_intersect(
+                &k,
+                g,
+                FilletGeomRef { index: 9 },
+                &mut s,
+                &Brep::new(),
+                0,
+                EdgeuseId::from_index(0),
+                0.5,
+            )
+            .unwrap_err();
+        assert_eq!(code(&err), Some(SM_ERR_NULL_POINTER));
         assert_eq!(s.fillet_geom_for_surfaces(), saved);
     }
 

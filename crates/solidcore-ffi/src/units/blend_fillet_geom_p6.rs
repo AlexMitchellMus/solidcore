@@ -211,7 +211,7 @@ fn validate_model(rd: &mut Reader<'_>, counts: [usize; 10]) -> Result<[usize; 4]
         rd.index(13)?; // SmFilletVertexType
         rd.index(12)?; // SmFilStatus
         opt_below(rd, nc)?; // corner
-        // SmPointClassificationType: SM_PC_UNKNOWN (100) ..= SM_PC_NOTHING (110)
+                            // SmPointClassificationType: SM_PC_UNKNOWN (100) ..= SM_PC_NOTHING (110)
         if rd.index(110)? < 100 {
             return Err(bad("vertex: point class below SM_PC_UNKNOWN"));
         }

@@ -944,9 +944,10 @@ int32_t run(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
         if (geom == NULL || eu == NULL || rail > 1)
             return SC_ERR_ARG;
         SmFilletSolver* fs = geom->GetFilletSolver();
-        // the base solver reads both of its surfaces (through the geometry), the side edge
-        // use's edge and its UV trim curve (made on demand)
-        if (fs == NULL || eu->GetEdge() == NULL || eu->GetFace() == NULL)
+        // without a solver: NER(pFS); else the base solver reads both of its surfaces
+        // (through the geometry), the side edge use's edge and its UV trim curve (made on
+        // demand)
+        if (fs != NULL && (eu->GetEdge() == NULL || eu->GetFace() == NULL))
             return SC_ERR_ARG;
         SmBoolean found = FALSE;
         SmTsectPnt t;

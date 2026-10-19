@@ -8235,6 +8235,11 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   wrappers defined in the translation unit of `harness/cpp/shim/blend_fillet_geom_p1.cpp`
   (the only one that compiles `SmFilletGeom.cpp`), included from
   `blend_fillet_geom_p6_static.inc`.
+- **Small scales.** At scale 1e-4 the Rust `LiftCurve` in `CalcBlendingRail` returns
+  `SM_ERR_NULL_POINTER` where C++ lifts the curve: the surface cache refuses to subdivide past
+  `MAX_SUBDIVISION_NODES` (see `surface.surface_p11` above; reproduced on main with a plain
+  3x3 quadratic patch scaled by 1e-4, review of PR #247). The generator keeps this op at
+  scale 1 and above; extending it below needs that limit raised or the cases deferred.
 - **Back-edges not wired.** `GetRailIndexOfVertexuse`, `GetRailVertex` and `SetUpRailPoint`
   in `blend/fillet_solver/p1.rs` (`split_fillet_geom_at_side_edge`, `split_fillet_geom`)
   stay stubs: that code holds the solver's opaque `FilletGeomRef`s and a plain pseudo

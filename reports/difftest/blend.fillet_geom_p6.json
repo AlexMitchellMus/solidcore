@@ -886,16 +886,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::RailEdgeuseIntersect",
-        "unit": "blend.fillet_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0100",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=9207374117157446850",
-      "values_compared": 0
+      "values_compared": 197
     },
     {
       "max_rel_err": 0.0,
@@ -3591,13 +3587,13 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 97,
+  "cases_deferred": 96,
   "cases_failed": 0,
-  "cases_passed": 303,
+  "cases_passed": 304,
   "cases_total": 400,
   "deferred_by_unit": {
     "blend.fillet_executive_p1": 9,
-    "blend.fillet_solver_p2": 9,
+    "blend.fillet_solver_p2": 8,
     "harness:analytic-geometry-export": 61,
     "intersect.surface_drop_lib_p3": 7,
     "topology.face_p3": 11
