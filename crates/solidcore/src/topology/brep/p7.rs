@@ -58,9 +58,9 @@
 //!   [`SolidError::InvalidInput`] (upstream then dereferences the null copy), as is
 //!   `pbOptCrvOnSurf` without UV curves (upstream loops over a null array).
 //! - **Wire edges.** `MakeWireEdge` / `MakeWireEdgeVertex` (unit `topology.brep_p3`, wired
-//!   by its PR #204) notify through the kernel context's callbacks under
-//!   `topology::brep::p3::default_key_of` identities, so [`make_face_with_curves`] and
-//!   [`copy_faces`] take the kernel mutably.
+//!   by its PR #204) notify through the kernel context's callbacks under the kernel's
+//!   identities (`topology::brep::p3::with_kernel_callbacks`), so
+//!   [`make_face_with_curves`] and [`copy_faces`] take the kernel mutably.
 //! - **Unported callees** return [`SolidError::Unported`]: `SmBrep::GetInfiniteRegion`
 //!   (`topology.brep_p1`); `SmBrep::Notify`, `SetTolerance`, `sm_CheckAndFixUVTrimCurves`,
 //!   `RebuildUVTrimCurves` (`topology.brep_p2`); `DeleteEdge` (`topology.brep_p4`); `GlueVertices`
@@ -187,8 +187,8 @@ fn rebuild_uv_trim_curves(_k: &Kernel, _b: &mut Brep) -> Result<()> {
 
 /// `MakeWireEdge(region, start, end, curve, ivl, orient, rpNewEdge)`
 /// ([`crate::topology::brep::p3::make_wire_edge`], unit `topology.brep_p3`), notifying
-/// through the kernel context's callbacks under
-/// [`crate::topology::brep::p3::default_key_of`] identities.
+/// through the kernel context's callbacks under the kernel's identities
+/// ([`crate::topology::brep::p3::with_kernel_callbacks`]).
 #[allow(clippy::too_many_arguments)]
 fn make_wire_edge(
     k: &mut Kernel,
@@ -200,8 +200,7 @@ fn make_wire_edge(
     ivl: Extent1d,
     orient: OrientType,
 ) -> Result<EdgeId> {
-    let key_of = crate::topology::brep::p3::default_key_of;
-    crate::topology::brep::p3::with_kernel_callbacks(k, b, &key_of, |k, b, env| {
+    crate::topology::brep::p3::with_kernel_callbacks(k, b, |k, b, env| {
         crate::topology::brep::p3::make_wire_edge(
             k,
             b,
@@ -230,8 +229,7 @@ fn make_wire_edge_vertex(
     orient: OrientType,
     end_pt: Point3,
 ) -> Result<(EdgeId, VertexId)> {
-    let key_of = crate::topology::brep::p3::default_key_of;
-    crate::topology::brep::p3::with_kernel_callbacks(k, b, &key_of, |k, b, env| {
+    crate::topology::brep::p3::with_kernel_callbacks(k, b, |k, b, env| {
         crate::topology::brep::p3::make_wire_edge_vertex(
             k,
             b,

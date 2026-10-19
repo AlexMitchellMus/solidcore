@@ -12,7 +12,7 @@
 //! | [`Context`]                               | `SmContext`                                     |
 //! | [`Context::new`], [`Context::default`]    | `SmContext::SmContext(double, double)` (no `SM_USE_GLOBAL_CACHE`) |
 //! | [`Context::doing_boolean`]                | `SmContext::GetDoingBoolean`                    |
-//! | [`Context::geometry_identity`], [`GeometryIdentity`], [`GEOMETRY_KEY_BASE`], [`is_reserved_key`] | (none: geometry identities for notifications; CO-PORTED by `topology.brep_p3`) |
+//! | [`IdentitySlot`], [`NotifyLease`], [`Context::take_notify_lease`], [`Context::restore_notify_lease`], [`KERNEL_KEY_BASE`], [`TOPOLOGY_KEY_BASE`], [`GEOMETRY_KEY_BASE`], [`MAX_BREP_SERIAL`], [`is_reserved_key`] | (none: kernel-issued notification identities; CO-PORTED by `topology.brep_p3`) |
 //! | [`Context::doing_boolean_mut`]            | `SmContext::GetDoingBooleanRef`                 |
 //! | [`Context::set_doing_boolean`]            | `SmContext::SetDoingBoolean`                    |
 //! | [`Context::user_notify_callback`]         | `SmContext::GetUserNotifyCallback`              |
@@ -144,8 +144,7 @@ pub const ALL_MARKS: i32 = MarkType::AllMarks as i32;
 /// Index of `SM_MT_MARKIO` in the mark arrays (the `default:` mark upstream).
 const MARK_IO: usize = 3;
 
-/// An installed notify callback, or none (what [`Context::take_notify_callbacks`]
-/// hands out).
+/// An installed notify callback, or none (what a [`NotifyLease`] carries).
 pub type BoxedCallback = Option<Box<dyn NotifyCallback>>;
 
 /// Receiver of topology-change notifications (`SmNotifyCallback`).
@@ -199,52 +198,112 @@ pub struct Context {
     user_notify_callback: Option<Box<dyn NotifyCallback>>,
     /// `m_pSysNotifyCallBack`.
     sys_notify_callback: Option<Box<dyn NotifyCallback>>,
-    /// This context's geometry identity domain ([`Context::geometry_identity`]).
-    geometry: GeometryDomain,
+    /// This context's notification identity domain (`Context::geometry_key`,
+    /// `Context::brep_serial`), lent with the callbacks ([`NotifyLease`]).
+    identities: IdentityDomain,
 }
 
-/// The reserved range of notification keys: both top bits set. Geometry keys
-/// ([`Context::geometry_identity`]) are in it; a caller's own keys (topology identities,
-/// `NotifyEnv::key_of`) must not be, which the edits that notify geometry check
-/// ([`is_reserved_key`]).
+/// The reserved range of notification keys: the top bit set. Only the kernel issues
+/// keys in it: topology keys ([`TOPOLOGY_KEY_BASE`], a B-rep serial, the object's
+/// kind and its arena index) and geometry keys ([`GEOMETRY_KEY_BASE`]). A caller's own
+/// labels stay below it ([`is_reserved_key`]).
+pub const KERNEL_KEY_BASE: u64 = 0b10 << 62;
+
+/// The kernel's topology keys: `0b10 << 62 | serial << 36 | kind << 32 | index`
+/// (`topology::brep::p3::topology_ref`).
+pub const TOPOLOGY_KEY_BASE: u64 = 0b10 << 62;
+
+/// The kernel's geometry keys: both top bits set, then a counter of the issuing
+/// domain.
 pub const GEOMETRY_KEY_BASE: u64 = 0b11 << 62;
 
-/// Whether `key` is in the reserved geometry range ([`GEOMETRY_KEY_BASE`]).
+/// The largest B-rep serial a domain issues (26 bits, bits 36..62 of a topology key).
+pub const MAX_BREP_SERIAL: u64 = (1 << 26) - 1;
+
+/// Whether `key` is in the kernel's reserved range ([`KERNEL_KEY_BASE`]).
 #[must_use]
 pub const fn is_reserved_key(key: ObjectKey) -> bool {
-    key.0 >= GEOMETRY_KEY_BASE
+    key.0 >= KERNEL_KEY_BASE
 }
 
-/// The token of one context's geometry identity domain. Each [`Context`] makes its own
-/// (it is not `Clone`), and tokens are told apart only by `Arc::ptr_eq` (never ordered
-/// or hashed), so no two contexts share a domain.
+/// The token of one identity domain. Each [`Context`] makes its own and tokens are
+/// told apart only by `Arc::ptr_eq` (never ordered or hashed), so no two domains are
+/// confused.
 #[derive(Debug)]
-pub struct GeometryDomainToken(());
+struct DomainToken(());
 
+/// A context's notification identity domain: its token and how many geometry keys and
+/// B-rep serials it has issued.
 #[derive(Debug)]
-struct GeometryDomain {
-    token: Arc<GeometryDomainToken>,
-    issued: u64,
+struct IdentityDomain {
+    token: Arc<DomainToken>,
+    geometry_issued: u64,
+    breps_issued: u64,
 }
 
-/// The identity a geometry object is notified under (upstream passes the object
-/// itself): a key of the reserved range and the domain that issued it. A key is only
-/// valid in that domain: [`Context::geometry_identity`] keeps it for the issuing
-/// context and gives a fresh one in any other, so two live objects never present
-/// one key to a context's callbacks.
-#[derive(Debug, Clone)]
-pub struct GeometryIdentity {
-    domain: Arc<GeometryDomainToken>,
-    key: ObjectKey,
-}
-
-impl GeometryIdentity {
-    /// The notification key.
-    #[must_use]
-    pub const fn key(&self) -> ObjectKey {
-        self.key
+impl IdentityDomain {
+    fn new() -> Self {
+        Self {
+            token: Arc::new(DomainToken(())),
+            geometry_issued: 0,
+            breps_issued: 0,
+        }
     }
 }
+
+/// A kernel-issued identity: the issuing domain and the value it issued (a geometry
+/// key or a B-rep serial).
+#[derive(Debug)]
+struct Issued {
+    domain: Arc<DomainToken>,
+    value: u64,
+}
+
+/// Where an object keeps the notification identity the kernel issued it (upstream
+/// passes the object itself, known by address): empty until a context issues one.
+/// Only the crate fills a slot, from the context the object is notified through; an
+/// identity is valid only in the domain that issued it, and any other domain issues a
+/// fresh one. A clone is empty (a copy is another object), so no two live objects
+/// hold one identity.
+#[derive(Debug, Default)]
+pub struct IdentitySlot(Option<Issued>);
+
+impl Clone for IdentitySlot {
+    /// An empty slot: the copy is a new object.
+    fn clone(&self) -> Self {
+        Self::new()
+    }
+}
+
+impl IdentitySlot {
+    /// An empty slot.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self(None)
+    }
+
+    /// The issued value (a geometry key or a B-rep serial), once there is one.
+    #[must_use]
+    pub fn value(&self) -> Option<u64> {
+        self.0.as_ref().map(|i| i.value)
+    }
+}
+
+/// A context's notify callbacks and identity domain, lent to another context for a
+/// while ([`Context::take_notify_lease`]), so that every identity the callbacks see
+/// still comes from the domain they live with.
+#[derive(Debug)]
+pub struct NotifyLease {
+    user: BoxedCallback,
+    sys: BoxedCallback,
+    identities: IdentityDomain,
+}
+
+/// The refusal of an exhausted identity domain.
+const IDENTITIES_EXHAUSTED: SolidError = SolidError::InvalidInput {
+    operation: "geom::context::identities",
+    reason: "the context has issued every notification identity of the kind",
+};
 
 impl Default for Context {
     /// `SmContext()`: both sizes [`tol::USE_DEFAULT`].
@@ -254,22 +313,82 @@ impl Default for Context {
 }
 
 impl Context {
-    /// The identity a geometry object is notified under in this context: `current`
-    /// (the object's) when this context issued it, else a fresh key of this context's
-    /// domain (the object enters it). Keys are in the reserved range
-    /// ([`GEOMETRY_KEY_BASE`]) and unique among those this context has issued, for as
-    /// long as it (and so its callbacks) lives.
-    pub fn geometry_identity(&mut self, current: Option<&GeometryIdentity>) -> GeometryIdentity {
-        if let Some(c) = current {
-            if Arc::ptr_eq(&c.domain, &self.geometry.token) {
-                return c.clone();
+    /// The geometry key the object owning `slot` is notified under in this context:
+    /// the slot's key when this context's domain issued it, else a fresh key of the
+    /// domain, stored in the slot (the object enters the domain). Keys are in
+    /// [`GEOMETRY_KEY_BASE`]'s range and unique among those the domain has issued.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` once the domain has issued every geometry key.
+    pub(crate) fn geometry_key(&mut self, slot: &mut IdentitySlot) -> Result<ObjectKey> {
+        if let Some(i) = &slot.0 {
+            if Arc::ptr_eq(&i.domain, &self.identities.token) {
+                return Ok(ObjectKey(i.value));
             }
         }
-        self.geometry.issued = self.geometry.issued.wrapping_add(1);
-        GeometryIdentity {
-            domain: Arc::clone(&self.geometry.token),
-            key: ObjectKey(GEOMETRY_KEY_BASE | (self.geometry.issued & !GEOMETRY_KEY_BASE)),
+        let n = self.identities.geometry_issued + 1;
+        if n > !GEOMETRY_KEY_BASE {
+            return Err(IDENTITIES_EXHAUSTED);
         }
+        self.identities.geometry_issued = n;
+        let key = GEOMETRY_KEY_BASE | n;
+        slot.0 = Some(Issued {
+            domain: Arc::clone(&self.identities.token),
+            value: key,
+        });
+        Ok(ObjectKey(key))
+    }
+
+    /// The serial the B-rep owning `slot` is notified under in this context (its
+    /// objects' topology keys hold it): the slot's when this context's domain issued
+    /// it, else a fresh serial of the domain, stored in the slot. Serials run from 1 to
+    /// [`MAX_BREP_SERIAL`].
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` once the domain has issued every serial.
+    pub(crate) fn brep_serial(&mut self, slot: &mut IdentitySlot) -> Result<u64> {
+        if let Some(serial) = self.issued_serial(slot) {
+            return Ok(serial);
+        }
+        let serial = self.fresh_serial()?;
+        slot.0 = Some(Issued {
+            domain: Arc::clone(&self.identities.token),
+            value: serial,
+        });
+        Ok(serial)
+    }
+
+    /// [`Context::brep_serial`] for a B-rep the caller cannot change: its stored serial
+    /// when this domain issued it, else a fresh serial for this use only (never one a
+    /// live B-rep holds, so nothing aliases; the B-rep's objects get stable keys once a
+    /// mutable use stores one).
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` once the domain has issued every serial.
+    pub(crate) fn brep_serial_of(&mut self, slot: &IdentitySlot) -> Result<u64> {
+        match self.issued_serial(slot) {
+            Some(serial) => Ok(serial),
+            None => self.fresh_serial(),
+        }
+    }
+
+    fn issued_serial(&self, slot: &IdentitySlot) -> Option<u64> {
+        slot.0
+            .as_ref()
+            .filter(|i| Arc::ptr_eq(&i.domain, &self.identities.token))
+            .map(|i| i.value)
+    }
+
+    fn fresh_serial(&mut self) -> Result<u64> {
+        let n = self.identities.breps_issued + 1;
+        if n > MAX_BREP_SERIAL {
+            return Err(IDENTITIES_EXHAUSTED);
+        }
+        self.identities.breps_issued = n;
+        Ok(n)
     }
 
     /// Creates a context (`SmContext::SmContext(double, double)`): every mark at 1 and
@@ -287,10 +406,7 @@ impl Context {
             zone_tol_3d: tol::size_estimate_to_zone_tol_3d(model_size_estimate),
             user_notify_callback: None,
             sys_notify_callback: None,
-            geometry: GeometryDomain {
-                token: Arc::new(GeometryDomainToken(())),
-                issued: 0,
-            },
+            identities: IdentityDomain::new(),
         }
     }
 
@@ -345,14 +461,25 @@ impl Context {
         self.sys_notify_callback = callback;
     }
 
-    /// Takes the user and the system notify callbacks out, leaving none installed,
-    /// so that a caller can lend them to another context for a while (no upstream
+    /// Takes the user and the system notify callbacks out with this context's identity
+    /// domain, leaving no callbacks and a fresh domain, so that a caller can lend them to
+    /// another context for a while ([`Context::restore_notify_lease`]; no upstream
     /// counterpart: a context reached through `GetContext` cannot be borrowed twice).
-    pub fn take_notify_callbacks(&mut self) -> (BoxedCallback, BoxedCallback) {
-        (
-            self.user_notify_callback.take(),
-            self.sys_notify_callback.take(),
-        )
+    /// The identities the callbacks see keep coming from their own domain.
+    pub fn take_notify_lease(&mut self) -> NotifyLease {
+        NotifyLease {
+            user: self.user_notify_callback.take(),
+            sys: self.sys_notify_callback.take(),
+            identities: core::mem::replace(&mut self.identities, IdentityDomain::new()),
+        }
+    }
+
+    /// Installs a lease's callbacks and identity domain, replacing this context's
+    /// (returning a lease to the context it came from, or lending it to a stand-in).
+    pub fn restore_notify_lease(&mut self, lease: NotifyLease) {
+        self.user_notify_callback = lease.user;
+        self.sys_notify_callback = lease.sys;
+        self.identities = lease.identities;
     }
 
     /// The context's model size estimate, or the system one when it is

@@ -18,7 +18,7 @@
 //! | [`is_kind_of`], [`Curve::is_kind_of`]             | `SmCurve::IsKindOf`                              |
 //! | [`Curve::approx_eq`]                              | `operator==`                                     |
 //! | [`Curve::owner`], [`Curve::set_owner`], [`OwnerChange`] | `GetOwner`, `SetOwner`                     |
-//! | [`Curve::notify_key`], [`Curve::notify_identity`], [`Curve::set_notify_identity`] | (none: the object's identity in notifications; CO-PORTED by `topology.brep_p3`) |
+//! | [`Curve::notify_key`] | (none: the object's kernel-issued identity in notifications; CO-PORTED by `topology.brep_p3`) |
 //! | [`Curve::edge`]                                   | `GetEdge`                                        |
 //! | [`notify`]                                        | `SmCurve::Notify`                                |
 //! | [`CurveEvaluate`]                                 | the evaluation virtuals the base numerics call   |
@@ -165,7 +165,7 @@ use crate::error::{ignore_status, ignored, Result, SolidError};
 use crate::geom::a_object::{self, AObject, CacheStore};
 use crate::geom::attribute::{AttributeStore, ObjectKey};
 use crate::geom::axis2_placement::Axis2Placement;
-use crate::geom::context::{Context, GeometryIdentity};
+use crate::geom::context::{Context, IdentitySlot};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::extent3d::Extent3d;
@@ -554,10 +554,10 @@ pub enum CurveKind {
 pub struct Curve {
     kind: CurveKind,
     owner: Option<ObjectRef>,
-    /// The identity this curve object is notified under (upstream passes the object
-    /// itself) and the context domain that issued it, given the first time a
-    /// notification names it ([`crate::geom::context::Context::geometry_identity`]).
-    notify_identity: Option<GeometryIdentity>,
+    /// The kernel-issued identity this curve object is notified under (upstream passes
+    /// the object itself), issued by the context of the first notification that names
+    /// it ([`IdentitySlot`]).
+    notify_identity: IdentitySlot,
 }
 
 /// The copy constructor: copies the geometry, resets the owner (and the identity: a
@@ -567,7 +567,7 @@ impl Clone for Curve {
         Self {
             kind: self.kind.clone(),
             owner: None,
-            notify_identity: None,
+            notify_identity: IdentitySlot::new(),
         }
     }
 }
@@ -673,25 +673,21 @@ impl Curve {
         Self {
             kind,
             owner: None,
-            notify_identity: None,
+            notify_identity: IdentitySlot::new(),
         }
     }
 
-    /// The key this curve object is notified under, once it has one.
+    /// The key this curve object is notified under, once a context has issued it one
+    /// (the kernel issues it; there is no setter).
     #[must_use]
     pub fn notify_key(&self) -> Option<ObjectKey> {
-        self.notify_identity.as_ref().map(GeometryIdentity::key)
+        self.notify_identity.value().map(ObjectKey)
     }
 
-    /// The identity this curve object is notified under, with its issuing domain.
-    #[must_use]
-    pub const fn notify_identity(&self) -> Option<&GeometryIdentity> {
-        self.notify_identity.as_ref()
-    }
-
-    /// Sets the identity this curve object is notified under.
-    pub fn set_notify_identity(&mut self, identity: Option<GeometryIdentity>) {
-        self.notify_identity = identity;
+    /// The slot of this curve object's notification identity, for the context that
+    /// issues it.
+    pub(crate) fn notify_identity_slot(&mut self) -> &mut IdentitySlot {
+        &mut self.notify_identity
     }
 
     /// The concrete kind.

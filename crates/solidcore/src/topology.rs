@@ -10,6 +10,7 @@
 //! | [`Region`] / [`RegionId`]   | `SmRegion` (minimal: list owner, shell list, void flag) |
 //! | [`Shell`] / [`ShellId`]     | `SmShell` (faces, region, type and list head)         |
 //! | [`Brep::new_with_infinite_region`] | `SmBrep::SmBrep()` (topology part, CO-PORTED) |
+//! | [`Brep::notify_serial`]     | (none: the B-rep's kernel-issued notification serial; CO-PORTED by `topology.brep_p3`) |
 //! | [`Faceuse`] / [`FaceuseId`] | `SmFaceuse` (unit `topology.edgeuse_p1`)              |
 //! | [`Face`] / [`FaceId`]       | `SmFace` (unit `topology.face_p2`)                    |
 //! | [`Loopuse`] / [`LoopuseId`] | `SmLoopuse` (unit `topology.loopuse`)                 |
@@ -59,6 +60,7 @@ use core::marker::PhantomData;
 use crate::curve::curve::Curve;
 use crate::error::{EntityRef, Result, SolidError};
 use crate::geom::attribute::ObjectKey;
+use crate::geom::context::IdentitySlot;
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::solution_array::{ObjectKind, SolutionObject};
@@ -573,6 +575,10 @@ pub struct Brep {
     /// `m_pDeletedSurfaces` (unit `topology.brep_p1`): surfaces removed from the B-rep
     /// that are kept until the operation ends because they may still be referenced.
     deleted_surfaces: Vec<Surface>,
+    /// The B-rep's kernel-issued notification serial (CO-PORTED by `topology.brep_p3`):
+    /// its objects' topology keys hold it (`topology::brep::p3::topology_ref`). A
+    /// clone is a new B-rep without one.
+    notify_identity: IdentitySlot,
 }
 
 impl Default for Brep {
@@ -600,6 +606,7 @@ impl Default for Brep {
             model_size_estimate: USE_DEFAULT,
             large_small_size_ratio: USE_DEFAULT,
             deleted_surfaces: Vec::new(),
+            notify_identity: IdentitySlot::default(),
         }
     }
 }
@@ -897,6 +904,23 @@ impl Brep {
     /// Sets the identity the B-rep is attributed and notified under.
     pub fn set_key(&mut self, key: ObjectKey) {
         self.key = key;
+    }
+
+    /// The serial a context issued this B-rep for its notifications, once one has
+    /// (the kernel issues it; there is no setter).
+    #[must_use]
+    pub fn notify_serial(&self) -> Option<u64> {
+        self.notify_identity.value()
+    }
+
+    /// The slot of the B-rep's notification serial, for the context that issues it.
+    pub(crate) fn notify_identity_slot(&mut self) -> &mut IdentitySlot {
+        &mut self.notify_identity
+    }
+
+    /// The slot of the B-rep's notification serial, read-only.
+    pub(crate) const fn notify_identity(&self) -> &IdentitySlot {
+        &self.notify_identity
     }
 
     /// Appends a region record as is (no validation).

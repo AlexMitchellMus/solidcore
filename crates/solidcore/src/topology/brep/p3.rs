@@ -18,9 +18,9 @@
 //! | [`orient_trimmed_surfaces`]     | `SmBrep::OrientTrimmedSurfaces`                  |
 //! | [`squeeze_edge`]                | `SmBrep::SqueezeEdge`                            |
 //! | [`turn_to_nurbs`]               | `SmBrep::TurnToNURBS`                            |
-//! | [`edge_curve_identity`]         | (the `m_pCurve` object's identity in the notifications) |
-//! | [`default_key_of`], [`with_kernel_callbacks`]       | (for callers without notification state: the B-rep context's callbacks) |
-//! | [`seed_topology_records`]       | (the `SmTopology` members every object carries; for callers of the edits) |
+//! | [`topology_ref`], [`topology_entity`], [`notify_serial`] | (an object's address in the notifications: its kernel-issued topology identity) |
+//! | [`edge_curve_identity`]         | (the `m_pCurve` object's address in the notifications) |
+//! | [`with_kernel_callbacks`]       | (for callers without notification state: the B-rep context's callbacks) |
 //! | `Brep::remove_from_*_list` (crate) | `SmOwningTopology::Remove` on the B-rep's list heads (and `~SmTopology`) |
 //!
 //! Deviations: out-params become return values; `rpNewEdge`/`rpNewVertex` are only
@@ -58,23 +58,35 @@
 //!   constructors of uses, loops, shells and regions do not notify
 //!   (`SM_NO_DESTRUCTION` / `SM_NO_CONSTRUCTION` at `SmObject` level; `new_brep`'s own
 //!   construction is reported); faces, edges and vertices do.
-//! - **Geometry identities.** Upstream notifies the edge curves as objects of their own
-//!   (`m_pCurve`), told apart by address. The invariant here: *a geometry key is only
-//!   valid in the context domain that issued it, and no caller key is in the geometry
-//!   range*. A curve carries its identity, key and issuing domain
-//!   ([`Curve::notify_identity`]); `Context::geometry_identity` keeps it for the issuing
-//!   context and gives a fresh key of its own domain in any other (the curve enters
-//!   that kernel), so keys are unique among the live curves any one context's
-//!   callbacks see. Geometry keys have both top bits set
-//!   (`GEOMETRY_KEY_BASE`); every edit that notifies curves refuses (`InvalidInput`) a
-//!   caller key in that range before it notifies anything ([`check_caller_keys`], and
-//!   `brep_notify` for objects the edit makes). A copy (`Clone`, upstream's copy
-//!   constructor) is a new object without an identity; `MakeWireEdge(Vertex)` take the
-//!   caller's unowned curve by value, as upstream binds that object (so it cannot be
-//!   bound twice), and copy an edge-owned one.
-//! - **Notification identities.** The ids of two B-reps overlap, so `MergeBrep`,
-//!   `CopyVertices` and the copy constructors take the notification identity of the
-//!   source B-rep's objects (`source_key`) beside `env.key_of` for the destination's.
+//! - **Notification identities.** Upstream names every object in a notification by
+//!   its address. The invariant here: *every identity an edit notifies is issued by
+//!   the kernel, by the one context the notifications go through, and is only valid in
+//!   that context's identity domain*. The issuing context is the environment's
+//!   (`env.context`; `k.context` when it has none, and then nothing is notified). A
+//!   topology object is `(B-rep serial, kind, arena index)` ([`topology_ref`]), the
+//!   serial issued once per B-rep and domain ([`notify_serial`], kept on the
+//!   [`Brep`]); a geometry object is `(domain, counter)`, kept on the [`Curve`]
+//!   ([`Curve::notify_key`]). Neither has a public setter, and a clone (upstream's copy
+//!   constructor: another object) starts without one, so no two live objects hold one
+//!   identity. A domain moves with its callbacks: a caller lending them to another
+//!   context lends the domain too (`Context::take_notify_lease`, as
+//!   [`with_kernel_callbacks`] and the healer do), so identities stay unique for as long
+//!   as the callbacks see them. Topology keys have the top bits `0b10`, geometry keys
+//!   `0b11`; the caller's `env.key_of` is never consulted (every edit replaces it with
+//!   the kernel's, so the other units it calls agree), and the B-rep is notified under
+//!   its kernel key for the edit (`Brep::key`, the caller's label, is restored after).
+//!   A source B-rep the edit only reads (`MergeBrep`, `CopyVertices`, the copy
+//!   constructors) keeps its serial when this domain issued it, else is named by a
+//!   fresh serial for that call. Boundary: domains are per context, so a callback the
+//!   caller moves between two contexts itself (without a lease) sees each domain's
+//!   identities separately and two of them may coincide; closing that would need one
+//!   address space across contexts (a process-wide counter, which the crate's no-global-
+//!   state rule excludes). The other units that notify through a [`NotifyEnv`] still
+//!   name topology by the caller's `key_of`; that is outside this unit. Every edit
+//!   also fails (`InvalidInput`) once its domain has issued `MAX_BREP_SERIAL` serials
+//!   or every geometry key, rather than reuse one.
+//!   `MakeWireEdge(Vertex)` take the caller's unowned curve by value, as upstream binds
+//!   that object (so it cannot be bound twice), and copy an edge-owned one.
 //! - **Copied shell lists.** `MergeBrep`'s second pass copies `pS->m_pList` through the
 //!   copy map and `m_lListSize` verbatim; the arena's size is recomputed from the
 //!   members ([`shell::shell_list_size`]), and a face-use list's other members are the
@@ -90,7 +102,9 @@ use std::collections::BTreeMap;
 use crate::curve::curve::{Curve, CurveKind};
 use crate::error::{EntityRef, Result, SolidError, SM_ERR_INVALID_INPUT};
 use crate::geom::attribute::ObjectKey;
-use crate::geom::context::{MarkLock, MarkType, ALL_MARKS};
+use crate::geom::context::{
+    Context, IdentitySlot, MarkLock, MarkType, ALL_MARKS, MAX_BREP_SERIAL, TOPOLOGY_KEY_BASE,
+};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent3d::Extent3d;
 use crate::geom::geom_utility::p2::ContinuityType;
@@ -392,10 +406,10 @@ fn brep_notify(
 ) -> Result<()> {
     // an object made by the edit has its (default) SmTopology record from its
     // constructor upstream; the arena's live in the caller's map, so one is added the
-    // first time the edit names the object (seed_topology_records covers the rest)
+    // first time the edit names the object (seed_records covers the rest)
     for d in data.into_iter().flatten() {
         if let NotifyArg::Entity(e) = d {
-            let key = checked_key((env.key_of)(e))?.key;
+            let key = (env.key_of)(e).key;
             env.records.entry(key).or_default();
         }
     }
@@ -470,12 +484,13 @@ fn destroy_face(b: &mut Brep, env: &mut NotifyEnv<'_>, f: FaceId) -> Result<()> 
 /// new B-rep with the given size estimate and large/small ratio (upstream defaults
 /// [`tol::USE_DEFAULT`]), the context's zone tolerance, editing disabled, and an
 /// infinite void region as its only region; the construction is reported to the
-/// context's callbacks (`SmObject::Notify`).
+/// context's callbacks (`SmObject::Notify`) under the B-rep's kernel identity
+/// ([`notify_serial`]).
 ///
 /// # Errors
 ///
-/// Those of the B-rep's region list (a corrupt list); the construction notification's
-/// status is not checked, as upstream.
+/// Those of the B-rep's region list (a corrupt list) and of an exhausted identity
+/// domain; the construction notification's status is not checked, as upstream.
 pub fn new_brep(
     k: &mut Kernel,
     model_size_estimate: f64,
@@ -495,7 +510,9 @@ pub fn new_brep(
     b.pre_insert_region(r)?;
 
     // report construction at SmObject::Notify level - skip other levels
-    let this = p2::brep_ref(&b);
+    // (under the B-rep's kernel identity, issued by the context it is reported to)
+    let serial = k.context.brep_serial(b.notify_identity_slot())?;
+    let this = topology_ref(serial, brep_entity());
     object::notify(
         Some(&mut k.context),
         NotifyOperation::Construction,
@@ -512,19 +529,19 @@ pub fn new_brep(
 /// flags, tolerance, size estimate and ratio, and a copy of its topology and geometry
 /// ([`merge_brep`]; `add_analytics`, upstream default `TRUE`, recognises analytic
 /// surfaces). `copy_map` gets copy to source, `reverse_map` source to copy.
-/// `copy_attributes` (default `TRUE`) is unused upstream. `env` notifies the copy's
-/// objects under `env.key_of`, `source_key` is the identity of `src`'s.
+/// `copy_attributes` (default `TRUE`) is unused upstream. The copy and `src` are
+/// notified under their kernel identities (see the module's Deviations).
 ///
 /// # Errors
 ///
 /// [`SolidError::Unported`] from [`merge_brep`] and [`p2::set_tolerance`] (other
-/// `MergeBrep` failures are ignored, as upstream); those of the notification.
+/// `MergeBrep` failures are ignored, as upstream); those of the notification and of an
+/// exhausted identity domain.
 #[allow(clippy::too_many_arguments)]
 pub fn copy_brep(
     k: &mut Kernel,
     env: &mut NotifyEnv<'_>,
     src: &Brep,
-    source_key: &dyn Fn(EntityRef) -> ObjectRef,
     copy_map: Option<&mut CopyBrepMap<EntityRef>>,
     reverse_map: Option<&mut CopyBrepMap<EntityRef>>,
     copy_attributes: bool,
@@ -546,33 +563,38 @@ pub fn copy_brep(
     b.large_small_size_ratio = src.large_small_size_ratio;
     b.tolerance = src.tolerance;
 
-    // do the actual copying (SE: the status is not acted on)
-    if let Err(e) = merge_brep(
-        k,
-        env,
-        &mut b,
-        src,
-        source_key,
-        copy_map,
-        reverse_map,
-        add_analytics,
-    ) {
-        if e.is_unported() {
-            return Err(e);
-        }
-    }
+    with_kernel_identities(k, &mut b, env, |k, b, env| {
+        let src_serial = issuer(&mut k.context, env.context.as_deref_mut())
+            .brep_serial_of(src.notify_identity())?;
 
-    // inform the public about the construction and the copy
-    ignore_soft(brep_notify(
-        &b,
-        env,
-        NotifyOperation::Construction,
-        [
-            brep_arg(&b),
-            Some(NotifyArg::Object(p2::brep_ref(src))),
-            None,
-        ],
-    ))?;
+        // do the actual copying (SE: the status is not acted on)
+        if let Err(e) = merge_brep_in(
+            k,
+            env,
+            b,
+            src,
+            src_serial,
+            copy_map,
+            reverse_map,
+            add_analytics,
+        ) {
+            if e.is_unported() {
+                return Err(e);
+            }
+        }
+
+        // inform the public about the construction and the copy
+        ignore_soft(brep_notify(
+            b,
+            env,
+            NotifyOperation::Construction,
+            [
+                brep_arg(b),
+                Some(NotifyArg::Object(topology_ref(src_serial, brep_entity()))),
+                None,
+            ],
+        ))
+    })?;
     Ok(b)
 }
 
@@ -581,8 +603,9 @@ pub fn copy_brep(
 /// Every C++ topology object carries these fields; the arena keeps them in the
 /// caller's [`NotifyEnv::records`], which `SmTopology::Notify` reads for every object a
 /// notification names (e.g. both vertices of `SqueezeEdge`'s `SM_NO_MERGE_IN_BREP`).
-/// A caller seeds them before an edit, as a B-rep built upstream already has them.
-pub fn seed_topology_records(
+/// Every edit seeds them ([`with_kernel_identities`]), as a B-rep built upstream
+/// already has them.
+fn seed_records(
     records: &mut BTreeMap<ObjectKey, topo::Topology>,
     b: &Brep,
     key_of: &dyn Fn(EntityRef) -> ObjectRef,
@@ -604,84 +627,168 @@ pub fn seed_topology_records(
     records.entry(p2::brep_ref(b).key).or_default();
 }
 
-/// A notification identity for callers without identities of their own (with
-/// [`with_kernel_callbacks`]): the entity's class type code (`GetType`) and its kind
-/// (`0` the B-rep, then region, shell, face use, face, loop use, loop, edge use, edge,
-/// vertex use, vertex) shifted by 32, or-ed with its index; below the reserved geometry
-/// key range.
+/// The kinds of topology keys with their class type codes (`GetType`), by kind number:
+/// the B-rep, then region, shell, face use, face, loop use, loop, edge use, edge,
+/// vertex use, vertex.
+const TOPOLOGY_TYPE_CODES: [i64; 11] = [
+    16011, 16012, 16013, 16022, 16002, 16004, 16003, 16005, 16016, 16006, 16021,
+];
+
+/// The B-rep itself as an entity of its topology keys (kind 0, index 0).
+const fn brep_entity() -> EntityRef {
+    EntityRef::Brep(crate::topology::BrepId::from_index(0))
+}
+
+/// The kernel-issued topology identity of `e` in the B-rep of serial `serial`
+/// ([`notify_serial`]): its class type code and the key `TOPOLOGY_KEY_BASE | serial <<
+/// 36 | kind << 32 | index` (kinds as [`topology_entity`] decodes them; the B-rep is
+/// kind 0, index 0). Serials are at most `MAX_BREP_SERIAL` (higher bits are dropped).
 #[must_use]
-pub fn default_key_of(e: EntityRef) -> ObjectRef {
-    let (kind, type_code, i): (u64, i64, u32) = match e {
-        EntityRef::Brep(_) => (0, 16011, 0),
-        EntityRef::Region(x) => (1, 16012, x.index()),
-        EntityRef::Shell(x) => (2, 16013, x.index()),
-        EntityRef::Faceuse(x) => (3, 16022, x.index()),
-        EntityRef::Face(x) => (4, 16002, x.index()),
-        EntityRef::Loopuse(x) => (5, 16004, x.index()),
-        EntityRef::Loop(x) => (6, 16003, x.index()),
-        EntityRef::Edgeuse(x) => (7, 16005, x.index()),
-        EntityRef::Edge(x) => (8, 16016, x.index()),
-        EntityRef::Vertexuse(x) => (9, 16006, x.index()),
-        EntityRef::Vertex(x) => (10, 16021, x.index()),
+pub fn topology_ref(serial: u64, e: EntityRef) -> ObjectRef {
+    let (kind, i): (usize, u32) = match e {
+        EntityRef::Brep(_) => (0, 0),
+        EntityRef::Region(x) => (1, x.index()),
+        EntityRef::Shell(x) => (2, x.index()),
+        EntityRef::Faceuse(x) => (3, x.index()),
+        EntityRef::Face(x) => (4, x.index()),
+        EntityRef::Loopuse(x) => (5, x.index()),
+        EntityRef::Loop(x) => (6, x.index()),
+        EntityRef::Edgeuse(x) => (7, x.index()),
+        EntityRef::Edge(x) => (8, x.index()),
+        EntityRef::Vertexuse(x) => (9, x.index()),
+        EntityRef::Vertex(x) => (10, x.index()),
     };
     ObjectRef {
-        type_code,
-        key: ObjectKey((kind << 32) | u64::from(i)),
+        type_code: TOPOLOGY_TYPE_CODES.get(kind).copied().unwrap_or(0),
+        key: ObjectKey(
+            TOPOLOGY_KEY_BASE
+                | ((serial & MAX_BREP_SERIAL) << 36)
+                | ((kind as u64) << 32)
+                | u64::from(i),
+        ),
     }
+}
+
+/// The entity of the B-rep of serial `serial` that [`topology_ref`] made `key` for;
+/// `None` for any other key (another B-rep's, a geometry key, a caller's label).
+#[must_use]
+pub fn topology_entity(serial: u64, key: ObjectKey) -> Option<EntityRef> {
+    use crate::topology::{BrepId, LoopId};
+    if key.0 >> 62 != TOPOLOGY_KEY_BASE >> 62 || (key.0 >> 36) & MAX_BREP_SERIAL != serial {
+        return None;
+    }
+    let i = u32::try_from(key.0 & 0xffff_ffff).ok()?;
+    Some(match (key.0 >> 32) & 0xf {
+        0 if i == 0 => EntityRef::Brep(BrepId::from_index(0)),
+        1 => EntityRef::Region(RegionId::from_index(i)),
+        2 => EntityRef::Shell(ShellId::from_index(i)),
+        3 => EntityRef::Faceuse(FaceuseId::from_index(i)),
+        4 => EntityRef::Face(FaceId::from_index(i)),
+        5 => EntityRef::Loopuse(LoopuseId::from_index(i)),
+        6 => EntityRef::Loop(LoopId::from_index(i)),
+        7 => EntityRef::Edgeuse(EdgeuseId::from_index(i)),
+        8 => EntityRef::Edge(EdgeId::from_index(i)),
+        9 => EntityRef::Vertexuse(VertexuseId::from_index(i)),
+        10 => EntityRef::Vertex(VertexId::from_index(i)),
+        _ => return None,
+    })
+}
+
+/// The serial `b`'s objects are notified under through `context` (their topology keys
+/// hold it, [`topology_ref`]): the one `context`'s identity domain issued `b`, or a
+/// fresh one, kept on `b`. The kernel issues it; a caller can only read it.
+///
+/// # Errors
+///
+/// `InvalidInput` once the domain has issued every serial (`MAX_BREP_SERIAL`).
+pub fn notify_serial(context: &mut Context, b: &mut Brep) -> Result<u64> {
+    context.brep_serial(b.notify_identity_slot())
+}
+
+/// The context an edit's identities come from: the one its notifications go through
+/// (`env.context`), else the kernel's (nothing is notified then, but the topology
+/// records still need keys).
+fn issuer<'c>(kernel: &'c mut Context, env: Option<&'c mut Context>) -> &'c mut Context {
+    match env {
+        Some(c) => c,
+        None => kernel,
+    }
+}
+
+/// Runs the edit `edit` of `b` with the kernel's identities (the module's Deviations):
+/// `b`'s serial from the issuing context, an environment naming every object by
+/// [`topology_ref`] instead of `env.key_of`, each object's default `SmTopology` record
+/// ([`seed_records`]) and the B-rep notified under its kernel key; `Brep::key` (the
+/// caller's label) is restored afterwards, whatever the result.
+fn with_kernel_identities<R>(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+    edit: impl FnOnce(&mut Kernel, &mut Brep, &mut NotifyEnv<'_>) -> Result<R>,
+) -> Result<R> {
+    let serial =
+        issuer(&mut k.context, env.context.as_deref_mut()).brep_serial(b.notify_identity_slot())?;
+    let key_of = move |e: EntityRef| topology_ref(serial, e);
+    let label = b.key();
+    b.set_key(topology_ref(serial, brep_entity()).key);
+    seed_records(env.records, b, &key_of);
+    let r = {
+        let mut inner = NotifyEnv {
+            records: &mut *env.records,
+            attributes: &mut *env.attributes,
+            context: env.context.as_deref_mut(),
+            key_of: &key_of,
+        };
+        edit(k, b, &mut inner)
+    };
+    b.set_key(label);
+    r
 }
 
 /// Runs `edit` for a caller that keeps no notification state of its own (upstream's
 /// objects carry it): with an environment whose context holds the kernel context's
-/// notify callbacks (lent for the edit and given back, as upstream notifies through
-/// the B-rep's context), every object's default `SmTopology` record
-/// ([`seed_topology_records`]), `key_of` for the identities and an empty attribute
-/// store (attribute propagation is not modelled for such callers). Geometry
-/// identities still come from `k`'s context.
+/// notify callbacks and identity domain (lent for the edit and given back,
+/// `Context::take_notify_lease`, as upstream notifies through the B-rep's context), the
+/// kernel's identities (`b`'s serial in that domain), every object's default
+/// `SmTopology` record and an empty attribute store (attribute propagation is not
+/// modelled for such callers).
 ///
 /// # Errors
 ///
-/// Those of `edit`.
+/// Those of `edit`; `InvalidInput` for an exhausted identity domain.
 pub fn with_kernel_callbacks<R>(
     k: &mut Kernel,
     b: &mut Brep,
-    key_of: &dyn Fn(EntityRef) -> ObjectRef,
     edit: impl FnOnce(&mut Kernel, &mut Brep, &mut NotifyEnv<'_>) -> Result<R>,
 ) -> Result<R> {
-    let mut ctx = crate::geom::context::Context::default();
-    let (user, sys) = k.context.take_notify_callbacks();
-    ctx.set_user_notify_callback(user);
-    ctx.set_sys_notify_callback(sys);
-    let mut records = BTreeMap::new();
-    seed_topology_records(&mut records, b, key_of);
-    let mut attributes = crate::geom::attribute::AttributeStore::default();
-    let r = {
+    let mut ctx = Context::default();
+    ctx.restore_notify_lease(k.context.take_notify_lease());
+    let r = notify_serial(&mut ctx, b).and_then(|serial| {
+        let key_of = move |e: EntityRef| topology_ref(serial, e);
+        // (each object's SmTopology record, for an edit of another unit; this unit's
+        // edits seed them themselves)
+        let mut records = BTreeMap::new();
+        seed_records(&mut records, b, &key_of);
+        let mut attributes = crate::geom::attribute::AttributeStore::default();
         let mut env = NotifyEnv {
             records: &mut records,
             attributes: &mut attributes,
             context: Some(&mut ctx),
-            key_of,
+            key_of: &key_of,
         };
         edit(k, b, &mut env)
-    };
-    let (user, sys) = ctx.take_notify_callbacks();
-    k.context.set_user_notify_callback(user);
-    k.context.set_sys_notify_callback(sys);
+    });
+    k.context.restore_notify_lease(ctx.take_notify_lease());
     r
 }
 
 /// `SmApiBrepCopy`: a copy of `brep` that preserves its surface types (the copy
-/// constructor without maps, `bAddAnalytics = FALSE`). `source_key` is the
-/// notification identity of `brep`'s objects (see [`copy_brep`]).
+/// constructor without maps, `bAddAnalytics = FALSE`).
 ///
 /// # Errors
 ///
 /// `SM_ERR_INVALID_INPUT` for no B-rep; those of [`copy_brep`].
-pub fn api_brep_copy(
-    k: &mut Kernel,
-    env: &mut NotifyEnv<'_>,
-    brep: Option<&Brep>,
-    source_key: &dyn Fn(EntityRef) -> ObjectRef,
-) -> Result<Brep> {
+pub fn api_brep_copy(k: &mut Kernel, env: &mut NotifyEnv<'_>, brep: Option<&Brep>) -> Result<Brep> {
     let Some(brep) = brep else {
         return Err(SolidError::Upstream {
             operation: OP,
@@ -689,25 +796,41 @@ pub fn api_brep_copy(
             entity: None,
         });
     };
-    copy_brep(k, env, brep, source_key, None, None, true, false)
+    copy_brep(k, env, brep, None, None, true, false)
 }
 
 /// `CopyVertices`: copies each vertex of `src` into `dest` as a shell vertex of its
 /// infinite region at the same point, reporting each copy (`SM_NO_COPY`, which carries
 /// the flags, user values and attributes to the copy). Returns the new vertices
-/// (`pNewVertices`). `env` notifies `dest`'s objects under `env.key_of`; `source_key`
-/// is the identity of `src`'s (the two B-reps' ids overlap).
+/// (`pNewVertices`). Both B-reps' objects are notified under their kernel identities
+/// (see the module's Deviations).
 ///
 /// # Errors
 ///
 /// [`SolidError::Unported`] for a non-empty list: `SmBrep::MakeShellVertex` is unit
-/// `topology.brep_p9`; [`SolidError::NotFound`] for a dangling id.
+/// `topology.brep_p9`; [`SolidError::NotFound`] for a dangling id; `InvalidInput` for an
+/// exhausted identity domain.
 pub fn copy_vertices(
+    k: &mut Kernel,
     src: &Brep,
     vertices: &[VertexId],
     dest: &mut Brep,
     env: &mut NotifyEnv<'_>,
-    source_key: &dyn Fn(EntityRef) -> ObjectRef,
+) -> Result<Vec<VertexId>> {
+    with_kernel_identities(k, dest, env, |k, dest, env| {
+        let src_serial = issuer(&mut k.context, env.context.as_deref_mut())
+            .brep_serial_of(src.notify_identity())?;
+        copy_vertices_in(src, src_serial, vertices, dest, env)
+    })
+}
+
+/// [`copy_vertices`] with the kernel's identities, `src` of serial `src_serial`.
+fn copy_vertices_in(
+    src: &Brep,
+    src_serial: u64,
+    vertices: &[VertexId],
+    dest: &mut Brep,
+    env: &mut NotifyEnv<'_>,
 ) -> Result<Vec<VertexId>> {
     let mut out = Vec::new();
     // for every vertex - copy as Shell vertex
@@ -719,14 +842,14 @@ pub fn copy_vertices(
         let (_, new_v) = make_shell_vertex(dest, inf, coords)?;
 
         // inform the public - propogate attributes and report copy
-        let this = source_key(EntityRef::Vertex(v));
+        let this = topology_ref(src_serial, EntityRef::Vertex(v));
         let to = (env.key_of)(EntityRef::Vertex(new_v));
         notify_copy(
             env,
             this,
             Some(to),
             Some(p2::brep_ref(dest)),
-            Some(p2::brep_ref(src)),
+            Some(topology_ref(src_serial, brep_entity())),
         )?;
         out.push(new_v);
     }
@@ -822,8 +945,8 @@ const fn as_faceuse(e: EntityRef) -> Option<FaceuseId> {
 /// `CopyAndAddAnalytics` when `add_analytics` (upstream default `TRUE`), else with
 /// `Copy`. Every new object is reported (`SM_NO_COPY`) once the graph is complete.
 /// `copy_map` gets copy to source, `reverse_map` source to copy (`sm_SetObjectMap`).
-/// `env` notifies `b`'s objects under `env.key_of`; `source_key` is the identity of
-/// `other`'s (the two B-reps' ids overlap).
+/// Both B-reps' objects are notified under their kernel identities (see the module's
+/// Deviations).
 ///
 /// # Errors
 ///
@@ -831,14 +954,41 @@ const fn as_faceuse(e: EntityRef) -> Option<FaceuseId> {
 /// `surface.cone_p2`, when analytics are added) and those of the copies (`SER`);
 /// `SM_ERR_NULL_POINTER` for a UV trim curve that is not a kind of `SmBSplineCurve`
 /// (`NER` after `SM_CAST_PTR`); [`SolidError::NotFound`] / [`SolidError::InvalidInput`]
-/// for a dangling id or a null pointer upstream dereferences.
-#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+/// for a dangling id or a null pointer upstream dereferences, `InvalidInput` for an
+/// exhausted identity domain.
 pub fn merge_brep(
+    k: &mut Kernel,
+    env: &mut NotifyEnv<'_>,
+    b: &mut Brep,
+    other: &Brep,
+    copy_map: Option<&mut CopyBrepMap<EntityRef>>,
+    reverse_map: Option<&mut CopyBrepMap<EntityRef>>,
+    add_analytics: bool,
+) -> Result<()> {
+    with_kernel_identities(k, b, env, |k, b, env| {
+        let other_serial = issuer(&mut k.context, env.context.as_deref_mut())
+            .brep_serial_of(other.notify_identity())?;
+        merge_brep_in(
+            k,
+            env,
+            b,
+            other,
+            other_serial,
+            copy_map,
+            reverse_map,
+            add_analytics,
+        )
+    })
+}
+
+/// [`merge_brep`] with the kernel's identities, `other` of serial `other_serial`.
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+fn merge_brep_in(
     k: &Kernel,
     env: &mut NotifyEnv<'_>,
     b: &mut Brep,
     other: &Brep,
-    source_key: &dyn Fn(EntityRef) -> ObjectRef,
+    other_serial: u64,
     mut copy_map: Option<&mut CopyBrepMap<EntityRef>>,
     mut reverse_map: Option<&mut CopyBrepMap<EntityRef>>,
     add_analytics: bool,
@@ -1365,7 +1515,7 @@ pub fn merge_brep(
     // (SM_NO_GET_BREP(..) is ((SmObject*)(0)) in the pinned SmTypes.h)
     let copy_notify = |env: &mut NotifyEnv<'_>, from: EntityRef, to: Option<EntityRef>| {
         let to = to.map(|t| (env.key_of)(t));
-        notify_copy(env, source_key(from), to, None, None)
+        notify_copy(env, topology_ref(other_serial, from), to, None, None)
     };
     for &r in &regions {
         for s in region_shells(other, r)? {
@@ -1473,8 +1623,22 @@ impl Default for DeleteFaceOptions {
 /// vertex use or vertex (`NER`); [`SolidError::Unported`] for every face in the
 /// B-rep: `SmFace::Notify` (`topology.face_p3`), then `SmFace::GetVertices`
 /// (`topology.face_p4`), `DeleteEdge`/`DeleteVertex` (`topology.brep_p4`).
-#[allow(clippy::too_many_lines)]
 pub fn delete_face(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+    marks: &mut Marks,
+    f: FaceId,
+    options: DeleteFaceOptions,
+) -> Result<Vec<EntityRef>> {
+    with_kernel_identities(k, b, env, |k, b, env| {
+        delete_face_in(k, b, env, marks, f, options)
+    })
+}
+
+/// [`delete_face`] with the kernel's identities.
+#[allow(clippy::too_many_lines)]
+fn delete_face_in(
     k: &mut Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
@@ -1922,72 +2086,51 @@ fn wire_curve(curve: &Curve) -> Curve {
     curve.clone()
 }
 
-/// The identity `curve` is notified under: the curve object's own
-/// ([`Curve::notify_identity`]) when `k`'s context issued it, else a fresh one of that
-/// context's domain, stored on the curve ([`crate::geom::context::Context::geometry_identity`]).
-/// Upstream passes the `SmCurve` object itself; here the identity lives with the
-/// object (a copy is a new one), its key is of the reserved geometry range (disjoint
-/// from the caller's keys, [`check_caller_keys`]) and only the issuing context accepts
-/// it, so no two live curves present one key to a context's callbacks.
-fn curve_identity(k: &mut Kernel, curve: &mut Curve) -> ObjectRef {
-    let identity = k.context.geometry_identity(curve.notify_identity());
-    let key = identity.key();
-    curve.set_notify_identity(Some(identity));
-    ObjectRef {
+/// The identity `curve` is notified under through `context`: the curve object's own
+/// kernel-issued key ([`Curve::notify_key`]) when `context`'s identity domain issued
+/// it, else a fresh key of that domain, kept on the curve (see the module's
+/// Deviations). Upstream passes the `SmCurve` object itself.
+///
+/// # Errors
+///
+/// `InvalidInput` once the domain has issued every geometry key.
+fn curve_identity(context: &mut Context, curve: &mut Curve) -> Result<ObjectRef> {
+    let slot: &mut IdentitySlot = curve.notify_identity_slot();
+    let key = context.geometry_key(slot)?;
+    Ok(ObjectRef {
         type_code: curve.type_code(),
         key,
-    }
+    })
 }
 
-/// The identity edge `e`'s curve is notified under in `k`'s context
-/// ([`curve_identity`]), `None` without a curve.
+/// The identity edge `e`'s curve is notified under through `context`
+/// ([`Curve::notify_key`]; issued by `context` when it has none of its domain), `None`
+/// without a curve.
 ///
 /// # Errors
 ///
-/// [`SolidError::NotFound`] for a dangling id.
-pub fn edge_curve_identity(k: &mut Kernel, b: &mut Brep, e: EdgeId) -> Result<Option<ObjectRef>> {
-    Ok(b.edge_mut(e)?.curve.as_mut().map(|c| curve_identity(k, c)))
+/// [`SolidError::NotFound`] for a dangling id; `InvalidInput` for an exhausted identity
+/// domain.
+pub fn edge_curve_identity(
+    context: &mut Context,
+    b: &mut Brep,
+    e: EdgeId,
+) -> Result<Option<ObjectRef>> {
+    b.edge_mut(e)?
+        .curve
+        .as_mut()
+        .map(|c| curve_identity(context, c))
+        .transpose()
 }
 
-/// The refusal of a caller key in the reserved geometry range.
-const RESERVED_KEY: SolidError = SolidError::InvalidInput {
-    operation: "topology::brep::p3",
-    reason: "a topology key of the caller is in the reserved geometry key range",
-};
-
-/// Refuses a caller identity in the reserved geometry key range
-/// ([`crate::geom::context::GEOMETRY_KEY_BASE`]): a topology object notified under
-/// such a key could alias a curve.
-fn checked_key(r: ObjectRef) -> Result<ObjectRef> {
-    if crate::geom::context::is_reserved_key(r.key) {
-        return Err(RESERVED_KEY);
-    }
-    Ok(r)
-}
-
-/// Every key the caller gives `b`'s objects and the B-rep (`env.key_of`,
-/// [`p2::brep_ref`]) is outside the reserved geometry range: checked before an edit
-/// that notifies geometry, so a topology object and a curve never share a key.
-///
-/// # Errors
-///
-/// `InvalidInput` for a key in the range.
-fn check_caller_keys(b: &Brep, env: &NotifyEnv<'_>) -> Result<()> {
-    let mut all = Vec::new();
-    all.extend(b.regions().iter().map(|(x, _)| EntityRef::Region(x)));
-    all.extend(b.shells().iter().map(|(x, _)| EntityRef::Shell(x)));
-    all.extend(b.faceuses().iter().map(|(x, _)| EntityRef::Faceuse(x)));
-    all.extend(b.faces().iter().map(|(x, _)| EntityRef::Face(x)));
-    all.extend(b.loopuses().iter().map(|(x, _)| EntityRef::Loopuse(x)));
-    all.extend(b.loops().iter().map(|(x, _)| EntityRef::Loop(x)));
-    all.extend(b.edgeuses().iter().map(|(x, _)| EntityRef::Edgeuse(x)));
-    all.extend(b.edges().iter().map(|(x, _)| EntityRef::Edge(x)));
-    all.extend(b.vertexuses().iter().map(|(x, _)| EntityRef::Vertexuse(x)));
-    all.extend(b.vertices().iter().map(|(x, _)| EntityRef::Vertex(x)));
-    for e in all {
-        checked_key((env.key_of)(e))?;
-    }
-    checked_key(p2::brep_ref(b)).map(drop)
+/// [`edge_curve_identity`] through the edit's issuing context ([`issuer`]).
+fn edge_curve_ref(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+    e: EdgeId,
+) -> Result<Option<ObjectRef>> {
+    edge_curve_identity(issuer(&mut k.context, env.context.as_deref_mut()), b, e)
 }
 
 /// Binds `curve` (owned by nobody, or copied) to the new edge `e` (`SetCurve(.., FALSE)`
@@ -2011,7 +2154,10 @@ fn bind_wire_curve(
         curve
     };
     let _ = new_curve.set_owner(None, None);
-    let new_ref = curve_identity(k, &mut new_curve);
+    let new_ref = curve_identity(
+        issuer(&mut k.context, env.context.as_deref_mut()),
+        &mut new_curve,
+    )?;
     edge::set_curve(
         b,
         e,
@@ -2045,10 +2191,28 @@ const fn edge_type_code() -> i64 {
 /// # Errors
 ///
 /// Those of [`p2::make_edge_topology`], of the curve evaluation and of the tolerance
-/// refresh; `InvalidInput` for a caller key
-/// in the reserved geometry key range (`GEOMETRY_KEY_BASE`).
+/// refresh; `InvalidInput` for an exhausted identity
+/// domain.
 #[allow(clippy::too_many_arguments)]
 pub fn make_wire_edge(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+    region: Option<RegionId>,
+    start: VertexId,
+    end: VertexId,
+    curve: Curve,
+    interval: &Extent1d,
+    orientation: OrientType,
+) -> Result<EdgeId> {
+    with_kernel_identities(k, b, env, |k, b, env| {
+        make_wire_edge_in(k, b, env, region, start, end, curve, interval, orientation)
+    })
+}
+
+/// [`make_wire_edge`] with the kernel's identities.
+#[allow(clippy::too_many_arguments)]
+fn make_wire_edge_in(
     k: &mut Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
@@ -2064,8 +2228,6 @@ pub fn make_wire_edge(
 
     // make new edge connected to vertices and region
     let e = p2::make_edge_topology(k, b, region, start, end)?;
-    // (the caller's keys, the new objects' included, stay off the curves' range)
-    check_caller_keys(b, env)?;
 
     // Set edge parameters
     let t = b.tolerance();
@@ -2113,10 +2275,38 @@ pub fn make_wire_edge(
 ///
 /// # Errors
 ///
-/// Those of [`p2::make_edge_vertex_topology`] and of the tolerance refresh; `InvalidInput` for a caller key
-/// in the reserved geometry key range (`GEOMETRY_KEY_BASE`).
+/// Those of [`p2::make_edge_vertex_topology`] and of the tolerance refresh; `InvalidInput` for an exhausted identity
+/// domain.
 #[allow(clippy::too_many_arguments)]
 pub fn make_wire_edge_vertex(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+    region: Option<RegionId>,
+    start: VertexId,
+    curve: Curve,
+    interval: &Extent1d,
+    orientation: OrientType,
+    end_point: Point3,
+) -> Result<(EdgeId, VertexId)> {
+    with_kernel_identities(k, b, env, |k, b, env| {
+        make_wire_edge_vertex_in(
+            k,
+            b,
+            env,
+            region,
+            start,
+            curve,
+            interval,
+            orientation,
+            end_point,
+        )
+    })
+}
+
+/// [`make_wire_edge_vertex`] with the kernel's identities.
+#[allow(clippy::too_many_arguments)]
+fn make_wire_edge_vertex_in(
     k: &mut Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
@@ -2131,8 +2321,6 @@ pub fn make_wire_edge_vertex(
     let region = region_or_infinite(b, region);
 
     let (e, v) = p2::make_edge_vertex_topology(b, region, start)?;
-    // (the caller's keys, the new objects' included, stay off the curves' range)
-    check_caller_keys(b, env)?;
     let vref = (env.key_of)(EntityRef::Vertex(v));
     let uref = |vu: VertexuseId| (env.key_of)(EntityRef::Vertexuse(vu));
     vertex::set_point(
@@ -2190,9 +2378,7 @@ pub fn make_wire_edge_vertex(
 /// `SM_ERR` when `survivor` is not a vertex of `e`, `e` is closed, or a wire edge's
 /// other vertex has fewer than two edges (or that edge fewer than two uses);
 /// [`SolidError::Unported`]: `SmFace::Notify` (`topology.face_p3`) for an edge in a
-/// face; `InvalidInput` for a corrupt shell list or a caller key in the reserved
-/// geometry key range (`GEOMETRY_KEY_BASE`).
-#[allow(clippy::too_many_lines)]
+/// face; `InvalidInput` for a corrupt shell list or an exhausted identity domain.
 pub fn squeeze_edge(
     k: &mut Kernel,
     b: &mut Brep,
@@ -2200,9 +2386,20 @@ pub fn squeeze_edge(
     e: EdgeId,
     survivor: VertexId,
 ) -> Result<()> {
-    // (the caller's keys stay off the range of the curves it notifies)
-    check_caller_keys(b, env)?;
+    with_kernel_identities(k, b, env, |k, b, env| {
+        squeeze_edge_in(k, b, env, e, survivor)
+    })
+}
 
+/// [`squeeze_edge`] with the kernel's identities.
+#[allow(clippy::too_many_lines)]
+fn squeeze_edge_in(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+    e: EdgeId,
+    survivor: VertexId,
+) -> Result<()> {
     // get edge vertices
     let v1 = edge::vertex(b, e)?;
     let v2 = edge::other_vertex(b, e, v1)?;
@@ -2233,7 +2430,7 @@ pub fn squeeze_edge(
         NotifyOperation::PreEdit,
         [Some(eref), Some(bref), None],
     ))?;
-    let cref = edge_curve_identity(k, b, e)?;
+    let cref = edge_curve_ref(k, b, env, e)?;
     ignore_soft(brep_notify(
         b,
         env,
@@ -2466,11 +2663,14 @@ const fn as_bspline_surface(s: &Surface) -> Option<&BSplineSurface> {
 /// [`SolidError::Unported`] from [`p2::replace_surface`] (`topology.face_p3`) for any
 /// face with an analytic surface; those of the curve lift / approximation;
 /// `SM_ERR_NULL_POINTER` when a curve could not be made a B-spline or an offset's base
-/// is not a B-spline kind (`NER`); those of the offset's bounding box and extension; `InvalidInput` for a caller key
-/// in the reserved geometry key range (`GEOMETRY_KEY_BASE`).
+/// is not a B-spline kind (`NER`); those of the offset's bounding box and extension; `InvalidInput` for an exhausted identity
+/// domain.
 pub fn turn_to_nurbs(k: &mut Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Result<()> {
-    // (the caller's keys stay off the range of the curves it notifies)
-    check_caller_keys(b, env)?;
+    with_kernel_identities(k, b, env, turn_to_nurbs_in)
+}
+
+/// [`turn_to_nurbs`] with the kernel's identities.
+fn turn_to_nurbs_in(k: &mut Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Result<()> {
     ignore_soft(brep_notify(
         b,
         env,
@@ -2637,9 +2837,9 @@ pub fn turn_to_nurbs(k: &mut Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> R
 
         // Update the edge: drop the old curve (TRUE = delete preExisting Curve)
         // (the new curve exists while the old one does: distinct identities)
-        let old_ref = edge_curve_identity(k, b, e)?.ok_or_else(ner)?;
+        let old_ref = edge_curve_ref(k, b, env, e)?.ok_or_else(ner)?;
         let mut bsc = bsc;
-        let r = curve_identity(k, &mut bsc);
+        let r = curve_identity(issuer(&mut k.context, env.context.as_deref_mut()), &mut bsc)?;
         edge::set_curve(
             b,
             e,
@@ -2705,8 +2905,31 @@ pub struct OrientResult {
 /// edge use evaluation (`topology.edgeuse_p3`), the angle-limited collection
 /// `SmEdgeuse::EvaluateBinormal` (`topology.edgeuse_p3`), `SmFace::SwapUV` its
 /// `face_p3`/`face_p4` callees.
-#[allow(clippy::too_many_lines)]
 pub fn orient_trimmed_surfaces(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+    marks: &mut Marks,
+    normals_outward: bool,
+    just_unify_normals: bool,
+    faces_to_swap_uv: Option<&[FaceId]>,
+) -> Result<OrientResult> {
+    with_kernel_identities(k, b, env, |k, b, env| {
+        orient_trimmed_surfaces_in(
+            k,
+            b,
+            env,
+            marks,
+            normals_outward,
+            just_unify_normals,
+            faces_to_swap_uv,
+        )
+    })
+}
+
+/// [`orient_trimmed_surfaces`] with the kernel's identities.
+#[allow(clippy::too_many_lines)]
+fn orient_trimmed_surfaces_in(
     k: &mut Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
@@ -3213,29 +3436,29 @@ mod tests {
         r.unwrap();
     }
 
-    /// Every curve object gets an identity of its own from the kernel context: a curve
+    /// Every curve object gets an identity of its own from the issuing context: a curve
     /// keeps it; a copy (a new object, as a replacement curve) gets another; the keys
-    /// sit above the callers' own range.
+    /// are in the geometry range.
     #[test]
     fn curve_identities_are_distinct() {
         use crate::curve::line::Line;
-        let mut k = Kernel::default();
+        let mut ctx = Context::default();
         let mut c0 = Curve::from(Line::from_points(Vec3::ZERO, Vec3::X, 3));
         let mut c1 = Curve::from(Line::from_points(Vec3::ZERO, Vec3::Y, 3));
         let (r0, r1) = (
-            curve_identity(&mut k, &mut c0),
-            curve_identity(&mut k, &mut c1),
+            curve_identity(&mut ctx, &mut c0).unwrap(),
+            curve_identity(&mut ctx, &mut c1).unwrap(),
         );
         assert_ne!(r0.key, r1.key);
-        assert_eq!(curve_identity(&mut k, &mut c0), r0);
+        assert_eq!(curve_identity(&mut ctx, &mut c0).unwrap(), r0);
         let mut copy = c0.clone();
         assert_eq!(copy.notify_key(), None);
-        let rc = curve_identity(&mut k, &mut copy);
+        let rc = curve_identity(&mut ctx, &mut copy).unwrap();
         assert!(rc.key != r0.key && rc.key != r1.key);
         assert!(r0.key.0 >= crate::geom::context::GEOMETRY_KEY_BASE);
     }
 
-    /// M1: binding moves the caller's unowned curve in with its identity (upstream binds
+    /// Binding moves the caller's unowned curve in with its identity (upstream binds
     /// that object), so a second wire edge needs a curve value of its own: a copy, a
     /// new object with a key of its own.
     #[test]
@@ -3256,7 +3479,7 @@ mod tests {
         };
         let (e1, e2) = (edge(&mut b), edge(&mut b));
         let mut c = Curve::from(Line::from_points(Vec3::ZERO, Vec3::X, 3));
-        let original = curve_identity(&mut k, &mut c);
+        let original = curve_identity(&mut k.context, &mut c).unwrap();
         let second_use = c.clone();
         with_env(|env| bind_wire_curve(&mut k, &mut b, env, e1, c)).unwrap();
         with_env(|env| bind_wire_curve(&mut k, &mut b, env, e2, second_use)).unwrap();
@@ -3271,58 +3494,183 @@ mod tests {
         assert!(key(&b, e2).is_some() && key(&b, e2) != key(&b, e1));
     }
 
-    /// M2: a caller key in the reserved geometry range is refused before an edit
-    /// notifies anything, so a topology object can never share a curve's key.
-    #[test]
-    fn caller_keys_in_the_geometry_range_are_refused() {
-        use crate::geom::context::GEOMETRY_KEY_BASE;
-        let mut b = Brep::new();
-        let v = b.add_vertex(Vec3::ZERO).unwrap();
-        let mut records = BTreeMap::new();
-        let mut attributes = crate::geom::attribute::AttributeStore::default();
-        let reserved = |e: EntityRef| ObjectRef {
-            type_code: 0,
-            key: ObjectKey(match e {
-                EntityRef::Vertex(_) => GEOMETRY_KEY_BASE + 1,
-                _ => 1,
-            }),
-        };
-        let env = NotifyEnv {
-            records: &mut records,
-            attributes: &mut attributes,
-            context: None,
-            key_of: &reserved,
-        };
-        assert_eq!(check_caller_keys(&b, &env), Err(RESERVED_KEY));
-        let mut env = env;
-        let r = brep_notify(
-            &b,
-            &mut env,
-            NotifyOperation::AddToBrep,
-            [arg(EntityRef::Vertex(v)), None, None],
-        );
-        assert_eq!(r, Err(RESERVED_KEY));
-        // keys below the range pass
-        with_env(|env| check_caller_keys(&b, env)).unwrap();
-    }
-
-    /// M3: a key is only valid in the context that issued it: a curve keyed by K1 that
-    /// then meets K2 gets a key of K2's domain, so it never shares one with a curve K2
-    /// keyed itself, even though both contexts count from the start.
+    /// A key is only valid in the domain that issued it: a curve keyed by C1 that then
+    /// meets C2 gets a key of C2's domain, so it never shares one with a curve C2 keyed
+    /// itself, even though both domains count from the start.
     #[test]
     fn curve_keys_belong_to_their_context() {
         use crate::curve::line::Line;
-        let (mut k1, mut k2) = (Kernel::default(), Kernel::default());
+        let (mut c1, mut c2) = (Context::default(), Context::default());
         let mut a = Curve::from(Line::from_points(Vec3::ZERO, Vec3::X, 3));
         let mut b = Curve::from(Line::from_points(Vec3::ZERO, Vec3::Y, 3));
-        let a1 = curve_identity(&mut k1, &mut a);
-        let a2 = curve_identity(&mut k2, &mut a);
-        let b2 = curve_identity(&mut k2, &mut b);
+        let a1 = curve_identity(&mut c1, &mut a).unwrap();
+        let a2 = curve_identity(&mut c2, &mut a).unwrap();
+        let b2 = curve_identity(&mut c2, &mut b).unwrap();
         assert_ne!(a2.key, b2.key);
-        // (both contexts count from the start: K2 gave A its own first key, which has
-        // K1's first number but K2's domain, instead of keeping K1's)
+        // (C2 gave A its own first key, which has C1's first number but C2's domain)
         assert_eq!(a1.key, a2.key);
-        assert_eq!(curve_identity(&mut k2, &mut a), a2);
+        assert_eq!(curve_identity(&mut c2, &mut a).unwrap(), a2);
+    }
+
+    /// Every key a notify callback got, in order.
+    type Seen = std::sync::Arc<std::sync::Mutex<Vec<ObjectRef>>>;
+
+    #[derive(Debug)]
+    struct Rec(Seen);
+
+    impl crate::geom::context::NotifyCallback for Rec {
+        fn execute(
+            &mut self,
+            _operation: NotifyOperation,
+            caller: ObjectRef,
+            data1: Option<ObjectRef>,
+            data2: Option<ObjectRef>,
+            data3: Option<ObjectRef>,
+        ) -> Result<()> {
+            let mut seen = self.0.lock().unwrap();
+            seen.extend([Some(caller), data1, data2, data3].into_iter().flatten());
+            Ok(())
+        }
+    }
+
+    /// A context whose user callback records every key it is given.
+    fn recording_context() -> (Context, Seen) {
+        let seen = Seen::default();
+        let mut ctx = Context::default();
+        ctx.set_user_notify_callback(Some(Box::new(Rec(std::sync::Arc::clone(&seen)))));
+        (ctx, seen)
+    }
+
+    /// The caller's label for every object: one constant key, which would alias every
+    /// object if an edit used it.
+    fn label(_: EntityRef) -> ObjectRef {
+        ObjectRef {
+            type_code: 0,
+            key: ObjectKey(7),
+        }
+    }
+
+    /// `SqueezeEdge` of the chain's first edge into its first vertex, notified through
+    /// `ctx` (`env.context`) under the caller's [`label`]s; returns the keys `ctx`'s
+    /// callback got.
+    fn squeeze_through(k: &mut Kernel, ctx: &mut Context, seen: &Seen) -> Vec<ObjectKey> {
+        let (mut b, [a, _, _], [e0, _]) = test_support::wire_chain(true);
+        squeeze_brep_through(k, ctx, seen, &mut b, e0, a)
+    }
+
+    fn squeeze_brep_through(
+        k: &mut Kernel,
+        ctx: &mut Context,
+        seen: &Seen,
+        b: &mut Brep,
+        e: EdgeId,
+        keep: VertexId,
+    ) -> Vec<ObjectKey> {
+        let first = seen.lock().unwrap().len();
+        let mut records = BTreeMap::new();
+        let mut attributes = crate::geom::attribute::AttributeStore::default();
+        let mut env = NotifyEnv {
+            records: &mut records,
+            attributes: &mut attributes,
+            context: Some(ctx),
+            key_of: &label,
+        };
+        squeeze_edge(k, b, &mut env, e, keep).unwrap();
+        let all = seen.lock().unwrap();
+        all.get(first..).unwrap().iter().map(|r| r.key).collect()
+    }
+
+    /// R1: identities come from the one context the notifications go through, not the
+    /// kernel's: one callback, edits in two kernels (both counting from the start), and
+    /// no key of the first edit's objects (the B-rep, its topology, its curves) comes
+    /// back for the second's.
+    #[test]
+    fn one_context_issues_the_identities_of_edits_in_two_kernels() {
+        let (mut ctx, seen) = recording_context();
+        let (mut k1, mut k2) = (Kernel::default(), Kernel::default());
+        let one = squeeze_through(&mut k1, &mut ctx, &seen);
+        let two = squeeze_through(&mut k2, &mut ctx, &seen);
+        let geometry = |v: &[ObjectKey]| {
+            v.iter()
+                .filter(|x| x.0 >= crate::geom::context::GEOMETRY_KEY_BASE)
+                .count()
+        };
+        assert!(geometry(&one) > 0 && geometry(&two) > 0, "{one:?}");
+        assert!(two.iter().all(|x| !one.contains(x)), "{one:?} {two:?}");
+    }
+
+    /// R2: two B-reps' objects (same arena indices) are told apart: each edit's
+    /// topology keys decode only with its own B-rep's serial, and the caller's label
+    /// ([`label`], `env.key_of`) never reaches the callback.
+    #[test]
+    fn two_breps_never_share_a_topology_key() {
+        let (mut ctx, seen) = recording_context();
+        let mut k = Kernel::default();
+        let (mut b1, [a1, _, _], [e1, _]) = test_support::wire_chain(true);
+        let (mut b2, [a2, _, _], [e2, _]) = test_support::wire_chain(true);
+        let one = squeeze_brep_through(&mut k, &mut ctx, &seen, &mut b1, e1, a1);
+        let two = squeeze_brep_through(&mut k, &mut ctx, &seen, &mut b2, e2, a2);
+        let (s1, s2) = (b1.notify_serial().unwrap(), b2.notify_serial().unwrap());
+        assert_ne!(s1, s2);
+        assert!(two.iter().all(|x| !one.contains(x)), "{one:?} {two:?}");
+        for (keys, own, other) in [(&one, s1, s2), (&two, s2, s1)] {
+            for &x in keys {
+                assert!(crate::geom::context::is_reserved_key(x), "{x:?}");
+                if x.0 < crate::geom::context::GEOMETRY_KEY_BASE {
+                    assert!(topology_entity(own, x).is_some(), "{x:?}");
+                    assert!(topology_entity(other, x).is_none(), "{x:?}");
+                }
+            }
+        }
+        // the caller's label is back on the B-rep after the edit
+        assert_eq!(b1.key(), ObjectKey(0));
+    }
+
+    /// Setter: identities have no public setter, the one setter left (`Brep::set_key`,
+    /// the caller's label) cannot make two B-reps alias, and a clone (the only other way
+    /// to duplicate an object) is a new object with identities of its own.
+    #[test]
+    fn labels_and_clones_cannot_duplicate_an_identity() {
+        let (mut ctx, seen) = recording_context();
+        let mut k = Kernel::default();
+        let (mut b1, [a, _, _], [e0, _]) = test_support::wire_chain(true);
+        let mut b2 = b1.clone();
+        let one = squeeze_brep_through(&mut k, &mut ctx, &seen, &mut b1, e0, a);
+        b2.set_key(b1.key());
+        let curve = b2.edge(e0).unwrap().curve.clone().unwrap();
+        assert_eq!(curve.notify_key(), None);
+        let two = squeeze_brep_through(&mut k, &mut ctx, &seen, &mut b2, e0, a);
+        assert_ne!(b1.notify_serial(), b2.notify_serial());
+        assert!(two.iter().all(|x| !one.contains(x)), "{one:?} {two:?}");
+        // a clone made after an edit starts without a serial
+        assert_eq!(b1.clone().notify_serial(), None);
+    }
+
+    /// The kernel's callbacks are lent with their identity domain
+    /// ([`with_kernel_callbacks`]): two lent edits see disjoint keys, as one context's
+    /// callbacks would.
+    #[test]
+    fn kernel_callbacks_keep_their_identity_domain() {
+        let mut k = Kernel::default();
+        let seen = Seen::default();
+        k.context
+            .set_user_notify_callback(Some(Box::new(Rec(std::sync::Arc::clone(&seen)))));
+        let edit = |k: &mut Kernel| {
+            let (mut b, [a, _, _], [e0, _]) = test_support::wire_chain(true);
+            let first = seen.lock().unwrap().len();
+            with_kernel_callbacks(k, &mut b, |k, b, env| squeeze_edge(k, b, env, e0, a)).unwrap();
+            let all = seen.lock().unwrap();
+            all.get(first..)
+                .unwrap()
+                .iter()
+                .map(|r| r.key)
+                .collect::<Vec<_>>()
+        };
+        let one = edit(&mut k);
+        let two = edit(&mut k);
+        assert!(!one.is_empty());
+        assert!(two.iter().all(|x| !one.contains(x)), "{one:?} {two:?}");
+        assert!(k.context.user_notify_callback().is_some());
     }
 
     /// `DeleteFace` after region nesting merged the face's two shells: upstream's
@@ -3415,10 +3763,7 @@ mod tests {
     #[test]
     fn api_copy_of_null_is_invalid_input() {
         let mut k = Kernel::default();
-        let r = with_env(|env| {
-            let key = env.key_of;
-            api_brep_copy(&mut k, env, None, key)
-        });
+        let r = with_env(|env| api_brep_copy(&mut k, env, None));
         assert!(matches!(
             r,
             Err(SolidError::Upstream {
@@ -3493,5 +3838,97 @@ mod tests {
         b.remove_region_from_list(r1).unwrap();
         assert_eq!(b.region_list_head(), None);
         assert!(p1::regions(&b, None).unwrap().is_empty());
+    }
+}
+
+/// Test fixtures shared with the callers' tests.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use crate::curve::curve::Curve;
+    use crate::curve::line::Line;
+    use crate::geom::extent1d::Extent1d;
+    use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+    use crate::topology::shell::{ShellMembers, ShellType};
+    use crate::topology::{
+        Brep, Edge, EdgeId, Edgeuse, EdgeuseId, EdgeuseOwner, Region, Shell, Vertex, VertexId,
+        Vertexuse, VertexuseId, VertexuseOwner,
+    };
+
+    /// A wire chain A--B--C (edge uses `2i` / `2i+1` of edge `i` at `v_i` / `v_{i+1}`) in
+    /// one wire shell of the infinite region, with line curves when `curves`.
+    pub(crate) fn wire_chain(curves: bool) -> (Brep, [VertexId; 3], [EdgeId; 2]) {
+        let mut b = Brep::new();
+        let r = b
+            .add_region_record(Region {
+                in_brep: true,
+                ..Region::default()
+            })
+            .unwrap();
+        b.set_infinite_region_record(Some(r));
+        let s = b
+            .add_shell_record(Shell {
+                region: Some(r),
+                shell_type: ShellType::Wire,
+                members: ShellMembers::Edgeuse(EdgeuseId::from_index(0)),
+                ..Shell::default()
+            })
+            .unwrap();
+        b.region_mut(r).unwrap().shells.push(s);
+        let v: Vec<VertexId> = (0..3)
+            .map(|i| {
+                b.add_vertex_record(Vertex {
+                    point: crate::math::Vec3::new(f64::from(i), 0.0, 0.0),
+                    tolerance: 1e-6,
+                    ..Vertex::default()
+                })
+                .unwrap()
+            })
+            .collect();
+        let mut es = Vec::new();
+        for i in 0..2u32 {
+            let (p, q) = (v[i as usize], v[i as usize + 1]);
+            let curve = curves.then(|| {
+                let (pp, qq) = (b.vertex(p).unwrap().point, b.vertex(q).unwrap().point);
+                Curve::from(Line::from_points(pp, qq, 3))
+            });
+            es.push(
+                b.add_edge_record(Edge {
+                    vertices: [p, q],
+                    edgeuses: vec![
+                        EdgeuseId::from_index(2 * i),
+                        EdgeuseId::from_index(2 * i + 1),
+                    ],
+                    interval: Extent1d::from_min_max(0.0, 1.0),
+                    tolerance: 1e-6,
+                    curve,
+                })
+                .unwrap(),
+            );
+        }
+        for i in 0..4u32 {
+            b.add_edgeuse_record(Edgeuse {
+                edge: Some(EdgeId::from_index(i / 2)),
+                owner: EdgeuseOwner::Shell(Some(s)),
+                vertexuse: Some(VertexuseId::from_index(i)),
+                orientation: if i % 2 == 0 {
+                    OrientType::Same
+                } else {
+                    OrientType::Opposite
+                },
+                ..Edgeuse::default()
+            })
+            .unwrap();
+        }
+        for (i, &vx) in [v[0], v[1], v[1], v[2]].iter().enumerate() {
+            let vu = b
+                .add_vertexuse_record(Vertexuse {
+                    vertex: Some(vx),
+                    owner: VertexuseOwner::Edgeuse(Some(EdgeuseId::from_index(i as u32))),
+                    ..Vertexuse::default()
+                })
+                .unwrap();
+            b.vertex_mut(vx).unwrap().vertexuses.push(vu);
+        }
+        (b, [v[0], v[1], v[2]], [es[0], es[1]])
     }
 }

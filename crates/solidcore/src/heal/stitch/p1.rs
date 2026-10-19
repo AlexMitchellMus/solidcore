@@ -2023,11 +2023,13 @@ pub(crate) fn glue_edges_general(
 
 /// `SmBrep::SqueezeEdge(edge, keep)` (unit `topology.brep_p3`,
 /// [`crate::topology::brep::p3::squeeze_edge`]), notifying through the kernel
-/// context's callbacks under [`crate::topology::brep::p3::default_key_of`] identities.
+/// context's callbacks under the kernel's identities
+/// ([`crate::topology::brep::p3::with_kernel_callbacks`]).
 ///
 /// # Errors
 ///
-/// Those of the squeeze; `InvalidInput` for a null edge (upstream dereferences it).
+/// Those of the squeeze; `SM_ERR_NULL_POINTER` for a null edge (upstream dereferences
+/// it).
 pub(crate) fn squeeze_edge_to(
     k: &mut Kernel,
     b: &mut Brep,
@@ -2035,8 +2037,7 @@ pub(crate) fn squeeze_edge_to(
     keep: VertexId,
 ) -> Result<()> {
     let e = e.ok_or_else(|| SolidError::null_pointer("heal::stitch::p1::squeeze_edge_to"))?;
-    let key_of = crate::topology::brep::p3::default_key_of;
-    crate::topology::brep::p3::with_kernel_callbacks(k, b, &key_of, |k, b, env| {
+    crate::topology::brep::p3::with_kernel_callbacks(k, b, |k, b, env| {
         crate::topology::brep::p3::squeeze_edge(k, b, env, e, keep)
     })
 }

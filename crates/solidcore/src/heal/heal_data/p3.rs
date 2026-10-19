@@ -26,8 +26,10 @@
 //! callback; the ported edits (`SqueezeEdge`, `DeleteFace`) run under a real
 //! `SmTrackTopologyChanges` on a context of their own (`tracked_edit`), one per edit
 //! (upstream keeps one per heal loop; the lists merge to the same result with
-//! `Changes::append`), after seeding every object's `SmTopology` record (each C++
-//! object has one; `SmTopology::Notify` reads them). Its owner table is empty, so
+//! `Changes::append`); the kernel context's callbacks and identity domain are lent to
+//! that context, and the edits name every object by its kernel-issued identity
+//! (`topology::brep::p3`'s Deviations), which the tracker's lists are decoded by. Its
+//! owner table is empty, so
 //! geometry notifications reach no owner: only the Chg list depends on it, which
 //! `Changes` does not read. Recursive target catch-up is limited to 32 nested updates (upstream
 //! has no bound); temporary counters and healer state are restored on every exit.
@@ -469,55 +471,6 @@ fn combine_vertices(_b: &mut Brep, _a: VertexId, _d: VertexId) -> Result<Changes
         "topology.brep_p5",
     ))
 }
-/// The kinds [`tracked_edit`] notifies entities under, with their `GetType` codes.
-const EDIT_KINDS: [i64; 11] = [
-    16011, // SmBrep_TYPE
-    16012, // SmRegion_TYPE
-    16013, // SmShell_TYPE
-    16022, // SmFaceuse_TYPE
-    16002, // SmFace_TYPE
-    16004, // SmLoopuse_TYPE
-    16003, // SmLoop_TYPE
-    16005, // SmEdgeuse_TYPE
-    16016, // SmEdge_TYPE
-    16006, // SmVertexuse_TYPE
-    16021, // SmVertex_TYPE
-];
-
-/// The identity [`tracked_edit`] notifies `e` under: its type code and
-/// `(kind << 32) | index`.
-fn edit_key(e: EntityRef) -> ObjectRef {
-    let (kind, i): (usize, u32) = match e {
-        EntityRef::Brep(_) => (0, 0),
-        EntityRef::Region(x) => (1, x.index()),
-        EntityRef::Shell(x) => (2, x.index()),
-        EntityRef::Faceuse(x) => (3, x.index()),
-        EntityRef::Face(x) => (4, x.index()),
-        EntityRef::Loopuse(x) => (5, x.index()),
-        EntityRef::Loop(x) => (6, x.index()),
-        EntityRef::Edgeuse(x) => (7, x.index()),
-        EntityRef::Edge(x) => (8, x.index()),
-        EntityRef::Vertexuse(x) => (9, x.index()),
-        EntityRef::Vertex(x) => (10, x.index()),
-    };
-    ObjectRef {
-        type_code: EDIT_KINDS.get(kind).copied().unwrap_or(0),
-        key: ObjectKey(((kind as u64) << 32) | u64::from(i)),
-    }
-}
-
-/// The face, edge or vertex [`edit_key`] made `key` for (the only kinds the tracker
-/// records).
-fn edit_entity(key: ObjectKey) -> Option<EntityRef> {
-    let i = u32::try_from(key.0 & 0xffff_ffff).ok()?;
-    match key.0 >> 32 {
-        4 => Some(EntityRef::Face(FaceId::from_index(i))),
-        8 => Some(EntityRef::Edge(EdgeId::from_index(i))),
-        10 => Some(EntityRef::Vertex(VertexId::from_index(i))),
-        _ => None,
-    }
-}
-
 /// Tracker key of the edit trackers (one at a time).
 const EDIT_TRACKER: u64 = 0x4845_414c; // "HEAL"
 
@@ -537,10 +490,9 @@ fn tracked_edit<R>(
     b: &mut Brep,
     edit: impl FnOnce(&mut Kernel, &mut Brep, &mut NotifyEnv<'_>) -> Result<R>,
 ) -> (Result<R>, Changes) {
+    use crate::topology::brep::p3 as brep_p3;
     let mut ctx = crate::geom::context::Context::default();
-    let (user, sys) = k.context.take_notify_callbacks();
-    ctx.set_user_notify_callback(user);
-    ctx.set_sys_notify_callback(sys);
+    ctx.restore_notify_lease(k.context.take_notify_lease());
     // (the tracker reads its B-rep only to tell it from null)
     let tracker = TrackTopologyChanges::new(
         Some(crate::topology::BrepId::from_index(0)),
@@ -548,19 +500,30 @@ fn tracked_edit<R>(
         true,
         Some(&mut ctx),
     );
-    // every object's SmTopology record (SmTopology::Notify reads those a notification
-    // names, e.g. both vertices of SqueezeEdge's SM_NO_MERGE_IN_BREP)
-    let mut records = std::collections::BTreeMap::new();
-    crate::topology::brep::p3::seed_topology_records(&mut records, b, &edit_key);
-    let mut attributes = crate::geom::attribute::AttributeStore::default();
-    let r = {
-        let mut env = NotifyEnv {
-            records: &mut records,
-            attributes: &mut attributes,
-            context: Some(&mut ctx),
-            key_of: &edit_key,
-        };
-        edit(k, b, &mut env)
+    // the edit names b's objects by their kernel identities (and seeds their
+    // SmTopology records); the tracker's lists are decoded with b's serial
+    let (r, serial) = match brep_p3::notify_serial(&mut ctx, b) {
+        Ok(serial) => {
+            let key_of = move |e: EntityRef| brep_p3::topology_ref(serial, e);
+            let mut records = std::collections::BTreeMap::new();
+            let mut attributes = crate::geom::attribute::AttributeStore::default();
+            let mut env = NotifyEnv {
+                records: &mut records,
+                attributes: &mut attributes,
+                context: Some(&mut ctx),
+                key_of: &key_of,
+            };
+            (edit(k, b, &mut env), serial)
+        }
+        Err(e) => (Err(e), 0),
+    };
+    let edit_entity = |key: ObjectKey| {
+        brep_p3::topology_entity(serial, key).filter(|e| {
+            matches!(
+                e,
+                EntityRef::Face(_) | EntityRef::Edge(_) | EntityRef::Vertex(_)
+            )
+        })
     };
     let changes = Changes {
         removed: tracker
@@ -571,9 +534,7 @@ fn tracked_edit<R>(
         added: tracker.add_list().into_iter().map(edit_entity).collect(),
     };
     tracker.finish(Some(&mut ctx));
-    let (user, sys) = ctx.take_notify_callbacks();
-    k.context.set_user_notify_callback(user);
-    k.context.set_sys_notify_callback(sys);
+    k.context.restore_notify_lease(ctx.take_notify_lease());
     (r, changes)
 }
 /// `SqueezeEdge(e, survivor)` under the edit tracker ([`tracked_edit`]).
@@ -1533,84 +1494,9 @@ mod tests {
         ));
     }
 
-    /// A wire chain A--B--C (edge uses `2i` / `2i+1` of edge `i` at `v_i` / `v_{i+1}`) in one
-    /// wire shell of the infinite region.
+    /// The wire chain A--B--C without curves (`topology::brep::p3`'s test fixture).
     fn wire_chain() -> (Brep, [VertexId; 3], [EdgeId; 2]) {
-        use crate::geom::extent1d::Extent1d;
-        use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
-        use crate::topology::shell::{ShellMembers, ShellType};
-        use crate::topology::{
-            Edge, Edgeuse, EdgeuseId, EdgeuseOwner, Region, Shell, Vertex, Vertexuse, VertexuseId,
-            VertexuseOwner,
-        };
-        let mut b = Brep::new();
-        let r = b
-            .add_region_record(Region {
-                in_brep: true,
-                ..Region::default()
-            })
-            .unwrap();
-        b.set_infinite_region_record(Some(r));
-        let s = b
-            .add_shell_record(Shell {
-                region: Some(r),
-                shell_type: ShellType::Wire,
-                members: ShellMembers::Edgeuse(EdgeuseId::from_index(0)),
-                ..Shell::default()
-            })
-            .unwrap();
-        b.region_mut(r).unwrap().shells.push(s);
-        let v: Vec<VertexId> = (0..3)
-            .map(|i| {
-                b.add_vertex_record(Vertex {
-                    point: crate::math::Vec3::new(f64::from(i), 0.0, 0.0),
-                    tolerance: 1e-6,
-                    ..Vertex::default()
-                })
-                .unwrap()
-            })
-            .collect();
-        let mut es = Vec::new();
-        for i in 0..2u32 {
-            es.push(
-                b.add_edge_record(Edge {
-                    vertices: [v[i as usize], v[i as usize + 1]],
-                    edgeuses: vec![
-                        EdgeuseId::from_index(2 * i),
-                        EdgeuseId::from_index(2 * i + 1),
-                    ],
-                    interval: Extent1d::from_min_max(0.0, 1.0),
-                    tolerance: 1e-6,
-                    curve: None,
-                })
-                .unwrap(),
-            );
-        }
-        for i in 0..4u32 {
-            b.add_edgeuse_record(Edgeuse {
-                edge: Some(EdgeId::from_index(i / 2)),
-                owner: EdgeuseOwner::Shell(Some(s)),
-                vertexuse: Some(VertexuseId::from_index(i)),
-                orientation: if i % 2 == 0 {
-                    OrientType::Same
-                } else {
-                    OrientType::Opposite
-                },
-                ..Edgeuse::default()
-            })
-            .unwrap();
-        }
-        for (i, &vx) in [v[0], v[1], v[1], v[2]].iter().enumerate() {
-            let vu = b
-                .add_vertexuse_record(Vertexuse {
-                    vertex: Some(vx),
-                    owner: VertexuseOwner::Edgeuse(Some(EdgeuseId::from_index(i as u32))),
-                    ..Vertexuse::default()
-                })
-                .unwrap();
-            b.vertex_mut(vx).unwrap().vertexuses.push(vu);
-        }
-        (b, [v[0], v[1], v[2]], [es[0], es[1]])
+        crate::topology::brep::p3::test_support::wire_chain(false)
     }
 
     /// The healer's `SqueezeEdge` completes on an ordinary wire chain: its tracked
@@ -1650,7 +1536,7 @@ mod tests {
     ) {
         use crate::curve::curve::Curve;
         use crate::curve::line::Line;
-        use crate::geom::context::{is_reserved_key, NotifyCallback};
+        use crate::geom::context::{NotifyCallback, GEOMETRY_KEY_BASE};
         use crate::geom::object::{NotifyOperation, ObjectRef};
         use crate::heal::face_props::Tri;
         use crate::heal::heal_data::p2::EdgeProps;
@@ -1670,7 +1556,7 @@ mod tests {
             ) -> Result<()> {
                 let mut seen = self.0.lock().unwrap();
                 for x in [Some(caller), data1, data2, data3].into_iter().flatten() {
-                    if is_reserved_key(x.key) {
+                    if x.key.0 >= GEOMETRY_KEY_BASE {
                         seen.push(x.key);
                     }
                 }
