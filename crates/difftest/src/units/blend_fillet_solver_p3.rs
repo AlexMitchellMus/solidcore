@@ -23,7 +23,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use solidcore::blend::fillet_custom_solver::{InitialValues, JacobianLoad, OffsetSurface, SurfaceId};
+use solidcore::blend::fillet_custom_solver::{
+    InitialValues, JacobianLoad, OffsetSurface, SurfaceId,
+};
 use solidcore::blend::fillet_solver::p1::{
     FilletSolver, FilletSolverOps, FilletSolverType, OffsetSurfaceSlot,
 };
@@ -330,15 +332,24 @@ fn rust_step(i: &StepIn) -> Result<Output, HarnessError> {
     for (rail, (srf, orient)) in [&i.s0, &i.s1].into_iter().zip(i.orient).enumerate() {
         let base = surface_of(srf)?;
         let d = i.radius * orient;
-        let mut s = match OffsetSurface::new(&k, d, base, SurfaceId::Free(rail as u32), SS_UNKNOWN) {
+        let mut s = match OffsetSurface::new(&k, d, base, SurfaceId::Free(rail as u32), SS_UNKNOWN)
+        {
             Ok(s) => s,
-            Err(e) => return Output::unported(&e).ok_or_else(|| harness(format!("offset surface: {e}"))),
+            Err(e) => {
+                return Output::unported(&e).ok_or_else(|| harness(format!("offset surface: {e}")))
+            }
         };
         if i.allow_ext {
             s.set_allow_extension(true);
         }
         fs.base
-            .set_surface(rail, Some(OffsetSurfaceSlot { key: rail as u64, surface: s }))
+            .set_surface(
+                rail,
+                Some(OffsetSurfaceSlot {
+                    key: rail as u64,
+                    surface: s,
+                }),
+            )
             .map_err(|e| harness(e.to_string()))?;
     }
     let mut cur = TsectPnt::new();
@@ -390,7 +401,10 @@ fn rust_step(i: &StepIn) -> Result<Output, HarnessError> {
             o.push(offset(1));
             Ok(Output::new().values("flat", o))
         }
-        Err(e) => Ok(Output::unported(&e).unwrap_or_else(|| Output::new().values("flat", vec![status(&e)]))),
+        Err(e) => {
+            Ok(Output::unported(&e)
+                .unwrap_or_else(|| Output::new().values("flat", vec![status(&e)])))
+        }
     }
 }
 
@@ -437,7 +451,10 @@ fn patch(
         .map(|i| {
             (0..=m)
                 .map(|j| {
-                    let (s, t) = (gu.get(i).copied().unwrap_or(0.0), gv.get(j).copied().unwrap_or(0.0));
+                    let (s, t) = (
+                        gu.get(i).copied().unwrap_or(0.0),
+                        gv.get(j).copied().unwrap_or(0.0),
+                    );
                     let lift = if i > 0 && i < n && j > 0 && j < m && bump != 0.0 {
                         rng.uniform(-bump, bump)
                     } else {
@@ -453,7 +470,15 @@ fn patch(
                 .collect()
         })
         .collect();
-    SrfIn::Bspline(BssIn { oob: false, form: 0, net, p, q, u, v })
+    SrfIn::Bspline(BssIn {
+        oob: false,
+        form: 0,
+        net,
+        p,
+        q,
+        u,
+        v,
+    })
 }
 
 /// A floor `z = 0` (`(u L, v L, 0)`) and a wall from the edge `x = z = 0` along
@@ -466,13 +491,35 @@ fn gen_step(rng: &mut Rng) -> StepIn {
     let (sp, cp) = (phi.sin(), phi.cos());
     let r = l * rng.uniform(0.03, 0.15);
     let curved = rng.chance(0.4);
-    let bump = if curved { l * rng.uniform(0.005, 0.03) } else { 0.0 };
+    let bump = if curved {
+        l * rng.uniform(0.005, 0.03)
+    } else {
+        0.0
+    };
     let deg = |rng: &mut Rng| 1 + rng.below(3) as usize;
     let (p0, q0, p1, q1) = (deg(rng), deg(rng), deg(rng), deg(rng));
-    let s0 = patch(rng, [0.0; 3], [l, 0.0, 0.0], [0.0, l, 0.0], [0.0, 0.0, 1.0], p0, q0, bump);
+    let s0 = patch(
+        rng,
+        [0.0; 3],
+        [l, 0.0, 0.0],
+        [0.0, l, 0.0],
+        [0.0, 0.0, 1.0],
+        p0,
+        q0,
+        bump,
+    );
     let w = [cp, 0.0, sp];
     let n1 = [sp, 0.0, -cp];
-    let s1 = patch(rng, [0.0; 3], [0.0, l, 0.0], [l * w[0], l * w[1], l * w[2]], n1, p1, q1, bump);
+    let s1 = patch(
+        rng,
+        [0.0; 3],
+        [0.0, l, 0.0],
+        [l * w[0], l * w[1], l * w[2]],
+        n1,
+        p1,
+        q1,
+        bump,
+    );
 
     let xc = r * (1.0 + cp) / sp;
     let y0 = l * rng.uniform(0.1, 0.9);
@@ -537,7 +584,11 @@ fn gen_step(rng: &mut Rng) -> StepIn {
         _ => {}
     }
     let ty = *rng.choose(&[0u8, 2, 2, 4, 4, 6]).unwrap_or(&2);
-    let orient = if rng.chance(0.1) { [-1.0, 1.0] } else { [1.0, 1.0] };
+    let orient = if rng.chance(0.1) {
+        [-1.0, 1.0]
+    } else {
+        [1.0, 1.0]
+    };
     // the rail chord of the exact fillet, perturbed for the clipped radius solve
     let chord = ((xc - rail1[0]).powi(2) + rail1[2].powi(2)).sqrt();
     let distance = chord * rng.uniform(0.9, 1.1);
@@ -563,7 +614,12 @@ fn gen_step(rng: &mut Rng) -> StepIn {
         dom2,
         next_uv0: [rng.uniform(-1.0, 1.0), rng.uniform(-1.0, 1.0)],
         next_uv1: [rng.uniform(-1.0, 1.0), rng.uniform(-1.0, 1.0)],
-        next_ud: [rng.uniform(-1.0, 1.0), rng.uniform(-1.0, 1.0), rng.uniform(-1.0, 1.0), rng.uniform(-1.0, 1.0)],
+        next_ud: [
+            rng.uniform(-1.0, 1.0),
+            rng.uniform(-1.0, 1.0),
+            rng.uniform(-1.0, 1.0),
+            rng.uniform(-1.0, 1.0),
+        ],
     }
 }
 

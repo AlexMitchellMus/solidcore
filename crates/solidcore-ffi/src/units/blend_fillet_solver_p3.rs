@@ -73,7 +73,9 @@ fn validate(op: Op, input: &[f64]) -> Result<(), FfiError> {
         Op::Step => {
             let ty = rd.index(MAX_SOLVER_TYPE)?;
             if ty == VARIABLE_RADIUS {
-                return Err(bad("step: a variable radius solver is cast to SmVariableRadiusFS"));
+                return Err(bad(
+                    "step: a variable radius solver is cast to SmVariableRadiusFS",
+                ));
             }
             let tol = rd.finite()?;
             if tol <= 0.0 {
