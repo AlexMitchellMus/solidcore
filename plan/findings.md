@@ -7730,3 +7730,15 @@ lengths). Fixture intersector setup preserves the executive constructor's
 `ignore_tangency = true` and `SM_DEG2RAD(30)` operation order. Passing operations
 all return early error statuses; their observed post-error state is compared as
 data rather than being discarded by error-string normalization.
+
+Verification for the full-comment-byte candidate after merging main `05731370`:
+fmt (including the included runner/FFI/test files), both workspace clippy modes,
+1,389 kernel tests, four FFI guard tests and wasm pass. Direct parity remains
+287 cases / 112 state-error passes / 0 failures / 175 deferred, with_values=112
+and no_values=0, max_rel_err=0. Perturbation detects 112/112 changed cases.
+Fuzz: 2,000 cases, rejected=1764, malformed=21, ran=215, differs=0, crashes=0,
+panics=0, timeouts=0. Valgrind compares 40 C++/Rust programs with their baseline:
+matching protocol, zero errors, zero definitely/indirectly/possibly lost bytes.
+These checks establish no successful geometric or topological parity.
+The final parallel green/partial matrix passes all 210 units; a separate per-unit
+log audit confirms zero failures and zero units declared green with deferrals.
