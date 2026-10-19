@@ -249,13 +249,15 @@ impl PrimitiveCreation {
 
     /// Sweep copies of the profiles along the path, optionally scaling and capping.
     /// Only `side_faces` is reset; cap output slots retain their upstream lifetime.
+    /// The scale reference retains its derived curve dispatch; path and scale use
+    /// B-spline copies, as in the upstream constructor.
     pub fn create_curve_sweep(
         &mut self,
         a: &mut impl PrimitiveAccess,
         brep: BrepId,
         profiles: &[Option<Curve>],
         path: &BSplineCurve,
-        scale_reference: Option<&BSplineCurve>,
+        scale_reference: Option<&Curve>,
         scale_curve: Option<&BSplineCurve>,
         approx_tol: f64,
         options: SweepOptions,

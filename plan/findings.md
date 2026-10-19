@@ -9346,3 +9346,48 @@ translational sweep geometry: 719 passes/50 deferred/19 rejected, all zero failu
 No tolerance or absolute floor changed. Kernel tests: 1398 passed. The complete
 local --green gate: 213 units, 114 passed, 99 partial, zero failed. Both focused
 500-case FFI fuzz runs completed without differences, crashes, panics or timeouts.
+
+
+## PR #233 scale-reference review fix and current dependency contracts (2026-10-19)
+
+The second review identified another derived-curve slice: `CreateCurveSweep`'s
+scale reference. Upstream `SmPrimitiveCreation.cpp:4970-4986` calls the original
+`pScaleReference` virtually, while `pPathCurve` (:4906), profiles (:4926) and
+`pScaleCurve` (:4958) are deliberately copy-constructed as `SmBSplineCurve`.
+Both public Rust sweep/preparation entry points now take `Option<&Curve>` for
+that reference, and the private scale sampler uses it directly. Path/scale
+copies, sample order, distance normalization and interpolation remain unchanged.
+An exact Rust preparation regression uses an imported line with a two-ULP cached
+NURB discrepancy: the analytic endpoint scale is 2, and slicing that reference
+produces a different endpoint. It does not certify native construction, scaling
+or topology behind the existing deferrals. Real derived native fixtures remain
+follow-up work once construction stops deferring, as requested in the review.
+
+The branch incorporates canonical main `4db3d660`, reviewed primitive dependency
+#213 (`92005b59`) and sweep dependency #222 (`86c7eb33`). The latter already wires
+the available copying, face-building, removal and binormal calls mentioned in
+the second review; it retains production-adapter follow-up #255. Main's newer
+B-rep APIs additionally require mutable destination contexts and explicit
+notification records/attributes/identities. Those are now passed through both
+sweep borrow callbacks and the p7 curve-owner wrapper. Primitive p1 cylindrical
+boxes, pole-free spheres and planar boolean tails pass their caller's notification
+environment; face identities come from that environment, not inferred arena keys.
+Fixture adapters own explicit notification state with no registered observers.
+No substitute production context or notification store is created in the defaults.
+
+The p3 defaults for wire creation, stitch/orient, whole-B-rep transform and face
+composites now invoke the available p5/face-p3 ports. Intersector deletion requires
+a context-only scoped intersector and caller-resolved handles rather than an Unported marker
+for the now-partial p2 unit. The empty fixture explicitly declines that unsupported
+service if unexpectedly reached. Successful production topology still requires
+a concrete PrimitiveAccess/SweepAccess adapter.
+
+
+Local verification of this integration: formatting, normal/native Clippy,
+1,440 kernel tests, wasm32 and the p3 native FFI guard regression pass. All six
+affected native gates have zero failures and max_rel_err 0: p3 293/284 pass/8
+deferred/1 rejected; p1 773/689/75/9; topology sweep 568/554/14/0;
+API B-rep 573/306/267/0; API surfaces 882/831/51/0; B-rep p7 316/197/119/0.
+Sensitivity detects all 284 comparable p3 cases. Fuzz 300: 78 executed, 163
+rejected, 59 malformed; zero differences, crashes, panics or timeouts. The
+full-gate/CI evidence for the tested PR head is recorded in the PR discussion.

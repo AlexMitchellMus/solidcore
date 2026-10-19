@@ -87,7 +87,7 @@ pub(super) fn split_profiles(k: &Kernel, curves: &mut Vec<BSplineCurve>) -> Resu
 fn scaling(
     k: &Kernel,
     path: &mut BSplineCurve,
-    reference: &BSplineCurve,
+    reference: &Curve,
     scale: &BSplineCurve,
 ) -> Result<BSplineCurve> {
     let mut scale = scale.clone();
@@ -105,7 +105,8 @@ fn scaling(
             "scaling sampling exceeds 1000000",
         ));
     }
-    let reference = Curve::from(reference.clone());
+    // Unlike path/scale, upstream never copy-constructs pScaleReference.
+    // Keep its virtual natural interval, point solve and point evaluation.
     let ri = reference.natural_interval();
     let options = GlobalPointSolveOptions {
         handle: Some(GeometryHandle(ri)),
@@ -158,11 +159,13 @@ fn scaling(
 /// Copy, optionally scale, translate and orient a curve sweep's geometry.
 /// This is the complete preparation block of `CreateCurveSweep`, before building
 /// composites and faces. The caller retains its Kernel and approximation policy.
+/// The scale reference keeps its analytic dispatch; path and scale are NURB copies,
+/// matching the upstream copy constructors.
 pub fn prepare_curve_sweep(
     k: &Kernel,
     profiles: &[Option<Curve>],
     path: &BSplineCurve,
-    scale_reference: Option<&BSplineCurve>,
+    scale_reference: Option<&Curve>,
     scale_curve: Option<&BSplineCurve>,
     options: SweepOptions,
     test_continuity: bool,
@@ -291,6 +294,57 @@ pub fn prepare_curve_sweep(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preparation_keeps_analytic_scale_reference() -> Result<()> {
+        use crate::curve::line::Line;
+
+        let k = Kernel::default();
+        // Imported analytic data and its cached NURB can differ in the last bits.
+        // The scale curve moves from distance 1 to distance 2 from x = 2.
+        let point = Vec3::new(2.0, 0.0, 0.0);
+        let cached_point = Vec3::new(f64::from_bits(point.x.to_bits() + 2), 0.0, 0.0);
+        let reference = Curve::from(Line::from_parts(
+            BSplineCurve::create_line_segment(3, cached_point, cached_point + Vec3::Z)?,
+            point,
+            Vec3::Z,
+            Extent1d::from_min_max(0.0, 1.0),
+            1.0,
+            false,
+        ));
+        let path = BSplineCurve::create_line_segment(3, Vec3::ZERO, Vec3::Z)?;
+        let scale = BSplineCurve::create_line_segment(
+            3,
+            Vec3::new(3.0, 0.0, 0.0),
+            Vec3::new(4.0, 0.0, 1.0),
+        )?;
+        let profiles = [Some(Curve::from(path.clone()))];
+        let prepare = |reference: &Curve| -> Result<BSplineCurve> {
+            Ok(prepare_curve_sweep(
+                &k,
+                &profiles,
+                &path,
+                Some(reference),
+                Some(&scale),
+                SweepOptions::default(),
+                false,
+            )?
+            .scale
+            .expect("both scaling inputs produce a scale law"))
+        };
+        let analytic = prepare(&reference)?;
+        assert_eq!(
+            analytic.evaluate_point(analytic.natural_interval().max())?,
+            Vec3::new(2.0, 2.0, 2.0)
+        );
+        // Slicing the caller's reference must fail the exact endpoint assertion.
+        let sliced = prepare(&Curve::from(bspline(&reference).unwrap()))?;
+        assert_ne!(
+            sliced.evaluate_point(sliced.natural_interval().max())?,
+            Vec3::new(2.0, 2.0, 2.0)
+        );
+        Ok(())
+    }
 
     #[test]
     fn preparation_preserves_inputs_and_recovers_the_original_path() -> Result<()> {

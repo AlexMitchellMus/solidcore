@@ -1,6 +1,6 @@
 # solidcore status
 
-Last updated: 2026-10-19, PR #233 review (`primitive.primitive_creation_p3` partial: 284 bit-identical passes, 8 deferred, 1 UB-78 rejection). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
+Last updated: 2026-10-19, PR #233 second review (`primitive.primitive_creation_p3` partial: 284 bit-identical passes, 8 deferred, 1 UB-78 rejection). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
 Latest port: `primitive.primitive_creation_p3` ([PR #233](https://github.com/tangency-labs/solidcore/pull/233)) implements all eight owned functions through `PrimitiveAccess`/`SweepAccess`. Native comparisons certify the ruled-surface helper and early/empty entry paths; successful construction and topology tails await dependencies and a concrete adapter. See the final validation entry below.
 
@@ -1114,3 +1114,24 @@ reparameterization in surface.surf_of_extrusion_p1. Both now follow the virtual
 upstream path, preserving the IsLinear domain snapshot before GetEnds. Six new
 regressions bring its exact differential passes to 2061/2061. The final local
 --green gate completed: 213 units, 114 passed, 99 partial, zero failed.
+
+
+## PR #233 scale-reference dispatch review (2026-10-19)
+
+Curve-sweep scaling keeps the caller's original Curve for virtual queries; path,
+profile and scale-curve NURB copies retain the explicit upstream behavior. A third
+exact derived-dispatch regression exercises public preparation and distinguishes
+an analytic line from its cached NURB. Native derived construction remains deferred.
+Canonical main 4db3d660 and dependency heads #213 92005b59 / #222 86c7eb33 are
+integrated. Caller notification state and mutable destination contexts follow
+their current B-rep contracts; available p3 service defaults call the existing ports.
+
+Validation: fmt (including included runners), plain/native Clippy, 1,440 kernel
+tests, wasm32 and the native p3 FFI guard test pass. Affected native gates:
+p3 293/284 passed/8 deferred/1 rejected; p1 773/689/75/9;
+topology sweep 568/554/14/0; API B-rep 573/306/267/0;
+API surfaces 882/831/51/0; B-rep p7 316/197/119/0. All have zero failures
+and maximum relative error zero. P3 sensitivity detects 284/284 comparisons.
+The 300-mutation harness run executes 78 cases, rejects 163 and classifies 59
+as malformed: zero differences, crashes, panics or timeouts. These results do
+not certify the deferred construction or production-adapter paths.
