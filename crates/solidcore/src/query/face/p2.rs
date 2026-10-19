@@ -1370,7 +1370,7 @@ mod tests {
                 2,
             )),
         };
-        let loops = boundary_loops(&k, &b, &objects, f).unwrap();
+        let loops = boundary_loops(&k, &b, &mut b.clone(), &objects, &mut Vec::new(), f).unwrap();
         assert_eq!(loops.len(), 1);
         assert_eq!(loops[0].vertices.len(), 1);
         assert!(loops[0].edges.is_empty());
@@ -1436,7 +1436,7 @@ mod tests {
             cache: Some(cache),
             source: Curve::from(Line::from_points(Vec3::ZERO, Vec3::X, 2)),
         };
-        let loops = boundary_loops(&k, &b, &objects, f).unwrap();
+        let loops = boundary_loops(&k, &b, &mut b.clone(), &objects, &mut Vec::new(), f).unwrap();
         assert_eq!(loops[0].vertices.len(), 4);
         assert_eq!(loops[0].edges.len(), 4);
         for eu in &loops[0].edges {
