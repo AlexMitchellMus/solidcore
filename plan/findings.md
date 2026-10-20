@@ -10287,4 +10287,17 @@ function still return first, so no case reaches it yet.
 - `SmFilletIntersector` runs `PointOnPlaneSolve` on `ConstantRadiusAssistedFs`, whose override is
   `SmConstantRadiusAssistedFS::PointOnPlaneSolve` (`blend.fillet_standard_solver_p2`): the intersector trait method has no default
   any more (the base version is never reached through it), and that implementation returns `Unported` for its owner. The
-  intersector's 38 cases that deferred at `blend.fillet_solver_p2` now defer at `blend.fillet_standard_solver_p2`.
+  intersector's 37 cases that deferred at `blend.fillet_solver_p2` now defer at `blend.fillet_standard_solver_p2`.
+
+## blend.fillet_solver_p2: `LoadInitialValues` gets a copy of the rail's offset surface
+
+`PointOnPlaneSolve`, `RailEdgeuseIntersect` and `RailRailIntersect` pass `*GetSurface(lRailIndex)` as `crSurface1` of the
+virtual `LoadInitialValues`. p1's `FilletSolverOps::load_initial_values` takes `&mut OffsetSurface`, so p2 passes a clone of the
+rail's surface and writes the clone back afterwards (keeping an extension the evaluation grows). A `LoadInitialValues` that also
+changes the solver's own rail surface (`SmConstantDistanceFS` calls `SetOffsets(approx radius)` on both rails) would have that
+change on the rail overwritten by the write-back, where upstream it sticks (`crSurface1` is the rail surface). The test solver's
+`LoadInitialValues` does not touch the rails, so no case shows it. This is also why the harness still runs the test solver rather
+than #168's `SmConstantDistanceFS` (the only library solver whose `GetJacobianSize`, `LoadInitialValues`, `LoadJacobian` and
+`SetupOffsetValues` are all ported; `SmConstantRadiusFS::LoadInitialValues` belongs to `blend.fillet_standard_solver_p2`, so with
+#168's `SmConstantRadiusFS` every solve would defer): the trait's `surface1` needs to name the rail (as #168's `InitialSurface`
+does), and `ConstantDistanceFs` needs a p1 `FilletSolverOps` implementation, both in `blend.fillet_solver_p1`'s interface.

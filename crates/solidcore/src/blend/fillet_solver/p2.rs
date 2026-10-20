@@ -24,8 +24,8 @@
 //!   objects are wrapped privately into [`EvalNFunctions`] for [`LocalSolveNd`].
 //! - **Fillet geometries.** The ported `SmFilletGeom`, `SmFilletEdge` and
 //!   `SmFilletVertex` (`blend.fillet_geom_p1`/`_p2`, partial) live in a `FilletBrep`,
-//!   which this solver does not hold (`plan/findings.md`, "blend.fillet_solver_p2:
-//!   fillet-geometry stubs need a FilletBrep"); those calls, the pseudo-B-rep and the
+//!   which this solver does not hold (`plan/findings.md`, "`blend.fillet_solver_p2`:
+//!   fillet-geometry stubs need a `FilletBrep`"); those calls, the pseudo-B-rep and the
 //!   executive return [`SolidError::Unported`] at the call site (tagged `UNPORTED`).
 //!   `sm_SrfSrfIntersection` (a free function) is wired. The analytic
 //!   `Calc*FilletGeom` methods build the fillet surface, rail curves and centre line

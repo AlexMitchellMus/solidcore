@@ -65,7 +65,7 @@
 //!   virtuals (`RailRailIntersect`'s callees, `PointOnPlaneSolve`) dispatch on their
 //!   `ConstantRadiusAssistedFs` view ([`as_assisted`]), the class
 //!   `sm_CreateCubicRailRailInterpolant` takes (`plan/findings.md`,
-//!   "blend.fillet_solver_p2: back-edges into the solver from blend.fillet_geom").
+//!   "`blend.fillet_solver_p2`: back-edges into the solver from `blend.fillet_geom`").
 //! - **Unported callees.** `SmConstantRadiusAssistedFS::PointOnPlaneSolve`
 //!   (`blend.fillet_standard_solver_p2`); `SmFilletGeom::GetRailIndexOfSideEU`,
 //!   `RailEdgeuseIntersect` and `SmFilletEdge::ShouldSwapFaces`
@@ -389,7 +389,7 @@ fn corner_test_rail_rail_interpolation_curve(
 /// points are in/out. The table's solvers are seen as `ConstantRadiusAssistedFs`
 /// ([`as_assisted`]), as for `sm_CreateCubicRailRailInterpolant`, so the virtuals
 /// `RailRailIntersect` calls dispatch on that class (`plan/findings.md`,
-/// "blend.fillet_solver_p2: back-edges into the solver from blend.fillet_geom").
+/// "`blend.fillet_solver_p2`: back-edges into the solver from `blend.fillet_geom`").
 #[allow(clippy::too_many_arguments)]
 fn rail_rail_intersect(
     k: &Kernel,
