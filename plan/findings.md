@@ -7387,32 +7387,43 @@ stubbed: they need an `OffsetBrep` over the executive's original and offset B-re
 #175's code after `EdgeuseOffset` (cpp:2956-3071), which reaches `topology.brep_p7/p8`; a
 follow-up once this PR merges.
 
-**Results.** 866 cases (5 upstream-derived fixtures, 61 cases built in code, 800 generated
-two-B-rep scripts): 433 pass bit for bit (`max_rel_err 0`), 0 fail, 433 deferred, 0 cases
-where both sides reject the script. 430 passes compare an upstream result; 3 (`gen0264`,
-`gen0685`, `network_vertex_three_edges`) are guard agreements: the shim refuses the only op as an upstream null
-dereference, so no C++ runs and both sides compare `[0, op, -2]` (they count under
-`with_values=433 no_values=0` because the record has three values). Deferred, by the unit that blocks: `topology.brep_p2` 166,
-`surface.surface_cache_p2` 78, `harness:analytic-geometry-export` 70, `topology.face_p4` 42,
+**Results.** 882 cases (5 upstream-derived fixtures, 77 cases built in code, 800 generated
+two-B-rep scripts): 443 pass bit for bit (`max_rel_err 0`), 0 fail, 439 deferred, 0 cases
+where both sides reject the script. 441 passes compare an upstream result (one of them, `network_vertex_three_edges`, an
+error status from `VertexOffset`'s 3-edge branch); 2 (`gen0264`, `gen0685`) are guard
+agreements: the shim refuses the only op as an upstream null dereference, so no C++ runs
+and both sides compare `[0, op, -2]` (they count under `with_values=443 no_values=0`
+because the record has three values). Deferred, by the unit that blocks: `topology.brep_p2` 170,
+`surface.surface_cache_p2` 80, `harness:analytic-geometry-export` 70, `topology.face_p4` 42,
 `intersect.surface_drop_curve` 27, `curve.crv_on_surf` 25, `topology.face_p2` 12,
 `intersect.surface_drop_lib_p3` 7, `blend.fillet_standard_solver_p1` 4, `surface.sphere` 2.
-Success-path coverage (counted at this head): 222 of the 433 passes complete at least one
+Success-path coverage (counted at this head): 232 of the 443 passes complete at least one
 successful call among the unit's ops (the rest compare matching `-2` refusals or matching
 upstream error statuses). Per op, the passing cases that contain a success / a refusal / an
 upstream error (a case can count in several): `FaceuseOffset` 30 / 15 / 0, `VertexOffset`
-59 / 14 / 24, `ReplaceEdgeCurves` 49 / 9 / 0, `TrimExtendedEdge` 44 / 50 / 0,
-`ExtendTrimEdges` 1 / 39 / 7, `HaveTangentGaps` 56 / 30 / 0, `EdgeuseOffset` 34 / 22 / 10,
-`LocalFaceuseOffset` 6 / 37 / 52 (`HaveTangentGaps`' points: upstream ignores
+61 / 14 / 26, `ReplaceEdgeCurves` 51 / 9 / 0, `TrimExtendedEdge` 46 / 50 / 0,
+`ExtendTrimEdges` 1 / 39 / 7, `HaveTangentGaps` 58 / 30 / 0, `EdgeuseOffset` 36 / 22 / 12,
+`LocalFaceuseOffset` 8 / 39 / 52 (`HaveTangentGaps`' points: upstream ignores
 `NormalizedEvaluate`'s status and a failed evaluation leaves `sPnt` at `SM_UNDEF_DOUBLE`, which
 the port mirrors; an evaluator that wrote part of the point before failing would diverge, a
 theoretical case no input reaches); no successful pass: `UpdateFaceSurfaceDomain` (54
 refusals), `MateEdges` (18 refusals, 54 upstream errors). (This PR's earliest per-op
 counts swapped the `FaceuseOffset` and `ReplaceEdgeCurves` labels.) A 4000-seed sweep
-(4066 cases) passes 2119, fails 0, defers 1947, with no C++ crash or stall. Perturb:
-`SENSITIVE 433/433`. `--fuzz 2000`: `FUZZ-PASS cases=2000 rejected=224 malformed=627
-ran=1149 differs=0 crashes=0 panics=0 timeouts=0`; one earlier run of the same tree had a
-single timeout, `fuzz01488` (a one-field mutation of `gen0577`, whose C++ side takes about
-19 s alone against the 20 s budget, the Rust 0.16 s): load-dependent, as `gen0577` itself.
+(4082 cases) passes 2129, fails 0, defers 1953, with no C++ crash or stall. Perturb:
+`SENSITIVE 443/443`. `--fuzz 2000` at the #156 head: `FUZZ-PASS cases=2000 rejected=224
+malformed=627 ran=1149 differs=0 crashes=0 panics=0 timeouts=0`; one earlier run of the same
+tree had a single timeout, `fuzz01488` (a one-field mutation of `gen0577`, whose C++ side
+takes about 19 s alone against the 20 s budget, the Rust 0.16 s): load-dependent, as
+`gen0577` itself. At the follow-up head (882 cases, so a different draw of bases): `FUZZ-FAIL
+cases=2000 rejected=195 malformed=620 ran=1183 differs=0 crashes=0 panics=0 timeouts=2`,
+both known and neither about this unit's code: `fuzz00434` is `gen0577` with `inset` and
+`extend` set, whose C++ `ExtendTrimEdges` on `Mouse.smb` takes 19.5 s alone (23.5 s for the
+whole script, 20.7 s without the flags; the Rust defers at `surface.surface_cache_p2`),
+the same budget flake as `fuzz01488` (the harness has no per-case fuzz exclusion or
+budget knob; `fuzz_cases` draws any base); `fuzz01278` is `gen0332` with one control point
+of an `add_curve` 2D cubic moved to `y = 1e300`, where the C++ `TrimExtendedEdge` returns
+status 0 in under a second and the Rust side runs for minutes in `curve.curve_p8`'s
+`global_curve_intersect` (see the `curve.curve_p8` entry at the end of this file).
 Valgrind: 54 sampled shim programs before the wiring round, then 64 on the new paths (54
 newly passing cases, up to ten per op family plus eight built-in ones, and ten new
 deferrals including the five above), then the 13 cases the review follow-up changes: clean.
@@ -7420,8 +7431,16 @@ deferrals including the five above), then the 13 cases the review follow-up chan
 `VertexOffset` on B-reps whose edge uses are not all loop edge uses (see Guards): 8
 generated cases now compare its result on wire / network / face B-reps, and four new
 built-in cases run it on the wire network's and a single wire's vertices (the one with
-three of the network's edges is a guard agreement: the shim's per-edge check refuses it). `HaveTangentGaps`
+three of the network's edges compares the 3-edge branch's error status). `HaveTangentGaps`
 accepts `n = 0` (upstream evaluates once at `0 / 0`; `cone_have_tangent_gaps_no_samples`).
+Second round (re-review of 9f50dfcc): the run header no longer refuses `dist == 0` or
+`approx == 0` (only a negative tolerance is refused); 16 built-in cases, `*_zero_distance`
+and `*_zero_approx` on one case per op family, run both sides under a timeout: 10 pass, 6
+defer, no hang (a zero distance makes a radius-0 arc in `VertexOffset` and zero snap / drop
+distances in `EdgeuseOffset`, error paths; a zero tolerance only feeds `IsArc` / `IsLine` and
+the approximations). HANG-9 (`CreateExtendedSurface` at distance 0) is not reached: the
+executive's extended-surface cache is seeded, and the unit's own calls pass an extension
+domain, not the offset distance.
 `nurbs.b_spline_surface_p2` (touched): 764 cases, 759 pass, 5 deferred; its
 `three_arcs_about_two_centres` case (arcs about two centres, the first two sharing their
 start point) compares 94 values and fails with the first arc's centre captured by value, so
@@ -9528,3 +9547,34 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   The FFI refuses a vertex repeated in the one-list `StitchVertexPairs` list (UB-178).
   Upstream defects kept by the port: WR-186 (`DoStitching`'s sticky candidate flags),
   WR-187 (a cancelled squeeze reported as done), UB-197 (stale edge after a failed glue with `m_bIgnoreProblems`).
+
+## curve.curve_p8 (`SmCurve::GlobalCurveIntersect`): Rust runs for minutes where C++ returns at once on a 1e300 control point (found by `offset.offset_geometry_creation`'s fuzz, 2026-10-20)
+
+- **Inputs.** `offset.offset_geometry_creation` fuzz draw `fuzz01278` (base `gen0332` on
+  `disk.smb`, mutation `/ops/0/curve/cpts/3/1 = 1e+300`): a 2D polynomial cubic (one span,
+  control points about `(-0.01, 0.51)`, `(-0.96, 0.51)`, `(0.58, 0.26)`, `(0.80, 1e300)`) added
+  to the store, then `TrimExtendedEdge`, whose UV tangent curve is intersected with that
+  curve (`pTanUV->GlobalCurveIntersect(.., *pCurveExtended2, ..)`, cpp:1202; port
+  `offset_geometry_creation.rs` `tan_curve.global_curve_intersect`).
+- **C++.** `TrimExtendedEdge` returns status 0 in under a second. Under gdb (hardware
+  breakpoints on `SmCurve::GlobalCurveIntersect`, `SmGlobalSolver::SolveIt` and
+  `SmCurve::GlobalCoincidenceChecker`), each `GlobalCurveIntersect` of the op is followed by
+  one `SolveIt` (the `SM_SO_INTERSECTION_TEST`) and then the next `GlobalCurveIntersect`:
+  the coincidence checker is never entered from it, so the test finds no leaf pair (or the
+  single-pair local solve finishes).
+- **Rust.** `global_curve_intersect`'s `IntersectionTest` returns one solution with
+  `param(6) = 11` leaf pairs, so after the local solve it calls
+  `global_coincidence_checker`, where the 1e300 curve's `is_split_needed` is true on every
+  sub-interval: its tangent's `length_squared()` overflows to `inf`, `unitize` makes the polar
+  box's first basis vector `(0, 0, 0)` (`x / inf`), every later tangent reads as parallel and
+  opposite (`cross` length 0, `dot` 0 < `EFF_ZERO`), the box is `Unbounded`, and the checker
+  splits in three until the interval is below `ZONE_TOL_3D / 10`: 16 levels, 3^16 leaves,
+  each with bounding boxes, polar boxes and evaluations; `MAX_COINCIDENCE_DEPTH` (200) never
+  stops it. Measured > 180 s; the fuzz budget is 20 s a side.
+- **Suspected cause.** The curve-cache trees or the `SmCCIGlobalSolver` intersection test
+  disagree on the 1e300 span (the same arithmetic in the polar box would give the same
+  `Unbounded` box on the C++ side, so the difference is before the checker). Not located
+  within the time box; the C++ tree / solver were not instrumented.
+- **Status.** Open. Reproduce with the fuzz output file as a fixture (`fuzz01278` above);
+  no guard was added in `offset.offset_geometry_creation` (the hang is on the Rust side,
+  not an upstream defect, so no UB/HANG id).

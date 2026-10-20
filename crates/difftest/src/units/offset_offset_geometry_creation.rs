@@ -37,7 +37,10 @@
 //! which walks no loops and keeps only its per-edge checks (a curve on each edge; for a
 //! single edge, a face with surface and a B-spline curve). `ReplaceEdgeCurves` with
 //! a 3D curve and no UV curve is refused only when the curves run opposite (the shape
-//! test is replicated). The runner mirrors every guard on the imported B-reps.
+//! test is replicated). The runner mirrors every guard on the imported B-reps. The run
+//! header takes any finite offset distance (zero included) and any finite tolerance that
+//! is not negative: upstream neither crashes nor hangs at zero (the `*_zero_distance` and
+//! `*_zero_approx` cases, one pair per op family), so only a negative tolerance is refused.
 //!
 //! **Hang guards (`-6`, the script stops; the case defers).** The shim does not run two
 //! ops the Rust side defers at anyway, as they can take minutes or not return (the
@@ -3172,7 +3175,8 @@ const fn h(b: i64, kind: u8, i: i64) -> Hin {
 const NULL_H: Hin = [-1, K_NULL, -1];
 
 /// Cases built in code: each op on real solid B-reps with explicit geometry, at unit,
-/// tiny and huge scale, plus the guard refusals on the wire network.
+/// tiny and huge scale, plus the guard refusals on the wire network and the run header
+/// at zero.
 #[allow(clippy::too_many_lines)]
 fn edge_cases() -> Vec<(String, Value)> {
     let mut out = Vec::new();
@@ -3918,6 +3922,41 @@ fn edge_cases() -> Vec<(String, Value)> {
         other_off: h(1, K_EDGEUSE, 1),
     }];
     add("cone_have_tangent_gaps_no_samples", i);
+
+    // the run header at zero (maintainer review of #156): an offset distance of 0 and an
+    // approximation tolerance of 0 each on one case per op family
+    let picks = [
+        "cone_fixture_ops",
+        "_replace_edge_curves",
+        "_vertex_offset",
+        "_edgeuse_offset_",
+        "_edgeuse_offset_rails_",
+        "_trim_extended_edge",
+        "cone_mate_extend_local",
+        "local_offset_late_surface",
+    ];
+    let mut zero = Vec::new();
+    for pat in picks {
+        let pick = out
+            .iter()
+            .find(|(n, _)| n.contains(pat) && (pat.contains("rails") || !n.contains("_rails_")));
+        let Some((name, v)) = pick else { continue };
+        let Ok(i) = serde_json::from_value::<Inputs>(v.clone()) else {
+            continue;
+        };
+        for (suffix, dist, approx) in [
+            ("zero_distance", 0.0, i.approx),
+            ("zero_approx", i.dist, 0.0),
+        ] {
+            let mut z = i.clone();
+            z.dist = dist;
+            z.approx = approx;
+            if let Ok(v) = serde_json::to_value(z) {
+                zero.push((format!("{name}_{suffix}"), v));
+            }
+        }
+    }
+    out.extend(zero);
 
     out
 }
