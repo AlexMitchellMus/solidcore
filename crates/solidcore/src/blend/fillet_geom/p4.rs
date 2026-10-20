@@ -90,9 +90,10 @@ use crate::blend::fillet_solver::p1::{FilletSolver, FilletSurfaceGeneratorType};
 use crate::curve::curve::{Curve, CurveKind};
 use crate::error::{EntityRef, Result, SolidError};
 use crate::geom::extent1d::Extent1d;
+use crate::geom::extent2d::Extent2d;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::geom::object::ObjectRef;
-use crate::geom::solution_array::SolutionArray;
+use crate::geom::solution_array::{ObjectKind, SolutionArray, SolutionObject};
 use crate::geom::tol::zone_tol3d;
 use crate::geom::vector2d::{Point2, Vec2};
 use crate::kernel::Kernel;
@@ -198,8 +199,26 @@ const fn p3(uv: Point2) -> Point3 {
     Point3::new(uv.x, uv.y, 0.0)
 }
 
+/// The surface `sm_CreateUVCurve`'s point solves name (upstream `pSurface`, `this` of
+/// `SmSurface::GlobalPointSolve`), with the natural UV domain
+/// `SmSolution::GetParameterInterval` reads back from it:
+/// `SmGlobalSolver::IdenticalSolutions` (SmGlobalSolver.cpp:1910-1931) merges two
+/// solutions whose parameters differ by less than `1e-4` of that domain's sides.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct UvSurfaceHandle(Extent2d);
+
+impl SolutionObject for UvSurfaceHandle {
+    fn kind(&self) -> ObjectKind {
+        ObjectKind::Surface
+    }
+
+    fn natural_uv_domain(&self) -> Option<Extent2d> {
+        Some(self.0)
+    }
+}
+
 /// The UV parameters (`m_vStart[0]`, `m_vStart[1]`) of solution `i`.
-fn solution_uv(sols: &SolutionArray<NoObject>, i: usize, op: &'static str) -> Result<Point2> {
+fn solution_uv<O>(sols: &SolutionArray<O>, i: usize, op: &'static str) -> Result<Point2> {
     let s = sols
         .get(i)
         .ok_or_else(|| SolidError::invalid_input(op, "solution index out of range"))?;
@@ -242,18 +261,19 @@ fn b_spline_net(s: &Surface) -> Option<&BSplineSurface> {
 
 /// The curves `sm_SrfSrfIntersection` returns: the 3D intersection curve (`NULL` on a
 /// success without a curve) and its UV curves on both surfaces.
-struct SrfSrfCurves {
-    curve_3d: Option<BSplineCurve>,
-    uv_curve1: Option<BSplineCurve>,
-    uv_curve2: Option<BSplineCurve>,
+/// Also used by `blend.fillet_geom_p5`.
+pub(super) struct SrfSrfCurves {
+    pub(super) curve_3d: Option<BSplineCurve>,
+    pub(super) uv_curve1: Option<BSplineCurve>,
+    pub(super) uv_curve2: Option<BSplineCurve>,
 }
 
 /// `sm_SrfSrfIntersection` ([`super::p2::srf_srf_intersection`]) with fillet vertices
 /// (their points) for its `SmVertex` arguments; the curves continue as their B-spline
 /// part (`SmBSplineCurve*`; an analytic intersection curve keeps only its B-spline
-/// base here, see the module deviations).
+/// base here, see the module deviations). Also used by `blend.fillet_geom_p5`.
 #[allow(clippy::too_many_arguments)]
-fn srf_srf_intersection(
+pub(super) fn srf_srf_intersection(
     k: &Kernel,
     fb: &FilletBrep,
     start_fv: Option<VertexId>,
@@ -656,10 +676,12 @@ pub fn create_uv_curve(
     // Param tolerance
     let param_tol = (uv_domain.size().max_dimension() + 1.0) * EFF_ZERO;
 
+    // the solutions name pSurface (SmFilletGeom.cpp:4461-4504), see UvSurfaceHandle
+    let handle = UvSurfaceHandle(surface.natural_uv_domain());
     let solve = |pnt: Point3, op: SolverOperation, tol: f64, req: SolutionRequested| {
-        surface.global_point_solve::<NoObject>(
+        surface.global_point_solve(
             k,
-            None,
+            Some(handle),
             &uv_domain,
             op,
             pnt,
@@ -670,8 +692,8 @@ pub fn create_uv_curve(
     };
 
     // try increasing tolerance sized drops of Start/End Pts to surface
-    let mut solutions1: SolutionArray<NoObject> = SolutionArray::new();
-    let mut solutions2: SolutionArray<NoObject> = SolutionArray::new();
+    let mut solutions1: SolutionArray<UvSurfaceHandle> = SolutionArray::new();
+    let mut solutions2: SolutionArray<UvSurfaceHandle> = SolutionArray::new();
     let mut num_solutions1 = 0usize;
     let mut num_solutions2 = 0usize;
     for _ in 0..7 {
@@ -732,7 +754,7 @@ pub fn create_uv_curve(
     }
 
     // Discard solutions within dParamTol of the first one
-    let dedupe = |sols: &mut SolutionArray<NoObject>, n: usize| -> Result<usize> {
+    let dedupe = |sols: &mut SolutionArray<UvSurfaceHandle>, n: usize| -> Result<usize> {
         if n > 1 {
             let uv1 = solution_uv(sols, 0, OP_UV)?;
             for ii in (1..n).rev() {

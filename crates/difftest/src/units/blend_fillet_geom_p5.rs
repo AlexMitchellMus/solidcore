@@ -18,9 +18,10 @@
 //! counts; for `int_fillet` the vertex point and status; for the builders the edge count.
 //!
 //! Deferred on the Rust side (unported callees): every builder past its checks (the edge
-//! use constructor needs `SmBrep()`'s infinite region, `topology.brep_p3`), the
-//! split-face update (`SmFilletEdge::UpdateSplitFace`, `blend.fillet_geom_p2`) and the
-//! surface/surface intersections (`blend.fillet_geom_p2`) where reached. The shim refuses
+//! use constructor needs `SmBrep()`'s infinite region, `topology.brep_p3`). The
+//! split-face update and the surface/surface intersections (`blend.fillet_geom_p2`) are
+//! wired; the split-face op is refused by the shim (`UpdateSplitFace(NULL, NULL)`
+//! dereferences both faces in `ShouldSwapFaces` for every rail). The shim refuses
 //! the inputs that would make upstream dereference what the harness cannot build (a real
 //! fillet corner, a solver or rail it needs); the generator keeps only inputs both sides
 //! accept. Every run has at least [`MIN_GENERATED`] generated cases.

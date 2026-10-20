@@ -9778,7 +9778,51 @@ base to the derived solver, so the call is an `UNPORTED(blend.fillet_geom_p1)` s
 signature takes the `FilletSolver` base (or a solver trait) and the corner unit lands. No
 disagreement.
 
-## blend.fillet_geom_p5: rail trims and cross sections disagree in the tolerance-dominated regime (blocked)
+## blend.fillet_geom_p5: solver and corner callers
+
+Five `UNPORTED(blend.fillet_geom_p5)` stubs stay in units merged before this one:
+`SmFilletGeom::SmFilletGeom` (copy), `CreateEndCurve` and `TrimRailCurves` in
+`FilletSolver::split_fillet_geom` / `trim_rails`, `SmFilletEdge::MakeFilletEdge` in
+`sm_SplitRail` (`blend/fillet_solver/p1.rs`, `blend.fillet_solver_p1`) and in the corner
+operations of `blend.fillet_corner_p3` (`blend/fillet_corner/p3.rs`). Those callers hold a
+fillet geometry as a data-less `FilletGeomRef { index }` and the pseudo-B-rep as a bare
+`topology::Brep`, while the ported routines are methods of `FilletBrep` (the pseudo-B-rep
+with its fillet side tables, `blend.fillet_geom_p1`) addressed by `FilletGeomId` / vertex
+ids and need the solver table (`&[FilletSolver]`). There is no map from a `FilletGeomRef`
+to a `FilletGeomId` and no `FilletBrep` in those callers, so the calls are marked
+`justified:` with this section; each still returns `Unported`. The same callers' other
+fillet-geometry calls (`SmFilletGeom::GetRail`, `SetUpRailPoint`, `SmFilletVertex`
+constructor, `blend.fillet_geom_p1` / `_p6`) are stubs for the same reason; wire them all
+together when the solver and corner units address geometries in a `FilletBrep`. The
+targets are `FilletBrep::copy_fillet_geom`, `create_end_curve`, `trim_rail_curves` and
+`make_fillet_edge` (`blend/fillet_geom/p5.rs`). No disagreement.
+
+## blend.fillet_geom_p5: rail trims and cross sections disagree in the tolerance-dominated regime (resolved)
+
+**Resolved in round 2 (2026-10-20): a port bug in this unit's calls, not in the curve
+units.** Instrumenting both sides on `gen0024` (rail 1, `app_tol 1e-9`, end point
+`3.6e-7` off a rail of size `1e-3`) showed the drop of the start vertex agree bit for bit
+(`t = 0.58501075132934788`) and `SmCurve::GlobalPointSolve(.., SM_SR_ALL)` differ: upstream
+returns one solution (`0.035778619102039888`, value `3.6387038570803368e-7`), the port
+four within `5e-8` of each other in parameter and `1e-15` in value, and
+`TrimRailCurves` takes the first (`0.035778566244631806`). Upstream merges them in
+`SmGlobalSolver::AddSortedSolution` -> `IdenticalSolutions` (SmGlobalSolver.cpp:1910-1931),
+whose parameter tolerance is `max(100 SM_EFF_ZERO (1 + |t|), 1e-4 * length)` with the
+length from `SmSolution::GetParameterInterval`, i.e. the natural interval of the solution's
+object, the curve. The port called `global_point_solve` / `global_curve_self_intersect`
+with no solution object (`NoObject`, `None` handles), so the interval was missing, the
+tolerance `~1e-9` and the near-duplicates stayed. Fix: the rail solves in
+`TrimRailCurves` / `TrimCliffRails` (and the self-intersection) name the rail curve with
+its natural interval (`RailCurveHandle`, as `query.edge` does), and `sm_CreateUVCurve`'s
+surface solves in `blend.fillet_geom_p4` name the surface with its natural UV domain
+(`UvSurfaceHandle`, SmFilletGeom.cpp:4461-4504). After it: 300 generated cases 287 pass,
+0 fail, max_rel_err 0. The same object-less pattern remains, untouched here, in
+`blend.fillet_geom_p2` (`surf.global_point_solve::<NoObject>`, p2.rs `sm_TwoPntsIntersection`
+area) and `blend.fillet_geom_p4` (`global_curve_intersect::<NoObject>` in the fillet/fillet
+intersection, `surf1.global_point_solve::<NoObject>` in the extended-edge calculator): any
+solve whose solutions are counted or chosen can keep upstream-merged near-duplicates there.
+
+Original report (round 1):
 
 PR #264, difftest `--unit blend.fillet_geom_p5` (300 generated cases: 283 pass, 4 fail,
 13 deferred; `--seeds 2000`: 1896 pass, 22 fail, 82 deferred). Every failure has a model

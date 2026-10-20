@@ -65,8 +65,10 @@
 //!   the `DropPoint` status in `TrimRailCurves`, `ConvertTo2D`, `SetMinMax`) are
 //!   ignored, except that [`SolidError::Unported`] always propagates. A failed
 //!   `DropPoint` counts as no drop point.
-//! - **Unported callees.** `sm_SrfSrfIntersection` and `SmFilletEdge::UpdateSplitFace`
-//!   (`blend.fillet_geom_p2`); `SmFilletGeom::FindEdgeTangentAtPoint` and
+//! - **Surface/surface intersection.** `sm_SrfSrfIntersection` (`blend.fillet_geom_p2`)
+//!   runs through `blend.fillet_geom_p4`'s adapter: the fillet vertices go in as their
+//!   points and the curves come back as their `SmBSplineCurve` part, as in p4.
+//! - **Unported callees.** `SmFilletGeom::FindEdgeTangentAtPoint` and
 //!   `SmFilletGeom::Copy` (`blend.fillet_geom_p6`); `SmFilletExecutive::GetPseudoBrep`
 //!   (`blend.fillet_executive_p1`); the corner members above. Each stub replaces only
 //!   its call.
@@ -85,6 +87,7 @@ use crate::error::{Result, SolidError};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
+use crate::geom::solution_array::{ObjectKind, SolutionObject};
 use crate::geom::vector2d::{Point2, Vec2};
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3, EFF_ZERO, PI};
@@ -93,7 +96,6 @@ use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::nurbs::knots::Side;
 use crate::surface::plane::Plane;
-use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::p7::drop_vectors_at;
 use crate::surface::surface::{Surface, SurfaceKind};
 use crate::topology::edgeuse::p1::{self as eu1, primary_edgeuse};
@@ -106,6 +108,7 @@ use super::p1::{
     FilletEdgeType, FilletGeom, FilletGeomId, FilletGeomType, FilletSolverId, FilletVertex,
     FilletVertexType, FilletVertexuse,
 };
+use super::p4::{srf_srf_intersection, SrfSrfCurves};
 
 const OP_INT_FILLET: &str = "blend::fillet_geom::p5::FilletBrep::calc_fillet_int_fillet";
 const OP_CROSS: &str = "blend::fillet_geom::p5::FilletBrep::calc_cross_section";
@@ -125,6 +128,38 @@ const OP_SPLIT: &str = "blend::fillet_geom::p5::FilletBrep::update_geom_split_fa
 /// A call into a unit that is not ported yet; `_args` are upstream's arguments.
 fn unported_on<A, T>(_args: A, upstream: &'static str, unit: &'static str) -> Result<T> {
     Err(SolidError::unported(upstream, unit))
+}
+
+/// The object a rail curve's solutions name (upstream the curve, `this`, id `0`, or
+/// the analytic replacement its curve cache may make, id `1`), with the natural
+/// interval `SmSolution::GetParameterInterval` reads back from it:
+/// `SmGlobalSolver::IdenticalSolutions` (SmGlobalSolver.cpp:1910-1931) merges two
+/// solutions whose parameters differ by less than `1e-4` of that interval, so the
+/// solutions must name the curve, as upstream's do.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct RailCurveHandle {
+    id: u8,
+    ivl: Extent1d,
+}
+
+impl SolutionObject for RailCurveHandle {
+    fn kind(&self) -> ObjectKind {
+        ObjectKind::Curve
+    }
+
+    fn natural_interval(&self) -> Option<Extent1d> {
+        Some(self.ivl)
+    }
+}
+
+/// The global point solve options naming `curve` ([`RailCurveHandle`]).
+fn rail_solve_options(curve: &Curve) -> GlobalPointSolveOptions<'static, RailCurveHandle> {
+    let ivl = curve.natural_interval();
+    GlobalPointSolveOptions {
+        handle: Some(RailCurveHandle { id: 0, ivl }),
+        analytic_handle: Some(RailCurveHandle { id: 1, ivl }),
+        ..GlobalPointSolveOptions::default()
+    }
 }
 
 /// Ignores a status upstream does not check, but never an [`SolidError::Unported`].
@@ -294,51 +329,6 @@ fn eu_vertex(brep: &Brep, eu: EdgeuseId, op: &'static str) -> Result<VertexId> {
 
 // ---- unported callees -------------------------------------------------------------
 
-/// The curves `sm_SrfSrfIntersection` returns: the 3D intersection curve (`NULL` on a
-/// success without a curve) and its UV curves on both surfaces.
-struct SrfSrfCurves {
-    curve_3d: Option<BSplineCurve>,
-    uv_curve1: Option<BSplineCurve>,
-    uv_curve2: Option<BSplineCurve>,
-}
-
-/// `sm_SrfSrfIntersection` (unit `blend.fillet_geom_p2`).
-#[allow(clippy::too_many_arguments)]
-fn srf_srf_intersection(
-    k: &Kernel,
-    fb: &FilletBrep,
-    start_fv: Option<VertexId>,
-    end_fv: Option<VertexId>,
-    dir: Option<Vec3>,
-    end_dir: Option<Vec3>,
-    surface1: &Surface,
-    surface2: &Surface,
-    approx_tol: f64,
-    ang_tol: f64,
-    skip_two_pnts_intersection: bool,
-    ref_point: Option<Point3>,
-) -> Result<SrfSrfCurves> {
-    // UNPORTED(blend.fillet_geom_p2): sm_SrfSrfIntersection
-    unported_on(
-        (
-            k,
-            fb,
-            start_fv,
-            end_fv,
-            dir,
-            end_dir,
-            surface1,
-            surface2,
-            approx_tol,
-            ang_tol,
-            skip_two_pnts_intersection,
-            ref_point,
-        ),
-        "sm_SrfSrfIntersection",
-        "blend.fillet_geom_p2",
-    )
-}
-
 /// `SmFilletCorner::GetCornerType` (unit `blend.fillet_corner_p1`).
 fn corner_type(corner: FilletCornerId) -> Result<FilletCornerType> {
     // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::GetCornerType
@@ -427,19 +417,16 @@ fn corner_record_fillet_error(
     )
 }
 
-/// `SmFilletEdge::UpdateSplitFace(pOrigFace, pNewFace)` (unit `blend.fillet_geom_p2`).
+/// `SmFilletEdge::UpdateSplitFace(pOrigFace, pNewFace)` (unit `blend.fillet_geom_p2`,
+/// [`FilletBrep::update_edge_split_face`]); `SmFilletGeom::UpdateSplitFace` ignores
+/// its status (SmFilletGeom.cpp:11865, 11877).
 fn fillet_edge_update_split_face(
     fb: &mut FilletBrep,
     e: EdgeId,
     orig_face: Option<FaceId>,
     new_face: Option<FaceId>,
 ) -> Result<()> {
-    // UNPORTED(blend.fillet_geom_p2): SmFilletEdge::UpdateSplitFace
-    unported_on(
-        (fb.edge_list().len(), e, orig_face, new_face),
-        "SmFilletEdge::UpdateSplitFace",
-        "blend.fillet_geom_p2",
-    )
+    ignore_non_unported(fb.update_edge_split_face(e, orig_face, new_face))
 }
 
 /// `SmFilletGeom::FindEdgeTangentAtPoint(lRailIndex, lEndIndex, rbFound, rTangent)`
@@ -617,7 +604,7 @@ impl FilletBrep {
 
             // set sDir = fillet chord (vector connecting intersection endPoints)
             let fv = filleted_vertex.ok_or_else(|| SolidError::null_pointer(OP_INT_FILLET))?;
-            let dir = target.vertex(fv)?.point - other_pnt;
+            let mut dir = target.vertex(fv)?.point - other_pnt;
 
             // find the surface/surface intersection curve knowing only 1 end-point
             let result = srf_srf_intersection(
@@ -625,7 +612,7 @@ impl FilletBrep {
                 self,
                 Some(other_fv),
                 None,
-                Some(dir),
+                Some(&mut dir),
                 None,
                 &surface1,
                 &surface2,
@@ -999,13 +986,13 @@ impl FilletBrep {
 
             // do Surface/surface xSect
             let ang_tol = fs1.ang_tol_rad;
-            let dir = end_pnt - start_pnt;
+            let mut dir = end_pnt - start_pnt;
             match srf_srf_intersection(
                 k,
                 self,
                 Some(start_fv),
                 Some(end_fv),
-                Some(dir),
+                Some(&mut dir),
                 None,
                 &fillet_surface1,
                 &surface,
@@ -1091,7 +1078,7 @@ impl FilletBrep {
 
         let mut tol = edge::tolerance(target, orig_edge)?;
         tol = smax(tol, corner_approx_tol(corner)?);
-        let dir = self.vertex_point(end_fv)? - self.vertex_point(start_fv)?;
+        let mut dir = self.vertex_point(end_fv)? - self.vertex_point(start_fv)?;
         let angle_tol = 2.0 * PI / 180.0;
         let surface1 = surfaces
             .first()
@@ -1108,7 +1095,7 @@ impl FilletBrep {
             self,
             Some(start_fv),
             Some(end_fv),
-            Some(dir),
+            Some(&mut dir),
             None,
             &surface1,
             &surface2,
@@ -1721,8 +1708,7 @@ impl FilletBrep {
                 // when V1 vertex is processed
                 if v1_processed {
                     // find 3DCurve points close to V1
-                    let opts: GlobalPointSolveOptions<'_, NoObject> =
-                        GlobalPointSolveOptions::default();
+                    let opts = rail_solve_options(&rail_curve);
                     let sols = rail_curve.global_point_solve(
                         k,
                         &trim_ivl,
@@ -1767,12 +1753,13 @@ impl FilletBrep {
                 }
 
                 // Check if rail self-intersect
-                let sols = rail_curve.global_curve_self_intersect::<NoObject>(
+                let opts = rail_solve_options(&rail_curve);
+                let sols = rail_curve.global_curve_self_intersect(
                     k,
                     &trim_ivl,
                     app_tol * 10.0,
-                    None,
-                    None,
+                    opts.handle,
+                    opts.analytic_handle,
                 )?;
 
                 // when there is just 1 selfIntersection solution
@@ -1954,13 +1941,13 @@ impl FilletBrep {
                     }
                     .ok_or_else(|| SolidError::null_pointer(OP_CLIFF))?;
 
-                    let dir = end_pnt - start_pnt;
+                    let mut dir = end_pnt - start_pnt;
                     let curves = srf_srf_intersection(
                         k,
                         self,
                         Some(start_v),
                         Some(end_v),
-                        Some(dir),
+                        Some(&mut dir),
                         None,
                         &fillet_surface,
                         &side_surface,
@@ -2015,8 +2002,7 @@ impl FilletBrep {
                     }
 
                     if self.fillet_vertex(end_v)?.is_processed() {
-                        let opts: GlobalPointSolveOptions<'_, NoObject> =
-                            GlobalPointSolveOptions::default();
+                        let opts = rail_solve_options(&orig_rail_curve);
                         let sols = orig_rail_curve.global_point_solve(
                             k,
                             &trim_ivl,
