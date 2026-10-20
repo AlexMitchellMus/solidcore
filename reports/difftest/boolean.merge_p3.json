@@ -268,8 +268,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "nonmanifold_0",
@@ -280,8 +280,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "nonmanifold_1",
@@ -292,8 +292,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "nonmanifold_2",
@@ -304,8 +304,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "nonmanifold_3",
@@ -316,8 +316,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "nonmanifold_4",
@@ -328,8 +328,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "nonmanifold_5",
@@ -340,8 +340,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "nonmanifold_6",
@@ -352,8 +352,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "nonmanifold_7",
@@ -364,8 +364,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "nonmanifold_8",
@@ -376,8 +376,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "nonmanifold_9",
@@ -388,8 +388,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "nonmanifold_10",
@@ -842,8 +842,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "vg_family3_0",
@@ -854,8 +854,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "vg_family3_1",
@@ -866,8 +866,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "vg_family3_2",
@@ -878,8 +878,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "vg_family3_3",
@@ -890,8 +890,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "vg_family3_4",
@@ -902,8 +902,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "vg_family3_5",
@@ -914,8 +914,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "vg_family3_6",
@@ -926,8 +926,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "vg_family3_7",
@@ -938,8 +938,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "vg_family3_8",
@@ -950,8 +950,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "vg_family3_9",
@@ -1360,8 +1360,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0028",
@@ -1400,8 +1400,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0032",
@@ -1683,8 +1683,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0062",
@@ -1765,8 +1765,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0070",
@@ -1809,8 +1809,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0074",
@@ -1821,8 +1821,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0075",
@@ -2103,8 +2103,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0105",
@@ -2351,8 +2351,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0129",
@@ -2383,8 +2383,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0132",
@@ -2428,8 +2428,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0137",
@@ -2521,8 +2521,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0147",
@@ -2553,8 +2553,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0150",
@@ -2574,8 +2574,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0152",
@@ -2610,8 +2610,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0156",
@@ -2772,8 +2772,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0173",
@@ -2793,8 +2793,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0175",
@@ -3118,8 +3118,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0209",
@@ -3138,8 +3138,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0211",
@@ -3398,8 +3398,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::ManifoldBoolean",
-        "unit": "boolean.merge_p4"
+        "symbol": "SmMerge::SmMerge",
+        "unit": "boolean.merge_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0238",
@@ -3584,8 +3584,7 @@
   "cases_passed": 182,
   "cases_total": 354,
   "deferred_by_unit": {
-    "boolean.merge_p2": 47,
-    "boolean.merge_p4": 40,
+    "boolean.merge_p2": 87,
     "boolean.topology_intersector_p2": 48,
     "topology.brep_p3": 37
   },

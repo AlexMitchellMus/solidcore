@@ -153,6 +153,12 @@ impl KernelManifoldIntersector {
         self.intersector.set_this_ang_tol_rad(angle_radians);
     }
 
+    /// Set `m_vTI.m_lIntersectLaminaEdges` (0 none, 1 both, 2 only the B-rep's,
+    /// 3 only the other's), as `NonManifoldBoolean` and `PiecewiseMerge` do.
+    pub fn set_intersect_lamina_edges(&mut self, mode: u64) {
+        self.intersector.intersect_lamina_edges = mode;
+    }
+
     /// Run the orchestration with the options held in the canonical `MergeState`.
     pub fn manifold_boolean(
         &mut self,

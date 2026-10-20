@@ -405,11 +405,10 @@ impl BooleanDriver for Pool {
         _operation: BooleanOperation,
         _lock: Option<&mut MarkLock>,
     ) -> solidcore::Result<Option<usize>> {
-        // UNPORTED(boolean.merge_p4): SmMerge::ManifoldBoolean
-        Err(SolidError::unported(
-            "SmMerge::ManifoldBoolean",
-            "boolean.merge_p4",
-        ))
+        // ManifoldBoolean (boolean.merge_p4) runs on the engine the merge
+        // constructor builds, as port::DependencyMerge does; the pool has none.
+        // UNPORTED(boolean.merge_p2): SmMerge::SmMerge
+        Err(SolidError::unported("SmMerge::SmMerge", "boolean.merge_p2"))
     }
 }
 impl PiecewiseAccess for Pool {
