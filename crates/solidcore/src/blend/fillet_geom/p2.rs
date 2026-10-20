@@ -61,8 +61,13 @@
 //!   edges, type and `TestRailRailInterpolationCurve` are `UNPORTED(blend.fillet_corner_p1)`
 //!   stubs (the four vertex calculators stop at the filleted vertex, right after the
 //!   corner's null check; `CalcRailRailInterpolation` only with a corner).
-//! - **Unported callees.** `SmFilletSolver::RailRailIntersect` and `PointOnPlaneSolve`
-//!   (`blend.fillet_solver_p2`); `SmFilletGeom::GetRailIndexOfSideEU`,
+//! - **Solver class.** The `solvers` table holds base [`FilletSolver`]s: the solvers'
+//!   virtuals (`RailRailIntersect`'s callees, `PointOnPlaneSolve`) dispatch on their
+//!   `ConstantRadiusAssistedFs` view ([`as_assisted`]), the class
+//!   `sm_CreateCubicRailRailInterpolant` takes (`plan/findings.md`,
+//!   "blend.fillet_solver_p2: back-edges into the solver from blend.fillet_geom").
+//! - **Unported callees.** `SmConstantRadiusAssistedFS::PointOnPlaneSolve`
+//!   (`blend.fillet_standard_solver_p2`); `SmFilletGeom::GetRailIndexOfSideEU`,
 //!   `RailEdgeuseIntersect` and `SmFilletEdge::ShouldSwapFaces`
 //!   (`blend.fillet_geom_p6`); `SmTemporaryRadiusChange` (`blend.fillet_executive_p2`)
 //!   for a solver (its set-up is a no-op for a `NULL` solver); `SmSurface::DropCurve`
@@ -379,29 +384,46 @@ fn corner_test_rail_rail_interpolation_curve(
     )
 }
 
-/// `SmFilletSolver::RailRailIntersect(sUVGuess, lRailIndex1, pFilSolver2, lRailIndex2,
-/// rbFound, rTsectPnt1, rTsectPnt2)` (unit `blend.fillet_solver_p2`): whether the
-/// rails meet, and the two intersection points.
+/// `pFilSolver1->RailRailIntersect(sUVGuess, lRailIndex1, pFilSolver2, lRailIndex2,
+/// rbFound, rTsectPnt1, rTsectPnt2)`: whether the rails meet; the two intersection
+/// points are in/out. The table's solvers are seen as `ConstantRadiusAssistedFs`
+/// ([`as_assisted`]), as for `sm_CreateCubicRailRailInterpolant`, so the virtuals
+/// `RailRailIntersect` calls dispatch on that class (`plan/findings.md`,
+/// "blend.fillet_solver_p2: back-edges into the solver from blend.fillet_geom").
+#[allow(clippy::too_many_arguments)]
 fn rail_rail_intersect(
+    k: &Kernel,
+    target: &Brep,
     fs1: &FilletSolver,
     uv_guess: Point2,
     rail_index1: usize,
     fs2: &FilletSolver,
     rail_index2: usize,
-) -> Result<(bool, TsectPnt, TsectPnt)> {
-    // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::RailRailIntersect
-    unported_on(
-        (fs1, uv_guess, rail_index1, fs2, rail_index2),
-        "SmFilletSolver::RailRailIntersect",
-        "blend.fillet_solver_p2",
+    tsect1: &mut TsectPnt,
+    tsect2: &mut TsectPnt,
+) -> Result<bool> {
+    let mut s1 = as_assisted(fs1);
+    let mut s2 = as_assisted(fs2);
+    FilletSolver::rail_rail_intersect(
+        &mut s1,
+        &mut s2,
+        k,
+        Some(target),
+        uv_guess,
+        rail_index1,
+        rail_index2,
+        tsect1,
+        tsect2,
     )
 }
 
-/// `SmFilletSolver::PointOnPlaneSolve(crPlaneOrig, crPlaneNormal, crDomain1, crDomain2,
-/// crUV1, crUV2, rbFound, rTsectPnt)` (unit `blend.fillet_solver_p2`): whether a fillet
-/// point was found on the plane, and the point.
+/// `pFilSolver->PointOnPlaneSolve(crPlaneOrig, crPlaneNormal, crDomain1, crDomain2,
+/// crUV1, crUV2, rbFound, rTsectPnt)` (a virtual): whether a fillet point was found on
+/// the plane, and the point (in/out). Dispatched on the `ConstantRadiusAssistedFs`
+/// view of the solver ([`as_assisted`], as [`rail_rail_intersect`]).
 #[allow(clippy::too_many_arguments)]
 fn point_on_plane_solve(
+    k: &Kernel,
     fs: &FilletSolver,
     plane_orig: Point3,
     plane_normal: Vec3,
@@ -411,21 +433,19 @@ fn point_on_plane_solve(
     uv2: Point2,
     tsect_pnt: &TsectPnt,
 ) -> Result<(bool, TsectPnt)> {
-    // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::PointOnPlaneSolve
-    unported_on(
-        (
-            fs,
-            plane_orig,
-            plane_normal,
-            domain1,
-            domain2,
-            uv1,
-            uv2,
-            tsect_pnt,
-        ),
-        "SmFilletSolver::PointOnPlaneSolve",
-        "blend.fillet_solver_p2",
-    )
+    let mut tsect = tsect_pnt.clone();
+    let found = crate::blend::fillet_intersector::FilletSolverOps::point_on_plane_solve(
+        &mut as_assisted(fs),
+        k,
+        plane_orig,
+        plane_normal,
+        domain1,
+        domain2,
+        uv1,
+        uv2,
+        &mut tsect,
+    )?;
+    Ok((found, tsect))
 }
 
 /// `SmFilletGeom::GetRailIndexOfSideEU(pSideEU, rlRailIndex)` (unit
@@ -993,7 +1013,8 @@ impl FilletBrep {
     /// UV trim curve; `SM_ERR` without exactly two fillet geometries and when the rails
     /// do not meet (the vertex is then `SM_FV_SOLVER_NOT_CONVERGE`); those of the
     /// evaluations; [`SolidError::Unported`] for the corner's filleted vertex
-    /// (`blend.fillet_corner_p1`) and `RailRailIntersect` (`blend.fillet_solver_p2`).
+    /// (`blend.fillet_corner_p1`) and those of `RailRailIntersect` (its
+    /// `SmTemporaryRadiusChange`, `blend.fillet_executive_p2`).
     #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn calc_rail_int_rail(
         &mut self,
@@ -1064,12 +1085,23 @@ impl FilletBrep {
         let uv_guess = Point2::new(mid_uv.x, mid_uv.y);
 
         // Get the TsectPnts and call the solver.
-        let (vu1, _) = self.rail_end_tsect(v, Some(fillet_geom1), None, OP)?;
-        let (vu2, _) = self.rail_end_tsect(v, Some(fillet_geom2), None, OP)?;
-        let (found, tsect1, tsect2) =
-            rail_rail_intersect(fs1, uv_guess, rail_index1, fs2, rail_index2)?;
+        let (vu1, mut tsect1) = self.rail_end_tsect(v, Some(fillet_geom1), None, OP)?;
+        let (vu2, mut tsect2) = self.rail_end_tsect(v, Some(fillet_geom2), None, OP)?;
+        let found = rail_rail_intersect(
+            k,
+            target,
+            fs1,
+            uv_guess,
+            rail_index1,
+            fs2,
+            rail_index2,
+            &mut tsect1,
+            &mut tsect2,
+        );
+        // the vertex uses' points are written in place, also on a failure
         self.fillet_vertexuse_mut(vu1)?.set_tsect_pnt(&tsect1);
         self.fillet_vertexuse_mut(vu2)?.set_tsect_pnt(&tsect2);
+        let found = found?;
         if !found {
             self.fillet_vertex_mut(v)?
                 .set_status(FilStatus::SolverNotConverge);
@@ -1435,7 +1467,7 @@ impl FilletBrep {
     /// `SM_ERR_NULL_POINTER` without corner, solver, edge use, curve or surface; `SM_ERR`
     /// without a fillet geometry; those of the evaluations; [`SolidError::Unported`] for
     /// the corner (`blend.fillet_corner_p1`) and `PointOnPlaneSolve`
-    /// (`blend.fillet_solver_p2`).
+    /// (`blend.fillet_standard_solver_p2`).
     #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn calc_vert_on_cross_section(
         &mut self,
@@ -1551,6 +1583,7 @@ impl FilletBrep {
         for _ in 0..3 {
             let [u0, u1] = uvs;
             let (found, t) = point_on_plane_solve(
+                k,
                 fs1,
                 plane_orig,
                 plane_normal,
@@ -1637,7 +1670,7 @@ impl FilletBrep {
     /// `SM_ERR` without exactly one fillet geometry and unless each surface has exactly
     /// one closest point; those of the evaluations and solves;
     /// [`SolidError::Unported`] for the corner (`blend.fillet_corner_p1`) and
-    /// `PointOnPlaneSolve` (`blend.fillet_solver_p2`).
+    /// `PointOnPlaneSolve` (`blend.fillet_standard_solver_p2`).
     #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn calc_set_back_vert(
         &mut self,
@@ -1713,6 +1746,7 @@ impl FilletBrep {
 
         // find filletPoint on given plane that satisfies geometry requirements
         let (found, tsect) = point_on_plane_solve(
+            k,
             fs,
             plane_orig,
             plane_normal,
@@ -2063,8 +2097,8 @@ impl FilletBrep {
                             let si = fb.geom_solver_index(g, solvers, OP)?;
                             Ok(as_assisted(solver_at(solvers, si, OP)?))
                         };
-                    let fil_solver1 = solver_of_single_geom(self, start_fv)?;
-                    let fil_solver2 = solver_of_single_geom(self, end_fv)?;
+                    let mut fil_solver1 = solver_of_single_geom(self, start_fv)?;
+                    let mut fil_solver2 = solver_of_single_geom(self, end_fv)?;
 
                     // Re-compute UV-curve
                     let uv = uv_curve
@@ -2082,8 +2116,8 @@ impl FilletBrep {
                     let new_uv = create_cubic_rail_rail_interpolant(
                         k,
                         target,
-                        &fil_solver1,
-                        &fil_solver2,
+                        &mut fil_solver1,
+                        &mut fil_solver2,
                         face,
                         corner_vertex,
                         start_uv_pnt,

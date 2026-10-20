@@ -10254,3 +10254,37 @@ timeout or reject all large coordinates without determining the valid-input
 boundary. No Rust/C++ value mismatch was observed in the completed fuzz cases.
 The ordinary unit run remains 2686 cases, 2250 passed, 436 deferred, 0 failed,
 with maximum relative error 0.
+
+## blend.fillet_solver_p2: fillet-geometry stubs need a FilletBrep
+
+`CreateCliffRollOverSideFG` and `GetFilletCorner` call the `SmFilletGeom` / `SmFilletEdge` / `SmFilletVertex` /
+`SmFilletEdgeuse` / `SmFilletVertexuse` members (`blend.fillet_geom_p1`, partial) and the `SmFilletVertex(SmFilletCorner*)` /
+`SmFilletEdge(..)` constructors (`blend.fillet_geom_p2`, partial; co-ported in `fillet_geom::p1` as `FilletVertex::new` /
+`FilletBrep::new_fillet_edge`). The ported ones live inside a `FilletBrep` and are addressed by its ids, while this unit's
+solver holds opaque `FilletGeomRef` handles and works on the pseudo B-rep as a plain `Brep`; the same reason as "blend.fillet_solver_p1:
+stubs naming blend.fillet_geom_p1" above. Those sites stay `UNPORTED(<owner>)` (the constructors carry `justified:` pointing
+here) until the solvers thread `&mut FilletBrep`. `sm_SrfSrfIntersection` (a free function of `blend.fillet_geom_p2`) is wired in
+`CreateCliffRollOverSideFG` (`fillet_solver/p2.rs`), with the points the two vertices were just set to; the earlier stubs in that
+function still return first, so no case reaches it yet.
+
+## blend.fillet_solver_p2: back-edges into the solver from blend.fillet_geom
+
+`RailRailIntersect` and `PointOnPlaneSolve` were stubbed in `blend.fillet_geom_p1` (`sm_CreateCubicRailRailInterpolant`),
+`blend.fillet_geom_p2` (`SmFilletVertex::CalcRailIntRail`, `CalcVertOnCrossSection`, `CalcSetBackVert`) and
+`blend.fillet_intersector` (the `FilletSolverOps::point_on_plane_solve` default). Wired as follows:
+- `sm_CreateCubicRailRailInterpolant` takes its two `ConstantRadiusAssistedFs` by `&mut` now and calls
+  `FilletSolver::rail_rail_intersect` (its virtual callees can change the solvers); the intersection points start as
+  `SmTsectPnt()`, as upstream's locals. With all four offset surfaces it stops at `SmTemporaryRadiusChange`
+  (`blend.fillet_executive_p2`).
+- `blend.fillet_geom_p2` keeps its solvers as base `FilletSolver`s in the caller's table (the solver class is not stored), and
+  already sees them as `ConstantRadiusAssistedFs` (`as_assisted`) for `sm_CreateCubicRailRailInterpolant`. `RailRailIntersect`
+  (non-virtual) and the virtual `PointOnPlaneSolve` dispatch on that view, so `PointOnPlaneSolve` reaches
+  `SmConstantRadiusAssistedFS::PointOnPlaneSolve` (`blend.fillet_standard_solver_p2`). Upstream, a plain `SmConstantRadiusFS` or
+  `SmVariableRadiusFS` in that table would run the base `SmFilletSolver::PointOnPlaneSolve`; storing the solver class in the table
+  is a follow-up for `blend.fillet_geom_p2`. `CalcRailIntRail` now passes the vertex uses' points in and writes them back also on
+  failure (they are in/out upstream). All three functions stop at the corner's filleted vertex (`blend.fillet_corner_p1`) before
+  reaching the solver, so no compared case changes.
+- `SmFilletIntersector` runs `PointOnPlaneSolve` on `ConstantRadiusAssistedFs`, whose override is
+  `SmConstantRadiusAssistedFS::PointOnPlaneSolve` (`blend.fillet_standard_solver_p2`): the intersector trait method has no default
+  any more (the base version is never reached through it), and that implementation returns `Unported` for its owner. The
+  intersector's 38 cases that deferred at `blend.fillet_solver_p2` now defer at `blend.fillet_standard_solver_p2`.

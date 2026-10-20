@@ -253,25 +253,21 @@ pub trait FilletSolverOps {
     ///
     /// # Errors
     ///
-    /// The solver's failure; [`SolidError::Unported`] until ported.
+    /// The solver's failure. A virtual: each implementer dispatches it on its own
+    /// class (the base `SmFilletSolver::PointOnPlaneSolve` is
+    /// [`crate::blend::fillet_solver::p1::FilletSolver::point_on_plane_solve`]).
     #[allow(clippy::too_many_arguments)]
     fn point_on_plane_solve(
         &mut self,
-        _k: &Kernel,
-        _plane_origin: Point3,
-        _plane_normal: Vec3,
-        _uv_domain1: &Extent2d,
-        _uv_domain2: &Extent2d,
-        _uv1: Point2,
-        _uv2: Point2,
-        _point: &mut TsectPnt,
-    ) -> Result<bool> {
-        // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::PointOnPlaneSolve
-        Err(SolidError::unported(
-            "SmFilletSolver::PointOnPlaneSolve",
-            "blend.fillet_solver_p2",
-        ))
-    }
+        k: &Kernel,
+        plane_origin: Point3,
+        plane_normal: Vec3,
+        uv_domain1: &Extent2d,
+        uv_domain2: &Extent2d,
+        uv1: Point2,
+        uv2: Point2,
+        point: &mut TsectPnt,
+    ) -> Result<bool>;
 
     /// `SetSurfacesToZeroOffset()`: saves the offsets of the solver's offset surfaces
     /// and sets them to zero (`void` upstream).
@@ -466,6 +462,26 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
     fn compute_uv_vectors(&mut self, _k: &Kernel, point: &mut TsectPnt) -> Result<()> {
         // SmFilletSolver::ComputeUVVectors reads only the intersection point
         compute_uv_vectors(point)
+    }
+
+    fn point_on_plane_solve(
+        &mut self,
+        _k: &Kernel,
+        _plane_origin: Point3,
+        _plane_normal: Vec3,
+        _uv_domain1: &Extent2d,
+        _uv_domain2: &Extent2d,
+        _uv1: Point2,
+        _uv2: Point2,
+        _point: &mut TsectPnt,
+    ) -> Result<bool> {
+        // the virtual dispatches to the class's own override (the base version is
+        // never reached for this class)
+        // UNPORTED(blend.fillet_standard_solver_p2): SmConstantRadiusAssistedFS::PointOnPlaneSolve
+        Err(SolidError::unported(
+            "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+            "blend.fillet_standard_solver_p2",
+        ))
     }
 
     fn set_status(&mut self, status: FilStatus) -> Result<()> {
@@ -1983,6 +1999,20 @@ mod tests {
             }
             flags.found_answer = true;
             Ok(())
+        }
+
+        fn point_on_plane_solve(
+            &mut self,
+            _k: &Kernel,
+            _plane_origin: Point3,
+            _plane_normal: Vec3,
+            _uv_domain1: &Extent2d,
+            _uv_domain2: &Extent2d,
+            _uv1: Point2,
+            _uv2: Point2,
+            _point: &mut TsectPnt,
+        ) -> Result<bool> {
+            Err(SolidError::sm_err("test"))
         }
 
         fn compute_surface_values(

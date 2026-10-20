@@ -22,14 +22,12 @@
 //!   [`FilletSolver`]; methods that call a virtual take the solver as
 //!   `&mut dyn FilletSolverOps` (as p1's `ComputeSurfaceValues`). The p1 function
 //!   objects are wrapped privately into [`EvalNFunctions`] for [`LocalSolveNd`].
-//! - **UV trim curve of `RailEdgeuseIntersect`.** p1's [`RailUvCurveIntersectEnfo`]
-//!   takes a [`BSplineCurve`]; upstream's `SmRailUVCurveIntersectENFO` calls the
-//!   curve's virtual `Evaluate`, which `SmLine` and `SmEllipse` override analytically.
-//!   For such a UV trim curve the function object evaluates its B-spline form (equal up
-//!   to rounding); the guess point and the interval use the curve itself.
-//! - **Fillet geometries.** `SmFilletGeom`, `SmFilletEdge`, `SmFilletVertex`, the
-//!   pseudo-B-rep and the executive belong to unported units: each call into them
-//!   returns [`SolidError::Unported`] at the call site (tagged `UNPORTED`). The analytic
+//! - **Fillet geometries.** The ported `SmFilletGeom`, `SmFilletEdge` and
+//!   `SmFilletVertex` (`blend.fillet_geom_p1`/`_p2`, partial) live in a `FilletBrep`,
+//!   which this solver does not hold (`plan/findings.md`, "blend.fillet_solver_p2:
+//!   fillet-geometry stubs need a FilletBrep"); those calls, the pseudo-B-rep and the
+//!   executive return [`SolidError::Unported`] at the call site (tagged `UNPORTED`).
+//!   `sm_SrfSrfIntersection` (a free function) is wired. The analytic
 //!   `Calc*FilletGeom` methods build the fillet surface, rail curves and centre line
 //!   first ([`FilletGeomParts`], `*_fillet_geom_parts`) and then store them into the
 //!   fillet geometry (`SmFilletGeom::m_pFilletSurface`, `SmFilletEdge::SetCurve`, the
@@ -53,6 +51,7 @@
 //!   there is no recursion.
 
 use crate::blend::fillet_custom_solver::OffsetSurface;
+use crate::blend::fillet_geom::p2::{srf_srf_intersection, SrfSrfOptions};
 use crate::blend::fillet_solver::p1::{
     check_edge_curve_domains, test_manifold_tangent_rollover, test_side_edge_convexity, FilStatus,
     FilletGeomRef, FilletSolver, FilletSolverOps, FilletSphereSolveEnfo,
@@ -327,17 +326,16 @@ fn store_parts(
     ))
 }
 
-/// The `SmBSplineCurve` of a UV trim curve (`GetUVTrimCurvePointer` is an
-/// `SmBSplineCurve*`; lines, ellipses, hyperbolas and parabolas derive from it): the
-/// B-spline form [`RailUvCurveIntersectEnfo`] evaluates (module notes).
-fn uv_bspline(c: &Curve) -> Result<BSplineCurve> {
+/// `GetOrCreateUVTrimCurve` hands back an `SmBSplineCurve*`: only the kinds deriving
+/// from it (B-splines, lines, ellipses, hyperbolas, parabolas) can be a UV trim curve.
+fn check_uv_bspline_kind(c: &Curve) -> Result<()> {
     use crate::curve::curve::CurveKind;
     match c.kind() {
-        CurveKind::BSpline(bs) => Ok(bs.clone()),
-        CurveKind::Line(l) => Ok(l.base_with_nurb()?.into_owned()),
-        CurveKind::Ellipse(e) => Ok(e.base().clone()),
-        CurveKind::Hyperbola(h) => Ok(h.base().clone()),
-        CurveKind::Parabola(p) => Ok(p.base().clone()),
+        CurveKind::BSpline(_)
+        | CurveKind::Line(_)
+        | CurveKind::Ellipse(_)
+        | CurveKind::Hyperbola(_)
+        | CurveKind::Parabola(_) => Ok(()),
         _ => Err(invalid("UV trim curve is not an SmBSplineCurve")),
     }
 }
@@ -535,7 +533,7 @@ impl FilletSolver {
         ignore_status(cone_patch.swap_uv())?;
 
         // Copy pConePatch, when possible as an analytic surface
-        let cylinder = cone_patch.copy_and_add_analytics()?;
+        let cylinder = cone_patch.copy_and_add_analytics(k)?;
 
         // get cylinder u parameter range
         let uv_domain = cylinder.natural_uv_domain();
@@ -1139,8 +1137,7 @@ impl FilletSolver {
             .0
             .cloned()
             .ok_or_else(|| invalid("no UV trim curve"))?;
-        // the SmBSplineCurve the function object evaluates (module notes)
-        let uv_curve = uv_bspline(&uv_trim)?;
+        check_uv_bspline_kind(&uv_trim)?;
         let p2d = uv_trim.evaluate_point(guess_edge_parameter)?;
         let uv_guess = Point2::new(p2d.x, p2d.y);
 
@@ -1199,7 +1196,7 @@ impl FilletSolver {
         // specify the rail/curve intersection evaluate function for the NewtonRaphson Solver
         let ivl = uv_trim.natural_interval();
         let mut eval = RailUvEval(RailUvCurveIntersectEnfo::new(
-            &uv_curve, ivl, rail_index, ops,
+            &uv_trim, ivl, rail_index, ops,
         ));
         let mut ls = LocalSolveNd::new(&mut eval, Some(&intervals), Some(&periodicities));
         ls.set_desired_accuracy(EFF_ZERO_SQ);
@@ -1624,7 +1621,7 @@ impl FilletSolver {
             if !trim_side_faces && split_edge.is_none() {
                 // Create a split fillet edge between the corner point and its
                 // projection onto the side curve
-                // UNPORTED(blend.fillet_geom_p2): SmFilletVertex::SmFilletVertex
+                // UNPORTED(blend.fillet_geom_p2): SmFilletVertex::SmFilletVertex (justified: findings.md "blend.fillet_solver_p2: fillet-geometry stubs need a FilletBrep")
                 let end_vert: VertexId = unported_on(
                     &*pseudo,
                     "SmFilletVertex::SmFilletVertex",
@@ -1673,13 +1670,24 @@ impl FilletSolver {
                 plane.make_nurb()?;
 
                 // the side surface / plane intersection curve (its UV curves are
-                // deleted unused)
-                // UNPORTED(blend.fillet_geom_p2): sm_SrfSrfIntersection
-                let curve_3d: BSplineCurve = unported_on(
-                    (end_vert, corner_v, dir, side, plane, self.approx_tol_3d),
-                    "sm_SrfSrfIntersection",
-                    "blend.fillet_geom_p2",
+                // deleted unused); the vertices' points are sEndPnt and the corner
+                // point they were just set to
+                let mut start_dir = dir;
+                let plane_surface = Surface::from(plane);
+                let curves = srf_srf_intersection(
+                    k,
+                    Some(end_pnt),
+                    Some(corner_pnt),
+                    Some(&mut start_dir),
+                    None,
+                    side,
+                    &plane_surface,
+                    self.approx_tol_3d,
+                    30.0 * PI / 180.0,
+                    SrfSrfOptions::default(),
                 )?;
+                // p3DCurve->SetOwner dereferences the curve
+                let curve_3d = curves.curve_3d.ok_or_else(nul)?;
                 // SetCurve(p3DCurve, TRUE) and SetOwner(pSplitEdge)
                 // UNPORTED(topology.edge): SmEdge::SetCurve (justified: findings.md "blend.fillet_solver_p1: pseudo-B-rep mutations")
                 unported_on::<_, ()>((new_split, curve_3d), "SmEdge::SetCurve", "topology.edge")?;
@@ -1727,7 +1735,7 @@ impl FilletSolver {
             "SmFilletGeom::SetRail",
             "blend.fillet_geom_p1",
         )?;
-        // UNPORTED(blend.fillet_geom_p2): SmFilletEdge::SmFilletEdge
+        // UNPORTED(blend.fillet_geom_p2): SmFilletEdge::SmFilletEdge (justified: findings.md "blend.fillet_solver_p2: fillet-geometry stubs need a FilletBrep")
         let new_rail: EdgeId = unported_on(
             &*pseudo,
             "SmFilletEdge::SmFilletEdge",
