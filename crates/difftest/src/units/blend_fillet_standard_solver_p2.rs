@@ -29,10 +29,12 @@ use serde_json::Value;
 
 use solidcore::blend::fillet_custom_solver::{OffsetSurface, SurfaceId};
 use solidcore::blend::fillet_standard_solver::p1::{
-    ConstantDistanceFs, ConstantRadiusFs, CurveBasedFs, FilletLaw, FilletLawKind, SurfaceSurfaceFs,
-    VariableRadiusFs, CONSTANT_RADIUS_ASSISTED_FS_TYPE,
+    constant_radius_from_edgeuse, ConstantDistanceFs, ConstantRadiusFs, CurveBasedFs, FilletLaw,
+    FilletLawKind, SurfaceSurfaceFs, VariableRadiusFs, CONSTANT_RADIUS_ASSISTED_FS_TYPE,
 };
-use solidcore::blend::fillet_standard_solver::p2::constant_radius_assisted_is_kind_of;
+use solidcore::blend::fillet_standard_solver::p2::{
+    constant_radius_assisted_is_kind_of, point_on_plane_solve,
+};
 use solidcore::geom::axis2_placement::Axis2Placement;
 use solidcore::geom::extent1d::{Extent1d, ExtentNd};
 use solidcore::geom::extent2d::Extent2d;
@@ -175,6 +177,24 @@ enum Inputs {
         fu: f64,
         fv: f64,
     },
+    /// `SmConstantRadiusFS::LoadInitialValues` with edge uses: the `SmConstantRadiusFS`
+    /// edge-use constructor on a `topology.edgeuse_p1` B-rep, then `LoadInitialValues`
+    /// from `*GetSurface(rail)`.
+    CrEu {
+        brep: BrepIn,
+        /// Edge use selector (modulo the edge use count).
+        eu: i64,
+        tol: f64,
+        ang: f64,
+        tan: f64,
+        r: f64,
+        rail: usize,
+        /// UV fractions of the rail offset's natural domain: the guess.
+        fu: f64,
+        fv: f64,
+        /// `m_dSurfaceExtensionFactor`.
+        ext: f64,
+    },
 }
 
 impl Inputs {
@@ -186,7 +206,7 @@ impl Inputs {
             Inputs::Plane { .. } => Op::Plane,
             Inputs::Ss { .. } => Op::Ss,
             Inputs::Types { .. } => Op::Types,
-            Inputs::CdEu { .. } => return None,
+            Inputs::CdEu { .. } | Inputs::CrEu { .. } => return None,
         })
     }
 }
@@ -324,12 +344,17 @@ fn cpp_input(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
             push_kinds(&mut o, kinds);
         }
         Inputs::Types { kinds } => push_kinds(&mut o, kinds),
-        Inputs::CdEu { .. } => return Err(harness("the edge-use op has its own input")),
+        Inputs::CdEu { .. } | Inputs::CrEu { .. } => {
+            return Err(harness("the edge-use op has its own input"))
+        }
     }
     Ok(o)
 }
 
 fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
+    if matches!(i, Inputs::CrEu { .. }) {
+        return cpp_cr_eu(i);
+    }
     let Some(op) = i.ffi() else {
         return cpp_edgeuse(i);
     };
@@ -399,7 +424,8 @@ fn cpp_edgeuse(i: &Inputs) -> Result<Output, HarnessError> {
         Err(o) => return Ok(o),
     };
     let mut input = s.block.clone();
-    input.extend([f64::from(s.eu.index()), *tol, *ang, *tan, *dist, *fu, *fv]);
+    // mode 0: the SmConstantDistanceFS constructor
+    input.extend([0.0, f64::from(s.eu.index()), *tol, *ang, *tan, *dist, *fu, *fv]);
     let out = ffi::eval_edgeuse(&s.path, &input).map_err(|e| harness(format!("c++: {e}")))?;
     let body = out.get(1..).ok_or_else(|| harness("c++: empty output"))?;
     Ok(eu_output(body))
@@ -489,7 +515,11 @@ fn rust_edgeuse_body(
         for i in 0..2 {
             let e = fs.solver.edgeuses.get(i).copied().flatten();
             v.push(e.map_or(-1.0, |e| f64::from(e.index())));
-            let s = fs.solver.surface(i)?;
+            let s = fs
+                .solver
+                .surface(i)?
+                .map(|slot| &slot.surface)
+                .ok_or_else(|| SolidError::invalid_input("runner", "no offset surface"))?;
             v.push(s.offset_distance());
             let face = match e {
                 Some(e) => eu1::face(b, e)?,
@@ -567,6 +597,222 @@ fn rust_edgeuse(i: &Inputs) -> Result<Output, HarnessError> {
                 e => Err(harness(format!("rust: {e}"))),
             }
         }
+    }
+}
+
+// ---- LoadInitialValues with edge uses ---------------------------------------------------
+
+fn cpp_cr_eu(i: &Inputs) -> Result<Output, HarnessError> {
+    let Inputs::CrEu {
+        brep,
+        eu,
+        tol,
+        ang,
+        tan,
+        r,
+        rail,
+        fu,
+        fv,
+        ext,
+    } = i
+    else {
+        return Err(harness("not the edge-use initial-values op"));
+    };
+    let s = match eu_setup(brep, *eu)? {
+        Ok(s) => s,
+        Err(o) => return Ok(o),
+    };
+    let mut input = s.block.clone();
+    // mode 1: SmConstantRadiusFS::LoadInitialValues with edge uses
+    input.extend([
+        1.0,
+        f64::from(s.eu.index()),
+        *tol,
+        *ang,
+        *tan,
+        *r,
+        *rail as f64,
+        *fu,
+        *fv,
+        *ext,
+    ]);
+    let out = ffi::eval_edgeuse(&s.path, &input).map_err(|e| harness(format!("c++: {e}")))?;
+    let body = out.get(1..).ok_or_else(|| harness("c++: empty output"))?;
+    Ok(eu_output(body))
+}
+
+/// The Rust record body of the edge-use `LoadInitialValues` op (the shim's mode 1).
+#[allow(clippy::too_many_arguments)]
+fn rust_cr_eu_body(
+    b: &mut Brep,
+    eu: EdgeuseId,
+    tol: f64,
+    ang: f64,
+    tan: f64,
+    r: f64,
+    rail: usize,
+    fu: f64,
+    fv: f64,
+    ext: f64,
+) -> Result<Vec<f64>, SolidError> {
+    let k = Kernel::default();
+    let radial = if has_prim(b, eu)? {
+        eu1::radial(b, eu)?
+    } else {
+        None
+    };
+    if !eu_safe(b, Some(eu))? || !eu_safe(b, radial)? {
+        return Ok(vec![-2.0]);
+    }
+    let mut fs = match constant_radius_from_edgeuse(&k, b, tol, ang, tan, r, eu, None) {
+        Ok(fs) => fs,
+        Err(e) if e.is_unported() => return Err(e),
+        // the tangent-surface exits (SM_ERR only signalled upstream)
+        Err(SolidError::Upstream { code, .. }) => return Ok(vec![f64::from(code)]),
+        Err(e) => return Err(e),
+    };
+    fs.solver.surface_extension_factor = ext;
+    let mut v = vec![0.0];
+    let mut s1 = fs.surface(rail)?.clone();
+    let d = s1.surface.natural_uv_domain();
+    let mut ivls = ExtentNd::new(4);
+    for (n, iv) in [
+        Extent1d::from_min_max(d.min().x, d.max().x),
+        Extent1d::from_min_max(d.min().y, d.max().y),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        if let Some(slot) = ivls.get_mut(n) {
+            *slot = iv;
+        }
+    }
+    let mut per = vec![false, false];
+    let mut guess = vec![
+        d.min().x + fu * (d.max().x - d.min().x),
+        d.min().y + fv * (d.max().y - d.min().y),
+    ];
+    // (crSurface1 is *GetSurface(rail), evaluated inside its domain: it makes no
+    // extension the copy would have to hand back)
+    let res = fs.load_initial_values(
+        &k,
+        Some(&*b),
+        true,
+        rail,
+        &mut s1,
+        0,
+        &mut ivls,
+        &mut per,
+        &mut guess,
+    );
+    match &res {
+        Ok(Some(iv)) => v.extend([0.0, iv.surface2_rail as f64, iv.surface2_index as f64]),
+        Ok(None) => v.extend([0.0, -1.0, 999.0]),
+        Err(e) if e.is_unported() => return Err(e.clone()),
+        // (upstream sets rpSurface2 first and leaves the index unchanged)
+        Err(e) => v.extend([status(e), (1 - rail) as f64, 999.0]),
+    }
+    if res.is_ok() {
+        for n in 2..4 {
+            let iv = ivls
+                .get(n)
+                .ok_or_else(|| SolidError::invalid_input("runner", "interval"))?;
+            v.extend([iv.min(), iv.max()]);
+        }
+    }
+    v.push(per.len() as f64);
+    v.extend(per.iter().map(|&p| flag(p)));
+    v.push(guess.len() as f64);
+    v.extend_from_slice(&guess);
+    v.extend(offsets(&fs));
+    Ok(v)
+}
+
+fn rust_cr_eu(i: &Inputs) -> Result<Output, HarnessError> {
+    let Inputs::CrEu {
+        brep,
+        eu,
+        tol,
+        ang,
+        tan,
+        r,
+        rail,
+        fu,
+        fv,
+        ext,
+    } = i
+    else {
+        return Err(harness("not the edge-use initial-values op"));
+    };
+    let mut s = match eu_setup(brep, *eu)? {
+        Ok(s) => s,
+        Err(o) => return Ok(o),
+    };
+    if let Some(o) = inexact_geometry(&s) {
+        return Ok(o);
+    }
+    // the radial's face and edge too
+    if has_prim(&s.brep, s.eu).map_err(|e| he(&e))? {
+        if let Some(radial) = eu1::radial(&s.brep, s.eu).map_err(|e| he(&e))? {
+            let probe = Setup {
+                path: String::new(),
+                block: Vec::new(),
+                brep: s.brep.clone(),
+                eu: radial,
+                types: s.types.clone(),
+            };
+            if let Some(o) = inexact_geometry(&probe) {
+                return Ok(o);
+            }
+        }
+    }
+    match rust_cr_eu_body(
+        &mut s.brep,
+        s.eu,
+        *tol,
+        *ang,
+        *tan,
+        *r,
+        *rail,
+        *fu,
+        *fv,
+        *ext,
+    ) {
+        Ok(body) => Ok(eu_output(&body)),
+        Err(e) => {
+            if let Some(o) = Output::unported(&e) {
+                return Ok(o);
+            }
+            Err(harness(format!("rust: {e}")))
+        }
+    }
+}
+
+fn gen_cr_eu(rng: &mut Rng) -> Inputs {
+    let Inputs::CdEu {
+        brep,
+        eu,
+        tol,
+        ang,
+        tan,
+        dist,
+        fu,
+        fv,
+    } = gen_cd_eu(rng)
+    else {
+        return Inputs::Types { kinds: Vec::new() };
+    };
+    Inputs::CrEu {
+        brep,
+        eu,
+        tol,
+        ang,
+        tan,
+        r: dist,
+        rail: usize::from(rng.chance(0.5)),
+        fu,
+        fv,
+        ext: *rng.choose(&[0.5, 0.1, 0.0, 1.0, 2.0]).unwrap_or(&0.5),
     }
 }
 
@@ -751,13 +997,26 @@ fn solver_of(k: &Kernel, s: &SolverIn) -> Result<BuiltSolver, HarnessError> {
     Ok(BuiltSolver { solver, a })
 }
 
-fn offsets(fs: &ConstantRadiusFs) -> [f64; 2] {
-    let d = |i: usize| {
-        fs.surface(i)
-            .ok()
-            .map_or(f64::NAN, OffsetSurface::offset_distance)
-    };
-    [d(0), d(1)]
+/// The shim's `put_offsets`: per rail `offset umin vmin umax vmax has_extension`
+/// (`GetNaturalUVDomain`, `GetExtendedBaseSurface() != NULL`) after the op.
+fn offsets(fs: &ConstantRadiusFs) -> Vec<f64> {
+    offset_state(|i| fs.surface(i).ok())
+}
+
+fn offset_state<'a>(rail: impl Fn(usize) -> Option<&'a OffsetSurface>) -> Vec<f64> {
+    let mut o = Vec::new();
+    for i in 0..2 {
+        match rail(i) {
+            Some(s) => {
+                o.push(s.offset_distance());
+                let d = s.surface.natural_uv_domain();
+                o.extend([d.min().x, d.min().y, d.max().x, d.max().y]);
+                o.push(flag(s.surface.with_extended_base_surface(|e| e.is_some())));
+            }
+            None => o.extend([f64::NAN; 6]),
+        }
+    }
+    o
 }
 
 /// The surface of a selector (`1` `GetSurface(0)`, `2` `GetSurface(1)`, `3` another offset
@@ -854,6 +1113,7 @@ fn rust_record(i: &Inputs) -> Result<Rec, HarnessError> {
             };
             let guess = matches!(i, Inputs::Guess { .. });
             let (d1, d2) = (extent2(plane.d1), extent2(plane.d2));
+            let mut t = TsectPnt::new();
             let res = if guess {
                 fs.guess_point_on_plane_solve(
                     v3(plane.orig),
@@ -862,9 +1122,11 @@ fn rust_record(i: &Inputs) -> Result<Rec, HarnessError> {
                     &d2,
                     p2(plane.uv1),
                     p2(plane.uv2),
+                    &mut t,
                 )
             } else {
-                fs.point_on_plane_solve(
+                point_on_plane_solve(
+                    &mut fs,
                     &k,
                     None,
                     v3(plane.orig),
@@ -873,11 +1135,12 @@ fn rust_record(i: &Inputs) -> Result<Rec, HarnessError> {
                     &d2,
                     p2(plane.uv1),
                     p2(plane.uv2),
+                    &mut t,
                 )
             };
             match res {
-                Ok(None) => o.extend([0.0, 0.0]),
-                Ok(Some(t)) => {
+                Ok(false) => o.extend([0.0, 0.0]),
+                Ok(true) => {
                     o.extend([0.0, 1.0]);
                     push_tsect_uvs(&mut o, &t);
                     if !guess {
@@ -1012,12 +1275,17 @@ fn rust_record(i: &Inputs) -> Result<Rec, HarnessError> {
             push_types(&mut o, ss.type_code(), |t| ss.is_kind_of(t), kinds);
             push_types(&mut o, vr.type_code(), |t| vr.is_kind_of(t), kinds);
         }
-        Inputs::CdEu { .. } => return Err(harness("the edge-use op runs apart")),
+        Inputs::CdEu { .. } | Inputs::CrEu { .. } => {
+            return Err(harness("the edge-use op runs apart"))
+        }
     }
     Ok(Ok(o))
 }
 
 fn rust(i: &Inputs) -> Result<Output, HarnessError> {
+    if matches!(i, Inputs::CrEu { .. }) {
+        return rust_cr_eu(i);
+    }
     if i.ffi().is_none() {
         return rust_edgeuse(i);
     }
@@ -1304,9 +1572,13 @@ fn gen_plane_solve(rng: &mut Rng, guess: bool) -> Inputs {
         let normal = if rng.chance(0.85) { x } else { unit_vec(rng) };
         let r = solver.r;
         let near = rng.chance(0.7);
+        // (outside the base domain the allow-extension offsets extend their base)
+        let outside = rng.chance(0.3);
         let jitter = |rng: &mut Rng, v: f64| {
             if near {
                 v + rng.uniform(-0.05, 0.05)
+            } else if outside {
+                rng.uniform(-0.4, 1.4)
             } else {
                 rng.uniform(0.0, 1.0)
             }
@@ -1333,13 +1605,19 @@ fn gen_plane_solve(rng: &mut Rng, guess: bool) -> Inputs {
         };
     }
     let solver = gen_solver(rng, 2, None);
+    // guesses outside the base domains in a third of the cases (the offsets extend)
+    let (lo, hi) = if rng.chance(0.35) {
+        (-0.4, 1.4)
+    } else {
+        (0.0, 1.0)
+    };
     let plane = PlaneIn {
         orig: rng.point3(-2.0, 2.0),
         normal: arr(unit_vec(rng)),
         d1: wide,
         d2: wide,
-        uv1: [rng.uniform(0.0, 1.0), rng.uniform(0.0, 1.0)],
-        uv2: [rng.uniform(0.0, 1.0), rng.uniform(0.0, 1.0)],
+        uv1: [rng.uniform(lo, hi), rng.uniform(lo, hi)],
+        uv2: [rng.uniform(lo, hi), rng.uniform(lo, hi)],
     };
     if guess {
         Inputs::Guess { solver, plane }
@@ -1396,12 +1674,13 @@ fn gen_ss(rng: &mut Rng) -> Inputs {
 }
 
 fn gen_case(rng: &mut Rng) -> Inputs {
-    match rng.below(22) {
+    match rng.below(25) {
         0..=7 => gen_cr_init(rng),
         8..=12 => gen_plane_solve(rng, true),
         13..=14 => gen_plane_solve(rng, false),
         15..=18 => gen_ss(rng),
         19..=20 => gen_cd_eu(rng),
+        22..=24 => gen_cr_eu(rng),
         _ => Inputs::Types {
             kinds: type_kinds(rng),
         },

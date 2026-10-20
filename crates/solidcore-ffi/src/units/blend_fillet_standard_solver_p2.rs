@@ -26,12 +26,14 @@
 //!
 //! Output: the op status (`0` = `SM_SUCCESS`, else the `SmStatus`) and then: `CrInit` the
 //! rail of `rpSrf2Offset` (`-1` `NULL`), `rlSurface2Index`, the intervals, `np' per[np']`,
-//! `ng' guess[ng']` and both offset distances; `Guess` on success `found` and with
-//! `found` both UV points, then both offset distances; `Plane` as `Guess`, after the UV points
+//! `ng' guess[ng']` and the offset state; `Guess` on success `found` and with
+//! `found` both UV points, then the offset state; `Plane` as `Guess`, after the UV points
 //! per surface its point, derivatives and unit normal and then the curve point; `Ss` the
-//! radii, orientations, offset distances, UV guesses, trim type, solver type, `GetType`
+//! radii, orientations, offset state, UV guesses, trim type, solver type, `GetType`
 //! and the kinds (its status is that of `CalcFilletGeom` with `calc`, `-3` when the
 //! shim did not run it, `0` without `calc`); `Types` per solver `GetType` and the kinds.
+//! The offset state is per rail `offset umin vmin umax vmax has_extension`: the offset
+//! distance, `GetNaturalUVDomain()` and `GetExtendedBaseSurface() != NULL` after the op.
 //!
 //! [`eval`] accepts only what upstream handles without undefined behaviour: well-formed
 //! clamped 3D B-spline surfaces (`1 <= p <= n`, at most [`MAX_INDEX`] control points per
@@ -47,12 +49,24 @@
 //! only when the offset normals at the guesses are parallel (its first exit).
 //!
 //! [`eval_edgeuse`] (shim `harness/cpp/shim/blend_fillet_standard_solver_p2_eu.cpp`,
-//! `sc_blend_fillet_standard_solver_p2_eu_eval`) runs the `SmConstantDistanceFS`
-//! constructor on a B-rep block of unit `topology.edgeuse_p1`
-//! ([`super::topology_edgeuse_p1`]) followed by `eu tol ang tan dist fu fv`: the edge use's
-//! index in the export's traversal order, the constructor's tolerances and distance and
-//! the UV fractions of each offset surface's natural domain where it is evaluated.
-//! Output: `0`, or `-1 status` when the B-rep could not be built; then `-2` when upstream
+//! `sc_blend_fillet_standard_solver_p2_eu_eval`) runs on a B-rep block of unit
+//! `topology.edgeuse_p1` ([`super::topology_edgeuse_p1`]) followed by `mode`:
+//!
+//! - `mode 0`: the `SmConstantDistanceFS` constructor, `eu tol ang tan dist fu fv`: the
+//!   edge use's index in the export's traversal order, the constructor's tolerances and
+//!   distance and the UV fractions of each offset surface's natural domain where it is
+//!   evaluated (output below).
+//! - `mode 1`: `SmConstantRadiusFS::LoadInitialValues` with edge uses, `eu tol ang tan r
+//!   rail fu fv ext`: the `SmConstantRadiusFS` edge-use constructor (radius `r`), its
+//!   `m_dSurfaceExtensionFactor` set to `ext`, then `LoadInitialValues(1, rail,
+//!   *GetSurface(rail), 0, ..)` with the guess at the UV fractions of that offset's
+//!   natural domain (intervals `ExtentNd(4)`, the first two that domain). Output: `0`,
+//!   or `-1 status`; `-2` as below; `1001` when the constructor signalled tangent
+//!   surfaces; else `0`, the status, the rail of `rpSurface2` (`-1` other), the index
+//!   (`999` untouched), on success intervals 2 and 3, `np per[np] ng guess[ng]`, and per
+//!   rail `offset umin vmin umax vmax has_extension`.
+//!
+//! Mode 0 output: `0`, or `-1 status` when the B-rep could not be built; then `-2` when upstream
 //! would dereference null (the edge use or its radial is not a loop edge use with edge,
 //! curve, face use, face, surface, vertex uses and vertices), or `0 built o0 o1 distance`
 //! (`built` `0` when the constructor signalled tangent surfaces and cleared its edge
@@ -73,6 +87,9 @@ pub const MAX_ARRAY: usize = 32;
 pub const MAX_PARAM: f64 = 1.0e6;
 /// `NL_NOZ`.
 const NOZ: f64 = f64::MAX;
+/// Largest `m_dSurfaceExtensionFactor` [`eval_edgeuse`] accepts (a generator bound: the
+/// extended domains stay within [`MAX_PARAM`] of the B-reps' parameters).
+pub const MAX_EXTENSION_FACTOR: f64 = 10.0;
 /// `NL_NOW`.
 const NOW: f64 = -f64::MAX;
 
@@ -416,14 +433,25 @@ pub fn eval_edgeuse(path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
         return Ok(export);
     };
     let n_eu = c.get(6).copied().unwrap_or(0);
+    let mode = rd.below(2)?;
     rd.below(n_eu)?;
     for _ in 0..4 {
         rd.finite()?;
+    }
+    if mode == 1 {
+        // the rail of crSurface1 (`1 - lRailIndex` underflows past 1)
+        rd.below(2)?;
     }
     for _ in 0..2 {
         let f = rd.finite()?;
         if !(0.0..=1.0).contains(&f) {
             return Err(bad("UV fraction outside [0, 1]"));
+        }
+    }
+    if mode == 1 {
+        let ext = rd.finite()?;
+        if !(0.0..=MAX_EXTENSION_FACTOR).contains(&ext) {
+            return Err(bad("extension factor outside [0, MAX_EXTENSION_FACTOR]"));
         }
     }
     rd.done()?;

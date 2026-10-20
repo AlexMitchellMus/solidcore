@@ -114,9 +114,9 @@
 //!   values; a geometry whose adjusting path needs a solver it does not have is a
 //!   null-pointer error (upstream dereferences it). Upstream's `pAdjustFS` is any
 //!   `SmFilletSolver` and only base members are read (`GetSurface(k)`, `m_pSurfaces`);
-//!   the signature commits to the one solver kind on main until `blend.
-//!   fillet_standard_solver_p1` (PR #168) lands its `FilletSolverData` base-member
-//!   struct, which this argument should then take.
+//!   the signature commits to the one solver kind; it could take the
+//!   [`crate::blend::fillet_solver::p1::FilletSolver`] base that every solver of
+//!   `blend.fillet_standard_solver_p1` and `blend.fillet_custom_solver` now holds.
 //! - **Surface cache flags.** `sm_SurfaceDropPoint` and `sm_FindStepoffUV` temporarily
 //!   turn off the surface cache's point test (`m_bPointTestEnabled`) and turn on its
 //!   boundary-curve processing around `GlobalPointSolve`, so every solution is kept
@@ -1077,10 +1077,10 @@ impl FilletGeom {
         let mut off_surfs = [None, None];
         for (slot, i) in off_surfs.iter_mut().zip(0..2usize) {
             if let Some((_, fs)) = solver {
-                *slot = match fs.solver.surface(i)?.map(|slot| &slot.surface) {
+                *slot = match fs.solver.surface(i)? {
                     // SmOffsetSurface::Copy() returns an SmSurface*, not SmOffsetSurface*;
                     // its status is ignored, so a failed copy leaves NULL
-                    Some(off_srf) => match offset_surface_copy(k, off_srf) {
+                    Some(off_srf) => match offset_surface_copy(k, &off_srf.surface) {
                         Ok(new_surf) => Some(new_surf),
                         Err(e) if e.is_unported() => return Err(e),
                         Err(_) => None,
@@ -2924,8 +2924,12 @@ pub fn create_cubic_rail_rail_interpolant(
             .ok_or_else(|| SolidError::null_pointer(OP))
     };
     // First, calculate the intersection of two rails
-    let rail_index = find_index_of_rail_on_face(fil_solver1, face)?;
-    let other_rail_index = find_index_of_rail_on_face(fil_solver2, face)?;
+    let rail_index = fil_solver1
+        .solver
+        .find_index_of_rail_on_face(brep, Some(face))?;
+    let other_rail_index = fil_solver2
+        .solver
+        .find_index_of_rail_on_face(brep, Some(face))?;
     // Derive guess uv point here
     let mut eu = solver_edgeuse(fil_solver1, rail_index)?;
     let eu_vertex = |brep: &Brep, eu: EdgeuseId| -> Result<(VertexuseId, Option<VertexId>)> {
@@ -2988,18 +2992,6 @@ pub fn create_cubic_rail_rail_interpolant(
         weights: None,
         trim: None,
     })
-}
-
-/// `SmFilletSolver::FindIndexOfRailOnFace(pOrigFace)` (unit `blend.fillet_solver_p1`).
-fn find_index_of_rail_on_face(
-    _solver: &ConstantRadiusAssistedFs,
-    _orig_face: FaceId,
-) -> Result<usize> {
-    // UNPORTED(blend.fillet_solver_p1): SmFilletSolver::FindIndexOfRailOnFace
-    Err(SolidError::unported(
-        "SmFilletSolver::FindIndexOfRailOnFace",
-        "blend.fillet_solver_p1",
-    ))
 }
 
 /// `SmFilletSolver::RailRailIntersect(crUVGuess, lRailIndex, pOtherFillet,

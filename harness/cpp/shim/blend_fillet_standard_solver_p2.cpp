@@ -280,10 +280,21 @@ struct Built
     }
 };
 
+// Per rail offset after the op: `offset umin vmin umax vmax has_extension` (the natural
+// UV domain and GetExtendedBaseSurface() != NULL show the extensions the op left).
 void put_offsets(std::vector<double>& o, SmFilletSolver* fs)
 {
-    o.push_back(fs->GetSurface(0)->GetOffsetDistance());
-    o.push_back(fs->GetSurface(1)->GetOffsetDistance());
+    for (int i = 0; i < 2; i++)
+    {
+        SmOffsetSurface* s = fs->GetSurface(i);
+        o.push_back(s->GetOffsetDistance());
+        SmExtent2d d = s->GetNaturalUVDomain();
+        o.push_back(d.GetMin().x);
+        o.push_back(d.GetMin().y);
+        o.push_back(d.GetMax().x);
+        o.push_back(d.GetMax().y);
+        o.push_back(s->GetExtendedBaseSurface() != NULL ? 1.0 : 0.0);
+    }
 }
 
 // `solver do2 rail sel1 s1_index dim` `dim` x `min max`, `np per[np] ng guess[ng]`.

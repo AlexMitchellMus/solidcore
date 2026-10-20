@@ -12,9 +12,9 @@
 //! |----------------------------------------------------------|-------------------------------------------------------|
 //! | [`constant_radius_load_initial_values`], [`ConstantRadiusAssistedFs::load_initial_values`], [`SurfaceSurfaceFs::load_initial_values`] | `SmConstantRadiusFS::LoadInitialValues` |
 //! | [`ConstantRadiusOps`]                                    | the `SetupOffsetExtension` virtual of the `SmConstantRadiusFS` classes |
-//! | [`GuessSphereSolve::evaluate`]                           | `SmGuessSphereSolveENFO::Evaluate`                    |
+//! | [`GuessSphereEnfo`], [`GuessSphereEnfo::evaluate`]       | `SmGuessSphereSolveENFO` (as `GuessPointOnPlaneSolve` evaluates it), `SmGuessSphereSolveENFO::Evaluate` |
 //! | [`ConstantRadiusAssistedFs::guess_point_on_plane_solve`] | `SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve`  |
-//! | [`ConstantRadiusAssistedFs::point_on_plane_solve`]       | `SmConstantRadiusAssistedFS::PointOnPlaneSolve`       |
+//! | [`point_on_plane_solve`]                                 | `SmConstantRadiusAssistedFS::PointOnPlaneSolve`       |
 //! | [`constant_radius_assisted_is_kind_of`]                  | `SmConstantRadiusAssistedFS::IsKindOf`                |
 //! | [`ConstantDistanceFs::from_edgeuse`]                     | `SmConstantDistanceFS::SmConstantDistanceFS`          |
 //! | [`VariableRadiusFs::from_edgeuse`]                       | `SmVariableRadiusFS::SmVariableRadiusFS` (edge use)   |
@@ -37,28 +37,43 @@
 //!   through [`ConstantRadiusOps`]: `SmSurfaceSurfaceFS` has its own version
 //!   (`blend.fillet_standard_solver_p1`); every other constant-radius solver uses the
 //!   base `SmFilletSolver::SetupOffsetExtension` (unit `blend.fillet_solver_p1`).
-//!   `PointOnPlaneSolve` is the version of an exact `SmConstantRadiusAssistedFS` (its
-//!   `LoadInitialValues` and `LoadJacobian` are `SmConstantRadiusFS`'s; its
-//!   `SmFilletSphereSolveENFO` sees the solver as that class through a private
-//!   `FilletSolverOps` adapter); the custom solvers derived from it dispatch to their own.
+//!   [`point_on_plane_solve`] takes `*this` as a `blend.fillet_solver_p1`
+//!   [`FilletSolverOps`] (`dyn`), so `GetJacobianSize`, `LoadInitialValues` and the
+//!   `LoadJacobian` its `SmFilletSphereSolveENFO` calls dispatch on the solver's class:
+//!   `SmConstantRadiusAssistedFS` (`blend.fillet_custom_solver`'s
+//!   `impl FilletSolverOps for ConstantRadiusAssistedFs`) or the custom solvers derived
+//!   from it, which inherit the method. `blend.fillet_intersector`'s
+//!   `FilletSolverOps::point_on_plane_solve` of all three classes calls it (without a
+//!   B-rep).
 //! - **Surfaces.** As in `blend.fillet_custom_solver`, `crSurface1` is the caller's
 //!   offset surface (a copy when upstream passes `GetSurface(i)`), except for
 //!   `SmVariableRadiusFS::LoadInitialValues`, which re-evaluates it after changing the
 //!   solver's offset distances: there `None` stands for `GetSurface(lRailIndex)`.
-//!   `GuessPointOnPlaneSolve` takes the solver shared and runs on a copy of it (its
-//!   `LoadJacobian` resets the offset distances to radius times orientation, which the
-//!   assisted solvers hold already, and caches base extensions).
+//!   `PointOnPlaneSolve` passes a copy of `*GetSurface(0)` and hands its base extension
+//!   back to the solver's offset afterwards, unless the solver's own offset was extended
+//!   meanwhile (the custom solvers' `GuessPointOnPlaneSolve`), which upstream does on the
+//!   one object. `GuessPointOnPlaneSolve` runs on the solver itself (`&mut`): its
+//!   offsets keep the extensions the `SmGuessSphereSolveENFO` evaluations make.
 //! - **Constructors.** `SmConstantDistanceFS` and `SmVariableRadiusFS` from an edge use
 //!   signal `SM_ERR` (or nothing) for tangent faces and leave a solver without edge
 //!   uses or offset surfaces: the same half-built solver is returned (`Ok`). They take
 //!   the B-rep mutably (`SmEdgeuse::EvaluateBinormal` may create a UV trim curve).
-//!   `FinishConstruction` has nothing to do (no fillet geometries are modelled).
+//!   `FinishConstruction` (copies of the offsets into each fillet geometry,
+//!   `SmFilletGeom::SetOffsetSurface` of `blend.fillet_geom_p1`) is not called: the
+//!   solver holds only [`FilletGeomRef`](crate::blend::fillet_solver::p1::FilletGeomRef)
+//!   handles, whose geometry data is not modelled (`plan/findings.md`).
+//! - **`SmGuessSphereSolveENFO`.** [`GuessSphereEnfo`] holds the plane state and the
+//!   solver as the `SmConstantRadiusFS` its `Evaluate` casts `m_crFilletSolver` to
+//!   (`blend.fillet_standard_solver_p1`'s `GuessSphereSolve` holds it as a
+//!   `dyn FilletSolverOps`, which cannot be cast back for the qualified
+//!   `SmConstantRadiusFS::LoadJacobian`).
 //! - **Unported callees.** `SmFilletSolver::StepSolve` (`blend.fillet_solver_p3`),
-//!   `SmFilletGeom::GetRail` (`blend.fillet_geom_p1`, partial, but the solver data holds
-//!   no fillet geometries; see `plan/findings.md`) and `SmFilletLaw::SetEdgeArcLength` / `Evaluate`
-//!   (`blend.fillet_executive_p1`) return [`SolidError::Unported`] at the call site.
-//!   `ReCalcFilletGeom` stops at its first fillet-geometry call (everything after it
-//!   walks the unported pseudo-B-rep), `CalcFilletGeom` at `StepSolve`.
+//!   `SmFilletGeom::GetRail` (`blend.fillet_geom_p1`, partial, but the solver holds
+//!   fillet-geometry handles without data; see `plan/findings.md`) and
+//!   `SmFilletLaw::SetEdgeArcLength` / `Evaluate` (`blend.fillet_executive_p1`) return
+//!   [`SolidError::Unported`] at the call site. `ReCalcFilletGeom` stops at its first
+//!   fillet-geometry call (everything after it walks the unported pseudo-B-rep),
+//!   `CalcFilletGeom` at `StepSolve` (the rest of it is ported but unreachable).
 //! - **Arguments.** Out-params become return values (`rbFoundSolution` /
 //!   `rTsectPnt`: `Some` point when found). `SmContext` arguments are dropped or become
 //!   the [`Kernel`]. The generators' `CreateSurface` take the solver's tolerance and
@@ -74,13 +89,15 @@ use crate::blend::fillet_custom_solver::{
     offset_local_point_solve, surface_global_point_solve, ConstantRadiusAssistedFs, InitialValues,
     JacobianLoad, OffsetSurface, SurfaceId,
 };
-use crate::blend::fillet_solver::p1::{FilletSolver, FilletSolverOps, FilletSphereSolveEnfo};
+use crate::blend::fillet_solver::p1::{
+    FilletSolver, FilletSolverOps, FilletSphereSolveEnfo, OffsetSurfaceSlot,
+};
+use crate::blend::fillet_standard_solver::p1::SolverRails;
 use crate::blend::fillet_standard_solver::p1::{
-    constant_radius_is_kind_of, fillet_solver_is_kind_of, BlendCurveCrossSectionFsg,
-    BoundaryTrimmingType, CircularCrossSectionFsg, ConstantDistanceFs, ConstantRadiusFs,
-    CurveBasedFs, DistanceInitialValues, FilletLaw, FilletSolverData, FilletSolverType,
-    GuessSphereSolve, JacobianSurfaces, RailSurface, SurfaceSurfaceFs, VariableRadiusFs,
-    CONSTANT_RADIUS_ASSISTED_FS_TYPE, CURVE_BASED_FS_TYPE,
+    constant_radius_is_kind_of, BlendCurveCrossSectionFsg, BoundaryTrimmingType,
+    CircularCrossSectionFsg, ConstantDistanceFs, ConstantRadiusFs, CurveBasedFs,
+    DistanceInitialValues, FilletLaw, FilletSolverType, JacobianSurfaces, RailSurface,
+    SurfaceSurfaceFs, VariableRadiusFs, CONSTANT_RADIUS_ASSISTED_FS_TYPE, CURVE_BASED_FS_TYPE,
 };
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::Curve;
@@ -275,6 +292,21 @@ fn extending_offset(k: &Kernel, d: f64, base: (Surface, SurfaceId)) -> Result<Of
     let mut off = OffsetSurface::new(k, d, s, id, SS_UNKNOWN)?;
     off.set_allow_extension(true);
     Ok(off)
+}
+
+/// `m_pSurfaces[0..2]` of a solver as the constructors set them: two distinct
+/// `SmOffsetSurface` objects (keys 0 and 1).
+fn rail_slots(s0: OffsetSurface, s1: OffsetSurface) -> [Option<OffsetSurfaceSlot>; 2] {
+    [
+        Some(OffsetSurfaceSlot {
+            key: 0,
+            surface: s0,
+        }),
+        Some(OffsetSurfaceSlot {
+            key: 1,
+            surface: s1,
+        }),
+    ]
 }
 
 // ---- SmConstantRadiusFS::LoadInitialValues -------------------------------------------------
@@ -674,14 +706,47 @@ impl ConstantRadiusAssistedFs {
 
 // ---- SmGuessSphereSolveENFO -----------------------------------------------------------------
 
-impl GuessSphereSolve {
-    /// `SmGuessSphereSolveENFO::Evaluate(crX, rF, pOptJacobian, rbFoundAnswer)` with
-    /// `m_crFilletSolver` = `solver`: with a Jacobian, it and the matching `rF` rows are
-    /// zeroed; `SmConstantRadiusFS::LoadJacobian` loads rows 1-3 (from parameter 2, rail
-    /// 0, `crX[0..2]` on rail 0's surface); row 0 is the plane distance
-    /// `m_vPlaneABC . F + m_dPlaneD` of the first offset surface's point at `crX[0..2]`
-    /// (with plane adjusting, the plane first moves to the line of the two surfaces'
-    /// normals through the middle of their points). Returns `rbFoundAnswer`.
+/// `SmGuessSphereSolveENFO` (file-local) as `GuessPointOnPlaneSolve` evaluates it: the
+/// plane state of its `SmFilletSphereSolveENFO` base, set up as
+/// `blend.fillet_standard_solver_p1`'s [`GuessSphereSolve::new`](crate::blend::fillet_standard_solver::p1::GuessSphereSolve::new)
+/// does (the plane starts as the "sphere centre and radius", not adjusting), and
+/// `m_crFilletSolver` as the `SmConstantRadiusFS` its `Evaluate` casts it to. (That
+/// `GuessSphereSolve` holds the solver as a `dyn FilletSolverOps`, which cannot be cast
+/// back for the qualified `SmConstantRadiusFS::LoadJacobian`.)
+pub struct GuessSphereEnfo<'a> {
+    /// `m_vPlaneABC`: plane normal.
+    pub plane_abc: Vec3,
+    /// `m_dPlaneD`: plane offset.
+    pub plane_d: f64,
+    /// `m_bPlaneAdjusts`.
+    pub plane_adjusts: bool,
+    solver: &'a mut ConstantRadiusFs,
+}
+
+impl<'a> GuessSphereEnfo<'a> {
+    /// `SmGuessSphereSolveENFO(crSphereCenter, dSphereRadius, crFilletSolver)`.
+    pub fn new(sphere_center: Point3, sphere_radius: f64, solver: &'a mut ConstantRadiusFs) -> Self {
+        Self {
+            plane_abc: sphere_center,
+            plane_d: sphere_radius,
+            plane_adjusts: false,
+            solver,
+        }
+    }
+
+    /// `SetPlaneAdjusts`.
+    pub fn set_plane_adjusts(&mut self, plane_adjusts: bool) {
+        self.plane_adjusts = plane_adjusts;
+    }
+
+    /// `SmGuessSphereSolveENFO::Evaluate(crX, rF, pOptJacobian, rbFoundAnswer)`: with a
+    /// Jacobian, it and the matching `rF` rows are zeroed; `SmConstantRadiusFS::LoadJacobian`
+    /// loads rows 1-3 (from parameter 2, rail 0, `crX[0..2]` on rail 0's surface); row 0
+    /// is the plane distance `m_vPlaneABC . F + m_dPlaneD` of the first offset surface's
+    /// point at `crX[0..2]` (with plane adjusting, the plane first moves to the line of
+    /// the two surfaces' normals through the middle of their points). Returns
+    /// `rbFoundAnswer`. Base extensions the evaluations make stay on the solver's
+    /// offsets, as upstream's `const` evaluators store them.
     ///
     /// # Errors
     ///
@@ -690,12 +755,12 @@ impl GuessSphereSolve {
     /// them) or a missing surface.
     pub fn evaluate(
         &mut self,
-        solver: &mut ConstantRadiusFs,
         x: &[f64],
         f: &mut [f64],
         mut jacobian: Option<&mut Matrix>,
     ) -> Result<bool> {
         const OP: &str = OP_GUESS;
+        let solver = &mut *self.solver;
         let mut found = false;
 
         if let Some(j) = jacobian.as_deref_mut() {
@@ -781,20 +846,14 @@ impl GuessSphereSolve {
     }
 }
 
-/// The `SmGuessSphereSolveENFO` as the equation set of an `SmLocalSolveNd`.
-struct GuessSphereEquations<'a> {
-    enfo: GuessSphereSolve,
-    solver: &'a mut ConstantRadiusFs,
-}
-
-impl EvalNFunctions for GuessSphereEquations<'_> {
+impl EvalNFunctions for GuessSphereEnfo<'_> {
     fn evaluate(
         &mut self,
         x: &[f64],
         f: &mut [f64],
         jacobian: Option<&mut Matrix>,
     ) -> Result<bool> {
-        self.enfo.evaluate(self.solver, x, f, jacobian)
+        GuessSphereEnfo::evaluate(self, x, f, jacobian)
     }
 }
 
@@ -868,25 +927,29 @@ impl ConstantRadiusAssistedFs {
     /// constant-radius equations plus the plane `crPlaneNormal . P = crPlaneNormal .
     /// crPlaneOrig` for the first offset surface's point from `(rUV1, rUV2)` inside the
     /// two domains, then again with the plane adjusting to the solution when that
-    /// fails. `Some` intersection point (default but for its UV points) when found.
+    /// fails. Returns `rbFoundSolution`; when found, the UV points (and user doubles) of
+    /// `point` (`rTsectPnt`) are set, the rest of it is kept. `GetJacobianSize` is
+    /// `SmConstantRadiusFS`'s, which every solver derived from this class inherits. The
+    /// solver's offsets keep the base extensions the evaluations make, as upstream's
+    /// `const` evaluators store them on `*this`.
     ///
     /// # Errors
     ///
     /// Those of the local solves ([`SolidError::Unported`] from an evaluation);
     /// [`SolidError::InvalidInput`] for a missing surface.
+    #[allow(clippy::too_many_arguments)]
     pub fn guess_point_on_plane_solve(
-        &self,
+        &mut self,
         plane_orig: Point3,
         plane_normal: Vec3,
         uv_domain1: &Extent2d,
         uv_domain2: &Extent2d,
         uv1: Point2,
         uv2: Point2,
-    ) -> Result<Option<TsectPnt>> {
-        // (the solver is borrowed shared: run on a copy, see the module deviations)
-        let mut solver = self.clone();
+        point: &mut TsectPnt,
+    ) -> Result<bool> {
         // Now Set up Solver
-        let jacobian_size = solver.jacobian_size();
+        let jacobian_size = ConstantRadiusAssistedFs::jacobian_size(self);
         let intervals = plane_intervals(jacobian_size, uv_domain1, uv_domain2)?;
         let periodicities = vec![false; 4];
         let guess_t = vec![uv1.x, uv1.y, uv2.x, uv2.y];
@@ -895,11 +958,8 @@ impl ConstantRadiusAssistedFs {
         let surf2_index = 2; // UV values of Surface2
 
         let plane_d = -plane_orig.dot(plane_normal);
-        let approx_tol_3d = solver.solver.approx_tol_3d;
-        let mut eval = GuessSphereEquations {
-            enfo: GuessSphereSolve::new(plane_normal, plane_d),
-            solver: &mut solver,
-        };
+        let approx_tol_3d = self.solver.approx_tol_3d;
+        let mut eval = GuessSphereEnfo::new(plane_normal, plane_d, self);
         let mut ls = plane_local_solver(&mut eval, &intervals, &periodicities);
 
         // Solve it
@@ -907,219 +967,150 @@ impl ConstantRadiusAssistedFs {
 
         // Try it again and allow the plane to adjust as convergance happens
         if !sol.found {
-            ls.evaluator().enfo.plane_adjusts = true;
+            ls.evaluator().set_plane_adjusts(true);
             sol = ls.solve_it(&guess_t, approx_tol_3d)?;
         }
 
-        if !sol.found {
-            return Ok(None);
+        if sol.found {
+            store_plane_solution(point, &sol.x, surf1_index, surf2_index, OP_GUESS)?;
         }
-        let mut t = TsectPnt::new();
-        store_plane_solution(&mut t, &sol.x, surf1_index, surf2_index, OP_GUESS)?;
-        Ok(Some(t))
-    }
-
-    /// `SmConstantRadiusAssistedFS::PointOnPlaneSolve(crPlaneOrig, crPlaneNormal,
-    /// crUVDomain1, crUVDomain2, rUV1, rUV2, rbFoundSolution, rTsectPnt)`: loads the
-    /// initial values from `rUV1` on rail 0 (`rUV2` is not used), solves the solver's
-    /// equations on the plane through `crPlaneOrig` normal to `crPlaneNormal` (again
-    /// with the plane adjusting when that fails) and, when found, stores both UV
-    /// points, the surface points, derivatives and unit normals and the first surface
-    /// point as the curve point.
-    ///
-    /// # Errors
-    ///
-    /// Those of [`ConstantRadiusAssistedFs::load_initial_values`] and of the plane
-    /// solves (`SmFilletSphereSolveENFO::Evaluate`, unit `blend.fillet_solver_p1`);
-    /// `SM_ERR` for a zero normal at the solution.
-    #[allow(clippy::too_many_arguments)]
-    pub fn point_on_plane_solve(
-        &mut self,
-        k: &Kernel,
-        brep: Option<&Brep>,
-        plane_orig: Point3,
-        plane_normal: Vec3,
-        uv_domain1: &Extent2d,
-        uv_domain2: &Extent2d,
-        uv1: Point2,
-        _uv2: Point2,
-    ) -> Result<Option<TsectPnt>> {
-        const OP: &str = OP_PLANE;
-        // Now Set up Solver
-        let jacobian_size = self.jacobian_size();
-        let mut intervals = plane_intervals(jacobian_size, uv_domain1, uv_domain2)?;
-        let mut periodicities = vec![false; 2];
-        let mut guess_t = vec![uv1.x, uv1.y];
-
-        let mut surface1 = self.surface(0)?.clone();
-        let surf1_index = 0; // UV values of Surface1
-        let rail_index = 0;
-
-        // Load the initial values
-        // given current inputs - place a good guess for upcoming solve in sGuessT
-        let init = self.load_initial_values(
-            k,
-            brep,
-            true,
-            rail_index,
-            &mut surface1,
-            surf1_index,
-            &mut intervals,
-            &mut periodicities,
-            &mut guess_t,
-        )?;
-        let surf2_index = init.map_or(0, |v| v.surface2_index);
-
-        // get plane equation for given PlanePt and PlaneNormal
-        let plane_d = -plane_orig.dot(plane_normal);
-
-        // Solve equations with NewtonRaphson iteration (and again with the plane
-        // adjusting)
-        let sol = fillet_sphere_solve(
-            self,
-            plane_normal,
-            plane_d,
-            &intervals,
-            &periodicities,
-            &guess_t,
-        )?;
-
-        // when a solution point was found
-        if !sol.found {
-            return Ok(None);
-        }
-        let mut t = TsectPnt::new();
-        store_plane_solution(&mut t, &sol.x, surf1_index, surf2_index, OP)?;
-
-        // for both surfaces - get and store solution point surface values
-        for (rail, srf) in [(0, SrfIndex::First), (1, SrfIndex::Second)] {
-            // get and store the surface point values
-            let uv = t.uv_pos(srf);
-            let (p, du, dv) = offset_evaluate_1st(self.surface_mut(rail)?, uv)?;
-            *t.srf_pos_mut(srf) = p;
-            *t.srf_du_mut(srf) = du;
-            *t.srf_dv_mut(srf) = dv;
-
-            // Store a unitized surface normal.
-            let mut norm = du.cross(dv);
-            if norm.length_squared() < EFF_ZERO_SQ {
-                norm = offset_evaluate_normal(self.surface_mut(rail)?, uv)?;
-                if norm.length_squared() < EFF_ZERO_SQ {
-                    return Err(SolidError::sm_err(OP));
-                }
-            }
-            let norm = norm.unitize_or_z();
-            if let Some(row) = t.srf_eval_matrix_mut(srf).get_mut(2) {
-                if let Some(slot) = row.get_mut(2) {
-                    *slot = norm;
-                }
-            }
-        }
-
-        // Now compute the point and vectors for the 3D curve
-        // Point is average of surface points
-        *t.crv_pos_mut() = t.srf_pos(SrfIndex::First);
-        Ok(Some(t))
+        Ok(sol.found)
     }
 }
 
-/// `*this` of `SmConstantRadiusAssistedFS::PointOnPlaneSolve` as an `SmFilletSolver`:
-/// the virtuals an `SmFilletSphereSolveENFO` evaluation reaches dispatch on
-/// `SmConstantRadiusAssistedFS` (its `SmConstantRadiusFS` overrides).
-struct AssistedSolver<'a>(&'a mut ConstantRadiusAssistedFs);
+/// `SmConstantRadiusAssistedFS::PointOnPlaneSolve(crPlaneOrig, crPlaneNormal,
+/// crUVDomain1, crUVDomain2, rUV1, rUV2, rbFoundSolution, rTsectPnt)` on `*this` =
+/// `solver`, an `SmConstantRadiusAssistedFS` or a class derived from it that inherits
+/// the method (`SmEiffelTowerFS`, `SmSecantConstantRadiusFS`): its virtual
+/// `GetJacobianSize`, `LoadInitialValues` and (through the `SmFilletSphereSolveENFO`)
+/// `LoadJacobian` dispatch on the solver's class. Loads the initial values from `rUV1`
+/// on rail 0 (`rUV2` is not used), solves the solver's equations on the plane through
+/// `crPlaneOrig` normal to `crPlaneNormal` (again with the plane adjusting when that
+/// fails) and, when found, stores both UV points, the surface points, derivatives and
+/// unit normals and the first surface point as the curve point in `point`
+/// (`rTsectPnt`; the rest of it is kept). Returns `rbFoundSolution`.
+///
+/// `crSurface1` of `LoadInitialValues` is `*GetSurface(0)`: it runs on a copy (the
+/// solver is borrowed mutably meanwhile) whose base extension is handed back to the
+/// solver's rail 0 offset afterwards, as upstream evaluates the solver's own offset.
+/// `brep` is the B-rep of the solver's edge uses (`None` without).
+///
+/// # Errors
+///
+/// Those of the solver's `LoadInitialValues` and of the plane solves
+/// (`SmFilletSphereSolveENFO::Evaluate`, unit `blend.fillet_solver_p1`); `SM_ERR` for a
+/// zero normal at the solution; [`SolidError::InvalidInput`] for a missing surface.
+#[allow(clippy::too_many_arguments)]
+pub fn point_on_plane_solve(
+    solver: &mut dyn FilletSolverOps,
+    k: &Kernel,
+    brep: Option<&Brep>,
+    plane_orig: Point3,
+    plane_normal: Vec3,
+    uv_domain1: &Extent2d,
+    uv_domain2: &Extent2d,
+    uv1: Point2,
+    _uv2: Point2,
+    point: &mut TsectPnt,
+) -> Result<bool> {
+    const OP: &str = OP_PLANE;
+    // Now Set up Solver
+    let jacobian_size = solver.jacobian_size()?;
+    let mut intervals = plane_intervals(jacobian_size, uv_domain1, uv_domain2)?;
+    let mut periodicities = vec![false; 2];
+    let mut guess_t = vec![uv1.x, uv1.y];
 
-impl FilletSolverOps for AssistedSolver<'_> {
-    fn solver(&self) -> &FilletSolver {
-        &self.0.solver
+    let mut surface1 = rail_offset(solver.solver(), 0)?.clone();
+    let domain_before = surface1.surface.natural_uv_domain();
+    let surf1_index = 0; // UV values of Surface1
+    let rail_index = 0;
+
+    // Load the initial values
+    // given current inputs - place a good guess for upcoming solve in sGuessT
+    let init = solver.load_initial_values(
+        k,
+        brep,
+        true,
+        rail_index,
+        &mut surface1,
+        surf1_index,
+        &mut intervals,
+        &mut periodicities,
+        &mut guess_t,
+    );
+    // (upstream's crSurface1 is the solver's own offset: it keeps the extension the
+    // evaluations of crSurface1 made, unless the solver's own offset was extended
+    // later in the call, as by the custom solvers' GuessPointOnPlaneSolve)
+    let own = &mut rail_offset_mut(solver.solver_mut(), 0)?.surface;
+    if own.natural_uv_domain() == domain_before {
+        own.take_extension_of(&surface1.surface);
     }
+    let init = init?;
+    let surf2_index = init.map_or(0, |v| v.surface2_index);
 
-    fn solver_mut(&mut self) -> &mut FilletSolver {
-        &mut self.0.solver
+    // get plane equation for given PlanePt and PlaneNormal
+    let plane_d = -plane_orig.dot(plane_normal);
+
+    // Solve equations with NewtonRaphson iteration (and again with the plane
+    // adjusting)
+    let sol = fillet_sphere_solve(
+        solver,
+        plane_normal,
+        plane_d,
+        &intervals,
+        &periodicities,
+        &guess_t,
+    )?;
+
+    // when a solution point was found
+    if !sol.found {
+        return Ok(false);
     }
+    store_plane_solution(point, &sol.x, surf1_index, surf2_index, OP)?;
 
-    /// `SmConstantRadiusFS::GetJacobianSize`.
-    fn jacobian_size(&self) -> Result<usize> {
-        Ok(self.0.jacobian_size())
-    }
+    // for both surfaces - get and store solution point surface values
+    for (rail, srf) in [(0, SrfIndex::First), (1, SrfIndex::Second)] {
+        // get and store the surface point values
+        let uv = point.uv_pos(srf);
+        let s = rail_offset_mut(solver.solver_mut(), rail)?;
+        let (p, du, dv) = offset_evaluate_1st(s, uv)?;
+        *point.srf_pos_mut(srf) = p;
+        *point.srf_du_mut(srf) = du;
+        *point.srf_dv_mut(srf) = dv;
 
-    /// `SmConstantRadiusFS::SetupOffsetValues`.
-    fn setup_offset_values(
-        &mut self,
-        tsect: &TsectPnt,
-        offset_dist: Option<&mut f64>,
-    ) -> Result<()> {
-        let d = self.0.setup_offset_values(tsect)?;
-        if let Some(o) = offset_dist {
-            *o = d;
+        // Store a unitized surface normal.
+        let mut norm = du.cross(dv);
+        if norm.length_squared() < EFF_ZERO_SQ {
+            norm = offset_evaluate_normal(rail_offset_mut(solver.solver_mut(), rail)?, uv)?;
+            if norm.length_squared() < EFF_ZERO_SQ {
+                return Err(SolidError::sm_err(OP));
+            }
         }
-        Ok(())
+        // (the Unitize status is ignored: the normal is not zero here)
+        let norm = norm.unitize_or_z();
+        // SrfNorm(lSrf) is the [2][2] entry of the evaluation matrix
+        // (SmSurfaceIntersector.h:224)
+        point.srf_eval_matrix_mut(srf)[2][2] = norm;
     }
 
-    /// `SmConstantRadiusFS::OffsetRadiiCanChange`.
-    fn offset_radii_can_change(&self) -> Result<bool> {
-        Ok(self.0.offset_radii_can_change())
-    }
+    // Now compute the point and vectors for the 3D curve
+    // Point is average of surface points
+    *point.crv_pos_mut() = point.srf_pos(SrfIndex::First);
+    Ok(true)
+}
 
-    /// `SmConstantRadiusFS::LoadJacobian` (`rlSurf1Offset` / `rlSurf2Offset` in and
-    /// out).
-    fn load_jacobian(
-        &mut self,
-        num_equations: &mut usize,
-        num_parameters: &mut usize,
-        load: &mut JacobianLoad<'_>,
-        f: &mut [f64],
-        jacobian: Option<&mut Matrix>,
-    ) -> Result<bool> {
-        let mut offsets = [load.surf1_offset, load.surf2_offset];
-        let r = self.0.load_jacobian(
-            num_equations,
-            num_parameters,
-            load.rail_index,
-            [load.surface1, load.surface2],
-            &mut offsets,
-            load.x,
-            f,
-            jacobian,
-        );
-        [load.surf1_offset, load.surf2_offset] = offsets;
-        r
-    }
+/// `GetSurface(rail)` of the solver base.
+fn rail_offset(s: &FilletSolver, rail: usize) -> Result<&OffsetSurface> {
+    s.surface(rail)?
+        .map(|slot| &slot.surface)
+        .ok_or_else(|| SolidError::invalid_input(OP_PLANE, "no offset surface"))
+}
 
-    /// `SmConstantRadiusFS::LoadInitialValues`.
-    fn load_initial_values(
-        &mut self,
-        k: &Kernel,
-        brep: Option<&Brep>,
-        do_surf2_calcs: bool,
-        rail_index: usize,
-        surface1: &mut OffsetSurface,
-        surface1_index: usize,
-        intervals: &mut ExtentNd,
-        periodicities: &mut Vec<bool>,
-        guess_t: &mut Vec<f64>,
-    ) -> Result<Option<InitialValues>> {
-        self.0.load_initial_values(
-            k,
-            brep,
-            do_surf2_calcs,
-            rail_index,
-            surface1,
-            surface1_index,
-            intervals,
-            periodicities,
-            guess_t,
-        )
-    }
-
-    /// `SmConstantRadiusAssistedFS::GetType` (`SM_COMMON`).
-    fn type_code(&self) -> Result<i64> {
-        Ok(CONSTANT_RADIUS_ASSISTED_FS_TYPE)
-    }
-
-    /// `SmConstantRadiusAssistedFS::IsKindOf`.
-    fn is_kind_of(&self, t: i64) -> Result<bool> {
-        Ok(constant_radius_assisted_is_kind_of(t))
-    }
+/// `GetSurface(rail)` of the solver base, for evaluation.
+fn rail_offset_mut(s: &mut FilletSolver, rail: usize) -> Result<&mut OffsetSurface> {
+    s.surface_mut(rail)?
+        .map(|slot| &mut slot.surface)
+        .ok_or_else(|| SolidError::invalid_input(OP_PLANE, "no offset surface"))
 }
 
 /// The `SmFilletSphereSolveENFO` as the equation set of an `SmLocalSolveNd`.
@@ -1145,17 +1136,16 @@ impl EvalNFunctions for SphereEquations<'_> {
 /// Those of the local solves (`SmFilletSphereSolveENFO::Evaluate`, unit
 /// `blend.fillet_solver_p1`).
 fn fillet_sphere_solve(
-    solver: &mut ConstantRadiusAssistedFs,
+    solver: &mut dyn FilletSolverOps,
     plane_normal: Vec3,
     plane_d: f64,
     intervals: &ExtentNd,
     periodicities: &[bool],
     guess_t: &[f64],
 ) -> Result<NdSolution> {
-    let approx_tol_3d = solver.solver.approx_tol_3d;
-    let mut ops = AssistedSolver(solver);
+    let approx_tol_3d = solver.solver().approx_tol_3d;
     // (the constructor's "sphere centre and radius" are the plane normal and D)
-    let mut eval = SphereEquations(FilletSphereSolveEnfo::new(plane_normal, plane_d, &mut ops));
+    let mut eval = SphereEquations(FilletSphereSolveEnfo::new(plane_normal, plane_d, solver));
     let mut ls = plane_local_solver(&mut eval, intervals, periodicities);
 
     // Solve equations with NewtonRaphson iteration
@@ -1195,7 +1185,7 @@ impl ConstantDistanceFs {
         edgeuse: EdgeuseId,
     ) -> Result<Self> {
         const OP: &str = OP_CD_CTOR;
-        let mut solver = FilletSolverData::new(approx_tol_3d, ang_tol_rad, tangency_tolerance);
+        let mut solver = FilletSolver::new(approx_tol_3d, ang_tol_rad, tangency_tolerance);
         solver.edgeuses = [Some(edgeuse), edgeuse::radial(brep, edgeuse)?];
 
         // Create offset surfaces of appropriate radius in appropriate
@@ -1231,12 +1221,13 @@ impl ConstantDistanceFs {
         let s1 = face_base(brep, eu1, OP)?;
         let approx_radius = cd.distance * 2.0_f64.sqrt() / 2.0;
         let [o0, o1] = cd.solver.orientations;
-        cd.solver.surfaces = [
-            Some(extending_offset(k, approx_radius * o0, s0)?),
-            Some(extending_offset(k, approx_radius * o1, s1)?),
-        ];
+        cd.solver.surfaces = rail_slots(
+            extending_offset(k, approx_radius * o0, s0)?,
+            extending_offset(k, approx_radius * o1, s1)?,
+        );
 
-        // FinishConstruction(): nothing to do (no fillet geometries are modelled)
+        // FinishConstruction(): copies of the offsets into each fillet geometry
+        // UNPORTED(blend.fillet_geom_p1): SmFilletGeom::SetOffsetSurface -- justified: plan/findings.md blend.fillet_standard_solver_p2 (FinishConstruction)
         Ok(cd)
     }
 }
@@ -1359,12 +1350,13 @@ impl VariableRadiusFs {
         let s0 = face_base(brep, edgeuse, OP)?;
         let s1 = face_base(brep, eu1, OP)?;
         let [o0, o1] = vr.curve_based.solver.orientations;
-        vr.curve_based.solver.surfaces = [
-            Some(extending_offset(k, approx_radius * o0, s0)?),
-            Some(extending_offset(k, approx_radius * o1, s1)?),
-        ];
+        vr.curve_based.solver.surfaces = rail_slots(
+            extending_offset(k, approx_radius * o0, s0)?,
+            extending_offset(k, approx_radius * o1, s1)?,
+        );
 
-        // FinishConstruction(): nothing to do (no fillet geometries are modelled)
+        // FinishConstruction(): copies of the offsets into each fillet geometry
+        // UNPORTED(blend.fillet_geom_p1): SmFilletGeom::SetOffsetSurface -- justified: plan/findings.md blend.fillet_standard_solver_p2 (FinishConstruction)
         Ok(vr)
     }
 
@@ -1407,10 +1399,12 @@ impl VariableRadiusFs {
         let [approx_radius, _, _] = values;
         let [o0, o1] = orientations;
         let [s0, s1] = surfaces;
-        curve_based.solver.surfaces = [
-            Some(extending_offset(k, approx_radius * o0, s0)?),
-            Some(extending_offset(k, approx_radius * o1, s1)?),
-        ];
+        curve_based.solver.surfaces = rail_slots(
+            extending_offset(k, approx_radius * o0, s0)?,
+            extending_offset(k, approx_radius * o1, s1)?,
+        );
+        // FinishConstruction(): copies of the offsets into each fillet geometry
+        // UNPORTED(blend.fillet_geom_p1): SmFilletGeom::SetOffsetSurface -- justified: plan/findings.md blend.fillet_standard_solver_p2 (FinishConstruction)
         Ok(Self {
             curve_based,
             law,
@@ -1422,7 +1416,7 @@ impl VariableRadiusFs {
     /// `SmVariableRadiusFS::IsKindOf`: its own type or a type a curve-based solver is.
     #[must_use]
     pub const fn is_kind_of(&self, t: i64) -> bool {
-        t == Self::TYPE || t == CURVE_BASED_FS_TYPE || fillet_solver_is_kind_of(t)
+        t == Self::TYPE || t == CURVE_BASED_FS_TYPE || FilletSolver::is_kind_of(t)
     }
 
     /// `SmVariableRadiusFS::ReCalcFilletGeom(bIsAnalyticFillet, pOptMarchDir,
@@ -1450,7 +1444,7 @@ impl VariableRadiusFs {
         let _ivl = curve.natural_interval();
 
         // for each rail of m_vFilletGeoms[0]: sAllRails.Add(pFilletGeom->GetRail(i))
-        // UNPORTED(blend.fillet_geom_p1): SmFilletGeom::GetRail -- justified: plan/findings.md blend.fillet_standard_solver_p2 (the solver data holds no SmFilletGeom)
+        // UNPORTED(blend.fillet_geom_p1): SmFilletGeom::GetRail -- justified: plan/findings.md blend.fillet_standard_solver_p2 (the solver holds FilletGeomRef handles without geometry data)
         Err(SolidError::unported(
             "SmFilletGeom::GetRail",
             "blend.fillet_geom_p1",
@@ -1486,8 +1480,8 @@ impl VariableRadiusFs {
         const OP: &str = OP_VR_JAC;
         let mut found = false;
         let [surface1, surface2] = surfaces;
-        let base0 = self.curve_based.solver.surface(0)?.base_id;
-        let base1 = self.curve_based.solver.surface(1)?.base_id;
+        let base0 = self.curve_based.solver.rail(0)?.base_id;
+        let base1 = self.curve_based.solver.rail(1)?.base_id;
 
         let mut surf1_off = *num_parameters;
         *num_parameters = plus(*num_parameters, 2, OP)?;
@@ -1598,12 +1592,7 @@ impl VariableRadiusFs {
 
     /// `GetSurface(rail)`, mutable.
     fn surface_mut(&mut self, rail: usize) -> Result<&mut OffsetSurface> {
-        self.curve_based
-            .solver
-            .surfaces
-            .get_mut(rail)
-            .and_then(Option::as_mut)
-            .ok_or_else(|| SolidError::invalid_input(OP, "no offset surface for the rail"))
+        self.curve_based.solver.rail_mut(rail)
     }
 
     /// `SmVariableRadiusFS::LoadInitialValues(rbDoSurf2Calcs, lRailIndex, crSurface1,
@@ -1728,7 +1717,7 @@ impl VariableRadiusFs {
         if do_surf2_calcs {
             let other_rail = 1 - rail_index;
             let solver = &self.curve_based.solver;
-            let surface2 = solver.surface(other_rail)?;
+            let surface2 = solver.rail(other_rail)?;
             let domain = surface2.base_surface().natural_uv_domain();
             let size = solver.surface_extension_factor * domain.size();
             let extended = Extent2d::from_points(
@@ -2006,8 +1995,10 @@ impl SurfaceSurfaceFs {
             return Err(SolidError::sm_err(OP));
         }
 
-        let step = 0.0001;
-        let mut stepped = step_solve(self, &curr, step, &domain1, &domain2)?;
+        let mut step = 0.0001;
+        // (StepSolve is unported: everything below is unreachable until it lands; it
+        // is kept as the faithful port of the rest of the function)
+        let mut stepped = step_solve(self, &curr, &mut step, &domain1, &domain2)?;
         if !stepped.found_good_point {
             for _ii in 0..3 {
                 let p4 = offset_evaluate_point(
@@ -2035,7 +2026,7 @@ impl SurfaceSurfaceFs {
                     *curr.uv_pos_mut(SrfIndex::Second) = uv;
                 }
             }
-            stepped = step_solve(self, &curr, step, &domain1, &domain2)?;
+            stepped = step_solve(self, &curr, &mut step, &domain1, &domain2)?;
             if !stepped.found_good_point {
                 return Ok(());
             }
@@ -2049,7 +2040,9 @@ impl SurfaceSurfaceFs {
         ConstantRadiusOps::setup_offset_extension(self, k, &base1, &mut domain1)?;
         ConstantRadiusOps::setup_offset_extension(self, k, &base2, &mut domain2)?;
 
-        // (m_vFilletGeoms holds the geometry the solver's constructor made)
+        if self.base.solver.fillet_geoms.is_empty() {
+            return Ok(());
+        }
         fillet_geom_from_points(self, &tsect_pnts, &domain1, &domain2)
     }
 }
@@ -2083,7 +2076,7 @@ struct StepResult {
 }
 
 /// `StepSolve(sCurrPnt, dStep, sDomain1, sDomain2, bFoundGoodPoint, bClipped,
-/// bHitBoundary, sNextPnt)`.
+/// bHitBoundary, sNextPnt)` (`dStep` in/out: `double& rdStep`).
 ///
 /// # Errors
 ///
@@ -2091,7 +2084,7 @@ struct StepResult {
 fn step_solve(
     _solver: &mut SurfaceSurfaceFs,
     _curr: &TsectPnt,
-    _step: f64,
+    _step: &mut f64,
     _domain1: &Extent2d,
     _domain2: &Extent2d,
 ) -> Result<StepResult> {
@@ -2176,9 +2169,10 @@ mod tests {
     #[test]
     fn guess_plane_solve_finds_the_ball_on_a_corner() {
         let k = Kernel::default();
-        let fs = corner(&k, 0.25);
+        let mut fs = corner(&k, 0.25);
         let d = Extent2d::from_bounds(-1.0, -1.0, 2.0, 2.0);
-        let t = fs
+        let mut t = TsectPnt::new();
+        let found = fs
             .guess_point_on_plane_solve(
                 p(0.4, 0.0, 0.0),
                 Vec3::new(1.0, 0.0, 0.0),
@@ -2186,9 +2180,10 @@ mod tests {
                 &d,
                 Point2::new(0.45, 0.3),
                 Point2::new(0.35, 0.2),
+                &mut t,
             )
-            .expect("solve")
-            .expect("found");
+            .expect("solve");
+        assert!(found);
         let (a, b) = (t.uv_pos(SrfIndex::First), t.uv_pos(SrfIndex::Second));
         assert!(
             (a.x - 0.4).abs() < 1e-6 && (a.y - 0.25).abs() < 1e-6,
@@ -2198,28 +2193,31 @@ mod tests {
             (b.x - 0.4).abs() < 1e-6 && (b.y - 0.25).abs() < 1e-6,
             "{b:?}"
         );
-        // the solver itself is untouched (the solve runs on a copy)
+        // LoadJacobian set the offsets to radius times orientation (as they were)
         assert_eq!(fs.surface(1).expect("s1").offset_distance(), -0.25);
     }
 
     #[test]
     fn point_on_plane_solve_finds_the_ball_on_a_corner() {
+        use crate::blend::fillet_intersector::FilletSolverOps as IntersectorOps;
         let k = Kernel::default();
         let mut fs = corner(&k, 0.25);
         let d = Extent2d::from_bounds(-1.0, -1.0, 2.0, 2.0);
-        let t = fs
-            .point_on_plane_solve(
-                &k,
-                None,
-                p(0.4, 0.0, 0.0),
-                Vec3::new(1.0, 0.0, 0.0),
-                &d,
-                &d,
-                Point2::new(0.45, 0.3),
-                Point2::new(0.35, 0.2),
-            )
-            .expect("solve")
-            .expect("found");
+        let mut t = TsectPnt::new();
+        let found = point_on_plane_solve(
+            &mut fs,
+            &k,
+            None,
+            p(0.4, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            &d,
+            &d,
+            Point2::new(0.45, 0.3),
+            Point2::new(0.35, 0.2),
+            &mut t,
+        )
+        .expect("solve");
+        assert!(found);
         // the first offset surface's point lies on the plane x = 0.4, on the ball's
         // centre line y = z = 0.25
         let c = t.srf_pos(SrfIndex::First);
@@ -2227,6 +2225,23 @@ mod tests {
             (c.x - 0.4).abs() < 1e-6 && (c.y - 0.25).abs() < 1e-6 && (c.z - 0.25).abs() < 1e-6,
             "{c:?}"
         );
+        // the intersector's virtual dispatches to the same override
+        let mut fs2 = corner(&k, 0.25);
+        let mut t2 = TsectPnt::new();
+        let found2 = IntersectorOps::point_on_plane_solve(
+            &mut fs2,
+            &k,
+            p(0.4, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            &d,
+            &d,
+            Point2::new(0.45, 0.3),
+            Point2::new(0.35, 0.2),
+            &mut t2,
+        )
+        .expect("solve");
+        assert!(found2);
+        assert_eq!(t2.srf_pos(SrfIndex::First), c);
     }
 
     #[test]

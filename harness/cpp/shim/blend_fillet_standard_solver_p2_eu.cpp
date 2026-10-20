@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Difftest shim for unit `blend.fillet_standard_solver_p2`, edge-use part: the
-// SmConstantDistanceFS constructor from an edge use, on the B-reps of unit
+// SmConstantDistanceFS constructor from an edge use (mode 0) and
+// SmConstantRadiusFS::LoadInitialValues with edge uses (mode 1), on the B-reps of unit
 // `topology.edgeuse_p1` (sc_edgeuse_graph.h). Kept apart from
 // blend_fillet_standard_solver_p2.cpp because the graph header brings its own reader.
 // Layout: crates/solidcore-ffi/src/units/blend_fillet_standard_solver_p2.rs (`eval_edgeuse`).
@@ -12,11 +13,15 @@
 #include "StdAfx.h"
 #include <SmEdge.h>
 #include <SmEdgeuse.h>
+#include <SmExtent1d.h>
+#include <SmExtent2d.h>
+#include <SmExtentNd.h>
 #include <SmFace.h>
 #include <SmFilletStandardSolver.h>
 #include <SmLoopuse.h>
 #include <SmOffsetSurface.h>
 #include <SmSurface.h>
+#include <SmTArray.h>
 
 #include <vector>
 
@@ -60,8 +65,100 @@ struct CdPeek : SmConstantDistanceFS
     double orientation(int i) const { return m_dOrientations[i]; }
 };
 
-// `eu tol ang tan dist u v`: the constructor's arguments and a UV fraction of each offset
-// surface's natural domain where its point is compared.
+struct CrInit : SmConstantRadiusFS
+{
+    CrInit(const SmContext& ctx, double tol, double ang, double tan, double r, SmEdgeuse* eu)
+        : SmConstantRadiusFS(ctx, tol, ang, tan, r, eu, NULL)
+    {
+    }
+    SmEdgeuse* edgeuse(int i) const { return m_pEdgeuses[i]; }
+    SmOffsetSurface* surface(int i) const { return m_pSurfaces[i]; }
+    void set_extension_factor(double e) { m_dSurfaceExtensionFactor = e; }
+};
+
+// Per rail `offset umin vmin umax vmax has_extension` after the op.
+void put_offsets(std::vector<double>& o, SmFilletSolver* fs)
+{
+    for (int i = 0; i < 2; i++)
+    {
+        SmOffsetSurface* s = fs->GetSurface(i);
+        o.push_back(s->GetOffsetDistance());
+        SmExtent2d d = s->GetNaturalUVDomain();
+        o.push_back(d.GetMin().x);
+        o.push_back(d.GetMin().y);
+        o.push_back(d.GetMax().x);
+        o.push_back(d.GetMax().y);
+        o.push_back(s->GetExtendedBaseSurface() != NULL ? 1.0 : 0.0);
+    }
+}
+
+// Mode 1, `eu tol ang tan r rail u v ext`: the SmConstantRadiusFS edge-use constructor,
+// m_dSurfaceExtensionFactor = ext, then LoadInitialValues from *GetSurface(rail) at the
+// UV fractions (u, v) of its natural domain.
+void run_cr(Rd& rd, Graph& g, std::vector<double>& o)
+{
+    SmEdgeuse* p = g.edgeuses[(size_t)rd.idx()];
+    double tol = rd.num();
+    double ang = rd.num();
+    double tan = rd.num();
+    double r = rd.num();
+    ULONG rail = (ULONG)rd.idx();
+    double fu = rd.num();
+    double fv = rd.num();
+    double ext = rd.num();
+    if (!eu_safe(p) || p->GetRadial() == nullptr || !eu_safe(p->GetRadial()))
+    {
+        o.push_back(ST_NULL_DEREF);
+        return;
+    }
+    CrInit fs(the_context(), tol, ang, tan, r, p);
+    // SM_ERR is only signalled: the tangent-surface exits leave the edge uses NULL
+    if (fs.edgeuse(0) == nullptr)
+    {
+        o.push_back((double)SM_ERR);
+        return;
+    }
+    fs.set_extension_factor(ext);
+    o.push_back(0.0);
+    SmOffsetSurface* s1 = fs.surface((int)rail);
+    SmExtent2d d = s1->GetNaturalUVDomain();
+    SmExtentNd ivls(4);
+    ivls[0] = SmExtent1d(d.GetMin().x, d.GetMax().x);
+    ivls[1] = SmExtent1d(d.GetMin().y, d.GetMax().y);
+    SmBoolean alPer[16];
+    SmTArray<SmBoolean> per(16, alPer);
+    per.Add(FALSE);
+    per.Add(FALSE);
+    double adGuess[16];
+    SmTArray<double> guess(16, adGuess);
+    guess.Add(d.GetMin().x + fu * (d.GetMax().x - d.GetMin().x));
+    guess.Add(d.GetMin().y + fv * (d.GetMax().y - d.GetMin().y));
+    ULONG do2 = 1;
+    SmSurface* ps2 = NULL;
+    ULONG idx = 999;
+    SmStatus ls = fs.LoadInitialValues(do2, rail, *s1, 0, ps2, idx, ivls, per, guess);
+    o.push_back(st(ls));
+    o.push_back(ps2 == NULL ? -1.0 : ps2 == fs.surface(0) ? 0.0 : ps2 == fs.surface(1) ? 1.0 : -1.0);
+    o.push_back((double)idx);
+    if (ls == SM_SUCCESS)
+    {
+        for (ULONG n = 2; n < 4; n++)
+        {
+            o.push_back(ivls[n].GetMin());
+            o.push_back(ivls[n].GetMax());
+        }
+    }
+    o.push_back((double)per.GetSize());
+    for (ULONG n = 0; n < per.GetSize(); n++)
+        o.push_back(per[n] ? 1.0 : 0.0);
+    o.push_back((double)guess.GetSize());
+    for (ULONG n = 0; n < guess.GetSize(); n++)
+        o.push_back(guess[n]);
+    put_offsets(o, &fs);
+}
+
+// Mode 0, `eu tol ang tan dist u v`: the constructor's arguments and a UV fraction of each
+// offset surface's natural domain where its point is compared.
 void run(Rd& rd, const char* path, std::vector<double>& o)
 {
     SmStatus bst;
@@ -76,6 +173,11 @@ void run(Rd& rd, const char* path, std::vector<double>& o)
     o.push_back(0.0);
     Graph g;
     walk(b.brep, g);
+    if (rd.idx() == 1)
+    {
+        run_cr(rd, g, o);
+        return;
+    }
     SmEdgeuse* p = g.edgeuses[(size_t)rd.idx()];
     double tol = rd.num();
     double ang = rd.num();

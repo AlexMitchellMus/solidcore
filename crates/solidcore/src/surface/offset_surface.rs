@@ -457,11 +457,22 @@ impl OffsetSurface {
         &mut self.surface
     }
 
-    /// `GetExtendedBaseSurface`: the stored extension (one a `&self` evaluator made
-    /// since the last `&mut self` call is not included; it is a plain B-spline surface).
+    /// The stored `m_pExtendedSurface` only. **Not `GetExtendedBaseSurface`:** an
+    /// extension a `&self` evaluator made since the last `&mut self` call (a plain
+    /// B-spline surface, pending) is not included; use
+    /// [`OffsetSurface::with_extended_base_surface`] for upstream's value. (The two
+    /// nesting walks over it are unaffected: a pending extension is a leaf at the depth
+    /// of the base surface they always visit.)
     #[must_use]
     pub fn extended_base_surface(&self) -> Option<&Surface> {
         self.extended_surface.as_deref()
+    }
+
+    /// `GetExtendedBaseSurface`: runs `f` on the surface upstream's
+    /// `m_pExtendedSurface` holds now (the pending extension, else the stored one).
+    /// `f` must not evaluate this offset (it would not see the pending extension).
+    pub fn with_extended_base_surface<T>(&self, f: impl FnOnce(Option<&Surface>) -> T) -> T {
+        self.with_current_extension(f)
     }
 
     /// Runs `f` on the surface upstream's `m_pExtendedSurface` holds now: the pending
@@ -475,6 +486,12 @@ impl OffsetSurface {
 
     /// Runs an evaluation body with the current extension; an extension it makes
     /// becomes the pending one (upstream stores it at once, through a `const` cast).
+    ///
+    /// Invariant: the pending extension is taken out of its `Cell` while `f` runs, so
+    /// `f` must not call a `&self` method of this same offset (it would see only the
+    /// stored extension, and an extension it made would be overwritten when this one is
+    /// put back). Today's bodies (`point_with`, `evaluate_with`, `step_inversion_with`)
+    /// only evaluate the base or the extension objects.
     fn with_extension<T>(&self, f: impl FnOnce(&mut Extension<'_>) -> T) -> T {
         let mut ext = Extension {
             stored: self.extended_surface.as_deref(),
@@ -499,6 +516,16 @@ impl OffsetSurface {
         if let Some(m) = other.pending_extension.0.take() {
             self.pending_extension.0.set(Some(m));
         }
+    }
+
+    /// Takes over the current extension of `other`, a copy of this offset (a copy
+    /// takes the current extension) that was evaluated in its place, pending or stored:
+    /// upstream evaluates this object, whose `m_pExtendedSurface` then holds it.
+    pub(crate) fn take_extension_of(&mut self, other: &Self) {
+        let current =
+            other.with_current_extension(|e| e.map(|e| Box::new(e.clone_keeping_owner())));
+        *self.pending_extension.0.get_mut() = None;
+        self.extended_surface = current;
     }
 
     /// `m_bIsPeriodicOnU` and `m_bIsPeriodicOnV` (`SmBoolean` values).
