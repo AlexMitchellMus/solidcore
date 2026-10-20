@@ -54,8 +54,18 @@ fn delete_faces(
         "boolean.topology_intersector_p2",
     ))
 }
-fn remove_topology(k: &mut Kernel, a: &mut Brep) -> Result<()> {
-    crate::topology::brep::p5::remove_topological_edges_and_vertices(k, a, None, None)
+fn remove_topology(
+    k: &mut Kernel,
+    a: &mut Brep,
+    notifications: &mut edge::NotifyEnv<'_>,
+) -> Result<()> {
+    crate::topology::brep::p5::remove_topological_with_notifications(
+        k,
+        a,
+        None,
+        None,
+        Some(notifications),
+    )
 }
 
 pub(super) fn finish(
@@ -200,7 +210,7 @@ pub(super) fn finish(
         ignore_status(delete_faces(k, a, &mut intersections, &delete))?;
         if operation != Boolean2d::Merge {
             stitch_faces(k, a, a.tolerance())?;
-            remove_topology(k, a)?;
+            remove_topology(k, a, notifications)?;
         }
         *result = Some(core::mem::take(a));
         *b = Brep::new();
