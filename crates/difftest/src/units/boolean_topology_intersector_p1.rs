@@ -1241,7 +1241,12 @@ impl IntersectorBrep<H> for Two {
             .map(|v| hd(brep.b, K_VERTEX, v.index()))
             .collect())
     }
-    fn face_bounding_box(&self, k: &Kernel, face: H, tight: bool) -> solidcore::Result<Extent3d> {
+    fn face_calculate_bounding_box(
+        &self,
+        k: &Kernel,
+        face: H,
+        tight: bool,
+    ) -> solidcore::Result<Extent3d> {
         let b = self.brep_r(face)?;
         solidcore::query::face::p1::calculate_bounding_box(k, b, fid(face), tight)
     }

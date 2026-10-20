@@ -7794,8 +7794,9 @@ The 7 generated cases deferred under `query.face_p1` (`gen0011`, `gen0105`, `gen
 `gen0133`, `gen0180`, `gen0513`, `gen0642`) stopped at the intersector's own private
 `face_bounding_box` stub, a dispatch gap: `query::face::p1::calculate_bounding_box` is
 ported (main since #238's batch) but takes the face's `Brep` and `FaceId`, which the opaque
-handle does not carry. The call is now `IntersectorBrep::face_bounding_box(k, face, tight)`,
-the last method of the trait (the pattern of the edge box), implemented by the difftest
+handle does not carry. The call is now `IntersectorBrep::face_calculate_bounding_box(k, face,
+tight)`, the last method of the trait (the pattern of the edge box; named after the upstream
+call in full because open PR #229's `MergeBrep` already has a `face_bounding_box`), implemented by the difftest
 adapter and by `boolean.merge_p4`'s `ArenaPair` on the B-rep behind the handle. The
 intersector's one call (the edge-face box check, `bTight = FALSE`) takes the port's
 non-tight branch, which is complete; the tight branch (`query.face_p3`) is never requested.
