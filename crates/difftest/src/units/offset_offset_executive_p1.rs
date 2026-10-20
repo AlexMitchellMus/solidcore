@@ -133,6 +133,10 @@ struct MapTwinIn {
     flip: bool,
     #[serde(default)]
     mate: bool,
+    /// Split the offset rectangle's bottom edge at this `x` into two collinear
+    /// edges (five-edge loop): two offset uses then drop onto one original use.
+    #[serde(default)]
+    split_bottom: Option<f64>,
 }
 
 impl MapTwinIn {
@@ -143,6 +147,7 @@ impl MapTwinIn {
             offset: self.offset,
             flip: self.flip,
             mate: self.mate,
+            split_bottom: self.split_bottom,
         }
     }
 }
@@ -468,118 +473,14 @@ fn bad(message: impl Into<String>) -> HarnessError {
     HarnessError::new(message)
 }
 
-// The Rust side refuses exactly what the FFI packer and the shim refuse, in the
-// same order and with the same messages, so a fuzzed input the native guard turns
-// away never reaches a port that would loop, allocate or hang on it (the C++ side
-// then reports a harness error, not a fixture rejection, and Rust still runs).
-fn finite(values: &[f64]) -> HResult<()> {
-    if values.iter().all(|v| v.is_finite()) {
-        Ok(())
-    } else {
-        Err(bad("non-finite fixture value"))
-    }
-}
-fn count(n: usize) -> HResult<()> {
-    if n <= ffi::MAX_ITEMS {
-        Ok(())
-    } else {
-        Err(bad("fixture count exceeds MAX_ITEMS"))
-    }
-}
-/// Mirrors the FFI `config_input` guard.
-fn config_guard(input: &Config) -> HResult<()> {
-    finite(&[
-        input.offset_distance,
-        input.approx_tol,
-        input.tangency_tol_radians,
-    ])?;
-    if input.operation > 4 {
-        return Err(bad("invalid offset operation"));
-    }
-    for n in [
-        input.original_edges,
-        input.offset_edges,
-        input.face_count,
-        input.shell_face_sets.len(),
-        input.relations.len(),
-    ] {
-        count(n)?;
-    }
-    for selectors in &input.shell_face_sets {
-        count(selectors.len())?;
-        if selectors.iter().any(|&id| id >= input.face_count) {
-            return Err(bad("shell face selector out of range"));
-        }
-    }
-    for &[a, b] in &input.relations {
-        if a >= input.original_edges * 2 || b >= input.offset_edges * 2 {
-            return Err(bad("relation EU selector out of range"));
-        }
-    }
-    Ok(())
-}
-/// Mirrors the FFI `sync_input` guard (its per-edge geometry checks are the
-/// fixture constructors' own).
-fn sync_guard(input: &Synchronize) -> HResult<()> {
-    count(input.first.len())?;
-    count(input.second.len())?;
-    if input
-        .first
-        .len()
-        .checked_add(input.second.len())
-        .is_none_or(|n| n > ffi::MAX_SYNC_EDGES)
-    {
-        return Err(bad("synchronization exceeds MAX_SYNC_EDGES"));
-    }
-    Ok(())
-}
-/// Mirrors the FFI `extension_input` guard and the shim's refusal of a negative
-/// extension distance (HANG-16: `CreateExtendedSurface`'s doubling loop never ends
-/// for one, so the faithful port would hang too).
-fn extension_guard(input: &Extension) -> HResult<()> {
-    finite(&[
-        input.offset_distance,
-        input.offset_distance * 5.0,
-        input.approx_tol,
-    ])?;
-    if input.offset_distance < 0.0 {
-        return Err(bad("extension offset distance must be nonnegative"));
-    }
-    for n in [
-        input.surfaces.len(),
-        input.actions.len(),
-        input.samples.len(),
-    ] {
-        count(n)?;
-    }
-    Ok(())
-}
-/// Mirrors the FFI `face_tail_input` guard.
-fn face_tail_guard(input: &FaceTailIn) -> HResult<()> {
-    let [u0, v0, u1, v1] = input.domain;
-    finite(&[input.offset_distance, input.approx_tol])?;
-    finite(&input.domain)?;
-    if !(u0 < u1 && v0 < v1) {
-        return Err(bad("offset domain must be strictly increasing"));
-    }
-    if input.self_intersection.is_none() && input.second_uv.is_some() {
-        return Err(bad("second UV curve without a self-intersection"));
-    }
-    for segment in [input.self_intersection, input.second_uv].into_iter().flatten() {
-        finite(&segment)?;
-    }
-    Ok(())
-}
-/// Mirrors the FFI `map_twin_input` guard.
-fn map_twin_guard(input: &MapTwinIn) -> HResult<()> {
-    finite(&[input.offset_distance])?;
-    for [x0, y0, x1, y1] in [input.original, input.offset] {
-        finite(&[x0, y0, x1, y1])?;
-        if !(x0 < x1 && y0 < y1) {
-            return Err(bad("rectangle must be strictly increasing"));
-        }
-    }
-    Ok(())
+// The Rust side refuses exactly what the FFI refuses by running the FFI packers'
+// own checks (counts, finiteness, selector ranges, fixture geometry validation and
+// the packed-size budgets) before any construction, so a fuzzed input the native
+// guard turns away never reaches a port that would loop, allocate or hang on it
+// (the C++ side then reports a harness error, not a fixture rejection, and Rust
+// still runs). Only the shim's own native-safety checks are beyond this.
+fn guard(check: Result<(), solidcore_ffi::FfiError>) -> HResult<()> {
+    check.map_err(|error| bad(error.to_string()))
 }
 fn setup(error: impl std::fmt::Display) -> HarnessError {
     bad(format!("Rust fixture construction: {error}"))
@@ -1155,18 +1056,42 @@ fn face_with_edges(
 fn plane_face(brep: &mut Brep, z: f64) -> HResult<(FaceId, FaceuseId)> {
     rect_face(brep, [0.0, 0.0, 1.0, 1.0], z, false, false)
 }
-/// A rectangle plane face at height `z` (the shim's `curve_face` geometry: plane
-/// axes `X, Y`, or `Y, X` with `flip`, domain = the rectangle's UV extent). With
-/// `uv_trims`, each edge's upward use gets the UV line of its 3D line, as the
-/// native `MakeFaceWithCurves` face holds after `CreateUVTrimCurves`.
+/// The loop of a rectangle, counter-clockwise from its lower-left corner, with
+/// the bottom edge split at `split_bottom` when given.
+fn rectangle_loop([x0, y0, x1, y1]: [f64; 4], split_bottom: Option<f64>) -> Vec<[f64; 2]> {
+    let mut points = vec![[x0, y0]];
+    if let Some(x) = split_bottom {
+        points.push([x, y0]);
+    }
+    points.extend_from_slice(&[[x1, y0], [x1, y1], [x0, y1]]);
+    points
+}
 fn rect_face(
     brep: &mut Brep,
-    [x0, y0, x1, y1]: [f64; 4],
+    rect: [f64; 4],
     z: f64,
     flip: bool,
     uv_trims: bool,
 ) -> HResult<(FaceId, FaceuseId)> {
-    let corners = [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]];
+    polygon_face(brep, &rectangle_loop(rect, None), z, flip, uv_trims)
+}
+/// A plane face at height `z` bounded by the straight-edged loop `points` (the
+/// shim's `curve_face` geometry: plane axes `X, Y`, or `Y, X` with `flip`, domain =
+/// the loop's UV bounding box). With `uv_trims`, each edge's upward use gets the UV
+/// line of its 3D line, as the native `MakeFaceWithCurves` face holds after
+/// `CreateUVTrimCurves`.
+fn polygon_face(
+    brep: &mut Brep,
+    points: &[[f64; 2]],
+    z: f64,
+    flip: bool,
+    uv_trims: bool,
+) -> HResult<(FaceId, FaceuseId)> {
+    let n = points.len();
+    if n < 3 {
+        return Err(bad("polygon face needs at least three points"));
+    }
+    let corners: Vec<[f64; 3]> = points.iter().map(|&[x, y]| [x, y, z]).collect();
     let vertices = corners
         .iter()
         .map(|&point| {
@@ -1178,10 +1103,10 @@ fn rect_face(
         })
         .collect::<HResult<Vec<_>>>()?;
     let mut edges = Vec::new();
-    for index in 0..4 {
+    for index in 0..n {
         let curve = CurveIn::Line {
             start: *at(&corners, index)?,
-            end: *at(&corners, (index + 1) % 4)?,
+            end: *at(&corners, (index + 1) % n)?,
             domain: [0.0, 1.0],
         }
         .rust()?;
@@ -1189,8 +1114,20 @@ fn rect_face(
             brep,
             curve,
             ivl([0.0, 1.0]),
-            Some([*at(&vertices, index)?, *at(&vertices, (index + 1) % 4)?]),
+            Some([*at(&vertices, index)?, *at(&vertices, (index + 1) % n)?]),
         )?);
+    }
+    let (mut x0, mut y0, mut x1, mut y1) = (
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    );
+    for &[x, y] in points {
+        x0 = x0.min(x);
+        y0 = y0.min(y);
+        x1 = x1.max(x);
+        y1 = y1.max(y);
     }
     let (u_axis, v_axis, domain) = if flip {
         (Vec3::Y, Vec3::X, Extent2d::from_bounds(y0, x0, y1, x1))
@@ -1217,7 +1154,7 @@ fn rect_face(
             let trim = BSplineCurve::create_line_segment(
                 2,
                 uv(*at(&corners, index)?),
-                uv(*at(&corners, (index + 1) % 4)?),
+                uv(*at(&corners, (index + 1) % n)?),
             )
             .map_err(setup)?;
             let use_id = primary(brep, edge)?;
@@ -1258,7 +1195,7 @@ fn loop_fixture(brep: &mut Brep, input: &EdgeIn) -> HResult<(EdgeId, EdgeId)> {
 }
 
 fn rust_config(input: &Config) -> HResult<Output> {
-    config_guard(input)?;
+    guard(ffi::validate_config(&input.ffi()))?;
     let mut original = Brep::new();
     let mut offset = Brep::new();
     let mut face_owner = Brep::new();
@@ -1350,10 +1287,7 @@ fn curve_key(edge: EdgeId, type_code: i64) -> ObjectRef {
 
 // The shim's measured_traversal: GetEdges order without the closing support edges,
 // each edge's uses in its list order (primary first).
-fn measured_traversal(
-    brep: &Brep,
-    supports: &[EdgeId],
-) -> RResult<(Vec<EdgeId>, Vec<EdgeuseId>)> {
+fn measured_traversal(brep: &Brep, supports: &[EdgeId]) -> RResult<(Vec<EdgeId>, Vec<EdgeuseId>)> {
     let edges: Vec<EdgeId> = solidcore::topology::brep::p1::edges(brep, None)?
         .into_iter()
         .filter(|edge| !supports.contains(edge))
@@ -1366,7 +1300,7 @@ fn measured_traversal(
 }
 
 fn rust_sync(input: &Synchronize) -> RResult<Output> {
-    sync_guard(input)?;
+    guard(ffi::validate_synchronize(&input.ffi()))?;
     let mut kernel = Kernel::default();
     let mut original = Brep::new();
     let edge_a = unit_wire(&mut original, 0.0)?;
@@ -1498,7 +1432,7 @@ fn rust_sync(input: &Synchronize) -> RResult<Output> {
 }
 
 fn rust_extend(input: &Extension) -> RResult<Output> {
-    extension_guard(input)?;
+    guard(ffi::validate_extend(&input.ffi()))?;
     let kernel = Kernel::default();
     let bases = input
         .surfaces
@@ -1674,7 +1608,7 @@ fn curve_face(
 }
 
 fn rust_face_tail(input: &FaceTailIn) -> RResult<Output> {
-    face_tail_guard(input)?;
+    guard(ffi::validate_face_tail(&input.ffi()))?;
     let mut kernel = Kernel::default();
     let mut original = Brep::new_with_infinite_region().map_err(setup)?;
     let mut records = BTreeMap::new();
@@ -1824,9 +1758,11 @@ fn mapped_offset_uses(
     records.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let mut uses = MappedUses::default();
     for record in &records {
-        uses.starts.extend_from_slice(record.get(0..3).ok_or_else(|| bad("use record"))?);
+        uses.starts
+            .extend_from_slice(record.get(0..3).ok_or_else(|| bad("use record"))?);
         uses.mapped.push(*at(record, 3)? as i64);
-        uses.ends.extend_from_slice(record.get(4..).ok_or_else(|| bad("use record"))?);
+        uses.ends
+            .extend_from_slice(record.get(4..).ok_or_else(|| bad("use record"))?);
     }
     Ok(uses)
 }
@@ -1835,7 +1771,7 @@ fn mapped_offset_uses(
 /// (the shim builds both with `MakeFaceWithCurves`). Notifications are recorded
 /// but, as in [`rust_face_tail`], not compared.
 fn rust_map_twin(input: &MapTwinIn) -> RResult<Output> {
-    map_twin_guard(input)?;
+    guard(ffi::validate_map_twin(&input.ffi()))?;
     let kernel = Kernel::default();
     let mut original = Brep::new();
     let (_, upward) = rect_face(&mut original, input.original, 0.0, false, true)?;
@@ -1849,7 +1785,13 @@ fn rust_map_twin(input: &MapTwinIn) -> RResult<Output> {
         upward
     };
     let mut offset = Brep::new();
-    let (twin, _) = rect_face(&mut offset, input.offset, input.offset_distance, input.flip, true)?;
+    let (twin, _) = polygon_face(
+        &mut offset,
+        &rectangle_loop(input.offset, input.split_bottom),
+        input.offset_distance,
+        input.flip,
+        true,
+    )?;
     let mut executive =
         OffsetExecutive::new(OffsetOperation::SolidOffset, input.offset_distance, 1e-6);
     executive.set_offset_brep(offset);
@@ -2370,8 +2312,8 @@ mod tests {
             .iter()
             .filter(|case| matches!(case.source, CaseSource::Fixture { .. }))
             .collect();
-        // 93 original, 312 face_tail, 22 map_twin.
-        assert_eq!(fixtures.len(), 93 + 312 + 22);
+        // 93 original, 312 face_tail, 27 map_twin.
+        assert_eq!(fixtures.len(), 93 + 312 + 27);
         for case in fixtures {
             case.parse::<Inputs>().unwrap();
         }
@@ -2758,8 +2700,8 @@ mod tests {
         // counts past MAX_ITEMS made rust_config allocate 2^32 wires, and a negative
         // extension distance ran into CreateExtendedSurface's doubling loop
         // (HANG-16). They cannot be fixtures (a harness error always fails a case),
-        // so this test keeps them: the Rust side now refuses each with the FFI's
-        // message, before any construction.
+        // so this test keeps them: the Rust side now refuses each by running the
+        // FFI's own checks, with its message, before any construction.
         let recorded: Value = serde_json::from_str(include_str!(
             "../../tests/fuzz_regressions/offset.offset_executive_p1.json"
         ))
@@ -2774,7 +2716,7 @@ mod tests {
                 other => panic!("unexpected regression op {other:?}"),
             };
             let error = Runner.run_rust(&case(&input)).unwrap_err().to_string();
-            assert_eq!(error, expected, "{}", recorded["name"]);
+            assert!(error.ends_with(expected), "{}: {error}", recorded["name"]);
             #[cfg(feature = "cpp")]
             {
                 let native = Runner.run_cpp(&case(&input)).unwrap_err().to_string();

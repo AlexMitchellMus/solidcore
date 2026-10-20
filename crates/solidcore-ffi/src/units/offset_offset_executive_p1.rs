@@ -358,6 +358,9 @@ pub struct MapTwin {
     pub flip: bool,
     /// Map the downward original face use instead of the upward one.
     pub mate: bool,
+    /// Split the offset rectangle's bottom edge at this `x` (strictly inside the
+    /// rectangle) into two collinear edges, so the loop has five edges.
+    pub split_bottom: Option<f64>,
 }
 
 mod sys {
@@ -778,7 +781,10 @@ fn face_tail_input(input: &FaceTail) -> Result<Pack, FfiError> {
         (Some(_), Some(_)) => 2.0,
     };
     pack.add(&[segments])?;
-    for segment in [input.self_intersection, input.second_uv].into_iter().flatten() {
+    for segment in [input.self_intersection, input.second_uv]
+        .into_iter()
+        .flatten()
+    {
         finite(&segment)?;
         pack.add(&segment)?;
     }
@@ -797,11 +803,27 @@ fn map_twin_input(input: &MapTwin) -> Result<Pack, FfiError> {
     finite(&[input.offset_distance])?;
     rectangle(input.original)?;
     rectangle(input.offset)?;
+    if let Some(x) = input.split_bottom {
+        finite(&[x])?;
+        let [x0, _, x1, _] = input.offset;
+        if !(x0 < x && x < x1) {
+            return Err(bad(
+                "bottom split must lie strictly inside the offset rectangle",
+            ));
+        }
+    }
     let mut pack = Pack::default();
     pack.add(&[input.offset_distance])?;
     pack.add(&input.original)?;
     pack.add(&input.offset)?;
-    pack.add(&[f64::from(u8::from(input.flip)), f64::from(u8::from(input.mate))])?;
+    pack.add(&[
+        f64::from(u8::from(input.flip)),
+        f64::from(u8::from(input.mate)),
+        f64::from(u8::from(input.split_bottom.is_some())),
+    ])?;
+    if let Some(x) = input.split_bottom {
+        pack.add(&[x])?;
+    }
     Ok(pack)
 }
 
@@ -809,6 +831,33 @@ fn map_twin_input(input: &MapTwin) -> Result<Pack, FfiError> {
 /// module-level protocol for the returned record.
 pub fn map_twin(input: &MapTwin) -> Result<Vec<f64>, FfiError> {
     run(5, &map_twin_input(input)?)
+}
+
+// The packers' input checks without the native call: the difftest runner's Rust
+// side refuses exactly what the FFI refuses by running the same code (counts,
+// finiteness, selector ranges, fixture geometry validation and the packed-size
+// budgets). Only the shim's own native-safety checks (its `Reader` bounds and
+// `guard_two_point_isocurves`) are beyond these.
+
+/// [`config`]'s input checks alone.
+pub fn validate_config(input: &Config) -> Result<(), FfiError> {
+    config_input(input).map(|_| ())
+}
+/// [`synchronize`]'s input checks alone.
+pub fn validate_synchronize(input: &Synchronize) -> Result<(), FfiError> {
+    sync_input(input).map(|_| ())
+}
+/// [`extend`]'s input checks alone.
+pub fn validate_extend(input: &Extension) -> Result<(), FfiError> {
+    extension_input(input).map(|_| ())
+}
+/// [`face_tail`]'s input checks alone.
+pub fn validate_face_tail(input: &FaceTail) -> Result<(), FfiError> {
+    face_tail_input(input).map(|_| ())
+}
+/// [`map_twin`]'s input checks alone.
+pub fn validate_map_twin(input: &MapTwin) -> Result<(), FfiError> {
+    map_twin_input(input).map(|_| ())
 }
 
 /// Offsets a real plane face use onto a real offset plane through the native

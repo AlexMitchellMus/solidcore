@@ -675,14 +675,19 @@ SmPoint3d vertex_point(SmEdgeuse* use) {
     return use->GetVertexuse()->GetVertex()->GetPoint();
 }
 
-// A rectangular plane face made by MakeFaceWithCurves from explicit 3D and UV
-// lines (CreateFaceFromSurface's natural trim curves have no Rust fixture twin):
-// the rectangle `rect` at height z on the plane with axes X, Y (or Y, X when
-// `flip`, so its normal points down and UV is (y, x)), the plane's domain = the
-// rectangle's UV extent.
-SmFace* curve_face(SmContext& ctx, SmBrep* target, const SmExtent2d& rect, double z, bool flip) {
-    const double x0 = rect.GetMin().x, y0 = rect.GetMin().y, x1 = rect.GetMax().x, y1 = rect.GetMax().y;
-    const double corners[5][2] = {{x0,y0},{x1,y0},{x1,y1},{x0,y1},{x0,y0}};
+// A plane face made by MakeFaceWithCurves from explicit 3D and UV lines
+// (CreateFaceFromSurface's natural trim curves have no Rust fixture twin): the
+// straight-edged loop `points` at height z on the plane with axes X, Y (or Y, X
+// when `flip`, so its normal points down and UV is (y, x)), the plane's domain =
+// the loop's UV bounding box.
+SmFace* curve_face(SmContext& ctx, SmBrep* target, const std::vector<SmPoint2d>& points, double z,
+                   bool flip) {
+    const size_t n = points.size();
+    if (n < 3) throw Argument{};
+    double x0 = points[0].x, y0 = points[0].y, x1 = x0, y1 = y0;
+    for (const SmPoint2d& p : points) {
+        x0 = std::min(x0, p.x); y0 = std::min(y0, p.y); x1 = std::max(x1, p.x); y1 = std::max(y1, p.y);
+    }
     Unowned owned;
     SmTArray<SmCurve*> curves3d;
     SmTArray<SmBSplineCurve*> uv;
@@ -697,8 +702,10 @@ SmFace* curve_face(SmContext& ctx, SmBrep* target, const SmExtent2d& rect, doubl
     SmTArray<ULONG> loops;
     SmExtent1d unit(0,1);
     auto uv_of = [flip](double x, double y) { return flip ? SmPoint3d(y, x, 0) : SmPoint3d(x, y, 0); };
-    for (int i=0; i<4; ++i) {
-        SmPoint3d a(corners[i][0], corners[i][1], z), b(corners[i+1][0], corners[i+1][1], z);
+    for (size_t i=0; i<n; ++i) {
+        const SmPoint2d& pa = points[i];
+        const SmPoint2d& pb = points[(i+1) % n];
+        SmPoint3d a(pa.x, pa.y, z), b(pb.x, pb.y, z);
         SmLine* line = nullptr;
         SmStatus status = SmLine::CreateLineSegment(ctx, 3, a, b, line, &unit);
         owned.curves.push_back(line);
@@ -710,8 +717,9 @@ SmFace* curve_face(SmContext& ctx, SmBrep* target, const SmExtent2d& rect, doubl
         if (!line || !trim) throw std::bad_alloc();
         curves3d.Add(line); orients.Add(SM_OT_SAME);
     }
-    loops.Add(4);
-    SmExtent2d domain = flip ? SmExtent2d(SmPoint2d(y0, x0), SmPoint2d(y1, x1)) : rect;
+    loops.Add((ULONG)n);
+    SmExtent2d domain = flip ? SmExtent2d(SmPoint2d(y0, x0), SmPoint2d(y1, x1))
+                             : SmExtent2d(SmPoint2d(x0, y0), SmPoint2d(x1, y1));
     owned.surface = new (ctx) SmPlane(SmPoint3d(0,0,z), flip ? SmVector3d(0,1,0) : SmVector3d(1,0,0),
                                       flip ? SmVector3d(1,0,0) : SmVector3d(0,1,0),
                                       SmVector2d(1,1), domain, &ctx);
@@ -726,8 +734,18 @@ SmFace* curve_face(SmContext& ctx, SmBrep* target, const SmExtent2d& rect, doubl
         throw Argument{};
     return face;
 }
+// The loop of a rectangle, counter-clockwise from its lower-left corner, with the
+// bottom edge split at `split` when given.
+std::vector<SmPoint2d> rectangle_loop(const SmExtent2d& rect, const double* split) {
+    const double x0 = rect.GetMin().x, y0 = rect.GetMin().y, x1 = rect.GetMax().x, y1 = rect.GetMax().y;
+    std::vector<SmPoint2d> points{SmPoint2d(x0, y0)};
+    if (split) points.push_back(SmPoint2d(*split, y0));
+    points.insert(points.end(), {SmPoint2d(x1, y0), SmPoint2d(x1, y1), SmPoint2d(x0, y1)});
+    return points;
+}
 SmFace* curve_face(SmContext& ctx, SmBrep* target) {
-    return curve_face(ctx, target, SmExtent2d(SmPoint2d(0,0), SmPoint2d(1,1)), 0.0, false);
+    return curve_face(ctx, target, rectangle_loop(SmExtent2d(SmPoint2d(0,0), SmPoint2d(1,1)), nullptr),
+                      0.0, false);
 }
 
 // Per original edge use of `use`, sorted by the use's own start point (GetEdgeuses
@@ -845,17 +863,25 @@ void face_tail(Reader& rd, std::vector<double>& out) {
 // MapEdgeuses alone, on two MakeFaceWithCurves faces: the original rectangle at
 // z = 0 and an offset rectangle at z = distance (its plane flipped when asked),
 // matching the upward or downward original use. Input: distance, original rect,
-// offset rect, flip, mate. Output: status, then per original edge use (sorted by
-// its start point) GetOffsetEdgeuse's end points as in face_tail.
+// offset rect, flip, mate, then a flag and optionally the x at which the offset
+// rectangle's bottom edge is split into two collinear edges. Output: status, then
+// per original edge use (sorted by its start point) GetOffsetEdgeuse's end points
+// as in face_tail.
 void map_twin(Reader& rd, std::vector<double>& out) {
     double distance = rd.number();
     SmExtent2d original_rect = rd.domain(), offset_rect = rd.domain();
-    bool flip = rd.flag(), mate = rd.flag();
+    bool flip = rd.flag(), mate = rd.flag(), has_split = rd.flag();
+    double split = 0;
+    if (has_split) {
+        split = rd.number();
+        if (!(offset_rect.GetMin().x < split && split < offset_rect.GetMax().x)) throw Argument{};
+    }
     rd.done();
     SmContext ctx;
     auto original = brep(ctx), offset = brep(ctx);
-    SmFace* face = curve_face(ctx, original.get(), original_rect, 0.0, false);
-    SmFace* twin = curve_face(ctx, offset.get(), offset_rect, distance, flip);
+    SmFace* face = curve_face(ctx, original.get(), rectangle_loop(original_rect, nullptr), 0.0, false);
+    SmFace* twin = curve_face(ctx, offset.get(), rectangle_loop(offset_rect, has_split ? &split : nullptr),
+                              distance, flip);
     SmFaceuse* use = face->GetUpwardFaceuse();
     if (mate) use = use->GetMate();
     SmOffsetGeometryCreation geometry(distance, 1e-6);
