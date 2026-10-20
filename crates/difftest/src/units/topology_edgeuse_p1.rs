@@ -694,7 +694,7 @@ fn read_curve(rd: &mut Rd<'_>, uv: bool) -> Result<Option<SmCurve>, HarnessError
             .ok_or_else(|| harness("export: CrvOnSurf without surface"))?;
         
         let k = Kernel::default();
-        let cos = CrvOnSurf::new(&k, uv_curve, surface, None, 0)
+        let cos = CrvOnSurf::new(&k, uv_curve, surface, None, 1)
             .map_err(|e| harness(format!("export CrvOnSurf: {e}")))?;
         return Ok(Some(SmCurve::from(cos)));
     }
