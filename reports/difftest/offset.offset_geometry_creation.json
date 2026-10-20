@@ -2,28 +2,20 @@
   "abs_floors": [],
   "cases": [
     {
-      "deferred": {
-        "symbol": "SmCircularCrossSectionFSG::CreateSurfaceFromCurves",
-        "unit": "blend.fillet_standard_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "box_solid_offset_vertex_edge_caps",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/offset.offset_geometry_creation/upstream.json#0 (upstream tests/prog_test/src/smOffsetTest.cpp:my_test_offset (SmOffsetGeometryCreation(dOffsetRadius, dTolerance) over Solids/box.smb; VertexOffset / EdgeuseOffset through SmOffsetExecutive::DoSolidOffset))",
-      "values_compared": 0
+      "values_compared": 1438
     },
     {
-      "deferred": {
-        "symbol": "SmCircularCrossSectionFSG::CreateSurfaceFromCurves",
-        "unit": "blend.fillet_standard_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "box_shell_inset_shell_face",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/offset.offset_geometry_creation/upstream.json#1 (upstream tests/prog_test/src/smOffsetTest.cpp:my_test_offset (lShellFace > 0: SetShellFaces + inset; EdgeuseOffset on an inset edge of a shell face))",
-      "values_compared": 0
+      "values_compared": 642
     },
     {
       "deferred": {
@@ -8006,16 +7998,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCircularCrossSectionFSG::CreateSurfaceFromCurves",
-        "unit": "blend.fillet_standard_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0797",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=9515163603058763553",
-      "values_compared": 0
+      "values_compared": 245
     },
     {
       "max_rel_err": 0.0,
@@ -8195,8 +8183,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCircularCrossSectionFSG::CreateSurfaceFromCurves",
-        "unit": "blend.fillet_standard_solver_p1"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "box_edgeuse_offset_plain",
@@ -8623,13 +8611,12 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 433,
+  "cases_deferred": 430,
   "cases_failed": 0,
-  "cases_passed": 428,
+  "cases_passed": 431,
   "cases_total": 861,
   "deferred_by_unit": {
-    "blend.fillet_standard_solver_p1": 4,
-    "curve.crv_on_surf": 25,
+    "curve.crv_on_surf": 26,
     "harness:analytic-geometry-export": 70,
     "intersect.surface_drop_curve": 27,
     "intersect.surface_drop_lib_p3": 7,
