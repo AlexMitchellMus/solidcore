@@ -6004,7 +6004,7 @@
   },
   {
    "name": "regress_recalc_no_dir_all_unprocessed",
-   "upstream_ref": "source/SMLib/src/SmFilletGeom.cpp (ReCalcFilletGeom reads sTsectPnts[0] of an empty array without a march direction: UB-199)",
+   "upstream_ref": "source/SMLib/src/SmFilletGeom.cpp (ReCalcFilletGeom reads sTsectPnts[0] of an empty array without a march direction: UB-208)",
    "inputs": {
     "brep": {
      "kind": "file",
@@ -6535,7 +6535,7 @@
   },
   {
    "name": "regress_recalc_no_dir_all_mates",
-   "upstream_ref": "source/SMLib/src/SmFilletGeom.cpp (ReCalcFilletGeom reads sTsectPnts[0] of an empty array without a march direction: UB-199)",
+   "upstream_ref": "source/SMLib/src/SmFilletGeom.cpp (ReCalcFilletGeom reads sTsectPnts[0] of an empty array without a march direction: UB-208)",
    "inputs": {
     "brep": {
      "kind": "file",
@@ -9635,7 +9635,7 @@
   },
   {
    "name": "regress_fif_no_curve_no_corner",
-   "upstream_ref": "source/SMLib/src/SmFilletGeom.cpp (CalcFilletIntFillet without a 3D curve calls sm_SrfSrfIntersection with m_cpCorner->GetContext() of an edge without corner: UB-200; generated seed 748 of the 2000-seed sweep)",
+   "upstream_ref": "source/SMLib/src/SmFilletGeom.cpp (CalcFilletIntFillet without a 3D curve calls sm_SrfSrfIntersection with m_cpCorner->GetContext() of an edge without corner: UB-210; generated seed 748 of the 2000-seed sweep)",
    "inputs": {
     "brep": {
      "kind": "network"
