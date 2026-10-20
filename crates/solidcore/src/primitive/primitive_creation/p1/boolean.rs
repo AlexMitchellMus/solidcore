@@ -13,7 +13,7 @@
 use super::primitives::{detailed_face, stitch_faces, Boolean2d};
 use crate::boolean::topology_intersector::MateMap;
 use crate::error::{ignore_status, Result, SolidError};
-use crate::geom::context::{MarkLock, MarkType};
+use crate::geom::context::MarkLock;
 use crate::kernel::Kernel;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::topology::edge;
@@ -35,6 +35,7 @@ fn intersect_insert_relate(
     _angle_radians: f64,
 ) -> Result<PlanarIntersections> {
     // UNPORTED(boolean.topology_intersector_p2): SmTopologyIntersector::IntersectInsertRelate
+    // The generic implementation exists, but topology::Brep has no IntersectorBrep adapter.
     Err(SolidError::unported(
         "SmTopologyIntersector::IntersectInsertRelate",
         "boolean.topology_intersector_p2",
@@ -47,17 +48,14 @@ fn delete_faces(
     _faces: &[FaceId],
 ) -> Result<()> {
     // UNPORTED(boolean.topology_intersector_p2): SmTopologyIntersector::DeleteFaces
+    // The generic implementation exists, but topology::Brep has no IntersectorBrep adapter.
     Err(SolidError::unported(
         "SmTopologyIntersector::DeleteFaces",
         "boolean.topology_intersector_p2",
     ))
 }
-fn remove_topology(_k: &Kernel, _a: &mut Brep, _marks: &mut Marks, _mark: MarkType) -> Result<()> {
-    // UNPORTED(topology.brep_p5): SmBrep::RemoveTopologicalEdgesAndVertices
-    Err(SolidError::unported(
-        "SmBrep::RemoveTopologicalEdgesAndVertices",
-        "topology.brep_p5",
-    ))
+fn remove_topology(k: &mut Kernel, a: &mut Brep) -> Result<()> {
+    crate::topology::brep::p5::remove_topological_edges_and_vertices(k, a, None, None)
 }
 
 pub(super) fn finish(
@@ -68,6 +66,7 @@ pub(super) fn finish(
     operation: Boolean2d,
     result: &mut Option<Brep>,
     marks: (&mut Marks, &mut Marks),
+    notifications: &mut edge::NotifyEnv<'_>,
 ) -> Result<()> {
     let tolerance = crate::math::max2(a.tolerance(), b.tolerance());
     // Preserve the constructor's explicit tolerances when wiring the pending
@@ -187,13 +186,21 @@ pub(super) fn finish(
                     original.clone_for_evaluation()?
                 };
                 let domain = surface.natural_uv_domain();
-                covering = detailed_face(k, a, a.infinite_region(), boundary, surface, domain)?;
+                covering = detailed_face(
+                    k,
+                    a,
+                    a.infinite_region(),
+                    boundary,
+                    surface,
+                    domain,
+                    notifications,
+                )?;
             }
         }
         ignore_status(delete_faces(k, a, &mut intersections, &delete))?;
         if operation != Boolean2d::Merge {
             stitch_faces(k, a, a.tolerance())?;
-            remove_topology(k, a, marks_a, mark_a)?;
+            remove_topology(k, a)?;
         }
         *result = Some(core::mem::take(a));
         *b = Brep::new();

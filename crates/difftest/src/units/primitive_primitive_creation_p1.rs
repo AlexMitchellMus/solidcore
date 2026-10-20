@@ -118,6 +118,7 @@ fn boolean_face(brep: &mut Brep, k: &Kernel, data: &[f64]) -> solidcore::Result<
         plane.adjust_step_uv_domain(&domain)?;
         Surface::from(plane)
     } else {
+        // IsPlanar uses the revolution base; Surface has no sphere variant yet.
         Surface::from(Sphere::create_canonical(k, &frame, 1.0)?.base().clone())
     };
     let mut face = Face::new(ShellId::from_index(0));
@@ -127,8 +128,36 @@ fn boolean_face(brep: &mut Brep, k: &Kernel, data: &[f64]) -> solidcore::Result<
     Ok(())
 }
 
+fn topology_key(e: EntityRef) -> solidcore::geom::object::ObjectRef {
+    let (type_code, kind, i) = match e {
+        EntityRef::Brep(x) => (16011, 0, x.index()),
+        EntityRef::Region(x) => (16012, 1, x.index()),
+        EntityRef::Shell(x) => (16013, 2, x.index()),
+        EntityRef::Faceuse(x) => (16022, 3, x.index()),
+        EntityRef::Face(x) => (16002, 4, x.index()),
+        EntityRef::Loopuse(x) => (16004, 5, x.index()),
+        EntityRef::Loop(x) => (16003, 6, x.index()),
+        EntityRef::Edgeuse(x) => (16005, 7, x.index()),
+        EntityRef::Edge(x) => (16016, 8, x.index()),
+        EntityRef::Vertexuse(x) => (16006, 9, x.index()),
+        EntityRef::Vertex(x) => (16021, 10, x.index()),
+    };
+    solidcore::geom::object::ObjectRef {
+        type_code,
+        key: solidcore::geom::attribute::ObjectKey((kind + 1) << 40 | u64::from(i)),
+    }
+}
+
 fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
     let mut k = Kernel::default();
+    let mut records = std::collections::BTreeMap::new();
+    let mut attributes = solidcore::geom::attribute::AttributeStore::default();
+    let mut notifications = solidcore::topology::edge::NotifyEnv {
+        records: &mut records,
+        attributes: &mut attributes,
+        context: None,
+        key_of: &topology_key,
+    };
     let v = &i.data;
     let mut record = Vec::new();
     match i.op {
@@ -241,9 +270,9 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
                 Vec3::new(value(v, 11), value(v, 12), value(v, 13)),
                 Vec3::new(value(v, 14), value(v, 15), value(v, 16)),
             );
-            let mut brep = Brep::new();
+            let mut brep = Brep::new_with_infinite_region()?;
             brep.set_editing_enabled(value(v, 17) != 0.0);
-            let mut primitive = PrimitiveCreation::new(Some(RegionId::from_index(0)), 17, true);
+            let mut primitive = PrimitiveCreation::new(brep.infinite_region(), 17, true);
             if value(v, 18) != 0.0 {
                 primitive.maps.to_same.insert(
                     EntityRef::Brep(BrepId::from_index(0)),
@@ -273,6 +302,7 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
                         value(v, 5),
                     ],
                     &frame,
+                    &mut notifications,
                 ),
                 4 => primitive.create_cone(
                     &k,
@@ -285,11 +315,12 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
                 5 => primitive.create_sphere(&k, &mut brep, value(v, 1), &frame),
                 6 => primitive.create_torus(&k, &mut brep, value(v, 1), value(v, 2), &frame),
                 7 => PrimitiveCreation::create_sphere_no_pole(
-                    &k,
+                    &mut k,
                     &mut brep,
                     value(v, 1),
                     frame.origin(),
                     value(v, 7),
+                    &mut notifications,
                 ),
                 8 => PrimitiveCreation::create_cone_elliptic_ends(
                     &k,
@@ -341,6 +372,7 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
                         operation,
                         &mut output,
                         (&mut marks_a, &mut marks_b),
+                        &mut notifications,
                     );
                     record.push(f64::from(output.is_some()));
                     result
@@ -417,6 +449,7 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
                 operation,
                 &mut output,
                 (&mut marks_a, &mut marks_b),
+                &mut notifications,
             );
             let status = match result {
                 Ok(()) => 0,

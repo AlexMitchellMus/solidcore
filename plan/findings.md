@@ -10039,3 +10039,36 @@ local --green gate: 213 units, 114 passed, 99 partial, zero failed. Both focused
   The FFI refuses a vertex repeated in the one-list `StitchVertexPairs` list (UB-178).
   Upstream defects kept by the port: WR-186 (`DoStitching`'s sticky candidate flags),
   WR-187 (a cancelled squeeze reported as done), UB-197 (stale edge after a failed glue with `m_bIgnoreProblems`).
+
+
+## primitive.primitive_creation_p1 — second review integration (PR #213, 2026-10-20)
+
+Merged canonical main `95b823ed`; both conflict sections above are retained.
+The three stale `topology.brep_p5` adapters now call the landed implementation
+with upstream defaults: `StitchAndOrientOptions::default()`, `Transform` with
+no scale and tolerance scaling enabled, and topological cleanup with neither
+keep list. Existing caller status handling is retained (ignored statuses versus
+`SER`), and pole-free sphere construction now borrows the mutable Kernel needed
+by `Transform`.
+
+Main's current `MakeFaceWithCurves` also requires a notification environment.
+Cylindrical-box, pole-free sphere and planar-boolean APIs now forward the caller's
+records, attributes and identity resolver; the surface owner uses that same face
+key. The differential fixture owns its explicit, distinct topology keys and creates
+a real infinite region before passing that region into primitive construction;
+main p9 now validates it before the missing topology allocation. No throwaway
+notification store is created in library code.
+
+`IntersectInsertRelate` and `DeleteFaces` remain deferred: their generic p2
+implementation exists, but an `IntersectorBrep` adapter for `topology::Brep` does
+not. Both comments and the unit notes name this missing adapter. Wiring p5 does
+not certify paths that still stop earlier at construction or intersection.
+The runner now explains the analytic revolution base of its sphere fixture,
+and its README identifies the existing working `[0, 0, 1, 1]` sphere UV domain.
+
+Current native result: **773 cases, 689 exact passes, zero failures, 75 deferred,
+9 rejected**. Deferrals: `boolean.topology_intersector_p2` 10 (missing B-rep
+adapter), `topology.brep_p2` 1 (`MakeShellVertexTopology`, now reached through
+p7/p9 with a real infinite region), `topology.brep_p3` 5, `topology.brep_p8` 59.
+The former p9 case now reaches p2 rather than an invalid region lookup. All
+689 perturbations are detected. No tolerance or absolute floor changed.

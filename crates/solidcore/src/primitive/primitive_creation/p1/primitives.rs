@@ -22,6 +22,7 @@
 //! Mutations after that call are deferred; no success is claimed for those paths.
 //! Analytic cone and torus objects stay concrete until Surface dispatch supports
 //! them. `SmBrep` is caller-owned; edits retain upstream edit-mode side effects.
+//! Face construction uses caller notification records, attributes and identity keys.
 //! No recursion.
 
 use super::PrimitiveCreation;
@@ -42,6 +43,7 @@ use crate::surface::plane::p1::Plane;
 use crate::surface::sphere::Sphere;
 use crate::surface::surface::Surface;
 use crate::surface::torus::{Torus, TorusOptions};
+use crate::topology::edge::NotifyEnv;
 use crate::topology::{Brep, FaceId, RegionId};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -94,12 +96,9 @@ fn create_face(_k: &Kernel, _b: &mut Brep, _surface: Surface, _domain: Extent2d)
     ))
 }
 
-fn stitch(_k: &Kernel, _b: &mut Brep) -> Result<()> {
-    // UNPORTED(topology.brep_p5): SmBrep::StitchAndOrient
-    Err(SolidError::unported(
-        "SmBrep::StitchAndOrient",
-        "topology.brep_p5",
-    ))
+fn stitch(_k: &Kernel, b: &mut Brep) -> Result<()> {
+    use crate::topology::brep::p5::{stitch_and_orient, StitchAndOrientOptions};
+    stitch_and_orient(b, &StitchAndOrientOptions::default())
 }
 
 fn planar_face(
@@ -161,6 +160,7 @@ fn trimmed_face(
     curves: Vec<Curve>,
     surface: Surface,
     domain: Extent2d,
+    notifications: &mut NotifyEnv<'_>,
 ) -> Result<FaceId> {
     use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
     detailed_face(
@@ -175,6 +175,7 @@ fn trimmed_face(
         },
         surface,
         domain,
+        notifications,
     )
 }
 
@@ -201,6 +202,7 @@ pub(super) fn detailed_face(
     boundary: crate::topology::face::p2::FaceCurves,
     surface: Surface,
     domain: Extent2d,
+    notifications: &mut NotifyEnv<'_>,
 ) -> Result<FaceId> {
     use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
     use crate::topology::brep::p7::{make_face_with_curves, FaceCurvesInput};
@@ -225,6 +227,7 @@ pub(super) fn detailed_face(
         orientations: boundary.curve_orients,
         loop_points: boundary.loop_points,
     };
+    let key_of = notifications.key_of;
     make_face_with_curves(
         k,
         b,
@@ -234,11 +237,8 @@ pub(super) fn detailed_face(
         &domain,
         OrientType::Same,
         None,
-        &|face| {
-            crate::topology::brep_cache::arena_identity(
-                crate::topology::brep_cache::CacheObject::Face(face),
-            )
-        },
+        &|face| key_of(crate::error::EntityRef::Face(face)),
+        notifications,
     )?
     .face
     .ok_or_else(|| SolidError::null_pointer("primitive::primitive_creation::p1::detailed_face"))
@@ -264,12 +264,8 @@ pub(super) fn stitch_faces(_k: &Kernel, _b: &mut Brep, _tolerance: f64) -> Resul
         "topology.brep_p4",
     ))
 }
-fn transform_brep(_k: &Kernel, _b: &mut Brep, _placement: &Axis2Placement) -> Result<()> {
-    // UNPORTED(topology.brep_p5): SmBrep::Transform
-    Err(SolidError::unported(
-        "SmBrep::Transform",
-        "topology.brep_p5",
-    ))
+fn transform_brep(k: &mut Kernel, b: &mut Brep, placement: &Axis2Placement) -> Result<()> {
+    crate::topology::brep::p5::transform(k, b, placement, None, true)
 }
 
 enum AnalyticSurface {
@@ -396,12 +392,14 @@ impl PrimitiveCreation {
 
     /// Cylindrical box validation, followed by the first trimmed plane edit.
     /// The angle bounds are degrees, with exact inclusive bounds upstream.
+    /// `notifications` supplies the caller's topology records, attributes and keys.
     pub fn create_cylindrical_box(
         &mut self,
         k: &Kernel,
         brep: &mut Brep,
         dimensions: [f64; 5],
         frame: &Axis2Placement,
+        notifications: &mut NotifyEnv<'_>,
     ) -> Result<()> {
         let [length, inner, outer, start, end] = dimensions;
         if !(length > EFF_ZERO
@@ -469,6 +467,7 @@ impl PrimitiveCreation {
                 curves,
                 Surface::from(plane),
                 domain,
+                notifications,
             ))?;
         }
         for radial in [start_vec, end_vec] {
@@ -592,6 +591,7 @@ impl PrimitiveCreation {
 
     /// Planar boolean's ordered collection and empty-input early return. The
     /// result slot remains untouched on the empty path, including Difference.
+    /// `notifications` belongs to the primary B-rep and its newly created faces.
     pub fn boolean_2d(
         &mut self,
         k: &mut Kernel,
@@ -603,6 +603,7 @@ impl PrimitiveCreation {
             &mut crate::topology::topology_traverser::Marks,
             &mut crate::topology::topology_traverser::Marks,
         ),
+        notifications: &mut NotifyEnv<'_>,
     ) -> Result<()> {
         let previous = k.context.doing_boolean();
         let edit_a = a.editing_enabled();
@@ -708,7 +709,7 @@ impl PrimitiveCreation {
             })();
             a.face_mut(first)?.surface = Some(first_surface);
             covered?;
-            super::boolean::finish(k, a, b, first, operation, output, marks)?;
+            super::boolean::finish(k, a, b, first, operation, output, marks, notifications)?;
             selected_result = true;
             Ok(())
         })();
@@ -843,12 +844,14 @@ impl PrimitiveCreation {
 
     /// Assemble a sphere from two revolved centre patches and two trimmed caps,
     /// stitch at ten times the given tolerance, then translate to the centre.
+    /// `notifications` supplies the caller's topology records, attributes and keys.
     pub fn create_sphere_no_pole(
-        k: &Kernel,
+        k: &mut Kernel,
         brep: &mut Brep,
         radius: f64,
         center: Vec3,
         tolerance: f64,
+        notifications: &mut NotifyEnv<'_>,
     ) -> Result<()> {
         use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
         use crate::nurbs::crv_basic::ConicType;
@@ -935,6 +938,7 @@ impl PrimitiveCreation {
                 boundary,
                 surface,
                 domain,
+                notifications,
             ))?;
         }
         let status = match stitch_faces(k, brep, 10.0 * tolerance) {
@@ -1202,6 +1206,14 @@ mod tests {
     #[test]
     fn boolean_2d_covers_plane_domains_before_intersection() {
         let mut k = Kernel::default();
+        let mut records = std::collections::BTreeMap::new();
+        let mut attributes = crate::geom::attribute::AttributeStore::default();
+        let mut notifications = NotifyEnv {
+            records: &mut records,
+            attributes: &mut attributes,
+            context: None,
+            key_of: &|_| unreachable!("validation stops before topology edits"),
+        };
         let mut a = plane_brep(0.0);
         let mut b = plane_brep(0.0);
         let fa = a.face_list()[0];
@@ -1225,6 +1237,7 @@ mod tests {
                 Boolean2d::Union,
                 &mut None,
                 (&mut marks_a, &mut marks_b),
+                &mut notifications,
             )
             .unwrap_err();
         assert!(matches!(
@@ -1263,6 +1276,14 @@ mod tests {
             (180.0, false),
         ] {
             let mut k = Kernel::default();
+            let mut records = std::collections::BTreeMap::new();
+            let mut attributes = crate::geom::attribute::AttributeStore::default();
+            let mut notifications = NotifyEnv {
+                records: &mut records,
+                attributes: &mut attributes,
+                context: None,
+                key_of: &|_| unreachable!("validation stops before topology edits"),
+            };
             let mut a = plane_brep(0.0);
             let mut b = plane_brep(angle);
             b.set_editing_enabled(true);
@@ -1277,6 +1298,7 @@ mod tests {
                     Boolean2d::Union,
                     &mut output,
                     (&mut marks_a, &mut marks_b),
+                    &mut notifications,
                 )
                 .unwrap_err();
             if invalid {

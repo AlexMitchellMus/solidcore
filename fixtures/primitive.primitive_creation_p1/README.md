@@ -49,7 +49,11 @@ For op 6, each face block is `[kind, x_tilt_degrees, z_offset, u0, v0, u1, v1]`:
 kind 0 is a canonical plane, kind 1 a unit sphere (Rust retains its analytic
 surface-of-revolution base, the available `Surface` variant). Planes are tilted around X;
 A and B may each have zero to four faces. Rust builds face/surface records for
-these validation paths; C++ builds trimmed native faces. The compared record
+these validation paths; C++ builds trimmed native faces. A working sphere block
+is `[1, 0, 0, 0, 0, 1, 1]` (UV domain `[0, 0, 1, 1]`), as used by
+`boolean_nonplanar_first` and `boolean_nonplanar_second` in `review.json`.
+Other domains, such as `[0, -45, 90, 45]`, can be rejected by native face
+construction before `Boolean2D` runs. The compared record
 contains status, restored edit flags and result-slot presence, without claiming
 that the two fixture topologies are equivalent. `review.json` covers non-planar
 first/later faces, plane offsets around twice the zone tolerance, normal tilts
