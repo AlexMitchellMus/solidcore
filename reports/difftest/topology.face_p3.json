@@ -7256,7 +7256,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_intersect_49",
@@ -7292,7 +7292,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_intersect_52",
@@ -7328,7 +7328,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_intersect_55",
@@ -8008,7 +8008,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_rebuilt_intersect_49",
@@ -8044,7 +8044,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_rebuilt_intersect_52",
@@ -8080,7 +8080,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_rebuilt_intersect_55",
@@ -13616,7 +13616,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "bilinear_intersect_49",
@@ -13652,7 +13652,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "bilinear_intersect_52",
@@ -13688,7 +13688,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "bilinear_intersect_55",
@@ -14368,7 +14368,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "bilinear_subdomain_intersect_49",
@@ -14404,7 +14404,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "bilinear_subdomain_intersect_52",
@@ -14440,7 +14440,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "bilinear_subdomain_intersect_55",
@@ -15120,7 +15120,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "triangle_pole_intersect_49",
@@ -15156,7 +15156,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "triangle_pole_intersect_52",
@@ -15192,7 +15192,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "triangle_pole_intersect_55",
@@ -15872,7 +15872,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "biquadratic_intersect_49",
@@ -15908,7 +15908,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "biquadratic_intersect_52",
@@ -15944,7 +15944,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "biquadratic_intersect_55",
@@ -15986,7 +15986,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_00",
@@ -15998,7 +15998,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_01",
@@ -16010,7 +16010,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_02",
@@ -16022,7 +16022,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_03",
@@ -16034,7 +16034,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_04",
@@ -16046,7 +16046,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_05",
@@ -16058,7 +16058,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_06",
@@ -16070,7 +16070,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_07",
@@ -16082,7 +16082,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_08",
@@ -16094,7 +16094,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_09",
@@ -16106,7 +16106,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_10",
@@ -16118,7 +16118,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_11",
@@ -16130,7 +16130,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_12",
@@ -16142,7 +16142,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_13",
@@ -16154,7 +16154,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_14",
@@ -16166,7 +16166,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_15",
@@ -16178,7 +16178,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_16",
@@ -16190,7 +16190,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_17",
@@ -16202,7 +16202,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_18",
@@ -16214,7 +16214,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_19",
@@ -16226,7 +16226,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_20",
@@ -16238,7 +16238,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_21",
@@ -16250,7 +16250,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_22",
@@ -16262,7 +16262,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_23",
@@ -16274,7 +16274,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_24",
@@ -16286,7 +16286,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_25",
@@ -16298,7 +16298,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_26",
@@ -16310,7 +16310,7 @@
     {
       "deferred": {
         "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_pairs_intersect_27",
@@ -18639,9 +18639,9 @@
   "cases_passed": 686,
   "cases_total": 1781,
   "deferred_by_unit": {
+    "geom.tol": 46,
     "intersect.curve_class_p2": 210,
     "surface.surf_of_extrusion_p2": 112,
-    "surface.surface_cache_p2": 46,
     "surface.surface_p2": 228,
     "topology.face_p2": 228,
     "topology.face_p3": 3,
