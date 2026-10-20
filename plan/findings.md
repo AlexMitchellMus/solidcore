@@ -9992,6 +9992,41 @@ together when the solver and corner units address geometries in a `FilletBrep`. 
 targets are `FilletBrep::copy_fillet_geom`, `create_end_curve`, `trim_rail_curves` and
 `make_fillet_edge` (`blend/fillet_geom/p5.rs`). No disagreement.
 
+## blend.fillet_geom_p5: what the difftest does and does not cover (PR #264, review round 3)
+
+- **Real-value comparisons**: `TrimRailCurves` / `TrimCliffRails` (rail curves, intervals,
+  UV curves, vertex-use UV points of both rails and of the other rails of a cliff
+  rollover; cliff-rail pieces taking a side surface from a second geometry; closed rails
+  `pStartV == pEndV`; unprocessed `SM_FV_CLIFF_RAIL_X_EDGE` vertices computed by
+  `CalcCliffRailIntEdge`), `CalcCrossSection`, `CalcFilletIntSideFace`
+  (`blend.fillet_geom_p4` / `_p2` wired), and `UpdateSplitFace` (original faces and split
+  faces per edge, the shim setting the rails' original faces first).
+- **Status-only or status + early-exit comparisons**: `CalcFilletIntFillet` and
+  `CalcEdgeOnExtendedEdge` can only reach the first `NER` of their corner
+  (`NER(m_cpCorner)` cpp:2491, `NER(pOptCorner)` cpp:7638), because the shim refuses a
+  real corner: the bodies of `calc_fillet_int_fillet` and `calc_edge_on_extended_edge` are
+  compared by no case until `blend.fillet_corner_p1` lands. The builders
+  (`MakeFilletEdge`, `MakeRailEdge`, `CreateEndCurve`) compare the status and the edge
+  count only, and all of them past their early exits defer at `topology.brep_p3` (the
+  infinite region of `SmBrep()`); when it lands, extend the shim and runner to dump the new
+  edge's records (type, both uses' orientations and list order, vertex uses' vertices;
+  for `EndCurve` the 3D curve, interval, primary UV curve and `side_eus`; for
+  `RailEdge` the geometry's rail and vertices). `MakeRailEdgeuse` and `copy_fillet_geom`
+  have no shim op (no unit test of their own beyond the arithmetic ones): add a
+  `RailEdgeuse` op then.
+- **Unreachable**: the `SM_OT_OPPOSITE` primary-use `SER(SM_ERR)` in `TrimRailCurves`
+  (cpp:10625-10628): the model builds every primary edge use `SM_OT_SAME` (`EuIn` has no
+  orientation).
+- **`SM_BT_BLEND` end curves**: the harness model pairs `SM_PC_EDGE` with an `SmEdge`
+  (`pc_kind` 4 of `blend.fillet_geom_p1`'s model; upstream always does:
+  `SmFilletSolver.cpp:7605-7619`, read back as `SmEdge*` by `FindEdgeTangentAtPoint` and at
+  `SmFilletSolver.cpp:7665`; `CalcCliffRailIntEdge` reads an `SmEdgeuse` only for
+  `SM_FV_CLIFF_RAIL_X_EDGE` vertices, which are classified `SM_PC_EDGEUSE`). An earlier
+  note that `FindEdgeTangentAtPoint` casts an edge-use-classified vertex to an `SmEdge` was
+  a harness artefact (the model could build `SM_PC_EDGE` with an edge use) and is
+  retracted; the shim now refuses only an `SM_PC_EDGE` object that is not an `SmEdge`.
+  BLEND cases defer at `FindEdgeTangentAtPoint` (`blend.fillet_geom_p6`).
+
 ## blend.fillet_geom_p5: rail trims and cross sections disagree in the tolerance-dominated regime (resolved)
 
 **Resolved in round 2 (2026-10-20): a port bug in this unit's calls, not in the curve
@@ -10011,11 +10046,49 @@ tolerance `~1e-9` and the near-duplicates stayed. Fix: the rail solves in
 its natural interval (`RailCurveHandle`, as `query.edge` does), and `sm_CreateUVCurve`'s
 surface solves in `blend.fillet_geom_p4` name the surface with its natural UV domain
 (`UvSurfaceHandle`, SmFilletGeom.cpp:4461-4504). After it: 300 generated cases 287 pass,
-0 fail, max_rel_err 0. The same object-less pattern remains, untouched here, in
-`blend.fillet_geom_p2` (`surf.global_point_solve::<NoObject>`, p2.rs `sm_TwoPntsIntersection`
-area) and `blend.fillet_geom_p4` (`global_curve_intersect::<NoObject>` in the fillet/fillet
-intersection, `surf1.global_point_solve::<NoObject>` in the extended-edge calculator): any
-solve whose solutions are counted or chosen can keep upstream-merged near-duplicates there.
+0 fail, max_rel_err 0.
+
+**Round 3 (review of #264, 2026-10-20): the same pattern in the other fillet-geometry
+solves.** The object-less solves whose solutions are counted or chosen (a `== 2` or
+`!= 1` test on the solution count, a pick of the first solution) are the ones that can
+disagree. Fixed here, as co-ports in units that are already merged (this PR edits their
+files; their difftests were re-run):
+- `blend.fillet_geom_p1` `two_pnts_intersection` (`sm_TwoPntsIntersection`, the four
+  `sm_SurfaceDropPoint` calls; `== 2` seam test, cpp:286): the drops now name their
+  surface (`SurfaceHandle`, p1.rs), as upstream's `GlobalPointSolve` does (cpp:161). The
+  p1 runner's `SurfaceDropPoint` op passes the same handle. This is on `calc_fillet_int_side_face`
+  / `calc_edge_on_extended_edge` / the cliff rails / `calc_fillet_int_fillet` path of this
+  unit (all through `srf_srf_intersection` with skip = `false`). Seam fixtures at scale
+  `1e-3` / `1e-6` with the tolerance at the surface's extent were added to
+  `fixtures/blend.fillet_geom_p1/cases.json` (`drop_point_cylinder_seam_1e-*_tol_extent`,
+  `two_pnts_cylinder_seam_1e-*_tol_extent`); they agree with and without the handle (no
+  generated or fixture p1 input was found, up to 5000 seeds, where the handle changes a
+  result), so the change is a fidelity fix without a reproducing case.
+- `blend.fillet_geom_p2` `calc_set_back_vert` (`SmFilletVertex::CalcSetBackVert`, cpp:3366
+  / 3370, `solutions.len() != 1 -> SM_ERR`; the earlier text of this section misplaced it
+  "in the `sm_TwoPntsIntersection` area"): the two `GlobalPointSolve`s name their offset
+  surface (`SurfaceHandle`).
+- `blend.fillet_geom_p4` `calc_fillet_int_2_fillets` (`GlobalCurveIntersect`, cpp:2806,
+  `len() != 1 -> SM_ERR`): the intersection names the two curves and their analytic
+  replacements (`CurveObjectHandle`, p1.rs, shared with p5's rail handles). The p2 and p4
+  vertex calculators are reached by no difftest case (the corner object model is
+  `blend.fillet_corner_p1`), so those two changes are faithful by construction, not
+  by a comparison; @bherbruck owns both units.
+
+Left as is: `p1.rs` `find_fillet_brep_edge` (`SR_SINGLE`, only the first solution's
+value is read), `find_stepoff_uv` (`SR_SINGLE`, tests emptiness and takes the best),
+`normalized_drop` (`surface.drop_point::<NoObject>`), `p4.rs` `calc_rail_int_extended_edgeuse`
+(only tests emptiness): none depends on how many near-duplicates survive.
+
+**Cross-cutting (for the orchestrator).** `NoObject` (`surface/surface/p4.rs`,
+`ObjectKind::Surface` with no natural domain) is used in about 30 files crate-wide (99
+mentions outside its definition: the surface, intersect, topology, query, heal and blend
+units). Every solve there whose solutions are counted, compared with a size or chosen by
+index is exposed to the same near-duplicate difference at small parameter domains or
+large tolerances; a sweep is a task of its own (audit each `::<NoObject>` call against the
+upstream call's `this`; `IdenticalSolutions` merges within `1e-4` of the object's natural
+interval or domain, SmGlobalSolver.cpp:1910-1931, `SmSolution::GetParameterInterval`,
+SmSolutionArray.cpp:730-828).
 
 Original report (round 1):
 

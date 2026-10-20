@@ -60,7 +60,6 @@ use solidcore::nurbs::math::{CPoint, NOW};
 use solidcore::nurbs::srf_basic::Surface as NurbSurface;
 use solidcore::surface::plane::Plane;
 use solidcore::surface::surf_of_revolution::SurfOfRevolution;
-use solidcore::surface::surface::p4::NoObject;
 use solidcore::surface::surface::{Surface, SurfaceKind};
 use solidcore::topology::{
     Brep, EdgeId, Edgeuse, EdgeuseId, FaceId, VertexId, Vertexuse, VertexuseId, VertexuseOwner,
@@ -120,7 +119,8 @@ pub(crate) struct VertexIn {
     #[serde(default = "pc_unknown")]
     pub(crate) pc_class: i64,
     /// `0` none, `1` the start/end (`pc_sub`) vertex of target wire edge `pc_index`, `2`
-    /// its primary edge use, `3` target face `pc_index`.
+    /// its primary edge use, `3` target face `pc_index`, `4` the target wire edge itself
+    /// (an `SmEdge`, what `SM_PC_EDGE` classifies to upstream).
     #[serde(default)]
     pub(crate) pc_kind: i64,
     #[serde(default = "minus_one")]
@@ -1461,6 +1461,9 @@ impl RustModel {
                 (3, Ok(i)) => Some(EntityRef::Face(
                     *target_faces.get(i).ok_or_else(|| harness("pc face"))?,
                 )),
+                (4, Ok(i)) => Some(EntityRef::Edge(
+                    *target_edges.get(i).ok_or_else(|| harness("pc index"))?,
+                )),
                 _ => None,
             };
             fv.set_point_class(class, object);
@@ -1718,6 +1721,14 @@ impl RustModel {
                 }
                 o.extend([-1.0, -1.0, 0.0]);
             }
+            Some(EntityRef::Edge(e)) => {
+                let i = self.target_edges.iter().position(|&x| x == e);
+                o.extend([
+                    if i.is_some() { 4.0 } else { -1.0 },
+                    i.map_or(-1.0, |i| i as f64),
+                    0.0,
+                ]);
+            }
             Some(EntityRef::Face(f)) => {
                 let i = self.target_faces.iter().position(|&x| x == f);
                 o.extend([
@@ -1962,10 +1973,11 @@ fn rust_geometry(i: &Inputs) -> Result<Rec, HarnessError> {
         }
         Inputs::SurfaceDropPoint { surface, pnt, tol } => {
             let s = surface_of(surface)?;
-            match try_status!(fg::surface_drop_point::<NoObject>(
+            // the solutions name the surface, as `sm_SurfaceDropPoint`'s do
+            match try_status!(fg::surface_drop_point(
                 &k,
                 &s,
-                Some(NoObject),
+                Some(fg::SurfaceHandle(&s)),
                 v3(*pnt),
                 *tol
             )) {

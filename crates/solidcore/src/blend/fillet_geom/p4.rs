@@ -116,8 +116,8 @@ use crate::topology::vertex;
 use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, VertexId};
 
 use super::p1::{
-    cleanup_noise, join_verts_by_capping, FilStatus, FilletBrep, FilletCornerId, FilletCornerType,
-    FilletEdgeType, FilletGeomId, FilletGeomType, FilletSolverId,
+    cleanup_noise, join_verts_by_capping, CurveObjectHandle, FilStatus, FilletBrep, FilletCornerId,
+    FilletCornerType, FilletEdgeType, FilletGeomId, FilletGeomType, FilletSolverId,
 };
 
 const OP_UV: &str = "blend::fillet_geom::p4::create_uv_curve";
@@ -1292,13 +1292,22 @@ impl FilletBrep {
         };
         let c1 = curve_of(curve1)?;
         let c2 = curve_of(curve2)?;
-        let solutions = c1.global_curve_intersect::<NoObject>(
+        // the solutions name the two curves (`this` and `rCurve2`) and their analytic
+        // replacements, as upstream's do: `IdenticalSolutions` merges near-duplicates
+        // within `1e-4` of the curve's interval before the `!= 1` count below
+        let (ivl1, ivl2) = (c1.natural_interval(), c2.natural_interval());
+        let handle = |id: u8, ivl| Some(CurveObjectHandle { id, ivl });
+        let solutions = c1.global_curve_intersect(
             k,
-            &c1.natural_interval(),
+            &ivl1,
             c2,
-            &c2.natural_interval(),
+            &ivl2,
             min_tol,
-            &crate::curve::curve::p8::CurveIntersectOptions::default(),
+            &crate::curve::curve::p8::CurveIntersectOptions {
+                skip_global_coincidence_check: false,
+                handles: [handle(0, ivl1), handle(1, ivl2)],
+                analytic_handles: [handle(2, ivl1), handle(3, ivl2)],
+            },
         )?;
         if solutions.len() != 1 {
             return Err(SolidError::sm_err(OP_INT2));

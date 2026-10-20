@@ -3,7 +3,8 @@
 // translation unit that compiles upstream SmFilletGeom.cpp: the difftest shim of unit
 // `blend.fillet_geom_p5` (SmFilletVertex::CalcFilletIntFillet, SmFilletEdge::CalcCrossSection,
 // CalcFilletIntSideFace, CalcEdgeOnExtendedEdge, MakeFilletEdge, SmFilletGeom::MakeRailEdge,
-// CreateEndCurve, TrimRailCurves (and TrimCliffRails through it), UpdateSplitFace). Every op
+// CreateEndCurve (and FindEdgeTangentAtPoint for SM_BT_BLEND), TrimRailCurves (and
+// TrimCliffRails through it), UpdateSplitFace). Every op
 // builds the pseudo B-rep with blend_fillet_geom_p1.cpp's Model and the base solvers of
 // blend_fillet_geom_p4_static.inc. Not compiled on its own (blend_fillet_geom_p5.cpp only points
 // here).
@@ -37,7 +38,14 @@ void p5_put_sides(std::vector<double>& o, const Model& M)
 }
 
 // CalcCrossSection(ctx, NULL) up to its first unchecked dereference: false when upstream would
-// dereference a missing solver or a missing UV curve.
+// dereference a missing solver or a missing UV curve (UB-213: sm_CreateUVCurve succeeding with
+// no curve, then `*pUVCurve1`, SmFilletGeom.cpp:5759-5768).
+//
+// Cache warm-up: this runs sm_CreateUVCurve once before the real CalcCrossSection, which runs
+// it again. The first call builds the surface's object cache (SmCacheMgr), so the measured C++
+// call runs warm while the Rust side runs cold. The two are bit-identical today, so the warm-up
+// is not hiding a difference; if a cache-dependent disagreement ever shows up here, look at the
+// cache first (or rebuild the model for the real call).
 bool p5_cross_runs(const SmContext& ctx, SmFilletEdge* e)
 {
     SmFilletVertex* sv = (SmFilletVertex*)e->GetVertex();
@@ -82,8 +90,9 @@ bool p5_cross_runs(const SmContext& ctx, SmFilletEdge* e)
     return ok;
 }
 
-// CalcFilletIntSideFace(ctx, NULL): false when upstream would dereference the NULL corner or
-// a missing solver.
+// CalcFilletIntSideFace(ctx, NULL): false when upstream would dereference the NULL corner
+// (UB-214: `pCorner->IsExtendedSurfacePatch()` at SmFilletGeom.cpp:6219, tested only at :6223)
+// or a missing solver.
 bool p5_side_runs(SmFilletEdge* e)
 {
     SmFilletVertex* sv = (SmFilletVertex*)e->GetVertex();
@@ -101,8 +110,29 @@ bool p5_side_runs(SmFilletEdge* e)
     return true;
 }
 
-// TrimRailCurves: false when upstream would dereference a missing solver or rail, or reach
-// what the harness cannot provide in TrimCliffRails (a cliff vertex to compute, a cliff rail).
+// One side's rail pieces in TrimCliffRails' order (sAllCurvesThisRail): the main rail, then the
+// other rails of that side.
+std::vector<SmFilletEdge*> p5_side_rails(SmFilletGeom* g, ULONG ii)
+{
+    std::vector<SmFilletEdge*> all;
+    all.push_back(g->GetRail(ii));
+    const SmTArray<SmFilletEdge*>& other = ii == 0 ? (g->*GeomPeek::other1()) : (g->*GeomPeek::other2());
+    for (ULONG k = 0; k < other.GetSize(); ++k)
+        all.push_back(other[k]);
+    return all;
+}
+
+// TrimRailCurves: false when upstream would dereference a missing solver or rail, or what the
+// harness cannot provide in TrimCliffRails. The cliff checks are conservative: they look at every
+// piece of both sides, although an earlier failure (an unsynchronised rail, a failed drop) would
+// return before upstream reached a later piece.
+//  - an unprocessed SM_FV_CLIFF_RAIL_X_EDGE vertex is computed by CalcCliffRailIntEdge, which
+//    casts its classification object to an SmEdgeuse* unchecked (SmFilletGeom.cpp:3446): the
+//    object must be an edge use (the model classifies such vertices SM_PC_EDGEUSE, as
+//    SmFilletSolver.cpp:7041-7042 and 7640-7641 do);
+//  - a cliff rail takes its side surface from the edge use's fillet geometry when that is another
+//    geometry, else from pRail->GetOriginalFace()->GetSurface() (cpp:10931-10934), and the model
+//    has no original face: the geometry must be another one.
 bool p5_trim_runs(SmFilletGeom* g)
 {
     bool cliff = g->GetFilletGeomType() == SM_FG_CLIFF_ROLLOVER;
@@ -117,47 +147,114 @@ bool p5_trim_runs(SmFilletGeom* g)
             return false;
     if (cliff)
     {
-        const SmTArray<SmFilletEdge*>* lists[2] = {&(g->*GeomPeek::other1()), &(g->*GeomPeek::other2())};
         for (ULONG ii = 0; ii < 2; ++ii)
         {
-            std::vector<SmFilletEdge*> all;
-            all.push_back(g->GetRail(ii));
-            for (ULONG k = 0; k < lists[ii]->GetSize(); ++k)
-                all.push_back((*lists[ii])[k]);
+            std::vector<SmFilletEdge*> all = p5_side_rails(g, ii);
             for (size_t k = 0; k < all.size(); ++k)
             {
                 SmFilletEdge* r = all[k];
-                if (r->GetFilletEdgeType() == SM_FE_CLIFF_RAIL)
-                    return false;
                 SmFilletVertex* a = (SmFilletVertex*)r->GetVertex();
                 SmFilletVertex* b = (SmFilletVertex*)r->GetOtherVertex(a);
-                if ((!a->IsProcessed() && a->GetFilletVertexType() == SM_FV_CLIFF_RAIL_X_EDGE) ||
-                    (!b->IsProcessed() && b->GetFilletVertexType() == SM_FV_CLIFF_RAIL_X_EDGE))
-                    return false;
+                SmFilletVertex* ends[2] = {a, b};
+                for (int w = 0; w < 2; ++w)
+                {
+                    SmFilletVertex* v = ends[w];
+                    if (!v->IsProcessed() && v->GetFilletVertexType() == SM_FV_CLIFF_RAIL_X_EDGE)
+                    {
+                        const SmObject* obj = v->GetPointClassObject();
+                        if (obj == NULL || !obj->IsKindOf(SmEdgeuse_TYPE))
+                            return false;
+                    }
+                }
+                if (r->GetFilletEdgeType() == SM_FE_CLIFF_RAIL)
+                {
+                    SmFilletEdgeuse* p = (SmFilletEdgeuse*)r->GetPrimaryEdgeuse();
+                    SmFilletEdgeuse* m = (SmFilletEdgeuse*)p->GetMate();
+                    SmFilletGeom* side = (a == p->GetVertexuse()->GetVertex()) ? p->GetFilletGeom() : m->GetFilletGeom();
+                    if (side == NULL || side == g)
+                        return false;
+                }
             }
         }
     }
     return true;
 }
 
+void p5_put_rail(std::vector<double>& o, SmFilletEdge* r)
+{
+    o.push_back(flg(r != NULL));
+    if (r == NULL)
+        return;
+    put_curve(o, r->GetCurve());
+    o.push_back(r->GetInterval().GetMin());
+    o.push_back(r->GetInterval().GetMax());
+    SmFilletEdgeuse* p = (SmFilletEdgeuse*)r->GetPrimaryEdgeuse();
+    SmFilletEdgeuse* m = (SmFilletEdgeuse*)p->GetMate();
+    put_curve(o, p->GetUVTrimCurvePointer());
+    put_curve(o, m->GetUVTrimCurvePointer());
+    put_uv(o, ((SmFilletVertexuse*)p->GetVertexuse())->GetUVPoint());
+    put_uv(o, ((SmFilletVertexuse*)m->GetVertexuse())->GetUVPoint());
+}
+
+// The two rails, then the other rails of side 1, then those of side 2.
 void p5_put_rails(std::vector<double>& o, SmFilletGeom* g)
 {
     for (ULONG ii = 0; ii < 2; ++ii)
+        p5_put_rail(o, g->GetRail(ii));
+    for (ULONG ii = 0; ii < 2; ++ii)
     {
-        SmFilletEdge* r = g->GetRail(ii);
-        o.push_back(flg(r != NULL));
-        if (r == NULL)
-            continue;
-        put_curve(o, r->GetCurve());
-        o.push_back(r->GetInterval().GetMin());
-        o.push_back(r->GetInterval().GetMax());
-        SmFilletEdgeuse* p = (SmFilletEdgeuse*)r->GetPrimaryEdgeuse();
-        SmFilletEdgeuse* m = (SmFilletEdgeuse*)p->GetMate();
-        put_curve(o, p->GetUVTrimCurvePointer());
-        put_curve(o, m->GetUVTrimCurvePointer());
-        put_uv(o, ((SmFilletVertexuse*)p->GetVertexuse())->GetUVPoint());
-        put_uv(o, ((SmFilletVertexuse*)m->GetVertexuse())->GetUVPoint());
+        std::vector<SmFilletEdge*> all = p5_side_rails(g, ii);
+        for (size_t k = 1; k < all.size(); ++k)
+            p5_put_rail(o, all[k]);
     }
+}
+
+// SmFilletGeom::UpdateSplitFace(f1, f2): false when upstream would dereference what the model
+// cannot provide. The edges it updates are both rails, the other rails and the edges owning the
+// side edge uses; only those whose original face is f1 reach ShouldSwapFaces
+// (SmFilletGeom.cpp:8462-8536), which, with the edge's interval set and not negative, evaluates
+// the edge's curve (NULL curve: dereferenced; a failing evaluation leaves its test point
+// uninitialised), and with no usable interval would read the corner's filleted vertex (the
+// corner is an opaque tag).
+bool p5_split_edge_runs(SmFilletEdge* e, SmFace* f1)
+{
+    if (e->GetOriginalFace() != f1)
+        return true;
+    SmExtent1d ivl = e->GetInterval();
+    if (!(ivl.IsInit() || ivl.HasNegativeLength()))
+    {
+        SmCurve* c = e->GetCurve();
+        if (c == NULL)
+            return false;
+        double params[3] = {ivl.GetMid(), ivl.GetMin(), ivl.GetMax()};
+        for (int w = 0; w < 3; ++w)
+        {
+            SmPoint3d pt;
+            if (c->EvaluatePoint(params[w], pt) != SM_SUCCESS)
+                return false;
+        }
+        return true;
+    }
+    return e->GetCurveClass() == NULL && e->GetFilletCorner() == NULL;
+}
+
+bool p5_split_runs(SmFilletGeom* g, SmFace* f1)
+{
+    for (ULONG ii = 0; ii < 2; ++ii)
+    {
+        std::vector<SmFilletEdge*> all = p5_side_rails(g, ii);
+        for (size_t k = 0; k < all.size(); ++k)
+            if (all[k] == NULL || !p5_split_edge_runs(all[k], f1))
+                return false;
+    }
+    const SmTArray<SmFilletEdgeuse*>& sides = g->*GeomPeek::sides();
+    for (ULONG ii = 0; ii < sides.GetSize(); ++ii)
+    {
+        SmFilletEdge* fe = SM_CAST_PTR(SmFilletEdge, sides[ii]->GetOwner());
+        if (fe != NULL && !p5_split_edge_runs(fe, f1))
+            return false;
+    }
+    return true;
 }
 
 int32_t p5_run(int32_t op, Rd& rd, std::vector<double>& o)
@@ -232,15 +329,40 @@ int32_t p5_run(int32_t op, Rd& rd, std::vector<double>& o)
     }
     case P5_SPLIT:
     {
+        // g f1 f2 then, per edge in edge-list order, its original face (-1: none): the model has
+        // no original faces, so the op sets them before the call (on both sides). The two faces
+        // are dereferenced by sm_ClassifyFacePoint: they must be real target faces.
         SmFilletGeom* g = M.geom(rd.idx());
+        int64_t i1 = rd.idx();
+        int64_t i2 = rd.idx();
+        std::vector<SmFilletEdge*> es = M.edges();
+        std::vector<int64_t> orig;
+        for (size_t i = 0; i < es.size() && !rd.bad; ++i)
+            orig.push_back(rd.idx());
         if (rd.bad || g == NULL || g->GetRail(0) == NULL || g->GetRail(1) == NULL)
             return SC_ERR_ARG;
-        // SmFilletEdge::UpdateSplitFace -> ShouldSwapFaces dereferences both faces, which
-        // this op passes as NULL: only a geometry with no rail edge to update can run (none)
-        if (g->GetRail(0) != NULL)
+        if (i1 < 0 || (size_t)i1 >= M.targetFaces.size() || i2 < 0 || (size_t)i2 >= M.targetFaces.size())
             return SC_ERR_ARG;
-        SmStatus r = g->UpdateSplitFace(NULL, NULL);
+        SmFace* f1 = M.targetFaces[(size_t)i1];
+        SmFace* f2 = M.targetFaces[(size_t)i2];
+        for (size_t i = 0; i < es.size(); ++i)
+        {
+            if (orig[i] >= (int64_t)M.targetFaces.size())
+                return SC_ERR_ARG;
+            es[i]->SetOriginalFace(orig[i] < 0 ? NULL : M.targetFaces[(size_t)orig[i]]);
+        }
+        if (!p5_split_runs(g, f1))
+            return SC_ERR_ARG;
+        SmStatus r = g->UpdateSplitFace(f1, f2);
         o.push_back(st(r));
+        for (size_t i = 0; i < es.size(); ++i)
+        {
+            o.push_back((double)index_of(M.targetFaces, es[i]->GetOriginalFace()));
+            const SmTArray<SmFace*>& sp = es[i]->GetSplitFaces();
+            o.push_back((double)sp.GetSize());
+            for (ULONG k = 0; k < sp.GetSize(); ++k)
+                o.push_back((double)index_of(M.targetFaces, sp[k]));
+        }
         return SC_OK;
     }
     case P5_MAKE_EDGE:
@@ -281,10 +403,28 @@ int32_t p5_run(int32_t op, Rd& rd, std::vector<double>& o)
         if (g->GetFilletSurface() != NULL &&
             (g->GetRail(0) == NULL || g->GetRail(1) == NULL || g->GetFilletSolver() == NULL))
             return SC_ERR_ARG; // dereferenced unchecked
-        // SM_BT_BLEND runs FindEdgeTangentAtPoint, which casts an edge-classified vertex's
-        // classification object to an SmEdge (the model classifies to edge uses)
-        if (trim == SM_BT_BLEND)
-            return SC_ERR_ARG;
+        // SM_BT_BLEND runs FindEdgeTangentAtPoint on each rail's end vertex in turn; for a vertex
+        // classified SM_PC_EDGE it casts the classification object to an SmEdge* and reads it
+        // (NER(pE) catches NULL, SmFilletGeom.cpp:9220-9223). Upstream always pairs SM_PC_EDGE
+        // with an SmEdge (SmFilletSolver.cpp:7605-7619), which the model can build (pc kind 4);
+        // an object of another type is the type confusion to refuse. The first vertex's
+        // NULL object returns before the second is read.
+        if (trim == SM_BT_BLEND && g->GetFilletSurface() != NULL)
+        {
+            for (ULONG ri = 0; ri < 2; ++ri)
+            {
+                SmFilletVertex* fv = (SmFilletVertex*)g->GetRail(ri)->GetVertex();
+                if (end != 0)
+                    fv = (SmFilletVertex*)g->GetRail(ri)->GetOtherVertex(fv);
+                if (fv->GetPointClass() != SM_PC_EDGE)
+                    continue;
+                const SmObject* obj = fv->GetPointClassObject();
+                if (obj == NULL)
+                    break; // NER(pE) returns SM_ERR_NULL_POINTER
+                if (!obj->IsKindOf(SmEdge_TYPE))
+                    return SC_ERR_ARG;
+            }
+        }
         SmStatus r = g->CreateEndCurve((ULONG)end, (SmBoundaryTrimmingType)trim, M.pseudo);
         o.push_back(st(r));
         o.push_back((double)M.edges().size());
@@ -306,7 +446,7 @@ SC_EXPORT int32_t sc_blend_fillet_geom_p5_eval(int32_t op, const double* in, int
     SC_TRY
     Rd rd(in, n_in);
     // the ops that build surface caches (UB-166 guard in read_surface)
-    rd.cache_op = op == P5_CROSS || op == P5_TRIM || op == P5_END || op == P5_SIDE;
+    rd.cache_op = op == P5_CROSS || op == P5_TRIM || op == P5_END || op == P5_SIDE || op == P5_SPLIT;
     std::vector<double> o;
     int32_t rc = p5_run(op, rd, o);
     if (rc != SC_OK)

@@ -68,6 +68,11 @@
 //! - **Surface/surface intersection.** `sm_SrfSrfIntersection` (`blend.fillet_geom_p2`)
 //!   runs through `blend.fillet_geom_p4`'s adapter: the fillet vertices go in as their
 //!   points and the curves come back as their `SmBSplineCurve` part, as in p4.
+//! - **Curve cache.** Upstream keeps one curve cache on the rail across the up to nine
+//!   `DropPoint` calls and the `GlobalPointSolve` of `TrimRailCurves`
+//!   (SmFilletGeom.cpp:10580-10645); [`Curve::drop_point`] and the solve here each build
+//!   their own. The results are bit-identical in every difftest case; a future
+//!   cache-dependent disagreement should look here first.
 //! - **Unported callees.** `SmFilletGeom::FindEdgeTangentAtPoint` and
 //!   `SmFilletGeom::Copy` (`blend.fillet_geom_p6`); `SmFilletExecutive::GetPseudoBrep`
 //!   (`blend.fillet_executive_p1`); the corner members above. Each stub replaces only
@@ -87,7 +92,6 @@ use crate::error::{Result, SolidError};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
-use crate::geom::solution_array::{ObjectKind, SolutionObject};
 use crate::geom::vector2d::{Point2, Vec2};
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3, EFF_ZERO, PI};
@@ -104,9 +108,9 @@ use crate::topology::{
 };
 
 use super::p1::{
-    clean_up_noise, BoundaryTrimmingType, FilStatus, FilletBrep, FilletCornerId, FilletCornerType,
-    FilletEdgeType, FilletGeom, FilletGeomId, FilletGeomType, FilletSolverId, FilletVertex,
-    FilletVertexType, FilletVertexuse,
+    clean_up_noise, BoundaryTrimmingType, CurveObjectHandle, FilStatus, FilletBrep, FilletCornerId,
+    FilletCornerType, FilletEdgeType, FilletGeom, FilletGeomId, FilletGeomType, FilletSolverId,
+    FilletVertex, FilletVertexType, FilletVertexuse,
 };
 use super::p4::{srf_srf_intersection, SrfSrfCurves};
 
@@ -130,34 +134,17 @@ fn unported_on<A, T>(_args: A, upstream: &'static str, unit: &'static str) -> Re
     Err(SolidError::unported(upstream, unit))
 }
 
-/// The object a rail curve's solutions name (upstream the curve, `this`, id `0`, or
-/// the analytic replacement its curve cache may make, id `1`), with the natural
-/// interval `SmSolution::GetParameterInterval` reads back from it:
-/// `SmGlobalSolver::IdenticalSolutions` (SmGlobalSolver.cpp:1910-1931) merges two
-/// solutions whose parameters differ by less than `1e-4` of that interval, so the
-/// solutions must name the curve, as upstream's do.
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct RailCurveHandle {
-    id: u8,
-    ivl: Extent1d,
-}
-
-impl SolutionObject for RailCurveHandle {
-    fn kind(&self) -> ObjectKind {
-        ObjectKind::Curve
-    }
-
-    fn natural_interval(&self) -> Option<Extent1d> {
-        Some(self.ivl)
-    }
-}
-
-/// The global point solve options naming `curve` ([`RailCurveHandle`]).
-fn rail_solve_options(curve: &Curve) -> GlobalPointSolveOptions<'static, RailCurveHandle> {
+/// The global point solve options naming `curve` ([`CurveObjectHandle`]): the curve
+/// itself (upstream `this`, id `0`) and the analytic replacement its curve cache may make
+/// (id `1`). The replacement's handle carries the rail's own interval, which holds only
+/// if the cache's analytic replacement keeps the B-spline's parameterisation (upstream
+/// reads the replacement's own `GetNaturalInterval()`); the 300 generated cases agree
+/// bit for bit under it.
+fn rail_solve_options(curve: &Curve) -> GlobalPointSolveOptions<'static, CurveObjectHandle> {
     let ivl = curve.natural_interval();
     GlobalPointSolveOptions {
-        handle: Some(RailCurveHandle { id: 0, ivl }),
-        analytic_handle: Some(RailCurveHandle { id: 1, ivl }),
+        handle: Some(CurveObjectHandle { id: 0, ivl }),
+        analytic_handle: Some(CurveObjectHandle { id: 1, ivl }),
         ..GlobalPointSolveOptions::default()
     }
 }
@@ -329,7 +316,10 @@ fn eu_vertex(brep: &Brep, eu: EdgeuseId, op: &'static str) -> Result<VertexId> {
 
 // ---- unported callees -------------------------------------------------------------
 
-/// `SmFilletCorner::GetCornerType` (unit `blend.fillet_corner_p1`).
+/// `SmFilletCorner::GetCornerType` (unit `blend.fillet_corner_p1`; no
+/// `harness/callgraph/units.json` owner lists the symbol: it is pure virtual,
+/// SmFilletCorner.h:178, and the overrides are inline per derived class, so the tag names
+/// the unit that owns the corner object model, as `blend.fillet_geom_p2` / `_p4` do).
 fn corner_type(corner: FilletCornerId) -> Result<FilletCornerType> {
     // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::GetCornerType
     unported_on(
@@ -402,10 +392,16 @@ fn corner_approx_tol(corner: FilletCornerId) -> Result<f64> {
 
 /// `SmFilletCorner::RecordFilletError(eType, pSurf1, pSurf2, pFV1, pFV2, pcMessage)`
 /// (unit `blend.fillet_corner_p2`).
+///
+/// For the porter wiring this stub: upstream's call (SmFilletGeom.cpp:6290-6294) also
+/// passes the error type `SM_FILERR_BAD_INT` and a message, which the arguments below do
+/// not carry (add them when wiring); `RecordFilletError` returns `void`
+/// (SmFilletCorner.h:212), so the wired call must swallow every non-Unported error
+/// (`ignore_non_unported`), never propagate it with `?`.
 fn corner_record_fillet_error(
     corner: FilletCornerId,
     surface1: &Surface,
-    surface2: &Surface,
+    surface2: Option<&Surface>,
     fv1: VertexId,
     fv2: VertexId,
 ) -> Result<()> {
@@ -773,9 +769,13 @@ impl FilletBrep {
 
                     if check_connectivity {
                         // UNPORTED(blend.fillet_geom_p1): sm_ExamineNFixFilletGeoms (justified: findings.md "blend.fillet_geom_p5: examine solvers")
-                        // The p1 port takes ConstantRadiusAssistedFs solvers; the
-                        // corner stubs above return first, so this call is never
-                        // reached until blend.fillet_corner_p1 lands.
+                        // The status is ignored upstream (SmFilletGeom.cpp:5706-5709, no
+                        // `SER`): when wired this must be `ignore_non_unported(..)`, not
+                        // `?`. The p1 port still takes `ConstantRadiusAssistedFs` solvers
+                        // (re-checked after #168: the `FilletSolver` base of
+                        // blend.fillet_solver_p1 is not what it takes), and the corner
+                        // stubs above return first, so this call is never reached until
+                        // blend.fillet_corner_p1 lands.
                         unported_on::<_, ()>(
                             (
                                 g1,
@@ -833,7 +833,8 @@ impl FilletBrep {
         let uv_curve2 = uv.uv_curve2;
 
         if curve_3d.is_none() {
-            // Lift uv curve
+            // Lift uv curve. `sm_CreateUVCurve` can succeed with neither curve, and
+            // upstream then dereferences `*pUVCurve1` (UB-213).
             let uv1 = Curve::from(
                 uv_curve1
                     .clone()
@@ -945,21 +946,22 @@ impl FilletBrep {
                 .fillet_surface()
                 .cloned()
                 .ok_or_else(|| SolidError::null_pointer(OP_SIDE))?;
+            // upstream calls `pCorner->IsExtendedSurfacePatch()` on the missing corner
+            // (UB-214: a null dereference, tested only four lines later)
             let corner = corner.ok_or_else(|| SolidError::null_pointer(OP_SIDE))?;
 
-            // when endFace->Surface is defined by sideFace->ExtendedSurface
-            let surface = if corner_is_extended_surface_patch(corner)? {
+            // when endFace->Surface is defined by sideFace->ExtendedSurface; the face's
+            // surface may be missing (`pFace->GetSurface()` has no `NER`): upstream hands
+            // the `NULL` on to `sm_SrfSrfIntersection`, whose `NER(pSurf2)` takes the
+            // failure branch below
+            let surface: Option<Surface> = if corner_is_extended_surface_patch(corner)? {
                 let face = self
                     .fillet_edge(e)?
                     .original_face()
                     .ok_or_else(|| SolidError::null_pointer(OP_SIDE))?;
                 match corner_extended_surface(corner, face)? {
-                    Some(s) => s,
-                    None => target
-                        .face(face)?
-                        .surface
-                        .clone()
-                        .ok_or_else(|| SolidError::null_pointer(OP_SIDE))?,
+                    Some(s) => Some(s),
+                    None => target.face(face)?.surface.clone(),
                 }
             } else {
                 // endFace->Surface = plane through corner->OriginalVertex,
@@ -979,26 +981,31 @@ impl FilletBrep {
                 let uv_domain = Extent2d::from_bounds(-x_len, -y_len, 2.0 * x_len, 2.0 * y_len);
                 let mut plane = Plane::new(origin, x_vector, y_vector, uv_scale, &uv_domain);
                 ignore_non_unported(plane.make_nurb())?;
-                Surface::from(plane)
+                Some(Surface::from(plane))
             };
 
             // do Surface/surface xSect
             let ang_tol = fs1.ang_tol_rad;
             let mut dir = end_pnt - start_pnt;
-            match srf_srf_intersection(
-                k,
-                self,
-                Some(start_fv),
-                Some(end_fv),
-                Some(&mut dir),
-                None,
-                &fillet_surface1,
-                &surface,
-                approx_tol,
-                ang_tol,
-                false,
-                None,
-            ) {
+            let intersection = match &surface {
+                Some(surface) => srf_srf_intersection(
+                    k,
+                    self,
+                    Some(start_fv),
+                    Some(end_fv),
+                    Some(&mut dir),
+                    None,
+                    &fillet_surface1,
+                    surface,
+                    approx_tol,
+                    ang_tol,
+                    false,
+                    None,
+                ),
+                // NER(pSurf2)
+                None => Err(SolidError::null_pointer(OP_SIDE)),
+            };
+            match intersection {
                 Err(err) if err.is_unported() => return Err(err),
                 Ok(c) if c.curve_3d.is_some() => new_curves = Some(c),
                 _ => {
@@ -1007,7 +1014,7 @@ impl FilletBrep {
                     corner_record_fillet_error(
                         corner,
                         &fillet_surface1,
-                        &surface,
+                        surface.as_ref(),
                         start_fv,
                         end_fv,
                     )?;
@@ -2050,9 +2057,9 @@ impl FilletBrep {
     ///
     /// # Errors
     ///
-    /// `SM_ERR_NULL_POINTER` for a missing rail (upstream calls through `NULL`);
-    /// [`SolidError::Unported`] for `SmFilletEdge::UpdateSplitFace`
-    /// (`blend.fillet_geom_p2`).
+    /// `SM_ERR_NULL_POINTER` for a missing rail (upstream calls through `NULL`); those of
+    /// `SmFilletEdge::UpdateSplitFace` (`blend.fillet_geom_p2`, wired; its status is
+    /// ignored upstream, so only [`SolidError::Unported`] propagates).
     pub fn update_geom_split_face(
         &mut self,
         g: FilletGeomId,

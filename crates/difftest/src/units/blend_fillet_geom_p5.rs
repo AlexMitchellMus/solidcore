@@ -12,18 +12,30 @@
 //! only) and one query. Both sides produce the same flat record (layout in the FFI module
 //! docs), split into keys: `status` (`0` = `SM_SUCCESS`, else the `SmStatus`; `-1` on the
 //! Rust side for an error upstream cannot produce) and the query's values: for
-//! `trim_rails` per rail its curve (`r{i}_c3d_*`), interval, primary and mate UV curves
-//! and both vertex uses' UV points; for `cross_section` the edge curve and both UV curves
-//! and every geometry's side-use count; for `side_face` the edge status and the side-use
-//! counts; for `int_fillet` the vertex point and status; for the builders the edge count.
+//! `trim_rails` per rail (the two rails, then the other rails of each side) its curve
+//! (`r{i}_c3d_*`, `o{i}_*`), interval, primary and mate UV curves and both vertex uses' UV
+//! points; for `cross_section` the edge curve and both UV curves and every geometry's
+//! side-use count; for `side_face` the edge status and the side-use counts; for
+//! `int_fillet` the status, and the vertex point and status; for `split_face` per edge its
+//! original face and split faces; for the builders only the edge count (a status-only
+//! comparison until their bodies run: see below).
+//!
+//! What the comparisons cover: `trim_rails`, `cross_section`, `side_face` and `split_face`
+//! compare real values (curves, intervals, UV points, face lists). `int_fillet` and
+//! `ext_edge` can only reach the first `NER` of their corner (`NER(m_cpCorner)`,
+//! `NER(pOptCorner)`): the shim refuses a real corner, so those cases compare the status
+//! (and for `int_fillet` the vertex point and status of that early exit), not the bodies of
+//! `calc_fillet_int_fillet` / `calc_edge_on_extended_edge`, which no case reaches until
+//! `blend.fillet_corner_p1` lands. The builders (`make_fillet_edge`, `make_rail_edge`,
+//! `create_end_curve`) compare the status and the edge count of their early exits.
 //!
 //! Deferred on the Rust side (unported callees): every builder past its checks (the edge
-//! use constructor needs `SmBrep()`'s infinite region, `topology.brep_p3`). The
-//! split-face update and the surface/surface intersections (`blend.fillet_geom_p2`) are
-//! wired; the split-face op is refused by the shim (`UpdateSplitFace(NULL, NULL)`
-//! dereferences both faces in `ShouldSwapFaces` for every rail). The shim refuses
-//! the inputs that would make upstream dereference what the harness cannot build (a real
-//! fillet corner, a solver or rail it needs); the generator keeps only inputs both sides
+//! use constructor needs `SmBrep()`'s infinite region, `topology.brep_p3`); `SM_BT_BLEND`
+//! end curves at `FindEdgeTangentAtPoint` (`blend.fillet_geom_p6`). The split-face update
+//! and the surface/surface intersections (`blend.fillet_geom_p2`) are wired. The shim
+//! refuses exactly the inputs that would make upstream dereference what the harness cannot
+//! build (a real fillet corner, a solver or rail it needs, a type-confused classification
+//! object; the list is in the FFI module docs); the generator keeps only inputs both sides
 //! accept. Every run has at least [`MIN_GENERATED`] generated cases.
 
 use serde::{Deserialize, Serialize};
@@ -70,15 +82,42 @@ struct SolverIn {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "q", rename_all = "snake_case")]
 enum Query {
-    IntFillet { v: usize },
-    CrossSection { e: usize },
-    SideFace { e: usize },
-    ExtEdge { e: usize },
-    TrimRails { g: usize },
-    SplitFace { g: usize },
-    MakeEdge { vs: i64, ve: i64 },
-    RailEdge { g: usize, rail: usize },
-    EndCurve { g: usize, end: usize, trim: usize },
+    IntFillet {
+        v: usize,
+    },
+    CrossSection {
+        e: usize,
+    },
+    SideFace {
+        e: usize,
+    },
+    ExtEdge {
+        e: usize,
+    },
+    TrimRails {
+        g: usize,
+    },
+    /// `UpdateSplitFace(faces[f1], faces[f2])` after setting each edge's original face
+    /// (`orig`, per edge in edge-list order, `-1` none; the model has none).
+    SplitFace {
+        g: usize,
+        f1: usize,
+        f2: usize,
+        orig: Vec<i64>,
+    },
+    MakeEdge {
+        vs: i64,
+        ve: i64,
+    },
+    RailEdge {
+        g: usize,
+        rail: usize,
+    },
+    EndCurve {
+        g: usize,
+        end: usize,
+        trim: usize,
+    },
 }
 
 impl Query {
@@ -135,7 +174,11 @@ fn cpp_input(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
         Query::CrossSection { e } | Query::SideFace { e } | Query::ExtEdge { e } => {
             o.push(*e as f64);
         }
-        Query::TrimRails { g } | Query::SplitFace { g } => o.push(*g as f64),
+        Query::TrimRails { g } => o.push(*g as f64),
+        Query::SplitFace { g, f1, f2, orig } => {
+            o.extend([*g as f64, *f1 as f64, *f2 as f64]);
+            o.extend(orig.iter().map(|&x| x as f64));
+        }
         Query::MakeEdge { vs, ve } => o.extend([*vs as f64, *ve as f64]),
         Query::RailEdge { g, rail } => o.extend([*g as f64, *rail as f64]),
         Query::EndCurve { g, end, trim } => o.extend([*g as f64, *end as f64, *trim as f64]),
@@ -223,24 +266,47 @@ fn to_output(i: &Inputs, flat: &[f64]) -> Result<Output, HarnessError> {
             s.vals("edge_status", 1)?;
             s.vals("sides", ng)?;
         }
-        Query::TrimRails { .. } => {
-            for r in 0..2 {
+        Query::TrimRails { g } => {
+            // the two rails (`r0`, `r1`), then the other rails of side 1 and side 2
+            // (`o0`, `o1`, ..)
+            let others = i
+                .model
+                .geoms
+                .get(*g)
+                .map_or(0, |gm| gm.other1.len() + gm.other2.len());
+            let names = (0..2)
+                .map(|r| format!("r{r}"))
+                .chain((0..others).map(|r| format!("o{r}")));
+            for name in names {
                 let has = s.take(1)?;
                 let set = has.first().copied() == Some(1.0);
-                s.put(&format!("r{r}_has"), has);
+                s.put(&format!("{name}_has"), has);
                 if set {
-                    s.curve(&format!("r{r}_c3d_"))?;
-                    s.vals(&format!("r{r}_ivl"), 2)?;
-                    s.curve(&format!("r{r}_uv1_"))?;
-                    s.curve(&format!("r{r}_uv2_"))?;
-                    s.vals(&format!("r{r}_vu_uv"), 4)?;
+                    s.curve(&format!("{name}_c3d_"))?;
+                    s.vals(&format!("{name}_ivl"), 2)?;
+                    s.curve(&format!("{name}_uv1_"))?;
+                    s.curve(&format!("{name}_uv2_"))?;
+                    s.vals(&format!("{name}_vu_uv"), 4)?;
                 }
+            }
+        }
+        Query::SplitFace { orig, .. } => {
+            // per edge: the original face, then the split-face count and indices
+            for e in 0..orig.len() {
+                s.vals(&format!("e{e}_orig_face"), 1)?;
+                let n = s.take(1)?;
+                let count = n.first().copied().unwrap_or(0.0);
+                s.put(&format!("e{e}_split_n"), n);
+                if !(0.0..=1e6).contains(&count) || count.fract() != 0.0 {
+                    return Err(harness(format!("bad split-face count {count}")));
+                }
+                s.vals(&format!("e{e}_split"), count as usize)?;
             }
         }
         Query::MakeEdge { .. } | Query::RailEdge { .. } | Query::EndCurve { .. } => {
             s.vals("edges", 1)?;
         }
-        Query::ExtEdge { .. } | Query::SplitFace { .. } => {}
+        Query::ExtEdge { .. } => {}
     }
     if s.at != flat.len() {
         return Err(harness(format!(
@@ -370,8 +436,19 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
             let r = rm.fb.trim_rail_curves(&k, gid, &solvers, &target);
             o.push(status_of!(r));
             let b = rm.fb.brep();
-            for ri in 0..2 {
-                let Some(rail) = rm.fb.geom(gid).map_err(h)?.rail(ri) else {
+            // the two rails, then the other rails of side 1 and side 2
+            let geom = rm.fb.geom(gid).map_err(h)?;
+            let rails = (0..2)
+                .map(|ri| geom.rail(ri))
+                .chain(
+                    geom.other_rails1
+                        .iter()
+                        .chain(geom.other_rails2.iter())
+                        .map(|&r| Some(r)),
+                )
+                .collect::<Vec<_>>();
+            for rail in rails {
+                let Some(rail) = rail else {
                     o.push(0.0);
                     continue;
                 };
@@ -400,10 +477,33 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
                 }
             }
         }
-        Query::SplitFace { g } => {
+        Query::SplitFace { g, f1, f2, orig } => {
             let gid = rm.geom(*g)?;
-            let r = rm.fb.update_geom_split_face(gid, None, None);
+            let face = |x: usize| -> Result<_, HarnessError> {
+                rm.target_faces
+                    .get(x)
+                    .copied()
+                    .ok_or_else(|| harness("face index"))
+            };
+            let (face1, face2) = (face(*f1)?, face(*f2)?);
+            // the model has no original faces: set them as the shim does
+            for (ei, of) in orig.iter().enumerate() {
+                let of = usize::try_from(*of).ok().map(face).transpose()?;
+                let eid = rm.edge(ei)?;
+                rm.fb.fillet_edge_mut(eid).map_err(h)?.set_original_face(of);
+            }
+            let r = rm.fb.update_geom_split_face(gid, Some(face1), Some(face2));
             o.push(status_of!(r));
+            let index = |f: Option<solidcore::topology::FaceId>| {
+                f.and_then(|f| rm.target_faces.iter().position(|&x| x == f))
+                    .map_or(-1.0, |i| i as f64)
+            };
+            for ei in 0..orig.len() {
+                let edge = rm.fb.fillet_edge(rm.edge(ei)?).map_err(h)?;
+                o.push(index(edge.original_face()));
+                o.push(edge.split_faces().len() as f64);
+                o.extend(edge.split_faces().iter().map(|&f| index(Some(f))));
+            }
         }
         Query::MakeEdge { vs, ve } => {
             let v = |x: i64| -> Result<_, HarnessError> {
@@ -508,9 +608,122 @@ fn solvers_for(rng: &mut Rng) -> Vec<SolverIn> {
     }]
 }
 
+/// What a rail piece of `gen_trim` may be.
+struct TrimCtx {
+    scale: f64,
+    /// A cliff-rollover geometry (`TrimCliffRails`).
+    cliff: bool,
+    /// A second geometry exists (index 1): the side surface of a cliff rail piece.
+    side_geom: bool,
+    /// Target edge 0 crosses the fillet surface: an unprocessed vertex may be an
+    /// `SM_FV_CLIFF_RAIL_X_EDGE` classified to its edge use.
+    cross: bool,
+}
+
+/// A rail end vertex at `p`: processed (`1`) mostly; unprocessed, it may be a
+/// `SM_FV_CLIFF_RAIL_X_EDGE` vertex classified `SM_PC_EDGEUSE` to target edge 0's primary use
+/// (what `CalcCliffRailIntEdge` computes).
+fn rail_vertex(rng: &mut Rng, ctx: &TrimCtx, p: [f64; 3]) -> VertexIn {
+    let processed = rng.chance(0.85);
+    let mut v = vertex_at(p, i64::from(processed));
+    if !processed && ctx.cross && rng.chance(0.6) {
+        v.vtype = 6; // SM_FV_CLIFF_RAIL_X_EDGE
+        v.pc_class = 109; // SM_PC_EDGEUSE
+        v.pc_kind = 2;
+        v.pc_index = 0;
+    }
+    v
+}
+
+/// One rail edge on `crv` with its two end vertices (a single closed vertex now and then,
+/// for a cliff geometry's `pStartV == pEndV` branch), appended to `vertices` / `edges`.
+fn push_rail_edge(
+    rng: &mut Rng,
+    ctx: &TrimCtx,
+    crv: &Crv,
+    main: bool,
+    vertices: &mut Vec<VertexIn>,
+    edges: &mut Vec<EdgeIn>,
+) -> Option<()> {
+    let (a, b) = (*crv.u.first()?, *crv.u.last()?);
+    let mut t0 = a + (b - a) * rng.uniform(0.0, 0.45);
+    let mut t1 = a + (b - a) * rng.uniform(0.55, 1.0);
+    if rng.chance(0.1) {
+        std::mem::swap(&mut t0, &mut t1);
+    }
+    if rng.chance(0.1) {
+        t1 = t0;
+    }
+    let noise = ctx.scale * *rng.choose(&[0.0, 0.0, 1e-7, 1e-5, 1e-3]).unwrap_or(&0.0);
+    let mut p0 = eval(crv, t0)?;
+    let mut p1 = eval(crv, t1)?;
+    for c in p0.iter_mut().chain(p1.iter_mut()) {
+        *c += rng.uniform(-noise, noise);
+    }
+    let closed = ctx.cliff && rng.chance(0.1);
+    let base = vertices.len();
+    vertices.push(rail_vertex(rng, ctx, p0));
+    if !closed {
+        vertices.push(rail_vertex(rng, ctx, p1));
+    }
+    let ve = if closed { base } else { base + 1 };
+    let mate_uv = if main && rng.chance(0.4) {
+        let y = rng.uniform(0.0, 1.0);
+        Some(uv_line([a, y], [b, y + rng.uniform(-0.1, 0.1)], [a, b]))
+    } else {
+        None
+    };
+    // a cliff rail piece takes its side surface from the other geometry
+    let cliff_rail = if ctx.side_geom {
+        rng.chance(if main { 0.15 } else { 0.3 })
+    } else {
+        main && rng.chance(0.05)
+    };
+    let side = if cliff_rail && ctx.side_geom { 1 } else { 0 };
+    edges.push(EdgeIn {
+        vs: base,
+        ve,
+        etype: if cliff_rail { 2 } else { 9 },
+        status: 0,
+        corner: -1,
+        curve: Some(crv.clone()),
+        interval: Some([a, b]),
+        fbe: [-1, -1],
+        eus: [
+            EuIn {
+                uv_curve: None,
+                geom: side,
+                vu_uv: [0.0, 0.0],
+            },
+            EuIn {
+                uv_curve: mate_uv,
+                geom: if side == 1 { 1 } else { -1 },
+                vu_uv: [0.0, 0.0],
+            },
+        ],
+    });
+    Some(())
+}
+
+/// A line along z through a point of the fillet surface (it crosses the surface there).
+fn crossing_line(rng: &mut Rng, srf: &Srf, scale: f64) -> Option<Crv> {
+    let p = surface_point(srf, rng.uniform(0.1, 0.9), rng.uniform(0.1, 0.9))?;
+    let h = 0.6 * scale;
+    Some(Crv {
+        dim: 3,
+        cpts: vec![[p[0], p[1], p[2] - h, NOW], [p[0], p[1], p[2] + h, NOW]],
+        p: 1,
+        u: vec![0.0, 0.0, 1.0, 1.0],
+    })
+}
+
 /// Two rails on the v boundaries of a random fillet surface with their end vertices
 /// (processed or not, on the rail or a little off it, sometimes coincident), the rails'
-/// mate uses sometimes carrying a UV line; a default or cliff-rollover geometry.
+/// mate uses sometimes carrying a UV line; a default or cliff-rollover geometry. A cliff
+/// rollover also gets other rails per side (more pieces of the same rail curve, each with
+/// its own end vertices, some closed), cliff-rail pieces taking their side surface from a
+/// second geometry, and unprocessed `SM_FV_CLIFF_RAIL_X_EDGE` vertices classified to a
+/// target edge use that crosses the fillet surface.
 #[allow(clippy::too_many_lines)]
 fn gen_trim(rng: &mut Rng) -> Option<Inputs> {
     let scale = scale_of(rng);
@@ -519,82 +732,139 @@ fn gen_trim(rng: &mut Rng) -> Option<Inputs> {
     if rng.chance(0.15) {
         rails.swap(0, 1);
     }
+    let cliff = rng.chance(0.3);
+    let side_geom = cliff && rng.chance(0.5);
+    let crossing = if cliff && rng.chance(0.5) {
+        crossing_line(rng, &srf, scale)
+    } else {
+        None
+    };
+    let ctx = TrimCtx {
+        scale,
+        cliff,
+        side_geom,
+        cross: crossing.is_some(),
+    };
     let mut vertices = Vec::new();
     let mut edges = Vec::new();
-    for (r, crv) in rails.iter().enumerate() {
-        let (a, b) = (*crv.u.first()?, *crv.u.last()?);
-        let mut t0 = a + (b - a) * rng.uniform(0.0, 0.45);
-        let mut t1 = a + (b - a) * rng.uniform(0.55, 1.0);
-        if rng.chance(0.1) {
-            std::mem::swap(&mut t0, &mut t1);
-        }
-        if rng.chance(0.1) {
-            t1 = t0;
-        }
-        let noise = scale * *rng.choose(&[0.0, 0.0, 1e-7, 1e-5, 1e-3]).unwrap_or(&0.0);
-        let mut p0 = eval(crv, t0)?;
-        let mut p1 = eval(crv, t1)?;
-        for c in p0.iter_mut().chain(p1.iter_mut()) {
-            *c += rng.uniform(-noise, noise);
-        }
-        let s0 = i64::from(rng.chance(0.85));
-        let s1 = i64::from(rng.chance(0.85));
-        let base = vertices.len();
-        vertices.push(vertex_at(p0, s0));
-        vertices.push(vertex_at(p1, s1));
-        let mate_uv = if rng.chance(0.4) {
-            let y = rng.uniform(0.0, 1.0);
-            Some(uv_line([a, y], [b, y + rng.uniform(-0.1, 0.1)], [a, b]))
-        } else {
-            None
-        };
-        edges.push(EdgeIn {
-            vs: base,
-            ve: base + 1,
-            etype: if rng.chance(0.95) { 9 } else { 2 },
-            status: 0,
-            corner: -1,
-            curve: Some(crv.clone()),
-            interval: Some([a, b]),
-            fbe: [-1, -1],
-            eus: [
-                EuIn {
-                    uv_curve: None,
-                    geom: 0,
-                    vu_uv: [0.0, 0.0],
-                },
-                EuIn {
-                    uv_curve: mate_uv,
-                    geom: -1,
-                    vu_uv: [0.0, 0.0],
-                },
-            ],
-        });
-        let _ = r;
+    // the two main rails are edges 0 and 1, the pieces follow
+    for crv in &rails {
+        push_rail_edge(rng, &ctx, crv, true, &mut vertices, &mut edges)?;
     }
-    let geom = GeomIn {
-        gtype: if rng.chance(0.3) { 2 } else { 0 },
+    let mut other: [Vec<usize>; 2] = [Vec::new(), Vec::new()];
+    if cliff {
+        for (side, crv) in rails.iter().enumerate() {
+            for _ in 0..rng.below(3) {
+                push_rail_edge(rng, &ctx, crv, false, &mut vertices, &mut edges)?;
+                other[side].push(edges.len() - 1);
+            }
+        }
+    }
+    let [other1, other2] = other;
+    let mut geoms = vec![GeomIn {
+        gtype: if cliff { 2 } else { 0 },
         status: 0,
         center: None,
         surface: Some(srf),
         rails: [0, 1],
-        other1: Vec::new(),
-        other2: Vec::new(),
+        other1,
+        other2,
         sides: Vec::new(),
-    };
+    }];
+    let mut geom_solvers = vec![if rng.chance(0.95) { 0 } else { -1 }];
+    if side_geom {
+        geoms.push(GeomIn {
+            gtype: 0,
+            status: 0,
+            center: None,
+            surface: Some(gen_surface(rng, scale)),
+            rails: [-1, -1],
+            other1: Vec::new(),
+            other2: Vec::new(),
+            sides: Vec::new(),
+        });
+        geom_solvers.push(0);
+    }
     Some(Inputs {
         model: Model {
-            targets: Vec::new(),
+            targets: crossing.into_iter().collect(),
             faces: Vec::new(),
             fillet_brep: Vec::new(),
             vertices,
-            geoms: vec![geom],
+            geoms,
             edges,
         },
         solvers: solvers_for(rng),
-        geom_solvers: vec![if rng.chance(0.95) { 0 } else { -1 }],
+        geom_solvers,
         query: Query::TrimRails { g: 0 },
     })
+}
+
+/// The largest coordinate magnitude of the first control points of `s` (its scale).
+fn surface_scale(s: &Srf) -> f64 {
+    s.net
+        .iter()
+        .flatten()
+        .flat_map(|p| p.iter().take(3))
+        .fold(0.0_f64, |m, c| m.max(c.abs()))
+        .max(f64::MIN_POSITIVE)
+}
+
+/// `CreateEndCurve` on a `gen_trim` geometry (rails with real curves, a fillet surface and
+/// solver), every trimming type: the rails' end vertices are often classified `SM_PC_EDGE`
+/// to a target `SmEdge` (what upstream builds, `SmFilletSolver.cpp:7605-7619`) or to nothing,
+/// so `SM_BT_BLEND` reaches `FindEdgeTangentAtPoint`.
+fn gen_end(rng: &mut Rng) -> Option<Inputs> {
+    let mut i = gen_trim(rng)?;
+    let scale = surface_scale(i.model.geoms.first()?.surface.as_ref()?);
+    let srf = i.model.geoms.first()?.surface.clone()?;
+    let edge = i.model.targets.len();
+    i.model.targets.push(crossing_line(rng, &srf, scale)?);
+    for v in &mut i.model.vertices {
+        if v.pc_class == 100 && rng.chance(0.5) {
+            v.pc_class = 103; // SM_PC_EDGE
+            if rng.chance(0.85) {
+                v.pc_kind = 4;
+                v.pc_index = edge as i64;
+            }
+            v.t_param = rng.uniform(-0.2, 1.2); // a parameter of the target line
+        }
+    }
+    i.query = Query::EndCurve {
+        g: 0,
+        end: rng.below(2) as usize,
+        trim: rng.below(5) as usize,
+    };
+    Some(i)
+}
+
+/// `UpdateSplitFace` on a `gen_trim` geometry (rails with real curves and intervals): the
+/// fillet surface's own face and a random one, edges whose original face is one of them or
+/// none, and some edges registered as side edge uses.
+fn gen_split(rng: &mut Rng) -> Option<Inputs> {
+    let mut i = gen_trim(rng)?;
+    let srf = i.model.geoms.first()?.surface.clone()?;
+    let other = gen_surface(rng, surface_scale(&srf));
+    i.model.faces = vec![srf, other];
+    let ne = i.model.edges.len();
+    let f1 = usize::from(rng.chance(0.3));
+    let f2 = if rng.chance(0.05) { f1 } else { 1 - f1 };
+    let orig = (0..ne)
+        .map(|_| match rng.below(5) {
+            0 => -1,
+            1 => f2 as i64,
+            _ => f1 as i64,
+        })
+        .collect();
+    if rng.chance(0.4) {
+        let geom = i.model.geoms.first_mut()?;
+        for _ in 0..1 + rng.below(2) {
+            geom.sides
+                .push([rng.below(ne as u64) as usize, rng.below(2) as usize]);
+        }
+    }
+    i.query = Query::SplitFace { g: 0, f1, f2, orig };
+    Some(i)
 }
 
 /// A cross-section edge between two points of a random fillet surface (or of a second
@@ -704,7 +974,8 @@ fn gen_topology(rng: &mut Rng) -> Inputs {
     }
     let g = rng.below(ng as u64) as usize;
     let e = rng.below(ne as u64) as usize;
-    let query = match rng.below(9) {
+    // (`SplitFace` and the `CreateEndCurve` blends come from `gen_split` / `gen_end`)
+    let query = match rng.below(8) {
         0 => Query::IntFillet {
             v: rng.below(nv as u64) as usize,
         },
@@ -712,19 +983,18 @@ fn gen_topology(rng: &mut Rng) -> Inputs {
         2 => Query::SideFace { e },
         3 => Query::ExtEdge { e },
         4 => Query::TrimRails { g },
-        5 => Query::SplitFace { g },
-        6 => Query::MakeEdge {
+        5 => Query::MakeEdge {
             vs: rng.below(nv as u64) as i64 - i64::from(rng.chance(0.2)),
             ve: rng.below(nv as u64) as i64,
         },
-        7 => Query::RailEdge {
+        6 => Query::RailEdge {
             g,
             rail: rng.below(2) as usize,
         },
         _ => Query::EndCurve {
             g,
             end: rng.below(2) as usize,
-            trim: rng.below(4) as usize,
+            trim: rng.below(5) as usize,
         },
     };
     Inputs {
@@ -761,12 +1031,20 @@ impl UnitDiff for Runner {
         // keep only inputs the shim runs (it refuses those upstream would dereference a
         // corner, solver or rail the harness cannot provide for)
         for _ in 0..64 {
-            let inputs = match rng.below(20) {
-                0..=10 => match gen_trim(rng) {
+            let inputs = match rng.below(24) {
+                0..=9 => match gen_trim(rng) {
                     Some(i) => i,
                     None => continue,
                 },
-                11..=15 => match gen_cross(rng) {
+                10..=14 => match gen_cross(rng) {
+                    Some(i) => i,
+                    None => continue,
+                },
+                15..=17 => match gen_split(rng) {
+                    Some(i) => i,
+                    None => continue,
+                },
+                18..=20 => match gen_end(rng) {
                     Some(i) => i,
                     None => continue,
                 },

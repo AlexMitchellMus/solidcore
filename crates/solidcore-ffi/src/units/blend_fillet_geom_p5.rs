@@ -17,16 +17,28 @@
 //! | `CrossSection`| `SmFilletEdge::CalcCrossSection(ctx, NULL)` | `e`       | edge curve, primary and mate UV curves (`has ...`), per geometry its side-use count |
 //! | `SideFace`    | `SmFilletEdge::CalcFilletIntSideFace(ctx, NULL)` | `e`  | edge status, per geometry its side-use count |
 //! | `ExtEdge`     | `SmFilletEdge::CalcEdgeOnExtendedEdge(ctx, NULL)` | `e` | (none) |
-//! | `TrimRails`   | `SmFilletGeom::TrimRailCurves`             | `g`        | per rail: `has`, then its curve, interval, primary and mate UV curves, both vertex uses' UV points |
-//! | `SplitFace`   | `SmFilletGeom::UpdateSplitFace(NULL, NULL)` | `g`       | (none) |
+//! | `TrimRails`   | `SmFilletGeom::TrimRailCurves`             | `g`        | per rail (the two rails, then the other rails of side 1, then of side 2): `has`, then its curve, interval, primary and mate UV curves, both vertex uses' UV points |
+//! | `SplitFace`   | `SmFilletGeom::UpdateSplitFace(f1, f2)` (the edges' original faces are set first) | `g f1 f2` then per edge (edge-list order) its original face or `-1` | per edge: its original face index (`-1` none), the split-face count and the indices |
 //! | `MakeEdge`    | `SmFilletEdge::MakeFilletEdge(pseudo, vs, ve, e, NULL)` | `vs ve` (`-1`: NULL) | the edge count |
 //! | `RailEdge`    | `SmFilletGeom::MakeRailEdge(pseudo, rail, e)` | `g rail` | the edge count |
 //! | `EndCurve`    | `SmFilletGeom::CreateEndCurve(end, trim, pseudo)` | `g end trim` | the edge count |
 //!
-//! Refusals (`SC_ERR_ARG`, decided by the shim on the built model): a fillet corner that
-//! would be dereferenced (corners are opaque tags), a solver, rail or curve upstream
-//! dereferences without a check, and a `CrossSection` whose `sm_CreateUVCurve` succeeds
-//! without any curve (upstream then dereferences the missing UV curve).
+//! Refusals (`SC_ERR_ARG`, decided by the shim on the built model; each is an input that is UB
+//! or a crash upstream, not one C++ handles):
+//! - a fillet corner that would be dereferenced (corners are opaque tags), a solver, rail or
+//!   curve upstream dereferences without a check;
+//! - a `CrossSection` whose `sm_CreateUVCurve` succeeds without any curve (upstream then lifts
+//!   the missing UV curve, UB-213), and a `SideFace` past `pCorner->IsExtendedSurfacePatch()`
+//!   with the `NULL` corner (UB-214);
+//! - `TrimRails` of a cliff rollover: an unprocessed `SM_FV_CLIFF_RAIL_X_EDGE` vertex whose
+//!   classification object is not an `SmEdgeuse` (`CalcCliffRailIntEdge` casts it), and a cliff
+//!   rail whose edge uses name no other geometry (its side surface would come from the rail's
+//!   original face, which the model does not have);
+//! - `SplitFace`: an edge whose original face is `f1` and whose `ShouldSwapFaces` would
+//!   dereference a missing curve, a corner, or an uninitialised test point;
+//! - `EndCurve` with `SM_BT_BLEND`: a rail end vertex classified `SM_PC_EDGE` whose object is
+//!   not an `SmEdge` (`FindEdgeTangentAtPoint` casts it; a `NULL` object is a defined error and
+//!   runs).
 
 use crate::{call_with_buffer, FfiError};
 
@@ -93,8 +105,16 @@ pub fn validate(op: Op, input: &[f64]) -> Result<(), FfiError> {
         Op::CrossSection | Op::SideFace | Op::ExtEdge => {
             rd.opt_index(b.ne())?.ok_or_else(|| bad("edge -1"))?;
         }
-        Op::TrimRails | Op::SplitFace => {
+        Op::TrimRails => {
             rd.opt_index(b.ng())?.ok_or_else(|| bad("geometry -1"))?;
+        }
+        Op::SplitFace => {
+            rd.opt_index(b.ng())?.ok_or_else(|| bad("geometry -1"))?;
+            rd.opt_index(b.nf)?.ok_or_else(|| bad("face -1"))?;
+            rd.opt_index(b.nf)?.ok_or_else(|| bad("face -1"))?;
+            for _ in 0..b.ne() {
+                rd.opt_index(b.nf)?;
+            }
         }
         Op::MakeEdge => {
             rd.opt_index(b.nv())?;
