@@ -47,7 +47,7 @@ no arena-order replacement is used.
 Review regressions (`review.json`) allow finite zero/negative rule tolerances and
 zero/negative curve-sweep approximation tolerance through the checked FFI. Four
 helper cases compare real values on both sides; two curve-sweep cases still defer
-at topology construction. The updated gate has 293 cases: 284 pass, 8 deferred,
+at topology construction. That earlier update has 293 cases: 284 pass, 8 deferred,
 1 UB-78 rejection and 0 failures.
 
 Swung scaling retains the original derived `Curve` for virtual point evaluation
@@ -78,3 +78,24 @@ B-spline copy-constructor paths in curve-sweep preparation are unchanged.
 Two Rust regressions compare 25 surface samples for lazy profile/path/both
 against eagerly built line NURBs and pin an existing two-ULP cache discrepancy.
 These are builder/dispatch regressions, not native topology comparisons.
+
+The third review update merges canonical main while retaining both sides of
+`plan/findings.md`. `review_negative_tolerances.json` adds negative skin and swung
+tolerances, including a swung call with no profiles whose tolerance is never read.
+The FFI still validates finite values, record lengths, degrees and path counts.
+The no-profile case compares the successful empty return; skin and nonempty swung
+construction still defer at `topology.brep_p8`.
+The current gate has 296 cases: 285 pass bit-identically, 10 defer at
+`topology.brep_p8`, 1 is rejected under UB-78, and none fail.
+
+Both stitch defaults now call the landed `Stitch::do_stitching` with the actual
+Kernel and target B-rep. A shared `StitchCallback` qualifies entity ids with that
+B-rep and forwards selection and map changes to `TopologySweep`. Linear caps use
+fast edge comparison, no vertex-edge splits, non-manifold mode and region nesting,
+with result validation disabled; the sweep default retains its native constructor
+defaults and the caller's manifold flag. Rust regressions check map mutation,
+nonzero owner ids, conflicting originals and restoration of editing/boolean flags
+when both defaults reach the current `topology.brep_p2` notification dependency.
+These do not certify successful native stitching or resolve the production-store
+adapter tracked by #255. The curve-record format also still cannot express
+reversed circular arcs (`end_angle < start_angle`).

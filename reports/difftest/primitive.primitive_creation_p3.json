@@ -336,6 +336,38 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmBrep::CreateFacesFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "negative_skin_approximation_tolerance",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p3/review_negative_tolerances.json#0 (upstream source/SMLib/src/SmPrimitiveCreation.cpp:CreateSkinFromFaces)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "negative_swung_tolerance_without_profiles",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/primitive.primitive_creation_p3/review_negative_tolerances.json#1 (upstream source/SMLib/src/SmPrimitiveCreation.cpp:3030-3052)",
+      "values_compared": 6
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::CreateFacesFromSurface",
+        "unit": "topology.brep_p8"
+      },
+      "max_rel_err": 0.0,
+      "name": "negative_swung_tolerance_with_profile",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p3/review_negative_tolerances.json#2 (upstream source/SMLib/src/SmPrimitiveCreation.cpp:3030-3052)",
+      "values_compared": 0
+    },
+    {
       "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
@@ -2385,13 +2417,13 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 8,
+  "cases_deferred": 10,
   "cases_failed": 0,
-  "cases_passed": 284,
+  "cases_passed": 285,
   "cases_rejected": 1,
-  "cases_total": 293,
+  "cases_total": 296,
   "deferred_by_unit": {
-    "topology.brep_p8": 8
+    "topology.brep_p8": 10
   },
   "max_rel_err": 0.0,
   "pass": true,

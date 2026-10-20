@@ -93,13 +93,9 @@ pub fn validate(op: i32, data: &[f64]) -> Result<(), FfiError> {
             3 if !integer(data[7], 4096.0) || !integer(data[8], 1.0) || !integer(data[9], 1.0) => {
                 return Err(bad())
             }
-            4 if data.len() == 10 || !integer(data[1], 16.0) || data[1] < 1.0 || data[0] < 0.0 => {
-                return Err(bad())
-            }
+            4 if data.len() == 10 || !integer(data[1], 16.0) || data[1] < 1.0 => return Err(bad()),
             5 if !integer(data[1], 1.0) => return Err(bad()),
-            6 if !integer(data[2], ((data.len() - 10) / 7) as f64) || data[1] < 0.0 => {
-                return Err(bad())
-            }
+            6 if !integer(data[2], ((data.len() - 10) / 7) as f64) => return Err(bad()),
             7 if data.len() != 10
                 || !integer(data[0], 4.0)
                 || !integer(data[1], 3.0)

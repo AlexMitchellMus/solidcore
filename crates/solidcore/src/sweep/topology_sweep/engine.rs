@@ -1734,4 +1734,27 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(access.deleted_merges, 1);
     }
+
+    #[test]
+    fn stitch_default_calls_port_and_restores_caller_state() {
+        let mut access = Access::new();
+        let owner = BrepId::from_index(0);
+        let mut sweep = TopologySweep::new(super::super::TopologySweepOptions::default());
+        for editing in [false, true] {
+            for doing_boolean in [false, true] {
+                access.brep_mut(owner).unwrap().set_editing_enabled(editing);
+                access.kernel.context.set_doing_boolean(doing_boolean);
+                let result = access.stitch(owner, &mut sweep, 0.125, false);
+                assert!(matches!(
+                    result,
+                    Err(SolidError::Unported {
+                        upstream: "SmBrep::Notify",
+                        unit: "topology.brep_p2",
+                    })
+                ));
+                assert_eq!(access.brep(owner).unwrap().editing_enabled(), editing);
+                assert_eq!(access.kernel.context.doing_boolean(), doing_boolean);
+            }
+        }
+    }
 }
