@@ -15,7 +15,7 @@ export CARGO_BUILD_JOBS=2                 # shared machine
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --list
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --unit harness.selftest
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --unit harness.selftest --perturb   # sensitivity check
-nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --green          # every status=green|partial unit
+nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --green          # every status=green|partial unit (~35 min on 16 threads; C++ topology units dominate)
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --status-of nlib.knots   # prints green|partial|fail
 nice -n 10 cargo test -p difftest --features cpp                     # harness self-tests
 ```
@@ -47,6 +47,28 @@ then the first few failing cases and `reports/difftest/<unit>.json`.
 at least one float, integer or topology entry and those that compared nothing
 (both sides returned the same error, or empty outputs). A unit whose passes are
 mostly `no_values` proves little: make the generator reach the success path.
+
+**Timing** (stderr, one line per unit; diagnostic only, not in the report):
+
+```
+TIME <unit> n=<cases> cases=<s> cpp=<s> rust=<s> compare=<s> ratio=<rust/cpp> slowest_rust=<case>:<s>
+```
+
+**Output digest** (opt-in): with `DIFFTEST_RUST_DIGEST=<dir>` set, each unit
+writes `<dir>/<unit>.digest` with one `<case>\t<fnv1a64>` line per case, the
+hash of the Rust output's `Debug` form (f64 `Debug` is the shortest round-trip
+form). Equal digest files from two builds mean bit-identical Rust outputs, which
+is how a refactor or optimisation proves it changed no value.
+
+**Profiling without perf/sudo**: `scripts/perf/sampler.py` (ptrace sampler,
+frame-pointer unwinding) and `scripts/perf/analyze.py` (self/inclusive tables):
+
+```sh
+CARGO_TARGET_DIR=bin/prof CARGO_PROFILE_DIFFTEST_DEBUG=line-tables-only \
+RUSTFLAGS="-C force-frame-pointers=yes" cargo build --profile difftest -p difftest --features cpp
+python3 scripts/perf/sampler.py out.json 2 -- bin/prof/difftest/difftest --unit <u> --no-report
+python3 scripts/perf/analyze.py out.json --focus solidcore --libc
+```
 
 **Perturbation** (`--perturb`): per case, in order of preference: the error
 string if the Rust side errored (gets `~perturbed` appended); else the first
