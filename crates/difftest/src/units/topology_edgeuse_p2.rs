@@ -57,7 +57,12 @@ const NOT_RUN: f64 = -3.0;
 enum UvSrc {
     /// The current UV trim curve moved by `(du, dv)` domain lengths; without one the
     /// line from `a` to `b` (fractions of the face's UV domain).
-    Current { du: f64, dv: f64, a: [f64; 2], b: [f64; 2] },
+    Current {
+        du: f64,
+        dv: f64,
+        a: [f64; 2],
+        b: [f64; 2],
+    },
     /// A given 2D curve.
     Given { curve: CrvIn },
 }
@@ -65,8 +70,18 @@ enum UvSrc {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum OpIn {
-    Tangent { eu: i64, tol_deg: f64, coincidence: bool, ok_make: bool },
-    Convex { eu: i64, n: u64, step_off: bool, tol_deg: f64 },
+    Tangent {
+        eu: i64,
+        tol_deg: f64,
+        coincidence: bool,
+        ok_make: bool,
+    },
+    Convex {
+        eu: i64,
+        n: u64,
+        step_off: bool,
+        tol_deg: f64,
+    },
     StepOff {
         eu: i64,
         frac: f64,
@@ -75,9 +90,19 @@ enum OpIn {
         normal: Option<[f64; 3]>,
         ok_make: bool,
     },
-    Rebuild { eu: i64 },
-    CheckSet { eu: i64, uv: UvSrc, adjust: bool, fail: Option<i64> },
-    Notify { eu: i64, operation: u8 },
+    Rebuild {
+        eu: i64,
+    },
+    CheckSet {
+        eu: i64,
+        uv: UvSrc,
+        adjust: bool,
+        fail: Option<i64>,
+    },
+    Notify {
+        eu: i64,
+        operation: u8,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -171,7 +196,12 @@ fn uv_curve(b: &Brep, eu: EdgeuseId, src: &UvSrc) -> Option<CrvIn> {
         match f.and_then(|f| b.face(f).ok()) {
             Some(face) => {
                 let d = face.uv_domain;
-                (d.min().x, d.min().y, d.max().x - d.min().x, d.max().y - d.min().y)
+                (
+                    d.min().x,
+                    d.min().y,
+                    d.max().x - d.min().x,
+                    d.max().y - d.min().y,
+                )
             }
             None => (0.0, 0.0, 1.0, 1.0),
         }
@@ -179,7 +209,9 @@ fn uv_curve(b: &Brep, eu: EdgeuseId, src: &UvSrc) -> Option<CrvIn> {
     match src {
         UvSrc::Given { curve } => Some(curve.clone()),
         UvSrc::Current { du, dv, a, b: bb } => {
-            let current = eu1::uv_trim_curve(b, eu).ok().and_then(|(c, _)| c.and_then(crv_in));
+            let current = eu1::uv_trim_curve(b, eu)
+                .ok()
+                .and_then(|(c, _)| c.and_then(crv_in));
             if let Some(mut c) = current {
                 let (sx, sy) = (du * du_len, dv * dv_len);
                 for q in &mut c.cpts {
@@ -231,10 +263,22 @@ pub(super) fn inexact_geometry(s: &Setup) -> Option<Output> {
             // the DISPATCH GAP of `Surface::read_from_db` (issue #76) belongs to
             // `surface.surface_p2`, not to the analytic surface units (all green)
             15012 => ("surface.surface_p2", "SurfaceKind::Cone (SmCone dispatch)"),
-            15013 => ("surface.surface_p2", "SurfaceKind::Cone (SmCylinder dispatch)"),
-            15014 => ("surface.surface_p2", "SurfaceKind::Sphere (SmSphere dispatch)"),
-            15015 => ("surface.surface_p2", "SurfaceKind::Torus (SmTorus dispatch)"),
-            15030 => ("surface.surf_of_extrusion_p2", "SurfaceKind::SurfOfExtrusion"),
+            15013 => (
+                "surface.surface_p2",
+                "SurfaceKind::Cone (SmCylinder dispatch)",
+            ),
+            15014 => (
+                "surface.surface_p2",
+                "SurfaceKind::Sphere (SmSphere dispatch)",
+            ),
+            15015 => (
+                "surface.surface_p2",
+                "SurfaceKind::Torus (SmTorus dispatch)",
+            ),
+            15030 => (
+                "surface.surf_of_extrusion_p2",
+                "SurfaceKind::SurfOfExtrusion",
+            ),
             _ => ("topology.brep_p10", "SmBrep::MakeTopologyFromData"),
         };
         return Some(Output::deferred(unit, symbol));
@@ -298,7 +342,11 @@ fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
             let Some(c) = uv_curve(&s.brep, s.eu, uv) else {
                 return Ok(Output::err("no_uv_curve"));
             };
-            input.extend([flag(*adjust), flag(fail.is_some()), fail.unwrap_or(0) as f64]);
+            input.extend([
+                flag(*adjust),
+                flag(fail.is_some()),
+                fail.unwrap_or(0) as f64,
+            ]);
             push_curve(&mut input, &c)?;
             Op::CheckSet
         }
@@ -334,7 +382,11 @@ fn output_of(op: &OpIn, body: &[f64]) -> Output {
 // ---- Rust side --------------------------------------------------------------------------
 
 /// The state of an edge use as the shim's `put_eu_state`.
-pub(super) fn put_eu_state(o: &mut Vec<f64>, b: &Brep, eu: Option<EdgeuseId>) -> Result<(), SolidError> {
+pub(super) fn put_eu_state(
+    o: &mut Vec<f64>,
+    b: &Brep,
+    eu: Option<EdgeuseId>,
+) -> Result<(), SolidError> {
     let Some(eu) = eu else {
         o.push(-1.0);
         return Ok(());
@@ -348,9 +400,7 @@ pub(super) fn put_eu_state(o: &mut Vec<f64>, b: &Brep, eu: Option<EdgeuseId>) ->
             let ivl = c.natural_interval();
             o.extend([ivl.min(), ivl.max()]);
             for t in [ivl.min(), ivl.mid(), ivl.max()] {
-                let p = c
-                    .evaluate_point(t)
-                    .unwrap_or(solidcore::math::Vec3::UNDEF);
+                let p = c.evaluate_point(t).unwrap_or(solidcore::math::Vec3::UNDEF);
                 o.extend([p.x, p.y, p.z]);
             }
         }
@@ -390,7 +440,7 @@ fn notify_op(code: u8) -> Result<NotifyOperation, HarnessError> {
 fn run_rust_op(
     op: &OpIn,
     b: &mut Brep,
-        eu: EdgeuseId,
+    eu: EdgeuseId,
 ) -> Result<Result<Vec<f64>, SolidError>, HarnessError> {
     let k = Kernel::default();
     Ok(match op {
@@ -406,7 +456,8 @@ fn run_rust_op(
             step_off,
             tol_deg,
             ..
-        } => eu2::is_convex_radial_sector(&Kernel::default(), b, eu, *n, *step_off, *tol_deg).map(|r| vec![flag(r)]),
+        } => eu2::is_convex_radial_sector(&Kernel::default(), b, eu, *n, *step_off, *tol_deg)
+            .map(|r| vec![flag(r)]),
         OpIn::StepOff {
             frac,
             dist,
@@ -491,7 +542,11 @@ fn run_rust_op(
                 (_, Err(e)) => Err(e),
                 (r, Ok(mate)) => {
                     let (failed, dmax, replaced) = match r {
-                        Ok(o) => (0.0, o.max_dist_to_surf.unwrap_or(-1.0), flag(o.trim_replaced)),
+                        Ok(o) => (
+                            0.0,
+                            o.max_dist_to_surf.unwrap_or(-1.0),
+                            flag(o.trim_replaced),
+                        ),
                         Err(_) => (1.0, -1.0, 0.0),
                     };
                     let state = (|| -> Result<Vec<f64>, SolidError> {
