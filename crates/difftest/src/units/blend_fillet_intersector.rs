@@ -593,6 +593,15 @@ fn run_op(
                 &mut pa,
                 &mut pb,
             );
+            // rTsectPnt / rDeltaPnt are filled in place upstream, before any SER exit
+            *fi.base
+                .base
+                .point_mut(id(*a))
+                .map_err(|e| Fail::Harness(harness(e.to_string())))? = pa;
+            *fi.base
+                .base
+                .point_mut(id(*b))
+                .map_err(|e| Fail::Harness(harness(e.to_string())))? = pb;
             st(o, r)?;
         }
         OpIn::Values { uv, a, prev } => {
@@ -613,6 +622,11 @@ fn run_op(
                 None => None,
             };
             let r = fi.compute_point_values(solver, k, uv.map(p2), &mut pa, pp.as_ref(), None);
+            // rTsectPnt is filled in place upstream, before any SER exit
+            *fi.base
+                .base
+                .point_mut(id(*a))
+                .map_err(|e| Fail::Harness(harness(e.to_string())))? = pa;
             st(o, r)?;
         }
         OpIn::Law {

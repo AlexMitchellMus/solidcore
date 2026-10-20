@@ -219,20 +219,16 @@ pub fn find_fillet_tsect_pnt(
     let uv2 = Point2::new(first.start.param(0)?, first.start.param(1)?);
 
     // Find surface uvPnts on plane = [rPntToDrop, rTraceDir]
-    // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::PointOnPlaneSolve
-    let found_solution: bool = unported_on(
-        (
-            &*ops,
-            pnt_to_drop,
-            trace_dir,
-            domain1,
-            domain2,
-            uv1,
-            uv2,
-            &*new_tsect,
-        ),
-        "SmFilletSolver::PointOnPlaneSolve",
-        "blend.fillet_solver_p2",
+    // (virtual: the solver's override, the base's in unit blend.fillet_solver_p2)
+    let found_solution = ops.point_on_plane_solve(
+        k,
+        pnt_to_drop,
+        trace_dir,
+        &domain1,
+        &domain2,
+        uv1,
+        uv2,
+        new_tsect,
     )?;
     if !found_solution {
         return Err(SolidError::sm_err(OP_F));
@@ -447,7 +443,7 @@ impl FilletSolver {
                         .surface(si)?
                         .ok_or_else(|| invalid("no offset surface"))?;
                     let srf_pt = surface.surface.surface.evaluate_point(get2(&uv, si))?;
-                    // UNPORTED(blend.fillet_standard_solver_p1): SmVariableRadiusFS::GetOriginalCurve
+                    // UNPORTED(blend.fillet_standard_solver_p1): SmVariableRadiusFS::GetOriginalCurve (justified: findings.md "blend.fillet_solver_p3 (`SmFilletSolver.cpp` part 3")
                     return unported_on(
                         (srf_pt, &*next),
                         "SmVariableRadiusFS::GetOriginalCurve",
@@ -511,11 +507,17 @@ impl FilletSolver {
 
                         // find two railcurve points on plane at radius distance from
                         // plane's origin
-                        // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::PointOnPlaneSolve
-                        let found_solution: bool = unported_on(
-                            (plane_orig, plane_normal, uv_domains, uv, &*next),
-                            "SmFilletSolver::PointOnPlaneSolve",
-                            "blend.fillet_solver_p2",
+                        // (virtual: the solver's override, the base's in unit
+                        // blend.fillet_solver_p2)
+                        let found_solution = ops.point_on_plane_solve(
+                            k,
+                            plane_orig,
+                            plane_normal,
+                            &uv_domains[0],
+                            &uv_domains[1],
+                            uv[0],
+                            uv[1],
+                            next,
                         )?;
 
                         // restore the surface offsets

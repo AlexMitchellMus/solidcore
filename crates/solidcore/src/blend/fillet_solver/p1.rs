@@ -1734,10 +1734,40 @@ pub trait FilletSolverOps {
     /// [`SolidError::Unported`] by default (`SmConstantDistanceFS`, unit
     /// `blend.fillet_standard_solver_p1`).
     fn constant_distance(&self) -> Result<f64> {
-        // UNPORTED(blend.fillet_standard_solver_p1): SmConstantDistanceFS::GetDistance
+        // UNPORTED(blend.fillet_standard_solver_p1): SmConstantDistanceFS::GetDistance (justified: findings.md "blend.fillet_solver_p3 (`SmFilletSolver.cpp` part 3")
         Err(SolidError::unported(
             "SmConstantDistanceFS::GetDistance",
             "blend.fillet_standard_solver_p1",
+        ))
+    }
+
+    /// `PointOnPlaneSolve(crPlaneOrig, crPlaneNormal, crUVDomain1, crUVDomain2, crUV1,
+    /// crUV2, rbFoundSolution, rTsectPnt)`: the rail points on the plane at the fillet
+    /// radius from its origin, written to `point`; the result is `rbFoundSolution`.
+    /// Virtual upstream (`SmFilletSolver.h:258`) and overridden by
+    /// `SmConstantRadiusAssistedFS` (unit `blend.fillet_standard_solver_p2`), so
+    /// `StepSolve` and `sm_FindFilletTsectPnt` dispatch through it. Added by
+    /// `blend.fillet_solver_p3`.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::Unported`] by default (the base, unit `blend.fillet_solver_p2`).
+    #[allow(clippy::too_many_arguments)]
+    fn point_on_plane_solve(
+        &mut self,
+        _k: &Kernel,
+        _plane_origin: Point3,
+        _plane_normal: Vec3,
+        _uv_domain1: &Extent2d,
+        _uv_domain2: &Extent2d,
+        _uv1: Point2,
+        _uv2: Point2,
+        _point: &mut TsectPnt,
+    ) -> Result<bool> {
+        // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::PointOnPlaneSolve
+        Err(SolidError::unported(
+            "SmFilletSolver::PointOnPlaneSolve",
+            "blend.fillet_solver_p2",
         ))
     }
 }

@@ -1696,10 +1696,14 @@ macro_rules! fillet_solver_ops {
 fillet_solver_ops!(EiffelTowerFs);
 fillet_solver_ops!(SecantConstantRadiusFs);
 
-/// The virtuals of `SmConstantRadiusAssistedFS` itself (the class `blend.fillet_intersector`
-/// runs `SmFilletSolver::ComputeSurfaceValues` on): every override of
-/// `SmConstantRadiusFS` is owned by an unported unit, so each is an explicit
-/// [`SolidError::Unported`] and none falls through to the base.
+/// The virtuals of the constant-radius solver. One Rust type stands for both
+/// `SmConstantRadiusFS` and `SmConstantRadiusAssistedFS` (see
+/// `blend::fillet_standard_solver::p1`); the class `blend.fillet_intersector` builds is
+/// `SmConstantRadiusFS`, so these are its overrides: `GetJacobianSize`,
+/// `SetupOffsetValues`, `OffsetRadiiCanChange`, `LoadJacobian`, `GetType` and
+/// `GetSolverType` call `blend.fillet_standard_solver_p1`; `IsKindOf` and
+/// `LoadInitialValues` (`_p2`) are explicit [`SolidError::Unported`] overrides. None
+/// falls through to the base.
 impl FilletSolverOps for ConstantRadiusAssistedFs {
     fn solver(&self) -> &FilletSolver {
         &self.solver
@@ -1709,48 +1713,39 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
         &mut self.solver
     }
 
-    /// `SmConstantRadiusFS::GetJacobianSize` (unit `blend.fillet_standard_solver_p1`,
-    /// not ported).
+    /// `SmConstantRadiusFS::GetJacobianSize`: 4.
     fn jacobian_size(&self) -> Result<usize> {
-        // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusFS::GetJacobianSize
-        Err(SolidError::unported(
-            "SmConstantRadiusFS::GetJacobianSize",
-            "blend.fillet_standard_solver_p1",
-        ))
+        Ok(ConstantRadiusAssistedFs::jacobian_size(self))
     }
 
-    /// `SmConstantRadiusFS::SetupOffsetValues` (unit `blend.fillet_standard_solver_p1`,
-    /// not ported).
+    /// `SmConstantRadiusFS::SetupOffsetValues`: sets both offset distances and writes
+    /// the rail 0 radius to `offset_dist` when given (`*pOffsetDist`).
     fn setup_offset_values(
         &mut self,
-        _tsect: &TsectPnt,
-        _offset_dist: Option<&mut f64>,
+        tsect: &TsectPnt,
+        offset_dist: Option<&mut f64>,
     ) -> Result<()> {
-        // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusFS::SetupOffsetValues
-        Err(SolidError::unported(
-            "SmConstantRadiusFS::SetupOffsetValues",
-            "blend.fillet_standard_solver_p1",
-        ))
+        let d = ConstantRadiusAssistedFs::setup_offset_values(self, tsect)?;
+        if let Some(out) = offset_dist {
+            *out = d;
+        }
+        Ok(())
     }
 
-    /// `SmConstantRadiusFS::OffsetRadiiCanChange` (unit
-    /// `blend.fillet_standard_solver_p1`, not ported).
+    /// `SmConstantRadiusFS::OffsetRadiiCanChange`: never.
     fn offset_radii_can_change(&self) -> Result<bool> {
-        // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusFS::OffsetRadiiCanChange
-        Err(SolidError::unported(
-            "SmConstantRadiusFS::OffsetRadiiCanChange",
-            "blend.fillet_standard_solver_p1",
-        ))
+        Ok(ConstantRadiusAssistedFs::offset_radii_can_change(self))
     }
 
-    /// `SmConstantRadiusAssistedFS::GetType` (`SM_COMMON`, unit
-    /// `blend.fillet_standard_solver_p1`, not ported).
+    /// `SmConstantRadiusFS::GetType` (`SmConstantRadiusFS_TYPE`).
     fn type_code(&self) -> Result<i64> {
-        // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusAssistedFS::GetType
-        Err(SolidError::unported(
-            "SmConstantRadiusAssistedFS::GetType",
-            "blend.fillet_standard_solver_p1",
-        ))
+        Ok(crate::blend::fillet_standard_solver::p1::CONSTANT_RADIUS_FS_TYPE)
+    }
+
+    /// `SmConstantRadiusFS::GetSolverType`: `SM_FS_CONST_RADIUS`
+    /// (`SmFilletStandardSolver.h:58`; `StepSolve` branches on it).
+    fn solver_type(&self) -> Result<FilletSolverType> {
+        Ok(FilletSolverType::ConstRadius)
     }
 
     /// `SmConstantRadiusAssistedFS::IsKindOf` (unit `blend.fillet_standard_solver_p2`,
@@ -1763,21 +1758,30 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
         ))
     }
 
-    /// `SmConstantRadiusFS::LoadJacobian` (unit `blend.fillet_standard_solver_p1`, not
-    /// ported).
+    /// `SmConstantRadiusFS::LoadJacobian`; `rlSurf1Offset` / `rlSurf2Offset` are written
+    /// back to `load` (references upstream), also on an error.
     fn load_jacobian(
         &mut self,
-        _num_equations: &mut usize,
-        _num_parameters: &mut usize,
-        _load: &mut JacobianLoad<'_>,
-        _f: &mut [f64],
-        _jacobian: Option<&mut Matrix>,
+        num_equations: &mut usize,
+        num_parameters: &mut usize,
+        load: &mut JacobianLoad<'_>,
+        f: &mut [f64],
+        jacobian: Option<&mut Matrix>,
     ) -> Result<bool> {
-        // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusFS::LoadJacobian
-        Err(SolidError::unported(
-            "SmConstantRadiusFS::LoadJacobian",
-            "blend.fillet_standard_solver_p1",
-        ))
+        let mut offsets = [load.surf1_offset, load.surf2_offset];
+        let r = ConstantRadiusAssistedFs::load_jacobian(
+            self,
+            num_equations,
+            num_parameters,
+            load.rail_index,
+            [load.surface1, load.surface2],
+            &mut offsets,
+            load.x,
+            f,
+            jacobian,
+        );
+        [load.surf1_offset, load.surf2_offset] = offsets;
+        r
     }
 
     /// `SmConstantRadiusFS::LoadInitialValues` (unit `blend.fillet_standard_solver_p2`,

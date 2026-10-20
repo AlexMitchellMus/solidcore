@@ -10412,6 +10412,23 @@ reconciliation with main's `surface.offset_surface`. With both, the affected dif
 - **For #208 (`blend.fillet_solver_p5`).** Its `ProcessRollOver` calls
   `is_convex_radial_sector(.., 10, true, 0.0)`; upstream calls `IsConvexRadialSector(10)`,
   whose `bOptStepOff` defaults to `FALSE` (`SmEdgeuse.h:356`, `SmFilletSolver.cpp:7260`).
+- **Solver dispatch (#236 review round 4, 2026-10-20).** The constant-radius solver's
+  `FilletSolverOps` overrides (`GetJacobianSize`, `SetupOffsetValues`,
+  `OffsetRadiiCanChange`, `LoadJacobian`, `GetType`, `GetSolverType`) call
+  `blend.fillet_standard_solver_p1` (#168); they answer for `SmConstantRadiusFS`, the
+  class the intersector shim builds (one Rust type stands for both it and
+  `SmConstantRadiusAssistedFS`), so `GetSolverType` is `SM_FS_CONST_RADIUS` and
+  `GetType` `SmConstantRadiusFS_TYPE`. `PointOnPlaneSolve` is a `FilletSolverOps` hook
+  (virtual upstream, overridden by `SmConstantRadiusAssistedFS` in
+  `blend.fillet_standard_solver_p2`); its default is the base's stub
+  (`blend.fillet_solver_p2`). Two stubs stay, justified: `StepSolve`'s variable-radius
+  cast (`SmVariableRadiusFS::GetOriginalCurve`) and `SmFindClippedRadiusEFO`'s
+  `SmConstantDistanceFS::GetDistance` name `blend.fillet_standard_solver_p1`, which
+  ports `CurveBasedFs::original_curve` and `ConstantDistanceFs::distance`, but neither
+  solver implements `FilletSolverOps` yet, so no `StepSolve` call reaches them. Wiring
+  them needs those solvers on the trait (with `original_curve` and `constant_distance`
+  overrides) and, for the variable-radius branch, the rest of it after the cast (the
+  radius law, `blend.fillet_executive_p1`).
 - **`allow_ext` results are not bit-identical (owner: `surface.offset_surface`; found by
   the #236 review, 2026-10-19).** With `allow_ext = false` every `StepSolve` case agrees
   bit for bit; with `allow_ext = true` the committed generated cases differ by up to
