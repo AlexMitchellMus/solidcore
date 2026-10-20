@@ -80,8 +80,8 @@
 //!   anchor edge use (as upstream; the edge use count is that list's length); an edge
 //!   use already on a list is [`SolidError::InvalidInput`] (upstream relinks it and
 //!   corrupts its old list). A missing anchor is upstream's ignored `SM_ERR`.
-//!   `InsertManifoldEdgeEnd`'s `SmVertex::PostInsert` sets the vertex uses' vertex (the
-//!   port's vertices keep no vertex use list).
+//!   `InsertManifoldEdgeEnd` appends both newly connected vertex uses to the target
+//!   vertex's owning list and sets their owner, in native `PostInsert` order.
 //! - **Gaps.** `GetMaxGap3d` and friends return copies of the cached gaps
 //!   ([`EdgeGap`]) instead of pointers; `SmGap`'s comparison operators (unit
 //!   `heal.gap`) compare `m_dGap3d`, as here.
@@ -209,13 +209,8 @@ fn brep_notify(operation: NotifyOperation) -> Result<()> {
 }
 
 /// `SmBrep::GetInfiniteRegion` (unit `topology.brep_p1`).
-fn infinite_region(b: &Brep) -> Result<Option<RegionId>> {
-    let _ = b;
-    // UNPORTED(topology.brep_p1): SmBrep::GetInfiniteRegion
-    Err(SolidError::unported(
-        "SmBrep::GetInfiniteRegion",
-        "topology.brep_p1",
-    ))
+fn infinite_region(b: &Brep) -> Option<RegionId> {
+    b.infinite_region()
 }
 
 /// `SmVertex::SetTolerance(tol)` (default arguments; unit `topology.vertex`).
@@ -1019,7 +1014,9 @@ pub fn insert_manifold_edge_end(
     };
 
     // Insert new start vertexuses into TgtVertex
+    b.vertex_mut(v)?.vertexuses.push(vu_top);
     b.vertexuse_mut(vu_top)?.vertex = Some(v);
+    b.vertex_mut(v)?.vertexuses.push(vu_bot);
     b.vertexuse_mut(vu_bot)?.vertex = Some(v);
 
     match old {
@@ -2385,7 +2382,7 @@ pub fn blend_edgeuse(k: &Kernel, b: &mut Brep, e: EdgeId) -> Result<Option<Edgeu
         let shell = eu1::shell(b, eu0_r)?.ok_or_else(|| null("GetBlendEdgeuse: no shell"))?;
         let shell_b = eu1::shell_brep(b, shell)?
             .ok_or_else(|| null("GetBlendEdgeuse: shell without B-rep"))?;
-        let infinite = infinite_region(shell_b)?;
+        let infinite = infinite_region(shell_b);
 
         // get edgeuse for interior region
         if eu1::shell_region(b, shell)? == infinite {
@@ -2490,6 +2487,47 @@ mod tests {
     use crate::nurbs::crv_basic::Curve as NlCurve;
     use crate::nurbs::math::{CPoint, NOW};
     use crate::topology::{EdgeuseOwner, Region, Shell, Vertex, Vertexuse, VertexuseOwner};
+
+    #[test]
+    fn insert_manifold_end_appends_the_new_vertexuses_in_native_order() {
+        let mut b = Brep::new();
+        let v = b.add_vertex(Point3::ZERO).unwrap();
+        let target = b
+            .add_vertexuse_record(Vertexuse {
+                vertex: Some(v),
+                owner: VertexuseOwner::Loopuse(None),
+                ..Vertexuse::default()
+            })
+            .unwrap();
+        b.vertex_mut(v).unwrap().vertexuses.push(target);
+        let edge = b.add_edge(v, v).unwrap();
+        let mut uses = Vec::new();
+        for _ in 0..4 {
+            let vu = b.add_vertexuse_record(Vertexuse::default()).unwrap();
+            let eu = b
+                .add_edgeuse_record(crate::topology::Edgeuse {
+                    edge: Some(edge),
+                    vertexuse: Some(vu),
+                    ..crate::topology::Edgeuse::default()
+                })
+                .unwrap();
+            b.vertexuse_mut(vu).unwrap().owner = VertexuseOwner::Edgeuse(Some(eu));
+            b.edge_mut(edge).unwrap().edgeuses.push(eu);
+            uses.push(vu);
+        }
+        insert_manifold_edge_end(&mut b, edge, Some(target), true).unwrap();
+        assert_eq!(
+            b.vertex(v).unwrap().vertexuses,
+            vec![target, uses[0], uses[2]]
+        );
+        assert_eq!(b.vertexuse(uses[0]).unwrap().vertex, Some(v));
+        assert_eq!(b.vertexuse(uses[2]).unwrap().vertex, Some(v));
+        insert_manifold_edge_end(&mut b, edge, Some(target), false).unwrap();
+        assert_eq!(
+            b.vertex(v).unwrap().vertexuses,
+            vec![target, uses[0], uses[2], uses[3], uses[1]]
+        );
+    }
 
     /// A wire edge from (0,0,0) to (1,0,0) on a line B-spline: two shell edge uses and
     /// their vertex uses.

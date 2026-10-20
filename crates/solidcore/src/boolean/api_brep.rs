@@ -46,17 +46,16 @@
 //!   [`SolidError::Unported`]. The other entry points validate their inputs as
 //!   upstream, then return [`SolidError::Unported`] for the first engine call they
 //!   would make (`SmMerge::merge_breps`, `SmMerge::BooleanLists`,
-//!   `SmMerge::BooleanTrees`). The intersector names the two operands by a private
-//!   handle type (`Operand`) until the Boolean stages choose theirs.
+//!   `SmMerge::BooleanTrees`). The intersector names the two operands by
+//!   [`MergeOperand`] until the Boolean stages choose a richer handle type.
 //! - The debug drawing (`SM_DEBUG_CODE`) and `SM_ASSERT_VALID` checks are not ported.
 
 use crate::boolean::merge::p1::MergeState;
+use crate::boolean::merge::p2::MergeOperand;
 use crate::boolean::merge::MergeOptions;
 use crate::boolean::topology_intersector::p1::TopologyIntersector;
 use crate::error::{Result, SolidError};
 use crate::geom::a_object::BooleanOperation;
-use crate::geom::solution_array::{ObjectKind, SolutionObject};
-use crate::intersect::point_class::{ClassObject, ClassObjectKind};
 use crate::kernel::Kernel;
 use crate::surface::surface::Surface;
 use crate::topology::Brep;
@@ -131,9 +130,9 @@ fn merge_boolean(
     options: Option<MergeOptions>,
 ) -> Result<BooleanOutcome> {
     // Tolerance and angle 0: both computed by the constructor.
-    let merge = MergeState::<TopologyIntersector<Operand>>::with_breps(
-        (&brep1, Operand::First),
-        Some((&brep2, Operand::Second)),
+    let merge = MergeState::<TopologyIntersector<MergeOperand>>::with_breps(
+        (&brep1, MergeOperand::Primary),
+        Some((&brep2, MergeOperand::Other)),
         0.0,
         0.0,
         options.as_ref(),
@@ -152,29 +151,6 @@ fn merge_boolean(
             "SmMerge::NonManifoldBoolean",
             "boolean.merge_p3",
         ))
-    }
-}
-
-/// The intersector's identities of the two operands: the only objects the merge
-/// constructor names. The Boolean stages that walk the operands' topology choose
-/// their handle type when they are ported (`boolean.merge_p3`, `boolean.merge_p4`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum Operand {
-    /// `pBrep1`.
-    First,
-    /// `pBrep2`.
-    Second,
-}
-
-impl ClassObject for Operand {
-    fn class_kind(&self) -> ClassObjectKind {
-        ClassObjectKind::Other
-    }
-}
-
-impl SolutionObject for Operand {
-    fn kind(&self) -> ObjectKind {
-        ObjectKind::Other
     }
 }
 

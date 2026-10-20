@@ -331,25 +331,35 @@ mod tests {
                     key: ObjectKey(1_000_000 + u64::from(v.index())),
                     type_code: 16021,
                 },
-                destination_key: &|v| ObjectRef {
-                    key: ObjectKey(u64::from(v.index())),
-                    type_code: 16021,
+                destination_key: &|e| match e {
+                    crate::EntityRef::Vertex(v) => ObjectRef {
+                        key: ObjectKey(u64::from(v.index())),
+                        type_code: 16021,
+                    },
+                    crate::EntityRef::Vertexuse(v) => ObjectRef {
+                        key: ObjectKey(2_000_000 + u64::from(v.index())),
+                        type_code: 16006,
+                    },
+                    _ => ObjectRef {
+                        key: ObjectKey(3_000_000),
+                        type_code: 16001,
+                    },
                 },
             },
             edge_source_key: &|e| ObjectRef {
-                key: ObjectKey(3_000_000 + u64::from(e.index())),
+                key: ObjectKey(5_000_000 + u64::from(e.index())),
                 type_code: 16016,
             },
             edge_destination_key: &|e| ObjectRef {
-                key: ObjectKey(2_000_000 + u64::from(e.index())),
+                key: ObjectKey(4_000_000 + u64::from(e.index())),
                 type_code: 16016,
             },
             face_source_key: &|f| ObjectRef {
-                key: ObjectKey(5_000_000 + u64::from(f.index())),
+                key: ObjectKey(7_000_000 + u64::from(f.index())),
                 type_code: 16002,
             },
             face_destination_key: &|f| ObjectRef {
-                key: ObjectKey(4_000_000 + u64::from(f.index())),
+                key: ObjectKey(6_000_000 + u64::from(f.index())),
                 type_code: 16002,
             },
         }
