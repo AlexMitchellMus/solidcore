@@ -624,6 +624,16 @@ mod tests {
     use solidcore::topology::shell::{ShellMembers, ShellType};
     use solidcore::topology::{Edgeuse, Face, Faceuse, Shell, ShellId};
 
+    fn assert_unported<T>(result: Result<T>, expected_unit: &str) {
+        let error = result.err().expect("expected an unavailable dependency");
+        let actual_unit = if let SolidError::Unported { unit, .. } = &error {
+            Some(*unit)
+        } else {
+            None
+        };
+        assert_eq!(actual_unit, Some(expected_unit), "{error:?}");
+    }
+
     #[test]
     fn default_queries_reach_the_live_lists_and_missing_infinite_region_is_null() -> Result<()> {
         let mut model = Model::new([1., 0., 0.])?;
@@ -670,13 +680,7 @@ mod tests {
             })
         ));
         model.b[0].set_editing_enabled(true);
-        assert!(matches!(
-            model.remove_all_topology(brep),
-            Err(SolidError::Unported {
-                unit: "topology.brep_p2",
-                ..
-            })
-        ));
+        assert_unported(model.remove_all_topology(brep), "topology.brep_p4");
         assert!(model.b[0].editing_enabled());
         assert!(matches!(
             model.remove_all_topology(BrepId::from_index(99)),
@@ -698,13 +702,10 @@ mod tests {
             })
         ));
         let mut mates = BTreeMap::new();
-        assert!(matches!(
+        assert_unported(
             model.copy_faces(source, &[], destination, true, SweepMergeId(0), &mut mates),
-            Err(SolidError::Unported {
-                unit: "topology.brep_p2",
-                ..
-            })
-        ));
+            "boolean.merge_p2",
+        );
         assert!(mates.is_empty());
         assert!(matches!(
             model.copy_faces(source, &[], source, true, SweepMergeId(0), &mut mates),
@@ -743,13 +744,7 @@ mod tests {
             surface,
             orientation: OrientType::Same,
         };
-        assert!(matches!(
-            model.make_face(input),
-            Err(SolidError::Unported {
-                unit: "topology.brep_p2",
-                ..
-            })
-        ));
+        assert_unported(model.make_face(input), "topology.brep_p3");
         Ok(())
     }
     #[test]
@@ -758,13 +753,11 @@ mod tests {
         let mut model = Model::new([1., 0., 0.])?;
         let b = BrepId::from_index(0);
         let region = model.infinite_region(b)?;
-        assert!(matches!(
-            model.make_shell_vertex((b, region), Point3::ZERO),
-            Err(SolidError::Unported {
-                upstream: "SmBrep::MakeShellVertexTopology",
-                unit: "topology.brep_p2"
-            })
-        ));
+        let (shell, vertex) = model.make_shell_vertex((b, region), Point3::ZERO)?;
+        assert_eq!(shell.0, b);
+        assert_eq!(vertex.0, b);
+        assert_eq!(model.b[0].shell(shell.1)?.region, Some(region));
+        assert_eq!(model.b[0].vertex(vertex.1)?.point, Point3::ZERO);
         let face = model.b[0].add_face_record(Face::new(ShellId::from_index(0)))?;
         assert!(matches!(
             model.make_vertex_loop((b, face), Point3::ZERO),
@@ -833,13 +826,10 @@ mod tests {
         ));
         model.b[0].set_editing_enabled(false);
         model.k.context.set_doing_boolean(false);
-        assert!(matches!(
+        assert_unported(
             model.stitch(b, &mut TopologySweep::default(), 0.125, false),
-            Err(SolidError::Unported {
-                upstream: "SmBrep::Notify",
-                unit: "topology.brep_p2"
-            })
-        ));
+            "query.brep",
+        );
         assert!(!model.b[0].editing_enabled());
         assert!(!model.k.context.doing_boolean());
         Ok(())

@@ -439,7 +439,7 @@ pub trait SweepAccess {
             },
         )?;
         hcr.set_hcr_for_silhouettes(silhouettes);
-        crate::error::ignore_status(hcr.compute_global_visibility(self.kernel(brep)?))?;
+        crate::error::ignore_status(hcr.compute_global_visibility(self.kernel_mut(brep)?))?;
         Ok(SweepScene {
             brep: self.retain_hcr(brep, hcr)?,
         })
