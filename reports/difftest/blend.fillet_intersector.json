@@ -1051,8 +1051,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0047",
@@ -1243,8 +1243,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0067",
@@ -2839,8 +2839,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0238",
@@ -2927,8 +2927,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0248",
@@ -3123,8 +3123,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0268",
@@ -3383,8 +3383,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0295",
@@ -3595,8 +3595,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0317",
@@ -3607,8 +3607,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0318",
@@ -3643,8 +3643,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0322",
@@ -4023,8 +4023,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0362",
@@ -4875,8 +4875,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0456",
@@ -5191,8 +5191,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0488",
@@ -5359,8 +5359,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0507",
@@ -5551,8 +5551,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0529",
@@ -5835,8 +5835,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0561",
@@ -5915,8 +5915,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0570",
@@ -6015,8 +6015,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0580",
@@ -6115,8 +6115,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0590",
@@ -6195,8 +6195,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0599",
@@ -6223,8 +6223,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0602",
@@ -6591,8 +6591,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0642",
@@ -7595,8 +7595,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0745",
@@ -7859,8 +7859,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0773",
@@ -7907,8 +7907,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0778",
@@ -8143,8 +8143,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0803",
@@ -8335,8 +8335,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0825",
@@ -9323,8 +9323,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0931",
@@ -9367,8 +9367,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0936",
@@ -9747,8 +9747,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0978",
@@ -10039,8 +10039,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen1010",
@@ -10499,8 +10499,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen1059",
@@ -10811,8 +10811,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen1093",
@@ -11083,8 +11083,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::ComputeSurfaceValues",
-        "unit": "blend.fillet_solver_p1"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen1123",
@@ -11940,10 +11940,10 @@
   "cases_passed": 875,
   "cases_total": 1286,
   "deferred_by_unit": {
-    "blend.fillet_solver_p1": 33,
     "blend.fillet_solver_p2": 37,
     "blend.fillet_solver_p3": 120,
     "blend.fillet_solver_p4": 59,
+    "blend.fillet_standard_solver_p1": 33,
     "curve.crv_on_surf": 162
   },
   "max_rel_err": 0.0,
