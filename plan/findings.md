@@ -9677,3 +9677,44 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   The FFI refuses a vertex repeated in the one-list `StitchVertexPairs` list (UB-178).
   Upstream defects kept by the port: WR-186 (`DoStitching`'s sticky candidate flags),
   WR-187 (a cancelled squeeze reported as done), UB-197 (stale edge after a failed glue with `m_bIgnoreProblems`).
+
+## audit.recursion: merged snapshot and follow-up limits (PR #273, 2026-10-20)
+
+The audit covers the code merged through main `6af1decc` (PR merge commit
+`59b5a7a0`) plus the review fixes in this PR. Wrapper constructors and setters
+check owned curves, surfaces and volume chains with a non-recursive walk before
+adding another ownership edge (maximum depth 64, root at depth 0). The base global
+solver limits traversal to 2048 nested calls; the advanced intersector uses the
+same ceiling. Spatial-tree top-box rebuilds are limited to one nested rebuild,
+and tessellation refuses a missing-tree build re-entry. Numeric formulas and
+child visitation order are retained.
+
+The readiness review found two ways to bypass the constructor checks:
+`ProjectedCurve::set_canonical` accepted an arbitrarily nested replacement, and
+`CompositeCurve::segments_mut` exposed unchecked segment replacement. The former
+now checks before changing any field; the latter is replaced by the checked
+`set_segment` method. Regression tests cover rejection without partial mutation,
+valid replacement and solver depth-counter restoration after a recursive error.
+`audit.recursion` has no C++ counterpart or standalone difftest runner;
+`--green` excludes exactly this audit id and continues to fail ordinary ports
+without registered runners.
+
+Validation before the main merge: at `726d2d60`, `difftest --green` completed
+222 units (114 passed, 108 partial, 0 failed). Every unit summary (including case
+counts and `max_rel_err`) matched the baseline; this compares summaries, not the
+complete before/after numeric reports. The merged snapshot adds
+`blend.fillet_standard_solver_p1` and `primitive.api_primitives`, bringing the
+selection to 224 port runners. Final integration results belong to the PR checks.
+After the review fixes, native tests pass (1458 solidcore unit tests, 28 difftest
+unit tests and the JSON float-roundtrip integration test); workspace clippy and
+the wasm target check pass.
+
+The green audit status applies to this merged snapshot. Direct audit dependencies
+`blend.fillet_corner_p2`, `blend.fillet_corner_p3` and
+`offset.offset_executive_p2` remain unported; their implementations, other open
+port PRs and future geometry variants need a follow-up sweep when they land.
+The 108 partial units in the baseline retain unexercised dependency paths.
+Native guard tests and a wasm compile check do not measure worst-case wasm stack
+use at the solver ceiling; no runtime stack-exhaustion benchmark was run.
+Constructor APIs that were infallible now return `Result`, and callers using
+`segments_mut` must move to checked segment replacement.

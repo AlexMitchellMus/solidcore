@@ -29,7 +29,7 @@
 //! | [`ProjectedCurve::is_kind_of`]               | `IsKindOf`                                       |
 //!
 //! Deviations:
-//! - **Nesting.** `new` return `InvalidInput` when the projected curve would nest
+//! - **Nesting.** `new` and `set_canonical` return `InvalidInput` when the projected curve would nest
 //!   deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
 //!   (64; upstream fixtures nest at most 3), which bounds the recursive dispatch,
 //!   cloning and dropping of nested geometry (no limit upstream).
@@ -287,7 +287,10 @@ impl ProjectedCurve {
     ///
     /// # Errors
     ///
-    /// `SM_ERR` from [`Self::make_ortho_normal`] (the fields are set anyway).
+    /// `InvalidInput` when adding this wrapper would exceed
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
+    /// (all fields are left unchanged); `SM_ERR` from [`Self::make_ortho_normal`]
+    /// (the fields are set anyway).
     pub fn set_canonical(
         &mut self,
         curve: Curve,
@@ -297,6 +300,7 @@ impl ProjectedCurve {
         proj_type: ProjectionType,
         owns_curve: OwnsCurve,
     ) -> Result<()> {
+        check_geometry_nesting(NestedGeometry::Curve(&curve), 1, OP)?;
         *self.curve = curve;
         self.proj_point = proj_point;
         self.proj_vec = proj_vec;
@@ -700,6 +704,58 @@ mod tests {
             Vec3::new(1.0, 1.0, 0.0),
             3,
         ))
+    }
+
+    #[test]
+    fn set_canonical_rejects_excessive_nesting_without_changing_fields() {
+        use crate::surface::surface::p2::MAX_GEOMETRY_NESTING;
+
+        let mut curve = base();
+        for _ in 0..MAX_GEOMETRY_NESTING {
+            curve = Curve::from(
+                ProjectedCurve::new(
+                    curve,
+                    None,
+                    None,
+                    None,
+                    ProjectionType::Parallel,
+                    OwnsCurve::No,
+                )
+                .unwrap(),
+            );
+        }
+        let mut projected = ProjectedCurve::new(
+            base(),
+            None,
+            None,
+            None,
+            ProjectionType::Unknown,
+            OwnsCurve::No,
+        )
+        .unwrap();
+        let before = format!("{projected:?}");
+        assert!(matches!(
+            projected.set_canonical(
+                curve,
+                Vec3::ZERO,
+                Vec3::ZERO,
+                Vec3::ZERO,
+                ProjectionType::Rotation,
+                OwnsCurve::Yes,
+            ),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        assert_eq!(format!("{projected:?}"), before);
+        assert!(projected
+            .set_canonical(
+                base(),
+                Vec3::ZERO,
+                Vec3::ZERO,
+                Vec3::ZERO,
+                ProjectionType::Parallel,
+                OwnsCurve::Yes,
+            )
+            .is_ok());
     }
 
     #[test]

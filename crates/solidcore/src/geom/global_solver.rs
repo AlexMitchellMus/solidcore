@@ -2003,6 +2003,55 @@ mod tests {
     }
 
     #[test]
+    fn solve_depth_is_restored_after_a_recursive_error() {
+        struct Repeating {
+            base: GlobalSolver<'static, Obj>,
+            stop: bool,
+        }
+        impl GlobalSolve<'static, Obj> for Repeating {
+            fn solver(&self) -> &GlobalSolver<'static, Obj> {
+                &self.base
+            }
+
+            fn solver_mut(&mut self) -> &mut GlobalSolver<'static, Obj> {
+                &mut self.base
+            }
+
+            fn branch_may_contain_answers(&mut self, _: &Branch) -> Result<bool> {
+                Ok(!self.stop)
+            }
+
+            fn are_ready_for_local_solve(&self, _: &Branch) -> Result<bool> {
+                Ok(false)
+            }
+
+            fn subdivide(&mut self, branch: &Branch) -> Result<(Branch, Branch)> {
+                Ok((*branch, *branch))
+            }
+        }
+
+        let mut solver = Repeating {
+            base: GlobalSolver::new(),
+            stop: false,
+        };
+        // Exercise the last two recursion levels without filling the test
+        // thread's stack. A cyclic branch must return an error and unwind both.
+        solver.base.solve_depth = MAX_SOLVE_DEPTH - 2;
+        let branch = [None; MAX_SOLVER_TREES];
+        assert!(matches!(
+            solver.solve_branch(&branch),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        assert_eq!(solver.base.solve_depth, MAX_SOLVE_DEPTH - 2);
+
+        // The same solver remains usable after the error.
+        solver.base.solve_depth = 0;
+        solver.stop = true;
+        solver.solve_branch(&branch).unwrap();
+        assert_eq!(solver.base.solve_depth, 0);
+    }
+
+    #[test]
     fn intersect_collects_overlapping_leaf_pairs() {
         let a = split_tree(0.0);
         let b = split_tree(1.5);

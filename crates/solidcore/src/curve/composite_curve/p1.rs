@@ -44,7 +44,7 @@
 //! | [`trim_first_break`], [`trim_last_break`], [`insert_sorted_breaks`] | `sm_TrimFirstBreak`, `sm_TrimLastBreak`, `sm_InsertSortedBreaks` (static) |
 //!
 //! Deviations:
-//! - **Nesting.** `with_curves` return `InvalidInput` when every segment curve would nest
+//! - **Nesting.** `with_curves` and `set_segment` return `InvalidInput` when any segment curve would nest
 //!   deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
 //!   (64; upstream fixtures nest at most 3), which bounds the recursive dispatch,
 //!   cloning and dropping of nested geometry (no limit upstream).
@@ -510,9 +510,23 @@ impl CompositeCurve {
         &self.segments
     }
 
-    /// The segments, mutable.
-    pub fn segments_mut(&mut self) -> &mut [CompositeCurveSegment] {
-        &mut self.segments
+    /// Replaces one segment, preserving the owned geometry nesting bound.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` for an out-of-range index or when adding this composite
+    /// would exceed
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING).
+    /// The composite is left unchanged on error.
+    pub fn set_segment(&mut self, index: usize, segment: CompositeCurveSegment) -> Result<()> {
+        const OP_SET: &str = "curve::composite_curve::p1::CompositeCurve::set_segment";
+        let slot = self
+            .segments
+            .get_mut(index)
+            .ok_or_else(|| SolidError::invalid_input(OP_SET, "segment index out of range"))?;
+        check_geometry_nesting(NestedGeometry::Curve(&segment.curve), 1, OP_SET)?;
+        *slot = segment;
+        Ok(())
     }
 
     /// `GetNumSegments`.
@@ -1928,6 +1942,34 @@ mod tests {
         Curve::from(
             BSplineCurve::create_line_segment(3, Vec3::from_array(a), Vec3::from_array(b)).unwrap(),
         )
+    }
+
+    #[test]
+    fn set_segment_rejects_excessive_nesting_without_changing_composite() {
+        use crate::surface::surface::p2::MAX_GEOMETRY_NESTING;
+
+        let base = line([0.0; 3], [1.0, 0.0, 0.0]);
+        let mut composite =
+            CompositeCurve::with_curves(3, vec![base.clone()], false, None, None).unwrap();
+        let mut curve = base;
+        for _ in 0..MAX_GEOMETRY_NESTING {
+            curve = Curve::from(
+                CompositeCurve::with_curves(3, vec![curve], false, None, None).unwrap(),
+            );
+        }
+        let mut segment = composite.segment(0).unwrap().clone();
+        segment.curve = curve;
+        let before = format!("{composite:?}");
+        assert!(matches!(
+            composite.set_segment(0, segment),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        assert_eq!(format!("{composite:?}"), before);
+        let mut segment = composite.segment(0).unwrap().clone();
+        segment.same_sense = false;
+        assert!(composite.set_segment(1, segment.clone()).is_err());
+        composite.set_segment(0, segment).unwrap();
+        assert!(!composite.segment(0).unwrap().same_sense);
     }
 
     #[test]

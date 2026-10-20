@@ -65,12 +65,14 @@ pub fn parse(text: &str) -> Result<Vec<PlanUnit>, String> {
     Ok(out)
 }
 
-/// Ids of units with `status = "green"` or `"partial"` (what `--green` runs), in
-/// file order.
+/// Ids of port units with `status = "green"` or `"partial"` (what `--green`
+/// runs), in file order. `audit.recursion` is a crate-wide audit, validated by
+/// rerunning these ports; it has no standalone C++ counterpart or runner.
 pub fn green_units(units: &[PlanUnit]) -> Vec<String> {
     units
         .iter()
         .filter(|u| u.status == "green" || u.status == "partial")
+        .filter(|u| u.id != "audit.recursion")
         .map(|u| u.id.clone())
         .collect()
 }
@@ -87,5 +89,17 @@ mod tests {
         let u = parse(t).unwrap();
         assert_eq!(green_units(&u), vec!["a".to_string(), "c".to_string()]);
         assert!(parse("[[unit]]\nid = \"x\"\nstatus = \"done\"\n").is_err());
+    }
+
+    #[test]
+    fn green_audit_does_not_require_a_standalone_runner() {
+        let units = parse(
+            "[[unit]]\nid = \"audit.recursion\"\nstatus = \"green\"\n\
+             [[unit]]\nid = \"port.without.runner\"\nstatus = \"green\"\n",
+        )
+        .unwrap();
+        // Ordinary ports remain selected even if their runner is missing, so the
+        // CLI still reports the missing runner as a failure.
+        assert_eq!(green_units(&units), vec!["port.without.runner"]);
     }
 }
