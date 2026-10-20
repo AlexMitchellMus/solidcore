@@ -1628,9 +1628,9 @@ fn resolve(i: &Inputs, c: &mut Counts, two: &Two) -> Result<(RHeader, Vec<ROp>),
             Some(_) => Err(format!("unresolvable_{what}_kind")),
         }
     };
-    // header: the FFI refuses a negative tolerance (no upstream caller passes one, and the
-    // port's curve-cache tessellation runs to its iteration bound on it, fuzz00405),
-    // mirrored here so that neither side runs the script
+    // header: the FFI refuses a negative tolerance (no upstream caller passes one); the
+    // refusal is mirrored here, as the B-rep guards are, so that neither side runs the
+    // script
     if i.approx < 0.0 {
         return Err("approx_negative".into());
     }
@@ -3942,8 +3942,15 @@ fn edge_cases() -> Vec<(String, Value)> {
 /// left out) changes 67 compared results, every one a script with a `FaceuseOffset` (the
 /// offset surface at distance 0) or a `VertexOffset` (the radius-0 arc, status 1007);
 /// `EdgeuseOffset` reads the distance on its rail path only, which defers. The built-in
-/// `cone_vertex_offset` is the only built-in whose compared output changes.
-const ZERO_DISTANCE_BASES: &[&str] = &["cone_vertex_offset", "gen0700", "gen0107", "gen0012"];
+/// `cone_vertex_offset` is the only built-in whose compared output changes. `gen0638`
+/// offsets a B-spline face (`ellips_ts2.smb`); `gen0700` and `gen0012` offset planes.
+const ZERO_DISTANCE_BASES: &[&str] = &[
+    "cone_vertex_offset",
+    "gen0700",
+    "gen0107",
+    "gen0012",
+    "gen0638",
+];
 
 /// Bases of the `*_zero_approx` cases: their compared output changes at `approx = 0`.
 ///

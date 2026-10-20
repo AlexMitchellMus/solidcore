@@ -7387,20 +7387,20 @@ stubbed: they need an `OffsetBrep` over the executive's original and offset B-re
 #175's code after `EdgeuseOffset` (cpp:2956-3071), which reaches `topology.brep_p7/p8`; a
 follow-up once this PR merges.
 
-**Results.** 873 cases (5 upstream-derived fixtures, 68 cases built in code, 800 generated
-two-B-rep scripts): 440 pass bit for bit (`max_rel_err 0`), 0 fail, 433 deferred, 0 cases
-where both sides reject the script. 438 passes compare an upstream result (one of them, `network_vertex_three_edges`, an
+**Results.** 874 cases (5 upstream-derived fixtures, 69 cases built in code, 800 generated
+two-B-rep scripts): 441 pass bit for bit (`max_rel_err 0`), 0 fail, 433 deferred, 0 cases
+where both sides reject the script. 439 passes compare an upstream result (one of them, `network_vertex_three_edges`, an
 error status from `VertexOffset`'s 3-edge branch); 2 (`gen0264`, `gen0685`) are guard
 agreements: the shim refuses the only op as an upstream null dereference, so no C++ runs
-and both sides compare `[0, op, -2]` (they count under `with_values=440 no_values=0`
+and both sides compare `[0, op, -2]` (they count under `with_values=441 no_values=0`
 because the record has three values). Deferred, by the unit that blocks: `topology.brep_p2` 166,
 `surface.surface_cache_p2` 78, `harness:analytic-geometry-export` 70, `topology.face_p4` 42,
 `intersect.surface_drop_curve` 27, `curve.crv_on_surf` 25, `topology.face_p2` 12,
 `intersect.surface_drop_lib_p3` 7, `blend.fillet_standard_solver_p1` 4, `surface.sphere` 2.
-Success-path coverage (counted at this head): 227 of the 440 passes complete at least one
+Success-path coverage (counted at this head): 228 of the 441 passes complete at least one
 successful call among the unit's ops (the rest compare matching `-2` refusals or matching
 upstream error statuses). Per op, the passing cases that contain a success / a refusal / an
-upstream error (a case can count in several): `FaceuseOffset` 32 / 15 / 0, `VertexOffset`
+upstream error (a case can count in several): `FaceuseOffset` 33 / 15 / 0, `VertexOffset`
 60 / 14 / 28, `ReplaceEdgeCurves` 49 / 9 / 0, `TrimExtendedEdge` 46 / 50 / 0,
 `ExtendTrimEdges` 1 / 39 / 7, `HaveTangentGaps` 56 / 30 / 0, `EdgeuseOffset` 35 / 22 / 10,
 `LocalFaceuseOffset` 6 / 37 / 52 (`HaveTangentGaps`' points: upstream ignores
@@ -7409,9 +7409,12 @@ the port mirrors; an evaluator that wrote part of the point before failing would
 theoretical case no input reaches); no successful pass: `UpdateFaceSurfaceDomain` (55
 refusals), `MateEdges` (18 refusals, 55 upstream errors). (This PR's earliest per-op
 counts swapped the `FaceuseOffset` and `ReplaceEdgeCurves` labels.) A 4000-seed sweep
-(4073 cases) passes 2126, fails 0, defers 1947, with no C++ crash or stall. Perturb:
-`SENSITIVE 440/440`. `--fuzz 2000` at the #156 head: `FUZZ-PASS cases=2000 rejected=224
-malformed=627 ran=1149 differs=0 crashes=0 panics=0 timeouts=0`; one earlier run of the same
+(4074 cases) passes 2127, fails 0, defers 1947, with no C++ crash or stall. Perturb:
+`SENSITIVE 441/441`. `--fuzz 2000`'s verdict depends on the draw (see the fuzz paragraph
+below: a far-control-point mutation of a `trim_extended_edge` script is a known Rust-only
+slow path that can exceed the 20 s budget). `--fuzz 2000` at the #156 head: `FUZZ-PASS
+cases=2000 rejected=224 malformed=627 ran=1149 differs=0 crashes=0 panics=0 timeouts=0`;
+one earlier run of the same
 tree had a single timeout, `fuzz01488` (a one-field mutation of `gen0577`, whose C++ side
 takes about 19 s alone against the 20 s budget, the Rust 0.16 s): load-dependent, as
 `gen0577` itself. At the follow-up head bc409b78 (882 cases, so a different draw of bases):
@@ -7430,15 +7433,27 @@ status 0 in under a second and the Rust side runs for minutes in `curve.curve_p8
 rejected=203 malformed=627 ran=1169 differs=0 crashes=0 panics=0 timeouts=1`): `gen0650`
 with `approx = -1` and one control point of an `add_curve` 2D cubic at `-1e300`. The FFI
 refuses the negative tolerance, but the fuzz runs the Rust side on a header the FFI refused
-(it skips Rust only after a fixture-constructor rejection), and the Rust side took 21 s:
-`TrimExtendedEdge`'s `d3DTol = 10 * approx = -10` reaches `global_curve_intersect`'s
-`make_curve_cache`, whose tessellation (`compute_constants`, the `FindCurveDistanceExtrema`
-local solve; gdb stack on the pod) runs to its iteration bound on the 1e300 span with a
-negative tolerance, then returns (the same script with `approx = 1e-4` passes at once, and
-with the point back in range `approx = -1` returns at once). The runner now mirrors the FFI's
-refusal (`approx_negative` on both sides, as for the B-rep guards), so the fuzz classifies
-such a draw as both-errored and the Rust never runs a negative tolerance. At the final head:
-`FUZZ-PASS offset.offset_geometry_creation cases=2000 rejected=187 malformed=627 ran=1186 differs=0 crashes=0 panics=0 timeouts=0`.
+(it skips Rust only after a fixture-constructor rejection), and the Rust side took 21 s. The
+runner now mirrors the FFI's refusal (`approx_negative` on both sides, as for the B-rep
+guards), so neither side runs such a draw. The slowness itself is not the negative
+tolerance: the same script at any accepted tolerance (`0`, `1e-300`, `1e-12`, `1e-6`, `1e-4`,
+`1e-2`; the reviewer's timings) takes 36 to 41 s in Rust against about 5 s in C++ and passes
+with equal values, and with the control point back in range it returns at once on both
+sides. It is the far control point in `make_curve_cache`'s tessellation, the same Rust-only
+slow path as `fuzz01278` and `curve.curve_p5`'s `fuzz00504`: see the `curve.curve_p8` entry
+at the end of this file, which holds the shared explanation; no guard in this unit. The
+final head's verdict therefore depends on the draw, and this head's draw shows it:
+`FUZZ-FAIL cases=2000 rejected=196 malformed=628 ran=1175 differs=1 crashes=0 panics=0
+timeouts=1`. The timeout, `fuzz01915`, is that family's third draw: `gen0330` (`torus.smb`,
+`dist 100`, `approx 1e-4`, an accepted header) with `/ops/0/curve/cpts/2/1 = 1e+300` into
+`trim_extended_edge`; the Rust side takes 29 s for the script (gdb at 12 s: the same
+`make_curve_cache` tessellation stack as `fuzz00405`) and then defers at the torus face's
+`FaceuseOffset` as its base does, while the C++ side returns within the budget. The
+`differs`, a note and not a failure (fuzz inputs may lie outside the generator's domain), is
+`fuzz01241`: `local_offset_late_surface` with the added plane's normal at `(0, 1e300, 1)`,
+whose squared length overflows; every value agrees except `state[15]`, exactly 0 in C++
+and `-1.52e-55` in Rust, a rounding residue at overflowed scale (the generator's normals are
+unit scale); not investigated further.
 Valgrind: 54 sampled shim programs before the wiring round, then 64 on the new paths (54
 newly passing cases, up to ten per op family plus eight built-in ones, and ten new
 deferrals including the five above), then the 13 cases the review follow-up changes: clean.
@@ -7460,13 +7475,16 @@ every one a script with a `FaceuseOffset` (the offset surface at distance 0) or 
 rail path only (`SmCrvOnSurf` over a non-B-spline surface, deferred), and `ReplaceEdgeCurves`,
 `TrimExtendedEdge` and the plain `EdgeuseOffset` path never read it (the reviewer's reading
 of the upstream code). A zero tolerance changes 2 compared results (and 11 deferred), both
-through `VertexOffset`. The 7 `*_zero_distance` / `*_zero_approx` cases (`zero_header_cases`,
+through `VertexOffset`. The 8 `*_zero_distance` / `*_zero_approx` cases (`zero_header_cases`,
 bases named explicitly) keep bases whose compared output changes at zero: at `dist = 0`
-`cone_vertex_offset`, `gen0700` (one `FaceuseOffset`), `gen0107` (one `VertexOffset`) and
-`gen0012` (`UpdateFaceDomain`, `FaceuseOffset`, `TrimExtendedEdge`, `MateEdges`; 515 values);
-at `approx = 0` `cone_trim_extended_edge` (`TrimExtendedEdge`'s `d3DTol`, ten times the
-tolerance), `gen0775` (one `VertexOffset`) and `gen0651` (`EdgeuseOffset` then
-`VertexOffset`); all 7 pass. (The previous draft had 16 such cases on one built-in per op
+`cone_vertex_offset` (the radius-0 arc, status 1007), `gen0700` (one `FaceuseOffset` of a
+plane, `cone.smb`), `gen0107` (one `VertexOffset`), `gen0012` (`UpdateFaceDomain`,
+`FaceuseOffset` of a plane, `TrimExtendedEdge`, `MateEdges`; 515 values) and `gen0638` (one
+`FaceuseOffset` of `ellips_ts2.smb`'s B-spline face, the one non-planar offset surface among
+them: a plane's offset grid only shifts by the distance); at `approx = 0`
+`cone_trim_extended_edge` (`TrimExtendedEdge`'s `d3DTol`, ten times the tolerance),
+`gen0775` (one `VertexOffset`) and `gen0651` (`EdgeuseOffset` then `VertexOffset`); all 8
+pass. (The previous draft had 16 such cases on one built-in per op
 family; only the two built-ins kept here reached the zero, the others equalled their bases
 or deferred where their bases defer.) HANG-9 (`CreateExtendedSurface` at distance 0) is not reached: the
 executive's extended-surface cache is seeded, and the unit's own calls pass an extension
@@ -9580,6 +9598,22 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
 
 ## curve.curve_p8 (`SmCurve::GlobalCurveIntersect`): Rust runs for minutes where C++ returns at once on a 1e300 control point (found by `offset.offset_geometry_creation`'s fuzz, 2026-10-20)
 
+Draws of `offset.offset_geometry_creation`'s fuzz, each a `trim_extended_edge` script with
+one control point of an `add_curve` 2D cubic moved to about 1e300, where the Rust
+`global_curve_intersect` is far slower than the C++ `GlobalCurveIntersect` on the same input:
+`fuzz01278` and `fuzz00405` below, `fuzz01915` (`gen0330`, 29 s, the stack of instance 2;
+in the unit's fuzz paragraph), and `fuzz00504`, recorded under `curve.curve_p5` ("Cost of
+rebuilding the curve cache per call", PR #149). **Shared explanation:** `curve.curve_p5`'s Caches deviation, where
+`make_curve_cache` builds a fresh curve cache for every caller while upstream's
+`CacheMakeOrValidate` keeps it on the curve until the curve changes. A 1e300 control point
+makes the cache's tessellation (`CurveCache::tessellate` -> `curve_cache::compute_constants`
+-> `LocalSolve1d::solve_it::<FindCurveDistanceExtrema>` -> `BSplineCurve::evaluate`, in
+`curve.curve_cache`) expensive, and the port pays it on every intersection call where C++
+pays it once per curve. Neither instance is an upstream defect (no UB/HANG id) and neither is
+guarded in `offset.offset_geometry_creation`; the fix belongs to the curve cache's owners.
+
+**Instance 1, `fuzz01278` (minutes; a divergence beyond the cost).**
+
 - **Inputs.** `offset.offset_geometry_creation` fuzz draw `fuzz01278` (base `gen0332` on
   `disk.smb`, mutation `/ops/0/curve/cpts/3/1 = 1e+300`): a 2D polynomial cubic (one span,
   control points about `(-0.01, 0.51)`, `(-0.96, 0.51)`, `(0.58, 0.26)`, `(0.80, 1e300)`) added
@@ -9601,10 +9635,30 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   splits in three until the interval is below `ZONE_TOL_3D / 10`: 16 levels, 3^16 leaves,
   each with bounding boxes, polar boxes and evaluations; `MAX_COINCIDENCE_DEPTH` (200) never
   stops it. Measured > 180 s; the fuzz budget is 20 s a side.
-- **Suspected cause.** The curve-cache trees or the `SmCCIGlobalSolver` intersection test
-  disagree on the 1e300 span (the same arithmetic in the polar box would give the same
-  `Unbounded` box on the C++ side, so the difference is before the checker). Not located
-  within the time box; the C++ tree / solver were not instrumented.
-- **Status.** Open. Reproduce with the fuzz output file as a fixture (`fuzz01278` above);
-  no guard was added in `offset.offset_geometry_creation` (the hang is on the Rust side,
-  not an upstream defect, so no UB/HANG id).
+- **Suspected cause.** The shared explanation above makes every cache build on the 1e300
+  curve expensive, but this instance also enters a path C++ does not: the curve-cache trees
+  or the `SmCCIGlobalSolver` intersection test disagree on the 1e300 span (the same
+  arithmetic in the polar box would give the same `Unbounded` box on the C++ side, so the
+  difference is before the checker). Not located within the time box; the C++ tree / solver
+  were not instrumented.
+- **Status.** Open. Reproduce with the fuzz output file as a fixture (`fuzz01278` above).
+
+**Instance 2, `fuzz00405` (36 to 41 s against 5 s; the cost alone).**
+
+- **Inputs.** Fuzz draw `fuzz00405` (base `gen0650` on `surf_sphere150.smb`, `dist 100`,
+  mutations `/ops/0/curve/cpts/3/0 = -1e+300` and `/approx = -1`; the script is
+  `add_curve`, `trim_extended_edge`, `add_curve_from`, `getters`). The FFI refuses the
+  negative tolerance, which the runner now mirrors; the slow path needs only the control
+  point.
+- **Timings** (reviewer's, pod sc-builder-7, the script with the mutated point at each
+  tolerance): `approx = -1` C++ refused in 0.03 s, Rust 36 to 40 s; `approx` at `0`,
+  `1e-300`, `1e-12`, `1e-6`, `1e-4`, `1e-2`: C++ 4.4 to 5.2 s, Rust 36 to 41 s, the values
+  equal; with the point back in range (`x = 0.5`) both sides return in 0.02 s.
+- **Stack** (gdb on the Rust side, 8 s and 22 s in, both samples the same):
+  `OffsetGeometryCreation::trim_extended_edge` -> `Curve::global_curve_intersect` ->
+  `curve::curve::p5::make_curve_cache` -> `CurveCache::tessellate` ->
+  `curve_cache::compute_constants` -> `LocalSolve1d::solve_it::<FindCurveDistanceExtrema>` ->
+  `Curve::evaluate` -> `BSplineCurve::evaluate` -> `nurbs_crv::crv_derivs`: the cache
+  tessellation, before any intersection test, as in `fuzz00504`.
+- **Status.** Open, with `fuzz00504`. Reproduce with the fuzz output file as a fixture and
+  the tolerance set to any accepted value.

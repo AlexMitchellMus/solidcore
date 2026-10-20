@@ -8695,6 +8695,14 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "gen0638_zero_distance",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 375
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "cone_trim_extended_edge_zero_approx",
       "outcome": "pass",
       "pass": true,
@@ -8721,8 +8729,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 433,
   "cases_failed": 0,
-  "cases_passed": 440,
-  "cases_total": 873,
+  "cases_passed": 441,
+  "cases_total": 874,
   "deferred_by_unit": {
     "blend.fillet_standard_solver_p1": 4,
     "curve.crv_on_surf": 25,
