@@ -2394,12 +2394,16 @@ mod tests {
     #[test]
     fn glue_edges_general_reaches_brep_p7() {
         use crate::geom::extent1d::Extent1d;
-        use crate::topology::{Edge, Vertex};
-        // Two distinct edges between the same vertices: the wrapper now runs the part 7
-        // routine, which stops at its first B-rep notify (topology.brep_p2), no longer at
-        // a GlueEdgesGeneral stub of its own; the same edge twice is a no-op upstream.
+        use crate::topology::{
+            Edge, Edgeuse, EdgeuseOwner, Shell, Vertex, Vertexuse, VertexuseOwner,
+        };
+        // Two wire edges between the same vertices: the wrapper now runs the part 7
+        // routine (its first B-rep notify is live since #149), which for a wire edge to
+        // delete stops at `SmBrep::DeleteEdge` (topology.brep_p4), no longer at a
+        // GlueEdgesGeneral stub of its own; the same edge twice is a no-op upstream.
         let mut k = Kernel::default();
         let mut b = Brep::new();
+        let shell = b.add_shell_record(Shell::default()).unwrap();
         let mut vertex = |point| {
             b.add_vertex_record(Vertex {
                 point,
@@ -2408,24 +2412,46 @@ mod tests {
             .unwrap()
         };
         let (a, c) = (vertex(Vec3::ZERO), vertex(Vec3::X));
-        let mut edge = || {
-            b.add_edge_record(Edge {
-                vertices: [a, c],
-                edgeuses: Vec::new(),
-                interval: Extent1d::from_raw(0.0, 1.0),
-                tolerance: 0.0,
-                curve: None,
-            })
-            .unwrap()
+        let mut wire_edge = || {
+            let e = b
+                .add_edge_record(Edge {
+                    vertices: [a, c],
+                    edgeuses: Vec::new(),
+                    interval: Extent1d::from_raw(0.0, 1.0),
+                    tolerance: 0.0,
+                    curve: None,
+                })
+                .unwrap();
+            for (v, orientation) in [(a, OrientType::Same), (c, OrientType::Opposite)] {
+                let eu = b
+                    .add_edgeuse_record(Edgeuse {
+                        edge: Some(e),
+                        owner: EdgeuseOwner::Shell(Some(shell)),
+                        orientation,
+                        ..Edgeuse::default()
+                    })
+                    .unwrap();
+                let vu = b
+                    .add_vertexuse_record(Vertexuse {
+                        vertex: Some(v),
+                        owner: VertexuseOwner::Edgeuse(Some(eu)),
+                        ..Vertexuse::default()
+                    })
+                    .unwrap();
+                b.edgeuse_mut(eu).unwrap().vertexuse = Some(vu);
+                b.vertex_mut(v).unwrap().vertexuses.push(vu);
+                b.edge_mut(e).unwrap().edgeuses.push(eu);
+            }
+            e
         };
-        let (e0, e1) = (edge(), edge());
+        let (e0, e1) = (wire_edge(), wire_edge());
         let err = glue_edges_general(&mut k, &mut b, e0, OrientType::Same, 0.0, false, e1, None)
             .unwrap_err();
         assert!(
             matches!(
                 err,
                 SolidError::Unported {
-                    unit: "topology.brep_p2",
+                    unit: "topology.brep_p4",
                     ..
                 }
             ),
