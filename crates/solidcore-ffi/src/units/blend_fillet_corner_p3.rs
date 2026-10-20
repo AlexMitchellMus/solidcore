@@ -250,7 +250,8 @@ pub fn validate_corner_op(op: Op, input: &[f64]) -> Result<(), FfiError> {
     }
     if op == Op::UpdateSplitFace {
         for _ in 0..2 {
-            rd.opt_index(b.nf)?.ok_or_else(|| bad("split face: face -1"))?;
+            rd.opt_index(b.nf)?
+                .ok_or_else(|| bad("split face: face -1"))?;
         }
     }
     rd.done()
