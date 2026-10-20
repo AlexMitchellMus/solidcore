@@ -10135,6 +10135,462 @@
     "e": 0,
     "expected_rejection": true
    }
+  },
+  {
+   "name": "fif_no_curve_crossing_planes",
+   "upstream_ref": "source/SMLib/src/SmFilletGeom.cpp (CalcFilletIntFillet without a 3D curve: sm_SrfSrfIntersection of two crossing planes makes the edge curve and its UV curves)",
+   "inputs": {
+    "brep": {
+     "kind": "network"
+    },
+    "e": 0,
+    "model": {
+     "edges": [
+      {
+       "corner": 0,
+       "etype": 4,
+       "eus": [
+        {
+         "geom": 0,
+         "tsect": {
+          "cparam": 0.0,
+          "crv": [
+           0.0,
+           0.0,
+           0.0
+          ],
+          "deriv": [
+           0.0,
+           0.0,
+           0.0
+          ],
+          "ptype": 1,
+          "uv": [
+           [
+            0.0,
+            0.0
+           ],
+           [
+            0.0,
+            0.0
+           ]
+          ],
+          "uv_face": -1
+         },
+         "vu_uv": [
+          0.0,
+          0.0
+         ]
+        },
+        {
+         "geom": 1,
+         "tsect": {
+          "cparam": 0.0,
+          "crv": [
+           0.0,
+           0.0,
+           0.0
+          ],
+          "deriv": [
+           0.0,
+           0.0,
+           0.0
+          ],
+          "ptype": 1,
+          "uv": [
+           [
+            0.0,
+            0.0
+           ],
+           [
+            0.0,
+            0.0
+           ]
+          ],
+          "uv_face": -1
+         },
+         "vu_uv": [
+          0.0,
+          0.0
+         ]
+        }
+       ],
+       "status": 0,
+       "ve": 1,
+       "vs": 0
+      }
+     ],
+     "geoms": [
+      {
+       "gtype": 0,
+       "other1": [],
+       "other2": [],
+       "rails": [
+        -1,
+        -1
+       ],
+       "sides": [],
+       "solver": 0,
+       "status": 0,
+       "surface": {
+        "plane": {
+         "n": [
+          0.0,
+          0.0,
+          1.0
+         ],
+         "o": [
+          0.0,
+          0.0,
+          0.0
+         ]
+        }
+       }
+      },
+      {
+       "gtype": 0,
+       "other1": [],
+       "other2": [],
+       "rails": [
+        -1,
+        -1
+       ],
+       "sides": [],
+       "solver": 1,
+       "status": 0,
+       "surface": {
+        "plane": {
+         "n": [
+          0.0,
+          1.0,
+          0.15265302170807504
+         ],
+         "o": [
+          0.0,
+          0.5,
+          0.0
+         ]
+        }
+       }
+      }
+     ],
+     "solvers": [
+      {
+       "ang": 0.04681269205902155,
+       "eus": [
+        -1,
+        -1
+       ],
+       "extend": [
+        false,
+        false
+       ],
+       "setup": false,
+       "surfs": [
+        null,
+        null
+       ],
+       "tang": 0.01,
+       "tol": 1e-06
+      },
+      {
+       "ang": 0.08193309715763843,
+       "eus": [
+        -1,
+        -1
+       ],
+       "extend": [
+        false,
+        false
+       ],
+       "setup": false,
+       "surfs": [
+        null,
+        null
+       ],
+       "tang": 0.01,
+       "tol": 1e-06
+      }
+     ],
+     "vertices": [
+      {
+       "corner": -1,
+       "mates": [
+        -1,
+        -1
+       ],
+       "pc_class": 100,
+       "pc_face": -1,
+       "pc_index": 0,
+       "pc_kind": 0,
+       "point": [
+        0.16215352939411018,
+        0.5,
+        0.0
+       ],
+       "status": 1,
+       "t": 0.0,
+       "uv": [
+        0.0,
+        0.0
+       ],
+       "vtype": 1
+      },
+      {
+       "corner": -1,
+       "mates": [
+        -1,
+        -1
+       ],
+       "pc_class": 100,
+       "pc_face": -1,
+       "pc_index": 0,
+       "pc_kind": 0,
+       "point": [
+        0.6411402887428101,
+        0.5,
+        0.0
+       ],
+       "status": 1,
+       "t": 0.0,
+       "uv": [
+        0.0,
+        0.0
+       ],
+       "vtype": 1
+      }
+     ]
+    },
+    "op": "fillet_int_fillet"
+   }
+  },
+  {
+   "name": "corner_edge_fif_no_curve_tilted_planes_reversed",
+   "upstream_ref": "source/SMLib/src/SmFilletGeom.cpp (CalcCornerEdgeGeom -> CalcFilletIntFillet: crossing planes, tilted second plane, end vertices swapped)",
+   "inputs": {
+    "brep": {
+     "kind": "network"
+    },
+    "e": 0,
+    "model": {
+     "edges": [
+      {
+       "corner": 0,
+       "etype": 4,
+       "eus": [
+        {
+         "geom": 0,
+         "tsect": {
+          "cparam": 0.0,
+          "crv": [
+           0.0,
+           0.0,
+           0.0
+          ],
+          "deriv": [
+           0.0,
+           0.0,
+           0.0
+          ],
+          "ptype": 1,
+          "uv": [
+           [
+            0.0,
+            0.0
+           ],
+           [
+            0.0,
+            0.0
+           ]
+          ],
+          "uv_face": -1
+         },
+         "vu_uv": [
+          0.0,
+          0.0
+         ]
+        },
+        {
+         "geom": 1,
+         "tsect": {
+          "cparam": 0.0,
+          "crv": [
+           0.0,
+           0.0,
+           0.0
+          ],
+          "deriv": [
+           0.0,
+           0.0,
+           0.0
+          ],
+          "ptype": 1,
+          "uv": [
+           [
+            0.0,
+            0.0
+           ],
+           [
+            0.0,
+            0.0
+           ]
+          ],
+          "uv_face": -1
+         },
+         "vu_uv": [
+          0.0,
+          0.0
+         ]
+        }
+       ],
+       "status": 0,
+       "ve": 1,
+       "vs": 0
+      }
+     ],
+     "geoms": [
+      {
+       "gtype": 0,
+       "other1": [],
+       "other2": [],
+       "rails": [
+        -1,
+        -1
+       ],
+       "sides": [],
+       "solver": 0,
+       "status": 0,
+       "surface": {
+        "plane": {
+         "n": [
+          0.0,
+          0.0,
+          1.0
+         ],
+         "o": [
+          0.0,
+          0.0,
+          0.0
+         ]
+        }
+       }
+      },
+      {
+       "gtype": 0,
+       "other1": [],
+       "other2": [],
+       "rails": [
+        -1,
+        -1
+       ],
+       "sides": [],
+       "solver": 1,
+       "status": 0,
+       "surface": {
+        "plane": {
+         "o": [
+          0.0,
+          0.5,
+          0.0
+         ],
+         "n": [
+          0.0,
+          1.0,
+          -0.7
+         ]
+        }
+       }
+      }
+     ],
+     "solvers": [
+      {
+       "ang": 0.04681269205902155,
+       "eus": [
+        -1,
+        -1
+       ],
+       "extend": [
+        false,
+        false
+       ],
+       "setup": false,
+       "surfs": [
+        null,
+        null
+       ],
+       "tang": 0.01,
+       "tol": 1e-06
+      },
+      {
+       "ang": 0.08193309715763843,
+       "eus": [
+        -1,
+        -1
+       ],
+       "extend": [
+        false,
+        false
+       ],
+       "setup": false,
+       "surfs": [
+        null,
+        null
+       ],
+       "tang": 0.01,
+       "tol": 1e-06
+      }
+     ],
+     "vertices": [
+      {
+       "corner": -1,
+       "mates": [
+        -1,
+        -1
+       ],
+       "pc_class": 100,
+       "pc_face": -1,
+       "pc_index": 0,
+       "pc_kind": 0,
+       "point": [
+        0.6411402887428101,
+        0.5,
+        0.0
+       ],
+       "status": 1,
+       "t": 0.0,
+       "uv": [
+        0.0,
+        0.0
+       ],
+       "vtype": 1
+      },
+      {
+       "corner": -1,
+       "mates": [
+        -1,
+        -1
+       ],
+       "pc_class": 100,
+       "pc_face": -1,
+       "pc_index": 0,
+       "pc_kind": 0,
+       "point": [
+        0.16215352939411018,
+        0.5,
+        0.0
+       ],
+       "status": 1,
+       "t": 0.0,
+       "uv": [
+        0.0,
+        0.0
+       ],
+       "vtype": 1
+      }
+     ]
+    },
+    "op": "corner_edge"
+   }
   }
  ]
 }
