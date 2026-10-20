@@ -16,8 +16,9 @@
 // `editing` sets m_bEditingEnabled first. Output: `[status]`, then on success the ten
 // record counts of the B-rep walked again (op 3 adds its four outputs first), then
 // the records of every object of the B-rep after the operation (layout below; op 4
-// outputs the context's DoingBoolean flag after the destructor instead). `[-1]` when
-// the fixture does not build.
+// outputs the context's DoingBoolean flag after the destructor instead). The counts and
+// records are also written after a failed status of ops 0-2 (the B-rep as the failure
+// left it). `[-1]` when the fixture does not build.
 //
 // Records. Every object that existed before the operation is tagged with its index in
 // the first walk (`m_lMarkIO = index + 1`; nothing in the operations touches that
@@ -265,7 +266,11 @@ SC_EXPORT int32_t sc_topology_brep_p4_eval(int32_t op, const char* path, const d
     }
     if (op != 3)
         o.push_back(st(status));
-    if (status == SM_SUCCESS)
+    // The records follow on success and, for the edits (ops 0-2), on a failed status too: a
+    // failure can come after part of the topology changed (`SER(SM_ERR)` after the edge is
+    // gone), and the Rust side must have left the same records. (StitchFaces and the
+    // destructor are not walked after a failure.)
+    if (status == SM_SUCCESS || op <= 2)
     {
         Graph after;
         walk(brep, after, true);

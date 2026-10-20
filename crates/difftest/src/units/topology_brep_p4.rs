@@ -4,9 +4,11 @@
 //! The B-rep comes from the shared fixture (`sc_topology_fixture.h`): the C++ side
 //! builds it, the Rust side imports the `topology.topology_traverser` export of the same
 //! block record by record (with the vertex use lists), so the target indices name the
-//! same objects on both sides. Compared: the status, and on success the ten record
-//! counts of the B-rep afterwards (`StitchFaces` adds its outputs; the destructor its
-//! context flag) and every record of the B-rep, field by field (see [`Rec`]): links
+//! same objects on both sides. Compared: the status, and on success (for the edits also
+//! after a failed status, which can come after part of the topology changed) the ten
+//! record counts of the B-rep afterwards (`StitchFaces` adds its outputs; the
+//! destructor its context flag) and every record of the B-rep, field by field (see
+//! [`Rec`]): links
 //! (labels), lists in their order, orientations, flags, domains, tolerances, points,
 //! intervals, UV points. Cases whose Rust path reaches an unported callee are deferred.
 //!
@@ -121,7 +123,25 @@ fn block(brep: &BrepIn) -> Result<(String, Vec<f64>), HarnessError> {
         BrepIn::Network => v.push(3.0),
     }
     v.extend([0.0, 0.0]);
-    Ok((shared::path_of(brep)?, v))
+    Ok((path_of(brep)?, v))
+}
+
+/// The file of a B-rep: under `TestFiles/pt_TestFiles`, or with the prefix `fixture:`
+/// one of this unit's hand-built files in `fixtures/topology.brep_p4` (struts, a loop
+/// split by a bridge edge, two holes sharing an edge, a face inside a hole, wire paths).
+fn path_of(brep: &BrepIn) -> Result<String, HarnessError> {
+    if let BrepIn::File { file, .. } = brep {
+        if let Some(name) = file.strip_prefix("fixture:") {
+            if name.contains(['/', '\\']) {
+                return Err(err("fixture file names have no directories"));
+            }
+            let p = crate::case::repo_root()
+                .join("fixtures/topology.brep_p4")
+                .join(name);
+            return Ok(p.to_string_lossy().into_owned());
+        }
+    }
+    shared::path_of(brep)
 }
 
 fn request(i: &Inputs) -> Request {
@@ -571,6 +591,14 @@ fn records_output(o: Output, m: &Model) -> Output {
     o.topology(t)
 }
 
+/// The operations whose records are compared after a failed status (the shim's ops 0-2).
+fn edits(op: OpIn) -> bool {
+    matches!(
+        op,
+        OpIn::DeleteEdge | OpIn::DeleteVertex | OpIn::ShrinkGeometry
+    )
+}
+
 fn status_output(status: f64) -> Output {
     Output::new().values("status", vec![status])
 }
@@ -670,7 +698,8 @@ impl UnitDiff for Runner {
             return Ok(status_output(status).values("doing_boolean", rest.to_vec()));
         }
         let mut o = status_output(status);
-        if status == 0.0 {
+        // the records follow a success and, for the edits, a failed status too
+        if status == 0.0 || edits(i.op) {
             // the four outputs of `StitchFaces`, the ten counts, the records
             let n_extra = if i.op == OpIn::StitchFaces { 4 } else { 0 };
             let (extra, rest) = rest.split_at(n_extra.min(rest.len()));
@@ -768,7 +797,21 @@ impl UnitDiff for Runner {
                 canonicalize(&mut model);
                 Ok(records_output(o.ints("counts", counts), &model))
             }
-            Err(e) => rust_status(&e),
+            Err(e) => {
+                // a failed edit leaves the records it changed (the shim walks the B-rep
+                // after a failed status of the edits as well)
+                let o = rust_status(&e)?;
+                if edits(i.op) && matches!(e, SolidError::Upstream { .. }) {
+                    let counts = record_counts(&b)
+                        .iter()
+                        .map(|&n| n as i64)
+                        .collect::<Vec<_>>();
+                    let mut model = rust_records(&b, pre);
+                    canonicalize(&mut model);
+                    return Ok(records_output(o.ints("counts", counts), &model));
+                }
+                Ok(o)
+            }
         }
     }
 
