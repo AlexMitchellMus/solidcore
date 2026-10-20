@@ -710,7 +710,7 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
                 ListKind::Vertices => put_list(&mut o, fp4::vertices(&b, f, None, *tgt_only, t))?,
                 ListKind::Loopuses => put_list(&mut o, fp4::upward_loopuses(&b, f, *tgt_only, t))?,
                 ListKind::Vertexuses => {
-                    put_list(&mut o, fp4::upward_vertexuses(&b, f, *tgt_only, t))?
+                    put_list(&mut o, fp4::upward_vertexuses(&b, f, *tgt_only, t))?;
                 }
                 ListKind::Edgeuses => put_list(&mut o, fp4::upward_edgeuses(&b, f, *tgt_only, t))?,
             }
@@ -823,7 +823,7 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
                     f64::from(s.problem as i32),
                 ]),
                 Err(SolidError::Upstream { code, .. }) => {
-                    o.extend([f64::from(code), -1.0, 0.0, 0.0])
+                    o.extend([f64::from(code), -1.0, 0.0, 0.0]);
                 }
                 Err(e) => return Err(fail(&e)),
             }
