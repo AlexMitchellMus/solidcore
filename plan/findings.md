@@ -10420,7 +10420,7 @@ Current UNPORTED audit for #244 (main batch #259 integrated; 38 symbols / 15 own
 - `blend.fillet_corner_p3` (`todo`): `SmFilletCorner::CalcCornerGeom`, `SmFilletNx2Corner::AdjustTopology`, `SmFilletNx2Corner::AdjustTangentCorner`.
 - `blend.fillet_executive_p1` (`todo`): `SmApiChamferFillet`, `SmApiCircularFillet`, `SmApiFilletEdges`, `SmApiFilletEdgesPerEdge`, `SmApiSetBevelCorners`, `SmApiVariableRadiusFillet`, `SmFilletExecutive::CreateFilletCorners`, `SmFilletExecutive::DoPiecewiseMerge`, `SmFilletExecutive::RemoveTopoEdges`.
 - `blend.fillet_executive_p2` (`todo`): `SmFilletExecutive::ProcessSmoothEdgeSequences`, `SmFilletExecutive::SetFilletBrepEdgeMap`.
-- `blend.fillet_geom_p4` (`todo`): `SmFilletGeom::InsertIntersectionTopology`, `SmFilletGeom::MakeFaceBrep`.
+- `blend.fillet_geom_p4`: none since it merged (#252). `SmFilletGeom::MakeFaceBrep` and `SmFilletGeom::InsertIntersectionTopology` are the required adapters `ExecutiveAccess::make_face_brep` and `insert_geom_topology`, documented as delegating to `FilletBrep::make_face_brep` and `FilletBrep::insert_intersection_topology`. Status handling is unchanged: the `MakeFaceBrep` status is ignored per solver (`:2519`), and `InsertIntersectionTopology` propagates (`SER`, `:3113`).
 - `blend.fillet_geom_p6` (`todo`): `SmFilletGeom::TrimOriginalSurfaces`.
 - `blend.fillet_solver_p1` (`todo`): `SmFilletSolver::TrimRails`.
 - `blend.fillet_solver_p4` (`todo`): `SmFilletSolver::CalcFilletGeom`.
@@ -10525,7 +10525,7 @@ Coverage still establishes zero successful geometric/topological comparisons.
   `GetFilletSolverOfEdgeuse` lookup. It has not been executed or established as
   an upstream defect, so no WR id is reserved. The scripted tangent regression
   now returns repeated first-solver entries; it is not a port of that algorithm.
-- Extended ownership audit: the tags now cover **40 distinct symbols / 16 owners**,
+- Extended ownership audit: the tags now cover **38 distinct symbols / 15 owners**,
   all `todo` in the merged plan; the complete list above includes all new tags.
   Added GetFilletSolvers; added seven derived symbols and two new owners; removed
   no dependency owners. Required-but-owned-elsewhere corner accessors are also
@@ -10583,8 +10583,8 @@ The Opus re-check of 612c6631 is CLEAN. Its runner-error nit is folded in:
 corner or solver; future fixtures must dispatch real derived objects to their
 actual owners. Explicit UNPORTED tags sit on each runner stub body, and the
 complete override-owner tags remain discoverable at the required trait methods.
-The audit counts 40 distinct upstream symbols / 16 owners, including required
-virtual-dispatch targets, not 40 independently implemented stub bodies.
+The audit counts 38 distinct upstream symbols / 15 owners, including required
+virtual-dispatch targets, not 38 independently implemented stub bodies.
 
 Merged origin/main 46ddc4ff (#179 blend.fillet_intersector), preserving both
 `fillet_executive` and `fillet_intersector` exports in the sorted blend module list.
