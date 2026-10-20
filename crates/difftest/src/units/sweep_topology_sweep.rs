@@ -86,13 +86,14 @@ fn unsupported<T>() -> Result<T> {
 struct Model {
     k: Kernel,
     b: Vec<Brep>,
+    records: BTreeMap<ObjectKey, solidcore::topology::topology::Topology>,
     attributes: AttributeStore,
-    notification_records: BTreeMap<ObjectKey, solidcore::topology::topology::Topology>,
     keys: BTreeMap<E, ObjectKey>,
     curve_keys: BTreeMap<EdgeRef, ObjectKey>,
 }
 impl Model {
     fn new(vector: [f64; 3]) -> Result<Self> {
+        use solidcore::error::EntityRef as R;
         let mut b = vec![Brep::new(), Brep::new()];
         for brep in &mut b {
             let region = brep.add_region_record(Region {
@@ -115,10 +116,14 @@ impl Model {
         let mut keys = BTreeMap::new();
         let mut curve_keys = BTreeMap::new();
         for id in 0..64 {
-            keys.insert(
-                entity(id).ok_or_else(|| SolidError::null_pointer("runner"))?,
-                ObjectKey(10_000 + id as u64 * 97),
-            );
+            let entity = entity(id).ok_or_else(|| SolidError::null_pointer("runner"))?;
+            let (brep, local) = match entity {
+                E::Vertex(b, v) => (b, R::Vertex(v)),
+                E::Edge(b, e) => (b, R::Edge(e)),
+                E::Face(b, f) => (b, R::Face(f)),
+                E::Region(b, r) => (b, R::Region(r)),
+            };
+            keys.insert(entity, service_object(brep, local).key);
         }
         for (bid, brep) in b.iter_mut().enumerate() {
             for index in 0..8 {
@@ -157,11 +162,40 @@ impl Model {
         Ok(Self {
             k: Kernel::default(),
             b,
+            records: BTreeMap::new(),
             attributes,
-            notification_records: BTreeMap::new(),
             keys,
             curve_keys,
         })
+    }
+}
+fn service_object(
+    brep: BrepId,
+    entity: solidcore::error::EntityRef,
+) -> solidcore::geom::object::ObjectRef {
+    use solidcore::error::EntityRef as R;
+    use solidcore::geom::assert_array::labels;
+    let (type_code, index) = match entity {
+        R::Brep(id) => (labels::BREP_TYPE, id.index()),
+        R::Region(id) => (labels::REGION_TYPE, id.index()),
+        R::Shell(id) => (labels::SHELL_TYPE, id.index()),
+        R::Face(id) => (labels::FACE_TYPE, id.index()),
+        R::Loop(id) => (labels::LOOP_TYPE, id.index()),
+        R::Edge(id) => (labels::EDGE_TYPE, id.index()),
+        R::Vertex(id) => (labels::VERTEX_TYPE, id.index()),
+        R::Faceuse(id) => (labels::FACEUSE_TYPE, id.index()),
+        R::Loopuse(id) => (labels::LOOPUSE_TYPE, id.index()),
+        R::Edgeuse(id) => (labels::EDGEUSE_TYPE, id.index()),
+        R::Vertexuse(id) => (labels::VERTEXUSE_TYPE, id.index()),
+    };
+    solidcore::geom::object::ObjectRef {
+        type_code,
+        key: ObjectKey(
+            1_000_000
+                + u64::from(brep.index()) * 100_000
+                + (type_code as u64) * 1000
+                + u64::from(index),
+        ),
     }
 }
 impl SweepAccess for Model {
@@ -195,24 +229,16 @@ impl SweepAccess for Model {
             .b
             .get_mut(id.index() as usize)
             .ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
-        let face_objects = |face: FaceId| solidcore::geom::object::ObjectRef {
-            type_code: solidcore::geom::assert_array::labels::FACE_TYPE,
-            key: ObjectKey(100_000 + u64::from(id.index()) * 10_000 + u64::from(face.index()) * 97),
-        };
-        let key_of = |entity: solidcore::EntityRef| {
-            if let solidcore::EntityRef::Face(face) = entity {
-                face_objects(face)
-            } else {
-                super::boolean_topology_intersector_p1::p9_entity_ref(entity)
-            }
-        };
-        let mut notifications = solidcore::topology::edge::NotifyEnv {
-            records: &mut self.notification_records,
+        let face_objects =
+            |face: FaceId| service_object(id, solidcore::error::EntityRef::Face(face));
+        let key_of = |entity| service_object(id, entity);
+        let mut env = solidcore::topology::edge::NotifyEnv {
+            records: &mut self.records,
             attributes: &mut self.attributes,
             context: None,
             key_of: &key_of,
         };
-        body(&mut self.k, brep, &face_objects, &mut notifications)
+        body(&mut self.k, brep, &face_objects, &mut env)
     }
     fn with_breps_mut<T>(
         &mut self,
@@ -245,26 +271,46 @@ impl SweepAccess for Model {
         };
         let src = src.ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
         let dst = dst.ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
-        let face_objects = |face: FaceId| solidcore::geom::object::ObjectRef {
-            type_code: solidcore::geom::assert_array::labels::FACE_TYPE,
-            key: ObjectKey(
-                100_000 + u64::from(destination.index()) * 10_000 + u64::from(face.index()) * 97,
-            ),
-        };
-        let key_of = |entity: solidcore::EntityRef| {
-            if let solidcore::EntityRef::Face(face) = entity {
-                face_objects(face)
-            } else {
-                super::boolean_topology_intersector_p1::p9_entity_ref(entity)
-            }
-        };
-        let mut notifications = solidcore::topology::edge::NotifyEnv {
-            records: &mut self.notification_records,
+        let face_objects =
+            |face: FaceId| service_object(destination, solidcore::error::EntityRef::Face(face));
+        let key_of = |entity| service_object(destination, entity);
+        let mut env = solidcore::topology::edge::NotifyEnv {
+            records: &mut self.records,
             attributes: &mut self.attributes,
             context: None,
             key_of: &key_of,
         };
-        body(&mut self.k, src, dst, &face_objects, &mut notifications)
+        body(&mut self.k, src, dst, &face_objects, &mut env)
+    }
+    fn with_brep_notifications<T>(
+        &mut self,
+        id: BrepId,
+        body: impl FnOnce(&mut Brep, &mut solidcore::topology::edge::NotifyEnv<'_>) -> Result<T>,
+    ) -> Result<T> {
+        let brep = self
+            .b
+            .get_mut(id.index() as usize)
+            .ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
+        let key_of = |entity| service_object(id, entity);
+        let mut env = solidcore::topology::edge::NotifyEnv {
+            records: &mut self.records,
+            attributes: &mut self.attributes,
+            context: Some(&mut self.k.context),
+            key_of: &key_of,
+        };
+        body(brep, &mut env)
+    }
+    fn retain_hcr(&mut self, _: BrepId, _: solidcore::blend::hcr::Hcr) -> Result<BrepId> {
+        Err(SolidError::invalid_input(
+            "sweep test model",
+            "fixture has no retained HCR service",
+        ))
+    }
+    fn hcr_session(&self, _: BrepId) -> Result<&solidcore::blend::hcr::Hcr> {
+        Err(SolidError::invalid_input(
+            "sweep test model",
+            "fixture has no retained HCR service",
+        ))
     }
     fn new_brep(&mut self, _id: BrepId) -> Result<BrepId> {
         unsupported()
@@ -339,9 +385,10 @@ impl SweepAccess for Model {
         unsupported()
     }
 }
-fn rust(i: &Input) -> Result<Vec<i64>> {
+fn rust(i: &Input) -> Result<Output> {
     let mut s = TopologySweep::default();
     let mut out = Vec::new();
+    let mut values = Vec::new();
     let mut model = Model::new(i.vector)?;
     let g = match i.kind {
         0 => SweepGeometry::Base(SweepGeometryCreation::default()),
@@ -362,6 +409,7 @@ fn rust(i: &Input) -> Result<Vec<i64>> {
         let b = entity(bi);
         let mut keep = true;
         let mut distance = -123.;
+        let mut frame = [0.0; 12];
         let result = match op {
             0 => {
                 s.set_same(a, b);
@@ -400,8 +448,24 @@ fn rust(i: &Input) -> Result<Vec<i64>> {
                 keep = false;
                 g.is_sweep_closed(arg as u64).map(|v| keep = v)
             }
-            8 => g.start_coord_system(Point3::ZERO).map(|_| ()),
-            9 => g.sweep_transform().map(|_| ()),
+            8 | 9 => {
+                let result = if op == 8 {
+                    g.start_coord_system(Point3::ZERO)
+                } else {
+                    g.sweep_transform()
+                };
+                result.map(|placement| {
+                    let v = [
+                        placement.origin(),
+                        placement.x_axis(),
+                        placement.y_axis(),
+                        placement.z_axis(),
+                    ];
+                    for (out, p) in frame.as_chunks_mut::<3>().0.iter_mut().zip(v) {
+                        out.copy_from_slice(&[p.x, p.y, p.z]);
+                    }
+                })
+            }
             10 | 11 => {
                 let Some(E::Vertex(b, v)) = a else {
                     return unsupported();
@@ -472,6 +536,8 @@ fn rust(i: &Input) -> Result<Vec<i64>> {
             Err(err) => status(&err),
         };
         out.extend([status, i64::from(keep), distance as i64]);
+        values.push(distance);
+        values.extend(frame);
     }
     out.extend([
         i64::from(s.do_tagging),
@@ -495,7 +561,7 @@ fn rust(i: &Input) -> Result<Vec<i64>> {
         out.push(i64::from(tag.is_some()));
         out.extend(tag.unwrap_or_default().to_array());
     }
-    Ok(out)
+    Ok(Output::new().ints("state", out).values("geometry", values))
 }
 impl UnitDiff for Runner {
     fn id(&self) -> &'static str {
@@ -503,14 +569,18 @@ impl UnitDiff for Runner {
     }
     fn run_cpp(&self, c: &Case) -> std::result::Result<Output, HarnessError> {
         let i: Input = c.parse()?;
-        solidcore_ffi::units::sweep_topology_sweep::eval(&i.steps, i.vector, i.kind)
-            .map(|v| Output::new().ints("state", v))
+        solidcore_ffi::units::sweep_topology_sweep::eval_with_values(&i.steps, i.vector, i.kind)
+            .map(|(state, values)| {
+                Output::new()
+                    .ints("state", state)
+                    .values("geometry", values)
+            })
             .map_err(|e| HarnessError::new(e.to_string()))
     }
     fn run_rust(&self, c: &Case) -> std::result::Result<Output, HarnessError> {
         let i: Input = c.parse()?;
         Ok(match rust(&i) {
-            Ok(v) => Output::new().ints("state", v),
+            Ok(output) => output,
             Err(e) => Output::unported(&e).unwrap_or_else(|| Output::err(e.to_string())),
         })
     }
@@ -603,7 +673,7 @@ mod tests {
         assert!(matches!(
             model.remove_all_topology(brep),
             Err(SolidError::Unported {
-                unit: "topology.brep_p5",
+                unit: "topology.brep_p2",
                 ..
             })
         ));
@@ -623,7 +693,7 @@ mod tests {
         assert!(matches!(
             model.copy_edges(source, &[EdgeId::from_index(0)], destination),
             Err(SolidError::Unported {
-                unit: "topology.brep_p5",
+                unit: "topology.brep_p1",
                 ..
             })
         ));
@@ -676,10 +746,160 @@ mod tests {
         assert!(matches!(
             model.make_face(input),
             Err(SolidError::Unported {
-                unit: "topology.brep_p9",
+                unit: "topology.brep_p2",
                 ..
             })
         ));
+        Ok(())
+    }
+    #[test]
+    fn new_defaults_reach_real_ports_and_restore_context_on_stitch_error() -> Result<()> {
+        use solidcore::geom::axis2_placement::Axis2Placement;
+        let mut model = Model::new([1., 0., 0.])?;
+        let b = BrepId::from_index(0);
+        let region = model.infinite_region(b)?;
+        assert!(matches!(
+            model.make_shell_vertex((b, region), Point3::ZERO),
+            Err(SolidError::Unported {
+                upstream: "SmBrep::MakeShellVertexTopology",
+                unit: "topology.brep_p2"
+            })
+        ));
+        let face = model.b[0].add_face_record(Face::new(ShellId::from_index(0)))?;
+        assert!(matches!(
+            model.make_vertex_loop((b, face), Point3::ZERO),
+            Err(SolidError::Unported {
+                upstream: "SmFace::Notify",
+                ..
+            })
+        ));
+        let edge = model.b[0].edge(EdgeId::from_index(0))?;
+        let curve = edge
+            .curve
+            .clone()
+            .ok_or_else(|| SolidError::null_pointer("test"))?;
+        let interval = edge.interval;
+        assert!(matches!(
+            model.make_edge_in_face(
+                (b, face),
+                (BrepId::from_index(1), VertexId::from_index(0)),
+                (BrepId::from_index(1), VertexId::from_index(1)),
+                curve.clone(),
+                None,
+                interval,
+                OrientType::Same,
+                0.375
+            ),
+            Err(SolidError::Upstream {
+                code: solidcore::error::SM_ERR,
+                ..
+            })
+        ));
+        model.b[0].set_editing_enabled(true);
+        let uv_line = solidcore::curve::curve::Curve::from(
+            solidcore::curve::line::Line::create_line_segment(2, Point3::ZERO, Point3::X, None)?,
+        );
+        assert!(matches!(
+            model.make_edge_in_face(
+                (b, face),
+                (b, VertexId::from_index(0)),
+                (b, VertexId::from_index(1)),
+                curve,
+                Some(uv_line),
+                interval,
+                OrientType::Same,
+                0.375
+            ),
+            Err(SolidError::Unported {
+                upstream: "SmFace::FindVertexSector",
+                unit: "topology.face_p4"
+            })
+        ));
+        model.b[0].set_editing_enabled(false);
+        assert!(!model.has_lamina_edge((b, face))?);
+        assert!(model.remove_faces(b, &[]).is_err());
+        model.b[0].set_editing_enabled(true);
+        let old_mark = model.k.context.current_mark(MarkType::Mark);
+        model.remove_faces(b, &[])?;
+        assert_ne!(model.k.context.current_mark(MarkType::Mark), old_mark);
+        assert!(!model.k.context.is_mark_locked(MarkType::Mark));
+        model.transform(b, Axis2Placement::default())?;
+        assert!(matches!(
+            model.hcr(b, Axis2Placement::default(), 0.001, 0.1, false, false, true),
+            Err(SolidError::Unported {
+                upstream: "SmBrep::SmBrep(const SmBrep&)",
+                unit: "topology.brep_p3"
+            })
+        ));
+        model.b[0].set_editing_enabled(false);
+        model.k.context.set_doing_boolean(false);
+        assert!(matches!(
+            model.stitch(b, &mut TopologySweep::default(), 0.125, false),
+            Err(SolidError::Unported {
+                upstream: "SmBrep::Notify",
+                unit: "topology.brep_p2"
+            })
+        ));
+        assert!(!model.b[0].editing_enabled());
+        assert!(!model.k.context.doing_boolean());
+        Ok(())
+    }
+
+    #[test]
+    fn face_tolerance_uses_owning_kernel_conversion_and_grows_boundaries() -> Result<()> {
+        use solidcore::topology::{Loopuse, LoopuseStart, Vertexuse};
+        for (input, expected) in [
+            (-0.25, 0.25),
+            (solidcore::geom::tol::USE_DEFAULT, 0.125),
+            (0.03125, 0.03125),
+        ] {
+            let mut model = Model::new([1., 0., 0.])?;
+            model.k.tolerances.zone_tol_3d = 0.125;
+            let b = BrepId::from_index(0);
+            let brep = &mut model.b[0];
+            let edge = EdgeId::from_index(0);
+            let v1 = VertexId::from_index(0);
+            let v2 = VertexId::from_index(1);
+            let vu1 = brep.add_vertexuse_record(Vertexuse {
+                vertex: Some(v1),
+                ..Vertexuse::default()
+            })?;
+            let vu2 = brep.add_vertexuse_record(Vertexuse {
+                vertex: Some(v2),
+                ..Vertexuse::default()
+            })?;
+            let eu1 = brep.add_edgeuse_record(Edgeuse {
+                edge: Some(edge),
+                vertexuse: Some(vu1),
+                ..Edgeuse::default()
+            })?;
+            let eu2 = brep.add_edgeuse_record(Edgeuse {
+                edge: Some(edge),
+                vertexuse: Some(vu2),
+                ..Edgeuse::default()
+            })?;
+            brep.edgeuse_mut(eu1)?.orientation = OrientType::Same;
+            brep.edgeuse_mut(eu2)?.orientation = OrientType::Opposite;
+            brep.edgeuse_mut(eu1)?.ccw = Some(eu1);
+            brep.edge_mut(edge)?.edgeuses = vec![eu1, eu2];
+            let lu = brep.add_loopuse_record(Loopuse {
+                start: LoopuseStart::Edgeuse(Some(eu1)),
+                ..Loopuse::default()
+            })?;
+            let fu = brep.add_faceuse_record(Faceuse {
+                loopuses: vec![lu],
+                ..Faceuse::default()
+            })?;
+            let face = brep.add_face_record(Face {
+                faceuse: Some(fu),
+                ..Face::new(ShellId::from_index(0))
+            })?;
+            model.set_face_tolerance((b, face), input)?;
+            assert_eq!(model.b[0].face(face)?.tolerance, expected);
+            assert_eq!(model.b[0].edge(edge)?.tolerance, expected);
+            assert_eq!(model.b[0].vertex(v1)?.tolerance, expected);
+            assert_eq!(model.b[0].vertex(v2)?.tolerance, expected);
+        }
         Ok(())
     }
     #[test]

@@ -876,7 +876,7 @@ impl TopologySweep {
                         original,
                         wire_brep,
                         tolerance,
-                        20.0 * crate::math::PI / 180.0,
+                        20.0 * (crate::math::PI / 180.0),
                         SweepAccess::union,
                     )?;
                     // Successful ManifoldBoolean deletes its other B-rep. Do not
@@ -1013,7 +1013,7 @@ impl TopologySweep {
             original,
             inverse,
             0.001,
-            5.0 * crate::math::PI / 180.0,
+            5.0 * (crate::math::PI / 180.0),
             false,
             false,
             true,
@@ -1223,34 +1223,14 @@ mod tests {
     use crate::sweep::trans_sweep_geometry::TranslationalSweepGeometry;
     use crate::topology::{Brep, BrepId, EdgeId, FaceId, Region, RegionId, ShellId};
 
-    fn notification_object(entity: crate::EntityRef) -> crate::geom::object::ObjectRef {
-        let (kind, index) = match entity {
-            crate::EntityRef::Brep(v) => (16011, v.index()),
-            crate::EntityRef::Shell(v) => (16013, v.index()),
-            crate::EntityRef::Face(v) => (16002, v.index()),
-            crate::EntityRef::Loop(v) => (16003, v.index()),
-            crate::EntityRef::Edge(v) => (16016, v.index()),
-            crate::EntityRef::Vertex(v) => (16021, v.index()),
-            crate::EntityRef::Region(v) => (16012, v.index()),
-            crate::EntityRef::Faceuse(v) => (16022, v.index()),
-            crate::EntityRef::Loopuse(v) => (16004, v.index()),
-            crate::EntityRef::Edgeuse(v) => (16005, v.index()),
-            crate::EntityRef::Vertexuse(v) => (16006, v.index()),
-        };
-        crate::geom::object::ObjectRef {
-            key: crate::geom::attribute::ObjectKey((kind as u64) << 32 | u64::from(index)),
-            type_code: kind,
-        }
-    }
-
     #[derive(Default)]
     struct Access {
-        kernel: Kernel,
-        notification_records: std::collections::BTreeMap<
+        records: std::collections::BTreeMap<
             crate::geom::attribute::ObjectKey,
             crate::topology::topology::Topology,
         >,
-        notification_attributes: crate::geom::attribute::AttributeStore,
+        attributes: crate::geom::attribute::AttributeStore,
+        kernel: Kernel,
         breps: Vec<Brep>,
         deleted: Vec<BrepId>,
         deleted_merges: usize,
@@ -1268,6 +1248,35 @@ mod tests {
             let mut access = Self::default();
             access.new_brep(BrepId::from_index(0)).unwrap();
             access
+        }
+    }
+    fn service_object(
+        brep: BrepId,
+        entity: crate::error::EntityRef,
+    ) -> crate::geom::object::ObjectRef {
+        use crate::error::EntityRef as R;
+        use crate::geom::assert_array::labels;
+        let (type_code, index) = match entity {
+            R::Brep(id) => (labels::BREP_TYPE, id.index()),
+            R::Region(id) => (labels::REGION_TYPE, id.index()),
+            R::Shell(id) => (labels::SHELL_TYPE, id.index()),
+            R::Face(id) => (labels::FACE_TYPE, id.index()),
+            R::Loop(id) => (labels::LOOP_TYPE, id.index()),
+            R::Edge(id) => (labels::EDGE_TYPE, id.index()),
+            R::Vertex(id) => (labels::VERTEX_TYPE, id.index()),
+            R::Faceuse(id) => (labels::FACEUSE_TYPE, id.index()),
+            R::Loopuse(id) => (labels::LOOPUSE_TYPE, id.index()),
+            R::Edgeuse(id) => (labels::EDGEUSE_TYPE, id.index()),
+            R::Vertexuse(id) => (labels::VERTEXUSE_TYPE, id.index()),
+        };
+        crate::geom::object::ObjectRef {
+            type_code,
+            key: crate::geom::attribute::ObjectKey(
+                1_000_000
+                    + u64::from(brep.index()) * 100_000
+                    + (type_code as u64) * 1000
+                    + u64::from(index),
+            ),
         }
     }
     impl SweepAccess for Access {
@@ -1305,26 +1314,16 @@ mod tests {
                 .breps
                 .get_mut(id.index() as usize)
                 .ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
-            let face_objects = |face: FaceId| crate::geom::object::ObjectRef {
-                type_code: crate::geom::assert_array::labels::FACE_TYPE,
-                key: crate::geom::attribute::ObjectKey(
-                    100_000 + u64::from(id.index()) * 10_000 + u64::from(face.index()) * 97,
-                ),
-            };
-            let key_of = |entity: crate::EntityRef| {
-                if let crate::EntityRef::Face(face) = entity {
-                    face_objects(face)
-                } else {
-                    notification_object(entity)
-                }
-            };
-            let mut notifications = edge::NotifyEnv {
-                records: &mut self.notification_records,
-                attributes: &mut self.notification_attributes,
+            let face_objects =
+                |face: FaceId| service_object(id, crate::error::EntityRef::Face(face));
+            let key_of = |entity| service_object(id, entity);
+            let mut env = edge::NotifyEnv {
+                records: &mut self.records,
+                attributes: &mut self.attributes,
                 context: None,
                 key_of: &key_of,
             };
-            body(&mut self.kernel, brep, &face_objects, &mut notifications)
+            body(&mut self.kernel, brep, &face_objects, &mut env)
         }
         fn with_breps_mut<T>(
             &mut self,
@@ -1357,34 +1356,46 @@ mod tests {
             };
             let src = src.ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
             let dst = dst.ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
-            let face_objects = |face: FaceId| crate::geom::object::ObjectRef {
-                type_code: crate::geom::assert_array::labels::FACE_TYPE,
-                key: crate::geom::attribute::ObjectKey(
-                    100_000
-                        + u64::from(destination.index()) * 10_000
-                        + u64::from(face.index()) * 97,
-                ),
-            };
-            let key_of = |entity: crate::EntityRef| {
-                if let crate::EntityRef::Face(face) = entity {
-                    face_objects(face)
-                } else {
-                    notification_object(entity)
-                }
-            };
-            let mut notifications = edge::NotifyEnv {
-                records: &mut self.notification_records,
-                attributes: &mut self.notification_attributes,
+            let face_objects =
+                |face: FaceId| service_object(destination, crate::error::EntityRef::Face(face));
+            let key_of = |entity| service_object(destination, entity);
+            let mut env = edge::NotifyEnv {
+                records: &mut self.records,
+                attributes: &mut self.attributes,
                 context: None,
                 key_of: &key_of,
             };
-            body(
-                &mut self.kernel,
-                src,
-                dst,
-                &face_objects,
-                &mut notifications,
-            )
+            body(&mut self.kernel, src, dst, &face_objects, &mut env)
+        }
+        fn with_brep_notifications<T>(
+            &mut self,
+            id: BrepId,
+            body: impl FnOnce(&mut Brep, &mut edge::NotifyEnv<'_>) -> Result<T>,
+        ) -> Result<T> {
+            let brep = self
+                .breps
+                .get_mut(id.index() as usize)
+                .ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
+            let key_of = |entity| service_object(id, entity);
+            let mut env = edge::NotifyEnv {
+                records: &mut self.records,
+                attributes: &mut self.attributes,
+                context: Some(&mut self.kernel.context),
+                key_of: &key_of,
+            };
+            body(brep, &mut env)
+        }
+        fn retain_hcr(&mut self, _: BrepId, _: crate::blend::hcr::Hcr) -> Result<BrepId> {
+            Err(SolidError::invalid_input(
+                "sweep test model",
+                "fixture has no retained HCR service",
+            ))
+        }
+        fn hcr_session(&self, _: BrepId) -> Result<&crate::blend::hcr::Hcr> {
+            Err(SolidError::invalid_input(
+                "sweep test model",
+                "fixture has no retained HCR service",
+            ))
         }
         fn new_brep(&mut self, _: BrepId) -> Result<BrepId> {
             let id = BrepId::from_index(self.breps.len() as u32);
@@ -1734,7 +1745,6 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(access.deleted_merges, 1);
     }
-
     #[test]
     fn stitch_default_calls_port_and_restores_caller_state() {
         let mut access = Access::new();

@@ -252,6 +252,40 @@ impl SweepAccess for EmptyModel {
         // This fixture has one B-rep; no distinct pair can be resolved.
         unavailable()
     }
+    fn with_brep_notifications<T>(
+        &mut self,
+        id: BrepId,
+        body: impl FnOnce(&mut Brep, &mut solidcore::topology::edge::NotifyEnv<'_>) -> Result<T>,
+    ) -> Result<T> {
+        if id != BrepId::from_index(0) {
+            return unavailable();
+        }
+        let key_of = |entity: solidcore::EntityRef| {
+            if let solidcore::EntityRef::Face(face) = entity {
+                solidcore::geom::object::ObjectRef {
+                    type_code: solidcore::geom::assert_array::labels::FACE_TYPE,
+                    key: solidcore::geom::attribute::ObjectKey(
+                        100_000 + u64::from(face.index()) * 97,
+                    ),
+                }
+            } else {
+                super::boolean_topology_intersector_p1::p9_entity_ref(entity)
+            }
+        };
+        let mut env = solidcore::topology::edge::NotifyEnv {
+            records: &mut self.notification_records,
+            attributes: &mut self.notification_attributes,
+            context: Some(&mut self.k.context),
+            key_of: &key_of,
+        };
+        body(&mut self.b, &mut env)
+    }
+    fn retain_hcr(&mut self, _: BrepId, _: solidcore::blend::hcr::Hcr) -> Result<BrepId> {
+        unavailable()
+    }
+    fn hcr_session(&self, _: BrepId) -> Result<&solidcore::blend::hcr::Hcr> {
+        unavailable()
+    }
     fn new_brep(&mut self, _: BrepId) -> Result<BrepId> {
         unavailable()
     }

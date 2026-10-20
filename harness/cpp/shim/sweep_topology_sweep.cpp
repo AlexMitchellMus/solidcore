@@ -27,8 +27,8 @@ struct ScSweep : SmTopologySweep {
 };
 
 SC_EXPORT int32_t sc_sweep_topology_sweep_eval(const int64_t* steps, int64_t n,
- const double* vector, int64_t kind, int64_t* out, int64_t cap, int64_t* len) {
-    if (!steps || !vector || !len || n<0 || n>256 || kind<0 || kind>2) return SC_ERR_ARG;
+ const double* vector, int64_t kind, int64_t* out, int64_t cap, int64_t* len, double* values, int64_t value_cap) {
+    if (!steps || !vector || !len || !values || n<0 || n>256 || value_cap < n*13 || kind<0 || kind>2) return SC_ERR_ARG;
     for(int j=0;j<3;++j) if(!std::isfinite(vector[j])) return SC_ERR_ARG;
     for(int64_t i=0;i<n;++i) {
         auto p=steps+4*i;
@@ -68,6 +68,7 @@ SC_EXPORT int32_t sc_sweep_topology_sweep_eval(const int64_t* steps, int64_t n,
     for(int64_t i=0;i<n;++i) {
         auto p=steps+4*i; SmStatus status=SM_SUCCESS; SmBoolean keep=TRUE; double distance=-123;
         auto a=get(p[1]); auto b=get(p[2]);
+        SmAxis2Placement frame; bool has_frame=false;
         switch(p[0]) {
             case 0:sweep.SetSame(a,b);break;
             case 1:sweep.SetHigher(a,b);break;
@@ -77,8 +78,8 @@ SC_EXPORT int32_t sc_sweep_topology_sweep_eval(const int64_t* steps, int64_t n,
             case 5:maps(p[3])->Insert(a,b);break;
             case 6:sweep.SetRepetitions(p[3]);break;
             case 7:{SmBoolean closed=TRUE;status=g->IsSweepClosed(p[3],closed);keep=closed;break;}
-            case 8:{SmAxis2Placement frame;status=g->GetStartCoordSystem(SmPoint3d(0,0,0),frame);break;}
-            case 9:{SmAxis2Placement frame;status=g->GetSweepTransform(frame);break;}
+            case 8:{status=g->GetStartCoordSystem(SmPoint3d(0,0,0),frame);has_frame=status==SM_SUCCESS;break;}
+            case 9:{status=g->GetSweepTransform(frame);has_frame=status==SM_SUCCESS;break;}
             case 10:{SmTArray<SmVertex*> vs;vs.Add((SmVertex*)a);status=sweep.DoSweepVerticesSame(target.GetInfiniteRegion(),vs);break;}
             case 11:{SmTArray<SmVertex*> vs;vs.Add((SmVertex*)a);status=sweep.DoSweepVerticesHigher(target.GetInfiniteRegion(),vs);break;}
             case 15:{
@@ -92,6 +93,12 @@ SC_EXPORT int32_t sc_sweep_topology_sweep_eval(const int64_t* steps, int64_t n,
             case 14:{SmTArray<SmEdge*> es;es.Add((SmEdge*)a);es.Add((SmEdge*)b);status=sweep.TagProfile(NULL,&es,NULL,NULL,NULL,NULL);break;}
             case 13:status=sweep.DoSweep(NULL,NULL);break;
             case 12:sweep.SetTagging(p[3]%2!=0,p[3]);sweep.SetDoMerge(p[3]%2!=0);sweep.SetDoStitching((p[3]/2)%2!=0);break;
+        }
+        auto output_values=values+13*i; output_values[0]=distance;
+        for(int j=1;j<13;++j) output_values[j]=0.0;
+        if(has_frame) {
+            auto origin=frame.GetOrigin();auto x=frame.GetXAxis();auto y=frame.GetYAxis();auto z=frame.GetZAxis();
+            int j=1;for(auto v : {origin,x,y,z}) { output_values[j++]=v[0];output_values[j++]=v[1];output_values[j++]=v[2]; }
         }
         result.push_back(status==SM_SUCCESS ? 0 : status);result.push_back(keep);result.push_back(distance);
     }
