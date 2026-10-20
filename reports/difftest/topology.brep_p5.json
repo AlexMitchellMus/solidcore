@@ -299,8 +299,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::TurnToNURBS",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::GetVertices",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "nonuniform_deferred_kind0",
@@ -311,8 +311,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::TurnToNURBS",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::GetVertices",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "reflection_deferred_kind0",
@@ -431,8 +431,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::TurnToNURBS",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::GetVertices",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "nonuniform_deferred_kind1",
@@ -443,8 +443,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::TurnToNURBS",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::GetVertices",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "reflection_deferred_kind1",
@@ -551,8 +551,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::TurnToNURBS",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::GetVertices",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "nonuniform_deferred_kind2",
@@ -563,8 +563,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::TurnToNURBS",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::GetVertices",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "reflection_deferred_kind2",
@@ -631,8 +631,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::TurnToNURBS",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::GetVertices",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "identity_scale_delta_1e-11",
@@ -6620,8 +6620,7 @@
   "cases_passed": 738,
   "cases_total": 797,
   "deferred_by_unit": {
-    "topology.brep_p1": 38,
-    "topology.brep_p3": 7,
+    "topology.brep_p1": 45,
     "topology.brep_p4": 12,
     "topology.brep_p9": 2
   },

@@ -138,16 +138,12 @@
       "values_compared": 511
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "copyv_Mouse_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#16 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 0
+      "values_compared": 537
     },
     {
       "deferred": {
@@ -238,16 +234,12 @@
       "values_compared": 91
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "copyv_Endcap_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#26 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 0
+      "values_compared": 117
     },
     {
       "max_rel_err": 0.0,
@@ -330,16 +322,12 @@
       "values_compared": 1120
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "copyv_box_with_large_fillet_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#36 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 0
+      "values_compared": 1146
     },
     {
       "deferred": {
@@ -430,16 +418,12 @@
       "values_compared": 149
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "copyv_cone_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#46 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 0
+      "values_compared": 175
     },
     {
       "max_rel_err": 0.0,
@@ -514,16 +498,12 @@
       "values_compared": 121
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "copyv_disk_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#56 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 0
+      "values_compared": 147
     },
     {
       "deferred": {
@@ -614,16 +594,12 @@
       "values_compared": 751
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "copyv_ellips_ts2_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#66 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 0
+      "values_compared": 777
     },
     {
       "max_rel_err": 0.0,
@@ -698,16 +674,12 @@
       "values_compared": 91
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "copyv_plane_circ_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#76 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 0
+      "values_compared": 117
     },
     {
       "deferred": {
@@ -790,16 +762,12 @@
       "values_compared": 181
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "copyv_plane_square_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#86 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 0
+      "values_compared": 207
     },
     {
       "deferred": {
@@ -890,16 +858,12 @@
       "values_compared": 134
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "copyv_sphere_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#96 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 0
+      "values_compared": 160
     },
     {
       "max_rel_err": 0.0,
@@ -982,16 +946,12 @@
       "values_compared": 181
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "copyv_surf_extrude_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#106 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 0
+      "values_compared": 207
     },
     {
       "max_rel_err": 0.0,
@@ -1074,16 +1034,12 @@
       "values_compared": 181
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "copyv_surf_rev_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#116 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 0
+      "values_compared": 207
     },
     {
       "max_rel_err": 0.0,
@@ -1166,16 +1122,12 @@
       "values_compared": 121
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "copyv_surf_sphere150_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#126 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 0
+      "values_compared": 147
     },
     {
       "max_rel_err": 0.0,
@@ -1258,16 +1210,12 @@
       "values_compared": 190
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "copyv_torus_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#136 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 0
+      "values_compared": 216
     },
     {
       "max_rel_err": 0.0,
@@ -1350,16 +1298,12 @@
       "values_compared": 190
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "copyv_toruswvy_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#146 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 0
+      "values_compared": 216
     },
     {
       "max_rel_err": 0.0,
@@ -1442,16 +1386,12 @@
       "values_compared": 178
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "copyv_vase_rev_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#156 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 0
+      "values_compared": 204
     },
     {
       "max_rel_err": 0.0,
@@ -1526,16 +1466,12 @@
       "values_compared": 180
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "copyv_net_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#166 (upstream source/SMLib/src/SmBrep.cpp (CopyVertices))",
-      "values_compared": 0
+      "values_compared": 206
     },
     {
       "max_rel_err": 0.0,
@@ -1931,8 +1867,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_Mouse_e1_d0",
@@ -1943,8 +1879,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_Mouse_e1_d1",
@@ -1955,8 +1891,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_Mouse_e1_nonest",
@@ -1966,52 +1902,36 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_Mouse_e0_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#6 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 482
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_Mouse_e1_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#7 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 482
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_Mouse_e0_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#8 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 482
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_Mouse_e1_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#9 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 482
     },
     {
       "max_rel_err": 0.0,
@@ -2055,8 +1975,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_Endcap_e1_d0",
@@ -2067,8 +1987,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_Endcap_e1_d1",
@@ -2079,8 +1999,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_Endcap_e1_nonest",
@@ -2163,8 +2083,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_box_with_large_fillet_e1_d0",
@@ -2175,8 +2095,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_box_with_large_fillet_e1_d1",
@@ -2187,8 +2107,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_box_with_large_fillet_e1_nonest",
@@ -2198,52 +2118,36 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_box_with_large_fillet_e0_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#30 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 1091
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_box_with_large_fillet_e1_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#31 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 1091
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_box_with_large_fillet_e0_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#32 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 1091
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_box_with_large_fillet_e1_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#33 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 1091
     },
     {
       "max_rel_err": 0.0,
@@ -2254,16 +2158,12 @@
       "values_compared": 1123
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_box_with_large_fillet_e1_w2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#35 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 1091
     },
     {
       "max_rel_err": 0.0,
@@ -2291,8 +2191,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_cone_e1_d0",
@@ -2303,8 +2203,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_cone_e1_d1",
@@ -2315,8 +2215,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_cone_e1_nonest",
@@ -2326,16 +2226,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_cone_e0_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#42 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 120
     },
     {
       "max_rel_err": 0.0,
@@ -2346,16 +2242,12 @@
       "values_compared": 152
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_cone_e0_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#44 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 120
     },
     {
       "max_rel_err": 0.0,
@@ -2366,16 +2258,12 @@
       "values_compared": 152
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_cone_e0_w2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#46 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 120
     },
     {
       "max_rel_err": 0.0,
@@ -2411,8 +2299,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_disk_e1_d0",
@@ -2423,8 +2311,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_disk_e1_d1",
@@ -2435,8 +2323,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_disk_e1_nonest",
@@ -2446,76 +2334,52 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_disk_e0_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#54 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 120
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_disk_e1_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#55 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 120
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_disk_e0_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#56 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 120
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_disk_e1_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#57 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 120
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_disk_e0_w2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#58 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 120
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_disk_e1_w2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#59 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 120
     },
     {
       "max_rel_err": 0.0,
@@ -2543,8 +2407,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_ellips_ts2_e1_d0",
@@ -2555,8 +2419,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_ellips_ts2_e1_d1",
@@ -2567,8 +2431,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_ellips_ts2_e1_nonest",
@@ -2578,52 +2442,36 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_ellips_ts2_e0_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#66 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 750
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_ellips_ts2_e1_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#67 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 750
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_ellips_ts2_e0_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#68 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 750
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_ellips_ts2_e1_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#69 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 750
     },
     {
       "max_rel_err": 0.0,
@@ -2634,16 +2482,12 @@
       "values_compared": 754
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_ellips_ts2_e1_w2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#71 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 750
     },
     {
       "max_rel_err": 0.0,
@@ -2671,8 +2515,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_plane_circ_e1_d0",
@@ -2683,8 +2527,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_plane_circ_e1_d1",
@@ -2695,8 +2539,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_plane_circ_e1_nonest",
@@ -2779,8 +2623,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_plane_square_e1_d0",
@@ -2791,8 +2635,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_plane_square_e1_d1",
@@ -2803,8 +2647,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_plane_square_e1_nonest",
@@ -2814,52 +2658,36 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_plane_square_e0_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#90 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_plane_square_e1_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#91 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_plane_square_e0_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#92 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_plane_square_e1_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#93 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -2870,16 +2698,12 @@
       "values_compared": 184
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_plane_square_e1_w2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#95 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -2907,8 +2731,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_sphere_e1_d0",
@@ -2919,8 +2743,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_sphere_e1_d1",
@@ -2931,8 +2755,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_sphere_e1_nonest",
@@ -2942,76 +2766,52 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_sphere_e0_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#102 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 121
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_sphere_e1_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#103 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 121
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_sphere_e0_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#104 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 121
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_sphere_e1_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#105 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 121
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_sphere_e0_w2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#106 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 121
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_sphere_e1_w2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#107 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 121
     },
     {
       "max_rel_err": 0.0,
@@ -3039,8 +2839,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_surf_extrude_e1_d0",
@@ -3051,8 +2851,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_surf_extrude_e1_d1",
@@ -3063,8 +2863,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_surf_extrude_e1_nonest",
@@ -3074,52 +2874,36 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_surf_extrude_e0_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#114 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_surf_extrude_e1_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#115 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_surf_extrude_e0_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#116 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_surf_extrude_e1_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#117 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -3130,16 +2914,12 @@
       "values_compared": 184
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_surf_extrude_e1_w2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#119 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -3167,8 +2947,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_surf_rev_e1_d0",
@@ -3179,8 +2959,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_surf_rev_e1_d1",
@@ -3191,8 +2971,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_surf_rev_e1_nonest",
@@ -3202,52 +2982,36 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_surf_rev_e0_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#126 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_surf_rev_e1_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#127 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_surf_rev_e0_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#128 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_surf_rev_e1_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#129 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -3258,16 +3022,12 @@
       "values_compared": 184
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_surf_rev_e1_w2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#131 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -3295,8 +3055,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_surf_sphere150_e1_d0",
@@ -3307,8 +3067,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_surf_sphere150_e1_d1",
@@ -3319,8 +3079,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_surf_sphere150_e1_nonest",
@@ -3330,76 +3090,52 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_surf_sphere150_e0_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#138 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 120
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_surf_sphere150_e1_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#139 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 120
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_surf_sphere150_e0_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#140 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 120
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_surf_sphere150_e1_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#141 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 120
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_surf_sphere150_e0_w2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#142 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 120
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_surf_sphere150_e1_w2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#143 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 120
     },
     {
       "max_rel_err": 0.0,
@@ -3427,8 +3163,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_torus_e1_d0",
@@ -3439,8 +3175,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_torus_e1_d1",
@@ -3451,8 +3187,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_torus_e1_nonest",
@@ -3535,8 +3271,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_toruswvy_e1_d0",
@@ -3547,8 +3283,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_toruswvy_e1_d1",
@@ -3559,8 +3295,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_toruswvy_e1_nonest",
@@ -3643,8 +3379,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_vase_rev_e1_d0",
@@ -3655,8 +3391,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_vase_rev_e1_d1",
@@ -3667,8 +3403,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_vase_rev_e1_nonest",
@@ -3678,16 +3414,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_vase_rev_e0_w0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#174 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 149
     },
     {
       "max_rel_err": 0.0,
@@ -3698,16 +3430,12 @@
       "values_compared": 181
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_vase_rev_e0_w1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#176 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 149
     },
     {
       "max_rel_err": 0.0,
@@ -3718,16 +3446,12 @@
       "values_compared": 181
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "squeeze_vase_rev_e0_w2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#178 (upstream source/SMLib/src/SmBrep.cpp (SqueezeEdge))",
-      "values_compared": 0
+      "values_compared": 149
     },
     {
       "max_rel_err": 0.0,
@@ -4871,8 +4595,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0000",
@@ -4883,8 +4607,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0001",
@@ -4918,16 +4642,12 @@
       "values_compared": 27
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0005",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119070",
-      "values_compared": 0
+      "values_compared": 121
     },
     {
       "max_rel_err": 0.0,
@@ -4938,16 +4658,12 @@
       "values_compared": 6560
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0007",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119072",
-      "values_compared": 0
+      "values_compared": 194
     },
     {
       "max_rel_err": 0.0,
@@ -4986,28 +4702,20 @@
       "values_compared": 752
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0012",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119077",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0013",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119078",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -5066,16 +4774,12 @@
       "values_compared": 185
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0021",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119086",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -5094,28 +4798,20 @@
       "values_compared": 27
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0024",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119089",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0025",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119090",
-      "values_compared": 0
+      "values_compared": 219
     },
     {
       "max_rel_err": 0.0,
@@ -5138,16 +4834,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0028",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119093",
-      "values_compared": 0
+      "values_compared": 130
     },
     {
       "deferred": {
@@ -5214,16 +4906,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0036",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119101",
-      "values_compared": 0
+      "values_compared": 220
     },
     {
       "deferred": {
@@ -5326,16 +5014,12 @@
       "values_compared": 187
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0048",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119113",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -5438,16 +5122,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0060",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119125",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "deferred": {
@@ -5494,16 +5174,12 @@
       "values_compared": 94
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0066",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119131",
-      "values_compared": 0
+      "values_compared": 193
     },
     {
       "max_rel_err": 0.0,
@@ -5559,8 +5235,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0073",
@@ -5610,16 +5286,12 @@
       "values_compared": 338
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0078",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119143",
-      "values_compared": 0
+      "values_compared": 193
     },
     {
       "max_rel_err": 0.0,
@@ -5902,16 +5574,12 @@
       "values_compared": 273
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0112",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119177",
-      "values_compared": 0
+      "values_compared": 120
     },
     {
       "max_rel_err": 0.0,
@@ -6190,16 +5858,12 @@
       "values_compared": 333
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0143",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119208",
-      "values_compared": 0
+      "values_compared": 160
     },
     {
       "max_rel_err": 0.0,
@@ -6302,16 +5966,12 @@
       "values_compared": 252
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0156",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119221",
-      "values_compared": 0
+      "values_compared": 482
     },
     {
       "max_rel_err": 0.0,
@@ -6346,16 +6006,12 @@
       "values_compared": 134
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0161",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119226",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -6386,28 +6042,20 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0165",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119230",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0166",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119231",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -6435,8 +6083,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0170",
@@ -6462,16 +6110,12 @@
       "values_compared": 95
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0173",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119238",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -6483,8 +6127,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0175",
@@ -6494,16 +6138,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0176",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119241",
-      "values_compared": 0
+      "values_compared": 1091
     },
     {
       "max_rel_err": 0.0,
@@ -6538,16 +6178,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0180",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119245",
-      "values_compared": 0
+      "values_compared": 149
     },
     {
       "max_rel_err": 0.0,
@@ -6558,16 +6194,12 @@
       "values_compared": 153
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0182",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119247",
-      "values_compared": 0
+      "values_compared": 130
     },
     {
       "deferred": {
@@ -6639,8 +6271,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0190",
@@ -6658,16 +6290,12 @@
       "values_compared": 262
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0192",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119257",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -6711,8 +6339,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0198",
@@ -6722,16 +6350,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0199",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119264",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -6770,16 +6394,12 @@
       "values_compared": 181
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0204",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119269",
-      "values_compared": 0
+      "values_compared": 482
     },
     {
       "max_rel_err": 0.0,
@@ -6814,16 +6434,12 @@
       "values_compared": 94
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0209",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119274",
-      "values_compared": 0
+      "values_compared": 101
     },
     {
       "max_rel_err": 0.0,
@@ -6850,16 +6466,12 @@
       "values_compared": 27
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0213",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119278",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -6934,16 +6546,12 @@
       "values_compared": 183
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0222",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119287",
-      "values_compared": 0
+      "values_compared": 75
     },
     {
       "max_rel_err": 0.0,
@@ -6978,16 +6586,12 @@
       "values_compared": 338
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0227",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119292",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -7038,16 +6642,12 @@
       "values_compared": 760
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0234",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119299",
-      "values_compared": 0
+      "values_compared": 188
     },
     {
       "deferred": {
@@ -7114,16 +6714,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0242",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119307",
-      "values_compared": 0
+      "values_compared": 219
     },
     {
       "max_rel_err": 0.0,
@@ -7158,16 +6754,12 @@
       "values_compared": 66
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0247",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119312",
-      "values_compared": 0
+      "values_compared": 130
     },
     {
       "max_rel_err": 0.0,
@@ -7310,16 +6902,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0263",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119328",
-      "values_compared": 0
+      "values_compared": 149
     },
     {
       "max_rel_err": 0.0,
@@ -7346,16 +6934,12 @@
       "values_compared": 343
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0267",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119332",
-      "values_compared": 0
+      "values_compared": 117
     },
     {
       "max_rel_err": 0.0,
@@ -7419,8 +7003,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0275",
@@ -7482,28 +7066,20 @@
       "values_compared": 66
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0282",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119347",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0283",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119348",
-      "values_compared": 0
+      "values_compared": 193
     },
     {
       "max_rel_err": 0.0,
@@ -7514,28 +7090,20 @@
       "values_compared": 27
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0285",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119350",
-      "values_compared": 0
+      "values_compared": 216
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0286",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119351",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -7571,8 +7139,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0291",
@@ -7606,16 +7174,12 @@
       "values_compared": 76
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0295",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119360",
-      "values_compared": 0
+      "values_compared": 750
     },
     {
       "deferred": {
@@ -7646,16 +7210,12 @@
       "values_compared": 182
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0299",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119364",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -7702,16 +7262,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0305",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119370",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -7722,33 +7278,25 @@
       "values_compared": 157
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0307",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119372",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0308",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119373",
-      "values_compared": 0
+      "values_compared": 203
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0309",
@@ -7798,21 +7346,17 @@
       "values_compared": 184
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0314",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119379",
-      "values_compared": 0
+      "values_compared": 207
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0315",
@@ -7958,16 +7502,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0332",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119397",
-      "values_compared": 0
+      "values_compared": 193
     },
     {
       "deferred": {
@@ -7982,16 +7522,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0334",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119399",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -8018,16 +7554,12 @@
       "values_compared": 427
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0338",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119403",
-      "values_compared": 0
+      "values_compared": 482
     },
     {
       "max_rel_err": 0.0,
@@ -8047,8 +7579,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0341",
@@ -8058,16 +7590,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0342",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119407",
-      "values_compared": 0
+      "values_compared": 75
     },
     {
       "max_rel_err": 0.0,
@@ -8078,16 +7606,12 @@
       "values_compared": 182
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0344",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119409",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -8214,28 +7738,20 @@
       "values_compared": 275
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0358",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119423",
-      "values_compared": 0
+      "values_compared": 120
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0359",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119424",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
       "max_rel_err": 0.0,
@@ -8298,16 +7814,12 @@
       "values_compared": 244
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0367",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119432",
-      "values_compared": 0
+      "values_compared": 1159
     },
     {
       "max_rel_err": 0.0,
@@ -8334,40 +7846,28 @@
       "values_compared": 250
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0371",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119436",
-      "values_compared": 0
+      "values_compared": 180
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0372",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119437",
-      "values_compared": 0
+      "values_compared": 130
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0373",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119438",
-      "values_compared": 0
+      "values_compared": 162
     },
     {
       "max_rel_err": 0.0,
@@ -8390,16 +7890,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0376",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119441",
-      "values_compared": 0
+      "values_compared": 121
     },
     {
       "deferred": {
@@ -8494,16 +7990,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0387",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119452",
-      "values_compared": 0
+      "values_compared": 101
     },
     {
       "deferred": {
@@ -8518,16 +8010,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeShellVertex",
-        "unit": "topology.brep_p9"
-      },
       "max_rel_err": 0.0,
       "name": "gen0389",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119454",
-      "values_compared": 0
+      "values_compared": 220
     },
     {
       "max_rel_err": 0.0,
@@ -8623,17 +8111,16 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 361,
+  "cases_deferred": 233,
   "cases_failed": 0,
-  "cases_passed": 536,
+  "cases_passed": 664,
   "cases_total": 897,
   "deferred_by_unit": {
     "query.brep": 49,
     "surface.sphere": 33,
     "surface.surface_p2": 8,
-    "topology.brep_p9": 41,
-    "topology.face_p3": 161,
-    "topology.face_p4": 69
+    "topology.face_p3": 17,
+    "topology.face_p4": 126
   },
   "max_rel_err": 0.0,
   "pass": true,
