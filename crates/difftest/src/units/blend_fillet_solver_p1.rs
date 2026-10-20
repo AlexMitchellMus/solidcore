@@ -49,8 +49,7 @@ use solidcore::blend::fillet_solver::p1::{
     test_manifold_tangent_rollover, test_side_edge_convexity, tol_ang_tol_rad, trim_rail,
     AnalyticTestSurface, FilStatus, FilletSolver, FilletSolverOffsetsData, FilletSolverOps,
     FilletSolverType, FilletSphereSolveEnfo, FilletSurfaceGenerator, FindClippedRadiusEfo,
-    OffsetSurfaceSlot,
-    RailRailIntersectEnfo, RailUvCurveIntersectEnfo,
+    OffsetSurfaceSlot, RailRailIntersectEnfo, RailUvCurveIntersectEnfo,
 };
 use solidcore::curve::curve::Curve;
 use solidcore::geom::axis2_placement::Axis2Placement;
@@ -1441,20 +1440,22 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                     surface: None,
                     uv_curve: None,
                 };
-                o.push(match g.create_surface(
-                    &k,
-                    1.0e-6,
-                    FilletSolverType::Unknown,
-                    None,
-                    &mut r1,
-                    &mut r2,
-                    &[],
-                    none,
-                    none,
-                ) {
-                    Ok(_) => 0.0,
-                    Err(e) => status(&e),
-                });
+                o.push(
+                    match g.create_surface(
+                        &k,
+                        1.0e-6,
+                        FilletSolverType::Unknown,
+                        None,
+                        &mut r1,
+                        &mut r2,
+                        &[],
+                        none,
+                        none,
+                    ) {
+                        Ok(_) => 0.0,
+                        Err(e) => status(&e),
+                    },
+                );
             } else {
                 o.push(-1.0);
             }

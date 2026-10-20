@@ -36,10 +36,11 @@
 //! - **Virtual dispatch.** `SetupOffsetExtension` is dispatched on the solver's class
 //!   through [`ConstantRadiusOps`]: `SmSurfaceSurfaceFS` has its own version
 //!   (`blend.fillet_standard_solver_p1`); every other constant-radius solver uses the
-//!   base `SmFilletSolver::SetupOffsetExtension` (unit `blend.fillet_solver_p1`), which
-//!   returns [`SolidError::Unported`]. `PointOnPlaneSolve` is the version of an exact
-//!   `SmConstantRadiusAssistedFS` (its `LoadInitialValues` and `LoadJacobian` are
-//!   `SmConstantRadiusFS`'s); the custom solvers derived from it dispatch to their own.
+//!   base `SmFilletSolver::SetupOffsetExtension` (unit `blend.fillet_solver_p1`).
+//!   `PointOnPlaneSolve` is the version of an exact `SmConstantRadiusAssistedFS` (its
+//!   `LoadInitialValues` and `LoadJacobian` are `SmConstantRadiusFS`'s; its
+//!   `SmFilletSphereSolveENFO` sees the solver as that class through a private
+//!   `FilletSolverOps` adapter); the custom solvers derived from it dispatch to their own.
 //! - **Surfaces.** As in `blend.fillet_custom_solver`, `crSurface1` is the caller's
 //!   offset surface (a copy when upstream passes `GetSurface(i)`), except for
 //!   `SmVariableRadiusFS::LoadInitialValues`, which re-evaluates it after changing the
@@ -52,10 +53,9 @@
 //!   uses or offset surfaces: the same half-built solver is returned (`Ok`). They take
 //!   the B-rep mutably (`SmEdgeuse::EvaluateBinormal` may create a UV trim curve).
 //!   `FinishConstruction` has nothing to do (no fillet geometries are modelled).
-//! - **Unported callees.** `SmFilletSolver::SetupOffsetExtension` and
-//!   `SmFilletSphereSolveENFO::Evaluate` (`blend.fillet_solver_p1`),
-//!   `SmFilletSolver::StepSolve` (`blend.fillet_solver_p3`), `SmFilletGeom::GetRail`
-//!   (`blend.fillet_geom_p1`) and `SmFilletLaw::SetEdgeArcLength` / `Evaluate`
+//! - **Unported callees.** `SmFilletSolver::StepSolve` (`blend.fillet_solver_p3`),
+//!   `SmFilletGeom::GetRail` (`blend.fillet_geom_p1`, partial, but the solver data holds
+//!   no fillet geometries; see `plan/findings.md`) and `SmFilletLaw::SetEdgeArcLength` / `Evaluate`
 //!   (`blend.fillet_executive_p1`) return [`SolidError::Unported`] at the call site.
 //!   `ReCalcFilletGeom` stops at its first fillet-geometry call (everything after it
 //!   walks the unported pseudo-B-rep), `CalcFilletGeom` at `StepSolve`.
@@ -359,7 +359,7 @@ impl ConstantRadiusOps for SurfaceSurfaceFs {
 /// # Errors
 ///
 /// `SM_ERR` when a point solve finds no single solution; those of the evaluations,
-/// solves and `SetupOffsetExtension` ([`SolidError::Unported`] for the base class);
+/// solves and `SetupOffsetExtension`;
 /// [`SolidError::InvalidInput`] for an out-of-range index (upstream reads or writes out
 /// of bounds), a rail index above 1, a missing surface, or edge uses without `brep`.
 #[allow(clippy::too_many_arguments)]
@@ -642,9 +642,8 @@ impl ConstantRadiusAssistedFs {
     ///
     /// # Errors
     ///
-    /// Those of [`constant_radius_load_initial_values`]; [`SolidError::Unported`] once
-    /// the extension is reached (`SmFilletSolver::SetupOffsetExtension`, unit
-    /// `blend.fillet_solver_p1`).
+    /// Those of [`constant_radius_load_initial_values`] (with
+    /// [`FilletSolver::setup_offset_extension`]).
     #[allow(clippy::too_many_arguments)]
     pub fn load_initial_values(
         &mut self,
@@ -930,10 +929,9 @@ impl ConstantRadiusAssistedFs {
     ///
     /// # Errors
     ///
-    /// Those of [`ConstantRadiusAssistedFs::load_initial_values`] (whose
-    /// `SetupOffsetExtension` returns [`SolidError::Unported`]); [`SolidError::Unported`]
-    /// from the plane equations (`SmFilletSphereSolveENFO::Evaluate`, unit
-    /// `blend.fillet_solver_p1`); `SM_ERR` for a zero normal at the solution.
+    /// Those of [`ConstantRadiusAssistedFs::load_initial_values`] and of the plane
+    /// solves (`SmFilletSphereSolveENFO::Evaluate`, unit `blend.fillet_solver_p1`);
+    /// `SM_ERR` for a zero normal at the solution.
     #[allow(clippy::too_many_arguments)]
     pub fn point_on_plane_solve(
         &mut self,
@@ -1452,7 +1450,7 @@ impl VariableRadiusFs {
         let _ivl = curve.natural_interval();
 
         // for each rail of m_vFilletGeoms[0]: sAllRails.Add(pFilletGeom->GetRail(i))
-        // UNPORTED(blend.fillet_geom_p1): SmFilletGeom::GetRail
+        // UNPORTED(blend.fillet_geom_p1): SmFilletGeom::GetRail -- justified: plan/findings.md blend.fillet_standard_solver_p2 (the solver data holds no SmFilletGeom)
         Err(SolidError::unported(
             "SmFilletGeom::GetRail",
             "blend.fillet_geom_p1",
@@ -2205,21 +2203,30 @@ mod tests {
     }
 
     #[test]
-    fn point_on_plane_solve_waits_for_the_base_extension() {
+    fn point_on_plane_solve_finds_the_ball_on_a_corner() {
         let k = Kernel::default();
         let mut fs = corner(&k, 0.25);
         let d = Extent2d::from_bounds(-1.0, -1.0, 2.0, 2.0);
-        let r = fs.point_on_plane_solve(
-            &k,
-            None,
-            p(0.4, 0.0, 0.0),
-            Vec3::new(1.0, 0.0, 0.0),
-            &d,
-            &d,
-            Point2::new(0.45, 0.3),
-            Point2::new(0.35, 0.2),
+        let t = fs
+            .point_on_plane_solve(
+                &k,
+                None,
+                p(0.4, 0.0, 0.0),
+                Vec3::new(1.0, 0.0, 0.0),
+                &d,
+                &d,
+                Point2::new(0.45, 0.3),
+                Point2::new(0.35, 0.2),
+            )
+            .expect("solve")
+            .expect("found");
+        // the first offset surface's point lies on the plane x = 0.4, on the ball's
+        // centre line y = z = 0.25
+        let c = t.srf_pos(SrfIndex::First);
+        assert!(
+            (c.x - 0.4).abs() < 1e-6 && (c.y - 0.25).abs() < 1e-6 && (c.z - 0.25).abs() < 1e-6,
+            "{c:?}"
         );
-        assert!(r.is_err_and(|e| e.is_unported()));
     }
 
     #[test]

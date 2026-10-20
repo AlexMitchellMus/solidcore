@@ -2,78 +2,10 @@
   "abs_floors": [],
   "cases": [
     {
-      "inputs": {
-        "do2": true,
-        "guess": [0.7491014699847068, 0.30963392997936773],
-        "intervals": [
-          [0.058176579443409704, 0.891505726588832],
-          [0.33216023745837897, 2.2703191428955183],
-          [0.41281539716130844, 1.9286804718309671],
-          [-0.4208623450736584, 0.45213917610263255],
-          [-0.050845880640934094, 0.041854382976778015]
-        ],
-        "op": "cr_init",
-        "per": [],
-        "rail": 1,
-        "s1_index": 0,
-        "sel1": 2,
-        "solver": {
-          "a": {
-            "kind": "bspline",
-            "net": [
-              [
-                [0.0, 0.0, 0.9241567905387933, -1.7976931348623157e+308],
-                [0.0, 4.0, 0.931138157614579, -1.7976931348623157e+308]
-              ],
-              [
-                [1.0, 0.0, 1.1920373841319347, -1.7976931348623157e+308],
-                [1.0, 4.0, 1.1811935752345446, -1.7976931348623157e+308]
-              ],
-              [
-                [2.0, 0.0, 1.1988093079042825, -1.7976931348623157e+308],
-                [2.0, 4.0, 0.9821703440014194, -1.7976931348623157e+308]
-              ],
-              [
-                [3.0, 0.0, 0.9977023217754346, -1.7976931348623157e+308],
-                [3.0, 4.0, 1.4938289652610923, -1.7976931348623157e+308]
-              ],
-              [
-                [4.0, 0.0, 1.0803109861406763, -1.7976931348623157e+308],
-                [4.0, 4.0, 1.417256210834502, -1.7976931348623157e+308]
-              ]
-            ],
-            "p": 3,
-            "q": 1,
-            "u": [0.0, 0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0],
-            "v": [0.0, 0.0, 1.0, 1.0]
-          },
-          "b": {
-            "domain": [0.0, 0.0, 0.9965097766702014, 1.2882427716621658],
-            "kind": "plane",
-            "o": [-0.2734124533866762, 1.001694190151103, 1.3608458036353883],
-            "scale": [1.173877106073038, 0.8693956814014507],
-            "x": [-0.5770088324970374, 0.28771178517067425, -0.7643838930107762],
-            "y": [0.8155745626218304, 0.15303842432564324, -0.5580478236532552]
-          },
-          "cls": 1,
-          "ext": 0.1,
-          "o": [true, true],
-          "r": [0.3910658901853881, 0.3910658901853881]
-        }
-      },
-      "max_rel_err": 0.0003646608350999029,
-      "mismatch_count": 1,
-      "mismatches": [
-        {
-          "cpp": "2.3112246736941722e-1",
-          "field": "values.out[19]",
-          "rel_err": 0.0003646608350999029,
-          "rust": "2.3103818605745594e-1"
-        }
-      ],
+      "max_rel_err": 0.0,
       "name": "fx_a",
-      "outcome": "fail",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_standard_solver_p2/cases.json#0",
       "values_compared": 23
     },
@@ -94,78 +26,10 @@
       "values_compared": 23
     },
     {
-      "inputs": {
-        "do2": true,
-        "guess": [0.7, 0.3],
-        "intervals": [
-          [0.058176579443409704, 0.891505726588832],
-          [0.33216023745837897, 2.2703191428955183],
-          [0.41281539716130844, 1.9286804718309671],
-          [-0.4208623450736584, 0.45213917610263255],
-          [-0.050845880640934094, 0.041854382976778015]
-        ],
-        "op": "cr_init",
-        "per": [],
-        "rail": 1,
-        "s1_index": 0,
-        "sel1": 2,
-        "solver": {
-          "a": {
-            "kind": "bspline",
-            "net": [
-              [
-                [0.0, 0.0, 0.9241567905387933, -1.7976931348623157e+308],
-                [0.0, 4.0, 0.931138157614579, -1.7976931348623157e+308]
-              ],
-              [
-                [1.0, 0.0, 1.1920373841319347, -1.7976931348623157e+308],
-                [1.0, 4.0, 1.1811935752345446, -1.7976931348623157e+308]
-              ],
-              [
-                [2.0, 0.0, 1.1988093079042825, -1.7976931348623157e+308],
-                [2.0, 4.0, 0.9821703440014194, -1.7976931348623157e+308]
-              ],
-              [
-                [3.0, 0.0, 0.9977023217754346, -1.7976931348623157e+308],
-                [3.0, 4.0, 1.4938289652610923, -1.7976931348623157e+308]
-              ],
-              [
-                [4.0, 0.0, 1.0803109861406763, -1.7976931348623157e+308],
-                [4.0, 4.0, 1.417256210834502, -1.7976931348623157e+308]
-              ]
-            ],
-            "p": 3,
-            "q": 1,
-            "u": [0.0, 0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0],
-            "v": [0.0, 0.0, 1.0, 1.0]
-          },
-          "b": {
-            "domain": [0.0, 0.0, 0.9965097766702014, 1.2882427716621658],
-            "kind": "plane",
-            "o": [-0.2734124533866762, 1.001694190151103, 1.3608458036353883],
-            "scale": [1.173877106073038, 0.8693956814014507],
-            "x": [-0.5770088324970374, 0.28771178517067425, -0.7643838930107762],
-            "y": [0.8155745626218304, 0.15303842432564324, -0.5580478236532552]
-          },
-          "cls": 1,
-          "ext": 0.1,
-          "o": [true, true],
-          "r": [0.3910658901853881, 0.3910658901853881]
-        }
-      },
-      "max_rel_err": 0.0005157053388304489,
-      "mismatch_count": 1,
-      "mismatches": [
-        {
-          "cpp": "2.2672555024052707e-1",
-          "field": "values.out[19]",
-          "rel_err": 0.0005157053388304489,
-          "rust": "2.2660862666381876e-1"
-        }
-      ],
+      "max_rel_err": 0.0,
       "name": "fx_d_guess",
-      "outcome": "fail",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_standard_solver_p2/cases.json#3",
       "values_compared": 23
     },
@@ -178,45 +42,33 @@
       "values_compared": 23
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0000",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065831",
-      "values_compared": 0
+      "values_compared": 29
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0001",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065832",
-      "values_compared": 0
+      "values_compared": 23
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0002",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065833",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0003",
@@ -242,16 +94,12 @@
       "values_compared": 21
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0006",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065837",
-      "values_compared": 0
+      "values_compared": 29
     },
     {
       "max_rel_err": 0.0,
@@ -286,16 +134,12 @@
       "values_compared": 23
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0011",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065842",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -330,16 +174,12 @@
       "values_compared": 4
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0016",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065847",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -350,16 +190,12 @@
       "values_compared": 4
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0018",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065849",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -394,16 +230,12 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0023",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065854",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -414,16 +246,12 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0025",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065856",
-      "values_compared": 0
+      "values_compared": 23
     },
     {
       "max_rel_err": 0.0,
@@ -466,16 +294,12 @@
       "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0031",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065862",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -494,16 +318,12 @@
       "values_compared": 40
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0034",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065865",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -562,16 +382,12 @@
       "values_compared": 4
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0042",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065873",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -670,16 +486,12 @@
       "values_compared": 21
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0055",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065886",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -722,16 +534,12 @@
       "values_compared": 40
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0061",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065892",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -774,28 +582,20 @@
       "values_compared": 21
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0067",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065898",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0068",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065899",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -806,40 +606,28 @@
       "values_compared": 21
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0070",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065901",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0071",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065902",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0072",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065903",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -946,16 +734,12 @@
       "values_compared": 4
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0086",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065917",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -967,8 +751,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
+        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0088",
@@ -1098,16 +882,12 @@
       "values_compared": 40
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0104",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065935",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -1134,28 +914,20 @@
       "values_compared": 23
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0108",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065939",
-      "values_compared": 0
+      "values_compared": 29
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0109",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065940",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -1230,16 +1002,12 @@
       "values_compared": 23
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0119",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065950",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "max_rel_err": 0.0,
@@ -1250,16 +1018,12 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0121",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065952",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -1346,16 +1110,12 @@
       "values_compared": 40
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0132",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065963",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -1366,16 +1126,12 @@
       "values_compared": 40
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0134",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065965",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -1426,16 +1182,12 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0141",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065972",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -1526,16 +1278,12 @@
       "values_compared": 23
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0153",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065984",
-      "values_compared": 0
+      "values_compared": 29
     },
     {
       "max_rel_err": 0.0,
@@ -1578,16 +1326,12 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0159",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065990",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -1614,16 +1358,12 @@
       "values_compared": 40
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0163",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915065994",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -1714,28 +1454,20 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0175",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066006",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0176",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066007",
-      "values_compared": 0
+      "values_compared": 29
     },
     {
       "max_rel_err": 0.0,
@@ -1762,78 +1494,10 @@
       "values_compared": 34
     },
     {
-      "inputs": {
-        "do2": true,
-        "guess": [0.7491014699847068, 0.30963392997936773],
-        "intervals": [
-          [0.058176579443409704, 0.891505726588832],
-          [0.33216023745837897, 2.2703191428955183],
-          [0.41281539716130844, 1.9286804718309671],
-          [-0.4208623450736584, 0.45213917610263255],
-          [-0.050845880640934094, 0.041854382976778015]
-        ],
-        "op": "cr_init",
-        "per": [],
-        "rail": 1,
-        "s1_index": 0,
-        "sel1": 2,
-        "solver": {
-          "a": {
-            "kind": "bspline",
-            "net": [
-              [
-                [0.0, 0.0, 0.9241567905387933, -1.7976931348623157e+308],
-                [0.0, 4.0, 0.931138157614579, -1.7976931348623157e+308]
-              ],
-              [
-                [1.0, 0.0, 1.1920373841319347, -1.7976931348623157e+308],
-                [1.0, 4.0, 1.1811935752345446, -1.7976931348623157e+308]
-              ],
-              [
-                [2.0, 0.0, 1.1988093079042825, -1.7976931348623157e+308],
-                [2.0, 4.0, 0.9821703440014194, -1.7976931348623157e+308]
-              ],
-              [
-                [3.0, 0.0, 0.9977023217754346, -1.7976931348623157e+308],
-                [3.0, 4.0, 1.4938289652610923, -1.7976931348623157e+308]
-              ],
-              [
-                [4.0, 0.0, 1.0803109861406763, -1.7976931348623157e+308],
-                [4.0, 4.0, 1.417256210834502, -1.7976931348623157e+308]
-              ]
-            ],
-            "p": 3,
-            "q": 1,
-            "u": [0.0, 0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0],
-            "v": [0.0, 0.0, 1.0, 1.0]
-          },
-          "b": {
-            "domain": [0.0, 0.0, 0.9965097766702014, 1.2882427716621658],
-            "kind": "plane",
-            "o": [-0.2734124533866762, 1.001694190151103, 1.3608458036353883],
-            "scale": [1.173877106073038, 0.8693956814014507],
-            "x": [-0.5770088324970374, 0.28771178517067425, -0.7643838930107762],
-            "y": [0.8155745626218304, 0.15303842432564324, -0.5580478236532552]
-          },
-          "cls": 1,
-          "ext": 0.1,
-          "o": [true, true],
-          "r": [0.3910658901853881, 0.3910658901853881]
-        }
-      },
-      "max_rel_err": 0.0003646608350999029,
-      "mismatch_count": 1,
-      "mismatches": [
-        {
-          "cpp": "2.3112246736941722e-1",
-          "field": "values.out[19]",
-          "rel_err": 0.0003646608350999029,
-          "rust": "2.3103818605745594e-1"
-        }
-      ],
+      "max_rel_err": 0.0,
       "name": "gen0180",
-      "outcome": "fail",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066011",
       "values_compared": 23
     },
@@ -1878,16 +1542,12 @@
       "values_compared": 40
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0186",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066017",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -1915,8 +1575,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0190",
@@ -2026,16 +1686,12 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0203",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066034",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -2062,16 +1718,12 @@
       "values_compared": 82
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0207",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066038",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "max_rel_err": 0.0,
@@ -2162,16 +1814,12 @@
       "values_compared": 82
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0219",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066050",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -2195,8 +1843,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
+        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0222",
@@ -2218,16 +1866,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0224",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066055",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -2318,16 +1962,12 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0236",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066067",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -2370,28 +2010,20 @@
       "values_compared": 27
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0242",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066073",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0243",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066074",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -2466,16 +2098,12 @@
       "values_compared": 21
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0253",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066084",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -2542,16 +2170,12 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0262",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066093",
-      "values_compared": 0
+      "values_compared": 29
     },
     {
       "max_rel_err": 0.0,
@@ -2586,16 +2210,12 @@
       "values_compared": 40
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0267",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066098",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -2662,28 +2282,20 @@
       "values_compared": 56
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0276",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066107",
-      "values_compared": 0
+      "values_compared": 23
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0277",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066108",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -2726,40 +2338,28 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0283",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066114",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0284",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066115",
-      "values_compared": 0
+      "values_compared": 23
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0285",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066116",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -2778,16 +2378,12 @@
       "values_compared": 56
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0288",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066119",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "max_rel_err": 0.0,
@@ -2815,8 +2411,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0292",
@@ -2898,16 +2494,12 @@
       "values_compared": 29
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0302",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066133",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -3010,28 +2602,20 @@
       "values_compared": 21
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0315",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066146",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0316",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066147",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -3098,16 +2682,12 @@
       "values_compared": 40
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0325",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066156",
-      "values_compared": 0
+      "values_compared": 23
     },
     {
       "max_rel_err": 0.0,
@@ -3135,8 +2715,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0329",
@@ -3170,16 +2750,12 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0333",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066164",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "deferred": {
@@ -3238,16 +2814,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0340",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066171",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -3291,8 +2863,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0346",
@@ -3335,8 +2907,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0351",
@@ -3371,8 +2943,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0355",
@@ -3382,16 +2954,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0356",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066187",
-      "values_compared": 0
+      "values_compared": 23
     },
     {
       "max_rel_err": 0.0,
@@ -3418,19 +2986,15 @@
       "values_compared": 23
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0360",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066191",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
-      "max_rel_err": 8.93846722973474e-16,
+      "max_rel_err": 0.0,
       "name": "gen0361",
       "outcome": "pass",
       "pass": true,
@@ -3446,7 +3010,7 @@
       "values_compared": 23
     },
     {
-      "max_rel_err": 6.98322766596592e-16,
+      "max_rel_err": 0.0,
       "name": "gen0363",
       "outcome": "pass",
       "pass": true,
@@ -3454,52 +3018,36 @@
       "values_compared": 23
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0364",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066195",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0365",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066196",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0366",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066197",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0367",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066198",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -3534,16 +3082,12 @@
       "values_compared": 40
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0372",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066203",
-      "values_compared": 0
+      "values_compared": 23
     },
     {
       "max_rel_err": 0.0,
@@ -3654,16 +3198,12 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0386",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066217",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -3698,16 +3238,12 @@
       "values_compared": 40
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0391",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066222",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -3726,16 +3262,12 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0394",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066225",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -3762,16 +3294,12 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::SetupOffsetExtension",
-        "unit": "blend.fillet_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0398",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089733659915066229",
-      "values_compared": 0
+      "values_compared": 35
     },
     {
       "max_rel_err": 0.0,
@@ -3783,22 +3311,20 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 84,
-  "cases_failed": 3,
-  "cases_passed": 318,
+  "cases_deferred": 17,
+  "cases_failed": 0,
+  "cases_passed": 388,
   "cases_total": 405,
   "deferred_by_unit": {
-    "blend.fillet_solver_p1": 67,
     "intersect.surface_drop_lib_p3": 2,
-    "surface.cone_p1": 7,
-    "surface.sphere": 2,
     "surface.surf_of_extrusion_p2": 1,
+    "surface.surface_p2": 9,
     "topology.brep_p10": 5
   },
-  "max_rel_err": 0.0005157053388304489,
-  "pass": false,
+  "max_rel_err": 0.0,
+  "pass": true,
   "rel_tol": 1e-9,
   "seeds": 16,
-  "status": "fail",
+  "status": "partial",
   "unit": "blend.fillet_standard_solver_p2"
 }

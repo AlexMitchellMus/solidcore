@@ -9673,28 +9673,38 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   valgrind with `harness/valgrind/ub11.supp` gives 0 errors on the simple, unify, select and split
   samples.
 
-## blend.fillet_standard_solver_p2 (`SmFilletStandardSolver.cpp` part 2, PR #265, 2026-10-19; blocked on one disagreement)
+## blend.fillet_standard_solver_p2 (`SmFilletStandardSolver.cpp` part 2, PR #265, 2026-10-19; partial, disagreement resolved 2026-10-20)
 
-Difftest (400 generated + 5 fixtures; 3000 seeds: 2394 pass, 1 failed, 605 deferred). Every
-other compared case is bit-identical.
+Difftest 405 cases (400 generated + 5 fixtures): 388 pass, 0 failed, 17 deferred; 3000
+seeds: 2893 pass, 0 failed, 112 deferred (max_rel_err 3.8e-16).
 
-- **Disagreement (unexplained).** `SmConstantRadiusFS::LoadInitialValues` on an
-  `SmSurfaceSurfaceFS` (fixture `fx_a`, generated case `gen0180`, seed `7089733659915066011`):
-  rail 1, `crSrf1Offset` = `GetSurface(1)` (offset of a plane), the other rail a bicubic x
-  linear B-spline patch offset by `0.391`, extension factor `0.1`, guess `(0.7491, 0.3096)`.
-  The new UV guess on the other surface agrees in u, but its v is `2.3112246736941722e-1`
-  (C++) against `2.3103818605745594e-1` (Rust), rel. err `3.6e-4`; fixture `fx_d_guess`
-  (guess `(0.7, 0.3)`) differs the same way. With extension factor `0` or `0.5`, or radius
-  `0.3`, the same input agrees bit for bit (`fx_b_ext05`, `fx_c_ext0`, `fx_e_r03`).
-- **Suspected cause.** The value is the `LocalPointSolve` of the other rail's offset inside
-  the base domain grown by `SmSurfaceSurfaceFS::SetupOffsetExtension` (`[-0.1, 1.1]`): only
-  with that factor does the solve end on (or step through) the grown boundary outside the
-  base domain, where the offset evaluates through `sm_ExtendSurface` /
-  `CreateExtendedSurface` on a base whose out-of-bounds evaluation is on
-  (`SmTemporaryChangeValue`). That path is not compared by `surface.offset_surface`'s own
-  difftest (its shim refuses every `CreateExtendedSurface` step, UB-107 / HANG-6 / HANG-22),
-  and UB-107 (the halving retry reading a half-written extension) may make the C++ value
-  undefined. Not yet traced to either side.
+- **Resolved disagreement.** `SmConstantRadiusFS::LoadInitialValues` on an
+  `SmSurfaceSurfaceFS` (fixture `fx_a`, generated case `gen0180`, seed `7089733659915066011`;
+  `fx_d_guess`): rail 1, the other rail a bicubic x linear B-spline patch offset by `0.391`,
+  extension factor `0.1`. The other rail's v guess was `2.3112246736941722e-1` (C++) against
+  `2.3103818605745594e-1` (Rust). Traced with prints on both sides: the
+  `rpSrf2Offset->LocalPointSolve` in the grown domain `[-0.1, 1.1]^2` leaves the base domain,
+  so its first evaluation there extends the base (`sm_ExtendSurface`, G1 ruled, to
+  `[-1.1, 1] x [0, 1]`; the extension's points agree bit for bit). Upstream's `const`
+  evaluators store it in `m_pExtendedSurface` (`SmOffsetSurface.cpp:710-713`, `:1064-1068`),
+  so from then on the offset's `GetNaturalUVDomain()` is the extended one. The solve ends on
+  the grown `u = -0.1` boundary; the read that differed is most likely the boundary step of
+  `LocalPointSolve_1`, which clamps the iso parameter into the surface's natural domain
+  (`surface_point_solve/p3.rs`): `-0.1` upstream, `0` in Rust, whose `&self` evaluators
+  dropped the extension after each call (the domain stayed `[0, 1]^2`).
+  Fix in `surface.offset_surface`: the `&self` evaluators keep the extension they make in a
+  pending slot (a `Cell`) that supersedes the stored one (natural domain, knots, later
+  evaluations, copies) until a `&mut self` method folds it in; `offset_local_point_solve`
+  hands an extension made on its copy back to the solver's offset. Factor `0` (no
+  extension) and `0.5` (the solve stays inside the base domain) were unaffected. The same
+  fix resolved the point-on-plane case `gen0386` once `SmFilletSphereSolveENFO::Evaluate`
+  was wired. `blend.fillet_custom_solver`, `blend.fillet_standard_solver_p1` and
+  `blend.fillet_solver_p1` are unchanged by it (0 failed).
+- **Stub kept, justified.** `SmVariableRadiusFS::ReCalcFilletGeom` stops at
+  `SmFilletGeom::GetRail` (`UNPORTED(blend.fillet_geom_p1)`, partial): the co-ported
+  `FilletSolverData` of the curve-based solvers holds no `SmFilletGeom` objects
+  (`m_vFilletGeoms`), so there are no rails to take until the solver data model carries
+  the fillet geometries.
 - Fixtures `fx_*` in `fixtures/blend.fillet_standard_solver_p2/cases.json` keep the inputs.
 
 ## blend.fillet_geom_p4 (`SmFilletGeom.cpp` part 4: `sm_CreateUVCurve`, the fillet-surface intersection vertex calculators, `GetRailIndexOfVertex`, `MakeFaceBrep`, `InsertIntersectionTopology`, `CalcBlendingGeom`; PR #252, 2026-10-19; partial)

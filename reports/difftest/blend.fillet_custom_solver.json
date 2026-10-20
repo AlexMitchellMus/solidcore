@@ -90,16 +90,12 @@
       "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "init_eiffel_rail1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_custom_solver/cases.json#11",
-      "values_compared": 0
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -118,16 +114,12 @@
       "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "init_secant_rail1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_custom_solver/cases.json#14",
-      "values_compared": 0
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -418,16 +410,12 @@
       "values_compared": 76
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0003",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024949825",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -550,16 +538,12 @@
       "values_compared": 400
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0019",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024949841",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -674,16 +658,12 @@
       "values_compared": 188
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0034",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024949856",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -742,16 +722,12 @@
       "values_compared": 400
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0042",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024949864",
-      "values_compared": 0
+      "values_compared": 17
     },
     {
       "max_rel_err": 0.0,
@@ -906,16 +882,12 @@
       "values_compared": 84
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0062",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024949884",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -958,28 +930,20 @@
       "values_compared": 406
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0068",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024949890",
-      "values_compared": 0
+      "values_compared": 19
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0069",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024949891",
-      "values_compared": 0
+      "values_compared": 17
     },
     {
       "max_rel_err": 0.0,
@@ -1038,16 +1002,12 @@
       "values_compared": 124
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0077",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024949899",
-      "values_compared": 0
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -1186,16 +1146,12 @@
       "values_compared": 75
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0095",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024949917",
-      "values_compared": 0
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -1286,16 +1242,12 @@
       "values_compared": 17
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0107",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024949929",
-      "values_compared": 0
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -1330,16 +1282,12 @@
       "values_compared": 200
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0112",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024949934",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -1358,16 +1306,12 @@
       "values_compared": 429
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0115",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024949937",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -1426,16 +1370,12 @@
       "values_compared": 126
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0123",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024949945",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -1526,16 +1466,12 @@
       "values_compared": 184
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0135",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024949957",
-      "values_compared": 0
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -1754,16 +1690,12 @@
       "values_compared": 124
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0163",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024949985",
-      "values_compared": 0
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -1782,16 +1714,12 @@
       "values_compared": 50
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0166",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024949988",
-      "values_compared": 0
+      "values_compared": 17
     },
     {
       "max_rel_err": 0.0,
@@ -1850,16 +1778,12 @@
       "values_compared": 77
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0174",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024949996",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -1982,16 +1906,12 @@
       "values_compared": 77
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0190",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950012",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -2018,16 +1938,12 @@
       "values_compared": 105
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0194",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950016",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -2054,16 +1970,12 @@
       "values_compared": 75
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0198",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950020",
-      "values_compared": 0
+      "values_compared": 17
     },
     {
       "max_rel_err": 0.0,
@@ -2146,16 +2058,12 @@
       "values_compared": 57
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0209",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950031",
-      "values_compared": 0
+      "values_compared": 17
     },
     {
       "max_rel_err": 0.0,
@@ -2214,16 +2122,12 @@
       "values_compared": 747
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0217",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950039",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -2234,16 +2138,12 @@
       "values_compared": 43
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0219",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950041",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -2286,16 +2186,12 @@
       "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0225",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950047",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -2314,16 +2210,12 @@
       "values_compared": 75
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0228",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950050",
-      "values_compared": 0
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -2454,16 +2346,12 @@
       "values_compared": 390
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0245",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950067",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -2482,16 +2370,12 @@
       "values_compared": 482
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0248",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950070",
-      "values_compared": 0
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -2638,16 +2522,12 @@
       "values_compared": 390
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0267",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950089",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -2698,16 +2578,12 @@
       "values_compared": 406
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0274",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950096",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -2894,16 +2770,12 @@
       "values_compared": 43
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0298",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950120",
-      "values_compared": 0
+      "values_compared": 17
     },
     {
       "max_rel_err": 0.0,
@@ -2962,28 +2834,20 @@
       "values_compared": 126
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0306",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950128",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0307",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950129",
-      "values_compared": 0
+      "values_compared": 17
     },
     {
       "max_rel_err": 0.0,
@@ -3010,16 +2874,12 @@
       "values_compared": 250
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0311",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950133",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -3206,40 +3066,28 @@
       "values_compared": 375
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0335",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950157",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0336",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950158",
-      "values_compared": 0
+      "values_compared": 17
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0337",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950159",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -3298,28 +3146,20 @@
       "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0345",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950167",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0346",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950168",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -3426,16 +3266,12 @@
       "values_compared": 140
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0360",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950182",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -3446,16 +3282,12 @@
       "values_compared": 474
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0362",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950184",
-      "values_compared": 0
+      "values_compared": 17
     },
     {
       "max_rel_err": 0.0,
@@ -3506,16 +3338,12 @@
       "values_compared": 45
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0369",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950191",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -3598,28 +3426,20 @@
       "values_compared": 350
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0380",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950202",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0381",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950203",
-      "values_compared": 0
+      "values_compared": 19
     },
     {
       "max_rel_err": 0.0,
@@ -3686,16 +3506,12 @@
       "values_compared": 75
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0390",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950212",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -3746,16 +3562,12 @@
       "values_compared": 351
     },
     {
-      "deferred": {
-        "symbol": "SmConstantRadiusAssistedFS::GuessPointOnPlaneSolve",
-        "unit": "blend.fillet_standard_solver_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0397",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12772265007024950219",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -3775,17 +3587,15 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 47,
+  "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 401,
+  "cases_passed": 448,
   "cases_total": 448,
-  "deferred_by_unit": {
-    "blend.fillet_standard_solver_p2": 47
-  },
+  "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,
   "rel_tol": 1e-9,
   "seeds": 16,
-  "status": "partial",
+  "status": "green",
   "unit": "blend.fillet_custom_solver"
 }

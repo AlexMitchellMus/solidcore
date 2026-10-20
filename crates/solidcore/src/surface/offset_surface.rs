@@ -1525,15 +1525,7 @@ impl OffsetSurface {
             .surface
             .step_inversion(k, anal_domain, point_on_surf, offset_tol, uv_guess);
         self.with_extension(|ext| {
-            self.step_inversion_with(
-                ext,
-                base,
-                k,
-                anal_domain,
-                point_on_surf,
-                tol_3d,
-                uv_guess,
-            )
+            self.step_inversion_with(ext, base, k, anal_domain, point_on_surf, tol_3d, uv_guess)
         })
     }
 
@@ -1562,15 +1554,7 @@ impl OffsetSurface {
                 .step_inversion(k, anal_domain, point_on_surf, offset_tol, uv_guess),
         };
         let r = self.with_extension(|ext| {
-            self.step_inversion_with(
-                ext,
-                base,
-                k,
-                anal_domain,
-                point_on_surf,
-                tol_3d,
-                uv_guess,
-            )
+            self.step_inversion_with(ext, base, k, anal_domain, point_on_surf, tol_3d, uv_guess)
         });
         self.fold_pending_extension();
         r

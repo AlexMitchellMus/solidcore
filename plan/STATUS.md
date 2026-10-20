@@ -4,7 +4,7 @@ Last updated: 2026-10-16, PR #127 (`sweep.trans_sweep_geometry` partial: 719 bit
 
 Latest topology integration: `topology.brep_p6` partial (PR #169, after its dependency #154: 498 cases, 450 pass, 48 deferred, 0 failed; 206 units, 113 green and 93 partial); before: `topology.shell` partial (PR #154, continuing @0xlillith's PR #80: 192 ported units, 109 green and 83 partial); before: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green); before: `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
 
-`blend.fillet_standard_solver_p2` (PR #265, stacked on #168): blocked on one disagreement (`plan/findings.md`); 3000 seeds 2394 pass, 1 failed, 605 deferred; wires `blend.fillet_custom_solver`'s `GuessPointOnPlaneSolve`.
+`blend.fillet_standard_solver_p2` (PR #265) partial: 405 cases, 388 pass, 0 failed, 17 deferred; 3000 seeds 2893 pass, 0 failed, 112 deferred. The offset surface now keeps a base extension its `&self` evaluators make (as upstream's `const` cast), which resolved the earlier disagreement; `blend.fillet_custom_solver` promoted to green (448/448).
 
 Latest main integration: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green).
 
