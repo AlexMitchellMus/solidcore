@@ -4391,7 +4391,7 @@ a gap below 0.1 and a loose tolerance, so it only shows in large seed counts; th
 default 3,093-case set (which the gate and CI run) is clean, and the previous generator's
 30,055-case run was clean.
 
-**Handling (#94).** Logged as `UB-198` in `plan/upstream-issues.md`. The Rust side keeps zeroing
+**Handling (#94).** Logged as `UB-204` in `plan/upstream-issues.md`. The Rust side keeps zeroing
 `Matrix::new`: emulating a stack slot is neither possible nor deterministic, and the port's goal is
 deterministic results. The unit's generator skips the shape, so `--seeds 30000` no longer reports
 `gen21507`: `reads_uninitialised_jacobian` in `crates/difftest/src/units/curve_curve_p9.rs` drops
