@@ -556,7 +556,17 @@ pub(super) fn corner_cpp_op(
 ) -> Result<Output, HarnessError> {
     let mut input = corner_input(model, c)?;
     input.extend_from_slice(tail);
-    let flat = ffi::corner(op, &input).map_err(|e| harness(e.to_string()))?;
+    let flat = match ffi::corner(op, &input) {
+        Ok(flat) => flat,
+        // the shim's UB-166 refusal of a surface whose constructed v knots crash the
+        // surface cache (only for the ops that build one)
+        Err(solidcore_ffi::FfiError::Status(solidcore_ffi::SC_ERR_ARG))
+            if op == Op::UpdateSplitFace =>
+        {
+            return Ok(Output::rejected("shim_rejected_args (UB-166)"));
+        }
+        Err(e) => return Err(harness(e.to_string())),
+    };
     corner_output(&flat)
 }
 

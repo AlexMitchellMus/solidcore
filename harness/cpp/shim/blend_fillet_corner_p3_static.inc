@@ -574,6 +574,11 @@ SC_EXPORT int32_t sc_blend_fillet_corner_p3_corner(int32_t op, const double* in,
         return SC_ERR_ARG;
     SC_TRY
     Rd rd(in, n_in);
+    // UpdateSplitFace classifies fillet vertices on the target faces (sm_ClassifyFacePoint
+    // builds their surface caches): the UB-166 constructed-v-knot guard of read_surface
+    // (blend_fillet_geom_p1.cpp) refuses such a surface while the Model is built, before
+    // any classification, as for OP_FB_SPLIT_FACE.
+    rd.cache_op = op == P3_UPDATE_SPLIT;
     std::vector<double> o;
     int32_t rc = p3_run(op, rd, o);
     if (rc != SC_OK)

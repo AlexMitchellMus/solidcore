@@ -32,7 +32,10 @@
 //!   (`1`) gets curve parameter `t`, UV positions and as `m_apUserPointer` the surfaces of
 //!   target faces `s0`, `s1` (`-1` NULL)), then original faces (`n (edge face)..`:
 //!   `SetOriginalFace` of a pseudo edge to a target face); [`Op::UpdateSplitFace`] (unit
-//!   `blend.fillet_corner_p2`) takes two more, `orig split` (target faces). Output: `-2` (refused), `-3` (not run), else
+//!   `blend.fillet_corner_p2`) takes two more, `orig split` (target faces); it classifies
+//!   points on the target faces (surface caches), so the shim returns `SC_ERR_ARG` for a
+//!   model surface whose constructed v knots crash the cache (UB-166, as
+//!   `blend.fillet_geom_p1`'s `FbSplitFace`). Output: `-2` (refused), `-3` (not run), else
 //!   the op status, `n_verts verts.. n_edges edges.. bevel blending chamfer degenerate
 //!   const_rad adjusted ext_patch setback n_surfs` and the model export of
 //!   `blend.fillet_geom_p1`.
