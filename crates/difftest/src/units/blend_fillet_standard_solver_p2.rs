@@ -833,7 +833,7 @@ fn rust_record(i: &Inputs) -> Result<Rec, HarnessError> {
                 Ok(None) => o.extend([0.0, -1.0, 999.0]),
                 Err(e) => match fail(e) {
                     // (upstream sets rpSrf2Offset first and leaves the index unchanged)
-                    Ok(s) => o.extend([s, (1 - *rail) as f64, 999.0]),
+                    Ok(s) => o.extend([s, 1usize.wrapping_sub(*rail) as f64, 999.0]),
                     Err(out) => return Ok(Err(out)),
                 },
             }
