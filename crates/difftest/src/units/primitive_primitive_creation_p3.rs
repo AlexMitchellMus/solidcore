@@ -572,8 +572,8 @@ mod tests {
         let plane =
             solidcore::surface::plane::Plane::create_canonical(&Axis2Placement::IDENTITY).unwrap();
         model.b.face_mut(selected).unwrap().surface = Some(Surface::from(plane));
-        // A linear surface without trims has an empty normal box. Tight mode
-        // instead reaches a different, unavailable query and cannot succeed.
+        // A linear surface without trims has an empty normal box. The leading
+        // face has no surface, so resolving face zero would fail this check.
         let bound = model
             .primitive_face_box((BrepId::from_index(0), selected))
             .unwrap();
