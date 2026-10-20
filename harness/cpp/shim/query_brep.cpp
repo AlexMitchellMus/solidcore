@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // difftest shim for unit `query.brep`: the SM_API surface evaluation entry points
 // SmApiEvaluateSurfacePoint, SmApiEvaluateSurfaceNormal and SmApiEvaluateSurfaceDerivatives
-// (source/SM_API/src/SmApiSurfaces.cpp), called through the public API.
+// (source/SM_API/src/SmApiSurfaces.cpp), called through the public API; the decimation
+// attribute constructors and MakeCopy overrides (source/SMLib/inc/SmPolyDecimate.h,
+// source/SMLib/src/SmPolyDecimate.cpp), whose protected data is reached through derived
+// "peek" classes.
 //
 // The surface reader is a copy of the surface.surface_cache_p3 shim's (another translation
 // unit). Layouts are documented in crates/solidcore-ffi/src/units/query_brep.rs, which
@@ -17,12 +20,14 @@
 #include <SmExtent2d.h>
 #include <SmNurbsSrf.h>
 #include <SmPlane.h>
+#include <SmPolyDecimate.h>
 #include <SmSurface.h>
 #include <SmTArray.h>
 #include <SmVector2d.h>
 #include <SmVector3d.h>
 #include <nurbs.h>
 
+#include <limits>
 #include <vector>
 
 #include "sc_sm.h"
@@ -120,7 +125,156 @@ SmSurface* read_surface(Rd& rd, const SmContext& ctx)
     return new (ctx) SmCurveBoundedSurface(*b, &c3d, &cuv, TRUE);
 }
 
+// Peek classes: the decimation attributes' data is protected (SmPolyDecimate is a friend).
+struct DecimatePeek : SmDecimateVertexAttr
+{
+    ULONG& sort() { return m_lSortIndex; }
+    SmPolyVertexClass& vclass() { return m_eVertClass; }
+    double& distance() { return m_dVertexDistance; }
+    double& error() { return m_dMaxFaceError; }
+    SmVector3d& normal() { return m_vAveragePlaneNormal; }
+};
+
+struct QuadricVertexPeek : SmQuadricVertexAttr
+{
+    SmVector3d& q(int i) { return m_Q[i]; }
+    SmVector3d& b() { return m_b; }
+    double& c() { return m_c; }
+};
+
+struct QuadricEdgePeek : SmQuadricEdgeAttr
+{
+    SmPoint3d& point() { return m_vNewPoint; }
+    double& error() { return m_dError; }
+    ULONG& sort() { return m_lSortIndex; }
+};
+
+enum
+{
+    KIND_DECIMATE_VERTEX = 0,
+    KIND_QUADRIC_VERTEX = 1,
+    KIND_QUADRIC_EDGE = 2,
+};
+
+// The data of a decimation attribute of kind `kind`; the quadric edge sort index only when
+// `sort_set` (it is uninitialised until set), else NaN.
+void put_data(std::vector<double>& o, int64_t kind, SmAttribute* a, bool sort_set)
+{
+    if (kind == KIND_DECIMATE_VERTEX)
+    {
+        DecimatePeek* d = static_cast<DecimatePeek*>(static_cast<SmDecimateVertexAttr*>(a));
+        o.push_back((double)d->sort());
+        o.push_back((double)d->vclass());
+        o.push_back(d->distance());
+        o.push_back(d->error());
+        put_vec(o, d->normal());
+    }
+    else if (kind == KIND_QUADRIC_VERTEX)
+    {
+        QuadricVertexPeek* d = static_cast<QuadricVertexPeek*>(static_cast<SmQuadricVertexAttr*>(a));
+        for (int i = 0; i < 3; i++)
+            put_vec(o, d->q(i));
+        put_vec(o, d->b());
+        o.push_back(d->c());
+    }
+    else
+    {
+        QuadricEdgePeek* d = static_cast<QuadricEdgePeek*>(static_cast<SmQuadricEdgeAttr*>(a));
+        put_vec(o, d->point());
+        o.push_back(d->error());
+        o.push_back(sort_set ? (double)d->sort() : std::numeric_limits<double>::quiet_NaN());
+    }
+}
+
+// Sets the data of a decimation attribute from the record (layout in the ffi module).
+void set_data(Rd& rd, int64_t kind, SmAttribute* a, bool& sort_set)
+{
+    if (kind == KIND_DECIMATE_VERTEX)
+    {
+        DecimatePeek* d = static_cast<DecimatePeek*>(static_cast<SmDecimateVertexAttr*>(a));
+        d->sort() = (ULONG)rd.num();
+        d->vclass() = (SmPolyVertexClass)rd.idx();
+        d->distance() = rd.num();
+        d->error() = rd.num();
+        d->normal() = rd.vec();
+    }
+    else if (kind == KIND_QUADRIC_VERTEX)
+    {
+        QuadricVertexPeek* d = static_cast<QuadricVertexPeek*>(static_cast<SmQuadricVertexAttr*>(a));
+        for (int i = 0; i < 3; i++)
+            d->q(i) = rd.vec();
+        d->b() = rd.vec();
+        d->c() = rd.num();
+    }
+    else
+    {
+        QuadricEdgePeek* d = static_cast<QuadricEdgePeek*>(static_cast<SmQuadricEdgeAttr*>(a));
+        d->point() = rd.vec();
+        d->error() = rd.num();
+        sort_set = rd.flag();
+        double sort = rd.num();
+        if (sort_set)
+            d->sort() = (ULONG)sort;
+    }
+}
+
+void put_attribute(std::vector<double>& o, int64_t kind, SmAttribute* a, bool sort_set)
+{
+    o.push_back((double)a->GetAttributeID());
+    o.push_back((double)a->GetBehavior());
+    o.push_back((double)a->GetType());
+    put_data(o, kind, a, sort_set);
+}
+
 } // namespace sc_query_brep
+
+// `kind id has_behavior behavior set [data]`: constructs the attribute (with the default
+// behaviour unless `has_behavior`), sets its data when `set`, copies it with MakeCopy and
+// returns `id behavior type data` of the original, then of the copy.
+SC_EXPORT int32_t sc_query_brep_attribute(const double* in, int64_t n_in, double* out, int64_t cap,
+                                          int64_t* out_len)
+{
+    using namespace sc_query_brep;
+    if (!in || n_in < 5)
+        return SC_ERR_ARG;
+    SC_TRY
+    const SmContext& ctx = *SmApiGetOrCreateContext();
+    Rd rd{in, 0};
+    int64_t kind = rd.idx();
+    ULONG id = (ULONG)rd.num();
+    bool has_behavior = rd.flag();
+    SmAttributeBehaviorType behavior = (SmAttributeBehaviorType)rd.idx();
+    bool set = rd.flag();
+
+    SmAttribute* a;
+    if (kind == KIND_DECIMATE_VERTEX)
+        a = has_behavior ? new (ctx) SmDecimateVertexAttr(id, behavior) : new (ctx) SmDecimateVertexAttr(id);
+    else if (kind == KIND_QUADRIC_VERTEX)
+        a = has_behavior ? new (ctx) SmQuadricVertexAttr(id, behavior) : new (ctx) SmQuadricVertexAttr(id);
+    else if (kind == KIND_QUADRIC_EDGE)
+        a = has_behavior ? new (ctx) SmQuadricEdgeAttr(id, behavior) : new (ctx) SmQuadricEdgeAttr(id);
+    else
+        return SC_ERR_ARG;
+
+    bool sort_set = false;
+    if (set)
+        set_data(rd, kind, a, sort_set);
+    if (rd.at != n_in)
+    {
+        delete a;
+        return SC_ERR_ARG;
+    }
+
+    SmAttribute* c = a->MakeCopy(ctx);
+    std::vector<double> o;
+    put_attribute(o, kind, a, sort_set);
+    // every MakeCopy sets or keeps a defined sort index
+    put_attribute(o, kind, c, true);
+    delete c;
+    delete a;
+    return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len);
+    SC_CATCH
+}
 
 // `has_surface [S] u v P Du Dv`: the op's status, then P, Du and Dv as the entry point
 // leaves them (the given sentinels where it does not write them).

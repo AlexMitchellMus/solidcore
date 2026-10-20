@@ -9,14 +9,21 @@
 //! status (`0` = `SM_SUCCESS`, else the `SmStatus`; `1007` for a Rust `InvalidInput`) and
 //! `P Du Dv` as the entry point leaves them: the sentinels where it does not write them
 //! (upstream evaluates into locals and writes the outputs only on success).
+//!
+//! An `attribute` case is a decimation attribute class (`decimate_vertex`,
+//! `quadric_vertex` or `quadric_edge`), its id, an optional behaviour (`null` for the
+//! constructor's default) and optional data written before the copy, laid out as the
+//! ffi module documents. Both sides produce `id behavior type data` of the constructed
+//! attribute, then of its `MakeCopy` (the quadric edge's sort index NaN while unset).
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use solidcore::geom::attribute::{Attribute, AttributeValue, Behavior};
 use solidcore::math::{Point2, Vec3};
-use solidcore::query::brep as qb;
+use solidcore::query::brep::{self as qb, PolyVertexClass};
 use solidcore::surface::surface::Surface;
-use solidcore_ffi::units::query_brep::{self as ffi, EvalOp};
+use solidcore_ffi::units::query_brep::{self as ffi, AttrKind, EvalOp};
 
 use super::surface_surface_cache_p1::harness;
 use super::surface_surface_cache_p3::{gen_surf, push_surf, surf_domain, surface_in, SurfIn};
@@ -63,10 +70,40 @@ struct EvalIn {
     sentinel: [f64; 9],
 }
 
+/// The class of an `attribute` case.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Kind {
+    DecimateVertex,
+    QuadricVertex,
+    QuadricEdge,
+}
+
+impl Kind {
+    fn ffi(self) -> AttrKind {
+        match self {
+            Self::DecimateVertex => AttrKind::DecimateVertex,
+            Self::QuadricVertex => AttrKind::QuadricVertex,
+            Self::QuadricEdge => AttrKind::QuadricEdge,
+        }
+    }
+}
+
+/// An `attribute` case.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AttrIn {
+    kind: Kind,
+    id: u64,
+    behavior: Option<u8>,
+    /// The data record written before the copy (see the ffi module).
+    data: Option<Vec<f64>>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum Inputs {
     Evaluate(EvalIn),
+    Attribute(AttrIn),
 }
 
 /// A `[f64; 2]` whose entries may be `"NaN"`, `"inf"` or `"-inf"` (JSON has no
@@ -125,6 +162,22 @@ fn cpp_evaluate(i: &EvalIn) -> Result<Output, HarnessError> {
     Ok(eval_output(&flat))
 }
 
+fn attr_input(i: &AttrIn) -> Vec<f64> {
+    let mut o = vec![
+        i.id as f64,
+        f64::from(u8::from(i.behavior.is_some())),
+        f64::from(i.behavior.unwrap_or(0)),
+        f64::from(u8::from(i.data.is_some())),
+    ];
+    o.extend(i.data.iter().flatten());
+    o
+}
+
+fn cpp_attribute(i: &AttrIn) -> Result<Output, HarnessError> {
+    let flat = ffi::attribute(i.kind.ffi(), &attr_input(i)).map_err(|e| harness(e.to_string()))?;
+    Ok(Output::new().values("attributes", flat))
+}
+
 // ---- Rust side ----------------------------------------------------------------------
 
 fn rust_evaluate(i: &EvalIn) -> Result<Output, Fail> {
@@ -153,7 +206,157 @@ fn rust_evaluate(i: &EvalIn) -> Result<Output, Fail> {
     Ok(eval_output(&flat))
 }
 
+/// Reads the `at`th entry of a data record.
+fn datum(d: &[f64], at: usize) -> Result<f64, HarnessError> {
+    d.get(at)
+        .copied()
+        .ok_or_else(|| harness("attribute data too short"))
+}
+
+fn vec_at(d: &[f64], at: usize) -> Result<Vec3, HarnessError> {
+    Ok(Vec3::new(datum(d, at)?, datum(d, at + 1)?, datum(d, at + 2)?))
+}
+
+/// Writes a data record into the attribute (as the shim's `set_data`).
+fn set_data(a: &mut Attribute, d: &[f64]) -> Result<(), HarnessError> {
+    match a.value_mut() {
+        AttributeValue::DecimateVertex(v) => {
+            v.sort_index = datum(d, 0)? as u64;
+            let class = datum(d, 1)?;
+            v.vertex_class = PolyVertexClass::ALL
+                .get(class as usize)
+                .copied()
+                .ok_or_else(|| harness(format!("bad vertex class {class}")))?;
+            v.vertex_distance = datum(d, 2)?;
+            v.max_face_error = datum(d, 3)?;
+            v.average_plane_normal = vec_at(d, 4)?;
+        }
+        AttributeValue::QuadricVertex(v) => {
+            v.q = [vec_at(d, 0)?, vec_at(d, 3)?, vec_at(d, 6)?];
+            v.b = vec_at(d, 9)?;
+            v.c = datum(d, 12)?;
+        }
+        AttributeValue::QuadricEdge(v) => {
+            v.new_point = vec_at(d, 0)?;
+            v.error = datum(d, 3)?;
+            if datum(d, 4)? != 0.0 {
+                v.sort_index = Some(datum(d, 5)? as u64);
+            }
+        }
+        _ => return Err(harness("not a decimation attribute")),
+    }
+    Ok(())
+}
+
+fn push_attribute(o: &mut Vec<f64>, a: &Attribute) -> Result<(), HarnessError> {
+    let pv = |o: &mut Vec<f64>, v: Vec3| o.extend([v.x, v.y, v.z]);
+    o.extend([
+        a.attribute_id() as f64,
+        f64::from(a.behavior().code()),
+        a.type_code() as f64,
+    ]);
+    match a.value() {
+        AttributeValue::DecimateVertex(v) => {
+            o.extend([
+                v.sort_index as f64,
+                f64::from(v.vertex_class as u8),
+                v.vertex_distance,
+                v.max_face_error,
+            ]);
+            pv(o, v.average_plane_normal);
+        }
+        AttributeValue::QuadricVertex(v) => {
+            for r in v.q {
+                pv(o, r);
+            }
+            pv(o, v.b);
+            o.push(v.c);
+        }
+        AttributeValue::QuadricEdge(v) => {
+            pv(o, v.new_point);
+            o.push(v.error);
+            o.push(v.sort_index.map_or(f64::NAN, |s| s as f64));
+        }
+        _ => return Err(harness("not a decimation attribute")),
+    }
+    Ok(())
+}
+
+fn rust_attribute(i: &AttrIn) -> Result<Output, HarnessError> {
+    let behavior = match i.behavior {
+        Some(b) => Behavior::from_code(i32::from(b)).map_err(|e| harness(e.to_string()))?,
+        // the constructors' default argument
+        None => Behavior::Copy,
+    };
+    let mut a = match i.kind {
+        Kind::DecimateVertex => qb::decimate_vertex_attribute(i.id, behavior),
+        Kind::QuadricVertex => qb::quadric_vertex_attribute(i.id, behavior),
+        Kind::QuadricEdge => qb::quadric_edge_attribute(i.id, behavior),
+    };
+    if let Some(d) = &i.data {
+        set_data(&mut a, d)?;
+    }
+    let c = a.make_copy();
+    let mut o = Vec::new();
+    push_attribute(&mut o, &a)?;
+    push_attribute(&mut o, &c)?;
+    Ok(Output::new().values("attributes", o))
+}
+
 // ---- generation ---------------------------------------------------------------------
+
+/// A value for a data field: mostly moderate, sometimes zero, huge, tiny or non-finite
+/// (the attributes copy whatever they hold).
+fn gen_value(rng: &mut Rng) -> f64 {
+    match rng.below(16) {
+        0 => 0.0,
+        1 => -1e300,
+        2 => 1e-300,
+        3 => f64::MIN_POSITIVE / 4.0,
+        _ => rng.uniform(-1e3, 1e3),
+    }
+}
+
+/// An exact `ULONG` the ffi accepts.
+fn gen_ulong(rng: &mut Rng) -> u64 {
+    match rng.below(6) {
+        0 => 0,
+        1 => u64::from(u32::MAX),
+        2 => 1 << 53,
+        _ => rng.below(1 << 20),
+    }
+}
+
+fn gen_attr(rng: &mut Rng) -> AttrIn {
+    let kind = match rng.below(3) {
+        0 => Kind::DecimateVertex,
+        1 => Kind::QuadricVertex,
+        _ => Kind::QuadricEdge,
+    };
+    let id = gen_ulong(rng);
+    let behavior = rng.chance(0.7).then(|| rng.below(5) as u8);
+    let data = rng.chance(0.75).then(|| match kind {
+        Kind::DecimateVertex => {
+            let mut d = vec![gen_ulong(rng) as f64, rng.below(6) as f64];
+            d.extend((0..5).map(|_| gen_value(rng)));
+            d
+        }
+        Kind::QuadricVertex => (0..13).map(|_| gen_value(rng)).collect(),
+        Kind::QuadricEdge => {
+            let mut d: Vec<f64> = (0..4).map(|_| gen_value(rng)).collect();
+            d.push(f64::from(u8::from(rng.chance(0.5))));
+            d.push(gen_ulong(rng) as f64);
+            d
+        }
+    });
+    AttrIn {
+        kind,
+        id,
+        behavior,
+        data,
+    }
+}
+
 
 fn gen_what(rng: &mut Rng) -> What {
     match rng.below(3) {
@@ -242,6 +445,10 @@ impl UnitDiff for Runner {
     }
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
+        if rng.chance(0.2) {
+            let i = gen_attr(rng);
+            return serde_json::to_value(Inputs::Attribute(i)).ok();
+        }
         for _ in 0..64 {
             let Ok(i) = gen_eval(rng) else {
                 continue;
@@ -267,12 +474,14 @@ impl UnitDiff for Runner {
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
         match case.parse::<Inputs>()? {
             Inputs::Evaluate(i) => cpp_evaluate(&i),
+            Inputs::Attribute(i) => cpp_attribute(&i),
         }
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
         let r = match case.parse::<Inputs>()? {
             Inputs::Evaluate(i) => rust_evaluate(&i),
+            Inputs::Attribute(i) => return rust_attribute(&i),
         };
         match r {
             Ok(o) => Ok(o),
