@@ -7492,7 +7492,7 @@ domain, not the offset distance.
 `nurbs.b_spline_surface_p2` (touched): 764 cases, 759 pass, 5 deferred; its
 `three_arcs_about_two_centres` case (arcs about two centres, the first two sharing their
 start point) compares 94 values and fails with the first arc's centre captured by value, so
-it pins WR-103. All green/partial units: `green-par: 222 units, failed=0` on main fb58ea76 +
+it pins WR-103. All green/partial units: `green-par: 231 units, failed=0` on main 39ceb995 +
 this PR (#147 merged).
 
 ## boolean.topology_intersector_p1 (`SmTopologyIntersector.cpp` part 1, PR #146, 2026-10-16; partial, no disagreements)
