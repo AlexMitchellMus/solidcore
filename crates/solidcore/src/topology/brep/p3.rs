@@ -764,13 +764,16 @@ fn prospective_entities(b: &Brep, window: usize) -> Vec<EntityRef> {
 }
 
 /// The number of objects of one kind any edit here allocates at most: the B-rep's own
-/// count (`DeleteFace` splits at most that many shells), three per object of a B-rep it
-/// reads (`CopyVertices` makes a shell, vertex use and vertex per vertex; copies and
-/// merges one per object) and a few for the wire makers.
-fn allocation_window(b: &Brep, source: Option<&Brep>) -> usize {
+/// count (`DeleteFace` splits at most that many shells), one per object of a B-rep it
+/// reads (copies and merges), three per entry of an input list (`CopyVertices` makes a
+/// shell, vertex use and vertex for every entry, repeated ones included, as upstream)
+/// and a few for the wire makers.
+fn allocation_window(b: &Brep, source: Option<&Brep>, inputs: usize) -> usize {
     let n = entities(b).len();
     let m = source.map_or(0, |s| entities(s).len());
-    n.saturating_add(m.saturating_mul(3)).saturating_add(16)
+    n.saturating_add(m)
+        .saturating_add(inputs.saturating_mul(3))
+        .saturating_add(16)
 }
 
 /// Every key `key_of` gives `b`'s objects, those an edit may allocate
@@ -822,9 +825,22 @@ fn with_caller_identities<R>(
     source: Option<(&Brep, &dyn Fn(EntityRef) -> ObjectRef)>,
     edit: impl FnOnce(&mut Kernel, &mut Brep, &mut NotifyEnv<'_>) -> Result<R>,
 ) -> Result<R> {
+    with_caller_identities_for(k, b, env, source, 0, edit)
+}
+
+/// [`with_caller_identities`] for an edit that allocates per entry of an input list of
+/// `inputs` entries ([`allocation_window`]).
+fn with_caller_identities_for<R>(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+    source: Option<(&Brep, &dyn Fn(EntityRef) -> ObjectRef)>,
+    inputs: usize,
+    edit: impl FnOnce(&mut Kernel, &mut Brep, &mut NotifyEnv<'_>) -> Result<R>,
+) -> Result<R> {
     {
         let context = env.context.as_deref().unwrap_or(&k.context);
-        let window = allocation_window(b, source.map(|(src, _)| src));
+        let window = allocation_window(b, source.map(|(src, _)| src), inputs);
         check_keys(context, b, env.key_of, window)?;
         if let Some((src, key_of)) = source {
             // (a source is read, never added to)
@@ -862,8 +878,11 @@ pub(crate) fn with_lent_context<R>(
 /// `context`: `b`'s objects are named by their kernel identities ([`topology_ref`]
 /// with `b`'s serial in `context`'s domain, [`notify_serial`]) and the B-rep by its
 /// kernel key for the edit (`Brep::key` is restored afterwards, whatever the result),
-/// with default `SmTopology` records and an empty attribute store (attribute
-/// propagation is not modelled for such callers, nor flags kept between their edits).
+/// with a default `SmTopology` record for every existing object of `b` from the start
+/// (as every upstream object has one, so a notification sent before any p3 edit runs,
+/// e.g. part 5's edge merge, finds the records it reads) and an empty attribute store
+/// (attribute propagation is not modelled for such callers, nor flags kept between
+/// their edits).
 ///
 /// # Errors
 ///
@@ -879,6 +898,7 @@ pub(crate) fn kernel_named_edit<R>(
     let label = b.key();
     b.set_key(topology_ref(serial, brep_entity()).key);
     let mut records = BTreeMap::new();
+    seed_records(&mut records, b, &key_of);
     let mut attributes = crate::geom::attribute::AttributeStore::default();
     let r = {
         let mut env = NotifyEnv {
@@ -955,9 +975,15 @@ pub fn copy_vertices(
     env: &mut NotifyEnv<'_>,
     source_key: &dyn Fn(EntityRef) -> ObjectRef,
 ) -> Result<Vec<VertexId>> {
-    with_caller_identities(k, dest, env, Some((src, source_key)), |_, dest, env| {
-        copy_vertices_in(src, source_key, vertices, dest, env)
-    })
+    let inputs = vertices.len();
+    with_caller_identities_for(
+        k,
+        dest,
+        env,
+        Some((src, source_key)),
+        inputs,
+        |_, dest, env| copy_vertices_in(src, source_key, vertices, dest, env),
+    )
 }
 
 /// [`copy_vertices`] once the identities are checked and seeded.
@@ -4292,6 +4318,92 @@ mod tests {
         assert!(matches!(r, Err(SolidError::InvalidInput { .. })), "{r:?}");
         let after: Vec<Point3> = b.vertices().iter().map(|(_, v)| v.point).collect();
         assert_eq!(before, after);
+    }
+
+    /// Codex re-check of 6b04141d, M1: `CopyVertices` allocates for every entry of its
+    /// list, repeated entries included, so the keys checked before the copy cover the
+    /// list's length, not the arenas' (Codex's repro: one shell vertex copied 30 times,
+    /// the 30th new vertex keyed like a curve, is refused before anything changes).
+    #[test]
+    fn copy_vertices_checks_a_key_for_every_entry() {
+        let mut k = Kernel::default();
+        let mut src = Brep::new_with_infinite_region().unwrap();
+        let mut records = BTreeMap::new();
+        let mut attributes = crate::geom::attribute::AttributeStore::default();
+        let inf = src.infinite_region();
+        let (_, v) = {
+            let mut env = NotifyEnv {
+                records: &mut records,
+                attributes: &mut attributes,
+                context: None,
+                key_of: &source_key,
+            };
+            super::super::p9::make_shell_vertex(&mut src, inf, Vec3::ZERO, &mut env).unwrap()
+        };
+        let mut dest = Brep::new_with_infinite_region().unwrap();
+        let reserved = EntityRef::Vertex(VertexId::from_index(29));
+        let key_of = move |e: EntityRef| {
+            if e == reserved {
+                ObjectRef {
+                    type_code: vertex::TYPE,
+                    key: ObjectKey(crate::geom::context::GEOMETRY_KEY_BASE | 1),
+                }
+            } else {
+                dest_key(e)
+            }
+        };
+        let (mut ctx, seen) = recording_context();
+        let mut env = NotifyEnv {
+            records: &mut records,
+            attributes: &mut attributes,
+            context: Some(&mut ctx),
+            key_of: &key_of,
+        };
+        let r = copy_vertices(&mut k, &src, &[v; 30], &mut dest, &mut env, &source_key);
+        assert_eq!(r, Err(RESERVED_KEY));
+        assert!(dest.vertices().is_empty());
+        assert!(seen.lock().unwrap().is_empty());
+    }
+
+    /// Codex re-check of 6b04141d, M3: a plain part-5 edit's environment has a record
+    /// for every existing object from the start, so on the A--B--C wire
+    /// `DeleteTopologicalVertex(B)` delivers its edge merge (`SM_NO_MERGE_IN_BREP` of the
+    /// two edges, sent before any p3 edit runs) to the kernel's callback.
+    #[test]
+    fn plain_p5_edits_deliver_their_first_notifications() {
+        use crate::topology::brep::p5;
+        type Events = std::sync::Arc<std::sync::Mutex<Vec<(NotifyOperation, Option<ObjectRef>)>>>;
+        #[derive(Debug)]
+        struct Ops(Events);
+        impl crate::geom::context::NotifyCallback for Ops {
+            fn execute(
+                &mut self,
+                operation: NotifyOperation,
+                _caller: ObjectRef,
+                data1: Option<ObjectRef>,
+                _data2: Option<ObjectRef>,
+                _data3: Option<ObjectRef>,
+            ) -> Result<()> {
+                self.0.lock().unwrap().push((operation, data1));
+                Ok(())
+            }
+        }
+        let events = Events::default();
+        let mut k = Kernel::default();
+        k.context
+            .set_user_notify_callback(Some(Box::new(Ops(std::sync::Arc::clone(&events)))));
+        let (mut b, [_, v, _], [_, e1]) = test_support::wire_chain(true);
+        b.set_editing_enabled(true);
+        p5::delete_topological_vertex(&mut k, &mut b, true, Some(v), Some(e1)).unwrap();
+        let edge_merges = events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(op, d1)| {
+                *op == NotifyOperation::MergeInBrep && d1.is_some_and(|d| d.type_code == edge::TYPE)
+            })
+            .count();
+        assert!(edge_merges >= 1);
     }
 }
 
