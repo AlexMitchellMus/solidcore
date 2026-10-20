@@ -10449,6 +10449,16 @@ notification identities and both operand callbacks with locked marks after error
 
 Verification after batch #259: running on sc-builder-5; final summaries pending.
 
+Update (PR #281): CloseIntersectionLoop is now co-ported into
+boolean.topology_intersector_p2 (`TopologyIntersector::close_intersection_loop`), and
+`KernelManifoldIntersector::close_intersection_loop` calls it over the `ArenaPair`.
+The `ManifoldIntersector` method now takes the caller `AttributeStore` and has no
+default, so the table row above is historical. Merging main also gave `ArenaPair`
+the three `IntersectorBrepP2` methods that p2 added (`brep_faces`,
+`brep_combine_coincident_vertices`, `edge_normalized_evaluate`) and passed the kernel
+to `fix_gaps`. All valid merge_p4 operand cases still stop first at merge_p1's
+`temporary_brep_transform` (`query.brep`), so no merge_p4 case reaches the loop yet.
+
 ## topology.vertexuse: extreme-coordinate C++ fuzz timeouts (PR #248)
 
 While validating the empty-knot encoder fix for issue #198, the Linux run against
