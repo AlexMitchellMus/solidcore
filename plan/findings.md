@@ -9736,7 +9736,7 @@ Current UNPORTED audit for #244 (main batch #259 integrated; 38 symbols / 15 own
 - `blend.fillet_solver_p4` (`todo`): `SmFilletSolver::CalcFilletGeom`.
 - `blend.fillet_standard_solver_p2` (`todo`): `SmSurfaceSurfaceFS::CalcFilletGeom`.
 - `blend.fillet_solver_p5` (`todo`): `SmFilletSolver::TestRollOver`.
-- `heal.stitch_p2` (`todo`): `SmStitch::DoStitching`.
+- `heal.stitch_p2`: none since it became `partial` on main (#205). `SmStitch::DoStitching` is the required adapter `ExecutiveAccess::do_stitching`, documented as delegating to `heal::stitch::p2::Stitch::do_stitching`.
 - `topology.brep_p2` (`todo`): `SmBrep::SetTolerance`.
 - `topology.brep_p3` (`todo`): `SmBrep::MergeBrep`, `SmBrep::OrientTrimmedSurfaces`.
 - `topology.brep_p4` (`todo`): `SmBrep::StitchFaces`.
@@ -9835,7 +9835,7 @@ Coverage still establishes zero successful geometric/topological comparisons.
   `GetFilletSolverOfEdgeuse` lookup. It has not been executed or established as
   an upstream defect, so no WR id is reserved. The scripted tangent regression
   now returns repeated first-solver entries; it is not a port of that algorithm.
-- Extended ownership audit: the tags now cover **41 distinct symbols / 17 owners**,
+- Extended ownership audit: the tags now cover **40 distinct symbols / 16 owners**,
   all `todo` in the merged plan; the complete list above includes all new tags.
   Added GetFilletSolvers; added seven derived symbols and two new owners; removed
   no dependency owners. Required-but-owned-elsewhere corner accessors are also
@@ -9893,8 +9893,8 @@ The Opus re-check of 612c6631 is CLEAN. Its runner-error nit is folded in:
 corner or solver; future fixtures must dispatch real derived objects to their
 actual owners. Explicit UNPORTED tags sit on each runner stub body, and the
 complete override-owner tags remain discoverable at the required trait methods.
-The audit counts 41 distinct upstream symbols / 17 owners, including required
-virtual-dispatch targets, not 41 independently implemented stub bodies.
+The audit counts 40 distinct upstream symbols / 16 owners, including required
+virtual-dispatch targets, not 40 independently implemented stub bodies.
 
 Merged origin/main 46ddc4ff (#179 blend.fillet_intersector), preserving both
 `fillet_executive` and `fillet_intersector` exports in the sorted blend module list.

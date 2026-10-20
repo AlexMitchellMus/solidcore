@@ -677,24 +677,42 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         ))
     }
 
-    /// `SmStitch::DoStitching`; waiting for `heal.stitch_p2`.
+    /// `SmStitch::DoStitching` (`SmFilletExecutive.cpp:3559-3576`). Delegate to the
+    /// already ported `heal::stitch::p2::Stitch::do_stitching` (heal stitch p2) on the
+    /// B-rep `brep` resolves to:
+    /// - build the `Stitch` with `DefaultStitchCallback` (upstream's base
+    ///   `SmStitchCallback`) and `tolerance` as its stitch tolerance, and copy every
+    ///   [`StitchSettings`] field onto the `Stitch` field of the same name;
+    /// - pass the candidate lists through (`DoFilleting` passes `None` for both);
+    /// - pass a `MinGapRequest` with `vertex` and `edge` set by whether
+    ///   `min_vertex_gap` and `min_edge_gap` are `Some` (both `false` from
+    ///   `DoFilleting`, whose call omits the min-gap out-params), writing the
+    ///   reported gaps back when requested;
+    /// - map `Stitching.{stitched_edges, lamina_edges, max_vertex_gap, max_edge_gap}`
+    ///   to [`StitchAttempt`]`.{stitched, lamina, max_vertex_gap, max_edge_gap}` with
+    ///   `status: None`; an error from `do_stitching` becomes `status: Some(error)`
+    ///   with zero counts and gaps (the outputs `DoStitching` initialises), so the
+    ///   retry loop sees it as upstream's `eStat`. Return `Err` only when the handle
+    ///   cannot be resolved.
+    ///
+    /// `Stitch` keeps no state between calls besides its options and tolerance, so
+    /// one `Stitch` per call matches upstream's single `sStitch` whose tolerance
+    /// `SetStitchTol3d` doubles between tries.
+    ///
+    /// Once this is wired to a live `Brep`, UB-197 (`DoStitching` keeps using an edge
+    /// that a failed glue deleted) applies: `DoFilleting` sets
+    /// `m_bIgnoreProblems = TRUE`, so a failed glue does not stop the stitch.
     fn do_stitching(
         &mut self,
-        _k: &mut Kernel,
-        _brep: O,
-        _tolerance: f64,
-        _candidate_vertices: Option<&[O]>,
-        _candidate_edges: Option<&[O]>,
-        _settings: StitchSettings,
-        _min_vertex_gap: Option<&mut f64>,
-        _min_edge_gap: Option<&mut f64>,
-    ) -> Result<StitchAttempt> {
-        // UNPORTED(heal.stitch_p2): SmStitch::DoStitching
-        Err(SolidError::unported(
-            "SmStitch::DoStitching",
-            "heal.stitch_p2",
-        ))
-    }
+        k: &mut Kernel,
+        brep: O,
+        tolerance: f64,
+        candidate_vertices: Option<&[O]>,
+        candidate_edges: Option<&[O]>,
+        settings: StitchSettings,
+        min_vertex_gap: Option<&mut f64>,
+        min_edge_gap: Option<&mut f64>,
+    ) -> Result<StitchAttempt>;
 
     /// `SmFilletExecutive::RemoveTopoEdges`; waiting for `blend.fillet_executive_p1`.
     fn remove_topo_edges(
@@ -737,8 +755,8 @@ pub struct ContextMark {
     pub mark_type: crate::geom::context::MarkType,
 }
 
-/// The actual `SmStitch` switches used by `DoFilleting`. Constructor defaults are
-/// explicit; p3 changes only `do_region_nesting` and `ignore_problems` to true.
+/// The `SmStitch` switches passed to [`ExecutiveAccess::do_stitching`]. `Default` is
+/// the configuration `DoFilleting` builds.
 #[derive(Debug, Clone, Copy)]
 #[allow(clippy::struct_excessive_bools)] // upstream independent switches
 pub struct StitchSettings {
