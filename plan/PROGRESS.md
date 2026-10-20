@@ -41,7 +41,7 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 - [ ] 🔨 `offset.offset_executive_p2` (1846 lines) — in progress: #201 @altvnk (ready for review)
 - [ ] 🔨 `blend.fillet_geom_p5` (1952 lines) — in progress: #264 @froglemonade2 (draft)
 - [ ] 🔨 `blend.fillet_corner_p2` (1892 lines) — in progress: #268 @bluecmd (draft)
-- [ ] 🔨 `audit.recursion` (0 lines) — in progress: #273 @Karl-VonRichter (draft)
+- [ ] 🔨 `audit.recursion` (0 lines) — in progress: #273 @Karl-VonRichter (ready for review)
 
 ## By module
 
@@ -349,4 +349,4 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 
 ### (crate-wide) (0/1)
 
-- [ ] 🔨 `audit.recursion` (0 lines) — in progress: #273 @Karl-VonRichter (draft)
+- [ ] 🔨 `audit.recursion` (0 lines) — in progress: #273 @Karl-VonRichter (ready for review)
