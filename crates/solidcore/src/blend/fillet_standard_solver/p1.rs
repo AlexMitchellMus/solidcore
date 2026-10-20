@@ -48,7 +48,7 @@
 //! | [`GuessSphereSolve::new`]                                | `SmGuessSphereSolveENFO::SmGuessSphereSolveENFO` (file-local class) |
 //! | [`FilletSolverData`] (CO-PORTED)                         | the `SmFilletSolver` members these solvers read       |
 //! | [`fillet_solver_is_kind_of`] (CO-PORTED)                 | `SmFilletSolver::IsKindOf`                            |
-//! | [`FilletSolverType`], [`FilletSurfaceGeneratorType`], [`BoundaryTrimmingType`] (re-exported from `blend.fillet_geom_p1`) | `SmFilletSolverType`, `SmFilletSurfaceGeneratorType`, `SmBoundaryTrimmingType` |
+//! | [`FilletSolverType`], [`FilletSurfaceGeneratorType`] (re-exported from `blend.fillet_solver_p1`), [`BoundaryTrimmingType`] (re-exported from `blend.fillet_geom_p1`) | `SmFilletSolverType`, `SmFilletSurfaceGeneratorType`, `SmBoundaryTrimmingType` |
 //! | [`FilletLaw`], [`FilletLawKind`] (CO-PORTED)             | `SmFilletLaw`, `SmLinearFilletLaw`, `SmBSplineFilletLaw` (the data these solvers read) |
 //! | [`JacobianSurfaces`]                                     | the `rpSurface1`, `rpSurface2` arguments of `LoadJacobian` |
 //!
@@ -77,8 +77,8 @@
 //!   `*GetSurface(lRailIndex)`, whose extension (and grown natural UV domain) then stays
 //!   on the solver, and the other rail's surface is `rpSurface2` itself. Its
 //!   `rpSurface2->LocalPointSolve` / `GlobalPointSolve` run on a copy of the other
-//!   rail's offset (the generic point solvers take the surface shared), so an extension
-//!   made there is not kept by the solver. The `SmTemporaryChangeValue` on the
+//!   rail's offset (the generic point solvers take the surface shared); an extension
+//!   the local solve made is handed back to the solver's offset. The `SmTemporaryChangeValue` on the
 //!   other base's `GetOutOfBoundsEnabled()` changes the solver's surface (and
 //!   `crSurface1` when it has the same base) in place and restores it on every exit.
 //! - **Arguments.** Out-params become return values; `SmContext` arguments are dropped.
@@ -197,39 +197,10 @@ pub const fn constant_radius_is_kind_of(t: i64) -> bool {
     t == CONSTANT_RADIUS_FS_TYPE || fillet_solver_is_kind_of(t)
 }
 
-/// The kind of a fillet solver (`SmFilletSolverType`, CO-PORTED from unit
-/// `blend.fillet_solver_p1`); discriminants are the upstream values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum FilletSolverType {
-    /// `SM_FS_UNKNOWN`.
-    Unknown = 0,
-    /// `SM_FS_SURF_SURF`.
-    SurfSurf = 1,
-    /// `SM_FS_CONST_RADIUS`.
-    ConstRadius = 2,
-    /// `SM_FS_VARIABLE_RADIUS`.
-    VariableRadius = 3,
-    /// `SM_FS_CONST_DIST`.
-    ConstDist = 4,
-    /// `SM_FS_CURVE_BASED`.
-    CurveBased = 5,
-    /// `SM_FS_CONST_RADIUS_ASSISTED`.
-    ConstRadiusAssisted = 6,
-}
-
-/// The kind of a fillet surface generator (`SmFilletSurfaceGeneratorType`, CO-PORTED
-/// from unit `blend.fillet_solver_p1`); discriminants are the upstream values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum FilletSurfaceGeneratorType {
-    /// `SM_FSG_UNKNOWN`.
-    Unknown = 0,
-    /// `SM_FSG_LINEAR`.
-    Linear = 1,
-    /// `SM_FSG_CIRCULAR`.
-    Circular = 2,
-    /// `SM_FSG_BLEND_CURVE`.
-    BlendCurve = 3,
-}
+/// The kind of a fillet solver (`SmFilletSolverType`) and of a fillet surface
+/// generator (`SmFilletSurfaceGeneratorType`): the enums of unit
+/// `blend.fillet_solver_p1`, re-exported here (this unit had co-ported identical ones).
+pub use crate::blend::fillet_solver::p1::{FilletSolverType, FilletSurfaceGeneratorType};
 
 /// How a fillet surface is trimmed (`SmBoundaryTrimmingType`): the enum co-ported by
 /// `blend.fillet_geom_p1` (PR #147), re-exported here.

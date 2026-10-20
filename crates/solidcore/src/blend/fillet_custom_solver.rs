@@ -17,7 +17,7 @@
 //! | [`SecantConstantRadiusFs::load_initial_values`]   | `SmSecantConstantRadiusFS::LoadInitialValues`     |
 //! | [`SecantConstantRadiusFs::load_jacobian`]         | `SmSecantConstantRadiusFS::LoadJacobian`          |
 //! | [`ConstantRadiusAssistedFs`] (CO-PORTED)          | `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` over the `SmFilletSolver` base ([`FilletSolver`]) |
-//! | `impl FilletSolverOps` for both solvers            | their `LoadJacobian` / `LoadInitialValues` overrides; the inherited `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` overrides (`GetJacobianSize`, `SetupOffsetValues`, `OffsetRadiiCanChange`, `GetType`, `IsKindOf`) return [`SolidError::Unported`] (units `blend.fillet_standard_solver_p1` / `_p2`) |
+//! | `impl FilletSolverOps` for both solvers            | their `LoadJacobian` / `LoadInitialValues` overrides; the inherited `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` overrides (`GetJacobianSize`, `SetupOffsetValues`, `OffsetRadiiCanChange`, `GetType`, `IsKindOf`) call units `blend.fillet_standard_solver_p1` / `_p2` |
 //! | [`OffsetSurface`], [`SurfaceId`]                  | an `SmOffsetSurface*` rail surface (unit `surface.offset_surface`) and the identity of its base pointer |
 //! | [`JacobianLoad`], [`InitialValues`]               | the in/out arguments of `LoadJacobian`, `LoadInitialValues` |
 //!
@@ -93,7 +93,7 @@ use crate::surface::surf_of_extrusion::SurfOfExtrusion;
 use crate::surface::surface::p1::{evaluate_1st_derivatives, evaluate_2nd_derivatives};
 use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::p7::{compute_inward_vector, drop_vectors_at};
-use crate::surface::surface::Surface;
+use crate::surface::surface::{Surface, SurfaceKind};
 use crate::topology::edgeuse::p1 as edgeuse;
 use crate::topology::{Brep, EdgeuseId, FaceId, ObjectHandle};
 
@@ -221,8 +221,8 @@ pub(crate) fn offset_compute_inward_vector(s: &mut OffsetSurface, uv: Point2) ->
 /// `LocalPointSolve(domain, SM_SO_MINIMIZE, point, guess, bFound, sSol)` of an offset
 /// surface: the found UV point and its distance.
 /// `None` when no answer was found. The solve runs on a copy of the offset (the solver
-/// is borrowed shared), so a base extension it makes is not kept (see the module
-/// deviations).
+/// is borrowed shared); a base extension it makes is kept by the offset (pending, as
+/// its `&self` evaluators keep one), as upstream's `const` evaluators store it.
 pub(crate) fn offset_local_point_solve(
     k: &Kernel,
     s: &OffsetSurface,
@@ -240,6 +240,10 @@ pub(crate) fn offset_local_point_solve(
         point,
         guess,
     )?;
+    // (upstream solves on the offset itself: it keeps an extension the solve made)
+    if let SurfaceKind::OffsetSurface(o) = surface.kind() {
+        s.surface.keep_extension_made_by(o);
+    }
     if !r.found {
         return Ok(None);
     }
@@ -1572,58 +1576,43 @@ macro_rules! fillet_solver_ops {
                 &mut self.base.solver
             }
 
-            /// `SmConstantRadiusFS::GetJacobianSize` (unit
-            /// `blend.fillet_standard_solver_p1`, not ported).
+            /// `SmConstantRadiusFS::GetJacobianSize` (inherited): 4.
             fn jacobian_size(&self) -> Result<usize> {
-                // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusFS::GetJacobianSize
-                Err(SolidError::unported(
-                    "SmConstantRadiusFS::GetJacobianSize",
-                    "blend.fillet_standard_solver_p1",
-                ))
+                Ok(self.base.jacobian_size())
             }
 
-            /// `SmConstantRadiusFS::SetupOffsetValues` (unit
-            /// `blend.fillet_standard_solver_p1`, not ported).
+            /// `SmConstantRadiusFS::SetupOffsetValues` (inherited): both offset
+            /// distances become radius times orientation; `*pOffsetDist` is the rail 0
+            /// radius.
             fn setup_offset_values(
                 &mut self,
-                _tsect: &TsectPnt,
-                _offset_dist: Option<&mut f64>,
+                tsect: &TsectPnt,
+                offset_dist: Option<&mut f64>,
             ) -> Result<()> {
-                // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusFS::SetupOffsetValues
-                Err(SolidError::unported(
-                    "SmConstantRadiusFS::SetupOffsetValues",
-                    "blend.fillet_standard_solver_p1",
-                ))
+                let d = self.base.setup_offset_values(tsect)?;
+                if let Some(o) = offset_dist {
+                    *o = d;
+                }
+                Ok(())
             }
 
-            /// `SmConstantRadiusFS::OffsetRadiiCanChange` (unit
-            /// `blend.fillet_standard_solver_p1`, not ported).
+            /// `SmConstantRadiusFS::OffsetRadiiCanChange` (inherited): never.
             fn offset_radii_can_change(&self) -> Result<bool> {
-                // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusFS::OffsetRadiiCanChange
-                Err(SolidError::unported(
-                    "SmConstantRadiusFS::OffsetRadiiCanChange",
-                    "blend.fillet_standard_solver_p1",
-                ))
+                Ok(self.base.offset_radii_can_change())
             }
 
-            /// `SmConstantRadiusAssistedFS::GetType` (`SM_COMMON`, unit
-            /// `blend.fillet_standard_solver_p1`, not ported).
+            /// `SmConstantRadiusAssistedFS::GetType` (`SM_COMMON`, inherited).
             fn type_code(&self) -> Result<i64> {
-                // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusAssistedFS::GetType
-                Err(SolidError::unported(
-                    "SmConstantRadiusAssistedFS::GetType",
-                    "blend.fillet_standard_solver_p1",
-                ))
+                Ok(crate::blend::fillet_standard_solver::p1::CONSTANT_RADIUS_ASSISTED_FS_TYPE)
             }
 
-            /// `SmConstantRadiusAssistedFS::IsKindOf` (unit
-            /// `blend.fillet_standard_solver_p2`, not ported).
-            fn is_kind_of(&self, _t: i64) -> Result<bool> {
-                // UNPORTED(blend.fillet_standard_solver_p2): SmConstantRadiusAssistedFS::IsKindOf
-                Err(SolidError::unported(
-                    "SmConstantRadiusAssistedFS::IsKindOf",
-                    "blend.fillet_standard_solver_p2",
-                ))
+            /// `SmConstantRadiusAssistedFS::IsKindOf` (inherited).
+            fn is_kind_of(&self, t: i64) -> Result<bool> {
+                Ok(
+                    crate::blend::fillet_standard_solver::p2::constant_radius_assisted_is_kind_of(
+                        t,
+                    ),
+                )
             }
 
             fn load_jacobian(

@@ -322,44 +322,78 @@ impl FilletSurfaceGenerator {
         }
     }
 
-    /// `CreateSurface` (virtual) on the rails and fillet points: `SM_ERR` for the base,
-    /// the Eiffel tower surface for [`FilletSurfaceGenerator::EiffelTower`] (it reads
-    /// only the solver's `GetThisApproxTol3d()`, passed as `approx_tol_3d`).
+    /// `CreateSurface(rFilletSolver, pCenterLine, pRail1Curve, pRail2Curve,
+    /// crFilletPoints, pSurf1, pUV1, pSurf2, pUV2, rpFilletSurface)` (virtual): `SM_ERR`
+    /// for the base, else the generator's surface. The solver is read only for its
+    /// `GetThisApproxTol3d()` (`approx_tol_3d`) and `GetSolverType()`
+    /// (`solver_type`); `center_line` is `None` for `NULL`.
     ///
     /// # Errors
     ///
-    /// `SM_ERR` for [`FilletSurfaceGenerator::Base`]; those of
-    /// `SmEiffelTowerCrossSectionFSG::CreateSurface`; [`SolidError::Unported`] for the
-    /// linear, circular and blend-curve generators.
+    /// `SM_ERR` for [`FilletSurfaceGenerator::Base`]; those of the generators'
+    /// `CreateSurface`; [`SolidError::InvalidInput`] for a missing centre line of the
+    /// circular and blend-curve generators (upstream dereferences `NULL`).
+    #[allow(clippy::too_many_arguments)]
     pub fn create_surface(
         &self,
         k: &Kernel,
         approx_tol_3d: f64,
+        solver_type: FilletSolverType,
+        center_line: Option<&mut BSplineCurve>,
         rail1: &mut BSplineCurve,
         rail2: &mut BSplineCurve,
         points: &[TsectPnt],
+        side1: crate::blend::fillet_standard_solver::p1::RailSurface<'_>,
+        side2: crate::blend::fillet_standard_solver::p1::RailSurface<'_>,
     ) -> Result<crate::nurbs::b_spline_surface::BSplineSurface> {
+        use crate::blend::fillet_standard_solver::p1::{
+            BlendCurveCrossSectionFsg, CircularCrossSectionFsg, LinearCrossSectionFsg,
+        };
+        let no_center = || SolidError::invalid_input(OP, "NULL centre line");
         match self {
             Self::Base => Err(SolidError::sm_err(OP)),
             Self::EiffelTower => {
                 crate::blend::fillet_custom_solver::EiffelTowerCrossSectionFsg::new()
                     .create_surface(k, approx_tol_3d, rail1, rail2, points)
             }
-            // UNPORTED(blend.fillet_standard_solver_p1): SmLinearCrossSectionFSG::CreateSurface
-            Self::Linear => Err(SolidError::unported(
-                "SmLinearCrossSectionFSG::CreateSurface",
-                "blend.fillet_standard_solver_p1",
-            )),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmCircularCrossSectionFSG::CreateSurface
-            Self::Circular { .. } => Err(SolidError::unported(
-                "SmCircularCrossSectionFSG::CreateSurface",
-                "blend.fillet_standard_solver_p2",
-            )),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmBlendCurveCrossSectionFSG::CreateSurface
-            Self::BlendCurve { .. } => Err(SolidError::unported(
-                "SmBlendCurveCrossSectionFSG::CreateSurface",
-                "blend.fillet_standard_solver_p2",
-            )),
+            Self::Linear => LinearCrossSectionFsg.create_surface(rail1, rail2),
+            Self::Circular {
+                approximate_arcs,
+                tol_percent_radius,
+                mirror,
+                complement,
+            } => CircularCrossSectionFsg {
+                approximate_arcs: *approximate_arcs,
+                tol_percent_radius: *tol_percent_radius,
+                mirror: *mirror,
+                complement: *complement,
+            }
+            .create_surface(
+                k,
+                approx_tol_3d,
+                solver_type,
+                center_line.ok_or_else(no_center)?,
+                rail1,
+                rail2,
+            ),
+            Self::BlendCurve {
+                continuity,
+                blend_scale,
+            } => BlendCurveCrossSectionFsg {
+                // (an `ULONG` upstream: the tests are `> 1`, `== 2` and `== 3`)
+                continuity: u32::try_from(*continuity).unwrap_or(u32::MAX),
+                blend_scale: *blend_scale,
+            }
+            .create_surface(
+                k,
+                approx_tol_3d,
+                solver_type,
+                center_line.ok_or_else(no_center)?,
+                rail1,
+                rail2,
+                side1,
+                side2,
+            ),
         }
     }
 }

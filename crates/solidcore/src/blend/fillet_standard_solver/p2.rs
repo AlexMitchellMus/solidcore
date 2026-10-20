@@ -72,8 +72,9 @@
 use crate::blend::fillet_custom_solver::{
     offset_compute_inward_vector, offset_evaluate_1st, offset_evaluate_point,
     offset_local_point_solve, surface_global_point_solve, ConstantRadiusAssistedFs, InitialValues,
-    OffsetSurface, SurfaceId,
+    JacobianLoad, OffsetSurface, SurfaceId,
 };
+use crate::blend::fillet_solver::p1::{FilletSolver, FilletSolverOps, FilletSphereSolveEnfo};
 use crate::blend::fillet_standard_solver::p1::{
     constant_radius_is_kind_of, fillet_solver_is_kind_of, BlendCurveCrossSectionFsg,
     BoundaryTrimmingType, CircularCrossSectionFsg, ConstantDistanceFs, ConstantRadiusFs,
@@ -313,18 +314,14 @@ impl ConstantRadiusOps for ConstantRadiusAssistedFs {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] (`blend.fillet_solver_p1`).
+    /// Those of [`FilletSolver::setup_offset_extension`].
     fn setup_offset_extension(
         &self,
-        _k: &Kernel,
-        _surface: &Surface,
-        _domain: &mut Extent2d,
+        k: &Kernel,
+        surface: &Surface,
+        domain: &mut Extent2d,
     ) -> Result<()> {
-        // UNPORTED(blend.fillet_solver_p1): SmFilletSolver::SetupOffsetExtension
-        Err(SolidError::unported(
-            "SmFilletSolver::SetupOffsetExtension",
-            "blend.fillet_solver_p1",
-        ))
+        self.solver.setup_offset_extension(k, surface, domain)
     }
 }
 
@@ -435,7 +432,7 @@ fn cr_initial_body<S: ConstantRadiusOps + ?Sized>(
     const OP: &str = OP_CR_INIT;
     let fs = solver.constant_radius();
     let surface2 = fs.surface(other_rail)?;
-    let mut other_eu = fs.edgeuses.get(other_rail).copied().flatten();
+    let mut other_eu = fs.solver.edgeuses.get(other_rail).copied().flatten();
     let base2 = surface2.base_surface();
     let base2_id = surface2.base_id;
 
@@ -488,7 +485,7 @@ fn cr_initial_body<S: ConstantRadiusOps + ?Sized>(
             &ivl,
             SolverOperation::Minimize,
             pnt,
-            fs.approx_tol_3d,
+            fs.solver.approx_tol_3d,
             SolutionRequested::Single,
             &GlobalPointSolveOptions::<ObjectHandle>::default(),
         )?;
@@ -775,7 +772,7 @@ impl GuessSphereSolve {
         // Jacobian answer looks good now check our answer to see if we return
         // TRUE for rbFoundAnswer
         if found_answer {
-            let scaled_tol = solver.conversion_tol * (1.0 + sf.max_dimension());
+            let scaled_tol = solver.solver.conversion_tol * (1.0 + sf.max_dimension());
             if at(f, 0, OP)?.abs() < scaled_tol {
                 found = true;
             }
@@ -899,7 +896,7 @@ impl ConstantRadiusAssistedFs {
         let surf2_index = 2; // UV values of Surface2
 
         let plane_d = -plane_orig.dot(plane_normal);
-        let approx_tol_3d = solver.approx_tol_3d;
+        let approx_tol_3d = solver.solver.approx_tol_3d;
         let mut eval = GuessSphereEquations {
             enfo: GuessSphereSolve::new(plane_normal, plane_d),
             solver: &mut solver,
@@ -1028,26 +1025,150 @@ impl ConstantRadiusAssistedFs {
     }
 }
 
+/// `*this` of `SmConstantRadiusAssistedFS::PointOnPlaneSolve` as an `SmFilletSolver`:
+/// the virtuals an `SmFilletSphereSolveENFO` evaluation reaches dispatch on
+/// `SmConstantRadiusAssistedFS` (its `SmConstantRadiusFS` overrides).
+struct AssistedSolver<'a>(&'a mut ConstantRadiusAssistedFs);
+
+impl FilletSolverOps for AssistedSolver<'_> {
+    fn solver(&self) -> &FilletSolver {
+        &self.0.solver
+    }
+
+    fn solver_mut(&mut self) -> &mut FilletSolver {
+        &mut self.0.solver
+    }
+
+    /// `SmConstantRadiusFS::GetJacobianSize`.
+    fn jacobian_size(&self) -> Result<usize> {
+        Ok(self.0.jacobian_size())
+    }
+
+    /// `SmConstantRadiusFS::SetupOffsetValues`.
+    fn setup_offset_values(
+        &mut self,
+        tsect: &TsectPnt,
+        offset_dist: Option<&mut f64>,
+    ) -> Result<()> {
+        let d = self.0.setup_offset_values(tsect)?;
+        if let Some(o) = offset_dist {
+            *o = d;
+        }
+        Ok(())
+    }
+
+    /// `SmConstantRadiusFS::OffsetRadiiCanChange`.
+    fn offset_radii_can_change(&self) -> Result<bool> {
+        Ok(self.0.offset_radii_can_change())
+    }
+
+    /// `SmConstantRadiusFS::LoadJacobian` (`rlSurf1Offset` / `rlSurf2Offset` in and
+    /// out).
+    fn load_jacobian(
+        &mut self,
+        num_equations: &mut usize,
+        num_parameters: &mut usize,
+        load: &mut JacobianLoad<'_>,
+        f: &mut [f64],
+        jacobian: Option<&mut Matrix>,
+    ) -> Result<bool> {
+        let mut offsets = [load.surf1_offset, load.surf2_offset];
+        let r = self.0.load_jacobian(
+            num_equations,
+            num_parameters,
+            load.rail_index,
+            [load.surface1, load.surface2],
+            &mut offsets,
+            load.x,
+            f,
+            jacobian,
+        );
+        [load.surf1_offset, load.surf2_offset] = offsets;
+        r
+    }
+
+    /// `SmConstantRadiusFS::LoadInitialValues`.
+    fn load_initial_values(
+        &mut self,
+        k: &Kernel,
+        brep: Option<&Brep>,
+        do_surf2_calcs: bool,
+        rail_index: usize,
+        surface1: &mut OffsetSurface,
+        surface1_index: usize,
+        intervals: &mut ExtentNd,
+        periodicities: &mut Vec<bool>,
+        guess_t: &mut Vec<f64>,
+    ) -> Result<Option<InitialValues>> {
+        self.0.load_initial_values(
+            k,
+            brep,
+            do_surf2_calcs,
+            rail_index,
+            surface1,
+            surface1_index,
+            intervals,
+            periodicities,
+            guess_t,
+        )
+    }
+
+    /// `SmConstantRadiusAssistedFS::GetType` (`SM_COMMON`).
+    fn type_code(&self) -> Result<i64> {
+        Ok(CONSTANT_RADIUS_ASSISTED_FS_TYPE)
+    }
+
+    /// `SmConstantRadiusAssistedFS::IsKindOf`.
+    fn is_kind_of(&self, t: i64) -> Result<bool> {
+        Ok(constant_radius_assisted_is_kind_of(t))
+    }
+}
+
+/// The `SmFilletSphereSolveENFO` as the equation set of an `SmLocalSolveNd`.
+struct SphereEquations<'a>(FilletSphereSolveEnfo<'a>);
+
+impl EvalNFunctions for SphereEquations<'_> {
+    fn evaluate(
+        &mut self,
+        x: &[f64],
+        f: &mut [f64],
+        jacobian: Option<&mut Matrix>,
+    ) -> Result<bool> {
+        self.0.evaluate(x, f, jacobian)
+    }
+}
+
 /// `SmFilletSphereSolveENFO sEvalFun(crPlaneNormal, dPlaneD, *this)` solved by the
-/// plane local solver, again with `SetPlaneAdjusts(TRUE)` when not found.
+/// plane local solver at `m_dThisApproxTol3d`, again with `SetPlaneAdjusts(TRUE)` when
+/// not found.
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`] (`SmFilletSphereSolveENFO::Evaluate`, unit
+/// Those of the local solves (`SmFilletSphereSolveENFO::Evaluate`, unit
 /// `blend.fillet_solver_p1`).
 fn fillet_sphere_solve(
-    _solver: &mut ConstantRadiusAssistedFs,
-    _plane_normal: Vec3,
-    _plane_d: f64,
-    _intervals: &ExtentNd,
-    _periodicities: &[bool],
-    _guess_t: &[f64],
+    solver: &mut ConstantRadiusAssistedFs,
+    plane_normal: Vec3,
+    plane_d: f64,
+    intervals: &ExtentNd,
+    periodicities: &[bool],
+    guess_t: &[f64],
 ) -> Result<NdSolution> {
-    // UNPORTED(blend.fillet_solver_p1): SmFilletSphereSolveENFO::Evaluate
-    Err(SolidError::unported(
-        "SmFilletSphereSolveENFO::Evaluate",
-        "blend.fillet_solver_p1",
-    ))
+    let approx_tol_3d = solver.solver.approx_tol_3d;
+    let mut ops = AssistedSolver(solver);
+    // (the constructor's "sphere centre and radius" are the plane normal and D)
+    let mut eval = SphereEquations(FilletSphereSolveEnfo::new(plane_normal, plane_d, &mut ops));
+    let mut ls = plane_local_solver(&mut eval, intervals, periodicities);
+
+    // Solve equations with NewtonRaphson iteration
+    let mut sol = ls.solve_it(guess_t, approx_tol_3d)?;
+
+    // Try it again and allow the plane to adjust as convergance happens
+    if !sol.found {
+        ls.evaluator().0.set_plane_adjusts(true);
+        sol = ls.solve_it(guess_t, approx_tol_3d)?;
+    }
+    Ok(sol)
 }
 
 // ---- SmConstantDistanceFS constructor -------------------------------------------------------

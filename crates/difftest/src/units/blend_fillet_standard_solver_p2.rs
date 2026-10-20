@@ -710,7 +710,7 @@ fn solver_of(k: &Kernel, s: &SolverIn) -> Result<BuiltSolver, HarnessError> {
                 s.o,
             )
             .map_err(|e| he(&e))?;
-            c.surface_extension_factor = s.ext;
+            c.solver.surface_extension_factor = s.ext;
             Solver::Cr(c)
         }
         1 => {
@@ -725,7 +725,7 @@ fn solver_of(k: &Kernel, s: &SolverIn) -> Result<BuiltSolver, HarnessError> {
                 [Point2::new(0.5, 0.5), Point2::new(0.5, 0.5)],
             )
             .map_err(|e| he(&e))?;
-            c.base.surface_extension_factor = s.ext;
+            c.base.solver.surface_extension_factor = s.ext;
             Solver::Ss(c)
         }
         _ => {
@@ -744,7 +744,7 @@ fn solver_of(k: &Kernel, s: &SolverIn) -> Result<BuiltSolver, HarnessError> {
                 d,
                 [None, None],
             );
-            c.surface_extension_factor = s.ext;
+            c.solver.surface_extension_factor = s.ext;
             Solver::Cr(c)
         }
     };
@@ -753,9 +753,8 @@ fn solver_of(k: &Kernel, s: &SolverIn) -> Result<BuiltSolver, HarnessError> {
 
 fn offsets(fs: &ConstantRadiusFs) -> [f64; 2] {
     let d = |i: usize| {
-        fs.surfaces
-            .get(i)
-            .and_then(Option::as_ref)
+        fs.surface(i)
+            .ok()
             .map_or(f64::NAN, OffsetSurface::offset_distance)
     };
     [d(0), d(1)]
@@ -927,11 +926,13 @@ fn rust_record(i: &Inputs) -> Result<Rec, HarnessError> {
                 // the shim's pre-check of CalcFilletGeom's parallel-normal exit
                 let mut normal = |i: usize, uv: Point2| -> Option<Vec3> {
                     fs.base
+                        .solver
                         .surfaces
                         .get_mut(i)
                         .and_then(Option::as_mut)
                         .and_then(|s| {
                             s.surface
+                                .surface
                                 .evaluate_normal_extending(uv, Side::Left, Side::Left)
                                 .ok()
                         })
@@ -957,7 +958,7 @@ fn rust_record(i: &Inputs) -> Result<Rec, HarnessError> {
             for i in 0..2 {
                 o.push(fs.base.fillet_radius(i).map_err(|e| he(&e))?);
             }
-            o.extend(fs.base.orientations);
+            o.extend(fs.base.solver.orientations);
             o.extend(offsets(&fs.base));
             for g in fs.uv_guesses {
                 o.extend([g.x, g.y]);
