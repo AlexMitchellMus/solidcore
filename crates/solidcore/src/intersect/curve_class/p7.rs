@@ -1666,7 +1666,7 @@ fn crv_on_surf(k: &Kernel, uv_curve: &Curve, surface: Option<&Surface>) -> Resul
 
 /// The B-rep edge behind edge handle `edge` ([`ClassGeometry::topology_entity`]); an
 /// adapter without that hook keeps the deferral on `upstream`.
-fn edge_of<'g, O: ClassObject>(
+pub(super) fn edge_of<'g, O: ClassObject>(
     geometry: &'g impl ClassGeometry<O>,
     edge: O,
     upstream: &'static str,
@@ -1680,7 +1680,7 @@ fn edge_of<'g, O: ClassObject>(
 
 /// The B-rep vertex behind vertex handle `vertex`; an adapter without the
 /// [`ClassGeometry::topology_entity`] hook keeps the deferral on `upstream`.
-fn vertex_of<'g, O: ClassObject>(
+pub(super) fn vertex_of<'g, O: ClassObject>(
     geometry: &'g impl ClassGeometry<O>,
     vertex: O,
     upstream: &'static str,

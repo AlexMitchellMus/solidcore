@@ -21,11 +21,11 @@
 //! Deviations:
 //! - **Object handles.** As in part 1, every `SmObject` pointer is a caller-chosen handle
 //!   `O` ([`ClassObject`]) and the geometry behind it comes from a [`ClassGeometry`]; the
-//!   kernel is passed explicitly. A handle of a vertex or edge carries no B-rep that the
-//!   port can reach, so every topology member the code calls (`SmEdge::GetVertex`,
-//!   `GetInterval`, `GetCurve`, `SmVertex::GetPoint`, the zone tolerances of both) is
-//!   [`SolidError::Unported`] here, exactly as in `intersect::point_class`; the
-//!   reason is the missing handle-to-B-rep resolution, not a missing unit.
+//!   kernel is passed explicitly. The topology members the code calls (`SmEdge::GetVertex`,
+//!   `GetInterval`, `GetCurve`, `SmVertex::GetPoint`, the zone tolerances of both) go
+//!   through [`ClassGeometry::topology_entity`] (and [`ClassGeometry::topology_handle`]
+//!   for the vertices of an edge); an adapter without those hooks keeps the
+//!   [`SolidError::Unported`] deferral, as in `intersect::point_class`.
 //! - **Out-params.** `FindInterval` returns a [`FoundInterval`]; `InsertPointClass` returns
 //!   `rbInsertionMade`; `sm_ChangeEdgePointClassToNearVertex` returns
 //!   `rbChangedToVertexFlag`; `MergePointClass`'s optional output arrays are
@@ -71,7 +71,7 @@ use crate::intersect::curve_class::p1::{
     object_dimension, xsect_tol_2d_or_3d_for_classify_pair, CurveClassification, CurveInterval,
     IntervalPosition,
 };
-use crate::intersect::curve_class::p7::CoincidentMaybe;
+use crate::intersect::curve_class::p7::{edge_of, vertex_of, CoincidentMaybe};
 use crate::intersect::point_class::{
     object_zone_tol_3d, ClassGeometry, ClassObject, ClassObjectKind, PointClassType,
     PointClassification, Precedence,
@@ -79,6 +79,8 @@ use crate::intersect::point_class::{
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3, BIG_DOUBLE};
 use crate::surface::surface::Surface;
+use crate::topology::{edge as topo_edge, vertex as topo_vertex, VertexId};
+use crate::EntityRef;
 
 const OP_FIND: &str = "intersect::curve_class::p3::CurveClassification::find_interval";
 const OP_FIND_PC: &str = "intersect::curve_class::p3::CurveClassification::find_point_class";
@@ -130,20 +132,27 @@ pub(super) enum Coincident {
     Unsure,
 }
 
-// ---- callees in units not ported yet ----------------------------------------------------
+// ---- topology members, through the adapter's B-rep ------------------------------------
 
-/// `SmEdge::GetVertex` and `SmEdge::GetOtherVertex(GetVertex())`: the edge's two vertices.
-fn edge_vertices<O: ClassObject>(edge: O) -> Result<(O, O)> {
-    let _ = edge;
-    // UNPORTED(topology.edge): SmEdge::GetVertex
-    Err(SolidError::unported("SmEdge::GetVertex", "topology.edge"))
+/// `SmEdge::GetVertex` and `SmEdge::GetOtherVertex(GetVertex())`: the edge's two vertices
+/// (a `NULL` vertex is dereferenced by the caller).
+fn edge_vertices<O: ClassObject>(geometry: &impl ClassGeometry<O>, edge: O) -> Result<(O, O)> {
+    let (b, e) = edge_of(geometry, edge, "SmEdge::GetVertex")?;
+    let v1 = topo_edge::vertex(b, e)?;
+    let v2 = topo_edge::other_vertex(b, e, v1)?;
+    let handle = |v: Option<VertexId>| {
+        let v = v.ok_or_else(|| SolidError::null_pointer(OP_NEAR_VERTEX))?;
+        geometry
+            .topology_handle(EntityRef::Vertex(v))
+            .ok_or_else(|| SolidError::invalid_input(OP_NEAR_VERTEX, "vertex without handle"))
+    };
+    Ok((handle(v1)?, handle(v2)?))
 }
 
 /// `SmEdge::GetInterval`.
-fn edge_interval<O: ClassObject>(edge: O) -> Result<Extent1d> {
-    let _ = edge;
-    // UNPORTED(topology.edge): SmEdge::GetInterval
-    Err(SolidError::unported("SmEdge::GetInterval", "topology.edge"))
+fn edge_interval<O: ClassObject>(geometry: &impl ClassGeometry<O>, edge: O) -> Result<Extent1d> {
+    let (b, e) = edge_of(geometry, edge, "SmEdge::GetInterval")?;
+    topo_edge::interval(b, e)
 }
 
 /// `SmEdge::GetCurve`.
@@ -151,19 +160,14 @@ fn edge_curve<O: ClassObject, G: ClassGeometry<O>>(
     geometry: &G,
     edge: O,
 ) -> Result<Option<&Curve>> {
-    let _ = (geometry, edge);
-    // UNPORTED(topology.edge): SmEdge::GetCurve
-    Err(SolidError::unported("SmEdge::GetCurve", "topology.edge"))
+    let (b, e) = edge_of(geometry, edge, "SmEdge::GetCurve")?;
+    topo_edge::curve(b, e)
 }
 
 /// `SmVertex::GetPoint`.
-fn vertex_point<O: ClassObject>(vertex: O) -> Result<Point3> {
-    let _ = vertex;
-    // UNPORTED(topology.vertex): SmVertex::GetPoint
-    Err(SolidError::unported(
-        "SmVertex::GetPoint",
-        "topology.vertex",
-    ))
+fn vertex_point<O: ClassObject>(geometry: &impl ClassGeometry<O>, vertex: O) -> Result<Point3> {
+    let (b, v) = vertex_of(geometry, vertex, "SmVertex::GetPoint")?;
+    topo_vertex::point(b, v)
 }
 
 /// `SmCurveClassification::GetPointClassByIndex(index)`: the location of boundary
@@ -905,10 +909,12 @@ impl<O: ClassObject> CurveClassification<O> {
             {
                 // Gather CurvePtClass and IvlEndPt_PtClass local information
                 let ivl_end_pt_point = vertex_point(
+                    geometry,
                     ivl_end_pt_object.ok_or_else(|| SolidError::null_pointer(OP_INSERT))?,
                 )?;
                 // (the second vertex's point is only read by the SE_MSG test below)
                 let _pt_class_point = vertex_point(
+                    geometry,
                     point_class
                         .object()
                         .ok_or_else(|| SolidError::null_pointer(OP_INSERT))?,
@@ -1091,7 +1097,7 @@ impl<O: ClassObject> CurveClassification<O> {
             // when an EDGE/VERTEX conflict exists
             if let Some((vertex, edge)) = adjacency {
                 let edge = edge.ok_or_else(|| SolidError::null_pointer(OP_INSERT))?;
-                let (test_v, other_test_v) = edge_vertices(edge)?;
+                let (test_v, other_test_v) = edge_vertices(geometry, edge)?;
 
                 // when the edge is not connected to the vertex and parameters are not
                 // exactly equal
@@ -1337,11 +1343,11 @@ impl<O: ClassObject> CurveClassification<O> {
                     // use CurveInterval.m_vStart param to figure out to which new edge it
                     // classifies
                     let t = self.at(i)?.start.t_param();
-                    if edge_interval(new_e1)?.contains_value(t, 0.0) {
+                    if edge_interval(geometry, new_e1)?.contains_value(t, 0.0) {
                         self.at_mut(i)?
                             .start
                             .set_class_object(PointClassType::Edge, Some(new_e1));
-                    } else if edge_interval(new_e2)?.contains_value(t, 0.0) {
+                    } else if edge_interval(geometry, new_e2)?.contains_value(t, 0.0) {
                         self.at_mut(i)?
                             .start
                             .set_class_object(PointClassType::Edge, Some(new_e2));
@@ -1353,11 +1359,11 @@ impl<O: ClassObject> CurveClassification<O> {
                 // update CurveInterval.m_vEnd PtClassification EDGE ptr
                 if self.at(i)?.end.object() == old_edge {
                     let t = self.at(i)?.end.t_param();
-                    if edge_interval(new_e1)?.contains_value(t, 0.0) {
+                    if edge_interval(geometry, new_e1)?.contains_value(t, 0.0) {
                         self.at_mut(i)?
                             .end
                             .set_class_object(PointClassType::Edge, Some(new_e1));
-                    } else if edge_interval(new_e2)?.contains_value(t, 0.0) {
+                    } else if edge_interval(geometry, new_e2)?.contains_value(t, 0.0) {
                         self.at_mut(i)?
                             .end
                             .set_class_object(PointClassType::Edge, Some(new_e2));
@@ -1389,7 +1395,7 @@ impl<O: ClassObject> CurveClassification<O> {
                             .ok_or_else(|| SolidError::null_pointer(OP_MERGE))?
                             .drop_point(
                                 k,
-                                &edge_interval(new_e1)?,
+                                &edge_interval(geometry, new_e1)?,
                                 mid_pnt,
                                 None,
                                 this_xsect_tol_3d,
@@ -1410,7 +1416,7 @@ impl<O: ClassObject> CurveClassification<O> {
                             .ok_or_else(|| SolidError::null_pointer(OP_MERGE))?
                             .drop_point(
                                 k,
-                                &edge_interval(new_e2)?,
+                                &edge_interval(geometry, new_e2)?,
                                 mid_pnt,
                                 None,
                                 this_xsect_tol_3d,
@@ -1572,9 +1578,9 @@ pub fn change_edge_point_class_to_near_vertex<O: ClassObject>(
     let edge = pc
         .object()
         .ok_or_else(|| SolidError::null_pointer(OP_NEAR_VERTEX))?;
-    let (edge_vertex1, edge_vertex2) = edge_vertices(edge)?;
-    let dist1 = vertex_point(edge_vertex1)?.distance(classify_point);
-    let dist2 = vertex_point(edge_vertex2)?.distance(classify_point);
+    let (edge_vertex1, edge_vertex2) = edge_vertices(geometry, edge)?;
+    let dist1 = vertex_point(geometry, edge_vertex1)?.distance(classify_point);
+    let dist2 = vertex_point(geometry, edge_vertex2)?.distance(classify_point);
 
     // We should not snap to vertices that are not within tolerances.
     let edge_zone_tol_3d = pc.obj_zone_tol_3d(k, geometry)?;
