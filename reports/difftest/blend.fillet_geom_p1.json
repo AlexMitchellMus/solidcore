@@ -3153,6 +3153,46 @@
       "values_compared": 5
     },
     {
+      "max_rel_err": 0.0,
+      "name": "drop_point_cylinder_seam_1e-3_tol_extent",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_geom_p1/cases.json#180 (upstream source/SMLib/src/SmFilletGeom.cpp:112-189 sm_SurfaceDropPoint (review of #264: the solutions name the surface, so IdenticalSolutions merges seam near-duplicates within 1e-4 of the UV domain; closed cylinder of radius 1e-3, point on the seam, tolerance of the cylinder's extent))",
+      "values_compared": 8
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "drop_point_cylinder_seam_1e-6_tol_extent",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_geom_p1/cases.json#181 (upstream source/SMLib/src/SmFilletGeom.cpp:112-189 sm_SurfaceDropPoint (review of #264: as drop_point_cylinder_seam_1e-3_tol_extent at radius 1e-6))",
+      "values_compared": 8
+    },
+    {
+      "deferred": {
+        "symbol": "SmSurfaceIntersector::DoPointIntersection",
+        "unit": "intersect.surface_intersector_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "two_pnts_cylinder_seam_1e-3_tol_extent",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/blend.fillet_geom_p1/cases.json#182 (upstream source/SMLib/src/SmFilletGeom.cpp:277-360 sm_TwoPntsIntersection (review of #264: the start-point drops name the surfaces; closed cylinder of radius 1e-3 with the start point on its seam, a plane through it, tolerance of the extent))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmSurfaceIntersector::DoPointIntersection",
+        "unit": "intersect.surface_intersector_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "two_pnts_cylinder_seam_1e-6_tol_extent",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/blend.fillet_geom_p1/cases.json#183 (upstream source/SMLib/src/SmFilletGeom.cpp:277-360 sm_TwoPntsIntersection (review of #264: as two_pnts_cylinder_seam_1e-3_tol_extent at radius 1e-6))",
+      "values_compared": 0
+    },
+    {
       "deferred": {
         "symbol": "SmFace::GetUpwardLoopuses",
         "unit": "topology.face_p4"
@@ -5602,14 +5642,14 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 21,
+  "cases_deferred": 23,
   "cases_failed": 0,
-  "cases_passed": 446,
+  "cases_passed": 448,
   "cases_rejected": 13,
-  "cases_total": 480,
+  "cases_total": 484,
   "deferred_by_unit": {
     "intersect.surface_drop_curve": 2,
-    "intersect.surface_intersector_p4": 5,
+    "intersect.surface_intersector_p4": 7,
     "topology.face_p4": 14
   },
   "max_rel_err": 0.0,
