@@ -2266,12 +2266,24 @@ mod tests {
         assert_eq!((iv.min(), iv.max()), (-0.5, 1.5));
         assert_eq!(per.len(), 4);
 
-        // a plain constant-radius solver waits for the base extension
+        // a plain constant-radius solver runs the base SetupOffsetExtension (wired)
         let mut cr = fs.base.clone();
-        let r = cr.load_initial_values(
-            &k, None, true, 0, &mut s1, 0, &mut ivls, &mut per, &mut guess,
-        );
-        assert!(r.is_err_and(|e| e.is_unported()));
+        let (mut ivls2, mut per2, mut guess2) =
+            (ExtentNd::new(4), vec![false, false], vec![0.5, 0.25]);
+        let r = cr
+            .load_initial_values(
+                &k,
+                None,
+                true,
+                0,
+                &mut s1,
+                0,
+                &mut ivls2,
+                &mut per2,
+                &mut guess2,
+            )
+            .expect("base initial values");
+        assert!(r.is_some());
         // nothing to do without the second surface
         assert!(cr
             .load_initial_values(&k, None, false, 0, &mut s1, 0, &mut ivls, &mut per, &mut guess)
