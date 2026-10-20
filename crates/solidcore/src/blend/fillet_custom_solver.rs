@@ -18,7 +18,7 @@
 //! | [`SecantConstantRadiusFs::load_jacobian`]         | `SmSecantConstantRadiusFS::LoadJacobian`          |
 //! | [`ConstantRadiusAssistedFs`] (CO-PORTED)          | `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` over the `SmFilletSolver` base ([`FilletSolver`]) |
 //! | `impl FilletSolverOps for ConstantRadiusAssistedFs` | the same inherited overrides plus `SmConstantRadiusFS::LoadJacobian` (`blend.fillet_standard_solver_p1`'s methods); `IsKindOf` and `LoadInitialValues` (`_p2`) return [`SolidError::Unported`] (the class `blend.fillet_intersector` runs `ComputeSurfaceValues` on) |
-//! | `impl FilletSolverOps` for both solvers            | their `LoadJacobian` / `LoadInitialValues` overrides; the inherited `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` overrides `GetJacobianSize`, `SetupOffsetValues`, `OffsetRadiiCanChange`, `GetType` call `blend.fillet_standard_solver_p1`'s; `IsKindOf` (`_p2`) returns [`SolidError::Unported`] |
+//! | `impl FilletSolverOps` for both solvers            | their `LoadJacobian` / `LoadInitialValues` overrides; the inherited `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` overrides `GetJacobianSize`, `SetupOffsetValues`, `OffsetRadiiCanChange`, `GetType` call `blend.fillet_standard_solver_p1`'s, and `GetSolverType` is `SM_FS_CONST_RADIUS_ASSISTED`; `IsKindOf` (`_p2`) returns [`SolidError::Unported`] |
 //! | [`OffsetSurface`], [`SurfaceId`]                  | an `SmOffsetSurface*` rail surface (unit `surface.offset_surface`) and the identity of its base pointer |
 //! | [`JacobianLoad`], [`InitialValues`]               | the in/out arguments of `LoadJacobian`, `LoadInitialValues` |
 //!
@@ -1626,14 +1626,10 @@ macro_rules! fillet_solver_ops {
                 ))
             }
 
-            /// `SmConstantRadiusAssistedFS::GetSolverType` (`SmFilletStandardSolver.h`,
-            /// unit `blend.fillet_standard_solver_p1`, not ported).
+            /// `SmConstantRadiusAssistedFS::GetSolverType` (inherited):
+            /// `SM_FS_CONST_RADIUS_ASSISTED` (`SmFilletStandardSolver.h:112`).
             fn solver_type(&self) -> Result<FilletSolverType> {
-                // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusAssistedFS::GetSolverType
-                Err(SolidError::unported(
-                    "SmConstantRadiusAssistedFS::GetSolverType",
-                    "blend.fillet_standard_solver_p1",
-                ))
+                Ok(FilletSolverType::ConstRadiusAssisted)
             }
 
             fn load_jacobian(
