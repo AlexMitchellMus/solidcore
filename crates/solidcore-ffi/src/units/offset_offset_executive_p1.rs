@@ -46,6 +46,8 @@
 //! Accordingly, [`Extension::offset_distance`] rejects only values `< 0.0` in
 //! addition to the existing finite-value checks (including the product by five):
 //! both signed zeros, positive subnormals and large finite magnitudes remain valid.
+//! Control point coordinates are bounded by [`MAX_COORDINATE`]: beyond it the native
+//! extension of a B-spline surface does not return (fuzz case `fuzz00331`).
 //! [`Config`] only observes constructor/executive state and never extends geometry;
 //! its finite scalar values, including negative distances/tolerances, are preserved.
 //!
@@ -118,6 +120,11 @@ use crate::{call_with_buffer, FfiError};
 pub const MAX_ITEMS: usize = 4096;
 /// Maximum number of homogeneous control points in one fixture.
 pub const MAX_CONTROL_POINTS: usize = 65_536;
+/// Largest control point coordinate magnitude (also after dividing by the weight).
+/// Native `CreateExtendedSurface` on a B-spline surface with a `1e160` control point
+/// gives no result within 25 s (HANG-16's class; `1e155` returns in 40 ms), so
+/// coordinates are bounded where their squares still stay finite.
+pub const MAX_COORDINATE: f64 = 1e154;
 /// Native `NL_MAXDEG` (`NL_Nurbsdef.h`); larger degrees overrun basis work arrays.
 pub const MAX_DEGREE: usize = 17;
 /// Maximum packed input length, bounding aggregate native fixture allocations.
@@ -440,6 +447,12 @@ fn points(values: &[[f64; 4]]) -> Result<(), FfiError> {
         finite(&[x, y, z, w, x / w, y / w, z / w])?;
         if w <= 0.0 {
             return Err(bad("fixture homogeneous weights must be positive"));
+        }
+        if [x, y, z, x / w, y / w, z / w]
+            .iter()
+            .any(|v| v.abs() > MAX_COORDINATE)
+        {
+            return Err(bad("control point magnitude exceeds MAX_COORDINATE"));
         }
     }
     Ok(())

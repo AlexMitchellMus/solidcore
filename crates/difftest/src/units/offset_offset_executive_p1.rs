@@ -1160,6 +1160,21 @@ fn polygon_face(
             let use_id = primary(brep, edge)?;
             brep.edgeuse_mut(use_id).map_err(setup)?.uv_trim_curve = Some(Curve::from(trim));
         }
+        // The native downward loop starts at the mate of the first edge's use and
+        // runs the loop backwards from there (observed through MapEdgeuses: with a
+        // split edge, the first half's mate consumes the shared original use).
+        // `face_with_edges` starts it at the last edge's mate; move the start.
+        let (face, upward) = made;
+        let downward = brep
+            .faceuse(upward)
+            .map_err(setup)?
+            .mate
+            .ok_or_else(|| bad("face use has no mate"))?;
+        let loopuse = *at(&brep.faceuse(downward).map_err(setup)?.loopuses, 0)?;
+        let first_edge = *at(&edges, 0)?;
+        let first_mate = *at(&brep.edge(first_edge).map_err(setup)?.edgeuses, 1)?;
+        brep.loopuse_mut(loopuse).map_err(setup)?.start = LoopuseStart::Edgeuse(Some(first_mate));
+        return Ok((face, upward));
     }
     Ok(made)
 }
@@ -2696,22 +2711,27 @@ mod tests {
 
     #[test]
     fn rust_side_refuses_what_the_ffi_guard_refuses() {
-        // The eight `--fuzz 2000` failures of the face-tail PR, recorded as inputs:
-        // counts past MAX_ITEMS made rust_config allocate 2^32 wires, and a negative
-        // extension distance ran into CreateExtendedSurface's doubling loop
-        // (HANG-16). They cannot be fixtures (a harness error always fails a case),
-        // so this test keeps them: the Rust side now refuses each by running the
-        // FFI's own checks, with its message, before any construction.
+        // The `--fuzz 2000` failures of the face-tail PR, recorded as inputs: counts
+        // past MAX_ITEMS made rust_config allocate 2^32 wires, a negative extension
+        // distance ran into CreateExtendedSurface's doubling loop (HANG-16), and a
+        // 1e300 control point kept the native extension busy past the fuzz timeout.
+        // They cannot be fixtures (a harness error always fails a case), so this
+        // test keeps them: both sides now refuse each by the FFI's own checks, with
+        // its message, before any construction.
         let recorded: Value = serde_json::from_str(include_str!(
             "../../tests/fuzz_regressions/offset.offset_executive_p1.json"
         ))
         .unwrap();
         let cases = recorded["cases"].as_array().unwrap();
-        assert_eq!(cases.len(), 8);
+        assert_eq!(cases.len(), 9);
         for recorded in cases {
+            let name = recorded["name"].as_str().unwrap();
             let input: Inputs = serde_json::from_value(recorded["inputs"].clone()).unwrap();
             let expected = match &input {
                 Inputs::Config(_) => "fixture count exceeds MAX_ITEMS",
+                Inputs::Extend(_) if name.ends_with("huge_control_point") => {
+                    "control point magnitude exceeds MAX_COORDINATE"
+                }
                 Inputs::Extend(_) => "extension offset distance must be nonnegative",
                 other => panic!("unexpected regression op {other:?}"),
             };

@@ -698,7 +698,7 @@ SmFace* curve_face(SmContext& ctx, SmBrep* target, const std::vector<SmPoint2d>&
         ~UvGuard() { if (list) for (ULONG i=0; i<list->GetSize(); ++i) delete (*list)[i]; }
     } uv_guard{&uv};
     SmTArray<SmOrientType> orients;
-    SmTArray<SmPoint3d> points;
+    SmTArray<SmPoint3d> vertex_points; // MakeFaceWithCurves loop points (none)
     SmTArray<ULONG> loops;
     SmExtent1d unit(0,1);
     auto uv_of = [flip](double x, double y) { return flip ? SmPoint3d(y, x, 0) : SmPoint3d(x, y, 0); };
@@ -728,7 +728,7 @@ SmFace* curve_face(SmContext& ctx, SmBrep* target, const std::vector<SmPoint2d>&
     SmFace* face = nullptr;
     uv_guard.list = nullptr;
     constructed(target->MakeFaceWithCurves(target->GetInfiniteRegion(), loops, &curves3d, &uv,
-                                           orients, points, owned.surface, domain, SM_OT_SAME,
+                                           orients, vertex_points, owned.surface, domain, SM_OT_SAME,
                                            region, shell, face));
     if (!face || !face->GetUpwardFaceuse() || !face->GetUpwardFaceuse()->GetMate())
         throw Argument{};

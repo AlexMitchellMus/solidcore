@@ -4266,6 +4266,46 @@
       "values_compared": 24
     },
     {
+      "max_rel_err": 0.0,
+      "name": "split_bottom_half",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#22",
+      "values_compared": 36
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "split_bottom_offcenter_down",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#23",
+      "values_compared": 36
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "split_bottom_shifted_flip",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#24",
+      "values_compared": 36
+    },
+    {
+      "max_rel_err": 1.850371707708594e-16,
+      "name": "overhanging_offset",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#25",
+      "values_compared": 24
+    },
+    {
+      "max_rel_err": 1.850371707708594e-16,
+      "name": "overhanging_offset_flip_down",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#26",
+      "values_compared": 24
+    },
+    {
       "deferred": {
         "symbol": "SmBrep::ShrinkGeometry",
         "unit": "topology.brep_p4"
@@ -9507,9 +9547,9 @@
   "cases_both_errored": 0,
   "cases_deferred": 317,
   "cases_failed": 0,
-  "cases_passed": 709,
+  "cases_passed": 714,
   "cases_rejected": 1,
-  "cases_total": 1027,
+  "cases_total": 1032,
   "deferred_by_unit": {
     "intersect.surface_drop_lib_p3": 1,
     "offset.offset_geometry_creation": 1,

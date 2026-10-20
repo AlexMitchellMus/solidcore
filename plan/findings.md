@@ -8663,6 +8663,18 @@ with owner-tagged `Unported` errors and documented continuations.
   target/cache volumes. A forced 204-shim cached rebuild measured 61.65 seconds
   on the host bind mount versus 5.38 seconds on the Linux volumes; this is a
   warmed FFI rebuild measurement, not an end-to-end cold-suite speedup.
+- **Control point magnitude bound (PR #282 fuzz, 2026-10-20).** `--fuzz 2000` on the
+  face-tail follow-up produced an `extend` case (`fuzz00331`) whose B-spline surface has
+  a control point at `-1e300`: the native `GetCreateExtendedSurface` gave no result within
+  25 s (HANG-16's class). Native timing with that coordinate replaced: `1e154` and `1e155`
+  return in about 40 ms, `1e160`, `1e180`, `1e200`, `1e250` and `1e300` give no result
+  within 25 s; the sign of a zero distance does not matter. The FFI `points()` guard now
+  refuses control point coordinates (and coordinate/weight) above `MAX_COORDINATE = 1e154`,
+  where their squares still stay finite; the runner's Rust side runs the same check. The
+  input is kept in `crates/difftest/tests/fuzz_regressions/`. Two `differs` notes from the
+  same run (`fuzz01001`, `fuzz01653`: a `map_twin` rectangle corner at `±1e-300`, native
+  vertex `0` vs Rust `±1e-300`) are the native constructor's rounding of a coordinate
+  outside the generator's domain, not a port difference.
 
 ## topology.brep_p1 (`SmBrep` members, collections, `sm_*` helpers of `SmBrep.cpp`, PR #145, 2026-10-16; partial, no disagreements)
 
