@@ -240,6 +240,13 @@ int32_t op_step(Rd& rd, std::vector<double>& o)
         o.push_back(fs->offset(0));
         o.push_back(fs->offset(1));
     }
+    else
+    {
+        // a failed solve keeps the flags it set (SmFilletIntersector reads them)
+        o.push_back(flg(found));
+        o.push_back(flg(clipped));
+        o.push_back(flg(boundary));
+    }
     // the solver deletes its offset surfaces (they do not own their bases)
     delete fs;
     delete b0;

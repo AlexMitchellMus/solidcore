@@ -30,9 +30,11 @@
 //!   (upstream passes `*GetSurface(0)` as a `const` reference). Upstream's `SmIsoCurve`
 //!   holds a pointer to the solver's surface, so after `SetSurfacesToZeroOffset` it
 //!   evaluates at zero offset: the copy is rebuilt from the zeroed surface there.
-//! - **Out-params.** `StepSolve`'s three flags are a [`StepSolveOutcome`]; on an error
-//!   they are lost (upstream leaves them set). `rdStep` and `rNextPoint` stay in/out
-//!   arguments (upstream writes only some members of `rNextPoint`). An uninitialised
+//! - **Out-params.** `StepSolve`'s three flags are a [`StepSolveOutcome`] the caller
+//!   passes in, written where upstream writes them, so on an error they keep what was
+//!   set before it (upstream's `SmFilletIntersector` reads `bClipped` / `bBoundaryHit`
+//!   after a failed solve). `rdStep` and `rNextPoint` stay in/out arguments (upstream
+//!   writes only some members of `rNextPoint`). An uninitialised
 //!   `dRadius` (when `SetupOffsetValues` writes nothing) starts at `0.0`.
 //! - **Fillet geometries and the pseudo B-rep.** Upstream's `SmFilletGeom*`,
 //!   `SmFilletEdge*` and `SmFilletVertex*` are [`FilletGeomId`]s and ids of the
@@ -291,8 +293,9 @@ impl FilletSolver {
     /// otherwise (or when that fails) the solver's equations plus the plane through
     /// `CrvPos + step CrvDeriv` normal to `CrvDeriv` are solved by Newton iteration,
     /// once more with an adjusting plane when the first solve fails. Writes the UV
-    /// points (and the solver's extra unknowns into `m_adUserDoubles`) of `next`.
-    /// `brep` is passed through to `LoadInitialValues`.
+    /// points (and the solver's extra unknowns into `m_adUserDoubles`) of `next` and the
+    /// flags to `out` (reset first, as upstream initialises them; on an error they keep
+    /// what was set before it). `brep` is passed through to `LoadInitialValues`.
     ///
     /// # Errors
     ///
@@ -315,10 +318,11 @@ impl FilletSolver {
         uv_domain1: &Extent2d,
         uv_domain2: &Extent2d,
         next: &mut TsectPnt,
-    ) -> Result<StepSolveOutcome> {
+        out: &mut StepSolveOutcome,
+    ) -> Result<()> {
         const OP_S: &str = "blend::fillet_solver::p3::step_solve";
         // init output
-        let mut out = StepSolveOutcome::default();
+        *out = StepSolveOutcome::default();
 
         let uv_domains = [*uv_domain1, *uv_domain2];
 
@@ -363,7 +367,7 @@ impl FilletSolver {
         if tol::is_zero(step_size) || step_size * *step < 0.0 {
             out.found_good_point = false;
             out.boundary_hit = true;
-            return Ok(out);
+            return Ok(());
         }
 
         // compute next sUV guess points for each surface
@@ -538,7 +542,7 @@ impl FilletSolver {
                     leng_tan = 1.0;
                 }
                 *step *= leng_diff / leng_tan;
-                return Ok(out);
+                return Ok(());
             }
         }
 
@@ -642,7 +646,7 @@ impl FilletSolver {
             }
         }
 
-        Ok(out)
+        Ok(())
     }
 }
 
@@ -1628,14 +1632,25 @@ mod tests {
         Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0)
     }
 
-    fn step(
+    fn step(ty: FilletSolverType, y: f64, step: f64) -> (Result<StepSolveOutcome>, f64, TsectPnt) {
+        let (r, out, step, next) = step_flags(ty, y, step);
+        (r.map(|()| out), step, next)
+    }
+
+    /// [`step`] with the flags kept on an error.
+    fn step_flags(
         ty: FilletSolverType,
         y: f64,
         mut step: f64,
-    ) -> (Result<StepSolveOutcome>, f64, TsectPnt) {
+    ) -> (Result<()>, StepSolveOutcome, f64, TsectPnt) {
         let k = Kernel::default();
         let mut fs = TestSolver::new(ty);
         let mut next = TsectPnt::new();
+        let mut out = StepSolveOutcome {
+            found_good_point: true,
+            clipped: true,
+            boundary_hit: true,
+        };
         let r = FilletSolver::step_solve(
             &mut fs,
             &k,
@@ -1645,8 +1660,9 @@ mod tests {
             &unit_domain(),
             &unit_domain(),
             &mut next,
+            &mut out,
         );
-        (r, step, next)
+        (r, out, step, next)
     }
 
     #[test]
@@ -1718,6 +1734,25 @@ mod tests {
                 })
             ),
             "{r:?}"
+        );
+    }
+
+    #[test]
+    fn step_solve_keeps_the_flags_set_before_a_failure() {
+        // the flags start reset; the clip is recorded before the plane solve fails
+        let (r, out, _, _) = step_flags(FilletSolverType::ConstRadiusAssisted, 1.8, 0.5);
+        assert!(r.is_err(), "{r:?}");
+        assert!(out.clipped && !out.boundary_hit, "{out:?}");
+        assert!(
+            out.found_good_point,
+            "found before the plane solve: {out:?}"
+        );
+        // the variable-radius cast fails after the clip, before any point is found
+        let (r, out, _, _) = step_flags(FilletSolverType::VariableRadius, 1.8, 0.5);
+        assert!(r.is_err(), "{r:?}");
+        assert!(
+            out.clipped && !out.found_good_point && !out.boundary_hit,
+            "{out:?}"
         );
     }
 

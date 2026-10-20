@@ -29,6 +29,7 @@ use solidcore::blend::fillet_custom_solver::{
 use solidcore::blend::fillet_solver::p1::{
     FilletSolver, FilletSolverOps, FilletSolverType, OffsetSurfaceSlot,
 };
+use solidcore::blend::fillet_solver::p3::StepSolveOutcome;
 use solidcore::geom::extent1d::{Extent1d, ExtentNd};
 use solidcore::geom::extent2d::Extent2d;
 use solidcore::geom::matrix::Matrix;
@@ -364,6 +365,7 @@ fn rust_step(i: &StepIn) -> Result<Output, HarnessError> {
     *next.uv_pos_mut(SrfIndex::Second) = Point2::new(i.next_uv1[0], i.next_uv1[1]);
     next.user_doubles = i.next_ud;
     let mut step = i.step;
+    let mut out = StepSolveOutcome::default();
     let r = FilletSolver::step_solve(
         &mut fs,
         &k,
@@ -373,9 +375,10 @@ fn rust_step(i: &StepIn) -> Result<Output, HarnessError> {
         &domain_of(i.dom1),
         &domain_of(i.dom2),
         &mut next,
+        &mut out,
     );
     match r {
-        Ok(out) => {
+        Ok(()) => {
             let offset = |rail: usize| {
                 fs.base
                     .surfaces
@@ -401,10 +404,18 @@ fn rust_step(i: &StepIn) -> Result<Output, HarnessError> {
             o.push(offset(1));
             Ok(Output::new().values("flat", o))
         }
-        Err(e) => {
-            Ok(Output::unported(&e)
-                .unwrap_or_else(|| Output::new().values("flat", vec![status(&e)])))
-        }
+        // a failed solve keeps the flags it set (SmFilletIntersector reads them)
+        Err(e) => Ok(Output::unported(&e).unwrap_or_else(|| {
+            Output::new().values(
+                "flat",
+                vec![
+                    status(&e),
+                    b(out.found_good_point),
+                    b(out.clipped),
+                    b(out.boundary_hit),
+                ],
+            )
+        })),
     }
 }
 

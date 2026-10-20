@@ -579,8 +579,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "rv_next_clipped_step",
@@ -618,16 +618,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0003",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182456",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -639,8 +635,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0005",
@@ -662,16 +658,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0007",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182460",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -722,16 +714,12 @@
       "values_compared": 299
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0013",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182466",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -811,8 +799,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0022",
@@ -958,16 +946,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0038",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182491",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "deferred": {
@@ -1063,8 +1047,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0048",
@@ -1103,8 +1087,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0052",
@@ -1138,16 +1122,12 @@
       "values_compared": 267
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0056",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182509",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -1159,8 +1139,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0058",
@@ -1202,16 +1182,12 @@
       "values_compared": 267
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0063",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182516",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -1331,8 +1307,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0076",
@@ -1342,16 +1318,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0077",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182530",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "deferred": {
@@ -1382,16 +1354,12 @@
       "values_compared": 269
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0081",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182534",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -1483,8 +1451,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0092",
@@ -1535,8 +1503,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0098",
@@ -1579,8 +1547,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0102",
@@ -1667,8 +1635,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0112",
@@ -1718,16 +1686,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0117",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182570",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -1923,8 +1887,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0139",
@@ -1967,8 +1931,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0143",
@@ -2007,8 +1971,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0147",
@@ -2078,16 +2042,12 @@
       "values_compared": 264
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0155",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182608",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -2130,16 +2090,12 @@
       "values_compared": 264
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0161",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182614",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -2286,21 +2242,17 @@
       "values_compared": 266
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0179",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182632",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0180",
@@ -2351,8 +2303,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0185",
@@ -2387,8 +2339,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0189",
@@ -2470,16 +2422,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0198",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182651",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "deferred": {
@@ -2503,8 +2451,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0201",
@@ -2719,8 +2667,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0226",
@@ -2786,21 +2734,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0233",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182686",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0234",
@@ -2951,8 +2895,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0250",
@@ -3022,16 +2966,12 @@
       "values_compared": 344
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0258",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182711",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -3170,16 +3110,12 @@
       "values_compared": 267
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0273",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182726",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -3191,8 +3127,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0275",
@@ -3570,16 +3506,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0315",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182768",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "deferred": {
@@ -3671,8 +3603,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0325",
@@ -3682,16 +3614,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0326",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182779",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -3711,8 +3639,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0329",
@@ -3795,8 +3723,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0338",
@@ -3867,8 +3795,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0346",
@@ -3919,8 +3847,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0352",
@@ -3958,16 +3886,12 @@
       "values_compared": 267
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0356",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182809",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -3978,21 +3902,17 @@
       "values_compared": 263
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0358",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182811",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0359",
@@ -4003,8 +3923,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0360",
@@ -4278,16 +4198,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0390",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182843",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -4395,8 +4311,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0403",
@@ -4406,16 +4322,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0404",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182857",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -4454,16 +4366,12 @@
       "values_compared": 264
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0409",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182862",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -4519,8 +4427,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0416",
@@ -4647,8 +4555,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0430",
@@ -4674,16 +4582,12 @@
       "values_compared": 267
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0433",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182886",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -4958,16 +4862,12 @@
       "values_compared": 344
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0465",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182918",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -5018,16 +4918,12 @@
       "values_compared": 267
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0471",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182924",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -5038,16 +4934,12 @@
       "values_compared": 264
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0473",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182926",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -5114,16 +5006,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0480",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182933",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -5219,8 +5107,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0491",
@@ -5606,16 +5494,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0535",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182988",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -5626,16 +5510,12 @@
       "values_compared": 269
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0537",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314182990",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -5974,16 +5854,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0576",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183029",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "deferred": {
@@ -6063,8 +5939,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0585",
@@ -6087,8 +5963,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0587",
@@ -6355,8 +6231,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0616",
@@ -6375,8 +6251,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0618",
@@ -6570,16 +6446,12 @@
       "values_compared": 264
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0640",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183093",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -6602,16 +6474,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0643",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183096",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -6694,16 +6562,12 @@
       "values_compared": 329
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0653",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183106",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -6726,16 +6590,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0656",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183109",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "deferred": {
@@ -6751,8 +6611,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0658",
@@ -6843,8 +6703,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0668",
@@ -6855,8 +6715,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0669",
@@ -7291,8 +7151,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0714",
@@ -7330,16 +7190,12 @@
       "values_compared": 267
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0718",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183171",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "deferred": {
@@ -7454,16 +7310,12 @@
       "values_compared": 329
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0730",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183183",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "deferred": {
@@ -7623,8 +7475,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0748",
@@ -7650,16 +7502,12 @@
       "values_compared": 329
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0751",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183204",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "deferred": {
@@ -7683,8 +7531,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0754",
@@ -7823,8 +7671,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0769",
@@ -8054,16 +7902,12 @@
       "values_compared": 299
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0794",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183247",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -8231,8 +8075,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0813",
@@ -8266,16 +8110,12 @@
       "values_compared": 267
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0817",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183270",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -8395,8 +8235,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0831",
@@ -8434,16 +8274,12 @@
       "values_compared": 267
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0835",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183288",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -8482,16 +8318,12 @@
       "values_compared": 269
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0840",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183293",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -8574,16 +8406,12 @@
       "values_compared": 314
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0850",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183303",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "deferred": {
@@ -8626,16 +8454,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0855",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183308",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -8646,16 +8470,12 @@
       "values_compared": 263
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0857",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183310",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -8791,8 +8611,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0873",
@@ -9102,16 +8922,12 @@
       "values_compared": 264
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0908",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183361",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -9155,8 +8971,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0914",
@@ -9199,8 +9015,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0919",
@@ -9230,16 +9046,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0922",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183375",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -9251,8 +9063,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0924",
@@ -9270,16 +9082,12 @@
       "values_compared": 269
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0926",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183379",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -9298,16 +9106,12 @@
       "values_compared": 267
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0929",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183382",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "deferred": {
@@ -9531,8 +9335,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0954",
@@ -9870,16 +9674,12 @@
       "values_compared": 344
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0992",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183445",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -9907,8 +9707,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0996",
@@ -9963,8 +9763,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen1002",
@@ -9990,16 +9790,12 @@
       "values_compared": 264
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1005",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183458",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -10094,16 +9890,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1015",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183468",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -10138,16 +9930,12 @@
       "values_compared": 267
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1020",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183473",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -10310,16 +10098,12 @@
       "values_compared": 267
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1039",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183492",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -10383,8 +10167,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen1047",
@@ -10647,8 +10431,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen1076",
@@ -10775,8 +10559,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen1090",
@@ -10786,16 +10570,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1091",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183544",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "deferred": {
@@ -10822,16 +10602,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1094",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183547",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -10974,21 +10750,17 @@
       "values_compared": 264
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1111",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183564",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen1112",
@@ -11006,16 +10778,12 @@
       "values_compared": 264
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1114",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183567",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "max_rel_err": 0.0,
@@ -11095,8 +10863,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen1124",
@@ -11266,16 +11034,12 @@
       "values_compared": 269
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1141",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12850236935314183594",
-      "values_compared": 0
+      "values_compared": 269
     },
     {
       "deferred": {
@@ -11423,8 +11187,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::SetupOffsetValues",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen1158",
@@ -11503,8 +11267,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen1166",
@@ -11627,8 +11391,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
+        "symbol": "SmConstantRadiusFS::GetJacobianSize",
+        "unit": "blend.fillet_standard_solver_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen1179",
@@ -11935,15 +11699,14 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 411,
+  "cases_deferred": 352,
   "cases_failed": 0,
-  "cases_passed": 875,
+  "cases_passed": 934,
   "cases_total": 1286,
   "deferred_by_unit": {
     "blend.fillet_solver_p2": 37,
-    "blend.fillet_solver_p3": 120,
     "blend.fillet_solver_p4": 59,
-    "blend.fillet_standard_solver_p1": 33,
+    "blend.fillet_standard_solver_p1": 94,
     "curve.crv_on_surf": 162
   },
   "max_rel_err": 0.0,

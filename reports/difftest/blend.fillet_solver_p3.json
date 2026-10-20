@@ -323,7 +323,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561847389472597831",
-      "values_compared": 1
+      "values_compared": 4
     },
     {
       "max_rel_err": 4.854919989513774e-16,
@@ -363,7 +363,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561847389472597836",
-      "values_compared": 1
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -707,7 +707,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561847389472597877",
-      "values_compared": 1
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -739,7 +739,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561847389472597881",
-      "values_compared": 1
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -923,7 +923,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561847389472597903",
-      "values_compared": 1
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -1123,7 +1123,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561847389472597927",
-      "values_compared": 1
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -1199,7 +1199,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561847389472597936",
-      "values_compared": 1
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -1263,7 +1263,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561847389472597944",
-      "values_compared": 1
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -1783,7 +1783,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561847389472598008",
-      "values_compared": 1
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -2459,7 +2459,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561847389472598091",
-      "values_compared": 1
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -2699,7 +2699,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561847389472598119",
-      "values_compared": 1
+      "values_compared": 4
     },
     {
       "max_rel_err": 1.8011683050692552e-15,
@@ -2883,7 +2883,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561847389472598141",
-      "values_compared": 1
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -3247,7 +3247,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561847389472598186",
-      "values_compared": 1
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
