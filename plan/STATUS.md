@@ -1041,3 +1041,21 @@ adapters.
 Review verification: the extended 256-seed run has 380 cases, 291 bit-identical
 passes, zero failures and 89 query deferrals. Perturbation detects every compared
 case (108/108 default, 291/291 extended).
+
+
+### PR #222 current-main compatibility refresh (2026-10-20)
+
+Main `e4dd81c4` is merged, preserving complete p5/p7 notes and sweep API
+extensions. HCR receives the owning mutable Kernel and shell-vertex queries
+use the real p2 getter with owner-scoped vertex-list order. All eight native-
+feature service regressions pass: distinct owner lists, shell allocation and
+point, foreign owner refusal, empty cleanup, open-loop rejection, copy blocker
+and stitch flag restoration. The native record does not export vertex points
+or full constructed B-rep topology; production adapter work remains in #255.
+
+Fresh native gates: sweep 568/558 pass/10 deferred (topology.brep_p3); p5
+797/738/59; p7 316/237/79; p9 684/638/46; p2 1709/1437/272; HCR 434/394/40.
+All six gates have zero failures and maximum relative error zero. Workspace
+tests (1535 kernel tests), fmt/include formatting, plain/native Clippy, wasm32
+and four native FFI regressions pass. The full gate and successful actual-head
+CI evidence are recorded in the PR discussion. No tolerance was relaxed.
