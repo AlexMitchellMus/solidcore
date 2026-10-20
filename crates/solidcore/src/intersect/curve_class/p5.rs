@@ -446,17 +446,10 @@ impl<O: ClassObject> CurveClassification<O> {
         let original_curve = self.curve_geometry(geometry)?;
         let wrapped;
         let curve = if !uv_space_okay && original_curve.dim() == 2 {
-            let SurfaceKind::BSpline(bs) = surface.kind() else {
-                // UNPORTED(curve.crv_on_surf): SmCrvOnSurf over a generic Surface
-                return Err(SolidError::unported(
-                    "SmCrvOnSurf generic Surface dispatch",
-                    "curve.crv_on_surf",
-                ));
-            };
             wrapped = Curve::from(CrvOnSurf::new(
                 k,
                 original_curve.clone(),
-                bs.clone(),
+                surface.clone_for_evaluation()?,
                 Some(surface.natural_uv_domain()),
                 0,
             )?);

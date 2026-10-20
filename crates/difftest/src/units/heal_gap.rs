@@ -284,8 +284,15 @@ fn flag(b: bool) -> f64 {
 }
 
 fn push_nurb(o: &mut Vec<f64>, n: &NurbIn) -> Result<(), HarnessError> {
-    let k = n.cpts.len().checked_sub(1).ok_or_else(|| harness("no points"))?;
-    let m = n.u.len().checked_sub(1).ok_or_else(|| harness("no knots"))?;
+    let k = n
+        .cpts
+        .len()
+        .checked_sub(1)
+        .ok_or_else(|| harness("no points"))?;
+    let m =
+        n.u.len()
+            .checked_sub(1)
+            .ok_or_else(|| harness("no knots"))?;
     o.extend([k as f64, n.p as f64, m as f64]);
     for p in &n.cpts {
         o.extend(p);
@@ -295,7 +302,11 @@ fn push_nurb(o: &mut Vec<f64>, n: &NurbIn) -> Result<(), HarnessError> {
 }
 
 fn push_bss(o: &mut Vec<f64>, b: &BssIn) -> Result<(), HarnessError> {
-    let n = b.net.len().checked_sub(1).ok_or_else(|| harness("empty net"))?;
+    let n = b
+        .net
+        .len()
+        .checked_sub(1)
+        .ok_or_else(|| harness("empty net"))?;
     let m = b
         .net
         .first()
@@ -304,8 +315,14 @@ fn push_bss(o: &mut Vec<f64>, b: &BssIn) -> Result<(), HarnessError> {
     if b.net.iter().any(|r| r.len() != m + 1) {
         return Err(harness("ragged net"));
     }
-    let r = b.u.len().checked_sub(1).ok_or_else(|| harness("no u knots"))?;
-    let s = b.v.len().checked_sub(1).ok_or_else(|| harness("no v knots"))?;
+    let r =
+        b.u.len()
+            .checked_sub(1)
+            .ok_or_else(|| harness("no u knots"))?;
+    let s =
+        b.v.len()
+            .checked_sub(1)
+            .ok_or_else(|| harness("no v knots"))?;
     o.extend([
         flag(b.oob),
         f64::from(b.form),
@@ -332,7 +349,13 @@ fn push_curve_in(o: &mut Vec<f64>, c: &CurveIn) -> Result<(), HarnessError> {
             o.extend([0.0, *dim as f64, flag(*oob)]);
             push_nurb(o, nurb)?;
         }
-        CurveIn::Hermite { dim, p1, d1, p2, d2 } => {
+        CurveIn::Hermite {
+            dim,
+            p1,
+            d1,
+            p2,
+            d2,
+        } => {
             o.extend([1.0, *dim as f64]);
             for v in [p1, d1, p2, d2] {
                 o.extend(v);
@@ -399,7 +422,13 @@ fn push_surf_in(o: &mut Vec<f64>, s: &SurfIn) -> Result<(), HarnessError> {
             o.push(0.0);
             push_bss(o, b)
         }
-        SurfIn::Plane { o: org, x, y, scale, dom } => {
+        SurfIn::Plane {
+            o: org,
+            x,
+            y,
+            scale,
+            dom,
+        } => {
             o.push(1.0);
             o.extend(org);
             o.extend(x);
@@ -455,7 +484,11 @@ fn v3(p: [f64; 3]) -> Vec3 {
 }
 
 fn nl_curve(n: &NurbIn) -> Result<NlCurve, HarnessError> {
-    let pw = n.cpts.iter().map(|&[x, y, z, w]| CPoint::new(x, y, z, w)).collect();
+    let pw = n
+        .cpts
+        .iter()
+        .map(|&[x, y, z, w]| CPoint::new(x, y, z, w))
+        .collect();
     NlCurve::new(pw, n.p, n.u.clone()).map_err(|e| harness(format!("curve input: {e}")))
 }
 
@@ -463,7 +496,11 @@ fn bss_of(b: &BssIn) -> Result<BSplineSurface, HarnessError> {
     let net = b
         .net
         .iter()
-        .map(|r| r.iter().map(|&[x, y, z, w]| CPoint::new(x, y, z, w)).collect())
+        .map(|r| {
+            r.iter()
+                .map(|&[x, y, z, w]| CPoint::new(x, y, z, w))
+                .collect()
+        })
         .collect();
     let nl = NlSurface::new(net, b.p, b.q, b.u.clone(), b.v.clone())
         .map_err(|e| harness(format!("surface input: {e}")))?;
@@ -482,13 +519,13 @@ fn curve_of(k: &Kernel, c: &CurveIn) -> Result<Curve, HarnessError> {
             b.set_out_of_bounds_enabled(*oob);
             Curve::from(b)
         }
-        CurveIn::Hermite { dim, p1, d1, p2, d2 } => Curve::from(HermiteCurve::new(
-            v3(*p1),
-            v3(*d1),
-            v3(*p2),
-            v3(*d2),
-            *dim,
-        )),
+        CurveIn::Hermite {
+            dim,
+            p1,
+            d1,
+            p2,
+            d2,
+        } => Curve::from(HermiteCurve::new(v3(*p1), v3(*d1), v3(*p2), v3(*d2), *dim)),
         CurveIn::Line {
             p,
             v,
@@ -566,7 +603,7 @@ fn curve_of(k: &Kernel, c: &CurveIn) -> Result<Curve, HarnessError> {
         CurveIn::CrvOnSurf { uv, surface } => {
             let c = Curve::from(BSplineCurve::from_nurb(nl_curve(uv)?, 2, false));
             Curve::from(
-                CrvOnSurf::new(k, c, bss_of(surface)?, None, 3)
+                CrvOnSurf::new(k, c, Surface::from(bss_of(surface)?), None, 3)
                     .map_err(|e| harness(format!("crv on surf: {e}")))?,
             )
         }
@@ -580,7 +617,13 @@ fn dom_of(d: [f64; 4]) -> Extent2d {
 fn surface_of(s: &SurfIn) -> Result<Surface, HarnessError> {
     Ok(match s {
         SurfIn::Bspline(b) => Surface::from(bss_of(b)?),
-        SurfIn::Plane { o, x, y, scale, dom } => Surface::from(Plane::new(
+        SurfIn::Plane {
+            o,
+            x,
+            y,
+            scale,
+            dom,
+        } => Surface::from(Plane::new(
             v3(*o),
             v3(*x),
             v3(*y),
@@ -749,7 +792,9 @@ fn topo_args(
             _ => None,
         }
     } else {
-        eu1::face(b, EdgeuseId::from_index(s0 as u32)).ok().flatten()
+        eu1::face(b, EdgeuseId::from_index(s0 as u32))
+            .ok()
+            .flatten()
     };
     let dom = match face {
         Some(f) => match &b.face(f).map_err(err)?.surface {
@@ -865,9 +910,8 @@ fn topo_rust(k: &Kernel, b: &mut Brep, args: &[f64]) -> Result<Vec<f64>, SolidEr
 // ---- run ---------------------------------------------------------------------------------
 
 fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
-    let call = |op: Op, input: &[f64]| {
-        ffi::eval(op, input).map_err(|e| harness(format!("c++: {e}")))
-    };
+    let call =
+        |op: Op, input: &[f64]| ffi::eval(op, input).map_err(|e| harness(format!("c++: {e}")));
     let mut o = Vec::new();
     match i {
         Inputs::Gf {

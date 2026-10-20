@@ -110,6 +110,22 @@ pub struct OffsetCurve {
 }
 
 impl OffsetCurve {
+    /// Exact evaluation copy after the caller validates the geometry depth.
+    pub(crate) fn clone_exact_bounded(&self) -> Self {
+        Self {
+            dim: self.dim,
+            base: self
+                .base
+                .as_deref()
+                .map(|c| Box::new(c.clone_exact_bounded())),
+            normal: self.normal,
+            distance: self.distance,
+            interval: self.interval,
+            reversed: self.reversed,
+            owns_curve: self.owns_curve,
+        }
+    }
+
     /// `SmOffsetCurve_TYPE` (`CURV_BASE_TYPE + 36`).
     pub const TYPE: i64 = OFFSET_CURVE_TYPE;
 

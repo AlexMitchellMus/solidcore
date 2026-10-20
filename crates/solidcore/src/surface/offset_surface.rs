@@ -521,7 +521,7 @@ impl OffsetSurface {
         } else {
             // when BaseSurface is not owned (shared upstream: the same base surface)
             // (the same object upstream: its owner is unchanged)
-            let shared = self.surface.clone_keeping_owner();
+            let shared = self.surface.clone_for_evaluation_depth(1)?;
             let mut s = Self::new(k, self.offset_distance, shared, false, SS_UNKNOWN)?;
             s.owns_surface = false;
             s
@@ -614,21 +614,14 @@ impl OffsetSurface {
         )?))
     }
 
-    /// A copy for evaluation (`Surface::clone_for_evaluation`): the members as they
-    /// are, the base and extended surfaces copied exactly (no knot fix-up), `depth`
-    /// the wrapper nesting already walked.
-    ///
-    /// # Errors
-    ///
-    /// `InvalidInput` past the evaluation copy's nesting bound.
-    pub(crate) fn clone_for_evaluation(&self, depth: usize) -> Result<Self> {
-        let surface = Box::new(self.surface.clone_for_evaluation_depth(depth)?);
+    /// Exact evaluation copy; the caller validates the complete geometry graph first.
+    pub(crate) fn clone_for_evaluation(&self) -> Self {
+        let surface = Box::new(self.surface.clone_exact_bounded());
         let extended_surface = self
             .extended_surface
             .as_deref()
-            .map(|e| e.clone_for_evaluation_depth(depth).map(Box::new))
-            .transpose()?;
-        Ok(Self {
+            .map(|e| Box::new(e.clone_exact_bounded()));
+        Self {
             offset_distance: self.offset_distance,
             allow_extension: self.allow_extension,
             owns_surface: self.owns_surface,
@@ -637,7 +630,7 @@ impl OffsetSurface {
             is_periodic_on_u: self.is_periodic_on_u,
             is_periodic_on_v: self.is_periodic_on_v,
             singularities: self.singularities,
-        })
+        }
     }
 
     /// The offset of this surface by `signed_offset_distance` more

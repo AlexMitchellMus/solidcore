@@ -104,7 +104,7 @@ use super::p1::{
 use super::p2::{
     convert_to_parameter_delta, evaluate_geometric, LocalSurfaceType, SurfaceEval, TsectCurveType,
 };
-use super::{Surface, SurfaceKind};
+use super::Surface;
 
 const OP_CS_INTERSECT: &str = "surface::surface::p4::CsIntersectEnfo::evaluate";
 const OP_CS_NORMALIZE: &str = "surface::surface::p4::CsNormalizeEnfo::evaluate";
@@ -112,7 +112,6 @@ const OP_SSP_INTERSECT: &str = "surface::surface::p4::SspIntersectEnfo::evaluate
 const OP_SSI_NORMALIZE: &str = "surface::surface::p4::SsiNormalizeEnfo::evaluate";
 const OP_SS_NORMALIZE: &str = "surface::surface::p4::SsNormalizeEnfo::evaluate";
 const OP_EVAL_NORMAL: &str = "surface::surface::p4::SurfaceEval::eval_normal";
-const OP_SEAM: &str = "surface::surface::p4::Surface::create_seam_curve";
 const OP_CLASSIFY: &str = "surface::surface::p4::classify_curve_surface_xsect_point";
 
 /// Entry `i` of an evaluation result.
@@ -1139,14 +1138,14 @@ impl Surface {
                 Point3::new(uv_max.x, uv_min.y, 0.0),
             )
         };
-        let SurfaceKind::BSpline(base) = self.kind() else {
-            return Err(SolidError::invalid_input(
-                OP_SEAM,
-                "a curve on a surface needs a B-spline surface",
-            ));
-        };
         let line = Line::from_points(start, end, 2); // Line Ivl:[0, 1]
-        let seam = CrvOnSurf::new(kernel, Curve::from(line), base.clone(), Some(uv_domain), 2)?;
+        let seam = CrvOnSurf::new(
+            kernel,
+            Curve::from(line),
+            self.clone_for_evaluation()?,
+            Some(uv_domain),
+            2,
+        )?;
         Ok(Some(seam))
     }
 

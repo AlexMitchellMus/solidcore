@@ -565,6 +565,37 @@ impl Clone for Curve {
     }
 }
 
+impl Curve {
+    /// Exact recursive copy after the caller validates the complete geometry graph.
+    pub(crate) fn clone_exact_bounded(&self) -> Self {
+        let kind = match &self.kind {
+            CurveKind::BSpline(c) => CurveKind::BSpline(c.clone_exact()),
+            CurveKind::Hermite(c) => CurveKind::Hermite(*c),
+            CurveKind::Hyperbola(c) => CurveKind::Hyperbola(Hyperbola {
+                base: c.base.clone_exact(),
+                position: c.position,
+                anal_domain: c.anal_domain,
+                semi_axis: c.semi_axis,
+                semi_image_axis: c.semi_image_axis,
+            }),
+            CurveKind::Projected(c) => CurveKind::Projected(c.clone_exact_bounded()),
+            CurveKind::Iso(c) => CurveKind::Iso(c.clone_exact_bounded()),
+            CurveKind::Offset(c) => CurveKind::Offset(c.clone_exact_bounded()),
+            CurveKind::Conic(c) => CurveKind::Conic(*c),
+            CurveKind::CrvInVolume(c) => CurveKind::CrvInVolume(Box::new(c.clone_exact_bounded())),
+            CurveKind::CrvOnSurf(c) => CurveKind::CrvOnSurf(Box::new(c.as_ref().clone())),
+            CurveKind::Line(c) => CurveKind::Line(c.clone_exact_bounded()),
+            CurveKind::Ellipse(c) => CurveKind::Ellipse(c.clone_exact_bounded()),
+            CurveKind::Parabola(c) => CurveKind::Parabola(c.clone_exact_bounded()),
+            CurveKind::Composite(c) => CurveKind::Composite(c.clone_exact_bounded()),
+        };
+        Self {
+            kind,
+            owner: self.owner,
+        }
+    }
+}
+
 impl From<BSplineCurve> for Curve {
     fn from(c: BSplineCurve) -> Self {
         Self::new(CurveKind::BSpline(c))
@@ -1452,7 +1483,7 @@ impl Curve {
             | CurveKind::Offset(_) => Err(base_err()),
             CurveKind::Projected(c) => c.transform(k, rotate_n_move, scale),
             CurveKind::CrvInVolume(c) => c.transform(rotate_n_move, scale),
-            CurveKind::CrvOnSurf(c) => c.transform(rotate_n_move, scale),
+            CurveKind::CrvOnSurf(c) => c.transform(k, rotate_n_move, scale),
             CurveKind::Line(c) => c.transform(rotate_n_move, scale),
         }
     }

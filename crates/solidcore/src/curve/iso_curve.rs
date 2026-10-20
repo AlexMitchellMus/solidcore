@@ -81,6 +81,16 @@ pub struct IsoCurve {
 }
 
 impl IsoCurve {
+    /// Exact evaluation copy after the caller validates the geometry depth.
+    pub(crate) fn clone_exact_bounded(&self) -> Self {
+        Self {
+            surface: Box::new(self.surface.clone_exact_bounded()),
+            surf_param: self.surf_param,
+            iso_parameter: self.iso_parameter,
+            from_left: self.from_left,
+        }
+    }
+
     /// `SmIsoCurve_TYPE` (`CURV_BASE_TYPE + 45`).
     pub const TYPE: i64 = ISO_CURVE_TYPE;
 

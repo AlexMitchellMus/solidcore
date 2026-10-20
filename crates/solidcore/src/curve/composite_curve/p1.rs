@@ -343,6 +343,28 @@ pub struct CompositeCurve {
     pub(super) closed: bool,
 }
 
+impl CompositeCurve {
+    /// Exact evaluation copy after the caller validates the geometry depth.
+    pub(crate) fn clone_exact_bounded(&self) -> Self {
+        Self {
+            dim: self.dim,
+            segments: self
+                .segments
+                .iter()
+                .map(|s| CompositeCurveSegment {
+                    transition: s.transition,
+                    same_sense: s.same_sense,
+                    curve: s.curve.clone_exact_bounded(),
+                    gap_start: s.gap_start,
+                    gap_end: s.gap_end,
+                    owns_curve: s.owns_curve,
+                })
+                .collect(),
+            closed: self.closed,
+        }
+    }
+}
+
 /// [`CompositeCurve::canonical`]: the data the composite was built from
 /// (`GetCanonical`).
 #[derive(Debug, Clone)]

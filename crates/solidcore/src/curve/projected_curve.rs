@@ -117,6 +117,18 @@ pub struct ProjectedCurve {
 }
 
 impl ProjectedCurve {
+    /// Exact evaluation copy after the caller validates the geometry depth.
+    pub(crate) fn clone_exact_bounded(&self) -> Self {
+        Self {
+            curve: Box::new(self.curve.clone_exact_bounded()),
+            proj_point: self.proj_point,
+            proj_vec: self.proj_vec,
+            aux_data: self.aux_data,
+            proj_type: self.proj_type,
+            owns_curve: self.owns_curve,
+        }
+    }
+
     /// `SmProjectedCurve_TYPE`.
     pub const TYPE: i64 = PROJECTED_CURVE_TYPE;
 

@@ -105,7 +105,7 @@ use crate::math::{Point3, EFF_ZERO, EFF_ZERO_DEG};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_curve_n_lib::InValueType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
-use crate::surface::surface::{Surface, SurfaceKind};
+use crate::surface::surface::Surface;
 use crate::topology::brep::p1;
 use crate::topology::brep::p10::{self, MakeTopologyOptions, TopologyEnv};
 use crate::topology::brep::p6;
@@ -734,20 +734,13 @@ pub fn make_face_with_curves(
                     ignore_status(entry.convert_to_2d(k))?;
                     let uv_curve = entry.clone();
                     let new3d = if crv_on_surf {
-                        let base = match surface.kind() {
-                            SurfaceKind::BSpline(s) => s.clone(),
-                            // (a plane's or a surface of revolution's B-spline base would drop
-                            // the kind's evaluation overrides, as every other kind's would)
-                            _ => {
-                                // UNPORTED(curve.crv_on_surf): SmCrvOnSurf over a non-B-spline
-                                // surface (the Rust CrvOnSurf holds only B-spline surfaces)
-                                return Err(SolidError::unported(
-                                    "SmCrvOnSurf (non-B-spline surface)",
-                                    "curve.crv_on_surf",
-                                ));
-                            }
-                        };
-                        let c = CrvOnSurf::new(k, uv_curve, base, Some(*uv_domain), 2)?;
+                        let c = CrvOnSurf::new(
+                            k,
+                            uv_curve,
+                            surface.clone_for_evaluation()?,
+                            Some(*uv_domain),
+                            2,
+                        )?;
                         let c = Curve::from(c);
                         // (IsDegenerate returns a flag upstream: a failed test is "no")
                         if ignored(c.is_degenerate(EFF_ZERO, None))?.unwrap_or(false) {

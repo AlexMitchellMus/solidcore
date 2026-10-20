@@ -199,6 +199,19 @@ pub struct CrvInVolume {
 }
 
 impl CrvInVolume {
+    /// Exact evaluation copy after the caller validates the geometry depth.
+    pub(crate) fn clone_exact_bounded(&self) -> Self {
+        Self {
+            curve: self.curve.clone_exact_bounded(),
+            in_param_space: self.in_param_space,
+            volume: self.volume.clone(),
+            need_breaks: self.need_breaks,
+            breaks: self.breaks.clone(),
+            conts: self.conts.clone(),
+            owner_flag: self.owner_flag,
+        }
+    }
+
     /// `SmCrvInVolume_TYPE`.
     pub const TYPE: i64 = CRV_IN_VOLUME_TYPE;
 

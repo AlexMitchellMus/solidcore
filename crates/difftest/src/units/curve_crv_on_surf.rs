@@ -3,13 +3,14 @@
 //!
 //! C++: `solidcore_ffi::units::curve_crv_on_surf` (upstream
 //! `source/SMLib/src/SmCrvOnSurf.cpp` on objects built from a 2D `SmBSplineCurve` UV
-//! curve, or the UV-line constructor, on an `SmBSplineSurface`; the break cache is
-//! loaded directly). Rust: `solidcore::curve::crv_on_surf` (the `&mut` methods, so the
-//! caches evolve as upstream's; `Info` and `Equal` go through the [`Curve`] dispatch).
+//! curve, or the UV-line constructor, over a B-spline base or a real
+//! `SmOffsetSurface`). Rust: `solidcore::curve::crv_on_surf` (the `&mut` methods, so
+//! the caches evolve as upstream's; `Info` and `Equal` go through the [`Curve`] dispatch).
 //!
-//! A case is either an object (`cos`: `uv` (`bspline` or `line`), `srf` (inline or an
-//! upstream `.sms` file), optional `domain`, `owner`, optional `cache` `{need,
-//! breaks}`) with an op list run in order on it, or a database record (`read_db`).
+//! A case is either an object (`cos`: `uv` (`bspline` or `line`), B-spline `srf` (inline
+//! with optional `borrow_nurb` to preserve raw knots, or an upstream `.sms` file),
+//! optional `offset`, `domain`, `owner`, optional `cache` `{need, breaks}`) with an op list
+//! run in order on it, or a database record (`read_db`).
 //! Both sides produce the flat record documented in the ffi module (every op's status,
 //! `0` = `SM_SUCCESS`, else the `SmStatus`; `1007` for a Rust `InvalidInput`, `-1` for a
 //! Rust error upstream cannot produce, then its outputs), compared as `out`.
@@ -40,6 +41,8 @@ use solidcore::nurbs::b_spline_surface::BSplineSurface;
 use solidcore::nurbs::crv_basic::Curve as NurbCurve;
 use solidcore::nurbs::math::CPoint;
 use solidcore::nurbs::srf_basic::Surface;
+use solidcore::surface::offset_surface::{OffsetSurface, SS_UNKNOWN};
+use solidcore::surface::surface::{Surface as SmSurface, SurfaceKind};
 use solidcore::topology::database_io::{DatabaseReader, FileType, InputStream};
 use solidcore::SolidError;
 use solidcore_ffi::units::curve_crv_on_surf::{self as ffi, ObjOp, Op, NOW, NOZ};
@@ -85,6 +88,9 @@ struct InlineSrf {
     q: usize,
     u: Vec<f64>,
     v: Vec<f64>,
+    /// Borrow the supplied NURB without constructor knot repair on both sides.
+    #[serde(default)]
+    borrow_nurb: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,6 +103,14 @@ enum SrfIn {
     Inline(InlineSrf),
 }
 
+/// A real `SmOffsetSurface` wrapped around the B-spline `srf`; ownership controls
+/// whether the wrapper deletes its base.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct OffsetIn {
+    distance: f64,
+    #[serde(default)]
+    owns_base: bool,
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CacheIn {
     need: bool,
@@ -108,6 +122,7 @@ struct CosIn {
     uv: UvIn,
     srf: SrfIn,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    offset: Option<OffsetIn>,
     domain: Option<[f64; 4]>,
     #[serde(default)]
     owner: u64,
@@ -155,6 +170,12 @@ enum OpIn {
         other: Option<Box<CosIn>>,
     },
     Copy,
+    CopyEval {
+        t: f64,
+        n: usize,
+        left: bool,
+        nonzero: bool,
+    },
     EditParam {
         a: f64,
         b: f64,
@@ -266,7 +287,14 @@ fn read_sms(path: &str) -> Result<InlineSrf, HarnessError> {
     let v = (0..m + q + 2)
         .map(|_| num())
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(InlineSrf { net, p, q, u, v })
+    Ok(InlineSrf {
+        net,
+        p,
+        q,
+        u,
+        v,
+        borrow_nurb: false,
+    })
 }
 
 fn resolve(s: &SrfIn) -> Result<InlineSrf, HarnessError> {
@@ -307,7 +335,9 @@ fn cos_block(v: &mut Vec<f64>, c: &CosIn) -> Result<(), HarnessError> {
             v.extend_from_slice(l);
         }
     }
+    v.push(b(c.offset.is_some()));
     let s = resolve(&c.srf)?;
+    v.push(b(s.borrow_nurb));
     let n = s.net.len().saturating_sub(1);
     let m = s.net.first().map_or(0, Vec::len).saturating_sub(1);
     v.extend([
@@ -323,6 +353,9 @@ fn cos_block(v: &mut Vec<f64>, c: &CosIn) -> Result<(), HarnessError> {
     }
     v.extend_from_slice(&s.u);
     v.extend_from_slice(&s.v);
+    if let Some(offset) = &c.offset {
+        v.extend([offset.distance, b(offset.owns_base)]);
+    }
     v.push(b(c.domain.is_some()));
     v.extend_from_slice(&c.domain.unwrap_or([0.0; 4]));
     v.push(c.owner as f64);
@@ -350,6 +383,7 @@ fn obj_op_of(op: &OpIn) -> ObjOp {
         OpIn::Conts { .. } => ObjOp::Conts,
         OpIn::Equal { .. } => ObjOp::Equal,
         OpIn::Copy => ObjOp::Copy,
+        OpIn::CopyEval { .. } => ObjOp::CopyEval,
         OpIn::EditParam { .. } => ObjOp::EditParam,
         OpIn::Reverse { .. } => ObjOp::Reverse,
         OpIn::Trim { .. } => ObjOp::Trim,
@@ -370,6 +404,12 @@ fn op_params(v: &mut Vec<f64>, op: &OpIn) -> Result<(), HarnessError> {
         }
         OpIn::State | OpIn::Nnk | OpIn::Copy => {}
         OpIn::Eval {
+            t,
+            n,
+            left,
+            nonzero,
+        }
+        | OpIn::CopyEval {
             t,
             n,
             left,
@@ -524,7 +564,11 @@ fn build_uv(bs: &UvBspline) -> Result<Curve, HarnessError> {
     Ok(Curve::from(BSplineCurve::from_nurb(cur, 2, false)))
 }
 
-fn build_surface(s: &SrfIn) -> Result<BSplineSurface, HarnessError> {
+fn build_surface(
+    k: &Kernel,
+    s: &SrfIn,
+    offset: Option<&OffsetIn>,
+) -> Result<SmSurface, HarnessError> {
     let i = resolve(s)?;
     let net = i
         .net
@@ -537,21 +581,26 @@ fn build_surface(s: &SrfIn) -> Result<BSplineSurface, HarnessError> {
         .collect();
     let sur =
         Surface::new(net, i.p, i.q, i.u, i.v).map_err(|e| harness(format!("surface: {e}")))?;
-    Ok(BSplineSurface::from_nurb(sur, false))
+    let base = SmSurface::from(BSplineSurface::from_nurb(sur, i.borrow_nurb));
+    match offset {
+        None => Ok(base),
+        Some(offset) => OffsetSurface::new(k, offset.distance, base, offset.owns_base, SS_UNKNOWN)
+            .map(SmSurface::from)
+            .map_err(|e| harness(format!("offset surface: {e}"))),
+    }
 }
 
 /// The object, or the error (status) its construction gives.
 fn build(c: &CosIn) -> Result<solidcore::Result<CrvOnSurf>, HarnessError> {
-    let srf = build_surface(&c.srf)?;
+    let k = Kernel::default();
+    let srf = build_surface(&k, &c.srf, c.offset.as_ref())?;
     let domain = c
         .domain
         .map(|[a, bb, cc, d]| Extent2d::from_bounds(a, bb, cc, d));
     let r = match &c.uv {
-        UvIn::Bspline(bs) => {
-            CrvOnSurf::new(&Kernel::default(), build_uv(bs)?, srf, domain, c.owner)
-        }
+        UvIn::Bspline(bs) => CrvOnSurf::new(&k, build_uv(bs)?, srf, domain, c.owner),
         UvIn::Line([x0, y0, x1, y1]) => CrvOnSurf::from_uv_line(
-            &Kernel::default(),
+            &k,
             Point2::new(*x0, *y0),
             Point2::new(*x1, *y1),
             srf,
@@ -600,19 +649,27 @@ fn put_curve(o: &mut Vec<f64>, c: &Curve) {
     }
 }
 
-fn put_surface(o: &mut Vec<f64>, s: &BSplineSurface) {
-    match s.gw_nurb() {
-        None => o.push(-1.0),
-        Some(sur) => {
-            o.extend([sur.n() as f64, sur.m() as f64]);
-            for row in sur.cpts() {
-                for p in row {
-                    o.extend([p.x, p.y, p.z, p.w]);
+fn put_surface(o: &mut Vec<f64>, s: &SmSurface) {
+    o.push(s.type_code() as f64);
+    match s.kind() {
+        SurfaceKind::BSpline(s) => match s.gw_nurb() {
+            None => o.push(-1.0),
+            Some(sur) => {
+                o.extend([sur.n() as f64, sur.m() as f64]);
+                for row in sur.cpts() {
+                    for p in row {
+                        o.extend([p.x, p.y, p.z, p.w]);
+                    }
                 }
+                o.extend_from_slice(sur.u_knots());
+                o.extend_from_slice(sur.v_knots());
             }
-            o.extend_from_slice(sur.u_knots());
-            o.extend_from_slice(sur.v_knots());
+        },
+        SurfaceKind::OffsetSurface(s) => {
+            o.extend([s.offset_distance(), b(s.owns_surface())]);
+            put_surface(o, s.base_surface());
         }
+        _ => {}
     }
 }
 
@@ -804,7 +861,7 @@ fn rust_op(o: &mut Vec<f64>, c: &mut CrvOnSurf, op: &OpIn, k: &Kernel) -> Result
             }
         },
         OpIn::Copy => {
-            let r = wrap(c).copy(&Kernel::default());
+            let r = wrap(c).copy(k);
             o.push(st(&r)?);
             if let Ok(cp) = r {
                 let eq = cp.approx_eq(&wrap(c));
@@ -812,6 +869,26 @@ fn rust_op(o: &mut Vec<f64>, c: &mut CrvOnSurf, op: &OpIn, k: &Kernel) -> Result
                 let cp = cos_of(cp)?;
                 put_state(o, &cp);
                 o.push(b(eq.unwrap_or(false)));
+            }
+        }
+        OpIn::CopyEval {
+            t,
+            n,
+            left,
+            nonzero,
+        } => {
+            let r = wrap(c).copy(k);
+            o.push(st(&r)?);
+            if let Ok(cp) = r {
+                let cp = cos_of(cp)?;
+                put_state(o, &cp);
+                let r = cp.evaluate(*t, *n, *left, *nonzero);
+                o.push(st(&r)?);
+                if let Ok(v) = r {
+                    for p in v {
+                        pv(o, p);
+                    }
+                }
             }
         }
         OpIn::EditParam { a, b: bb } => {
@@ -847,7 +924,7 @@ fn rust_op(o: &mut Vec<f64>, c: &mut CrvOnSurf, op: &OpIn, k: &Kernel) -> Result
             scale,
         } => {
             let ax = Axis2Placement::new(v3(*origin), v3(*x), v3(*y));
-            let r = c.transform(&ax, scale.map(v3));
+            let r = c.transform(k, &ax, scale.map(v3));
             o.push(st(&r)?);
             put_state(o, c);
         }
@@ -1092,6 +1169,7 @@ fn gen_srf(rng: &mut Rng) -> InlineSrf {
             q: 1,
             u: vec![a, a, a + la, a + la],
             v: vec![c, c, c + lc, c + lc],
+            borrow_nurb: false,
         };
     }
     let p = 1 + rng.below(3) as usize;
@@ -1128,7 +1206,14 @@ fn gen_srf(rng: &mut Rng) -> InlineSrf {
                 .collect()
         })
         .collect();
-    InlineSrf { net, p, q, u, v }
+    InlineSrf {
+        net,
+        p,
+        q,
+        u,
+        v,
+        borrow_nurb: false,
+    }
 }
 
 /// The upstream test surfaces.
@@ -1258,6 +1343,7 @@ fn gen_cos(rng: &mut Rng, outside: bool) -> (CosIn, [f64; 4]) {
     let mut c = CosIn {
         uv,
         srf,
+        offset: None,
         domain,
         owner,
         cache: None,

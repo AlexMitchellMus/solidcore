@@ -399,7 +399,7 @@ impl Surface {
                 let curve = Curve::from(CrvOnSurf::new(
                     k,
                     uv_curve.clone(),
-                    bss(self)?.copy(),
+                    self.clone_for_evaluation()?,
                     Some(*domain),
                     0,
                 )?);

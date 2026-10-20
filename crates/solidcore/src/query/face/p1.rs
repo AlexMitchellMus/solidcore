@@ -36,8 +36,7 @@
 //! no trimmed surface cache (a fresh one is never face-containment-complete, so its
 //! cache branch cannot run). `EdgeCurveOnClassify` lifts a 2D curve to a curve on the
 //! face's surface only when an upward edge use of the face is found (upstream lifts it
-//! first and ignores `SetAll`'s status); an `SmCrvOnSurf` over a surface other than a
-//! B-spline is a dispatch gap (`curve.crv_on_surf`). No recursion.
+//! first and ignores `SetAll`'s status). No recursion.
 
 use crate::curve::crv_on_surf::CrvOnSurf;
 use crate::curve::curve::{Curve, CurveKind};
@@ -642,18 +641,10 @@ fn sector_classify_curve_on(
 fn lift_to_face(k: &Kernel, b: &Brep, f: FaceId, curve: &Curve) -> Result<Curve> {
     let surface = fp2::surface(b, f)?
         .ok_or_else(|| SolidError::invalid_input(OP_EDGE_CURVE, "face without surface"))?;
-    let SurfaceKind::BSpline(base) = surface.kind() else {
-        // DISPATCH GAP: Rust's SmCrvOnSurf holds a B-spline surface only (curve.crv_on_surf,
-        // partial; no UNPORTED marker)
-        return Err(SolidError::unported(
-            "SmSurface (non-B-spline) in SmCrvOnSurf",
-            "curve.crv_on_surf",
-        ));
-    };
     Ok(Curve::new(CurveKind::CrvOnSurf(Box::new(CrvOnSurf::new(
         k,
         curve.clone(),
-        base.clone(),
+        surface.clone_for_evaluation()?,
         None,
         0,
     )?))))
