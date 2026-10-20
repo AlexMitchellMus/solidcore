@@ -7541,7 +7541,8 @@ error status from `VertexOffset`'s 3-edge branch); 2 (`gen0264`, `gen0685`) are 
 agreements: the shim refuses the only op as an upstream null dereference, so no C++ runs
 and both sides compare `[0, op, -2]` (they count under `with_values=441 no_values=0`
 because the record has three values). Deferred, by the unit that blocks: `topology.brep_p2` 166,
-`surface.surface_cache_p2` 78, `harness:analytic-geometry-export` 70, `topology.face_p4` 42,
+`geom.tol` 78 (`SmTol::GetZoneTol3d(const SmObject*)`, labelled `surface.surface_cache_p2`
+before main's relabelling), `harness:analytic-geometry-export` 70, `topology.face_p4` 42,
 `intersect.surface_drop_curve` 27, `curve.crv_on_surf` 25, `topology.face_p2` 12,
 `intersect.surface_drop_lib_p3` 7, `blend.fillet_standard_solver_p1` 4, `surface.sphere` 2.
 Success-path coverage (counted at this head): 228 of the 441 passes complete at least one
