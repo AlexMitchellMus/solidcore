@@ -298,15 +298,16 @@ fn ignore_soft<T>(r: Result<T>) -> Result<()> {
 /// `FindObjPoint3d` with its status ignored: the object point, `SetUninitialized`
 /// on failure.
 fn obj_point<O: ClassObject>(
+    k: &Kernel,
     pc: &PointClassification<O>,
     geometry: &impl ClassGeometry<O>,
 ) -> Result<Point3> {
-    Ok(ignored(pc.find_obj_point_3d(geometry))?.unwrap_or(Vec3::UNDEF))
+    Ok(ignored(pc.find_obj_point_3d(k, geometry))?.unwrap_or(Vec3::UNDEF))
 }
 
 /// `EvaluatePoint` with its status ignored: the point, `SM_UNDEF` on failure.
-fn eval_point(curve: &Curve, t: f64) -> Result<Point3> {
-    Ok(ignored(curve.evaluate_point(t))?.unwrap_or(Vec3::UNDEF))
+fn eval_point(k: &Kernel, curve: &Curve, t: f64) -> Result<Point3> {
+    Ok(ignored(curve.evaluate_point(k, t))?.unwrap_or(Vec3::UNDEF))
 }
 
 // ---- static helpers ------------------------------------------------------------------
@@ -372,10 +373,10 @@ pub fn find_position_from_pcs<O: ClassObject>(
     }
 
     if found1 {
-        pt1 = pc1.find_obj_point_3d(geometry)?;
+        pt1 = pc1.find_obj_point_3d(k, geometry)?;
     }
     if found2 {
-        pt2 = pc2.find_obj_point_3d(geometry)?;
+        pt2 = pc2.find_obj_point_3d(k, geometry)?;
     }
 
     // (SmTol::GetXSectTol3d of the two objects only feeds a diagnostic message when
@@ -394,7 +395,7 @@ pub fn find_position_from_pcs<O: ClassObject>(
         // See if we can find a position for rPC1 from sPt2.
         let ok = ignored(pc1.compute_point_parameters(k, geometry, pt2))?.is_some();
         if ok && pc1.are_parameters_set() {
-            pt1 = pc1.find_obj_point_3d(geometry)?;
+            pt1 = pc1.find_obj_point_3d(k, geometry)?;
             found1 = true;
         } else {
             position = pt2;
@@ -403,7 +404,7 @@ pub fn find_position_from_pcs<O: ClassObject>(
         // See if we can find a position for rPC2 from sPt1.
         let ok = ignored(pc2.compute_point_parameters(k, geometry, pt1))?.is_some();
         if ok && pc2.are_parameters_set() {
-            pt2 = pc2.find_obj_point_3d(geometry)?;
+            pt2 = pc2.find_obj_point_3d(k, geometry)?;
             found2 = true;
         } else {
             position = pt1;
@@ -466,7 +467,7 @@ pub fn are_same_curve<O: Copy + PartialEq>(
     let guess = ivl2.mid();
 
     // Crv1 mid point
-    let mid_pt1 = eval_point(curve_of(geometry, crv1)?, param1)?;
+    let mid_pt1 = eval_point(k, curve_of(geometry, crv1)?, param1)?;
 
     // Drop Crv1 mid point to Crv2 - get drop distance
     let dropped = ignored(curve_of(geometry, crv2)?.drop_point(
@@ -587,6 +588,7 @@ pub fn are_connected<O: ClassObject>(
 /// [`SolidError::InvalidInput`] for a missing curve; [`SolidError::Unported`] from
 /// the evaluations.
 pub fn is_interior<O: Copy>(
+    k: &Kernel,
     geometry: &impl ClassGeometry<O>,
     curve: Option<O>,
     domain: &Extent1d,
@@ -601,9 +603,9 @@ pub fn is_interior<O: Copy>(
     // next: Check 3d Pts. if this param's Pt3d is within ZoneTol3d dist of a crv
     // endpoint it on the boundary not the interior
     let c = curve_of(geometry, curve)?;
-    let crv_pt = eval_point(c, param)?;
-    let start_pt = eval_point(c, domain.min())?;
-    let end_pt = eval_point(c, domain.max())?;
+    let crv_pt = eval_point(k, c, param)?;
+    let start_pt = eval_point(k, c, domain.min())?;
+    let end_pt = eval_point(k, c, domain.max())?;
 
     if crv_pt.closer_than(zone_tol_3d, start_pt) {
         return Ok(false);
@@ -636,7 +638,7 @@ fn drop_is_interior<O: Copy>(
         SolverOperation::Intersect,
     ))?;
     match dropped {
-        Some(d) if d.success => is_interior(geometry, curve, domain, d.parameter, tol),
+        Some(d) if d.success => is_interior(k, geometry, curve, domain, d.parameter, tol),
         _ => Ok(false),
     }
 }
@@ -672,7 +674,7 @@ pub fn are_overlapping<O: ClassObject>(
 
     // Drop ED->Curve Start and End Pts to CI->CurveClassification->Curve
     {
-        let start_pt = eval_point(curve_of(geometry, ed_curve)?, ed_domain.min())?;
+        let start_pt = eval_point(k, curve_of(geometry, ed_curve)?, ed_domain.min())?;
         if drop_is_interior(
             k,
             geometry,
@@ -685,7 +687,7 @@ pub fn are_overlapping<O: ClassObject>(
             return Ok(true);
         }
 
-        let end_pt = eval_point(curve_of(geometry, ed_curve)?, ed_domain.max())?;
+        let end_pt = eval_point(k, curve_of(geometry, ed_curve)?, ed_domain.max())?;
         if drop_is_interior(
             k,
             geometry,
@@ -701,7 +703,7 @@ pub fn are_overlapping<O: ClassObject>(
 
     // Drop CI->Curve->EndPts to ED->Curve
     {
-        let start_pt = eval_point(curve_of(geometry, ci_curve)?, ci_domain.min())?;
+        let start_pt = eval_point(k, curve_of(geometry, ci_curve)?, ci_domain.min())?;
         if drop_is_interior(
             k,
             geometry,
@@ -714,7 +716,7 @@ pub fn are_overlapping<O: ClassObject>(
             return Ok(true);
         }
 
-        let end_pt = eval_point(curve_of(geometry, ci_curve)?, ci_domain.max())?;
+        let end_pt = eval_point(k, curve_of(geometry, ci_curve)?, ci_domain.max())?;
         if drop_is_interior(
             k,
             geometry,
@@ -844,8 +846,8 @@ impl<O: ClassObject> VertexDefinition<O> {
         }
 
         if gap <= 0.0 {
-            let pt1 = obj_point(&vd.pc1, geometry)?;
-            let pt2 = obj_point(&vd.pc2, geometry)?;
+            let pt1 = obj_point(k, &vd.pc1, geometry)?;
+            let pt2 = obj_point(k, &vd.pc2, geometry)?;
             vd.gap = pt1.distance(pt2);
             vd.gap = max2(vd.gap, pc1.gap_3d(k, geometry, None)?);
             vd.gap = max2(vd.gap, pc2.gap_3d(k, geometry, None)?);
@@ -1266,7 +1268,12 @@ impl<O: ClassObject> EdgeDefinition<O> {
     ///
     /// [`SolidError::InvalidInput`] without a curve; [`SolidError::Unported`] from
     /// the evaluation.
-    pub fn end_position(&self, geometry: &impl ClassGeometry<O>, at_start: bool) -> Result<Point3> {
+    pub fn end_position(
+        &self,
+        k: &Kernel,
+        geometry: &impl ClassGeometry<O>,
+        at_start: bool,
+    ) -> Result<Point3> {
         // pick end param
         let param = if at_start {
             self.xsect_interval.min()
@@ -1275,7 +1282,7 @@ impl<O: ClassObject> EdgeDefinition<O> {
         };
 
         // evaluate Pos3d
-        eval_point(curve_of(geometry, self.xsect_curve_3d)?, param)
+        eval_point(k, curve_of(geometry, self.xsect_curve_3d)?, param)
     }
 
     /// The point and/or tangent of the 3d curve at `param` (`Evaluate`): `None` for
@@ -1286,6 +1293,7 @@ impl<O: ClassObject> EdgeDefinition<O> {
     /// Those of the curve's evaluation; [`SolidError::InvalidInput`] without a curve.
     pub fn evaluate(
         &self,
+        k: &Kernel,
         geometry: &impl ClassGeometry<O>,
         param: f64,
         want_pos: bool,
@@ -1297,11 +1305,11 @@ impl<O: ClassObject> EdgeDefinition<O> {
 
         let curve = curve_of(geometry, self.xsect_curve_3d)?;
         if !want_tan {
-            return Ok((Some(curve.evaluate_point(param)?), None));
+            return Ok((Some(curve.evaluate_point(k, param)?), None));
         }
 
         // Caller wants the deriv vector.
-        let pt_vec = curve.evaluate(param, 1, true, true)?;
+        let pt_vec = curve.evaluate(k, param, 1, true, true)?;
         let pos = pt_vec
             .first()
             .copied()
@@ -1320,12 +1328,13 @@ impl<O: ClassObject> EdgeDefinition<O> {
     /// Those of [`EdgeDefinition::evaluate`].
     pub fn evaluate_mid(
         &self,
+        k: &Kernel,
         geometry: &impl ClassGeometry<O>,
         want_pos: bool,
         want_tan: bool,
     ) -> Result<(Option<Point3>, Option<Vec3>)> {
         let param = self.xsect_interval.mid();
-        self.evaluate(geometry, param, want_pos, want_tan)
+        self.evaluate(k, geometry, param, want_pos, want_tan)
     }
 
     /// Reverses the parameterisation of the 3d and UV curves, each updating the
@@ -1448,7 +1457,7 @@ impl<O: ClassObject> EdgeDefinition<O> {
         };
         let mut param = guess;
 
-        let end_pos = self.end_position(geometry, at_start)?;
+        let end_pos = self.end_position(k, geometry, at_start)?;
         let dist = position.distance(end_pos);
         if dist < tol {
             return Ok((false, param));
@@ -1481,7 +1490,7 @@ impl<O: ClassObject> EdgeDefinition<O> {
         }
 
         // See whether the split point is interior to this EdgeDef (in 3d).
-        let edge_pt = match self.evaluate(geometry, param, true, false) {
+        let edge_pt = match self.evaluate(k, geometry, param, true, false) {
             Ok((Some(p), _)) => p,
             Err(e) if e.is_unported() => return Err(e),
             _ => Vec3::UNDEF,
@@ -2401,8 +2410,8 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         let dist1 = v.pc1.gap_3d(k, geometry, None)?;
         let dist2 = v.pc2.gap_3d(k, geometry, None)?;
 
-        let pt1 = obj_point(&v.pc1, geometry)?;
-        let pt2 = obj_point(&v.pc2, geometry)?;
+        let pt1 = obj_point(k, &v.pc1, geometry)?;
+        let pt2 = obj_point(k, &v.pc2, geometry)?;
 
         let dist = pt1.distance(pt2);
 
@@ -2467,6 +2476,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
     /// [`SolidError::InvalidInput`] without a proto edge or curve.
     pub fn edge_def_end_position_at(
         &self,
+        k: &Kernel,
         geometry: &impl ClassGeometry<O>,
         ed: EdgeDefId,
         which_pv: Option<ProtoVertexId>,
@@ -2480,7 +2490,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         } else {
             return Err(SolidError::sm_err(OP_END));
         };
-        eval_point(curve_of(geometry, d.xsect_curve_3d)?, t)
+        eval_point(k, curve_of(geometry, d.xsect_curve_3d)?, t)
     }
 
     /// Whether the intersection interval `tgt_curve` over `tgt_domain` between
@@ -2604,6 +2614,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
     /// the `geometry` topology walks.
     pub fn proto_vertex_final_vertex(
         &self,
+        k: &Kernel,
         geometry: &(impl ClassGeometry<O> + ProtoTopology<O>),
         pv: ProtoVertexId,
         which: i32,
@@ -2620,7 +2631,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
 
         let d = self.ed(ed)?;
         let brep_topo_ed = d.src_topo(which);
-        let ed_pos = d.end_position(geometry, at_start)?;
+        let ed_pos = d.end_position(k, geometry, at_start)?;
 
         for &vd in vds {
             let Some(vtx) = self.vd(vd)?.final_vertex(which) else {
@@ -2715,15 +2726,16 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
     /// [`ProtoTopologyManager::proto_edge_end_position`].
     pub fn proto_edge_end_position_at(
         &self,
+        k: &Kernel,
         geometry: &impl ClassGeometry<O>,
         pe: ProtoEdgeId,
         which_pv: Option<ProtoVertexId>,
     ) -> Result<Point3> {
         let e = self.pe(Some(pe))?;
         if which_pv == e.start_pv {
-            self.proto_edge_end_position(geometry, pe, true)
+            self.proto_edge_end_position(k, geometry, pe, true)
         } else if which_pv == e.end_pv {
-            self.proto_edge_end_position(geometry, pe, false)
+            self.proto_edge_end_position(k, geometry, pe, false)
         } else {
             Err(SolidError::sm_err(OP_END))
         }
@@ -2738,6 +2750,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
     /// [`SolidError::InvalidInput`] for a missing proto vertex, definition or curve.
     pub fn proto_edge_end_position(
         &self,
+        k: &Kernel,
         geometry: &impl ClassGeometry<O>,
         pe: ProtoEdgeId,
         at_start: bool,
@@ -2751,7 +2764,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         // average position of all EdgeDefs
         let mut ave_pt = Vec3::new(0.0, 0.0, 0.0);
         for &ed in &e.edge_defs {
-            ave_pt += self.ed(ed)?.end_position(geometry, at_start)?;
+            ave_pt += self.ed(ed)?.end_position(k, geometry, at_start)?;
         }
         Ok(ave_pt / e.edge_defs.len() as f64)
     }
@@ -2765,6 +2778,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
     /// [`EdgeDefinition::evaluate`].
     pub fn proto_edge_evaluate(
         &self,
+        k: &Kernel,
         geometry: &impl ClassGeometry<O>,
         pe: ProtoEdgeId,
         param: f64,
@@ -2780,7 +2794,9 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         let mut sum_pts = Vec3::new(0.0, 0.0, 0.0);
         let mut sum_tans = Vec3::new(0.0, 0.0, 0.0);
         for &ed in &e.edge_defs {
-            let (p, t) = self.ed(ed)?.evaluate(geometry, param, want_pos, want_tan)?;
+            let (p, t) = self
+                .ed(ed)?
+                .evaluate(k, geometry, param, want_pos, want_tan)?;
             if let Some(p) = p {
                 sum_pts += p;
             }
@@ -2803,13 +2819,14 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
     /// Those of [`ProtoTopologyManager::proto_edge_evaluate`].
     pub fn proto_edge_evaluate_mid(
         &self,
+        k: &Kernel,
         geometry: &impl ClassGeometry<O>,
         pe: ProtoEdgeId,
         want_pos: bool,
         want_tan: bool,
     ) -> Result<(Option<Point3>, Option<Vec3>)> {
         let param = self.pe(Some(pe))?.xsect_interval.mid();
-        self.proto_edge_evaluate(geometry, pe, param, want_pos, want_tan)
+        self.proto_edge_evaluate(k, geometry, pe, param, want_pos, want_tan)
     }
 
     /// Whether the intersection interval has the shape of a definition of `pe`
@@ -3252,6 +3269,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
     /// ([`SolidError::Unported`], [`SolidError::InvalidInput`]).
     pub fn which_pv_to_combine(
         &self,
+        k: &Kernel,
         geometry: &impl ClassGeometry<O>,
         orig_pe: ProtoEdgeId,
         split_param: f64,
@@ -3267,13 +3285,14 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         let end_pv = e.end_pv;
 
         // Eval PE at SplitParam (status ignored: the point stays `SmPoint3d()`)
-        let split_pt = match self.proto_edge_evaluate(geometry, orig_pe, split_param, true, false) {
-            Ok((Some(p), _)) => p,
-            Err(e @ (SolidError::Unported { .. } | SolidError::InvalidInput { .. })) => {
-                return Err(e)
-            }
-            _ => Vec3::UNDEF,
-        };
+        let split_pt =
+            match self.proto_edge_evaluate(k, geometry, orig_pe, split_param, true, false) {
+                Ok((Some(p), _)) => p,
+                Err(e @ (SolidError::Unported { .. } | SolidError::InvalidInput { .. })) => {
+                    return Err(e)
+                }
+                _ => Vec3::UNDEF,
+            };
 
         // return matching End PV or NULL for none
         if face_p2::proto_vertex_contains_point(self, self.pv(start_pv)?, split_pt) {
