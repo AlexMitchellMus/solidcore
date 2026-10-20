@@ -632,25 +632,55 @@ impl OffsetExecutive {
 
     fn extend_result_faces_prefix(
         &mut self,
-        kernel: &Kernel,
-        notifications: &OffsetNotifications<'_>,
+        kernel: &mut Kernel,
+        notifications: &mut OffsetNotifications<'_>,
     ) -> Result<()> {
-        let temporary = required(self.take_offset_brep(), OP_EXTENDED)?;
+        let mut temporary = required(self.take_offset_brep(), OP_EXTENDED)?;
         let status = (|| {
-            for (id, face) in temporary.faces().iter() {
+            let faces = temporary
+                .faces()
+                .iter()
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>();
+            for id in faces {
                 if self.closing_faces().contains(&id) {
                     continue;
                 }
-                let surface = required(face.surface.as_ref(), OP_EXTENDED)?;
+                let surface = required(temporary.face(id)?.surface.as_ref(), OP_EXTENDED)?;
                 // Face-owned surfaces use the caller's result-arena identities.
                 let key = (notifications.result_key_of)(EntityRef::Face(id));
-                self.get_create_extended_surface(kernel, key.key.0, surface)?;
-                // Continuation documented at cpp:1613 above. In particular, domain
-                // calculation must not run before the temporary replacement.
-                // UNPORTED(topology.brep_p2): SmBrep::ReplaceSurface
+                let extension = self
+                    .get_create_extended_surface(kernel, key.key.0, surface)?
+                    .clone();
+                // cpp:1639: UNSURE retains the original; FALSE suppresses UV trim
+                // creation. The optional modified-face list is not requested.
+                let (_original, _) = crate::geom::context::Context::with_notification_context(
+                    kernel,
+                    |kernel, context| {
+                        crate::topology::brep::p2::replace_surface(
+                            kernel,
+                            &mut temporary,
+                            &mut crate::topology::edge::NotifyEnv {
+                                records: &mut *notifications.records,
+                                attributes: &mut *notifications.attributes,
+                                context: Some(context),
+                                key_of: notifications.result_key_of,
+                            },
+                            id,
+                            extension,
+                            key,
+                            crate::topology::brep::p2::OldSurface::Keep,
+                            false,
+                        )
+                    },
+                )?;
+                // cpp:1645–1684 still needs the trim-domain calculation with FALSE
+                // and the original/extended-domain selection and restoration. Do
+                // not report successful extension after only the temporary swap.
+                // UNPORTED(offset.offset_executive_p2): SmOffsetExecutive::DoExtendedOffset (trim-domain continuation)
                 return Err(SolidError::unported(
-                    "SmBrep::ReplaceSurface",
-                    "topology.brep_p2",
+                    "SmOffsetExecutive::DoExtendedOffset (trim-domain continuation)",
+                    "offset.offset_executive_p2",
                 ));
             }
             Ok(())
@@ -1697,7 +1727,7 @@ mod tests {
     }
 
     #[test]
-    fn kernel_context_synchronization_splits_only_result_keys_before_real_dependency() {
+    fn kernel_context_synchronization_splits_only_result_keys() {
         let mut original = source_brep();
         let old = wire_use(&mut original);
         let other = wire_use(&mut original);
@@ -1755,8 +1785,8 @@ mod tests {
         exec.set_offset_brep(result);
         exec.relate_edgeuses(old, part);
         exec.relate_edgeuses(other, whole);
-        assert_dependency(
-            exec.synchronize_offset_edgeuses_with_kernel_context(
+        let synchronized = exec
+            .synchronize_offset_edgeuses_with_kernel_context(
                 &mut kernel,
                 Some(old),
                 Some(other),
@@ -1766,10 +1796,14 @@ mod tests {
                     key_of: &result_key,
                 },
                 &result_curve,
-            ),
-            "SmBrep::Notify",
-            "topology.brep_p2",
-        );
+            )
+            .unwrap();
+        assert_eq!(synchronized.edgeuses, vec![Some(part)]);
+        assert_eq!(synchronized.other_edgeuses.len(), 1);
+        assert!(synchronized.gaps.is_empty());
+        assert_eq!(synchronized.other_gaps, vec![whole]);
+        assert_eq!(exec.offset_brep().unwrap().edges().len(), 3);
+        assert_eq!(exec.offset_brep().unwrap().vertices().len(), 5);
         for (key, record) in source_records {
             assert_eq!(fixture.records.get(&key), Some(&record));
         }
@@ -2152,6 +2186,56 @@ mod tests {
     }
 
     #[test]
+    fn extension_reaches_real_replace_surface_with_result_identity_and_live_callback() {
+        let mut kernel = Kernel::default();
+        kernel
+            .context
+            .set_user_notify_callback(Some(Box::<NotificationLog>::default()));
+        let (mut result, face) = one_face(true);
+        let face_ref = result_key(EntityRef::Face(face));
+        result.set_key(result_key(EntityRef::Brep(BrepId::from_index(0))).key);
+        let old_domain = result.face(face).unwrap().uv_domain;
+        result.face_mut(face).unwrap().rectangular_trim = 1;
+        let mut fixture = NotificationFixture::new(&source_brep());
+        let mut record = Topology::new();
+        record.set_user_index1(912);
+        fixture.records.insert(face_ref.key, record.clone());
+        let mut exec = executive();
+        exec.insert_extended_surface(
+            face_ref.key.0,
+            Surface::from(Plane::from_normal(Vec3::Z, Vec3::Z)),
+        );
+        exec.set_offset_brep(result);
+        assert_dependency(
+            exec.extend_result_faces_prefix(&mut kernel, &mut fixture.context()),
+            "SmFace::Notify",
+            "topology.face_p3",
+        );
+        // ReplaceSurface's PRE_EDIT ran; SetSurface's remaining geometry-identity
+        // boundary failed before swapping the surface or calculating a trim domain.
+        let result = exec.offset_brep().unwrap();
+        assert_eq!(result.faces().len(), 1);
+        assert_eq!(
+            result.face(face).unwrap().rectangular_trim,
+            crate::topology::face::p2::UNSURE
+        );
+        assert_eq!(result.face(face).unwrap().uv_domain, old_domain);
+        assert_eq!(fixture.records.get(&face_ref.key), Some(&record));
+        let log = kernel
+            .context
+            .user_notify_callback()
+            .unwrap()
+            .as_any()
+            .unwrap()
+            .downcast_ref::<NotificationLog>()
+            .unwrap();
+        assert_eq!(
+            log.0,
+            vec![(NotifyOperation::PreEdit, face_ref, Some(face_ref))]
+        );
+    }
+
+    #[test]
     fn empty_extended_uses_p1_stitch_choice_and_releases_its_mark_on_error() {
         let mut original = source_brep();
         for create_solid in [false, true] {
@@ -2169,16 +2253,8 @@ mod tests {
                             &mut notifications.context(),
                         )
                     },
-                    if create_solid {
-                        "SmBrep::Notify"
-                    } else {
-                        "SmBrep::CalculateBoundingBox"
-                    },
-                    if create_solid {
-                        "topology.brep_p2"
-                    } else {
-                        "query.brep"
-                    },
+                    "SmBrep::CalculateBoundingBox",
+                    "query.brep",
                 );
                 assert!(exec.offset_brep().is_none());
                 assert_eq!(kernel.context.current_mark(MarkType::Mark), 3);
@@ -2655,13 +2731,21 @@ mod tests {
             };
             assert!(!outcome.input_ownership_transferred());
             assert_eq!(outcome.retained_input.as_ref().unwrap().tolerance(), 1.0e-5);
-            assert_dependency(
-                outcome.result,
-                "SmBrep::IsManifoldSolid",
-                "topology.brep_p2",
-            );
+            if distance.abs() < 2.0e-5 {
+                assert_status(outcome.result, 1007);
+                assert_eq!(kernel.context.current_mark(MarkType::Mark), 1);
+            } else {
+                assert_dependency(outcome.result, "SmBrep::ShrinkGeometry", "topology.brep_p4");
+                assert_eq!(kernel.context.current_mark(MarkType::Mark), 3);
+            }
+            let retained = outcome.retained_input.as_ref().unwrap();
+            assert_eq!(retained.key(), source_brep().key());
+            assert!(retained.faces().is_empty());
+            assert!(retained.edges().is_empty());
+            assert!(retained.vertices().is_empty());
+            assert!(retained.regions().is_empty());
+            assert!(!kernel.context.is_mark_locked(MarkType::Mark));
             assert!(!kernel.context.doing_boolean());
-            assert_eq!(kernel.context.current_mark(MarkType::Mark), 1);
         }
     }
 

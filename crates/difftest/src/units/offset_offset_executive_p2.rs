@@ -2377,12 +2377,6 @@ mod tests {
     #[test]
     fn positive_geometry_and_strict_boundaries_preserve_explicit_partial_paths() {
         for (operation, fixture, extend, symbol) in [
-            (
-                Operation::StaticShell,
-                Fixture::Empty,
-                false,
-                "SmBrep::IsManifoldSolid",
-            ),
             (Operation::ApiShell, Fixture::Empty, false, "SmBrep::SmBrep"),
             (
                 Operation::StaticOffset,
@@ -2411,6 +2405,51 @@ mod tests {
                 let output = Runner.run_rust(&case(&input)).unwrap();
                 assert_eq!(output.deferred.unwrap().symbol, symbol);
             }
+        }
+        // ShellBrep asks IsManifoldSolid before checking its strict radius guard.
+        // Empty breps now have a native IsManifoldSolid implementation, so this
+        // path reaches SM_ERR_INVALID_INPUT for |distance| < 2*tolerance instead
+        // of deferring at the former topology back-edge. The operation adapter
+        // represents this ordinary failure as the scalar status, not Output.error.
+        for distance in [
+            0.0,
+            1.9999999999999995e-6,
+            -1.9999999999999995e-6,
+            -0.0,
+        ] {
+            let mut input = input(Operation::StaticShell);
+            input.source = Some(Fixture::Empty);
+            input.config.offset_distance = distance;
+            let test_case = case(&input);
+            let output = Runner.run_rust(&test_case).unwrap();
+            assert!(output.deferred.is_none());
+            assert!(output.error.is_none());
+            assert_eq!(output.ints["status"], [1007]);
+            assert_eq!(output.ints["ownership"], [0, 1, 0]);
+            assert_eq!(output.ints["doing_boolean"], [0, 0]);
+            assert_eq!(output.ints["source.present"], [1]);
+            let native = Runner.run_cpp(&test_case).unwrap();
+            assert!(native.deferred.is_none());
+            assert_eq!(native.ints["status"], output.ints["status"]);
+            assert_eq!(native.ints["ownership"], output.ints["ownership"]);
+            assert_eq!(native.ints["doing_boolean"], output.ints["doing_boolean"]);
+            assert_eq!(native.ints["source.present"], output.ints["source.present"]);
+        }
+        // The guard is strict: exactly 2*tolerance and the adjacent value above
+        // it proceed into DoSolidOffset and its ShrinkGeometry back-edge.
+        for distance in [
+            2e-6,
+            2.0000000000000003e-6,
+            -2e-6,
+            -2.0000000000000003e-6,
+        ] {
+            let mut input = input(Operation::StaticShell);
+            input.source = Some(Fixture::Empty);
+            input.config.offset_distance = distance;
+            assert_eq!(
+                Runner.run_rust(&case(&input)).unwrap().deferred.unwrap().symbol,
+                "SmBrep::ShrinkGeometry"
+            );
         }
         let box_fixture = Fixture::Box {
             origin: [0.0; 3],

@@ -340,8 +340,14 @@ fn brep_ray_fire<O>(
     state: &mut crate::topology::shell::ShellRayState<O>,
 ) -> Result<bool> {
     let _ = (b, start, direction, tolerance, state);
-    // UNPORTED(topology.brep_p2): SmBrep::RayFire
-    Err(SolidError::unported("SmBrep::RayFire", "topology.brep_p2"))
+    // UNPORTED(query.brep): SmBrep::RayFire over the B-rep cache. The port
+    // (`topology::brep::p2::ray_fire`) solves on the SM_OC_BREP cache world and first
+    // needs CalculateBoundingBox; both belong to query.brep, as for
+    // ShellRayWorld::shell_ray_sector.
+    Err(SolidError::unported(
+        "SmBrep::RayFire (B-rep cache world)",
+        "query.brep",
+    ))
 }
 
 fn ray_direction(direction: Vec3) -> Result<Vec3> {
@@ -375,9 +381,9 @@ fn is_intersector_approx(curve: &Curve) -> Result<bool> {
 /// `OrientSheetSurfaces`. `same=true` is upstream's default orientation policy.
 ///
 /// # Errors
-/// `SM_ERR` for a face not in the B-rep or a B-rep that is not a sheet; the part-2
-/// sheet/oriented-sheet predicates and `SwapUV` (`Unported`). The UV swaps' own
-/// statuses are ignored, as upstream.
+/// `SM_ERR` for a face not in the B-rep or a B-rep that is not a sheet; those of the
+/// part-2 sheet/oriented-sheet predicates and of `SwapUV`. The UV swaps' own statuses
+/// are ignored, as upstream.
 pub fn orient_sheet_surfaces(
     k: &mut Kernel,
     b: &mut Brep,
@@ -388,10 +394,10 @@ pub fn orient_sheet_surfaces(
     let Some(face) = face.filter(|face| faces.contains(face)) else {
         return Err(SolidError::sm_err(OP));
     };
-    if !is_sheet(b)? {
+    if !is_sheet(k, b)? {
         return Err(SolidError::sm_err(OP));
     }
-    if is_oriented_sheet(b)? {
+    if is_oriented_sheet(k, b)? {
         if !same {
             // Status ignored upstream (SmBrep.cpp:11644).
             ignore_status(swap_brep_uv(k, b))?;
@@ -440,25 +446,20 @@ fn brep_faces(b: &Brep) -> Result<Vec<FaceId>> {
     crate::topology::brep::p1::faces(b, None)
 }
 
-fn is_sheet(b: &Brep) -> Result<bool> {
-    let _ = b;
-    // UNPORTED(topology.brep_p2): SmBrep::IsSheet
-    Err(SolidError::unported("SmBrep::IsSheet", "topology.brep_p2"))
+/// `IsSheet()` ([`crate::topology::brep::p2::is_sheet`]).
+fn is_sheet(k: &mut Kernel, b: &Brep) -> Result<bool> {
+    crate::topology::brep::p2::is_sheet(k, b)
 }
 
-fn is_oriented_sheet(b: &Brep) -> Result<bool> {
-    let _ = b;
-    // UNPORTED(topology.brep_p2): SmBrep::IsOrientedSheet
-    Err(SolidError::unported(
-        "SmBrep::IsOrientedSheet",
-        "topology.brep_p2",
-    ))
+/// `IsOrientedSheet()` ([`crate::topology::brep::p2::is_oriented_sheet`]).
+fn is_oriented_sheet(k: &mut Kernel, b: &Brep) -> Result<bool> {
+    crate::topology::brep::p2::is_oriented_sheet(k, b)
 }
 
+/// `SwapUV()` ([`crate::topology::brep::p2::swap_uv`], which claims its own mark).
 fn swap_brep_uv(k: &mut Kernel, b: &mut Brep) -> Result<()> {
-    let _ = (k, b);
-    // UNPORTED(topology.brep_p2): SmBrep::SwapUV
-    Err(SolidError::unported("SmBrep::SwapUV", "topology.brep_p2"))
+    let mut marks = crate::topology::topology_traverser::Marks::default();
+    crate::topology::brep::p2::swap_uv(k, b, &mut marks)
 }
 
 /// `sm_SwapFaceUV(pFace, SM_MT_NOMARK)`: swap without marking the face.
@@ -480,8 +481,8 @@ fn swap_face_uv(
 /// `MakeShellVertex`: `region=None` selects the infinite region.
 ///
 /// # Errors
-/// Allocation and linking first call part 2's `MakeShellVertexTopology`. No isolated
-/// vertex or shell is fabricated while that dependency is unavailable.
+/// Those of part 2's `MakeShellVertexTopology` (allocation and linking), the vertex
+/// point and tolerance setters and the two `ADD_TO_BREP` notifications.
 pub fn make_shell_vertex(
     b: &mut Brep,
     region: Option<RegionId>,
@@ -581,12 +582,9 @@ fn make_shell_vertex_topology(
     region: Option<RegionId>,
     env: &mut edge::NotifyEnv<'_>,
 ) -> Result<(ShellId, VertexId)> {
-    let _ = (b, region, env);
-    // UNPORTED(topology.brep_p2): SmBrep::MakeShellVertexTopology
-    Err(SolidError::unported(
-        "SmBrep::MakeShellVertexTopology",
-        "topology.brep_p2",
-    ))
+    // MakeShellVertexTopology sends no notification; the caller registers the records
+    let _ = env;
+    crate::topology::brep::p2::make_shell_vertex_topology(b, region)
 }
 
 /// `MakeVertexLoop`: creates a vertex loop with the supplied orientation
@@ -751,9 +749,9 @@ fn brep_notify_call(
     operation: NotifyOperation,
     data: [Option<crate::geom::object::ObjectRef>; 3],
 ) -> Result<()> {
-    let _ = (b, env, operation, data);
-    // UNPORTED(topology.brep_p2): SmBrep::Notify
-    Err(SolidError::unported("SmBrep::Notify", "topology.brep_p2"))
+    // no B-rep cache is held by the caller (`brep::p2::notify` with no cache slot)
+    let data = data.map(|d| d.map(crate::topology::brep::p2::NotifyArg::Object));
+    crate::topology::brep::p2::notify(b, env, None, operation, data)
 }
 
 fn face_notify(
@@ -2252,6 +2250,11 @@ mod tests {
                 EntityRef::Vertex(id) => (200, id.index(), vertex::TYPE),
                 EntityRef::Edgeuse(id) => (300, id.index(), crate::topology::edgeuse::p1::TYPE),
                 EntityRef::Vertexuse(id) => (400, id.index(), vertexuse::TYPE),
+                EntityRef::Shell(id) => (
+                    500,
+                    id.index(),
+                    crate::topology::loopuse::notify_ref(entity).type_code,
+                ),
                 _ => panic!("unexpected split entity"),
             };
             ObjectRef {
@@ -2302,7 +2305,7 @@ mod tests {
         }
 
         #[test]
-        fn split_uses_real_stores_callbacks_and_restores_each_context_on_dependency_error() {
+        fn split_uses_real_stores_callbacks_and_restores_each_context_on_success() {
             #[derive(Clone, Copy)]
             enum Binding {
                 Kernel,
@@ -2387,13 +2390,14 @@ mod tests {
                             &split_curve_ref,
                         ),
                     };
-                    assert!(matches!(
-                        result,
-                        Err(SolidError::Unported {
-                            upstream: "SmBrep::Notify",
-                            unit: "topology.brep_p2",
-                        })
-                    ));
+                    let output = result.unwrap();
+                    assert!(output.split);
+                    assert_eq!(output.edges, Some([edge, EdgeId::from_index(1)]));
+                    assert_eq!(output.vertex, Some(VertexId::from_index(2)));
+                    assert_eq!(
+                        b.vertex(VertexId::from_index(2)).unwrap().point,
+                        Point3::new(0.5, 0.0, 0.0)
+                    );
                     assert_eq!((b.edge_list().len(), b.vertex_list().len()), (2, 3));
                     assert_eq!(k.context.doing_boolean(), previous);
                     assert!(k.context.is_mark_locked(mark));
@@ -2403,6 +2407,13 @@ mod tests {
                         .unwrap()
                         .is_marked(&k.context, mark));
                     assert_eq!(records.get(&edge_ref.key).unwrap().user_index1(), 912);
+                    assert_eq!(
+                        records
+                            .get(&split_key(EntityRef::Edge(EdgeId::from_index(1))).key)
+                            .unwrap()
+                            .user_index1(),
+                        912
+                    );
                     if let Binding::External(previous) = binding {
                         assert_eq!(external.doing_boolean(), previous);
                     }
@@ -2459,6 +2470,8 @@ mod tests {
                             NotifyOperation::ChangeGeometry,
                             split_key(EntityRef::Vertex(VertexId::from_index(2))),
                         ),
+                        (NotifyOperation::AddToBrep, brep_ref(&b)),
+                        (NotifyOperation::SplitInBrep, brep_ref(&b)),
                     ];
                     assert_eq!(events.len(), expected.len() * 2);
                     for (pair, (operation, caller)) in events.chunks_exact(2).zip(expected) {
@@ -2473,6 +2486,22 @@ mod tests {
                         events[6].data,
                         [Some(original_curve), Some(new_curve), Some(edge_ref)]
                     );
+                    assert_eq!(
+                        events[10].data,
+                        [
+                            Some(split_key(EntityRef::Vertex(VertexId::from_index(2)))),
+                            Some(brep_ref(&b)),
+                            None
+                        ]
+                    );
+                    assert_eq!(
+                        events[12].data,
+                        [
+                            Some(edge_ref),
+                            Some(edge_ref),
+                            Some(split_key(EntityRef::Edge(new_edge)))
+                        ]
+                    );
                     outer
                         .release(core::slice::from_mut(&mut k.context))
                         .unwrap();
@@ -2481,7 +2510,7 @@ mod tests {
         }
 
         #[test]
-        fn kernel_shell_vertex_preserves_the_topology_barrier_without_dummy_records() {
+        fn kernel_shell_vertex_registers_real_topology_and_notifies_in_order() {
             let mut k = Kernel::default();
             let events = callbacks::install(&mut k.context);
             let mut b = Brep::new();
@@ -2498,20 +2527,45 @@ mod tests {
                 &mut edge::NotificationStores {
                     records: &mut records,
                     attributes: &mut attributes,
-                    key_of: &|_| panic!("no entity exists before the topology barrier"),
+                    key_of: &split_key,
                 },
             );
-            assert!(matches!(
-                result,
-                Err(SolidError::Unported {
-                    upstream: "SmBrep::MakeShellVertexTopology",
-                    unit: "topology.brep_p2",
-                })
-            ));
-            assert!(b.vertices().is_empty());
-            assert!(records.is_empty());
-            assert!(events.lock().unwrap().is_empty());
+            let (shell, vertex) = result.unwrap();
+            assert_eq!(b.vertices().len(), 1);
+            assert_eq!(b.shells().len(), 1);
+            assert_eq!(b.vertexuses().len(), 1);
+            assert_eq!(b.region(region).unwrap().shells, vec![shell]);
+            assert_eq!(b.shell(shell).unwrap().region, Some(region));
+            assert_eq!(b.vertex(vertex).unwrap().point, Point3::ZERO);
+            assert_eq!(b.vertex(vertex).unwrap().tolerance, b.tolerance());
+            let vu = b.vertex(vertex).unwrap().vertexuses[0];
+            assert_eq!(records.len(), 3);
+            for entity in [
+                EntityRef::Shell(shell),
+                EntityRef::Vertex(vertex),
+                EntityRef::Vertexuse(vu),
+            ] {
+                assert!(records.contains_key(&split_key(entity).key));
+            }
             callbacks::assert_installed(&k.context, &events);
+            let events = events.lock().unwrap();
+            let vertex_ref = split_key(EntityRef::Vertex(vertex));
+            let shell_ref = split_key(EntityRef::Shell(shell));
+            let expected = [
+                (NotifyOperation::ChangeGeometry, vertex_ref),
+                (NotifyOperation::AddToBrep, brep_ref(&b)),
+                (NotifyOperation::AddToBrep, brep_ref(&b)),
+            ];
+            assert_eq!(events.len(), expected.len() * 2);
+            for (pair, (operation, caller)) in events.chunks_exact(2).zip(expected) {
+                assert_eq!((pair[0].callback, pair[1].callback), ("user", "system"));
+                for event in pair {
+                    assert_eq!((event.operation, event.caller), (operation, caller));
+                    assert_eq!(event.data, pair[0].data);
+                }
+            }
+            assert_eq!(events[2].data, [Some(vertex_ref), Some(brep_ref(&b)), None]);
+            assert_eq!(events[4].data, [Some(shell_ref), Some(brep_ref(&b)), None]);
         }
 
         #[test]
@@ -2669,14 +2723,13 @@ mod tests {
                 type_code: kind,
             }
         });
-        // With part 1 wired, a wire split runs to its final B-rep ADD notification.
-        assert!(matches!(
-            result,
-            Err(SolidError::Unported {
-                unit: "topology.brep_p2",
-                upstream: "SmBrep::Notify",
-            })
-        ));
+        // With parts 1 and 2 wired, a wire split completes, its final B-rep ADD
+        // notification included.
+        let out = result.unwrap();
+        assert_eq!(out.status(), 0);
+        let edges = out.edges.unwrap();
+        assert!(edges.contains(&e));
+        assert!(out.vertex.is_some());
         assert_eq!(b.edge_list().len(), 2);
         assert_eq!(b.vertex_list().len(), 3);
         assert!(!k.context.doing_boolean());
