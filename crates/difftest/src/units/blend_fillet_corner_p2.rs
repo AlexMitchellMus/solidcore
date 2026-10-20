@@ -14,17 +14,22 @@
 //! edge use's radial, skipping edges already seen, until the walk closes), or a selection
 //! of the edge uses starting at the vertex (in export order, repeats allowed), sometimes
 //! with edge uses of elsewhere. Built-in: every fillet file at its first 12 vertices, as
-//! the walk and as the export ring. Compared: the concave pair (export indices).
+//! the walk and as the export ring, and the wire network of `prog_test` `my_test_topology`
+//! at 4 vertices (its wire edge uses' radials). Compared: the concave pair (export
+//! indices), or a count of 0 when no pair is concave.
 //!
 //! The shim refuses (`-2`) when a pair the loop reaches has an edge use upstream would
-//! dereference null; the Rust side returns [`SolidError::InvalidInput`] there and both
-//! report `refused`. A case whose evaluated geometry the import holds only as its
+//! dereference null; the Rust side returns [`SolidError::InvalidInput`] there (whatever
+//! its reason: a missing radial, or a missing edge as unit `topology.edgeuse_p1` reports
+//! it) and both report `refused`. No B-rep the harness builds reaches it (every edge use has a radial
+//! and an edge); the Rust half is covered by a unit test in `fillet_corner::p2`. A case whose evaluated geometry the import holds only as its
 //! B-spline part is deferred as unit `blend.fillet_corner_p1`'s runner defers it.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use solidcore::blend::fillet_corner::p2 as corner;
+use solidcore::error::SolidError;
 use solidcore::kernel::Kernel;
 use solidcore::topology::edgeuse::p1 as eu1;
 use solidcore::topology::{Brep, EdgeuseId, VertexId};
@@ -205,6 +210,10 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
             o.extend(c.iter().map(|e| f64::from(e.index())));
             Ok(Output::new().values("concave", o))
         }
+        // every InvalidInput of the op is a null dereference upstream (the empty list is
+        // screened above): a missing radial (`NULL_DEREF`) or, from unit
+        // `topology.edgeuse_p1`, a missing edge; the shim refuses both
+        Err(SolidError::InvalidInput { .. }) => Ok(Output::err("refused")),
         Err(e) => Ok(rust_err(&e)),
     }
 }
@@ -249,6 +258,20 @@ impl UnitDiff for Runner {
 
     fn cases(&self, ctx: &CaseContext) -> Result<Vec<Case>, HarnessError> {
         let mut v = default_cases(self, ctx)?;
+        let push = |v: &mut Vec<Case>, name: String, upstream_ref: &str, i: Inputs| {
+            let index = v.len();
+            v.push(Case {
+                unit: "blend.fillet_corner_p2".to_string(),
+                name,
+                source: crate::CaseSource::Fixture {
+                    path: "built-in: blend.fillet_corner_p2 cases".to_string(),
+                    index,
+                    upstream_ref: Some(upstream_ref.to_string()),
+                },
+                inputs: serde_json::to_value(i).map_err(|e| harness(e.to_string()))?,
+            });
+            Ok::<(), HarnessError>(())
+        };
         for file in CORNER_FILES {
             for vertex in 0..12 {
                 for walk in [true, false] {
@@ -263,23 +286,26 @@ impl UnitDiff for Runner {
                         eus: if walk { vec![0] } else { Vec::new() },
                         walk,
                     };
-                    let index = v.len();
-                    v.push(Case {
-                        unit: "blend.fillet_corner_p2".to_string(),
-                        name: format!(
-                            "find_concave_{}_v{vertex}_{}",
-                            file.trim_start_matches("Fillet/").trim_end_matches(".smb"),
-                            if walk { "walk" } else { "ring" }
-                        ),
-                        source: crate::CaseSource::Fixture {
-                            path: "built-in: blend.fillet_corner_p2 cases".to_string(),
-                            index,
-                            upstream_ref: Some("TestFiles/pt_TestFiles/Fillet".to_string()),
-                        },
-                        inputs: serde_json::to_value(i).map_err(|e| harness(e.to_string()))?,
-                    });
+                    let name = format!(
+                        "find_concave_{}_v{vertex}_{}",
+                        file.trim_start_matches("Fillet/").trim_end_matches(".smb"),
+                        if walk { "walk" } else { "ring" }
+                    );
+                    push(&mut v, name, "TestFiles/pt_TestFiles/Fillet", i)?;
                 }
             }
+        }
+        // Wire edge uses (prog_test my_test_topology's network): their radial is the shell
+        // edge use's next one, a branch the fillet files' loop edge uses never take.
+        for vertex in 0..4 {
+            let i = Inputs::FindConcave {
+                brep: BrepIn::Network,
+                v: vertex,
+                eus: Vec::new(),
+                walk: false,
+            };
+            let name = format!("find_concave_network_v{vertex}_ring");
+            push(&mut v, name, "tests/prog_test (my_test_topology)", i)?;
         }
         Ok(v)
     }

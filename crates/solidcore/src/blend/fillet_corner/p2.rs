@@ -62,6 +62,7 @@ pub fn find_concave_edgeuses(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::topology::Edgeuse;
 
     #[test]
     fn empty_edge_use_list_is_invalid_input() {
@@ -70,5 +71,17 @@ mod tests {
         let v = VertexId::from_index(0);
         let r = find_concave_edgeuses(&k, &mut b, v, &[]);
         assert!(matches!(r, Err(SolidError::InvalidInput { .. })));
+    }
+
+    /// The difftest refusal arm: a pair edge use without edge (so without radial) is the
+    /// `InvalidInput` of a null dereference upstream, which the runner reports as `refused`.
+    #[test]
+    fn edge_use_without_edge_is_invalid_input() {
+        let k = Kernel::default();
+        let mut b = Brep::new();
+        let eu = b.add_edgeuse_record(Edgeuse::default()).unwrap();
+        let v = VertexId::from_index(0);
+        let r = find_concave_edgeuses(&k, &mut b, v, &[eu]);
+        assert!(matches!(r, Err(SolidError::InvalidInput { .. })), "{r:?}");
     }
 }
