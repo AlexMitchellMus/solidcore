@@ -1131,7 +1131,7 @@ fn classification_has_dead_topology<O: LoopObject>(
 }
 fn classified_edges<O: LoopObject>(class: Option<&CurveClassification<O>>) -> Result<Vec<EdgeId>> {
     let class = class.ok_or_else(|| invalid("crossed seam without classification"))?;
-    let edges = class.find_edge_objects(None, 2)?;
+    let edges = class.find_edge_objects(&NoGeometry, None, 2)?;
     if edges.is_empty() {
         Ok(Vec::new())
     } else {

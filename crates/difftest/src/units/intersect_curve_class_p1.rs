@@ -48,7 +48,8 @@ use solidcore::nurbs::srf_basic::Surface as NurbSurface;
 use solidcore::surface::plane::Plane;
 use solidcore::surface::surface::Surface;
 use solidcore::surface::volume::Volume;
-use solidcore::SolidError;
+use solidcore::topology::Brep;
+use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::intersect_curve_class_p1::{self as ffi, kind, op};
 
 use crate::case::{CaseContext, CaseSource};
@@ -709,6 +710,25 @@ pub(crate) struct Pool {
     pub(crate) objs: Vec<PoolObj>,
     pub(crate) handles: Vec<H>,
     pub(crate) kinds: Vec<usize>,
+    /// A real B-rep whose entities are the pool handles from `first` on (unit
+    /// `intersect.curve_class_p7`); the other topology handles are bare stand-ins.
+    pub(crate) topo: Option<PoolTopology>,
+}
+
+/// The B-rep behind pool handles `first..first + entities.len()`.
+pub(crate) struct PoolTopology {
+    pub(crate) brep: Brep,
+    pub(crate) first: usize,
+    pub(crate) entities: Vec<EntityRef>,
+}
+
+impl Pool {
+    /// The B-rep entity of handle `o`, if it is one.
+    fn entity(&self, o: H) -> Option<(&Brep, EntityRef)> {
+        let t = self.topo.as_ref()?;
+        let e = *t.entities.get(o.0.checked_sub(t.first)?)?;
+        Some((&t.brep, e))
+    }
 }
 
 impl ClassGeometry<H> for Pool {
@@ -732,6 +752,28 @@ impl ClassGeometry<H> for Pool {
             Some(PoolObj::Point(p)) => Some(*p),
             _ => None,
         }
+    }
+    fn classification_vertex_point(&self, o: H) -> Option<Vec3> {
+        match self.entity(o)? {
+            (b, EntityRef::Vertex(v)) => b.vertex(v).ok().map(|r| r.point),
+            _ => None,
+        }
+    }
+    fn topology_zone_tol_3d(&self, o: H) -> Option<f64> {
+        match self.entity(o)? {
+            (b, EntityRef::Vertex(v)) => b.vertex(v).ok().map(|r| r.tolerance),
+            (b, EntityRef::Edge(e)) => b.edge(e).ok().map(|r| r.tolerance),
+            (b, EntityRef::Face(f)) => b.face(f).ok().map(|r| r.tolerance),
+            _ => None,
+        }
+    }
+    fn topology_entity(&self, o: H) -> Option<(&Brep, EntityRef)> {
+        self.entity(o)
+    }
+    fn topology_handle(&self, e: EntityRef) -> Option<H> {
+        let t = self.topo.as_ref()?;
+        let i = t.entities.iter().position(|x| *x == e)?;
+        self.handles.get(t.first + i).copied()
     }
 }
 
@@ -816,6 +858,7 @@ pub(crate) fn build_pool(objects: &[ObjIn]) -> Result<Pool, HarnessError> {
         objs: Vec::new(),
         handles: Vec::new(),
         kinds: Vec::new(),
+        topo: None,
     };
     for (i, o) in objects.iter().enumerate() {
         let k = obj_kind(o);
