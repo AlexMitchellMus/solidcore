@@ -29,11 +29,13 @@
 //! Notification environments borrow caller records and keys; a plain entry point (no
 //! environment) notifies through a `topology.brep_p2` arena state (every object's
 //! default `SmTopology` record, an empty attribute store, arena identities) and the
-//! kernel's context. `topology.brep_p3`'s edits (`SqueezeEdge`, `DeleteFace`,
-//! `MakeWireEdgeVertex`, `OrientTrimmedSurfaces`, `TurnToNURBS`) and `MakeShellVertex`
-//! (`topology.brep_p9`) notify through the caller's environment, or from a plain entry
-//! point through such an arena state over the kernel context's callbacks, lent to the
-//! edit (`with_p3_notifications`: the edit also borrows the kernel), so
+//! kernel's context, except `Transform`'s `ReplaceSurface` (`replace_surface`), which
+//! holds the kernel shared and so passes no context: an arena-only `Transform`'s face
+//! notifications reach no context callback. `topology.brep_p3`'s edits (`SqueezeEdge`,
+//! `DeleteFace`, `MakeWireEdgeVertex`, `OrientTrimmedSurfaces`, `TurnToNURBS`) and
+//! `MakeShellVertex` (`topology.brep_p9`) notify through the caller's environment, or from
+//! a plain entry point through such an arena state over the kernel context's callbacks,
+//! lent to the edit (`with_p3_notifications`: the edit also borrows the kernel), so
 //! [`make_manifold`] and [`stitch_and_orient`] take the kernel. Curves have no identity in the port: `SetCurve`'s new/old curve
 //! data are null and a curve's own `SM_NO_CHANGE_OWNER` is not delivered.
 //! `SmBrep::Notify` is owned by `topology.brep_p2`, not this unit. Owning-list
