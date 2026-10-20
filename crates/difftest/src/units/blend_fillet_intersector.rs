@@ -503,6 +503,16 @@ fn id(i: usize) -> TsectId {
 
 type Fi<'s> = FilletIntersector<'s, 'static, NoSurfaceHandle, FilletGeomRef>;
 
+/// Stores `p` as arena point `i`: the shim hands its points to the op by reference, so
+/// what the op wrote (also on a failure) is in the emitted arena.
+fn write_back(fi: &mut Fi<'_>, i: usize, p: TsectPnt) -> Result<(), Fail> {
+    *fi.base
+        .base
+        .point_mut(id(i))
+        .map_err(|e| Fail::Harness(harness(e.to_string())))? = p;
+    Ok(())
+}
+
 #[allow(clippy::too_many_lines)]
 fn run_op(
     op: &OpIn,
@@ -593,6 +603,9 @@ fn run_op(
                 &mut pa,
                 &mut pb,
             );
+            // the shim passes the arena points by reference: they are emitted as changed
+            write_back(fi, *a, pa)?;
+            write_back(fi, *b, pb)?;
             st(o, r)?;
         }
         OpIn::Values { uv, a, prev } => {
@@ -613,6 +626,7 @@ fn run_op(
                 None => None,
             };
             let r = fi.compute_point_values(solver, k, uv.map(p2), &mut pa, pp.as_ref(), None);
+            write_back(fi, *a, pa)?;
             st(o, r)?;
         }
         OpIn::Law {
