@@ -90,30 +90,44 @@ pub struct DependencyMerge {
     engine: Option<MergeEngine>,
 }
 
-/// The `SmMerge` members that `ManifoldBoolean` reads and writes.
+/// The `SmMerge` members that `ManifoldBoolean` reads and writes. Their owner
+/// reads results (such as `ExtractSeparate`'s component arrays) through
+/// [`DependencyMerge::engine`] or takes them back with [`DependencyMerge::into_engine`].
 #[derive(Debug)]
-struct MergeEngine {
-    intersector: KernelManifoldIntersector,
-    state: ManifoldState,
-    attributes: AttributeStore,
+pub struct MergeEngine {
+    /// `m_vTI` and the merge options, tolerances and mates (canonical adapter).
+    pub intersector: KernelManifoldIntersector,
+    /// Retained intersection lists, extracted components and traversal marks.
+    pub state: ManifoldState,
+    /// The attribute store the merge's notifications and region data use.
+    pub attributes: AttributeStore,
 }
 
 impl DependencyMerge {
-    /// Adopt the members of a constructed `SmMerge`: the canonical intersector
-    /// adapter (options, tolerances and mates), the retained manifold state and
-    /// the attribute store its notifications use. For the constructor's owner.
-    pub fn with_engine(
-        intersector: KernelManifoldIntersector,
-        state: ManifoldState,
-        attributes: AttributeStore,
-    ) -> Self {
+    /// Adopt the members of a constructed `SmMerge`. For the constructor's owner.
+    #[must_use]
+    pub fn with_engine(engine: MergeEngine) -> Self {
         Self {
-            engine: Some(MergeEngine {
-                intersector,
-                state,
-                attributes,
-            }),
+            engine: Some(engine),
         }
+    }
+
+    /// The adopted engine, if any.
+    #[must_use]
+    pub fn engine(&self) -> Option<&MergeEngine> {
+        self.engine.as_ref()
+    }
+
+    /// The adopted engine, mutably, if any.
+    pub fn engine_mut(&mut self) -> Option<&mut MergeEngine> {
+        self.engine.as_mut()
+    }
+
+    /// Give the adopted engine back to its owner, with every result written to it,
+    /// including after a failed call.
+    #[must_use]
+    pub fn into_engine(self) -> Option<MergeEngine> {
+        self.engine
     }
 }
 
@@ -930,11 +944,19 @@ mod tests {
                 unit: "boolean.merge_p2",
             })
         ));
-        let mut driver = DependencyMerge::with_engine(
-            KernelManifoldIntersector::new(0).unwrap(),
-            ManifoldState::default(),
-            AttributeStore::default(),
-        );
+        assert!(DependencyMerge::default().into_engine().is_none());
+        // Retained state the owner moved in, and its options, survive the calls.
+        let mut intersector = KernelManifoldIntersector::new(0).unwrap();
+        let options = MergeOptions::new(true, false, false, true, true);
+        intersector.merge.set_merge_options(Some(&options));
+        let mut state = ManifoldState::default();
+        state.other_components.push(Brep::new());
+        state.intersection_loop_closed = false;
+        let mut driver = DependencyMerge::with_engine(MergeEngine {
+            intersector,
+            state,
+            attributes: AttributeStore::default(),
+        });
         // merge_p4 checks both operands (NER), then waits on query.brep for
         // the temporary origin shift before touching either operand.
         let (result, ..) = call(&mut driver, &mut k, None);
@@ -954,6 +976,12 @@ mod tests {
             })
         ));
         assert!(primary && other);
+        assert_eq!(driver.engine().unwrap().state.other_components.len(), 1);
+        let engine = driver.into_engine().unwrap();
+        assert_eq!(engine.intersector.intersect_lamina_edges(), 1);
+        assert_eq!(engine.intersector.merge.options, options);
+        assert_eq!(engine.state.other_components.len(), 1);
+        assert!(!engine.state.intersection_loop_closed);
     }
     #[test]
     fn nonmanifold_restores_flag_on_failure_but_retains_lamina_mode() {

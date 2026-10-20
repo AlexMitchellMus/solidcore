@@ -522,6 +522,270 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "engine_ner_none_op00",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#0",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_none_op01",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#1",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_none_op02",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#2",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_none_op03",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#3",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_none_op04",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#4",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_none_op05",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#5",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_none_op06",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#6",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_none_op07",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#7",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_none_op08",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#8",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_none_op09",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#9",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_none_op10",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#10",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_primary_op00",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#11",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_primary_op01",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#12",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_primary_op02",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#13",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_primary_op03",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#14",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_primary_op04",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#15",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_primary_op05",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#16",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_primary_op06",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#17",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_primary_op07",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#18",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_primary_op08",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#19",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_primary_op09",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#20",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_primary_op10",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#21",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_other_op00",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#22",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_other_op01",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#23",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_other_op02",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#24",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_other_op03",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#25",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_other_op04",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#26",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_other_op05",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#27",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_other_op06",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#28",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_other_op07",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#29",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_other_op08",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#30",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_other_op09",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#31",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "engine_ner_other_op10",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/boolean.merge_p3/engine-ner.json#32",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "vg_family0_0",
       "outcome": "pass",
       "pass": true,
@@ -3581,8 +3845,8 @@
   "cases_both_errored": 56,
   "cases_deferred": 172,
   "cases_failed": 0,
-  "cases_passed": 182,
-  "cases_total": 354,
+  "cases_passed": 215,
+  "cases_total": 387,
   "deferred_by_unit": {
     "boolean.merge_p2": 87,
     "boolean.topology_intersector_p2": 48,

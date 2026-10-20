@@ -159,6 +159,12 @@ impl KernelManifoldIntersector {
         self.intersector.intersect_lamina_edges = mode;
     }
 
+    /// `m_vTI.m_lIntersectLaminaEdges`.
+    #[must_use]
+    pub fn intersect_lamina_edges(&self) -> u64 {
+        self.intersector.intersect_lamina_edges
+    }
+
     /// Run the orchestration with the options held in the canonical `MergeState`.
     pub fn manifold_boolean(
         &mut self,
