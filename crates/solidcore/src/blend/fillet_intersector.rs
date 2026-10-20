@@ -24,7 +24,7 @@
 //! | [`FilletIntersector::is_kind_of`], [`TYPE`]             | `IsKindOf`, `SmFilletIntersector_TYPE`          |
 //! | [`FilletSolverOps`], [`StepSolve`] (CO-PORTED interface) | the `SmFilletSolver` virtuals and members these methods call |
 //! | `FilletSolverOps for ConstantRadiusAssistedFs`          | delegates to the `SmFilletSolver` base of unit `blend.fillet_solver_p1`: `ComputeSurfaceValues`, `ComputeUVVectors`, `SetSurfacesToZeroOffset`, `ReloadSurfaceOffsets`, `SetStatus`, `GetLastFilletGeom`, `GetSelfIntersectionHandler`, `GetFilletSurfaceGenerator`, `m_pFSG->CreateSurface` |
-//! | [`FilStatus`] (CO-PORTED)                               | `SmFilStatus`                                   |
+//! | [`FilStatus`] (re-export of `blend.fillet_geom_p1`'s)   | `SmFilStatus`                                   |
 //! | [`HandlingAlgorithmType`] (CO-PORTED)                   | `SmHandlingAlgorithmType`                       |
 //!
 //! Deviations:
@@ -87,9 +87,7 @@
 //! - **Not ported.** `Dump` and the `SM_DEBUG_CODE` drawing blocks; `SM_ASSERT`s.
 
 use crate::blend::fillet_custom_solver::{offset_evaluate_1st, ConstantRadiusAssistedFs};
-use crate::blend::fillet_solver::p1::{
-    compute_uv_vectors, FilStatus as BaseFilStatus, FilletGeomRef, FilletSolver,
-};
+use crate::blend::fillet_solver::p1::{compute_uv_vectors, FilletGeomRef, FilletSolver};
 use crate::curve::crv_on_surf::CrvOnSurf;
 use crate::curve::curve::p3::PointSolveOptions;
 use crate::curve::curve::Curve;
@@ -138,37 +136,9 @@ const SRFS: [SrfIndex; 2] = [SrfIndex::First, SrfIndex::Second];
 
 // ---- co-ported enums ------------------------------------------------------------------------
 
-/// The filleting status (`SmFilStatus`, CO-PORTED from unit `blend.fillet_geom_p1`);
-/// discriminants are the upstream values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum FilStatus {
-    /// `SM_FIL_UNPROCESSED`.
-    Unprocessed = 0,
-    /// `SM_FIL_PROCESSED`.
-    Processed = 1,
-    /// `SM_FIL_FAILURE`.
-    Failure = 2,
-    /// `SM_FIL_SURF_INT_FAILURE`.
-    SurfIntFailure = 3,
-    /// `SM_FE_END_PNT_DROP_FAILURE`.
-    EndPntDropFailure = 4,
-    /// `SM_FE_TO_BE_SQUEEZED`.
-    ToBeSqueezed = 5,
-    /// `SM_FE_CUBIC_RAIL_RAIL_INTERPOLATE`.
-    CubicRailRailInterpolate = 6,
-    /// `SM_FV_NO_INT_RAIL_EU`: unable to intersect a fillet rail curve with a side edge.
-    NoIntRailEu = 7,
-    /// `SM_FV_SOLVER_NOT_CONVERGE`.
-    SolverNotConverge = 8,
-    /// `SM_FV_TO_BE_DELETED`.
-    ToBeDeleted = 9,
-    /// `SM_FS_SURF_TRACING_FAILURE`.
-    SurfTracingFailure = 10,
-    /// `SM_FS_SELF_INT_HANDLING_FAILURE`.
-    SelfIntHandlingFailure = 11,
-    /// `SM_FS_SURF_SKINNING_FAILURE`.
-    SurfSkinningFailure = 12,
-}
+/// The filleting status `SmFilStatus` is unit `blend.fillet_geom_p1`'s
+/// [`FilStatus`](crate::blend::fillet_geom::p1::FilStatus) (one type per class).
+pub use crate::blend::fillet_geom::p1::FilStatus;
 
 /// What a self-intersection handler does with self-intersecting fillets
 /// (`SmHandlingAlgorithmType`, CO-PORTED from unit `blend.fillet_solver_p1`);
@@ -499,22 +469,7 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
     }
 
     fn set_status(&mut self, status: FilStatus) -> Result<()> {
-        // same discriminants as the base's SmFilStatus
-        self.solver.set_status(match status {
-            FilStatus::Unprocessed => BaseFilStatus::Unprocessed,
-            FilStatus::Processed => BaseFilStatus::Processed,
-            FilStatus::Failure => BaseFilStatus::Failure,
-            FilStatus::SurfIntFailure => BaseFilStatus::SurfIntFailure,
-            FilStatus::EndPntDropFailure => BaseFilStatus::EndPntDropFailure,
-            FilStatus::ToBeSqueezed => BaseFilStatus::ToBeSqueezed,
-            FilStatus::CubicRailRailInterpolate => BaseFilStatus::CubicRailRailInterpolate,
-            FilStatus::NoIntRailEu => BaseFilStatus::NoIntRailEu,
-            FilStatus::SolverNotConverge => BaseFilStatus::SolverNotConverge,
-            FilStatus::ToBeDeleted => BaseFilStatus::ToBeDeleted,
-            FilStatus::SurfTracingFailure => BaseFilStatus::SurfTracingFailure,
-            FilStatus::SelfIntHandlingFailure => BaseFilStatus::SelfIntHandlingFailure,
-            FilStatus::SurfSkinningFailure => BaseFilStatus::SurfSkinningFailure,
-        });
+        self.solver.set_status(status);
         Ok(())
     }
 
@@ -2210,9 +2165,9 @@ mod tests {
         let k = Kernel::default();
 
         s.set_status(FilStatus::SurfSkinningFailure).unwrap();
-        assert_eq!(s.solver.status(), BaseFilStatus::SurfSkinningFailure);
+        assert_eq!(s.solver.status(), FilStatus::SurfSkinningFailure);
         s.set_status(FilStatus::Processed).unwrap();
-        assert_eq!(s.solver.status(), BaseFilStatus::Processed);
+        assert_eq!(s.solver.status(), FilStatus::Processed);
 
         assert!(!s.has_surface_generator().unwrap());
         assert_eq!(s.last_fillet_geom().unwrap(), FilletGeomRef { index: 0 });

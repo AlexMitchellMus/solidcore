@@ -29,7 +29,7 @@
 //! | [`FilletSolver::trim_rails`]                           | `TrimRails`                                           |
 //! | [`FilletSolver::TYPE`], [`FilletSolver::type_string`], [`FilletSolver::is_kind_of`] | `GetType`, `GetTypeString` (`SM_COMMON`), `IsKindOf` |
 //! | [`FilletSolverOps`] (trait, base methods)              | the virtuals `GetJacobianSize`, `SetupOffsetValues`, `CanMakeAnalytic`, `OffsetRadiiCanChange`, `LoadJacobian`, `LoadInitialValues` |
-//! | [`FilStatus`] (CO-PORTED from `blend.fillet_geom_p1`), [`FilletSolverType`], [`FilletSurfaceGeneratorType`] | `SmFilStatus`, `SmFilletSolverType`, `SmFilletSurfaceGeneratorType` |
+//! | [`FilStatus`] (re-export of `blend.fillet_geom_p1`'s), [`FilletSolverType`], [`FilletSurfaceGeneratorType`] | `SmFilStatus`, `SmFilletSolverType`, `SmFilletSurfaceGeneratorType` |
 //! | [`FilletSurfaceGenerator`]                             | `SmFilletSurfaceGenerator`, `SmLinearCrossSectionFSG`, `SmCircularCrossSectionFSG`, `SmBlendCurveCrossSectionFSG` (constructors, `GetFilletSurfaceGeneratorType`, `GetBlendScale`, `GetContinuity`; `Drop` is each destructor); the circular and blend-curve variants hold `blend.fillet_standard_solver_p1`'s [`CircularCrossSectionFsg`] / [`BlendCurveCrossSectionFsg`] (one type per class) |
 //! | [`FilletSurfaceGenerator::create_surface`]             | `SmFilletSurfaceGenerator::CreateSurface` (base; the linear one dispatches to [`LinearCrossSectionFsg::create_surface`]) |
 //! | [`FilletSphereSolveEnfo`]                              | `SmFilletSphereSolveENFO` (constructor, `SetPlaneAdjusts`, `Evaluate`) |
@@ -176,39 +176,10 @@ const FILLET_EDGE_RAIL: i64 = 9;
 
 // ---- small types ----------------------------------------------------------------------
 
-/// `SmFilStatus`: the processing status of a solver (and of fillet geometries,
-/// vertices and edges). CO-PORTED from unit `blend.fillet_geom_p1` (`SmFilletGeom.h`;
-/// PR #147 defines it identically): whichever lands second re-exports the other.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum FilStatus {
-    /// `SM_FIL_UNPROCESSED`.
-    #[default]
-    Unprocessed = 0,
-    /// `SM_FIL_PROCESSED`.
-    Processed = 1,
-    /// `SM_FIL_FAILURE`.
-    Failure = 2,
-    /// `SM_FIL_SURF_INT_FAILURE`.
-    SurfIntFailure = 3,
-    /// `SM_FE_END_PNT_DROP_FAILURE`.
-    EndPntDropFailure = 4,
-    /// `SM_FE_TO_BE_SQUEEZED`.
-    ToBeSqueezed = 5,
-    /// `SM_FE_CUBIC_RAIL_RAIL_INTERPOLATE`.
-    CubicRailRailInterpolate = 6,
-    /// `SM_FV_NO_INT_RAIL_EU`.
-    NoIntRailEu = 7,
-    /// `SM_FV_SOLVER_NOT_CONVERGE`.
-    SolverNotConverge = 8,
-    /// `SM_FV_TO_BE_DELETED`.
-    ToBeDeleted = 9,
-    /// `SM_FS_SURF_TRACING_FAILURE`.
-    SurfTracingFailure = 10,
-    /// `SM_FS_SELF_INT_HANDLING_FAILURE`.
-    SelfIntHandlingFailure = 11,
-    /// `SM_FS_SURF_SKINNING_FAILURE`.
-    SurfSkinningFailure = 12,
-}
+/// `SmFilStatus` (`SmFilletGeom.h`) is unit `blend.fillet_geom_p1`'s
+/// [`FilStatus`](crate::blend::fillet_geom::p1::FilStatus) (one type per class): the
+/// processing status of a solver and of fillet geometries, vertices and edges.
+pub use crate::blend::fillet_geom::p1::FilStatus;
 
 /// The kind of a fillet solver (`SmFilletSolverType`, `SmFilletSolver.h`; the
 /// `GetSolverType` overrides belong to the derived solvers' units); discriminants are
