@@ -9872,7 +9872,7 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
 ## topology.brep_p4: back-edges on opaque object handles
 
 `topology.brep_p4` (`SmBrep::DeleteEdge`, `DeleteVertex`, `ShrinkGeometry`, `StitchFaces`, `~SmBrep`;
-PR #173) wires 16 of the 19 `UNPORTED(topology.brep_p4)` call sites on main. Callers with a
+PR #173) wires 18 of the 21 `UNPORTED(topology.brep_p4)` call sites on main. Callers with a
 notification environment pass it (`topology/brep/p7.rs` `GlueEdgesGeneral`, `topology/brep/p5.rs`
 `*_with_notifications`, `boolean/merge/p5.rs` through its `VertexCopy` records); callers that hold no
 notification state run on call-local records (`topology::brep::p4::with_local_env`, as
