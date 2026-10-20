@@ -1178,7 +1178,10 @@ mod tests {
                                 .filter(|&id| eu_vertex(&t.brep, id).map(VertexId::index) == vid)
                                 .map(EdgeuseId::index)
                                 .collect();
-                            resolved = format!("args={:?} ring={ring:?}", t.args);
+                            resolved = format!(
+                                "args={:?} ring={ring:?} surfaces={:?} curves={:?}",
+                                t.args, t.types.face_surface_types, t.types.edge_curve_types
+                            );
                         }
                     }
                     eprintln!(
