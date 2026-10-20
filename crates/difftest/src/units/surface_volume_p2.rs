@@ -613,17 +613,17 @@ fn build_map(m: &MapIn) -> Result<Volume, HarnessError> {
             orient,
             None,
         ),
-        4 => Volume::with_maps(VolumeKind::Unbend(UnbendVolume::new()), orient, None),
+        4 => Volume::oriented(VolumeKind::Unbend(UnbendVolume::new()), orient),
         5 => {
             let u = m.ub.as_ref().ok_or_else(|| harness("unbend map without ub"))?;
             UnbendVolume::create(v3(u.c), v3(u.axis), v3(u.mid), u.d, u.tol)
         }
-        6 => Volume::with_maps(VolumeKind::Bend(BendVolume::new()), orient, None),
+        6 => Volume::oriented(VolumeKind::Bend(BendVolume::new()), orient),
         7 => {
             let u = m.ub.as_ref().ok_or_else(|| harness("bend map without ub"))?;
             BendVolume::create(v3(u.c), v3(u.axis), v3(u.mid), u.d, u.tol)
         }
-        _ => Volume::with_maps(VolumeKind::Base, orient, None),
+        _ => Volume::oriented(VolumeKind::Base, orient),
     })
 }
 
