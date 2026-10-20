@@ -30,6 +30,8 @@
 //! | [`TopologyChangeLists`]                      | the arrays `SmTopologyChangeCallback` points at  |
 //! | [`TopologyChangeLists::reset_arrays`]        | `SmTopologyChangeCallback::ReSetArrays`, `~SmTopologyChangeCallback` |
 //! | [`TopologyChangeCallback`]                   | `SmTopologyChangeCallback` (constructor)         |
+//! | [`NotifyCallback::execute`] for `TopologyChangeCallback` | `SmTopologyChangeCallback::Execute` |
+//! | `add_unique`, `remove_key` (private) | `SmTopologyChangeCallback::AddUnique`, `Remove` |
 //! | [`TrackTopologyChanges`]                     | `SmTrackTopologyChanges`                         |
 //! | [`TrackTopologyChanges::new`]                | `SmTrackTopologyChanges::SmTrackTopologyChanges` |
 //! | [`TrackTopologyChanges::start_tracking`]     | `SmTrackTopologyChanges::StartTracking`          |
@@ -62,27 +64,21 @@
 //! - **Change tracking.** Upstream the tracker owns the Rm/Add/Chg/event arrays and
 //!   installs a callback object holding pointers to them; `IsTracking` compares the
 //!   context's system callback with the address of that object. Here the tracker
-//!   and the boxed [`TopologyChangeCallback`] it installs share one
-//!   [`TopologyChangeLists`] (`Arc<Mutex<..>>`, the arrays the callback points at),
-//!   so the getters return copies; the callback is tagged with a caller-chosen
-//!   tracker key and `IsTracking` recognises it by that key. "Was a callback already installed" (`m_pLastNotifyCallback` non-null) is
+//!   owns a [`TopologyChangeLists`] and installs a boxed [`TopologyChangeCallback`]
+//!   tagged with a caller-chosen tracker key; `IsTracking` recognises it by that
+//!   key. "Was a callback already installed" (`m_pLastNotifyCallback` non-null) is
 //!   kept as a flag. The tracker's B-rep only supplies its context, so the tracker
 //!   keeps the [`BrepId`] and takes the context as an argument; the destructor is
 //!   the explicit [`TrackTopologyChanges::finish`].
-//! - `SmTopologyChangeCallback::Execute` (which fills the lists), `AddUnique` and
-//!   `Remove` are reached only through the virtual callback dispatch of
-//!   `SmObject::Notify`, so the call graph lists them as unused; they are CO-PORTED
-//!   here by `topology.brep_p3` (PR #204) for the healer's trackers
-//!   (`SmHealData`), as [`TopologyChangeCallback`]'s [`NotifyCallback::execute`]. An
-//!   [`ObjectRef`] carries no owner, so `Execute`'s walk from a notified curve or
-//!   surface to `GetOwner()` (and from an edge use to `GetEdge()`) reads an owner
-//!   table the tracker's user fills ([`TrackTopologyChanges::set_owner`]); an
-//!   object missing from it has a NULL owner, so nothing is recorded for it (as for
-//!   a detached curve or surface upstream). The walk follows the whole chain (any
-//!   depth); a cyclic table, which upstream's owner pointers cannot form, is
-//!   `InvalidInput` instead of a loop for ever. Both `Dump`s and the
-//!   `SM_DEBUG_CODE` index arrays are compiled out of the reference build and not
-//!   ported.
+//! - `SmTopologyChangeCallback::Execute`, `AddUnique` and `Remove` are co-ported
+//!   for `topology.brep_p5` healer integration. Geometry owner traversal requires
+//!   the caller's actual owner map, and is bounded to 64 links (no recursive stack
+//!   use). Missing metadata is recorded as a callback failure; it is never treated
+//!   as a null owner. The tracker and its callback share only notification arrays
+//!   through a private `Arc<Mutex<_>>` (no entity graph pointers or threads). This
+//!   keeps captured events alive across callback replacement, matches active reset
+//!   and keeps `Kernel: Send`; getters return owned snapshots. `Dump` and debug
+//!   index arrays remain omitted.
 //! - `AssertValid`, `CheckPointerChain`, `Dump`, the obsolete `NewMark*` / `Mark2`
 //!   helpers, `UnMark`, `IsUnMarked`, `IsMarkLocked`, the flag bit helpers and the
 //!   placement `operator new` / `delete` are not part of this unit.
@@ -503,78 +499,49 @@ impl TopologyChangeLists {
     }
 }
 
-/// What a tracker and the callback it installs share: the lists (upstream the
-/// callback points at the tracker's arrays) and the owners of notified geometry.
-#[derive(Debug, Default)]
-struct TrackerState {
-    lists: TopologyChangeLists,
-    /// `GetOwner` of a notified curve or surface and `GetEdge` of a notified edge
-    /// use, which an [`ObjectRef`] does not carry (see the module Deviations).
-    owners: BTreeMap<ObjectRef, ObjectRef>,
-}
-
-type SharedState = Arc<Mutex<TrackerState>>;
-
-/// The shared state, also after a (panic-free, so never expected) poisoning.
-fn state(shared: &SharedState) -> MutexGuard<'_, TrackerState> {
-    shared
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-/// `SmFace_TYPE`, `SmEdge_TYPE`, `SmVertex_TYPE`, `SmEdgeuse_TYPE`, and the fillet
-/// classes deriving from the last three (`SmFilletEdge_TYPE`, `SmFilletVertex_TYPE`,
-/// `SmFilletEdgeuse_TYPE`, `SmFilletGeom.h`; the composite `SmCFace` / `SmCEdge` are
-/// commented out upstream), so that the tests below are `IsKindOf`.
-const FACE_TYPE: i64 = 16002;
-const EDGE_TYPE: i64 = 16016;
-const VERTEX_TYPE: i64 = 16021;
-const EDGEUSE_TYPE: i64 = 16005;
-const FILLET_EDGEUSE_TYPE: i64 = 16031;
-const FILLET_EDGE_TYPE: i64 = 16033;
-const FILLET_VERTEX_TYPE: i64 = 16034;
-
-/// `IsKindOf(SmEdgeuse_TYPE)`.
-const fn is_edgeuse_type(t: i64) -> bool {
-    t == EDGEUSE_TYPE || t == FILLET_EDGEUSE_TYPE
-}
-
-/// `IsKindOf(SmFace_TYPE) || IsKindOf(SmEdge_TYPE) || IsKindOf(SmVertex_TYPE)`.
-const fn is_tracked_type(t: i64) -> bool {
-    matches!(
-        t,
-        FACE_TYPE | EDGE_TYPE | VERTEX_TYPE | FILLET_EDGE_TYPE | FILLET_VERTEX_TYPE
-    )
-}
-
-/// `IsKindOf(SmCurve_TYPE)`: every curve class is in `CURV_BASE_TYPE`'s block.
-const fn is_curve_type(t: i64) -> bool {
-    14000 <= t && t < 15000
-}
-
-/// `IsKindOf(SmSurface_TYPE)`: every surface class is in `SURF_BASE_TYPE`'s block.
-const fn is_surface_type(t: i64) -> bool {
-    15000 <= t && t < 16000
-}
-
 /// The system notify callback a [`TrackTopologyChanges`] installs
 /// (`SmTopologyChangeCallback`), tagged with its tracker's key.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TopologyChangeCallback {
-    /// Key of the tracker that installed this callback.
     tracker: u64,
-    /// The tracker's lists and owner table.
-    shared: SharedState,
+    state: Arc<Mutex<ChangeState>>,
+}
+
+#[derive(Debug, Default)]
+struct ChangeState {
+    lists: TopologyChangeLists,
+    // A present None is a known null owner; absent metadata is never guessed.
+    owners: BTreeMap<ObjectKey, Option<ObjectRef>>,
+    failure: Option<SolidError>,
+}
+
+fn change_state(state: &Mutex<ChangeState>) -> MutexGuard<'_, ChangeState> {
+    // These private locks never execute user code. Recovering the ordered state
+    // after poisoning also preserves partial native notification effects.
+    match state.lock() {
+        Ok(state) => state,
+        Err(poisoned) => poisoned.into_inner(),
+    }
 }
 
 impl TopologyChangeCallback {
-    /// A callback of tracker `tracker` with lists of its own
-    /// (`SmTopologyChangeCallback(...)`).
+    /// Creates a callback with no geometry-owner metadata. Direct topology
+    /// notifications require none; geometry walks require [`Self::with_owners`].
     #[must_use]
     pub fn new(tracker: u64) -> Self {
+        Self::with_owners(tracker, BTreeMap::new())
+    }
+
+    /// Uses actual curve/surface owners and edgeuse-to-edge links supplied by the
+    /// caller's object store. Keys must be the keys used by notifications.
+    #[must_use]
+    pub fn with_owners(tracker: u64, owners: BTreeMap<ObjectKey, Option<ObjectRef>>) -> Self {
         Self {
             tracker,
-            shared: SharedState::default(),
+            state: Arc::new(Mutex::new(ChangeState {
+                owners,
+                ..ChangeState::default()
+            })),
         }
     }
 
@@ -584,60 +551,198 @@ impl TopologyChangeCallback {
         self.tracker
     }
 
-    /// The lists this callback has built.
+    /// Captured native change lists, including stale identities in the remove list.
     #[must_use]
     pub fn lists(&self) -> TopologyChangeLists {
-        state(&self.shared).lists.clone()
+        change_state(&self.state).lists.clone()
     }
-}
 
-/// `SmTopologyChangeCallback::AddUnique`: appends `tgt` to `list` unless it is null or
-/// already there; `true` when it was added.
-fn add_unique(list: &mut Vec<ObjectKey>, tgt: Option<ObjectRef>) -> bool {
-    let Some(tgt) = tgt else {
-        return false;
-    };
-    if list.contains(&tgt.key) {
-        return false;
+    /// A missing owner mapping or excessive owner chain encountered while notifying.
+    /// `SmObject::Notify` ignores callback statuses, so consumers must check this.
+    #[must_use]
+    pub fn failure(&self) -> Option<SolidError> {
+        change_state(&self.state).failure.clone()
     }
-    list.push(tgt.key);
-    true
-}
 
-/// `SmTopologyChangeCallback::Remove`: removes `tgt` from `list` when it is there;
-/// `true` when it was removed.
-fn remove(list: &mut Vec<ObjectKey>, tgt: Option<ObjectRef>) -> bool {
-    let Some(tgt) = tgt else {
-        return false;
-    };
-    match list.iter().position(|&k| k == tgt.key) {
-        Some(i) => {
-            list.remove(i);
-            true
+    fn capture(
+        &mut self,
+        operation: NotifyOperation,
+        caller: ObjectRef,
+        data1: Option<ObjectRef>,
+        data2: Option<ObjectRef>,
+        data3: Option<ObjectRef>,
+    ) -> Result<()> {
+        use NotifyOperation::{
+            AddToBrep, ChangeGeometry, ChangeOwner, Destruction, Merge, MergeInBrep, PostEdit,
+            RegPropagation, RmFromBrep, Split, SplitInBrep, TrimNoSplitInBrep,
+        };
+        let mut state = change_state(&self.state);
+        if operation == RegPropagation {
+            return Ok(());
         }
-        None => false,
+        let mut tracked = match operation {
+            ChangeGeometry | PostEdit => Some(caller),
+            Split | Merge => data3,
+            _ => data1,
+        };
+        if (operation == PostEdit && geometry_type(caller.type_code))
+            || matches!(operation, Split | Merge)
+        {
+            // wasm has no stack guard; a finite loop also bounds corrupt cycles.
+            let mut depth = 0;
+            while let Some(object) = tracked {
+                if !geometry_type(object.type_code) && !matches!(object.type_code, 16005 | 16031) {
+                    break;
+                }
+                if depth >= 64 {
+                    return Err(SolidError::invalid_input(
+                        "topology::topology::track_changes",
+                        "geometry owner chain exceeds 64",
+                    ));
+                }
+                depth += 1;
+                tracked = *state
+                    .owners
+                    .get(&object.key)
+                    .ok_or(SolidError::Unsupported {
+                        operation: "topology::topology::track_changes",
+                        reason: "actual geometry owner or edgeuse-to-edge mapping is required",
+                    })?;
+            }
+        }
+        // Maintain actual metadata for later callbacks, without adding events.
+        if operation == ChangeOwner {
+            state.owners.insert(caller.key, data1);
+        }
+        if operation == Destruction {
+            if let Some(object) = data1 {
+                state.owners.remove(&object.key);
+            }
+        }
+        let Some(tracked) =
+            tracked.filter(|o| matches!(o.type_code, 16002 | 16016 | 16021 | 16033 | 16034))
+        else {
+            return Ok(());
+        };
+        if matches!(
+            operation,
+            AddToBrep
+                | SplitInBrep
+                | MergeInBrep
+                | TrimNoSplitInBrep
+                | RmFromBrep
+                | ChangeGeometry
+                | PostEdit
+                | Split
+                | Merge
+        ) {
+            state.lists.notify_events.push(NotifyEvent {
+                operation,
+                caller: Some(caller),
+                data1,
+                data2,
+                data3,
+            });
+        }
+        let lists = &mut state.lists;
+        match operation {
+            AddToBrep => add_unique(&mut lists.add_list, data1),
+            SplitInBrep => {
+                add_unique(&mut lists.rm_list, data1);
+                remove_key(&mut lists.add_list, data1);
+                remove_key(&mut lists.chg_list, data1);
+                add_unique(&mut lists.add_list, data2);
+                add_unique(&mut lists.add_list, data3);
+            }
+            MergeInBrep => {
+                add_unique(&mut lists.rm_list, data1);
+                add_unique(&mut lists.rm_list, data2);
+                for object in [data1, data2] {
+                    remove_key(&mut lists.add_list, object);
+                    remove_key(&mut lists.chg_list, object);
+                }
+                add_unique(&mut lists.add_list, data1);
+            }
+            TrimNoSplitInBrep => {
+                add_unique(&mut lists.rm_list, data1);
+                remove_key(&mut lists.chg_list, data1);
+                add_unique(&mut lists.add_list, data1);
+            }
+            RmFromBrep => {
+                add_unique(&mut lists.rm_list, data1);
+                remove_key(&mut lists.add_list, data1);
+                remove_key(&mut lists.chg_list, data1);
+            }
+            ChangeGeometry | Split | Merge => add_unique(&mut lists.chg_list, Some(tracked)),
+            PostEdit => {
+                if tracked == caller {
+                    add_unique(&mut lists.rm_list, Some(tracked));
+                    add_unique(&mut lists.add_list, Some(tracked));
+                } else {
+                    add_unique(&mut lists.chg_list, Some(tracked));
+                }
+            }
+            Destruction => {
+                remove_key(&mut lists.add_list, data1);
+                remove_key(&mut lists.chg_list, data1);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
+fn geometry_type(t: i64) -> bool {
+    use crate::curve::curve::p2 as c;
+    use crate::surface::surface::p2 as s;
+    matches!(
+        t,
+        c::TYPE
+            | c::LINE_TYPE
+            | c::CONIC_TYPE
+            | c::CIRCLE_TYPE
+            | c::ELLIPSE_TYPE
+            | c::PARABOLA_TYPE
+            | c::HYPERBOLA_TYPE
+            | c::COMPOSITE_CURVE_TYPE
+            | c::BSPLINE_CURVE_TYPE
+            | c::HERMITE_CURVE_TYPE
+            | c::OFFSET_CURVE_TYPE
+            | c::PROJECTED_CURVE_TYPE
+            | c::ISO_CURVE_TYPE
+            | c::CRV_ON_SURF_TYPE
+            | c::TANGENT_FIELD_TYPE
+            | c::CRV_IN_VOLUME_TYPE
+            | s::TYPE
+            | s::B_SPLINE_SURFACE_TYPE
+            | s::PLANE_TYPE
+            | s::CONE_TYPE
+            | s::CYLINDER_TYPE
+            | s::SPHERE_TYPE
+            | s::TORUS_TYPE
+            | s::SURF_OF_REVOLUTION_TYPE
+            | s::SURF_OF_EXTRUSION_TYPE
+            | s::CURVE_BOUNDED_SURFACE_TYPE
+            | s::SRF_IN_VOLUME_TYPE
+            | s::OFFSET_SURFACE_TYPE
+            | s::STEP_SURFACE_TYPE
+    )
+}
+
+fn add_unique(list: &mut Vec<ObjectKey>, object: Option<ObjectRef>) {
+    if let Some(object) = object {
+        if !list.contains(&object.key) {
+            list.push(object.key);
+        }
+    }
+}
+fn remove_key(list: &mut Vec<ObjectKey>, object: Option<ObjectRef>) {
+    if let Some(i) = object.and_then(|o| list.iter().position(|&k| k == o.key)) {
+        list.remove(i);
     }
 }
 
 impl NotifyCallback for TopologyChangeCallback {
-    /// `SmTopologyChangeCallback::Execute`: run once for every `SmObject::Notify`,
-    /// builds the Rm, Add and Chg lists (and the event list) of the faces, edges and
-    /// vertices a topology edit changes:
-    ///
-    /// | operation          | tracked object | lists                                        |
-    /// |--------------------|----------------|----------------------------------------------|
-    /// | `AddToBrep`        | `data1`        | Add `data1`                                  |
-    /// | `SplitInBrep`      | `data1`        | Rm `data1`; un-Add, un-Chg `data1`; Add `data2`, `data3` |
-    /// | `MergeInBrep`      | `data1`        | Rm `data1`, `data2`; un-Add, un-Chg both; Add `data1` |
-    /// | `TrimNoSplitInBrep`| `data1`        | Rm `data1`; un-Chg; Add `data1`              |
-    /// | `RmFromBrep`       | `data1`        | Rm `data1`; un-Add, un-Chg                   |
-    /// | `ChangeGeometry`   | `caller`       | Chg it                                       |
-    /// | `PostEdit`         | `caller` (a curve or surface: its owner) | itself: Rm and Add; an owner: Chg |
-    /// | `Split`, `Merge`   | `data3`'s owner| Chg it                                       |
-    /// | `Destruction`      | `data1`        | un-Add, un-Chg `data1`                       |
-    ///
-    /// Only a tracked face, edge or vertex records anything; `RegPropagation` returns
-    /// at once. The status is always success (`SmObject::Notify` ignores it).
     fn execute(
         &mut self,
         operation: NotifyOperation,
@@ -646,118 +751,13 @@ impl NotifyCallback for TopologyChangeCallback {
         data2: Option<ObjectRef>,
         data3: Option<ObjectRef>,
     ) -> Result<()> {
-        use NotifyOperation as N;
-        let event = NotifyEvent {
-            operation,
-            caller: Some(caller),
-            data1,
-            data2,
-            data3,
-        };
-
-        if operation == N::RegPropagation {
-            return Ok(());
+        let result = self.capture(operation, caller, data1, data2, data3);
+        let mut state = change_state(&self.state);
+        if state.failure.is_none() {
+            state.failure = result.as_ref().err().cloned();
         }
-
-        let mut st = state(&self.shared);
-        let mut tracked = data1;
-        if matches!(operation, N::ChangeGeometry | N::PostEdit) {
-            tracked = Some(caller);
-        } else if matches!(operation, N::Split | N::Merge) {
-            tracked = data3;
-        }
-
-        if (operation == N::PostEdit
-            && (is_surface_type(caller.type_code) || is_curve_type(caller.type_code)))
-            || matches!(operation, N::Split | N::Merge)
-        {
-            // the whole chain, as upstream; the table is finite, so a chain that does
-            // not end revisits an object (a cyclic table, which upstream's owner
-            // pointers cannot form and would follow for ever)
-            let mut seen = std::collections::BTreeSet::new();
-            while let Some(t) = tracked {
-                if !(is_surface_type(t.type_code)
-                    || is_curve_type(t.type_code)
-                    || is_edgeuse_type(t.type_code))
-                {
-                    break;
-                }
-                if !seen.insert(t) {
-                    return Err(SolidError::InvalidInput {
-                        operation: "topology::topology::TopologyChangeCallback::execute",
-                        reason: "cyclic owner table",
-                    });
-                }
-                // GetOwner() / GetEdge()
-                tracked = st.owners.get(&t).copied();
-            }
-        }
-
-        let Some(t) = tracked else {
-            return Ok(());
-        };
-        if !is_tracked_type(t.type_code) {
-            return Ok(());
-        }
-        let l = &mut st.lists;
-        match operation {
-            N::AddToBrep => {
-                l.notify_events.push(event);
-                add_unique(&mut l.add_list, data1);
-            }
-            N::SplitInBrep => {
-                l.notify_events.push(event);
-                add_unique(&mut l.rm_list, data1);
-                remove(&mut l.add_list, data1);
-                remove(&mut l.chg_list, data1);
-                add_unique(&mut l.add_list, data2);
-                add_unique(&mut l.add_list, data3);
-            }
-            N::MergeInBrep => {
-                l.notify_events.push(event);
-                add_unique(&mut l.rm_list, data1);
-                add_unique(&mut l.rm_list, data2);
-                remove(&mut l.add_list, data1);
-                remove(&mut l.add_list, data2);
-                remove(&mut l.chg_list, data1);
-                remove(&mut l.chg_list, data2);
-                add_unique(&mut l.add_list, data1);
-            }
-            N::TrimNoSplitInBrep => {
-                l.notify_events.push(event);
-                add_unique(&mut l.rm_list, data1);
-                remove(&mut l.chg_list, data1);
-                add_unique(&mut l.add_list, data1);
-            }
-            N::RmFromBrep => {
-                l.notify_events.push(event);
-                add_unique(&mut l.rm_list, data1);
-                remove(&mut l.add_list, data1);
-                remove(&mut l.chg_list, data1);
-            }
-            N::ChangeGeometry | N::Split | N::Merge => {
-                l.notify_events.push(event);
-                add_unique(&mut l.chg_list, Some(t));
-            }
-            N::PostEdit => {
-                l.notify_events.push(event);
-                if t == caller {
-                    add_unique(&mut l.rm_list, Some(t));
-                    add_unique(&mut l.add_list, Some(t));
-                } else {
-                    add_unique(&mut l.chg_list, Some(t));
-                }
-            }
-            N::Destruction => {
-                remove(&mut l.add_list, data1);
-                remove(&mut l.chg_list, data1);
-            }
-            // SM_NO_COINCIDENT, CHANGE_OWNER, CONSTRUCTION, COPY, PRE_EDIT: nothing
-            _ => {}
-        }
-        Ok(())
+        result
     }
-
     fn as_any(&self) -> Option<&dyn core::any::Any> {
         Some(self)
     }
@@ -771,8 +771,8 @@ pub struct TrackTopologyChanges {
     brep: Option<BrepId>,
     /// Identifies this tracker's callback in a context (upstream: its address).
     key: u64,
-    /// The accumulated lists (shared with the installed callback) and owner table.
-    shared: SharedState,
+    /// The accumulated lists.
+    state: Arc<Mutex<ChangeState>>,
     /// `m_pLastNotifyCallback != NULL`: a system callback was already installed when
     /// tracking last started.
     last_notify_callback: bool,
@@ -792,7 +792,7 @@ impl TrackTopologyChanges {
         let mut t = Self {
             brep,
             key,
-            shared: SharedState::default(),
+            state: Arc::new(Mutex::new(ChangeState::default())),
             last_notify_callback: false,
         };
         // when asked start tracking now - else just init the Rm and Add arrays.
@@ -827,7 +827,7 @@ impl TrackTopologyChanges {
     /// Empties the lists and, when the B-rep and its context exist and the context
     /// has no system notify callback, installs this tracker's callback
     /// (`StartTracking`). An already installed callback is left in place (upstream
-    /// asserts; nested tracking is not supported).
+    /// retains it and starts no nested tracking).
     pub fn start_tracking(&mut self, context: Option<&mut Context>) {
         // init internal arrays
         self.reset_arrays();
@@ -839,7 +839,7 @@ impl TrackTopologyChanges {
             if !self.last_notify_callback {
                 context.set_sys_notify_callback(Some(Box::new(TopologyChangeCallback {
                     tracker: self.key,
-                    shared: Arc::clone(&self.shared),
+                    state: Arc::clone(&self.state),
                 })));
             }
         }
@@ -873,44 +873,42 @@ impl TrackTopologyChanges {
         }
     }
 
-    /// Objects removed from the topology graph since the lists were last reset
-    /// (`GetRmList`).
+    /// Removed identities (which can be stale), captured even if a foreign
+    /// callback has replaced this tracker's callback since the event.
     #[must_use]
     pub fn rm_list(&self) -> Vec<ObjectKey> {
-        state(&self.shared).lists.rm_list.clone()
+        change_state(&self.state).lists.rm_list.clone()
     }
 
-    /// Objects added since the lists were last reset (`GetAddList`).
+    /// Added identities in native first-insertion order.
     #[must_use]
     pub fn add_list(&self) -> Vec<ObjectKey> {
-        state(&self.shared).lists.add_list.clone()
+        change_state(&self.state).lists.add_list.clone()
     }
 
-    /// All accumulated lists.
+    /// A snapshot of all captured lists, active or stopped.
     #[must_use]
     pub fn lists(&self) -> TopologyChangeLists {
-        state(&self.shared).lists.clone()
+        change_state(&self.state).lists.clone()
     }
 
-    /// Empties the lists (`ReSetArrays`).
+    /// A capture failure, including one whose callback status native Notify ignores.
+    #[must_use]
+    pub fn failure(&self) -> Option<SolidError> {
+        change_state(&self.state).failure.clone()
+    }
+
+    /// Supplies actual geometry owners and edgeuse-to-edge links for later events.
+    pub fn set_owner_metadata(&mut self, owners: BTreeMap<ObjectKey, Option<ObjectRef>>) {
+        change_state(&self.state).owners = owners;
+    }
+
+    /// Empties all captured lists (`ReSetArrays`), including the active callback's
+    /// arrays. The shared allocation survives callback replacement and stop.
     pub fn reset_arrays(&mut self) {
-        state(&self.shared).lists.reset_arrays();
-    }
-
-    /// Records `owner` as what `GetOwner` of the curve or surface `geometry` (or
-    /// `GetEdge` of the edge use `geometry`) returns while this tracker's callback
-    /// follows a notified geometry object to its topology (see the module
-    /// Deviations). `None` forgets it (a detached object: upstream's NULL owner).
-    pub fn set_owner(&mut self, geometry: ObjectRef, owner: Option<ObjectRef>) {
-        let mut st = state(&self.shared);
-        match owner {
-            Some(o) => {
-                st.owners.insert(geometry, o);
-            }
-            None => {
-                st.owners.remove(&geometry);
-            }
-        }
+        let mut state = change_state(&self.state);
+        state.lists.reset_arrays();
+        state.failure = None;
     }
 
     /// The destructor `~SmTrackTopologyChanges`: stops tracking if this tracker's
@@ -1069,110 +1067,73 @@ mod tests {
         assert!(!none.is_tracking(Some(&ctx)));
         assert!(none.rm_list().is_empty() && none.add_list().is_empty());
     }
+    #[test]
+    fn tracker_snapshots_real_callback_changes_on_stop() {
+        let mut context = Context::default();
+        let mut tracker =
+            TrackTopologyChanges::new(Some(BrepId::from_index(0)), 91, true, Some(&mut context));
+        let vertex = ObjectRef {
+            type_code: 16021,
+            key: ObjectKey(77),
+        };
+        context
+            .sys_notify_callback_mut()
+            .unwrap()
+            .execute(NotifyOperation::PostEdit, vertex, Some(vertex), None, None)
+            .unwrap();
+        tracker.stop_tracking(Some(&mut context));
+        assert_eq!(tracker.rm_list(), &[vertex.key]);
+        assert_eq!(tracker.add_list(), &[vertex.key]);
+        assert_eq!(tracker.lists().notify_events.len(), 1);
+        assert!(context.sys_notify_callback().is_none());
+    }
 
     #[test]
-    fn tracker_callback_builds_the_lists() {
-        use crate::geom::object::notify as obj_notify;
-        use NotifyOperation as N;
-        let o = |type_code: i64, k: u64| ObjectRef {
-            type_code,
-            key: ObjectKey(k),
+    fn geometry_tracking_requires_real_owner_metadata_and_bounds_cycles() {
+        let curve = ObjectRef {
+            type_code: crate::curve::curve::p2::LINE_TYPE,
+            key: ObjectKey(77),
         };
-        let (brep, face, edge, v1, v2) = (
-            o(16400, 0),
-            o(FACE_TYPE, 1),
-            o(EDGE_TYPE, 2),
-            o(VERTEX_TYPE, 3),
-            o(VERTEX_TYPE, 4),
-        );
-        let region = o(16012, 5);
-        let mut ctx = Context::default();
-        let mut t = TrackTopologyChanges::new(Some(BrepId::from_index(0)), 3, true, Some(&mut ctx));
-        let n = |ctx: &mut Context, op, c, d1, d2, d3| obj_notify(Some(ctx), op, c, d1, d2, d3);
-        // SqueezeEdge's sequence: RM edge, MERGE_IN_BREP(survivor, deleted)
-        n(&mut ctx, N::PreEdit, brep, Some(brep), None, None);
-        n(&mut ctx, N::RmFromBrep, brep, Some(edge), Some(brep), None);
-        n(
-            &mut ctx,
-            N::MergeInBrep,
-            brep,
-            Some(v1),
-            Some(v2),
-            Some(brep),
-        );
-        // regions are not tracked; a destruction only un-adds
-        n(
-            &mut ctx,
-            N::MergeInBrep,
-            brep,
-            Some(region),
-            Some(region),
-            Some(brep),
-        );
-        n(&mut ctx, N::Destruction, v2, Some(v2), None, None);
-        assert_eq!(t.rm_list(), vec![edge.key, v1.key, v2.key]);
-        assert_eq!(t.add_list(), vec![v1.key]);
-        assert_eq!(t.lists().notify_events.len(), 2);
-        // a face's post-edit removes and adds it; a surface's goes to its owner's Chg
-        let srf = o(15001, 9);
-        n(&mut ctx, N::PostEdit, face, Some(face), None, None);
-        n(&mut ctx, N::PostEdit, srf, Some(srf), None, None);
-        assert!(t.lists().chg_list.is_empty());
-        t.set_owner(srf, Some(face));
-        n(&mut ctx, N::PostEdit, srf, Some(srf), None, None);
-        assert_eq!(t.lists().chg_list, vec![face.key]);
-        assert_eq!(t.rm_list(), vec![edge.key, v1.key, v2.key, face.key]);
-        // RegPropagation is ignored, ReSetArrays empties the shared lists
-        n(&mut ctx, N::RegPropagation, face, Some(face), None, None);
-        t.reset_arrays();
-        assert!(t.lists().notify_events.is_empty());
-        n(&mut ctx, N::AddToBrep, brep, Some(face), Some(brep), None);
-        t.stop_tracking(Some(&mut ctx));
-        n(&mut ctx, N::AddToBrep, brep, Some(edge), Some(brep), None);
-        assert_eq!(t.add_list(), vec![face.key]);
+        let mut callback = TopologyChangeCallback::new(1);
+        assert!(callback
+            .execute(NotifyOperation::PostEdit, curve, Some(curve), None, None)
+            .is_err());
+        assert!(callback.failure().is_some());
+        assert!(callback.lists().chg_list.is_empty());
+        let mut owners = BTreeMap::new();
+        owners.insert(curve.key, Some(curve));
+        let mut callback = TopologyChangeCallback::with_owners(1, owners);
+        assert!(callback
+            .execute(NotifyOperation::PostEdit, curve, Some(curve), None, None)
+            .is_err());
+        assert!(callback.lists().notify_events.is_empty());
     }
-    /// `Execute` follows a geometry owner chain of any depth (here 17 surfaces, deeper
-    /// than any fixed bound below the crate's surface nesting limit of 64) to the face
-    /// at its end; a cyclic table is refused instead of looping.
     #[test]
-    fn tracker_follows_long_owner_chains() {
-        use crate::geom::object::notify as obj_notify;
-        use NotifyOperation as N;
-        let o = |type_code: i64, k: u64| ObjectRef {
-            type_code,
-            key: ObjectKey(k),
+    fn captured_lists_survive_callback_replacement_and_active_reset() {
+        let mut context = Context::default();
+        let mut tracker =
+            TrackTopologyChanges::new(Some(BrepId::from_index(0)), 91, true, Some(&mut context));
+        let vertex = ObjectRef {
+            type_code: 16021,
+            key: ObjectKey(77),
         };
-        let face = o(FACE_TYPE, 100);
-        let mut ctx = Context::default();
-        let mut t = TrackTopologyChanges::new(Some(BrepId::from_index(0)), 3, true, Some(&mut ctx));
-        let chain: Vec<ObjectRef> = (0..17).map(|i| o(15400, 200 + i)).collect();
-        for w in chain.windows(2) {
-            if let [a, b] = w {
-                t.set_owner(*a, Some(*b));
-            }
-        }
-        t.set_owner(chain[16], Some(face));
-        let deepest = chain[0];
-        obj_notify(
-            Some(&mut ctx),
-            N::PostEdit,
-            deepest,
-            Some(deepest),
-            None,
-            None,
-        );
-        assert_eq!(t.lists().chg_list, vec![face.key]);
-        // a cyclic table: refused, nothing recorded
-        t.reset_arrays();
-        let (a, b) = (o(15001, 300), o(15001, 301));
-        t.set_owner(a, Some(b));
-        t.set_owner(b, Some(a));
-        let mut cb = TopologyChangeCallback {
-            tracker: 3,
-            shared: Arc::clone(&t.shared),
-        };
-        assert!(cb.execute(N::PostEdit, a, Some(a), None, None).is_err());
-        assert!(t.lists().chg_list.is_empty());
-        t.stop_tracking(Some(&mut ctx));
+        context
+            .sys_notify_callback_mut()
+            .unwrap()
+            .execute(NotifyOperation::PostEdit, vertex, Some(vertex), None, None)
+            .unwrap();
+        assert_eq!(tracker.add_list(), vec![vertex.key]);
+        tracker.reset_arrays();
+        assert!(tracker.add_list().is_empty());
+        context
+            .sys_notify_callback_mut()
+            .unwrap()
+            .execute(NotifyOperation::PostEdit, vertex, Some(vertex), None, None)
+            .unwrap();
+        context.set_sys_notify_callback(Some(Box::new(TopologyChangeCallback::new(92))));
+        tracker.stop_tracking(Some(&mut context));
+        assert_eq!(tracker.rm_list(), vec![vertex.key]);
+        assert_eq!(tracker.add_list(), vec![vertex.key]);
+        assert!(context.sys_notify_callback().is_none());
     }
 }

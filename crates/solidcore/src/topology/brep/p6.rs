@@ -11,8 +11,7 @@
 //!
 //! Deviations: pointers become arena ids; optional outputs become return values.
 //! Edits preserve the upstream mutations preceding an error. Missing callees stop
-//! at their first call: copying stops at `CreateWireEdgeFromCurve` (`brep_p5`), face
-//! construction at `SetTolerance` (`face_p3`), and a closed-shell split at
+//! at their first call: face construction at `SetTolerance` (`face_p3`), and a closed-shell split at
 //! `CalculateBoundingBox` (`query.brep`) after its two `SmBrep::Notify` calls
 //! ([`crate::topology::brep::p2::notify`] with the caller's [`NotifyEnv`], statuses
 //! ignored; the new region gets its default `SmTopology` record when it is made, as
@@ -22,6 +21,13 @@
 //! supplied by the caller, independently of arena indices. A null trimmed copy
 //! returns a null-pointer error instead of the upstream dereference. There is no recursion;
 //! the traverser uses its bounded, iterative implementation.
+//! The copy notifications (`SM_NO_COPY` on each source edge and its vertices) run on a
+//! `topology.brep_p2` arena state seeded from both B-reps: the callers keep no attribute
+//! state, and both B-reps' objects are named by their arena identities, which overlap
+//! across the two B-reps (an overlapping pair propagates nothing, as for an object
+//! notified about itself). `SmEdge::Notify` and `SmVertex::Notify` pass `SM_NO_COPY`
+//! straight to `SmTopology::Notify`, which is called directly (the source B-rep is only
+//! read). They notify through the destination kernel's context, the only one given.
 //! An attempt exposes native status separately for callers that ignore it;
 //! missing dependencies and Rust representation failures remain outer errors.
 
@@ -55,29 +61,79 @@ fn split_link<T>(value: Option<T>) -> Result<T> {
     value.ok_or_else(|| SolidError::invalid_input(OP, "unlinked topology in region split"))
 }
 
-/// Copy edges to independent wires in `destination`, in input order.
-/// An empty list succeeds without inspecting the destination. Nonempty input
-/// trims a NURBS copy in the destination's context before reaching the unported
-/// wire constructor; copy notifications are not emitted before construction.
+/// Copy edges to independent wires in `destination`, in input order, returning the new
+/// edges (`pNewEdges`). An empty list succeeds without inspecting the destination. Each
+/// edge's trimmed NURBS copy is made into a wire edge by part 5's
+/// `CreateWireEdgeFromCurve` over the copy's natural interval; then the source edge and
+/// its start vertex (and its end vertex, when both edges have two) report the copy
+/// (`Notify(SM_NO_COPY, pNew, pDestinationBrep, this)`, statuses ignored; see the
+/// module's Deviations).
+///
+/// # Errors
+///
+/// Those of `CreateTrimmedNURBSCurve` and `CreateWireEdgeFromCurve` (`SER`); a
+/// null-pointer error for a null curve copy or a missing vertex, which upstream
+/// dereferences.
 pub fn copy_edges(
-    destination_kernel: &Kernel,
+    destination_kernel: &mut Kernel,
     source: &Brep,
     edges: &[EdgeId],
     destination: &mut Brep,
 ) -> Result<Vec<EdgeId>> {
-    let result = Vec::new();
-    if let Some(&edge) = edges.first() {
-        let _curve = required(crate::topology::edge::create_trimmed_nurbs_curve(
+    let mut result = Vec::new();
+    for &edge in edges {
+        let curve = required(crate::topology::edge::create_trimmed_nurbs_curve(
             destination_kernel,
             source,
             edge,
         )?)?;
-        let _ = destination;
-        // UNPORTED(topology.brep_p5): SmBrep::CreateWireEdgeFromCurve
-        return Err(SolidError::unported(
-            "SmBrep::CreateWireEdgeFromCurve",
-            "topology.brep_p5",
-        ));
+        let interval = curve.natural_interval();
+        let new_edge = crate::topology::brep::p5::create_wire_edge_from_curve(
+            destination_kernel,
+            destination,
+            curve,
+            interval,
+        )?;
+
+        // Notify Copy Edge - propogates attributes and reports copy
+        let mut state = brep_p2::ArenaNotifyState::new(source);
+        state.seed(destination);
+        let data = [brep_p2::brep_ref(destination), brep_p2::brep_ref(source)];
+        let mut notify_copy = |old: EntityRef, new: EntityRef| {
+            use crate::topology::loopuse::notify_ref;
+            crate::error::ignore_status(crate::topology::topology::notify(
+                &mut state.records,
+                &mut state.attributes,
+                Some(&mut destination_kernel.context),
+                NotifyOperation::Copy,
+                notify_ref(old),
+                Some(notify_ref(new)),
+                Some(data[0]),
+                Some(data[1]),
+            ))
+        };
+        notify_copy(EntityRef::Edge(edge), EntityRef::Edge(new_edge))?;
+
+        // Notify Copy Vertices - propogates attributes and reports copy
+        let new_start = required(crate::topology::edge::start_vertex(destination, new_edge)?)?;
+        let new_end = required(crate::topology::edge::other_vertex(
+            destination,
+            new_edge,
+            Some(new_start),
+        )?)?;
+        let old_start = required(crate::topology::edge::start_vertex(source, edge)?)?;
+        let old_end = required(crate::topology::edge::other_vertex(
+            source,
+            edge,
+            Some(old_start),
+        )?)?;
+        notify_copy(EntityRef::Vertex(old_start), EntityRef::Vertex(new_start))?;
+        if old_start != old_end && new_start != new_end {
+            notify_copy(EntityRef::Vertex(old_end), EntityRef::Vertex(new_end))?;
+        }
+
+        // set optional output
+        result.push(new_edge);
     }
     Ok(result)
 }
@@ -189,7 +245,9 @@ pub fn make_face_topology(
     record.uv_domain = domain;
     // This call precedes primary-faceuse assignment, list insertion, loop
     // allocation, radial sectors, trims and TestClosureSplitRegion upstream.
-    // UNPORTED(topology.face_p3): SmFace::SetTolerance
+    // UNPORTED(topology.face_p3): SmFace::SetTolerance -- justified: findings.md topology.face_p3 "Stubs left for this unit"
+    // (`topology::face::p3::set_tolerance` is ported; this is the stop point of the
+    // unported remainder of MakeFaceTopology, owned by topology.brep_p6)
     Err(SolidError::unported(
         "SmFace::SetTolerance",
         "topology.face_p3",

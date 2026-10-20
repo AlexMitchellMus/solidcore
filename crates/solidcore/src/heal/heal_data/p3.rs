@@ -22,16 +22,17 @@
 //! The Rust B-rep has no editing gate: exclusive mutable access permits editing.
 //! Mutating callees not yet ported return `Unported`, including when C++ ignores
 //! their status; no successful mutation is simulated. Removed/added identities
-//! are returned by the mutation adapters rather than accumulated by a temporary context
-//! callback; the ported edits (`SqueezeEdge`, `DeleteFace`) run under a real
-//! `SmTrackTopologyChanges` on a context of their own (`tracked_edit`), one per edit
-//! (upstream keeps one per heal loop; the lists merge to the same result with
-//! `Changes::append`); the kernel context's callbacks and identity domain are lent to
-//! that context, and the edits name every object by its kernel-issued identity
-//! (`topology::brep::p3`'s Deviations), which the tracker's lists are decoded by. Its
-//! owner table is empty, so
-//! geometry notifications reach no owner: only the Chg list depends on it, which
-//! `Changes` does not read. Recursive target catch-up is limited to 32 nested updates (upstream
+//! for p5 edits are captured by the actual context callback (`capture_changes`).
+//! Nonempty captures still require the owning notification adapter's key-to-id map;
+//! they defer rather than guessing identities from arena indices. The ported p3 edits
+//! (`SqueezeEdge`, `DeleteFace`) run under a real `SmTrackTopologyChanges` on a
+//! context of their own (`tracked_edit`), one per edit (upstream keeps one per heal
+//! loop; the lists merge to the same result with `Changes::append`); the kernel
+//! context's callbacks and identity domain are lent to that context, and the edits
+//! name every object by its kernel-issued identity (`topology::brep::p3`'s
+//! Deviations), which the tracker's lists are decoded by. It has no geometry-owner
+//! metadata, so a geometry owner walk is a capture failure that leaves only the Chg
+//! list short, which `Changes` does not read. Recursive target catch-up is limited to 32 nested updates (upstream
 //! has no bound); temporary counters and healer state are restored on every exit.
 //! Ordinary statuses from nested `HealTgts` are ignored as upstream, but unported
 //! calls and invalid memory accesses propagate. Bare/SE mutation statuses are
@@ -133,6 +134,9 @@ impl<O: LoopObject> HealData<O> {
                 code: SM_ERR,
                 entity: None,
             });
+        }
+        if let Some(error) = tracker.failure() {
+            return Err(error);
         }
         let removed: Vec<_> = tracker
             .rm_list()
@@ -401,7 +405,7 @@ impl<O: LoopObject> HealData<O> {
                 .props(deleted)?
                 .vertex
                 .ok_or_else(|| invalid("deleted props without vertex"))?;
-            let changes = combine_vertices(b, a, d)?;
+            let changes = combine_vertices(k, b, a, d)?;
             self.update_target_lists(
                 k,
                 b,
@@ -464,13 +468,66 @@ impl<O: LoopObject> HealData<O> {
     }
 }
 
-fn combine_vertices(_b: &mut Brep, _a: VertexId, _d: VertexId) -> Result<Changes> {
-    // UNPORTED(topology.brep_p5): SmBrep::CombineCoincidentVertices
-    Err(SolidError::unported(
-        "SmBrep::CombineCoincidentVertices",
-        "topology.brep_p5",
-    ))
+// The context callback, not a mutation's nominal inputs/outputs, owns these lists
+// (`SmTrackTopologyChanges`, then `UpdateTargetLists(GetRmList(), GetAddList(), ..)`).
+// The edits run without a notification environment, so part 5 notifies through
+// `topology.brep_p2`'s arena state: every event names its object by
+// `loopuse::notify_ref`, which `entity_of_notify_key` inverts. A key it did not issue
+// is an error, never a guessed identity.
+fn capture_changes<T>(
+    k: &mut Kernel,
+    b: &mut Brep,
+    edit: impl FnOnce(&mut Kernel, &mut Brep) -> Result<T>,
+) -> Result<(T, Changes)> {
+    use crate::geom::context::NotifyCallback;
+    use crate::topology::topology::TopologyChangeCallback;
+    if k.context.sys_notify_callback().is_some() {
+        // Native StartTracking preserves a preexisting callback, leaving this
+        // tracker's own arrays empty. StopTracking preserves that callback too.
+        // These are the actual empty native arrays, not guessed edit identities.
+        let value = edit(k, b)?;
+        return Ok((value, Changes::default()));
+    }
+    k.context
+        .set_sys_notify_callback(Some(Box::new(TopologyChangeCallback::new(1))));
+    let result = edit(k, b);
+    let captured = k
+        .context
+        .sys_notify_callback()
+        .and_then(NotifyCallback::as_any)
+        .and_then(|a| a.downcast_ref::<TopologyChangeCallback>())
+        .map(|callback| (callback.lists(), callback.failure()));
+    k.context.set_sys_notify_callback(None);
+    let value = result?;
+    let (lists, failure) = captured.ok_or_else(|| invalid("edit replaced its topology tracker"))?;
+    if let Some(error) = failure {
+        return Err(error);
+    }
+    let decode = |key| {
+        loopuse::entity_of_notify_key(key)
+            .ok_or_else(|| invalid("tracked object without an arena identity"))
+    };
+    let removed = lists
+        .rm_list
+        .iter()
+        .map(|&key| decode(key))
+        .collect::<Result<Vec<_>>>()?;
+    let added = lists
+        .add_list
+        .iter()
+        .map(|&key| decode(key).map(Some))
+        .collect::<Result<Vec<_>>>()?;
+    Ok((value, Changes { removed, added }))
 }
+
+fn combine_vertices(k: &mut Kernel, b: &mut Brep, a: VertexId, d: VertexId) -> Result<Changes> {
+    let ((), changes) = capture_changes(k, b, |k, b| {
+        let mut deleted_edge = None;
+        crate::topology::brep::p5::combine_coincident_vertices(k, b, a, d, &mut deleted_edge)
+    })?;
+    Ok(changes)
+}
+
 /// Tracker key of the edit trackers (one at a time).
 const EDIT_TRACKER: u64 = 0x4845_414c; // "HEAL"
 
@@ -630,7 +687,7 @@ impl<O: LoopObject> HealData<O> {
                             );
                             if (b.vertex(v)?.point - b.vertex(old_vertex)?.point).length() < tol {
                                 changes.append(
-                                    ignore_soft(glue_vertices(b, v, old_vertex))?
+                                    ignore_soft(glue_vertices(k, b, v, old_vertex))?
                                         .unwrap_or_default(),
                                 );
                                 break;
@@ -644,7 +701,7 @@ impl<O: LoopObject> HealData<O> {
                 }
             } else {
                 let (new_edges, deleted_edges, edits) =
-                    ignore_soft(squeeze_face(b, f))?.unwrap_or_default();
+                    ignore_soft(squeeze_face(k, b, f))?.unwrap_or_default();
                 changes.append(edits);
                 for e in new_edges {
                     if !edges.contains(&e) {
@@ -1048,20 +1105,27 @@ fn create_face_from_surface(_b: &mut Brep, _r: RegionId, _s: Surface) -> Result<
         "topology.brep_p8",
     ))
 }
-fn glue_vertices(_b: &mut Brep, _a: VertexId, _d: VertexId) -> Result<Changes> {
-    // UNPORTED(topology.brep_p5): SmBrep::GlueVertices
-    Err(SolidError::unported(
-        "SmBrep::GlueVertices",
-        "topology.brep_p5",
-    ))
+fn glue_vertices(k: &mut Kernel, b: &mut Brep, a: VertexId, d: VertexId) -> Result<Changes> {
+    let ((), changes) = capture_changes(k, b, |k, b| {
+        crate::topology::brep::p5::glue_vertices(k, b, Some(a), Some(d), None)
+    })?;
+    Ok(changes)
 }
-fn squeeze_face(_b: &mut Brep, _f: FaceId) -> Result<(Vec<EdgeId>, Vec<EdgeId>, Changes)> {
-    // UNPORTED(topology.brep_p5): SmBrep::SqueezeFace
-    Err(SolidError::unported(
-        "SmBrep::SqueezeFace",
-        "topology.brep_p5",
-    ))
+fn squeeze_face(
+    k: &mut Kernel,
+    b: &mut Brep,
+    f: FaceId,
+) -> Result<(Vec<EdgeId>, Vec<EdgeId>, Changes)> {
+    let (output, changes) = capture_changes(k, b, |k, b| {
+        let mut output = crate::topology::brep::p5::SqueezedFace::default();
+        // The enclosing healer edit session enables editing upstream. SqueezeFace
+        // receives NULL for its deleted-vertices output at this call site.
+        crate::topology::brep::p5::squeeze_face(k, b, true, f, None, &mut output)?;
+        Ok(output)
+    })?;
+    Ok((output.new_edges, output.deleted_edges, changes))
 }
+
 fn delete_vertex(_b: &mut Brep, _v: VertexId) -> Result<Changes> {
     // UNPORTED(topology.brep_p4): SmBrep::DeleteVertex
     Err(SolidError::unported(
@@ -1250,11 +1314,11 @@ mod tests {
     }
 
     #[test]
-    fn catch_up_restores_state_after_unported_callee() {
+    fn catch_up_restores_state_after_failed_callee() {
         let mut k = Kernel::default();
         let mut b = Brep::default();
-        // a face whose tolerance SmBrep::SetTolerance raises (SmFace::SetTolerance,
-        // topology.face_p3): B-rep and face tolerances below the estimate
+        // a face whose tolerance SmBrep::SetTolerance raises (SmFace::SetTolerance):
+        // B-rep and face tolerances below the estimate
         let f = b
             .add_face_record(crate::topology::Face::new(
                 crate::topology::ShellId::from_index(0),
@@ -1270,11 +1334,10 @@ mod tests {
         h.done_heal_op = HealerOpType::FixTolsizes;
         h.recursion_count = 3;
         // Even a null add entry enters native catch-up. Fix_TolSizes still sets the
-        // B-rep tolerance, despite empty target arrays.
-        let e = h
-            .update_target_lists(&mut k, &mut b, &[], &[None], HealerOpType::All)
-            .unwrap_err();
-        assert!(e.is_unported());
+        // B-rep and face tolerances, despite empty target arrays.
+        h.update_target_lists(&mut k, &mut b, &[], &[None], HealerOpType::All)
+            .unwrap();
+        assert_eq!((b.tolerance(), b.face(f).unwrap().tolerance), (1e-5, 1e-5));
         assert_eq!(
             (h.old_face_cnt, h.old_edge_cnt, h.old_vertex_cnt),
             (7, 8, 9)
@@ -1282,6 +1345,22 @@ mod tests {
         assert_eq!(
             (h.stop_heal_op, h.done_heal_op),
             (HealerOpType::All, HealerOpType::FixTolsizes)
+        );
+        assert_eq!(h.recursion_count, 3);
+        // A catch-up through Fix_InfiniteRegions fails on this region-less B-rep and
+        // restores the same state.
+        h.done_heal_op = HealerOpType::FixInfiniteRegions;
+        let e = h
+            .update_target_lists(&mut k, &mut b, &[], &[None], HealerOpType::All)
+            .unwrap_err();
+        assert!(matches!(e, SolidError::InvalidInput { .. }));
+        assert_eq!(
+            (h.old_face_cnt, h.old_edge_cnt, h.old_vertex_cnt),
+            (7, 8, 9)
+        );
+        assert_eq!(
+            (h.stop_heal_op, h.done_heal_op),
+            (HealerOpType::All, HealerOpType::FixInfiniteRegions)
         );
         assert_eq!(h.recursion_count, 3);
         // Both nested and outer mark locks are released on a failed pass.
@@ -1653,5 +1732,27 @@ mod tests {
         let (one, two) = keys_of_two_edits(&seen, first);
         assert!(!one.is_empty() && !two.is_empty());
         assert!(two.iter().all(|x| !one.contains(x)), "{one:?} {two:?}");
+    }
+
+    #[test]
+    fn aliased_glue_preserves_a_preexisting_tracker_without_invented_changes() {
+        use crate::geom::context::NotifyCallback;
+        use crate::topology::topology::TopologyChangeCallback;
+        let mut k = Kernel::default();
+        let mut b = Brep::new();
+        k.context
+            .set_sys_notify_callback(Some(Box::new(TopologyChangeCallback::new(27))));
+        // Native GlueVertices compares identities before using the pointer.
+        let v = VertexId::from_index(0);
+        let changes = glue_vertices(&mut k, &mut b, v, v).unwrap();
+        assert!(changes.removed.is_empty() && changes.added.is_empty());
+        let callback = k
+            .context
+            .sys_notify_callback()
+            .and_then(NotifyCallback::as_any)
+            .and_then(|a| a.downcast_ref::<TopologyChangeCallback>())
+            .unwrap();
+        assert_eq!(callback.tracker(), 27);
+        assert!(callback.lists().notify_events.is_empty());
     }
 }

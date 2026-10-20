@@ -2834,6 +2834,7 @@ fn turn_to_nurbs_in(k: &mut Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Re
             p2::replace_surface(
                 k,
                 b,
+                env,
                 f,
                 Surface::from(ext),
                 face_ref,
@@ -2849,7 +2850,7 @@ fn turn_to_nurbs_in(k: &mut Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Re
         // makes a missing NURB first
         let new_bss = Surface::from(with_nurb(k, surface)?.ok_or_else(ner)?.into_owned());
         let face_ref = (env.key_of)(EntityRef::Face(f));
-        p2::replace_surface(k, b, f, new_bss, face_ref, OldSurface::Delete, true)?;
+        p2::replace_surface(k, b, env, f, new_bss, face_ref, OldSurface::Delete, true)?;
     }
 
     // for every Brep->Curve
@@ -2895,7 +2896,7 @@ fn turn_to_nurbs_in(k: &mut Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Re
                 approx_tol,
                 false,
             ) {
-                Ok(l) => bsc = Some(Curve::from(l.curve)),
+                Ok(l) => bsc = Some(l.curve),
                 Err(err) if err.is_unported() => return Err(err),
                 Err(_) => {}
             }

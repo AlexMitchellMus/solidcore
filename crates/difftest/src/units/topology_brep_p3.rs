@@ -1171,9 +1171,7 @@ fn run_rust_op(
     let mut tracker =
         TrackTopologyChanges::new(Some(BrepId::from_index(0)), 7, true, Some(&mut ctx));
     // Execute's owner walk: each pre-op curve's GetOwner() is its edge
-    for (c, e) in owners {
-        tracker.set_owner(c, Some(e));
-    }
+    tracker.set_owner_metadata(owners.into_iter().map(|(c, e)| (c.key, Some(e))).collect());
     let r = run_rust_op_in(k, b, second, op, a, Some(&mut ctx));
     let lists = tracker.lists();
     tracker.finish(Some(&mut ctx));
