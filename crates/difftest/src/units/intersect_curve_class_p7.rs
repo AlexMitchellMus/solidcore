@@ -14,9 +14,13 @@
 //! as the `out` values. A Rust error maps to its `SmStatus` (`InvalidInput` 1007); an
 //! `Unported` error anywhere defers the case.
 //!
-//! Deferred cases: every op that reaches topology members (`SmVertex` / `SmEdge` connection
-//! tests, intervals, curves, points and tolerances: units `topology.vertex`, `topology.edge`),
-//! the topology zone tolerances of point classifications, in-surface gaps (the surface point
+//! The vertex, edge and face objects are B-rep records (see unit `intersect.curve_class_p1`,
+//! [`BareTopology`](super::intersect_curve_class_p1::BareTopology)), so the zone tolerances of
+//! their point classifications are compared.
+//!
+//! Deferred cases: every op that reaches other topology members (`SmVertex` / `SmEdge`
+//! connection tests, intervals, curves and points: units `topology.vertex`, `topology.edge`,
+//! still stubs in `intersect::curve_class::p7`), in-surface gaps (the surface point
 //! solve, `surface.surface_p4`) and the 2D pair tolerance on a surface (`surface.surface_p1`).
 //! Generated scripts are filtered by the shim's run-time checks (scripts it rejects as
 //! undefined upstream, or as topology walks over the bare stand-ins, are dropped).

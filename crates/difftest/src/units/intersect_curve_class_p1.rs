@@ -13,8 +13,12 @@
 //! its `SmStatus` (`InvalidInput` 1007, `-1` for one upstream cannot return); an `Unported`
 //! error anywhere defers the case.
 //!
-//! Deferred cases: ops that reach topology (`ComputePointParameters` on vertices, edges and
-//! faces, `sm_SetXSectEdgeThroughPoint`, `sm_GetCCIGeometry`, `sm_ComputeFacePointClass`),
+//! The vertex, edge and face objects are B-rep records ([`BareTopology`]), so their zone
+//! tolerances and the edge curve / face surface of `ComputePointParameters` are the ported
+//! topology members.
+//!
+//! Deferred cases: ops that reach other topology members (`sm_SetXSectEdgeThroughPoint`,
+//! `sm_GetCCIGeometry`, `sm_ComputeFacePointClass`),
 //! surface point solves (`ComputePointParameters` on surfaces, `sm_GetCCISurfaceGaps` with
 //! surfaces), `SmTol::MapTo2d` for a curve of dimension other than 2 or 3 on a surface
 //! (`SmSurface::DropPoint`) and an `SmCrvOnSurf` over a plane. Generated scripts are filtered by the shim's
@@ -48,7 +52,11 @@ use solidcore::nurbs::srf_basic::Surface as NurbSurface;
 use solidcore::surface::plane::Plane;
 use solidcore::surface::surface::Surface;
 use solidcore::surface::volume::Volume;
-use solidcore::SolidError;
+use solidcore::topology::edge as topo_edge;
+use solidcore::topology::face::p2 as topo_face;
+use solidcore::topology::vertex as topo_vertex;
+use solidcore::topology::{Brep, Edge, Face, Vertex, VertexId};
+use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::intersect_curve_class_p1::{self as ffi, kind, op};
 
 use crate::case::{CaseContext, CaseSource};
@@ -709,6 +717,8 @@ pub(crate) struct Pool {
     pub(crate) objs: Vec<PoolObj>,
     pub(crate) handles: Vec<H>,
     pub(crate) kinds: Vec<usize>,
+    /// The vertex, edge and face objects as B-rep records ([`BareTopology`]).
+    pub(crate) topo: BareTopology,
 }
 
 impl ClassGeometry<H> for Pool {
@@ -733,9 +743,141 @@ impl ClassGeometry<H> for Pool {
             _ => None,
         }
     }
+    fn classification_vertex_point(&self, o: H) -> Option<Vec3> {
+        self.topo.vertex_point(o.0)
+    }
+    fn topology_zone_tol_3d(&self, o: H) -> Option<f64> {
+        self.topo.zone_tol_3d(o.0)
+    }
+    fn topology_entity(&self, o: H) -> Option<(&Brep, EntityRef)> {
+        self.topo.entity(o.0)
+    }
+    fn topology_handle(&self, e: EntityRef) -> Option<H> {
+        self.handles.get(self.topo.index_of(e)?).copied()
+    }
+}
+
+/// The shim's topology objects as records of one B-rep, so that topology handles resolve
+/// through the [`ClassGeometry`] hooks to the ported topology members. The shims build
+/// default-constructed `SmVertex` / `SmEdge` / `SmFace` objects with only `m_pCurve` /
+/// `m_pSurface` set, never joined to a B-rep; their records here are in that state: a vertex
+/// at the origin with tolerance `0` and no vertex uses ([`Vertex::default`]), an edge with
+/// the curve, the empty interval, tolerance `0` and no edge uses, a face with the surface
+/// and nothing else ([`Face::new`]; its shell is a placeholder no list names).
+#[derive(Default)]
+pub(crate) struct BareTopology {
+    pub(crate) brep: Brep,
+    /// Per pool object: its entity (vertex, edge and face objects).
+    pub(crate) ents: Vec<Option<EntityRef>>,
+    /// Per pool object: for an edge object, the pool index of the curve it shares with the
+    /// shim's `SmEdge::m_pCurve`.
+    pub(crate) edge_curve: Vec<Option<usize>>,
+}
+
+impl BareTopology {
+    /// Appends the record of a pool object of kind `kind`: an edge on `curve` (its pool
+    /// index and curve), a face on `surface`, nothing for other kinds.
+    pub(crate) fn push(
+        &mut self,
+        kind: ClassObjectKind,
+        curve: Option<(usize, &Curve)>,
+        surface: Option<&Surface>,
+    ) -> Result<(), HarnessError> {
+        let e = |e: SolidError| harness(e.to_string());
+        let ent = match kind {
+            ClassObjectKind::Vertex => Some(EntityRef::Vertex(
+                self.brep.add_vertex_record(Vertex::default()).map_err(e)?,
+            )),
+            ClassObjectKind::Edge => Some(EntityRef::Edge(
+                self.brep
+                    .add_edge_record(Edge {
+                        // never read: an edge's vertices are those of its (absent) edge uses
+                        vertices: [VertexId::from_index(u32::MAX); 2],
+                        edgeuses: Vec::new(),
+                        interval: Extent1d::new(),
+                        tolerance: 0.0,
+                        curve: curve.map(|(_, c)| c.clone()),
+                    })
+                    .map_err(e)?,
+            )),
+            ClassObjectKind::Face => {
+                let shell = self.brep.add_shell().map_err(e)?;
+                let mut face = Face::new(shell);
+                face.surface = surface.cloned();
+                Some(EntityRef::Face(self.brep.add_face_record(face).map_err(e)?))
+            }
+            _ => None,
+        };
+        self.ents.push(ent);
+        self.edge_curve
+            .push(curve.filter(|_| kind == ClassObjectKind::Edge).map(|(i, _)| i));
+        Ok(())
+    }
+
+    /// The entity of pool object `i`.
+    pub(crate) fn ent(&self, i: usize) -> Option<EntityRef> {
+        self.ents.get(i).copied().flatten()
+    }
+
+    /// [`ClassGeometry::topology_entity`] of pool object `i`.
+    pub(crate) fn entity(&self, i: usize) -> Option<(&Brep, EntityRef)> {
+        self.ent(i).map(|e| (&self.brep, e))
+    }
+
+    /// The pool index of entity `e`.
+    pub(crate) fn index_of(&self, e: EntityRef) -> Option<usize> {
+        self.ents.iter().position(|t| *t == Some(e))
+    }
+
+    /// [`ClassGeometry::classification_vertex_point`] of pool object `i`.
+    pub(crate) fn vertex_point(&self, i: usize) -> Option<Vec3> {
+        match self.ent(i)? {
+            EntityRef::Vertex(v) => topo_vertex::point(&self.brep, v).ok(),
+            _ => None,
+        }
+    }
+
+    /// [`ClassGeometry::topology_zone_tol_3d`] of pool object `i` (`GetTolerance`).
+    pub(crate) fn zone_tol_3d(&self, i: usize) -> Option<f64> {
+        match self.ent(i)? {
+            EntityRef::Vertex(v) => topo_vertex::tolerance(&self.brep, v).ok(),
+            EntityRef::Edge(e) => topo_edge::tolerance(&self.brep, e).ok(),
+            EntityRef::Face(f) => topo_face::tolerance(&self.brep, f).ok(),
+            _ => None,
+        }
+    }
+
+    /// Pool curve `i` was edited: the edges sharing it (in the shim) follow.
+    pub(crate) fn curve_edited(&mut self, i: usize, c: &Curve) {
+        for j in 0..self.ents.len() {
+            if self.edge_curve.get(j).copied().flatten() != Some(i) {
+                continue;
+            }
+            if let Some(EntityRef::Edge(e)) = self.ent(j) {
+                if let Ok(r) = self.brep.edge_mut(e) {
+                    r.curve = Some(c.clone());
+                }
+            }
+        }
+    }
+
+    /// The pool index of the curve `c` is (by address) when it is an edge's curve: the
+    /// pool curve the shim's edge shares.
+    pub(crate) fn pool_curve_of(&self, c: &Curve) -> Option<usize> {
+        self.ents.iter().enumerate().find_map(|(j, t)| match t {
+            Some(EntityRef::Edge(e)) => match self.brep.edge(*e) {
+                Ok(r) if r.curve.as_ref().is_some_and(|x| core::ptr::eq(x, c)) => {
+                    self.edge_curve.get(j).copied().flatten()
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+    }
 }
 
 impl Pool {
+
     pub(crate) fn handle(&self, i: Option<usize>) -> Result<Option<H>, HarnessError> {
         i.map(|i| {
             self.handles
@@ -778,6 +920,8 @@ impl Pool {
     }
 
     fn put_curve(&mut self, i: usize, c: Curve) {
+        // the shim's edges share the pool curve: keep their records in step
+        self.topo.curve_edited(i, &c);
         if let Some(slot) = self.objs.get_mut(i) {
             *slot = PoolObj::Curve(c);
         }
@@ -816,6 +960,7 @@ pub(crate) fn build_pool(objects: &[ObjIn]) -> Result<Pool, HarnessError> {
         objs: Vec::new(),
         handles: Vec::new(),
         kinds: Vec::new(),
+        topo: BareTopology::default(),
     };
     for (i, o) in objects.iter().enumerate() {
         let k = obj_kind(o);
@@ -828,6 +973,25 @@ pub(crate) fn build_pool(objects: &[ObjIn]) -> Result<Pool, HarnessError> {
             ObjIn::Point(p) => PoolObj::Point(v3(*p)),
             _ => PoolObj::Bare,
         };
+        // the curve of an edge object, the surface of a face object (earlier pool objects;
+        // the shim rejects any other)
+        let edge_curve = match o {
+            ObjIn::Edge(c) => *c,
+            _ => None,
+        };
+        let face_surface = match o {
+            ObjIn::Face(sf) => *sf,
+            _ => None,
+        };
+        let curve = match edge_curve.map(|c| (c, pool.objs.get(c))) {
+            Some((c, Some(PoolObj::Curve(x)))) => Some((c, x)),
+            _ => None,
+        };
+        let surface = match face_surface.and_then(|sf| pool.objs.get(sf)) {
+            Some(PoolObj::Surface(x)) => Some(x),
+            _ => None,
+        };
+        pool.topo.push(class_kind_of(k), curve, surface)?;
         pool.objs.push(obj);
         pool.handles.push(H(i, class_kind_of(k)));
         pool.kinds.push(k);

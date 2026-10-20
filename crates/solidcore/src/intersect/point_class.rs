@@ -135,6 +135,8 @@ use crate::nurbs::knots::Side;
 use crate::surface::surface::p4::global_point_solve_starts;
 use crate::surface::surface::Surface;
 use crate::surface::volume::Volume;
+use crate::topology::edge as topo_edge;
+use crate::topology::face::p2 as topo_face;
 use crate::topology::{Brep, BrepId};
 
 /// Mutable topology and handle mapping for [`PointClassification::merge_into_brep`].
@@ -1017,8 +1019,9 @@ impl<O: ClassObject> PointClassification<O> {
     /// `SM_ERR` when the point does not drop onto the curve or has no single drop
     /// point on the surface (also at a hundred times the source zone tolerance) or
     /// volume; the errors of [`Curve::drop_point`] and [`Volume::global_point_solve`];
-    /// [`SolidError::Unported`] for surfaces (their point solve, unit
-    /// `surface.surface_p4`) and topology objects.
+    /// [`SolidError::Unported`] for edge uses (`SmEdgeuse::GetEdge`) and for edge and face
+    /// handles `geometry` cannot resolve to a B-rep entity
+    /// ([`ClassGeometry::topology_entity`]).
     pub fn compute_point_parameters(
         &mut self,
         k: &Kernel,
@@ -1068,15 +1071,38 @@ impl<O: ClassObject> PointClassification<O> {
                 ));
             }
             PointClassType::Edge => {
-                // UNPORTED(topology.edge): SmEdge::GetCurve
-                return Err(SolidError::unported("SmEdge::GetCurve", "topology.edge"));
+                // the edge's curve and interval (no curve: no projection)
+                let o = self.object.ok_or_else(|| null_object(OP_COMPUTE))?;
+                match geometry.topology_entity(o) {
+                    Some((b, EntityRef::Edge(e))) => {
+                        obj_curve = topo_edge::curve(b, e)?.zip(Some(topo_edge::interval(b, e)?));
+                    }
+                    Some(_) => return Err(unresolved(OP_COMPUTE)),
+                    None => {
+                        // an opaque handle (the adapter has no B-rep): still a deferral
+                        // UNPORTED(topology.edge): SmEdge::GetCurve (unresolved handle)
+                        return Err(SolidError::unported("SmEdge::GetCurve", "topology.edge"));
+                    }
+                }
             }
             PointClassType::Face => {
-                // UNPORTED(topology.face_p2): SmFace::GetSurface
-                return Err(SolidError::unported(
-                    "SmFace::GetSurface",
-                    "topology.face_p2",
-                ));
+                // the face's surface and UV domain (no surface: no projection)
+                let o = self.object.ok_or_else(|| null_object(OP_COMPUTE))?;
+                match geometry.topology_entity(o) {
+                    Some((b, EntityRef::Face(f))) => {
+                        obj_surface =
+                            topo_face::surface(b, f)?.zip(Some(topo_face::uv_domain(b, f)?));
+                    }
+                    Some(_) => return Err(unresolved(OP_COMPUTE)),
+                    None => {
+                        // an opaque handle (the adapter has no B-rep): still a deferral
+                        // UNPORTED(topology.face_p2): SmFace::GetSurface (unresolved handle)
+                        return Err(SolidError::unported(
+                            "SmFace::GetSurface",
+                            "topology.face_p2",
+                        ));
+                    }
+                }
             }
             PointClassType::Point
             | PointClassType::Vertex
