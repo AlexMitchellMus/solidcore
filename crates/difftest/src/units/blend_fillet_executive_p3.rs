@@ -62,8 +62,8 @@ fn missing<T>() -> SolidResult<T> {
 impl ExecutiveAccess<Handle> for Access {
     // This empty-B-rep fixture has no face handles or intersector world. These
     // required adapters reject nonexistent objects; they are not UNPORTED calls
-    // to the now-ported face p3, topology intersector p2, stitch p2 or fillet geom
-    // p4 implementations.
+    // to the now-ported face p3, topology intersector p2, stitch p2, fillet geom p4,
+    // fillet corner p3 or fillet solver p1 implementations.
     fn notify_face(
         &mut self,
         _: &mut Kernel,
@@ -114,6 +114,22 @@ impl ExecutiveAccess<Handle> for Access {
         missing()
     }
     fn insert_geom_topology(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> SolidResult<()> {
+        missing()
+    }
+    fn calc_corner_geom(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> SolidResult<()> {
+        missing()
+    }
+    fn trim_rails(
         &mut self,
         _: &mut Kernel,
         _: Handle,

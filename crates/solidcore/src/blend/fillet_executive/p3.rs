@@ -408,13 +408,15 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     }
 
     /// Virtual `AdjustTopology` dispatch. The base, 4x3 and `NxN` implementations
-    /// belong to `blend.fillet_corner_p1`; `ConvexNxN` belongs to
-    /// `blend.fillet_corner_p2`, and Nx2 to `blend.fillet_corner_p3`.
-    /// Adapters must dispatch by concrete corner type and return that owner's
-    /// `Unported` while it is missing, never substitute the base success default.
+    /// belong to `blend.fillet_corner_p1`, and `ConvexNxN` to `blend.fillet_corner_p2`.
+    /// Nx2 (and `ConvexNxN`) go to the already ported
+    /// `blend::fillet_corner::p3::FilletCorner::adjust_topology` (fillet corner p3),
+    /// which runs `SmFilletNx2Corner::AdjustTopology` and returns
+    /// `blend.fillet_corner_p2`'s `Unported` for `ConvexNxN`. Adapters must dispatch
+    /// by concrete corner type and return that owner's `Unported` while it is
+    /// missing, never substitute the base success default.
     // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::AdjustTopology / SmFillet4x3Corner::AdjustTopology / SmFilletNxNCorner::AdjustTopology
     // UNPORTED(blend.fillet_corner_p2): SmFilletConvexNxNCorner::AdjustTopology
-    // UNPORTED(blend.fillet_corner_p3): SmFilletNx2Corner::AdjustTopology
     fn adjust_topology(
         &mut self,
         k: &mut Kernel,
@@ -423,13 +425,15 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     ) -> Result<()>;
 
     /// Virtual `AdjustTangentCorner` dispatch. The base belongs to
-    /// `blend.fillet_corner_p1`, `Nx1Closed` to `blend.fillet_corner_p2`, and Nx2 to
-    /// `blend.fillet_corner_p3`. Adapters must dispatch by concrete corner type
-    /// and return that owner's `Unported` while it is missing, never substitute
-    /// the base success default.
+    /// `blend.fillet_corner_p1`, and `Nx1Closed` to `blend.fillet_corner_p2`. Nx2 (and
+    /// `Nx1Closed`) go to the already ported
+    /// `blend::fillet_corner::p3::FilletCorner::adjust_tangent_corner` (fillet corner
+    /// p3), which runs `SmFilletNx2Corner::AdjustTangentCorner` and returns
+    /// `blend.fillet_corner_p2`'s `Unported` for `Nx1Closed`. Adapters must dispatch by
+    /// concrete corner type and return that owner's `Unported` while it is missing,
+    /// never substitute the base success default.
     // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::AdjustTangentCorner
     // UNPORTED(blend.fillet_corner_p2): SmFilletNx1ClosedCorner::AdjustTangentCorner
-    // UNPORTED(blend.fillet_corner_p3): SmFilletNx2Corner::AdjustTangentCorner
     fn adjust_tangent_corner(
         &mut self,
         k: &mut Kernel,
@@ -465,19 +469,17 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         ))
     }
 
-    /// `SmFilletCorner::CalcCornerGeom`; waiting for `blend.fillet_corner_p3`.
+    /// `SmFilletCorner::CalcCornerGeom()` (`SmFilletExecutive.cpp:2448`): delegate to
+    /// the already ported `blend::fillet_corner::p3::FilletCorner::calc_corner_geom`
+    /// (fillet corner p3) on the corner `corner` resolves to, with its `CornerEnv`
+    /// (the target and fillet B-reps and the executive's solvers and edge-use map).
+    /// Its status is returned unchanged; the caller handles it as upstream does.
     fn calc_corner_geom(
         &mut self,
-        _k: &mut Kernel,
-        _corner: O,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_corner_p3): SmFilletCorner::CalcCornerGeom
-        Err(SolidError::unported(
-            "SmFilletCorner::CalcCornerGeom",
-            "blend.fillet_corner_p3",
-        ))
-    }
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
 
     /// Virtual `CalcFilletGeom` dispatch. The base belongs to
     /// `blend.fillet_solver_p4`; the `SurfaceSurfaceFS` override belongs to
@@ -492,19 +494,16 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         executive: &mut FilletExecutive<O>,
     ) -> Result<()>;
 
-    /// `SmFilletSolver::TrimRails`; waiting for `blend.fillet_solver_p1`.
+    /// `SmFilletSolver::TrimRails()` (`SmFilletExecutive.cpp:2350`): delegate to the
+    /// already ported `blend::fillet_solver::p1::FilletSolver::trim_rails` (fillet
+    /// solver p1) on the solver `solver` resolves to. Its status is returned
+    /// unchanged; the caller handles it as upstream does.
     fn trim_rails(
         &mut self,
-        _k: &mut Kernel,
-        _solver: O,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_solver_p1): SmFilletSolver::TrimRails
-        Err(SolidError::unported(
-            "SmFilletSolver::TrimRails",
-            "blend.fillet_solver_p1",
-        ))
-    }
+        k: &mut Kernel,
+        solver: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
 
     /// `SmFilletSolver::TestRollOver`; waiting for `blend.fillet_solver_p5`.
     fn test_rollover(

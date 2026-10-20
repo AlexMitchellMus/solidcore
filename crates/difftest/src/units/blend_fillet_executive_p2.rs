@@ -356,6 +356,22 @@ impl ExecutiveAccess<Handle> for Access {
     ) -> SolidResult<()> {
         missing()
     }
+    fn calc_corner_geom(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> SolidResult<()> {
+        missing()
+    }
+    fn trim_rails(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> SolidResult<()> {
+        missing()
+    }
     fn make_corner_topology(
         &mut self,
         _: &mut Kernel,
