@@ -9950,6 +9950,28 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   `SM_SUCCESS`). 20 adversarial `sm_CreateUVCurve` cases (seam pairs with negative and
   zero tolerances, cut corners, swapped revolution parameters, cone apexes, huge/tiny
   planes, coincident points) were added as fixtures; all bit-identical.
+- **Second review fixes (found by reading the C++; not reachable by difftest yet).**
+  (1) `sm_CalcNx2VertFilletXFillet` passes its two fillet surfaces straight to
+  `sm_SrfSrfIntersection`, which starts with `NER(pSurf1); NER(pSurf2)`: a `NULL` surface
+  (fewer than two cross-section edges, or a geometry without a fillet surface yet) is a
+  failed intersection, so the vertex becomes `SM_FIL_SURF_INT_FAILURE` and the call
+  returns `SM_ERR`. The first port returned `SM_ERR_NULL_POINTER` before the call and
+  left the vertex status alone (unit test `nx2_without_fillet_surfaces_is_surf_int_failure`;
+  the shim refuses vertices with a corner, so difftest cannot reach it). (2) `MakeFaceBrep`
+  holds the solver tolerance in an `SmApproxTol3d` (`USE_DEFAULT` -> zone/2, then `fabs`)
+  before using it as `d3dTol` and in `SmTol::MapTo2d`; the port used the raw value, so a
+  negative or `USE_DEFAULT` solver tolerance gave other trim and UV tolerances. Six
+  `make_face` fixtures with solver tolerances `-1e-6`, `-0.05` and `USE_DEFAULT` were
+  added; they defer at `JoinTwoFilletVertsByCurves` (`blend.fillet_geom_p6`) today and
+  will compare once p6 lands. (3) Smaller: `pPrimEU->GetMate()` and the UV curves of a
+  successful `sm_SrfSrfIntersection` are now dereferenced only where upstream does (the
+  final `SetUVCurve`, the rail branch of the corner blend, the reversal);
+  `InsertIntersectionTopology` passes a `NULL` fillet surface on to `RegisterExistingSSI`
+  instead of failing early; `sSSITol *= 10.0` in `sm_CreateUVCurve` is a plain multiply
+  (`tol_mul`). The corner blend's base surfaces with no B-spline net becoming `None` is
+  now in the Deviations line. 22 more adversarial `sm_CreateUVCurve` cases (spindle and
+  fan B-spline patches pinched at an edge at three scales, flat patches with zero, huge
+  and negative tolerances and points outside the domain) were added; all bit-identical.
 - **Disagreement outside this unit (fuzz, `--fuzz 30000`, 2 notes).**
   `SmSurface::GlobalPointSolve(SM_SO_INTERSECT)` on a real `SmPlane` *without* its NURB
   (`MakeNurb` not called) whose origin is very far from the test point (origin
@@ -9967,6 +9989,13 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   (checked under gdb), so the difference is inside the surface point solver's handling
   of an un-NURBed plane at that magnitude. Not fixed here (green unit
   `surface.surface_point_solve_p2`); the generator's planes stay within `1e6`.
+- **Two `FilletSolverOps` traits after merging main (2026-10-19).** `blend.fillet_intersector`
+  (#179, merged) co-ported a `FilletSolverOps` in `blend::fillet_intersector`, and
+  `blend.fillet_solver_p1` (#192, since merged) has its own in
+  `blend::fillet_solver::p1`. Both traits still exist on main (2026-10-20), and the
+  intersector still carries `UNPORTED(blend.fillet_solver_p1)` stubs although that unit
+  is now `partial`; unifying the traits and wiring those stubs is left to a follow-up.
+
 
 ## blend.fillet_corner_p3 (PR #256, 2026-10-19)
 
@@ -10006,9 +10035,62 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   with `Vec3::UNDEF`. (4) The `SplitFilletGeomAtSideEdge` stub is tagged
   `UNPORTED(blend.fillet_geom_p6)`: the function is ported in `blend.fillet_solver_p1`, but on
   the solver's `FilletGeomRef` stand-in, and its first call `GetRailIndexOfVertexuse` is
-  `blend.fillet_geom_p6`; wire the real call when that unit lands. (5) The 3x2 curve join
-  stores the joined B-spline part back into `SmEllipse`/`SmHyperbola`/`SmParabola` edge curves
-  in place, as it already did for `SmLine` (unobservable until `DropCurve` is ported).
+  `blend.fillet_geom_p6`; wire the real call when that unit lands (deliberate exception to
+  AGENTS.md 4a: the owning unit per `units.json` is `blend.fillet_solver_p1`, partial; wire it
+  once the solver's port moves from `FilletGeomRef` to `FilletGeomId`). (5) superseded by (6).
+- **Review fixes, round 2 (2026-10-19).** (6) `CreateCornerPatch` (3x2) calls
+  `pCurve1->JoinWith(1, pCurve2, 0)`, which is virtual: `SmLine` and `SmEllipse` override it
+  (`SmLine::JoinWith` rejects a bent or kinked other curve and uses a length-based gap
+  tolerance; the B-spline join accepts both). The port joined the `SmBSplineCurve` parts, so a
+  line on-extended edge ran the wrong join and left the line's analytic domain stale. It now
+  dispatches on the curve kind (as `topology::brep::p5::join_copied_curves` does) and stores
+  the whole joined `Curve` on the edge. The shim's pre-check had the same bug: it copied the
+  curves with the non-virtual `Copy(ctx, SmBSplineCurve*&)`, slicing an `SmLine` into an
+  `SmBSplineCurve`; it now uses the virtual `Copy(ctx, SmCurve*&)`. The corner model only
+  built B-spline pseudo-edge curves, so `CornerIn::line_edges` now replaces listed pseudo-edge
+  curves with real `SmLine`s on both sides, and `review_line_join.json` adds 48 adversarial
+  cases (line on-extended edge against bent, kinked and straight B-spline or line on-edges,
+  gaps 5e-4..1e-2 across both join tolerances, no original face, calc_geom, scales 1e-3/1/1e3).
+  Before the fix 3 of them failed (C++ `SM_ERR` with 4 corner edges, Rust joined and stopped at
+  the null original face with 3) and 18 were misclassified as deferred. `dump_curve`
+  (`blend_fillet_geom_p1` runner) now exports the `SmBSplineCurve` part of the analytic kinds,
+  matching the shim's `IsKindOf(SmBSplineCurve_TYPE)`.
+- **Review fixes, round 3 (2026-10-20).** (7) The `SmEllipse::JoinWith` arm of the 3x2
+  dispatch was never compared: the corner model built only B-spline and `SmLine` pseudo-edge
+  curves. The reviewer disabled that arm (ellipses fell through to the B-spline join) and 15 of
+  81 circle cases then failed against the C++ while every existing case still passed.
+  `CornerIn::arc_edges` (`[edge, cx, cy, cz, r, d0, d1]`) now replaces a pseudo-edge curve with
+  a real circle on both sides (`Ellipse::new_circle` / `SmCircle(center, X, Y,
+  SmExtent1d(d0, d1), r, 3, &ctx)` + `GetOrCreateGwNurbPointer` + `SetCurve`). The FFI guard
+  refuses exactly what the constructors assert on: `r <= SM_EFF_ZERO`, an end outside
+  `[-360, 360]`, or a domain length not in `(SM_EFF_ZERO, 360 + SM_EFF_ZERO]`.
+  `review_arc_join.json` (81 cases: circle on-extended edge against B-spline, bent, line,
+  same-circle, radius/origin off by 5e-4/2e-3/1e-2 and cusp on-edges; line or B-spline
+  on-extended edge against a circle on-edge; a negative domain; calc_geom; with and without an
+  original face; scales 1e-3/1/1e3) and `review_line_join_tol.json` (108 cases: straight
+  degree-1/3 B-spline on-extended edge joined to an `SmLine` on-edge, i.e. the B-spline
+  `JoinWith` `IsLine` path; gaps straddling the length-based tolerance along and across the
+  line, kinks 1e-4/3e-3/5e-3, L = 0.01 / 100, a folded collinear line; scales 1e-3/1/1e3) all
+  agree with the C++. The 40 of them refused are successful joins without an original face
+  (upstream then deletes harness objects; see below).
+- **Join notes for later porters.** (a) When `this` is a B-spline and `other` an
+  `SmLine`/`SmEllipse`, Rust runs the B-spline join on `other`'s `SmBSplineCurve` base, while
+  C++ calls `other`'s virtual `EvaluatePoint` / `ApproximateLength` / `IsLine` overrides. The
+  results differ at most at rounding level, and the review fixtures agree at 1e-9;
+  `topology::brep::p5::join_copied_curves` does the same. Revisit if a later unit compares
+  joined geometry tightly. (b) No successful 3x2 join result is compared: with an original
+  face the case defers at `SmSurface::DropCurve`, without one the shim refuses. The shim could
+  export the joined copy from its pre-check to compare the joined curve; not done yet. (c) On a
+  failed join the Rust side discards its cloned curves, while C++ `CreateByJoining` may
+  degree-elevate or convert the real edge curves in place before failing. Not observable with
+  the current fixtures (the corner fails right after), but the porter of whatever continues
+  after a failed join must mirror those in-place edits.
+- **Known gaps.** No `CreateCornerPatch` implementation compares surface output (default
+  patch stops at `MakeAnalyticCornerSurface`, Nx1 at `CreateEndPatch`, 3x2 at `DropCurve`).
+  `create_rust` defers a whole `Create` case when a face around the filleted edges is neither
+  plane nor B-spline (the import holds those faces only as their B-spline part), even when the
+  classification alone would compare. The `bspline_surface()` stub tags
+  `nurbs.b_spline_surface_n_lib_p2` (partial), following the `topology::brep::p1` precedent.
 
 ## primitive.api_primitives: review fixes (PR #160, 2026-10-19; no disagreements)
 
