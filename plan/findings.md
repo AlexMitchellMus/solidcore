@@ -9078,7 +9078,11 @@ one Rust type per C++ class: the constant-distance, curve-based and variable-rad
 `FilletSurfaceGeneratorType` are re-exported from here; `FilletSolver::is_kind_of` is `SmFilletSolver::IsKindOf`;
 `GuessSphereSolve` wraps `FilletSphereSolveEnfo` (it now takes the solver, as upstream's constructor does); and
 `FilletSurfaceGenerator::Circular` / `BlendCurve` hold #168's `CircularCrossSectionFsg` / `BlendCurveCrossSectionFsg` (continuity is
-`u32`, as #168 chose). `ConstantRadiusAssistedFs` (custom solver) stays #168's `ConstantRadiusFs` as before.
+`u32`, as #168 chose). `ConstantRadiusAssistedFs` (custom solver) stays #168's `ConstantRadiusFs` as before. `SmFilStatus`
+had three copies (`blend.fillet_geom_p1`, this unit, `blend.fillet_intersector`); the owner's (`fillet_geom::p1::FilStatus`) is
+re-exported by the other two, so the intersector's `SetStatus` no longer maps between enums. Not merged: the intersector's
+`FilletSolverOps` trait (the `SmFilletSolver` virtuals and members `SmFilletIntersector` calls, from #179) and this unit's
+`FilletSolverOps` are still two traits; `ConstantRadiusAssistedFs` implements both, the intersector's by delegating to the base.
 
 Wired with it: the `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` overrides of `ConstantRadiusAssistedFs`, `EiffelTowerFs` and
 `SecantConstantRadiusFs` (`GetJacobianSize`, `SetupOffsetValues`, `OffsetRadiiCanChange`, `GetType`, and `LoadJacobian` of
