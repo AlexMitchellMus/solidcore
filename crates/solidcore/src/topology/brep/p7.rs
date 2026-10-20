@@ -1011,7 +1011,7 @@ fn make_face_with_curves_impl(
                 let (_shell, v) = super::p9::make_shell_vertex_with_context(
                     k.context(),
                     b,
-                    Some(region),
+                    region,
                     start_pt,
                     state,
                 )?;
@@ -1091,7 +1091,7 @@ fn make_face_with_curves_impl(
     let mut loop_vertices: Vec<VertexId> = Vec::new();
     for &p in &loop_points {
         let (_shell, v) =
-            super::p9::make_shell_vertex_with_context(k.context(), b, Some(region), p, state)?;
+            super::p9::make_shell_vertex_with_context(k.context(), b, region, p, state)?;
         loop_vertices.push(v);
     }
 

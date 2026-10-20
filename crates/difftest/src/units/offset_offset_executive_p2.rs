@@ -40,6 +40,9 @@
 //! faces/edges/vertices, analytic kinds, vertex bounds, provenance and purity.
 //! Sheet boundary scaffolding follows p1's typed rectangular fixture pattern;
 //! its Line boundaries are not claimed equivalent to native isocurve kinds.
+//! Native sheet/wire construction must preserve the projected counts (1/1/4/8/4
+//! and 0/0/1/2/2); otherwise the fixture is rejected before selector resolution.
+//! Unprojected shell/region counts and arbitrary size/tolerance cutoffs are not guards.
 //! No topology is globally sorted. No arbitrary returned-Brep shape equivalence
 //! is claimed: a newly reachable non-deferred result/temporary fails closed until
 //! an output adapter is implemented, rather than guessing its missing metadata.
@@ -84,7 +87,8 @@ use solidcore::surface::surface::{Surface, SurfaceKind};
 use solidcore::topology::topology::Topology;
 use solidcore::topology::{
     Brep, BrepId, Edge, EdgeId, Edgeuse, EdgeuseOwner, Face, FaceId, Faceuse, Loop, LoopEdge,
-    Loopuse, LoopuseStart, Region, Shell, ShellId, Vertex, VertexId, Vertexuse, VertexuseOwner,
+    Loopuse, LoopuseStart, Region, RegionId, Shell, ShellId, Vertex, VertexId, Vertexuse,
+    VertexuseOwner,
 };
 use solidcore::SolidError;
 use solidcore_ffi::units::offset_offset_executive_p2 as ffi;
@@ -556,7 +560,7 @@ fn add_use(
     brep.edge_mut(edge).map_err(setup)?.edgeuses.push(use_id);
     Ok(use_id)
 }
-fn add_shell(brep: &mut Brep, region: solidcore::topology::RegionId) -> HResult<ShellId> {
+fn add_shell(brep: &mut Brep, region: RegionId) -> HResult<ShellId> {
     let shell = brep
         .add_shell_record(Shell {
             region: Some(region),
@@ -799,12 +803,7 @@ fn build(fixture: &Fixture, tolerance: f64) -> HResult<Brep> {
 
 // Input-only rectilinear scaffold. Unlike the missing SmBrep copy constructor,
 // this creates distinct analytic geometry and typed topology from DTO scalars.
-fn build_box(
-    brep: &mut Brep,
-    region: solidcore::topology::RegionId,
-    origin: [f64; 3],
-    size: [f64; 3],
-) -> HResult<()> {
+fn build_box(brep: &mut Brep, region: RegionId, origin: [f64; 3], size: [f64; 3]) -> HResult<()> {
     if size.iter().any(|value| *value <= 0.0) {
         return Err(bad("box fixture constructor requires positive dimensions"));
     }
@@ -1457,6 +1456,22 @@ fn result_notification_key(entity: EntityRef) -> ObjectRef {
     notification_key(entity, 3)
 }
 
+fn original_curve_key(edge: EdgeId, type_code: i64) -> ObjectRef {
+    ObjectRef {
+        key: ObjectKey((5_u64 << 60) | ((type_code as u64) << 32) | u64::from(edge.index())),
+        type_code,
+    }
+}
+
+// Source lists are opaque notification handles, disjoint from topology and curves.
+fn boolean_source_lists(result: bool, region: RegionId) -> [ObjectRef; 2] {
+    let namespace = if result { 7_u64 } else { 6_u64 };
+    [0_u64, 1].map(|list| ObjectRef {
+        key: ObjectKey((namespace << 60) | (list << 32) | u64::from(region.index())),
+        type_code: 0,
+    })
+}
+
 fn result_curve_key(edge: EdgeId, type_code: i64) -> ObjectRef {
     ObjectRef {
         key: ObjectKey((4_u64 << 60) | ((type_code as u64) << 32) | u64::from(edge.index())),
@@ -1531,7 +1546,9 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
         attributes: &mut attributes,
         original_key_of: &original_notification_key,
         result_key_of: &result_notification_key,
+        original_curve_ref: &original_curve_key,
         result_curve_ref: &result_curve_key,
+        boolean_source_lists: &boolean_source_lists,
         result_brep,
     };
     let keys = selections(input, source.as_ref(), foreign.as_ref())?;
@@ -1987,13 +2004,26 @@ mod tests {
         let result_edge = result_notification_key(EntityRef::Edge(edge));
         let source_vertex = original_notification_key(EntityRef::Vertex(vertex));
         let curve = result_curve_key(edge, 17001);
+        let original_curve = original_curve_key(edge, 17001);
+        let region = RegionId::from_index(0);
+        let source_lists = boolean_source_lists(false, region);
+        let result_lists = boolean_source_lists(true, region);
         let identities = [
             source_edge.key,
             result_edge.key,
             source_vertex.key,
             curve.key,
+            original_curve.key,
+            source_lists[0].key,
+            source_lists[1].key,
+            result_lists[0].key,
+            result_lists[1].key,
         ];
-        assert_eq!(identities.into_iter().collect::<BTreeSet<_>>().len(), 4);
+        assert_eq!(identities.into_iter().collect::<BTreeSet<_>>().len(), 9);
+        assert!(source_lists
+            .into_iter()
+            .chain(result_lists)
+            .all(|h| h.type_code == 0));
         let mut source = build(&sheet([0.0; 3], 1.0, 0), 1e-6).unwrap();
         let mut foreign = build(&sheet([0.0; 3], 1.0, 0), 1e-6).unwrap();
         let mut records = BTreeMap::new();
@@ -2439,6 +2469,86 @@ mod tests {
             }
         }
         assert_eq!((rejected, compared), (8, 2));
+    }
+
+    fn assert_native_constructor_control(case: &Case, cpp: &Output, counts: [i64; 5]) {
+        let input: Inputs = case.parse().unwrap();
+        let rust = Runner.run_rust(case).unwrap();
+        for output in [cpp, &rust] {
+            assert!(output.rejected.is_none() && output.error.is_none());
+            assert!(output.deferred.is_none());
+            let status = if input.operation.member() { 1006 } else { 1007 };
+            assert_eq!(output.ints["status"], [status]);
+            assert_eq!(output.ints["input.pure"], [1, 1]);
+            assert_eq!(
+                output.ints["ownership"],
+                [0, i64::from(input.source.is_some()), 0]
+            );
+            assert_eq!(
+                output.ints["selected.before"],
+                output.ints["selected.after"]
+            );
+            for (key, fixture) in [
+                ("source", input.source.as_ref()),
+                ("foreign", input.foreign.as_ref()),
+            ] {
+                if fixture.is_some() {
+                    for when in ["before", "after"] {
+                        assert_eq!(output.ints[&format!("{key}.{when}.counts")], counts);
+                        assert!(!output.values[&format!("{key}.{when}.geometry")].is_empty());
+                    }
+                }
+            }
+        }
+        let comparison = crate::compare::compare(cpp, &rust, Runner.abs_floors());
+        assert!(comparison.pass(), "{}: {comparison:?}", case.name);
+        assert!(comparison.values_compared > 0 && comparison.exact_compared > 0);
+    }
+
+    #[test]
+    fn incomplete_native_sheets_are_rejected_without_hiding_valid_controls() {
+        let context = CaseContext {
+            root: repo_root(),
+            seeds: 0,
+        };
+        let (mut rejected, mut compared) = (0, 0);
+        for case in context.fixture_cases(Runner.id()).unwrap() {
+            if !case.name.starts_with("review_sheet_") {
+                continue;
+            }
+            let cpp = Runner.run_cpp(&case).unwrap();
+            assert!(cpp.error.is_none() && cpp.deferred.is_none());
+            if case.name.ends_with("_control") {
+                assert_native_constructor_control(&case, &cpp, [1, 1, 4, 8, 4]);
+                compared += 1;
+            } else {
+                assert_eq!(
+                    cpp.rejected.as_deref(),
+                    Some("native fixture constructor status_1001")
+                );
+                assert!(cpp.ints.is_empty() && cpp.values.is_empty());
+                rejected += 1;
+            }
+        }
+        assert_eq!((rejected, compared), (9, 4));
+    }
+
+    #[test]
+    fn stable_native_wire_controls_compare_topology_and_geometry_at_extremes() {
+        let context = CaseContext {
+            root: repo_root(),
+            seeds: 0,
+        };
+        let mut compared = 0;
+        for case in context.fixture_cases(Runner.id()).unwrap() {
+            if !case.name.starts_with("review_wire_") {
+                continue;
+            }
+            let cpp = Runner.run_cpp(&case).unwrap();
+            assert_native_constructor_control(&case, &cpp, [0, 0, 1, 2, 2]);
+            compared += 1;
+        }
+        assert_eq!(compared, 5);
     }
 
     #[test]

@@ -31,13 +31,21 @@
 //! Generic geometry creators are available, but the executive's FaceuseOffset/SSI
 //! and cross-arena geometry backends are not yet integrated.
 //! Continuations after missing calls are documented there, including ignored-status
-//! calls. Scoped Boolean changes and mark locks are restored on every `Result` exit.
+//! calls. The executive's temporary Boolean scope and mark locks are restored on
+//! every `Result` exit. The shell difference delegates native context/error state
+//! to the real Boolean adapter; late deferred errors report actual operand ownership,
+//! not parity with the native ownership flag.
 //! There is no new recursion; all owned loops are bounded by existing arena/relation lengths.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::p1::{OffsetExecutive, OffsetOperation};
+use crate::boolean::merge::p4::{
+    BooleanKernels, KernelManifoldIntersector, ManifoldKernelAdapter, ManifoldNotificationKeys,
+    ManifoldState,
+};
 use crate::error::{EntityRef, Result, SolidError};
+use crate::geom::a_object::BooleanOperation;
 use crate::geom::attribute::{AttributeStore, ObjectKey};
 use crate::geom::context::{with_mark_lock, MarkType, ALL_MARKS};
 use crate::geom::object::{FaceKey, NotifyOperation, ObjectRef};
@@ -78,8 +86,17 @@ pub struct OffsetNotifications<'a> {
     pub original_key_of: &'a dyn Fn(EntityRef) -> ObjectRef,
     /// Disjoint object identities in the result arena, including newly made entities.
     pub result_key_of: &'a dyn Fn(EntityRef) -> ObjectRef,
+    /// Identities of source edge curves (the second argument is the curve type).
+    /// Shell Booleans may split edges in either operand, not only the offset.
+    pub original_curve_ref: &'a dyn Fn(EdgeId, i64) -> ObjectRef,
     /// Identities of result edge curves (the second argument is the curve type).
     pub result_curve_ref: &'a dyn Fn(EdgeId, i64) -> ObjectRef,
+    /// Reserved region source-list handles for Boolean propagation. The first
+    /// argument selects the result arena (`true`) or original arena (`false`);
+    /// the returned pair identifies primary-source and other-source lists.
+    /// Handles have type code zero and distinct keys disjoint from every object
+    /// and other list handle in the shared stores. See `ManifoldNotificationKeys`.
+    pub boolean_source_lists: &'a dyn Fn(bool, RegionId) -> [ObjectRef; 2],
     /// Reserved, caller-owned identity of the result B-rep.
     pub result_brep: ObjectRef,
 }
@@ -127,6 +144,8 @@ pub struct SolidOffsetOptions {
 /// `retained_input` is present on failures before consumption and on the successful
 /// non-manifold/no-side-walls return. It is absent if the input was consumed or
 /// returned as the result: the same B-rep is never represented by two owned values.
+/// In particular a positive shell Boolean can consume the input before a late
+/// deferred cache/transform error; its actual operand slot controls this report.
 /// Currently the real manifold query defers before ownership can transfer.
 #[derive(Debug)]
 pub struct ShellOutcome {
@@ -137,7 +156,11 @@ pub struct ShellOutcome {
 }
 
 impl ShellOutcome {
-    /// The ownership-reporting overload's `rbInputOwnershipTransferred` value.
+    /// Whether the caller no longer owns the input separately.
+    ///
+    /// On native-comparable exits this matches `rbInputOwnershipTransferred`.
+    /// A deferred exit reports the actual retained Rust allocation, not parity
+    /// with a native flag: native code would continue through the missing callee.
     pub const fn input_ownership_transferred(&self) -> bool {
         self.retained_input.is_none()
     }
@@ -173,21 +196,23 @@ impl OffsetExecutive {
     /// mutably for lazy UV trim geometry; any retained input keeps those updates.
     pub fn shell_brep(
         kernel: &mut Kernel,
-        mut original: Brep,
+        original: Brep,
         options: ShellOptions,
         faces: &[FaceId],
         notifications: &mut OffsetNotifications<'_>,
     ) -> ShellOutcome {
+        let mut input = Some(original);
         let result = (|| {
+            let original = required(input.as_mut(), OP_SHELL)?;
             // cpp:206–215: do not move the guard before this real query.
             let radius = options.offset.distance.abs();
             let tolerance = original.tolerance();
-            let input_is_manifold = brep_is_manifold_solid(&original)?;
+            let input_is_manifold = brep_is_manifold_solid(original)?;
             check_shell_radius(radius, tolerance)?;
 
             // cpp:217–251: the helper's scope drops any separately retained
             // executive temporary before querying the result's manifold status.
-            let mut shell = run_shell_offset(kernel, &mut original, options, faces, notifications)?;
+            let mut shell = run_shell_offset(kernel, original, options, faces, notifications)?;
             if !brep_is_manifold_solid(&shell)? && !options.create_offset_solid {
                 return Ok(shell);
             }
@@ -207,22 +232,18 @@ impl OffsetExecutive {
                 ));
             }
 
-            // Continuation cpp:328–346: ManifoldBoolean(DIFFERENCE), with tolerance
-            // and 20.0 * PI / 180.0. Negative distance uses (original, shell),
-            // otherwise (shell, original). Input ownership transfers only on
-            // success; ordinary Boolean errors propagate unchanged. Both signs
-            // reach the same unavailable function, so do not fake either result.
-            // UNPORTED(boolean.merge_p4): SmMerge::ManifoldBoolean
-            Err(SolidError::unported(
-                "SmMerge::ManifoldBoolean",
-                "boolean.merge_p4",
-            ))
+            shell_difference(
+                kernel,
+                &mut input,
+                shell,
+                options.offset.distance,
+                tolerance,
+                notifications,
+            )
         })();
-        // Every currently executable return retains the input. Consumption and
-        // returned-input cases are beyond the explicit missing calls above.
         ShellOutcome {
             result,
-            retained_input: Some(original),
+            retained_input: input,
         }
     }
 
@@ -718,6 +739,116 @@ fn run_shell_offset(
     )
 }
 
+fn shell_difference(
+    kernel: &mut Kernel,
+    original: &mut Option<Brep>,
+    shell: Brep,
+    distance: f64,
+    tolerance: f64,
+    notifications: &mut OffsetNotifications<'_>,
+) -> Result<Brep> {
+    shell_difference_with(
+        kernel,
+        original,
+        shell,
+        distance,
+        tolerance,
+        notifications,
+        |adapter, kernels, primary, other, attributes| {
+            adapter.manifold_boolean(
+                kernels,
+                primary,
+                other,
+                &mut ManifoldState::default(),
+                attributes,
+                true,
+                BooleanOperation::Difference,
+                None,
+            )
+        },
+    )
+}
+
+// The seam isolates the otherwise latent continuation from earlier unported
+// manifold/offset queries. Production always runs the adapter's real Boolean.
+fn shell_difference_with(
+    kernel: &mut Kernel,
+    original: &mut Option<Brep>,
+    shell: Brep,
+    distance: f64,
+    tolerance: f64,
+    notifications: &mut OffsetNotifications<'_>,
+    boolean: impl FnOnce(
+        &mut ManifoldKernelAdapter<'_>,
+        &mut BooleanKernels<'_>,
+        &mut Option<Brep>,
+        &mut Option<Brep>,
+        &mut AttributeStore,
+    ) -> Result<bool>,
+) -> Result<Brep> {
+    let inset = distance < 0.0;
+    let source_lists = |region| (notifications.boolean_source_lists)(!inset, region);
+    let keys = ManifoldNotificationKeys {
+        primary: if inset {
+            notifications.original_key_of
+        } else {
+            notifications.result_key_of
+        },
+        other: if inset {
+            notifications.result_key_of
+        } else {
+            notifications.original_key_of
+        },
+        primary_curve: if inset {
+            notifications.original_curve_ref
+        } else {
+            notifications.result_curve_ref
+        },
+        other_curve: if inset {
+            notifications.result_curve_ref
+        } else {
+            notifications.original_curve_ref
+        },
+        source_lists: &source_lists,
+    };
+    let mut shell = Some(shell);
+    let (primary, other) = if inset {
+        (&mut *original, &mut shell)
+    } else {
+        (&mut shell, &mut *original)
+    };
+    let result =
+        KernelManifoldIntersector::with_notifications(keys, notifications.records, |adapter| {
+            adapter.configure_operands(
+                required(primary.as_ref(), OP_SHELL)?,
+                required(other.as_ref(), OP_SHELL)?,
+                tolerance,
+                20.0 * crate::math::PI / 180.0,
+            )?;
+            boolean(
+                adapter,
+                &mut BooleanKernels {
+                    primary: kernel,
+                    other: None,
+                },
+                primary,
+                other,
+                notifications.attributes,
+            )
+        });
+    match result {
+        // Difference assigns rpResult to primary, not a clone. A still-present
+        // original on error remains in its caller slot; other may already have
+        // been consumed before a late cache/inverse-transform error (p4).
+        Ok(true) => required(primary.take(), OP_SHELL),
+        Ok(false) => Err(SolidError::invalid_input(
+            OP_SHELL,
+            "Difference did not assign its result",
+        )),
+        Err(error) => Err(error),
+    }
+}
+
 fn collapse_offset_status<T>(result: Result<T>) -> Result<T> {
     result.map_err(|error| {
         if error.is_unported() {
@@ -841,6 +972,25 @@ mod tests {
         }
     }
 
+    fn original_curve(edge: EdgeId, type_code: i64) -> ObjectRef {
+        ObjectRef {
+            key: ObjectKey(400_000_000_000 + u64::from(edge.index())),
+            type_code,
+        }
+    }
+
+    fn boolean_source_lists(result: bool, region: RegionId) -> [ObjectRef; 2] {
+        [0, 1].map(|list| ObjectRef {
+            key: ObjectKey(
+                500_000_000_000
+                    + u64::from(result) * 10_000_000_000
+                    + u64::from(region.index()) * 2
+                    + list,
+            ),
+            type_code: 0,
+        })
+    }
+
     fn source_brep() -> Brep {
         let mut brep = Brep::new();
         brep.set_key(original_key(EntityRef::Brep(BrepId::from_index(0))).key);
@@ -917,7 +1067,9 @@ mod tests {
                 attributes: &mut self.attributes,
                 original_key_of: &original_key,
                 result_key_of: &result_key,
+                original_curve_ref: &original_curve,
                 result_curve_ref: &result_curve,
+                boolean_source_lists: &boolean_source_lists,
                 result_brep: result_key(EntityRef::Brep(BrepId::from_index(0))),
             }
         }
@@ -1667,7 +1819,9 @@ mod tests {
                 attributes: &mut fixture.attributes,
                 original_key_of: &never_key,
                 result_key_of: &never_key,
+                original_curve_ref: &never_curve,
                 result_curve_ref: &never_curve,
+                boolean_source_lists: &|_, _| panic!("guard called a source-list callback"),
                 result_brep: result_key(EntityRef::Brep(BrepId::from_index(0))),
             };
             assert_status(
@@ -2212,6 +2366,265 @@ mod tests {
                 },
             );
             assert!(!kernel.context.doing_boolean());
+        }
+    }
+
+    #[test]
+    fn shell_boolean_continuation_uses_the_production_dependency_not_self_deferral() {
+        for distance in [-0.25, 0.25, -0.0, 0.0] {
+            let original = source_brep();
+            let key = original.key();
+            let mut fixture = NotificationFixture::new(&original);
+            let mut input = Some(original);
+            let mut kernel = Kernel::default();
+            let mut shell = Brep::new();
+            shell.set_key(result_key(EntityRef::Brep(BrepId::from_index(0))).key);
+            let mut lock = MarkLock::new(std::slice::from_mut(&mut kernel.context), 0, 1).unwrap();
+            let mark = lock.mark_type();
+            let before = kernel.context.current_mark(mark);
+            assert_dependency(
+                shell_difference(
+                    &mut kernel,
+                    &mut input,
+                    shell,
+                    distance,
+                    1.0e-6,
+                    &mut fixture.context(),
+                ),
+                "SmBrep::CalculateBoundingBox",
+                "query.brep",
+            );
+            assert_eq!(input.as_ref().unwrap().key(), key);
+            assert!(fixture.records.contains_key(&key));
+            assert!(kernel.context.is_mark_locked(mark));
+            assert_eq!(kernel.context.current_mark(mark), before);
+            lock.release(std::slice::from_mut(&mut kernel.context))
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn latent_shell_auto_tolerance_defers_at_its_actual_callee_before_boolean_or_consumption() {
+        for distance in [-0.25, 0.25, -0.0, 0.0] {
+            let original = source_brep();
+            let original_key_value = original.key();
+            let mut fixture = NotificationFixture::new(&original);
+            let mut input = Some(original);
+            let mut kernel = Kernel::default();
+            assert_dependency(
+                shell_difference_with(
+                    &mut kernel,
+                    &mut input,
+                    Brep::new(),
+                    distance,
+                    crate::math::EFF_ZERO * 0.5,
+                    &mut fixture.context(),
+                    |_, _, _, _, _| panic!("auto-tolerance dependency was skipped"),
+                ),
+                "SmMerge::SmMerge (automatic tolerances)",
+                "boolean.merge_p2",
+            );
+            assert_eq!(input.as_ref().unwrap().key(), original_key_value);
+            assert!(fixture.records.contains_key(&original_key_value));
+            assert!(!kernel.context.doing_boolean());
+        }
+    }
+
+    #[test]
+    fn latent_shell_boolean_orders_operands_and_reports_real_consumption_on_every_exit() {
+        use crate::boolean::merge::p4::{ManifoldIntersector, MergeEntity};
+        for distance in [-0.25, 0.25, -0.0, 0.0] {
+            for exit in [0, 1, 2] {
+                // success, early error, post-consumption error
+                let original = source_brep();
+                let original_key_value = original.key();
+                let mut fixture = NotificationFixture::new(&original);
+                let mut input = Some(original);
+                let mut shell = Brep::new();
+                let shell_key = result_key(EntityRef::Brep(BrepId::from_index(0))).key;
+                shell.set_key(shell_key);
+                let mut kernel = Kernel::default();
+                kernel.context.set_doing_boolean(true);
+                let mut lock =
+                    MarkLock::new(std::slice::from_mut(&mut kernel.context), 0, 1).unwrap();
+                let mark = lock.mark_type();
+                let before = kernel.context.current_mark(mark);
+                let result = shell_difference_with(
+                    &mut kernel,
+                    &mut input,
+                    shell,
+                    distance,
+                    3.125e-7,
+                    &mut fixture.context(),
+                    |adapter, kernels, primary, other, _| {
+                        let inset = distance < 0.0;
+                        assert_eq!(
+                            primary.as_ref().unwrap().key(),
+                            if inset { original_key_value } else { shell_key }
+                        );
+                        assert_eq!(
+                            other.as_ref().unwrap().key(),
+                            if inset { shell_key } else { original_key_value }
+                        );
+                        let vertex = EntityRef::Vertex(crate::topology::VertexId::from_index(0));
+                        assert_eq!(
+                            adapter.object_key(
+                                false,
+                                MergeEntity::Vertex(crate::topology::VertexId::from_index(0))
+                            ),
+                            (if inset { original_key } else { result_key })(vertex).key
+                        );
+                        assert_eq!(
+                            adapter.intersection_tolerances(),
+                            (3.125e-7, 20.0 * PI / 180.0)
+                        );
+                        assert_eq!(
+                            adapter.merge.options,
+                            crate::boolean::merge::p1::MergeOptions::default()
+                        );
+                        assert!(kernels.other.is_none());
+                        assert!(kernels.primary.context.doing_boolean());
+                        assert!(kernels.primary.context.is_mark_locked(mark));
+                        assert_eq!(kernels.primary.context.current_mark(mark), before);
+                        if exit == 1 {
+                            return Err(SolidError::sm_err("test::early"));
+                        }
+                        *other = None;
+                        if exit == 2 {
+                            return Err(SolidError::unported(
+                                "SmBrep::DeleteStaleCaches",
+                                "topology.brep_p2",
+                            ));
+                        }
+                        Ok(true)
+                    },
+                );
+                if exit == 0 {
+                    assert_eq!(
+                        result.unwrap().key(),
+                        if distance < 0.0 {
+                            original_key_value
+                        } else {
+                            shell_key
+                        }
+                    );
+                    assert!(input.is_none());
+                } else {
+                    assert!(result.is_err());
+                    assert_eq!(input.is_some(), exit == 1 || distance < 0.0);
+                }
+                assert!(fixture.records.contains_key(&original_key_value));
+                assert!(fixture.records.contains_key(&shell_key));
+                assert!(kernel.context.doing_boolean());
+                assert!(kernel.context.is_mark_locked(mark));
+                lock.release(std::slice::from_mut(&mut kernel.context))
+                    .unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn latent_shell_boolean_routes_region_attributes_and_real_callbacks_after_operand_swap() {
+        use crate::boolean::merge::p4::{ManifoldIntersector, MergeEntity};
+        use crate::geom::attribute::{ids, Attribute, Behavior};
+        for distance in [-0.25, 0.25, -0.0, 0.0] {
+            let mut original = source_brep();
+            let region = original
+                .add_region_record(Region {
+                    in_brep: true,
+                    ..Region::default()
+                })
+                .unwrap();
+            original.region_mut(region).unwrap().set_is_void(0);
+            let mut shell = Brep::new();
+            shell.set_key(result_key(EntityRef::Brep(BrepId::from_index(0))).key);
+            assert_eq!(
+                shell
+                    .add_region_record(Region {
+                        in_brep: true,
+                        ..Region::default()
+                    })
+                    .unwrap(),
+                region
+            );
+            shell.region_mut(region).unwrap().set_is_void(0);
+            let mut fixture = NotificationFixture::new(&original);
+            fixture
+                .records
+                .insert(result_key(EntityRef::Region(region)).key, Topology::new());
+            let inset = distance < 0.0;
+            let primary_key =
+                (if inset { original_key } else { result_key })(EntityRef::Region(region)).key;
+            let other_key =
+                (if inset { result_key } else { original_key })(EntityRef::Region(region)).key;
+            let merge = fixture
+                .attributes
+                .insert(Attribute::merge_region(primary_key, 0, other_key, 0))
+                .unwrap();
+            fixture
+                .attributes
+                .add_attribute(primary_key, merge)
+                .unwrap();
+            let color = fixture
+                .attributes
+                .insert(Attribute::color(81, Vec3::Y, Behavior::Copy))
+                .unwrap();
+            fixture
+                .attributes
+                .add_attribute(primary_key, color)
+                .unwrap();
+            let mut kernel = Kernel::default();
+            kernel
+                .context
+                .set_user_notify_callback(Some(Box::new(NotificationLog::default())));
+            let mut input = Some(original);
+            assert_status(
+                shell_difference_with(
+                    &mut kernel,
+                    &mut input,
+                    shell,
+                    distance,
+                    1.0e-6,
+                    &mut fixture.context(),
+                    |adapter, kernels, primary, other, attributes| {
+                        assert_eq!(
+                            adapter.object_key(false, MergeEntity::Region(region)),
+                            primary_key
+                        );
+                        adapter.propagate_regions(
+                            kernels,
+                            primary.as_ref().unwrap(),
+                            other.as_ref().unwrap(),
+                            attributes,
+                            BooleanOperation::Difference,
+                        )?;
+                        Err(SolidError::sm_err("test::after-notify"))
+                    },
+                ),
+                SM_ERR,
+            );
+            let log = kernel
+                .context
+                .user_notify_callback()
+                .unwrap()
+                .as_any()
+                .unwrap()
+                .downcast_ref::<NotificationLog>()
+                .unwrap();
+            let notice = log
+                .0
+                .iter()
+                .find(|notice| notice.0 == NotifyOperation::RegPropagation)
+                .unwrap();
+            assert_eq!(notice.1.key, primary_key);
+            assert_eq!(notice.2, Some(boolean_source_lists(!inset, region)[0]));
+            assert!(fixture
+                .attributes
+                .find_attribute(primary_key, ids::OTHER_REGION_ID)
+                .is_none());
+            assert!(fixture.attributes.find_attribute(primary_key, 81).is_some());
+            assert!(fixture.records.contains_key(&other_key));
+            assert!(input.is_some());
         }
     }
 

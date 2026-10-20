@@ -237,6 +237,22 @@ template<class T> struct PendingGeometry {
 SmPoint3d point(const std::array<double, 15>& v, size_t i) {
     return SmPoint3d(v[i], v[i+1], v[i+2]);
 }
+void representable_topology(SmBrep* brep, ULONG face_count, ULONG loop_count,
+                            ULONG edge_count, ULONG edgeuse_count, ULONG vertex_count) {
+    SmTArray<SmFace*> faces;
+    SmTArray<SmLoop*> loops;
+    SmTArray<SmEdge*> edges;
+    SmTArray<SmEdgeuse*> edgeuses;
+    SmTArray<SmVertex*> vertices;
+    brep->GetFaces(faces); brep->GetLoops(loops); brep->GetEdges(edges);
+    brep->GetEdgeuses(edgeuses); brep->GetVertices(vertices);
+    // Only DTO-projected counts are required; native shell/region scaffolding
+    // intentionally differs. The allocation observer owns rejection cleanup.
+    if (faces.GetSize() != face_count || loops.GetSize() != loop_count ||
+        edges.GetSize() != edge_count || edgeuses.GetSize() != edgeuse_count ||
+        vertices.GetSize() != vertex_count)
+        throw Rejected{SM_ERR};
+}
 SmBrep* build(const Spec& s, SmContext& ctx, double tolerance) {
     if (!s.kind) return nullptr;
     const auto& v = s.v;
@@ -277,6 +293,7 @@ SmBrep* build(const Spec& s, SmContext& ctx, double tolerance) {
         // MakeWireEdge may attach the curve before returning an error. The
         // pending guard only deletes it if it still has no native topology owner.
         constructed(result->MakeWireEdge(nullptr, first, second, line, trim, SM_OT_SAME, edge));
+        representable_topology(result, 0, 0, 1, 2, 2);
         if (!edge) throw std::runtime_error("successful wire constructor returned null");
     } else if (s.kind == 3) {
         SmExtent2d domain(SmPoint2d(v[11],v[12]), SmPoint2d(v[13],v[14]));
@@ -285,6 +302,10 @@ SmBrep* build(const Spec& s, SmContext& ctx, double tolerance) {
         };
         SmFace* face = nullptr;
         constructed(result->CreateFaceFromSurface(pending.ptr, domain, face));
+        // CreateFaceFromSurface may succeed after tolerance-driven boundary
+        // merges/removal. Reject unrepresentable topology before any selectors
+        // or executive/API calls, without imposing a size or tolerance cutoff.
+        representable_topology(result, 1, 1, 4, 8, 4);
         if (!face) throw std::runtime_error("successful sheet constructor returned null");
     }
     return result;

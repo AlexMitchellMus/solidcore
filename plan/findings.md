@@ -9079,6 +9079,55 @@ successful offset/shell geometry.
   is weakened, skipped or patched here. No full local native `--green` run is
   claimed for this revision. Fresh full GitHub CI is required after the push.
 
+- **Review correction after main `3132491e` (2026-10-20).** The p7 merge conflict
+  is resolved without reverting notification-aware p9 construction. Main's region
+  is already optional; both context-aware callsites now forward it directly.
+  The shell manifold-difference continuation calls the landed production adapter,
+  with negative `(original, shell)` and nonnegative `(shell, original)` order,
+  `Difference`, caller tolerance and `20.0 * PI / 180.0`. Caller topology/curve
+  identities, actual records/attributes and the live kernel context are threaded
+  through the existing adapter, not replaced by namespace-zero stores or a cloned
+  context. `OffsetNotifications` additionally requires `original_curve_ref` and
+  `boolean_source_lists` (reserved type-zero primary/other region-list handles).
+  The original namespace-backed Boolean API is preserved. A record-scope drop
+  guard returns partial edits on success, returned error and user-callback unwind.
+  Automatic tolerances (`distance < EFF_ZERO`) remain the explicit missing
+  `boolean.merge_p2` constructor dependency owned by #229, rather than duplicating
+  that claimed constructor or inventing an edge-size tolerance. The borrowed
+  cache path stops at `BuildTrees`' genuine missing `CalculateBoundingBox` call;
+  future cache wiring still requires live-kernel access. Native Boolean deletion
+  of the other operand precedes ignored cache cleanup, so a late deferred exit
+  reports the actual surviving Rust operand slots. This is **not** parity with
+  the native ownership flag on a path that native code would continue executing.
+  No successful constructive Boolean is newly certified.
+  The native sheet/wire fixture builder now checks actual projected counts before
+  selector resolution: sheet 1/1/4/8/4 and wire 0/0/1/2/2 (faces/loops/edges/uses/
+  vertices). Tolerance-driven degeneration becomes a constructor rejection, not a
+  mismatched Rust/native scaffold or a parity pass. There is no arbitrary size or
+  tolerance cutoff, no shell-count constraint and no independent rejection delete;
+  the existing observer owns cleanup. Eighteen fixtures add the two exact review
+  reproductions, source/foreign and null/indexed variants, the tolerance-0.5 sheet
+  control, a large sheet at tolerance 1e3 and tiny/huge/zero-trim wire controls.
+  The new report has **322 cases: 129 passes with values, 176 deferred, 17 rejected,
+  zero failures**, maximum relative error zero; sensitivity detects 129/129.
+  All original 304 case records are unchanged. P1 (688/4/1-rejected), manifold
+  Boolean (30/278/3-rejected) and p7 (197/119) reports are byte-identical, with zero
+  failures. P1 and Boolean perturbations detect 688/688 and 30/30 respectively.
+  Formatting, strict Clippy with/without C++, default workspace tests (1570 kernel
+  tests), wasm, 21 p2 CPP FFI tests and 18 p2 CPP runner tests pass in local Docker.
+  Focused kernel tests cover signs including both zeros, identity/attribute routing,
+  real callbacks, constructor deferral, late ownership, cache deferral and unwind
+  restoration. Independent GPT-6-Astra review found and verified the fix for record
+  loss on unwind, then found no remaining code blockers. These latent-path tests
+  do not substitute for native successful-shape comparisons; full x86-64 CI remains
+  required, and no new local full-manifest or full CPP runner-library pass is claimed.
+  **Open executive geometry integration:** `FaceuseOffset`, `EdgeuseOffset` and
+  `VertexOffset` need a production `OffsetBrep` bridge over original/result arenas
+  and owned geometry/SSI stores. The algorithms in `offset.offset_geometry_creation`
+  are landed; the 67 self-attributed p2 deferrals identify the missing bridge, not
+  an unported p2 entrypoint. The narrow vertex bridge is a separate PR #288; the
+  face/edge construction continuations and fail-closed output adapter still need work.
+
 ## topology.brep_p1 (`SmBrep` members, collections, `sm_*` helpers of `SmBrep.cpp`, PR #145, 2026-10-16; partial, no disagreements)
 
 Difftest (`fixtures/topology.brep_p1/`: 2335 cases on the 15 upstream `.smb` files read by

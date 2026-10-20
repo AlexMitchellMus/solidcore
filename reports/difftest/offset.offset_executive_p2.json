@@ -642,6 +642,355 @@
       "values_compared": 28
     },
     {
+      "inputs": {
+        "config": {
+          "create_offset_solid": true,
+          "extend_convex": true,
+          "inset": true,
+          "member_approx_tol": 1e+300,
+          "member_distance": 1e-300
+        },
+        "foreign": {
+          "domain": [0, 0, 1, 1],
+          "kind": "plane_sheet",
+          "origin": [3, 4, 5],
+          "scale": [1, 1],
+          "x_axis": [1, 0, 0],
+          "y_axis": [0, 0, 1]
+        },
+        "operation": "extended",
+        "source": null,
+        "tolerance": 1000.0
+      },
+      "max_rel_err": 0.0,
+      "name": "review_sheet_extended_foreign_null_source",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "native fixture constructor status_1001",
+      "source": "fixture:fixtures/offset.offset_executive_p2/review_sheet_wire_construction.json#0 (upstream source/SMLib/src/SmBrep.cpp:4618-4631 (exact extended foreign-sheet review reproduction))",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "config": {
+          "offset_distance": 10
+        },
+        "faces": [
+          {
+            "origin": "null"
+          }
+        ],
+        "operation": "api_shell",
+        "source": {
+          "domain": [0, 0, 1, 1],
+          "kind": "plane_sheet",
+          "origin": [3, 4, 5],
+          "scale": [1, 1],
+          "x_axis": [1, 0, 0],
+          "y_axis": [0, 0, 1]
+        },
+        "tolerance": 0.9
+      },
+      "max_rel_err": 0.0,
+      "name": "review_sheet_merged_source_null",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "native fixture constructor status_1001",
+      "source": "fixture:fixtures/offset.offset_executive_p2/review_sheet_wire_construction.json#1 (upstream source/SMLib/src/SmBrep.cpp:4618-4631 (exact API sheet review reproduction))",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "config": {
+          "offset_distance": 10
+        },
+        "faces": [
+          {
+            "index": 0,
+            "origin": "source"
+          }
+        ],
+        "operation": "api_shell",
+        "source": {
+          "domain": [0, 0, 1, 1],
+          "kind": "plane_sheet",
+          "origin": [3, 4, 5],
+          "scale": [1, 1],
+          "x_axis": [1, 0, 0],
+          "y_axis": [0, 0, 1]
+        },
+        "tolerance": 0.9
+      },
+      "max_rel_err": 0.0,
+      "name": "review_sheet_merged_source_selected",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "native fixture constructor status_1001",
+      "source": "fixture:fixtures/offset.offset_executive_p2/review_sheet_wire_construction.json#2 (upstream source/SMLib/src/SmBrep.cpp:4618-4631 (source selector after merged sheet construction))",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "config": {
+          "offset_distance": 10
+        },
+        "faces": [
+          {
+            "origin": "null"
+          }
+        ],
+        "foreign": {
+          "domain": [0, 0, 1, 1],
+          "kind": "plane_sheet",
+          "origin": [3, 4, 5],
+          "scale": [1, 1],
+          "x_axis": [1, 0, 0],
+          "y_axis": [0, 0, 1]
+        },
+        "operation": "api_shell",
+        "source": {
+          "kind": "empty"
+        },
+        "tolerance": 0.9
+      },
+      "max_rel_err": 0.0,
+      "name": "review_sheet_merged_foreign_null",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "native fixture constructor status_1001",
+      "source": "fixture:fixtures/offset.offset_executive_p2/review_sheet_wire_construction.json#3 (upstream source/SMLib/src/SmBrep.cpp:4618-4631 (foreign construction after allocating a source))",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "config": {
+          "offset_distance": 10
+        },
+        "faces": [
+          {
+            "index": 0,
+            "origin": "foreign"
+          }
+        ],
+        "foreign": {
+          "domain": [0, 0, 1, 1],
+          "kind": "plane_sheet",
+          "origin": [3, 4, 5],
+          "scale": [1, 1],
+          "x_axis": [1, 0, 0],
+          "y_axis": [0, 0, 1]
+        },
+        "operation": "api_shell",
+        "source": {
+          "kind": "empty"
+        },
+        "tolerance": 0.9
+      },
+      "max_rel_err": 0.0,
+      "name": "review_sheet_merged_foreign_selected",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "native fixture constructor status_1001",
+      "source": "fixture:fixtures/offset.offset_executive_p2/review_sheet_wire_construction.json#4 (upstream source/SMLib/src/SmBrep.cpp:4618-4631 (foreign selector after merged sheet construction))",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "config": {
+          "offset_distance": 10
+        },
+        "faces": [
+          {
+            "origin": "null"
+          }
+        ],
+        "operation": "api_shell",
+        "source": {
+          "domain": [0, 0, 1, 1],
+          "kind": "plane_sheet",
+          "origin": [3, 4, 5],
+          "scale": [1, 1],
+          "x_axis": [1, 0, 0],
+          "y_axis": [0, 0, 1]
+        },
+        "tolerance": 1000.0
+      },
+      "max_rel_err": 0.0,
+      "name": "review_sheet_dropped_source_null",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "native fixture constructor status_1001",
+      "source": "fixture:fixtures/offset.offset_executive_p2/review_sheet_wire_construction.json#5 (upstream source/SMLib/src/SmBrep.cpp:4618-4631 (dropped source boundary topology))",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "config": {
+          "offset_distance": 10
+        },
+        "faces": [
+          {
+            "index": 0,
+            "origin": "source"
+          }
+        ],
+        "operation": "api_shell",
+        "source": {
+          "domain": [0, 0, 1, 1],
+          "kind": "plane_sheet",
+          "origin": [3, 4, 5],
+          "scale": [1, 1],
+          "x_axis": [1, 0, 0],
+          "y_axis": [0, 0, 1]
+        },
+        "tolerance": 1000.0
+      },
+      "max_rel_err": 0.0,
+      "name": "review_sheet_dropped_source_selected",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "native fixture constructor status_1001",
+      "source": "fixture:fixtures/offset.offset_executive_p2/review_sheet_wire_construction.json#6 (upstream source/SMLib/src/SmBrep.cpp:4618-4631 (indexed source selection must not become a traversal exception))",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "config": {
+          "offset_distance": 10
+        },
+        "faces": [
+          {
+            "origin": "null"
+          }
+        ],
+        "foreign": {
+          "domain": [0, 0, 1, 1],
+          "kind": "plane_sheet",
+          "origin": [3, 4, 5],
+          "scale": [1, 1],
+          "x_axis": [1, 0, 0],
+          "y_axis": [0, 0, 1]
+        },
+        "operation": "api_shell",
+        "source": {
+          "kind": "empty"
+        },
+        "tolerance": 1000.0
+      },
+      "max_rel_err": 0.0,
+      "name": "review_sheet_dropped_foreign_null",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "native fixture constructor status_1001",
+      "source": "fixture:fixtures/offset.offset_executive_p2/review_sheet_wire_construction.json#7 (upstream source/SMLib/src/SmBrep.cpp:4618-4631 (dropped foreign boundary topology))",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "config": {
+          "offset_distance": 10
+        },
+        "faces": [
+          {
+            "index": 0,
+            "origin": "foreign"
+          }
+        ],
+        "foreign": {
+          "domain": [0, 0, 1, 1],
+          "kind": "plane_sheet",
+          "origin": [3, 4, 5],
+          "scale": [1, 1],
+          "x_axis": [1, 0, 0],
+          "y_axis": [0, 0, 1]
+        },
+        "operation": "api_shell",
+        "source": {
+          "kind": "empty"
+        },
+        "tolerance": 1000.0
+      },
+      "max_rel_err": 0.0,
+      "name": "review_sheet_dropped_foreign_selected",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "native fixture constructor status_1001",
+      "source": "fixture:fixtures/offset.offset_executive_p2/review_sheet_wire_construction.json#8 (upstream source/SMLib/src/SmBrep.cpp:4618-4631 (indexed foreign selection must not become a traversal exception))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "review_sheet_half_tolerance_source_null_control",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p2/review_sheet_wire_construction.json#9 (upstream source/SMLib/src/SmBrep.cpp:4618-4631 (review tolerance 0.5 real-comparison control))",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "review_sheet_half_tolerance_foreign_selected_control",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p2/review_sheet_wire_construction.json#10 (upstream source/SMLib/src/SmBrep.cpp:4618-4631 (valid source/foreign geometry and ordered selectors))",
+      "values_compared": 108
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "review_sheet_half_tolerance_extended_foreign_control",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p2/review_sheet_wire_construction.json#11 (upstream source/SMLib/src/SmBrep.cpp:4618-4631 (exact extended reproduction with representable tolerance))",
+      "values_compared": 57
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "review_sheet_large_high_tolerance_source_null_control",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p2/review_sheet_wire_construction.json#12 (upstream source/SMLib/src/SmBrep.cpp:4618-4631 (no arbitrary tolerance cutoff))",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "review_wire_high_tolerance_source_control",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p2/review_sheet_wire_construction.json#13 (upstream source/SMLib/src/SmBrep.cpp:21630-21744 (wire topology, not shell count or tolerance cutoff))",
+      "values_compared": 34
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "review_wire_high_tolerance_foreign_control",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p2/review_sheet_wire_construction.json#14 (upstream source/SMLib/src/SmBrep.cpp:21630-21744 (foreign wire retained on member NER))",
+      "values_compared": 37
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "review_wire_zero_span_trim_control",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p2/review_sheet_wire_construction.json#15 (upstream source/SMLib/src/SmBrep.cpp:21630-21744 (coincident endpoints remain two allocated DTO vertices))",
+      "values_compared": 34
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "review_wire_tiny_geometry_control",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p2/review_sheet_wire_construction.json#16 (upstream source/SMLib/src/SmBrep.cpp:21630-21744 (tiny wire with large tolerance remains representable))",
+      "values_compared": 34
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "review_wire_huge_geometry_control",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p2/review_sheet_wire_construction.json#17 (upstream source/SMLib/src/SmBrep.cpp:21630-21744 (large-scale wire and trimmed subdomain))",
+      "values_compared": 34
+    },
+    {
       "deferred": {
         "symbol": "SmBrep::IsManifoldSolid",
         "unit": "topology.brep_p2"
@@ -3309,9 +3658,9 @@
   "cases_both_errored": 0,
   "cases_deferred": 176,
   "cases_failed": 0,
-  "cases_passed": 120,
-  "cases_rejected": 8,
-  "cases_total": 304,
+  "cases_passed": 129,
+  "cases_rejected": 17,
+  "cases_total": 322,
   "deferred_by_unit": {
     "offset.offset_executive_p2": 67,
     "query.brep": 3,

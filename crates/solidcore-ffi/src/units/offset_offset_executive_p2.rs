@@ -77,8 +77,14 @@
 //! Output is `[-1, status]` ONLY for a fixture-construction rejection. A box
 //! constructor can report success after ignoring face-creation failures; actual
 //! face/edge/vertex counts other than 6/12/8 are rejected with `SM_ERR` (`1001`).
-//! This check applies to source and foreign boxes, without size-based cutoffs.
-//! Malformed inputs and adapter exceptions remain transport errors, not rejections.
+//! Sheet construction may succeed after merging/dropping boundary topology; its
+//! face/loop/edge/edgeuse/vertex counts must be 1/1/4/8/4, and wire counts must be
+//! 0/0/1/2/2. A difference is likewise `SM_ERR`. These post-construction checks
+//! apply to source and foreign fixtures before selectors/operations, with no
+//! size/tolerance cutoff. Unprojected shell/region counts are not restricted.
+//! The observer reclaims rejected B-reps after pending geometry guards unwind;
+//! no independent delete is added on rejection. Malformed inputs and adapter
+//! exceptions remain transport errors, not rejections.
 //! Built fixtures always produce:
 //!
 //! ```text
@@ -751,6 +757,23 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "cpp")]
+    fn unit_sheet() -> Fixture {
+        Fixture::PlaneSheet {
+            origin: [3.0, 4.0, 5.0],
+            x_axis: [1.0, 0.0, 0.0],
+            y_axis: [0.0, 0.0, 1.0],
+            scale: [1.0, 1.0],
+            domain: [0.0, 0.0, 1.0, 1.0],
+        }
+    }
+
+    #[cfg(feature = "cpp")]
+    fn measured_counts(block: &BrepSnapshot) -> [i64; 5] {
+        let counts = &block.integers;
+        [counts[2], counts[3], counts[4], counts[5], counts[6]]
+    }
+
     #[test]
     fn signed_public_offsets_and_internal_magnitudes_are_distinct() {
         for operation in [
@@ -1244,6 +1267,207 @@ mod tests {
             assert_eq!(status, crate::SC_ERR_ARG);
             assert_eq!(out, [42.0; 2]);
             assert_eq!(len, -1);
+        }
+    }
+
+    #[cfg(feature = "cpp")]
+    #[test]
+    fn native_incomplete_source_and_foreign_sheets_are_constructor_rejections() {
+        for tolerance in [0.9, 1e3] {
+            for foreign in [false, true] {
+                let indexed = if foreign {
+                    FaceSelection::Foreign(0)
+                } else {
+                    FaceSelection::Source(0)
+                };
+                for selection in [FaceSelection::Null, indexed] {
+                    let mut r = request(Operation::ApiShell);
+                    if foreign {
+                        r.foreign = Some(unit_sheet());
+                    } else {
+                        r.source = Some(unit_sheet());
+                    }
+                    r.faces = vec![selection];
+                    r.tolerance = tolerance;
+                    r.config.offset_distance = 10.0;
+                    assert_eq!(eval(&r).unwrap(), Outcome::Rejected { status: 1001 });
+
+                    // A foreign rejection also cleans the already allocated source.
+                    // The next call must retain real geometry and selector identity.
+                    r.tolerance = 0.5;
+                    r.faces = vec![FaceSelection::Null, indexed];
+                    let Outcome::Built(snapshot) = eval(&r).unwrap() else {
+                        panic!("representable sheet must reach API selection validation")
+                    };
+                    let block = if foreign {
+                        snapshot.foreign_before.as_ref()
+                    } else {
+                        snapshot.source_before.as_ref()
+                    };
+                    assert_eq!(measured_counts(block.unwrap()), [1, 1, 4, 8, 4]);
+                    assert_eq!(snapshot.status, NATIVE_INVALID_INPUT);
+                    assert_eq!(snapshot.source_before, snapshot.source_after);
+                    assert_eq!(snapshot.foreign_before, snapshot.foreign_after);
+                    assert_eq!(
+                        snapshot.selected_before,
+                        vec![[2, -1], [i64::from(foreign), 0]]
+                    );
+                    assert_eq!(snapshot.selected_before, snapshot.selected_after);
+                    assert_eq!(snapshot.source_lifetime, 1);
+                    assert_eq!(snapshot.doing_boolean[0], snapshot.doing_boolean[1]);
+                    assert!(!snapshot.input_transferred);
+                    assert!(snapshot.result.is_none() && snapshot.executive_offset.is_none());
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "cpp")]
+    #[test]
+    fn native_sheet_rejection_precedes_member_null_guard_with_extreme_scalars() {
+        let mut r = request(Operation::Extended);
+        r.source = None;
+        r.foreign = Some(unit_sheet());
+        r.tolerance = 1e3;
+        r.config.member_distance = 1e-300;
+        r.config.member_approx_tol = 1e300;
+        r.config.inset = true;
+        r.config.extend_convex = true;
+        r.config.create_offset_solid = true;
+        assert_eq!(eval(&r).unwrap(), Outcome::Rejected { status: 1001 });
+
+        r.tolerance = 0.5;
+        let Outcome::Built(snapshot) = eval(&r).unwrap() else {
+            panic!("representable foreign sheet must reach the member null guard")
+        };
+        assert_eq!(snapshot.status, NATIVE_NULL_POINTER);
+        assert_eq!(snapshot.source_lifetime, 0);
+        assert!(snapshot.source_before.is_none() && snapshot.source_after.is_none());
+        assert_eq!(snapshot.foreign_before, snapshot.foreign_after);
+        assert_eq!(
+            measured_counts(snapshot.foreign_before.as_ref().unwrap()),
+            [1, 1, 4, 8, 4]
+        );
+        let executive = snapshot.executive.as_ref().unwrap();
+        assert_eq!(executive.distance, 1e-300);
+        assert_eq!(executive.approx_tol, 1e300);
+        assert!(executive.inset && executive.extend_convex && executive.create_offset_solid);
+        assert_eq!(snapshot.doing_boolean[0], snapshot.doing_boolean[1]);
+        assert!(!snapshot.input_transferred);
+        assert!(snapshot.result.is_none() && snapshot.executive_offset.is_none());
+    }
+
+    #[cfg(feature = "cpp")]
+    #[test]
+    fn native_stable_wires_do_not_require_matching_shell_counts_or_tolerance_cutoffs() {
+        let wire = |end, interval| Fixture::Wire {
+            start: [0.0; 3],
+            end,
+            domain: [0.0, 1.0],
+            interval,
+        };
+        for (fixture, tolerance) in [
+            (wire([1.0, 0.0, 0.0], [0.0, 1.0]), 1e3),
+            (wire([1.0, 0.0, 0.0], [0.5, 0.5]), 1e-6),
+            (wire([1e-9, 0.0, 0.0], [0.0, 1.0]), 1e3),
+            (
+                Fixture::Wire {
+                    start: [-1e100, 2e100, -3e100],
+                    end: [1e100, -2e100, 3e100],
+                    domain: [-2.0, 3.0],
+                    interval: [-1.5, 2.25],
+                },
+                1e-6,
+            ),
+        ] {
+            for foreign in [false, true] {
+                let mut r = request(Operation::ApiShell);
+                if foreign {
+                    r.foreign = Some(fixture.clone());
+                } else {
+                    r.source = Some(fixture.clone());
+                }
+                r.faces = vec![FaceSelection::Null];
+                r.tolerance = tolerance;
+                let Outcome::Built(snapshot) = eval(&r).unwrap() else {
+                    panic!("stable wire must not be rejected for unprojected shell counts")
+                };
+                let block = if foreign {
+                    snapshot.foreign_before.as_ref()
+                } else {
+                    snapshot.source_before.as_ref()
+                };
+                assert_eq!(measured_counts(block.unwrap()), [0, 0, 1, 2, 2]);
+                assert_eq!(snapshot.status, NATIVE_INVALID_INPUT);
+                assert_eq!(snapshot.source_before, snapshot.source_after);
+                assert_eq!(snapshot.foreign_before, snapshot.foreign_after);
+                assert_eq!(snapshot.selected_before, vec![[2, -1]]);
+                assert_eq!(snapshot.selected_before, snapshot.selected_after);
+                assert_eq!(snapshot.source_lifetime, 1);
+                assert_eq!(snapshot.doing_boolean[0], snapshot.doing_boolean[1]);
+                assert!(!snapshot.input_transferred);
+                assert!(snapshot.result.is_none() && snapshot.executive_offset.is_none());
+            }
+        }
+    }
+
+    #[cfg(feature = "cpp")]
+    #[test]
+    fn native_incomplete_sheets_do_not_hide_malformed_adapter_input() {
+        for foreign in [false, true] {
+            let mut r = request(Operation::ApiShell);
+            if foreign {
+                r.foreign = Some(unit_sheet());
+            } else {
+                r.source = Some(unit_sheet());
+            }
+            r.faces = vec![if foreign {
+                FaceSelection::Foreign(0)
+            } else {
+                FaceSelection::Source(0)
+            }];
+            r.tolerance = 0.9;
+            let base = pack(&r).unwrap();
+            let mut invalid_inputs = Vec::new();
+            let mut invalid_selector = base.clone();
+            *invalid_selector.last_mut().unwrap() = 1.0;
+            invalid_inputs.push(invalid_selector);
+            let mut trailing_data = base.clone();
+            trailing_data.push(0.0);
+            invalid_inputs.push(trailing_data);
+            invalid_inputs.push(base[..base.len() - 1].to_vec());
+            for (index, value) in [(1, f64::NAN), (4, f64::INFINITY), (7, 2.0)] {
+                let mut input = base.clone();
+                input[index] = value;
+                invalid_inputs.push(input);
+            }
+            r.tolerance = 0.5;
+            r.faces = vec![FaceSelection::Null];
+            for input in invalid_inputs {
+                let mut out = [42.0; 2];
+                let mut len = -1;
+                // SAFETY: buffers and lengths are valid; only encoded DTO contents
+                // are deliberately malformed. Parsing must finish before allocation.
+                let status = unsafe {
+                    sys::sc_offset_offset_executive_p2_eval(
+                        input.as_ptr(),
+                        input.len() as i64,
+                        out.as_mut_ptr(),
+                        out.len() as i64,
+                        &raw mut len,
+                    )
+                };
+                assert_eq!(status, crate::SC_ERR_ARG);
+                assert_eq!(out, [42.0; 2]);
+                assert_eq!(len, -1);
+                let Outcome::Built(snapshot) = eval(&r).unwrap() else {
+                    panic!("malformed input must not poison the subsequent valid call")
+                };
+                assert_eq!(snapshot.status, NATIVE_INVALID_INPUT);
+                assert_eq!(snapshot.source_before, snapshot.source_after);
+                assert_eq!(snapshot.foreign_before, snapshot.foreign_after);
+                assert_eq!(snapshot.doing_boolean[0], snapshot.doing_boolean[1]);
+            }
         }
     }
 
