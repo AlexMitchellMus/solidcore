@@ -39,8 +39,10 @@
 //! a 3D curve and no UV curve is refused only when the curves run opposite (the shape
 //! test is replicated). The runner mirrors every guard on the imported B-reps. The run
 //! header takes any finite offset distance (zero included) and any finite tolerance that
-//! is not negative: upstream neither crashes nor hangs at zero (the `*_zero_distance` and
-//! `*_zero_approx` cases, one pair per op family), so only a negative tolerance is refused.
+//! is not negative: upstream neither crashes nor hangs at zero (every generated script
+//! ran at each zero; the `*_zero_distance` and `*_zero_approx` cases keep the bases whose
+//! compared output changes at zero), so only a negative tolerance is refused, and the
+//! runner mirrors that refusal (`approx_negative`) as it does the B-rep guards.
 //!
 //! **Hang guards (`-6`, the script stops; the case defers).** The shim does not run two
 //! ops the Rust side defers at anyway, as they can take minutes or not return (the
@@ -1626,8 +1628,14 @@ fn resolve(i: &Inputs, c: &mut Counts, two: &Two) -> Result<(RHeader, Vec<ROp>),
             Some(_) => Err(format!("unresolvable_{what}_kind")),
         }
     };
-    // header (the local pairs come last: their store surfaces are named against the
-    // store the ops fill, and resolved again at each local op)
+    // header: the FFI refuses a negative tolerance (no upstream caller passes one, and the
+    // port's curve-cache tessellation runs to its iteration bound on it, fuzz00405),
+    // mirrored here so that neither side runs the script
+    if i.approx < 0.0 {
+        return Err("approx_negative".into());
+    }
+    // (the local pairs come last: their store surfaces are named against the store the
+    // ops fill, and resolved again at each local op)
     let mut shell = Vec::new();
     for (j, f) in i.shell.iter().enumerate() {
         shell.push(hk(c, *f, &[K_FACE], true, 3, &format!("shell{j}"))?);
@@ -3143,6 +3151,8 @@ impl UnitDiff for Runner {
                 inputs,
             });
         }
+        let zero = zero_header_cases(self.id(), &cases)?;
+        cases.extend(zero);
         Ok(cases)
     }
 
@@ -3175,8 +3185,8 @@ const fn h(b: i64, kind: u8, i: i64) -> Hin {
 const NULL_H: Hin = [-1, K_NULL, -1];
 
 /// Cases built in code: each op on real solid B-reps with explicit geometry, at unit,
-/// tiny and huge scale, plus the guard refusals on the wire network and the run header
-/// at zero.
+/// tiny and huge scale, plus the guard refusals on the wire network (the run header at
+/// zero is [`zero_header_cases`]).
 #[allow(clippy::too_many_lines)]
 fn edge_cases() -> Vec<(String, Value)> {
     let mut out = Vec::new();
@@ -3923,40 +3933,52 @@ fn edge_cases() -> Vec<(String, Value)> {
     }];
     add("cone_have_tangent_gaps_no_samples", i);
 
-    // the run header at zero (maintainer review of #156): an offset distance of 0 and an
-    // approximation tolerance of 0 each on one case per op family
-    let picks = [
-        "cone_fixture_ops",
-        "_replace_edge_curves",
-        "_vertex_offset",
-        "_edgeuse_offset_",
-        "_edgeuse_offset_rails_",
-        "_trim_extended_edge",
-        "cone_mate_extend_local",
-        "local_offset_late_surface",
-    ];
-    let mut zero = Vec::new();
-    for pat in picks {
-        let pick = out
-            .iter()
-            .find(|(n, _)| n.contains(pat) && (pat.contains("rails") || !n.contains("_rails_")));
-        let Some((name, v)) = pick else { continue };
-        let Ok(i) = serde_json::from_value::<Inputs>(v.clone()) else {
-            continue;
-        };
-        for (suffix, dist, approx) in [
-            ("zero_distance", 0.0, i.approx),
-            ("zero_approx", i.dist, 0.0),
-        ] {
-            let mut z = i.clone();
-            z.dist = dist;
-            z.approx = approx;
-            if let Ok(v) = serde_json::to_value(z) {
-                zero.push((format!("{name}_{suffix}"), v));
+    out
+}
+
+/// Bases of the `*_zero_distance` cases: their compared output changes at `dist = 0`.
+///
+/// A sweep of the 800 generated scripts at `dist = 0` (the `Getters` echo of the header
+/// left out) changes 67 compared results, every one a script with a `FaceuseOffset` (the
+/// offset surface at distance 0) or a `VertexOffset` (the radius-0 arc, status 1007);
+/// `EdgeuseOffset` reads the distance on its rail path only, which defers. The built-in
+/// `cone_vertex_offset` is the only built-in whose compared output changes.
+const ZERO_DISTANCE_BASES: &[&str] = &["cone_vertex_offset", "gen0700", "gen0107", "gen0012"];
+
+/// Bases of the `*_zero_approx` cases: their compared output changes at `approx = 0`.
+///
+/// The same sweep at `approx = 0` changes 2 compared results, both through
+/// `VertexOffset`; the built-in `cone_trim_extended_edge` is the only built-in whose
+/// compared output changes (`TrimExtendedEdge`'s `d3DTol`, ten times the tolerance).
+const ZERO_APPROX_BASES: &[&str] = &["cone_trim_extended_edge", "gen0775", "gen0651"];
+
+/// The run header at zero (maintainer review of #156, second round): the bases above with
+/// `dist = 0` or `approx = 0`, named by exact case name (a generated base is taken from
+/// the case list, so `MIN_GENERATED` keeps it present); a base that is missing is an error.
+fn zero_header_cases(unit: &str, cases: &[Case]) -> Result<Vec<Case>, HarnessError> {
+    let mut out = Vec::new();
+    for (suffix, bases, zero_dist) in [
+        ("zero_distance", ZERO_DISTANCE_BASES, true),
+        ("zero_approx", ZERO_APPROX_BASES, false),
+    ] {
+        for base in bases {
+            let Some(c) = cases.iter().find(|c| c.name == *base) else {
+                return Err(harness(format!("zero-header base {base} is not a case")));
+            };
+            let mut i: Inputs = c.parse()?;
+            if zero_dist {
+                i.dist = 0.0;
+            } else {
+                i.approx = 0.0;
             }
+            let inputs = serde_json::to_value(i).map_err(|e| harness(e.to_string()))?;
+            out.push(Case {
+                unit: unit.to_string(),
+                name: format!("{base}_{suffix}"),
+                source: CaseSource::Inline,
+                inputs,
+            });
         }
     }
-    out.extend(zero);
-
-    out
+    Ok(out)
 }

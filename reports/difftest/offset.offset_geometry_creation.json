@@ -8662,46 +8662,6 @@
       "values_compared": 4
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::Notify",
-        "unit": "topology.brep_p2"
-      },
-      "max_rel_err": 0.0,
-      "name": "cone_fixture_ops_zero_distance",
-      "outcome": "deferred",
-      "pass": false,
-      "source": "inline",
-      "values_compared": 0
-    },
-    {
-      "deferred": {
-        "symbol": "SmBrep::Notify",
-        "unit": "topology.brep_p2"
-      },
-      "max_rel_err": 0.0,
-      "name": "cone_fixture_ops_zero_approx",
-      "outcome": "deferred",
-      "pass": false,
-      "source": "inline",
-      "values_compared": 0
-    },
-    {
-      "max_rel_err": 0.0,
-      "name": "cone_replace_edge_curves_zero_distance",
-      "outcome": "pass",
-      "pass": true,
-      "source": "inline",
-      "values_compared": 646
-    },
-    {
-      "max_rel_err": 0.0,
-      "name": "cone_replace_edge_curves_zero_approx",
-      "outcome": "pass",
-      "pass": true,
-      "source": "inline",
-      "values_compared": 646
-    },
-    {
       "max_rel_err": 0.0,
       "name": "cone_vertex_offset_zero_distance",
       "outcome": "pass",
@@ -8711,59 +8671,27 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "cone_vertex_offset_zero_approx",
+      "name": "gen0700_zero_distance",
       "outcome": "pass",
       "pass": true,
       "source": "inline",
-      "values_compared": 689
+      "values_compared": 65
     },
     {
       "max_rel_err": 0.0,
-      "name": "cone_edgeuse_offset_plain_zero_distance",
+      "name": "gen0107_zero_distance",
       "outcome": "pass",
       "pass": true,
       "source": "inline",
-      "values_compared": 854
+      "values_compared": 48
     },
     {
       "max_rel_err": 0.0,
-      "name": "cone_edgeuse_offset_plain_zero_approx",
+      "name": "gen0012_zero_distance",
       "outcome": "pass",
       "pass": true,
       "source": "inline",
-      "values_compared": 854
-    },
-    {
-      "deferred": {
-        "symbol": "SmBrep::Notify",
-        "unit": "topology.brep_p2"
-      },
-      "max_rel_err": 0.0,
-      "name": "box_with_large_fillet_edgeuse_offset_rails_torus_zero_distance",
-      "outcome": "deferred",
-      "pass": false,
-      "source": "inline",
-      "values_compared": 0
-    },
-    {
-      "deferred": {
-        "symbol": "SmBrep::Notify",
-        "unit": "topology.brep_p2"
-      },
-      "max_rel_err": 0.0,
-      "name": "box_with_large_fillet_edgeuse_offset_rails_torus_zero_approx",
-      "outcome": "deferred",
-      "pass": false,
-      "source": "inline",
-      "values_compared": 0
-    },
-    {
-      "max_rel_err": 0.0,
-      "name": "cone_trim_extended_edge_zero_distance",
-      "outcome": "pass",
-      "pass": true,
-      "source": "inline",
-      "values_compared": 45
+      "values_compared": 515
     },
     {
       "max_rel_err": 0.0,
@@ -8774,51 +8702,27 @@
       "values_compared": 45
     },
     {
-      "deferred": {
-        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
-      },
       "max_rel_err": 0.0,
-      "name": "cone_mate_extend_local_zero_distance",
-      "outcome": "deferred",
-      "pass": false,
-      "source": "inline",
-      "values_compared": 0
-    },
-    {
-      "deferred": {
-        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "surface.surface_cache_p2"
-      },
-      "max_rel_err": 0.0,
-      "name": "cone_mate_extend_local_zero_approx",
-      "outcome": "deferred",
-      "pass": false,
-      "source": "inline",
-      "values_compared": 0
-    },
-    {
-      "max_rel_err": 0.0,
-      "name": "local_offset_late_surface_zero_distance",
+      "name": "gen0775_zero_approx",
       "outcome": "pass",
       "pass": true,
       "source": "inline",
-      "values_compared": 51
+      "values_compared": 50
     },
     {
       "max_rel_err": 0.0,
-      "name": "local_offset_late_surface_zero_approx",
+      "name": "gen0651_zero_approx",
       "outcome": "pass",
       "pass": true,
       "source": "inline",
-      "values_compared": 51
+      "values_compared": 218
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 439,
+  "cases_deferred": 433,
   "cases_failed": 0,
-  "cases_passed": 443,
-  "cases_total": 882,
+  "cases_passed": 440,
+  "cases_total": 873,
   "deferred_by_unit": {
     "blend.fillet_standard_solver_p1": 4,
     "curve.crv_on_surf": 25,
@@ -8826,8 +8730,8 @@
     "intersect.surface_drop_curve": 27,
     "intersect.surface_drop_lib_p3": 7,
     "surface.sphere": 2,
-    "surface.surface_cache_p2": 80,
-    "topology.brep_p2": 170,
+    "surface.surface_cache_p2": 78,
+    "topology.brep_p2": 166,
     "topology.face_p2": 12,
     "topology.face_p4": 42
   },
