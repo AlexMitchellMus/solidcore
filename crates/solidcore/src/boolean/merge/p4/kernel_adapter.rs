@@ -1107,18 +1107,21 @@ mod tests {
         adapter
             .delete_faces(&mut kernels, &mut a, &mut attrs, &[], Some(&[]))
             .unwrap();
+        // (SmBrep::GetFaces is wired since #274, so the walk now reaches the test's
+        // surface-less faces, which upstream dereferences)
         let err = adapter
             .intersect_insert_relate(&mut kernels, &mut a, &mut b, &mut attrs)
             .unwrap_err();
-        // With GetFaces wired (topology.brep_p1), IntersectTopology now reaches
-        // these surfaceless test faces and refuses them.
-        assert!(matches!(
-            err,
-            SolidError::InvalidInput {
-                reason: "face without surface",
-                ..
-            }
-        ));
+        assert!(
+            matches!(
+                err,
+                SolidError::InvalidInput {
+                    operation: "boolean::topology_intersector::p2::intersect_topology",
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
         assert!(adapter.intersector.proto_topology_manager().is_some());
         assert_eq!(adapter.merge.intersector.vertices.other(v), Some(ov));
         assert_eq!(adapter.merge.intersector.vertices.primary(ov), Some(v));

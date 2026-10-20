@@ -38,7 +38,6 @@ use crate::query::face::p2::{
 use crate::surface::surface::Surface;
 use crate::surface::volume::Volume;
 use crate::topology::brep::p1 as bp1;
-use crate::topology::brep::p5 as bp5;
 use crate::topology::brep::p7;
 use crate::topology::brep_cache::{arena_identity, BrepCache, CacheObject, CacheSource};
 use crate::topology::edge as ed;
@@ -1059,9 +1058,6 @@ impl TopologyObjects<H> for ArenaPair<'_> {
 
 impl IntersectorBrepP2<H> for ArenaPair<'_> {
     fn brep_faces(&self, brep: H) -> crate::Result<Vec<H>> {
-        if brep.kind != K_BREP {
-            return Err(invalid("not a B-rep handle"));
-        }
         let b = self.brep_r(brep)?;
         Ok(bp1::faces(b, None)?
             .into_iter()
@@ -1087,12 +1083,11 @@ impl IntersectorBrepP2<H> for ArenaPair<'_> {
         };
         let (surviving, to_delete) = (vertex(surviving)?, vertex(to_delete)?);
         let slot = usize::try_from(brep.b).map_err(|_| invalid("bad B-rep"))?;
-        let b = self
-            .breps
+        let breps = &mut self.breps;
+        let b = breps
             .get_mut(slot)
             .and_then(Option::as_deref_mut)
             .ok_or_else(|| invalid("handle names an absent B-rep"))?;
-
         let mut notify = ed::NotifyEnv {
             records: self.records,
             attributes: self.attributes,
@@ -1106,7 +1101,7 @@ impl IntersectorBrepP2<H> for ArenaPair<'_> {
             key_of: &|e| super::kernel_adapter::notification_key(self.namespace, brep.b == 1, e),
         };
         let mut deleted_edge = None;
-        bp5::combine_with_notifications(
+        crate::topology::brep::p5::combine_with_notifications(
             k,
             b,
             surviving,
