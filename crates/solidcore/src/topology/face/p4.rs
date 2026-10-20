@@ -73,8 +73,9 @@
 //!   properties' closed flags (an `UNSURE` flag reads as `TRUE`) and the properties
 //!   themselves, as `SetProps_Stage2` does. The seam curves are temporaries of the
 //!   caller's handle type ([`ClassObject::temporary`]).
-//! - **Unported callees.** `sm_FaceClassifyUVLine` and `SmFace::SectorClassifyCurveOn`
-//!   (`query.face_p3`) return [`SolidError::Unported`]; the code after them is ported.
+//! - **`sm_FaceClassifyUVLine` and `SmFace::SectorClassifyCurveOn`** call
+//!   `query::face::p3`; the UV line's classification handles are `topology::face::p2`'s.
+//! - **`ClassifyProblem`** is the co-port of `query.face_p1` (re-exported).
 //! - **`GetLoopCrossings`** (`intersect.curve_class_p4`) returns its touch lists, which
 //!   `HasSeamProblem` stores in the face properties' U or V lists; its status is ignored
 //!   as upstream (an ignored error leaves both lists empty, as its own initialisation
@@ -112,7 +113,9 @@ use crate::topology::edge;
 use crate::topology::edgeuse::p1 as eu1;
 use crate::topology::edgeuse::p3::{self as eu3, BinormalOptions};
 use crate::topology::face::p1::SeamProblem;
-use crate::topology::face::p2::review_start_and_stop_on_seam_crv_classifies;
+use crate::topology::face::p2::{
+    review_start_and_stop_on_seam_crv_classifies, UvLineHandle, UvLineObjects,
+};
 use crate::topology::loopuse::{self, AttributeFilter};
 use crate::topology::vertex;
 use crate::topology::vertexuse;
@@ -370,24 +373,26 @@ pub fn is_connected_to(b: &Brep, f: FaceId, target: Option<EntityRef>) -> Result
 
 // ---- line intersection -----------------------------------------------------------------
 
-/// The classification object of [`face_classify_uv_line`]'s intervals.
-type UvLineIntervals = Vec<CurveInterval<EntityRef>>;
+/// The intervals of [`face_classify_uv_line`] (over `topology::face::p2`'s UV line
+/// handles).
+type UvLineIntervals = Vec<CurveInterval<UvLineHandle>>;
 
 /// `sm_FaceClassifyUVLine(face, start, end, tol, classification)`: the face
-/// classification of the UV line from `start` to `end`, parameterised over `[0, 1]`.
+/// classification of the UV line from `start` to `end`, parameterised over `[0, 1]`
+/// (its intervals; the status is the error).
 fn face_classify_uv_line(
-    _k: &Kernel,
-    _b: &mut Brep,
-    _f: FaceId,
-    _start: Point2,
-    _end: Point2,
-    _tol: f64,
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    start: Point2,
+    end: Point2,
+    tol: f64,
 ) -> Result<UvLineIntervals> {
-    // UNPORTED(query.face_p3): sm_FaceClassifyUVLine
-    Err(SolidError::unported(
-        "sm_FaceClassifyUVLine",
-        "query.face_p3",
-    ))
+    let b: &Brep = b;
+    let mut objects = UvLineObjects::new(b, f);
+    let mut cc = CurveClassification::new(k);
+    crate::query::face::p3::face_classify_uv_line(k, b, f, &mut objects, start, end, tol, &mut cc)?;
+    Ok(cc.intervals().to_vec())
 }
 
 /// The class of the UV point `uv` of face `f` (`SmFace::PointClassify(uv, tol, true,
@@ -570,31 +575,8 @@ pub fn global_line_intersect<O: SolutionObject>(
 
 // ---- vertex sector ---------------------------------------------------------------------
 
-/// `SmClassifyProblem` (`SmCurveClass.h`): why a classification cannot be trusted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ClassifyProblem {
-    /// `SM_CP_NONE`: the classification has no problems and can be trusted.
-    #[default]
-    None = 0,
-    /// `SM_CP_VERTEX_ON_SINGULARITY`: the vertex marks a surface singularity.
-    VertexOnSingularity = 1,
-    /// `SM_CP_TOGGLED_CLASSIFICATION`: growing step-off distances changed the
-    /// classification once.
-    ToggledClassification = 2,
-    /// `SM_CP_SHORT_SECTOR_EDGEUSE1`: the sector's first edge use is shorter than the
-    /// step-off distance.
-    ShortSectorEdgeuse1 = 3,
-    /// `SM_CP_SHORT_SECTOR_EDGEUSE2`: the sector's radial mate's edge use is shorter
-    /// than the step-off distance.
-    ShortSectorEdgeuse2 = 4,
-    /// `SM_CP_SHORT_INTERVAL`: the curve interval is shorter than the step-off distance.
-    ShortInterval = 5,
-    /// `SM_CP_SEESAW_CLASSIFICATION`: growing step-off distances changed the
-    /// classification more than once.
-    SeesawClassification = 6,
-    /// `SM_CP_UNRESOLVED_CLASSIFICATION`: the iteration limit was reached.
-    UnresolvedClassification = 7,
-}
+/// `SmClassifyProblem` (`SmCurveClass.h`), co-ported by `query.face_p1`.
+pub use crate::query::face::p1::ClassifyProblem;
 
 /// The inputs of [`find_vertex_sector`] (`FindVertexSector`'s arguments).
 #[derive(Debug, Clone, Copy)]
@@ -637,28 +619,51 @@ pub struct VertexSector {
 /// ivl, orient, tol, singular, uv, ...)`: `(inside, problem, cause)`.
 #[allow(clippy::too_many_arguments)]
 fn sector_classify_curve_on(
-    _k: &Kernel,
-    _b: &mut Brep,
-    _f: FaceId,
-    _eu1: EdgeuseId,
-    _eu1_param: f64,
-    _eu1_tol: f64,
-    _eu2: EdgeuseId,
-    _eu2_param: f64,
-    _eu2_tol: f64,
-    _curve: &Curve,
-    _interval: &Extent1d,
-    _orientation: OrientType,
-    _zone_tol_3d: f64,
-    _on_singularity: bool,
-    _singular_uv: Point2,
-    _uv_space_okay: bool,
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    eu1: EdgeuseId,
+    eu1_param: f64,
+    eu1_tol: f64,
+    eu2: EdgeuseId,
+    eu2_param: f64,
+    eu2_tol: f64,
+    curve: &Curve,
+    interval: &Extent1d,
+    orientation: OrientType,
+    zone_tol_3d: f64,
+    on_singularity: bool,
+    singular_uv: Point2,
+    uv_space_okay: bool,
 ) -> Result<(bool, bool, ClassifyProblem)> {
-    // UNPORTED(query.face_p3): SmFace::SectorClassifyCurveOn
-    Err(SolidError::unported(
-        "SmFace::SectorClassifyCurveOn",
-        "query.face_p3",
-    ))
+    use crate::query::face::p3::{self as qf3, SectorClassifyInput, SectorEdgeuse};
+    let r = qf3::sector_classify_curve_on(
+        k,
+        b,
+        f,
+        &SectorClassifyInput {
+            eu1: SectorEdgeuse {
+                edgeuse: eu1,
+                param: eu1_param,
+                zone_tol_3d: eu1_tol,
+                orientation: OrientType::Same,
+            },
+            eu2: SectorEdgeuse {
+                edgeuse: eu2,
+                param: eu2_param,
+                zone_tol_3d: eu2_tol,
+                orientation: OrientType::Opposite,
+            },
+            curve,
+            curve_interval: *interval,
+            curve_orientation: orientation,
+            curve_zone_tol_3d: zone_tol_3d,
+            on_singularity,
+            singularity_uv: singular_uv,
+            uv_space_okay,
+        },
+    )?;
+    Ok((r.inside, r.possible_problem, r.problem))
 }
 
 /// `smos_Min(a, b)`: `a < b ? a : b`.
