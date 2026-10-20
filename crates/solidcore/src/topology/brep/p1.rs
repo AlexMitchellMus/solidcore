@@ -2503,7 +2503,7 @@ pub fn create_corner_blend(
         // evaluation below takes the raw 0/1 parameter)
 
         // Curve EndPoint
-        let pnt = curve_3d.evaluate_point(param)?;
+        let pnt = curve_3d.evaluate_point(k, param)?;
 
         // create a degenerate 'point' curve at the second curve's endPoint (parameterized from 0 to 1)
         let top_curve = BSplineCurve::create_point_curve(pnt)?;
