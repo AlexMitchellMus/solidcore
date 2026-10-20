@@ -40,7 +40,7 @@
 //!   (set by its `MakeCornerTopology`) starts as `false`.
 //! - **Unported callees.** `sm_TestG1Continuity`, `SmFilletNx1Corner::CheckNx1Degeneracy`,
 //!   `CreateEndPatch`, `MakeFaceBrep` and `CalcCornerVertGeom` (unit
-//!   `blend.fillet_corner_p1`), `sm_FindConcaveEdgeuses`, `MakeAnalyticCornerSurface`,
+//!   `blend.fillet_corner_p1`), `MakeAnalyticCornerSurface`,
 //!   `AdjustConcaveCornerTopology` and the `SmFilletConvexNxNCorner` /
 //!   `SmFilletNx1ClosedCorner` overrides (`blend.fillet_corner_p2`),
 //!   `TestAndConvertBigRadFillet` and `NoteFilletError` (`blend.fillet_executive_p1`),
@@ -74,6 +74,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::blend::fillet_corner::p2::find_concave_edgeuses;
 use crate::blend::fillet_geom::p1::{
     FilStatus, FilletBrep, FilletCornerId, FilletCornerType, FilletEdgeType, FilletGeomId,
     FilletGeomType, FilletSolverId, FilletVertex, FilletVertexType,
@@ -578,7 +579,7 @@ impl FilletCorner {
                 } else {
                     let mut concave_eus: Vec<EdgeuseId> = Vec::new();
                     if !is_chamfer_corner {
-                        concave_eus = find_concave_edgeuses(b, vertex, &all_eus)?;
+                        concave_eus = find_concave_edgeuses(k, b, vertex, &all_eus)?;
                     }
                     if concave_eus.is_empty() {
                         let mut c = make(FilletCornerKind::ConvexNByN);
@@ -1724,16 +1725,6 @@ fn check_nx1_degeneracy(_b: &Brep, _vertex: VertexId, _eu: EdgeuseId) -> Result<
         "SmFilletNx1Corner::CheckNx1Degeneracy",
         "blend.fillet_corner_p1",
     ))
-}
-
-/// `sm_FindConcaveEdgeuses` (unit `blend.fillet_corner_p2`).
-fn find_concave_edgeuses(
-    _b: &Brep,
-    _vertex: VertexId,
-    _all: &[EdgeuseId],
-) -> Result<Vec<EdgeuseId>> {
-    // UNPORTED(blend.fillet_corner_p2): sm_FindConcaveEdgeuses
-    Err(unported("sm_FindConcaveEdgeuses", "blend.fillet_corner_p2"))
 }
 
 #[cfg(test)]
