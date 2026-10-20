@@ -55,8 +55,7 @@ use solidcore_ffi::units::blend_fillet_corner_p3::{self as ffi, Op};
 use solidcore_ffi::units::topology_edgeuse_p1 as ffi1;
 
 use super::blend_fillet_geom_p1::{
-    gen_model, push_model, status, Crv, EdgeIn, EuIn, GeomIn, Model, RustModel,
-    Srf, VertexIn,
+    gen_model, push_model, status, Crv, EdgeIn, EuIn, GeomIn, Model, RustModel, Srf, VertexIn,
 };
 use super::topology_edgeuse_p1::{
     brep_block_of, gen_brep, import_with_types, path_of, sel, BrepIn, ImportTypes, FILES,
@@ -294,7 +293,10 @@ fn solver_of(solvers: &[SolverIn], i: usize) -> Result<&SolverIn, HarnessError> 
 
 /// The record of a corner made by `Create` (layout of the shim).
 fn create_output(rec: &[f64]) -> Result<Output, HarnessError> {
-    let first = rec.first().copied().ok_or_else(|| harness("empty record"))?;
+    let first = rec
+        .first()
+        .copied()
+        .ok_or_else(|| harness("empty record"))?;
     if first == REFUSED {
         return Ok(Output::rejected("upstream would dereference null"));
     }
@@ -308,18 +310,28 @@ fn create_output(rec: &[f64]) -> Result<Output, HarnessError> {
         }
         return Ok(out);
     }
-    let get = |i: usize| rec.get(i).copied().ok_or_else(|| harness("record too short"));
+    let get = |i: usize| {
+        rec.get(i)
+            .copied()
+            .ok_or_else(|| harness("record too short"))
+    };
     out = out.int("type", get(1)? as i64);
     let n = get(2)?;
     let n = usize::try_from(n as i64).map_err(|_| harness("bad count"))?;
-    let all: Vec<i64> = (0..n).map(|i| get(3 + i).map(|x| x as i64)).collect::<Result<_, _>>()?;
+    let all: Vec<i64> = (0..n)
+        .map(|i| get(3 + i).map(|x| x as i64))
+        .collect::<Result<_, _>>()?;
     out = out.ints("all_eus", all);
     let base = 3 + n;
     out = out.values("tols", vec![get(base)?, get(base + 1)?]);
-    let flags: Vec<i64> = (0..7).map(|i| get(base + 2 + i).map(|x| x as i64)).collect::<Result<_, _>>()?;
+    let flags: Vec<i64> = (0..7)
+        .map(|i| get(base + 2 + i).map(|x| x as i64))
+        .collect::<Result<_, _>>()?;
     out = out.ints("flags", flags);
     out = out.values("setback", vec![get(base + 9)?]);
-    let counts: Vec<i64> = (0..3).map(|i| get(base + 10 + i).map(|x| x as i64)).collect::<Result<_, _>>()?;
+    let counts: Vec<i64> = (0..3)
+        .map(|i| get(base + 10 + i).map(|x| x as i64))
+        .collect::<Result<_, _>>()?;
     out = out.ints("counts", counts);
     out = out.int("g1", get(base + 13)? as i64);
     if rec.len() != base + 14 {
@@ -387,7 +399,10 @@ fn inexact(b: &Brep, types: &ImportTypes, eus: &[EdgeuseId]) -> Option<Output> {
                 15012 | 15013 => ("surface.cone_p1", "SmCone (no SurfaceKind)"),
                 15014 => ("surface.sphere", "SmSphere"),
                 15015 => ("surface.torus", "SmTorus (no SurfaceKind)"),
-                15030 => ("surface.surf_of_extrusion_p2", "SurfaceKind::SurfOfExtrusion"),
+                15030 => (
+                    "surface.surf_of_extrusion_p2",
+                    "SurfaceKind::SurfOfExtrusion",
+                ),
                 _ => ("topology.brep_p10", "SmBrep::MakeTopologyFromData"),
             };
             return Some(Output::deferred(unit, symbol));
@@ -398,7 +413,10 @@ fn inexact(b: &Brep, types: &ImportTypes, eus: &[EdgeuseId]) -> Option<Output> {
             .and_then(|e| types.edge_curve_types.get(e.index() as usize).copied())
             .unwrap_or(-1);
         if ct >= 0 && !EXACT_CURVES.contains(&ct) {
-            return Some(Output::deferred("topology.brep_p10", "SmBrep::MakeTopologyFromData"));
+            return Some(Output::deferred(
+                "topology.brep_p10",
+                "SmBrep::MakeTopologyFromData",
+            ));
         }
     }
     None
@@ -417,21 +435,75 @@ fn create_rust(
         Err(o) => return Ok(o),
     };
     let k = Kernel::default();
+    // the geometry `sm_TestG1Continuity` / `SmFilletNx1Corner::CheckNx1Degeneracy` (unit
+    // `blend.fillet_corner_p1`, wired) evaluate before the corner is classified: the
+    // filleted edges' curves (G1 test) or the side edge uses next to the single filleted
+    // edge use (the Nx1 degeneracy test)
+    if let Some(&eu0) = s.eus.first() {
+        let b = &s.brep;
+        let edges_at_vertex = {
+            let mut edges = Vec::new();
+            for (id, _) in b.edgeuses().iter() {
+                if eu_vertex(b, id) == Some(s.vertex) {
+                    if let Ok(Some(e)) = eu1::edge(b, id) {
+                        if !edges.contains(&e) {
+                            edges.push(e);
+                        }
+                    }
+                }
+            }
+            edges.len()
+        };
+        let closed = eu1::edge(b, eu0)
+            .ok()
+            .flatten()
+            .and_then(|e| solidcore::topology::edge::is_closed(b, e).ok())
+            .unwrap_or(false);
+        let evaluated: Vec<EdgeuseId> = match (s.eus.len(), closed) {
+            (1, true) if edges_at_vertex == 1 => vec![eu0],
+            (1, false) => {
+                let mut v = vec![eu0];
+                if let Ok(Some(s1)) = eu1::cw_edgeuse(b, eu0) {
+                    v.push(s1);
+                    let s2 = eu1::radial(b, eu0)
+                        .ok()
+                        .flatten()
+                        .and_then(|r| eu1::ccw_edgeuse(b, r).ok().flatten());
+                    match s2 {
+                        Some(s2) if s2 == s1 => v.extend(eu1::mate(b, s1).ok().flatten()),
+                        Some(s2) => v.push(s2),
+                        None => {}
+                    }
+                }
+                v
+            }
+            (2, _) if edges_at_vertex == 2 => s.eus.clone(),
+            _ => Vec::new(),
+        };
+        if !evaluated.is_empty() {
+            if let Some(o) = inexact(&s.brep, &s.types, &evaluated) {
+                return Ok(o);
+            }
+        }
+    }
     let mut exec = FilletExecutiveData::default();
     let mut table = Vec::new();
     for (i, &id) in s.eus.iter().enumerate() {
         let sv = solver_of(solvers, i)?;
         let mut fs = FilletSolver::new(sv.approx, EFF_ZERO_RAD, sv.tang);
         fs.fsg = Some(fsg_of(sv.fsg));
-        exec.edgeuse_solver_map
-            .insert(id, FilletSolverId(u32::try_from(i).map_err(|_| harness("index"))?));
+        exec.edgeuse_solver_map.insert(
+            id,
+            FilletSolverId(u32::try_from(i).map_err(|_| harness("index"))?),
+        );
         table.push(fs);
     }
     let r = FilletCorner::create(&k, &mut s.brep, s.vertex, &s.eus, &exec, &table);
     let c = match r {
         Ok(c) => c,
         Err(e) => {
-            return Ok(Output::unported(&e).unwrap_or_else(|| Output::err(format!("rust_error_{}", status(&e)))))
+            return Ok(Output::unported(&e)
+                .unwrap_or_else(|| Output::err(format!("rust_error_{}", status(&e)))))
         }
     };
     let Some(c) = c else {
@@ -457,7 +529,11 @@ fn create_rust(
         flag(c.extended_surface_patch),
     ]);
     rec.push(c.set_back_dist);
-    rec.extend([c.vertices.len() as f64, c.edges.len() as f64, c.surfaces.len() as f64]);
+    rec.extend([
+        c.vertices.len() as f64,
+        c.edges.len() as f64,
+        c.surfaces.len() as f64,
+    ]);
     rec.push(if c.corner_type() == FilletCornerType::NByOneClosed {
         flag(c.g1_case)
     } else {
@@ -512,14 +588,21 @@ fn corner_input(model: &Model, c: &CornerIn) -> Result<Vec<f64>, HarnessError> {
 
 /// Splits a corner record: `status`, the corner members, the model export.
 fn corner_output(rec: &[f64]) -> Result<Output, HarnessError> {
-    let first = rec.first().copied().ok_or_else(|| harness("empty record"))?;
+    let first = rec
+        .first()
+        .copied()
+        .ok_or_else(|| harness("empty record"))?;
     if first == REFUSED {
         return Ok(Output::rejected("upstream would dereference null"));
     }
     if first == NOT_RUN {
         return Ok(Output::err("not_run_by_cpp"));
     }
-    let get = |i: usize| rec.get(i).copied().ok_or_else(|| harness("record too short"));
+    let get = |i: usize| {
+        rec.get(i)
+            .copied()
+            .ok_or_else(|| harness("record too short"))
+    };
     let mut at = 1;
     let nv = usize::try_from(get(at)? as i64).map_err(|_| harness("count"))?;
     let verts: Vec<f64> = (0..nv).map(|i| get(at + 1 + i)).collect::<Result<_, _>>()?;
@@ -532,7 +615,10 @@ fn corner_output(rec: &[f64]) -> Result<Output, HarnessError> {
     let setback = get(at)?;
     let nsurf = get(at + 1)?;
     at += 2;
-    let model = rec.get(at..).ok_or_else(|| harness("record too short"))?.to_vec();
+    let model = rec
+        .get(at..)
+        .ok_or_else(|| harness("record too short"))?
+        .to_vec();
     Ok(Output::new()
         .int("status", first as i64)
         .values("corner_verts", verts)
@@ -554,22 +640,32 @@ fn corner_rust(op: CornerOp, model: &Model, ci: &CornerIn) -> Result<Output, Har
     let mut rm = RustModel::build(model)?;
     let kind = *KINDS.get(ci.kind).ok_or_else(|| harness("kind"))?;
     let target_eu = |rm: &RustModel, [e, w]: EuSel| -> Result<EdgeuseId, HarnessError> {
-        let edge = *rm.target_edges.get(e).ok_or_else(|| harness("target edge"))?;
+        let edge = *rm
+            .target_edges
+            .get(e)
+            .ok_or_else(|| harness("target edge"))?;
         let prim = eu1::primary_edgeuse(&rm.target, edge)
             .map_err(h)?
             .ok_or_else(|| harness("primary edge use"))?;
         if w == 1 {
-            eu1::mate(&rm.target, prim).map_err(h)?.ok_or_else(|| harness("mate"))
+            eu1::mate(&rm.target, prim)
+                .map_err(h)?
+                .ok_or_else(|| harness("mate"))
         } else {
             Ok(prim)
         }
     };
-    let list = |rm: &RustModel, l: Option<&Vec<EuSel>>| -> Result<Option<Vec<EdgeuseId>>, HarnessError> {
-        l.map(|l| l.iter().map(|&s| target_eu(rm, s)).collect()).transpose()
-    };
+    let list =
+        |rm: &RustModel, l: Option<&Vec<EuSel>>| -> Result<Option<Vec<EdgeuseId>>, HarnessError> {
+            l.map(|l| l.iter().map(|&s| target_eu(rm, s)).collect())
+                .transpose()
+        };
     let vertex = match usize::try_from(ci.v_edge) {
         Ok(e) => {
-            let edge = *rm.target_edges.get(e).ok_or_else(|| harness("target edge"))?;
+            let edge = *rm
+                .target_edges
+                .get(e)
+                .ok_or_else(|| harness("target edge"))?;
             let [vs, ve] = rm.target.edge(edge).map_err(h)?.vertices;
             Some(if ci.v_sub == 0 { vs } else { ve })
         }
@@ -605,8 +701,10 @@ fn corner_rust(op: CornerOp, model: &Model, ci: &CornerIn) -> Result<Output, Har
         {
             let tp = rm.fb.fillet_vertexuse_mut(vu).map_err(h)?.tsect_pnt_mut();
             tp.curve_parameter = t.t;
-            *tp.uv_pos_mut(SrfIndex::First) = solidcore::geom::vector2d::Point2::new(t.uv0[0], t.uv0[1]);
-            *tp.uv_pos_mut(SrfIndex::Second) = solidcore::geom::vector2d::Point2::new(t.uv1[0], t.uv1[1]);
+            *tp.uv_pos_mut(SrfIndex::First) =
+                solidcore::geom::vector2d::Point2::new(t.uv0[0], t.uv0[1]);
+            *tp.uv_pos_mut(SrfIndex::Second) =
+                solidcore::geom::vector2d::Point2::new(t.uv1[0], t.uv1[1]);
         }
         let srf = |rm: &RustModel, s: i64| -> Result<Option<Surface>, HarnessError> {
             match usize::try_from(s) {
@@ -640,7 +738,10 @@ fn corner_rust(op: CornerOp, model: &Model, ci: &CornerIn) -> Result<Output, Har
     for &[e, f] in &ci.orig_faces {
         let eid = rm.edge(e)?;
         let face = *rm.target_faces.get(f).ok_or_else(|| harness("face"))?;
-        rm.fb.fillet_edge_mut(eid).map_err(h)?.set_original_face(Some(face));
+        rm.fb
+            .fillet_edge_mut(eid)
+            .map_err(h)?
+            .set_original_face(Some(face));
     }
     let r = {
         let mut env = CornerEnv {
@@ -804,7 +905,10 @@ fn plane_srf(o: [f64; 3], du: [f64; 3], dv: [f64; 3]) -> Srf {
         ]
     };
     Srf {
-        net: vec![vec![p(0.0, 0.0), p(0.0, 1.0)], vec![p(1.0, 0.0), p(1.0, 1.0)]],
+        net: vec![
+            vec![p(0.0, 0.0), p(0.0, 1.0)],
+            vec![p(1.0, 0.0), p(1.0, 1.0)],
+        ],
         p: 1,
         q: 1,
         u: vec![0.0, 0.0, 1.0, 1.0],
@@ -835,15 +939,19 @@ fn gen_nx2_model(rng: &mut Rng, scale: f64) -> (Model, Vec<TsectIn>) {
     let s = scale;
     let tangent = rng.chance(0.6);
     let d2 = if tangent {
-        [-1.0, rng.uniform(-1e-3, 1e-3) * f64::from(u8::from(rng.chance(0.5))), 0.0]
+        [
+            -1.0,
+            rng.uniform(-1e-3, 1e-3) * f64::from(u8::from(rng.chance(0.5))),
+            0.0,
+        ]
     } else {
         [rng.uniform(-1.0, 0.5), 1.0, rng.uniform(-0.5, 0.5)]
     };
     let targets = vec![
-        line([0.0, 0.0, 0.0], [0.0, 0.0, s]),           // side edge
-        line([0.0, 0.0, 0.0], [s, 0.0, 0.0]),           // filleted edge 1
+        line([0.0, 0.0, 0.0], [0.0, 0.0, s]), // side edge
+        line([0.0, 0.0, 0.0], [s, 0.0, 0.0]), // filleted edge 1
         line([0.0, 0.0, 0.0], [d2[0] * s, d2[1] * s, d2[2] * s]), // filleted edge 2
-        line([0.0, 0.0, 0.0], [0.0, -s, 0.0]),          // fourth edge
+        line([0.0, 0.0, 0.0], [0.0, -s, 0.0]), // fourth edge
     ];
     let faces = vec![
         plane_srf([0.0, 0.0, 0.0], [s, 0.0, 0.0], [0.0, 0.0, s]),
@@ -871,7 +979,13 @@ fn gen_nx2_model(rng: &mut Rng, scale: f64) -> (Model, Vec<TsectIn>) {
         edge_in(0, 2, 9, curve_or_none(rng, rail2), [1, 1]),
         edge_in(3, 1, 9, Some(other1), [0, 0]),
         edge_in(4, 2, 9, Some(other2), [1, 1]),
-        edge_in(0, 3, *rng.choose(&[4i64, 1, 5]).unwrap_or(&4), None, [-1, -1]),
+        edge_in(
+            0,
+            3,
+            *rng.choose(&[4i64, 1, 5]).unwrap_or(&4),
+            None,
+            [-1, -1],
+        ),
         edge_in(3, 4, 4, None, [-1, -1]),
     ];
     let geoms = vec![
@@ -926,7 +1040,13 @@ fn gen_nx2_model(rng: &mut Rng, scale: f64) -> (Model, Vec<TsectIn>) {
         1 => [p[0] + rng.uniform(-1e-10, 1e-10), p[1]],
         _ => [rng.uniform(-0.2, 1.2), rng.uniform(-0.2, 1.2)],
     };
-    let face = |rng: &mut Rng| if rng.chance(0.95) { rng.below(2) as i64 } else { -1 };
+    let face = |rng: &mut Rng| {
+        if rng.chance(0.95) {
+            rng.below(2) as i64
+        } else {
+            -1
+        }
+    };
     let (fa, fb) = (face(rng), face(rng));
     let tsects = vec![
         TsectIn {
@@ -965,7 +1085,11 @@ fn gen_3x2_model(rng: &mut Rng, scale: f64) -> Model {
     if rng.chance(0.2) {
         verts.push(vin([0.5 * s, 0.5 * s, 0.0], 1));
     }
-    let gap = if rng.chance(0.7) { 0.0 } else { s * rng.uniform(1e-6, 0.5) };
+    let gap = if rng.chance(0.7) {
+        0.0
+    } else {
+        s * rng.uniform(1e-6, 0.5)
+    };
     let c_on = gen_join_curve(rng, [0.0, 0.0, 0.0], [s, 0.0, 0.0]);
     let c_ext = gen_join_curve(rng, [-s, 0.0, 0.0], [gap, 0.0, 0.0]);
     let on_type = 6;
@@ -991,7 +1115,11 @@ fn gen_3x2_model(rng: &mut Rng, scale: f64) -> Model {
     }
     Model {
         targets: vec![line([0.0, 0.0, 0.0], [s, 0.0, 0.0])],
-        faces: vec![plane_srf([-s, -s, 0.0], [3.0 * s, 0.0, 0.0], [0.0, 3.0 * s, 0.0])],
+        faces: vec![plane_srf(
+            [-s, -s, 0.0],
+            [3.0 * s, 0.0, 0.0],
+            [0.0, 3.0 * s, 0.0],
+        )],
         fillet_brep: Vec::new(),
         vertices: verts,
         geoms: Vec::new(),
@@ -1004,7 +1132,13 @@ fn gen_join_curve(rng: &mut Rng, a: [f64; 3], b: [f64; 3]) -> Crv {
     if rng.chance(0.4) {
         return line(a, b);
     }
-    let lerp = |t: f64| [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), a[2] + t * (b[2] - a[2])];
+    let lerp = |t: f64| {
+        [
+            a[0] + t * (b[0] - a[0]),
+            a[1] + t * (b[1] - a[1]),
+            a[2] + t * (b[2] - a[2]),
+        ]
+    };
     let bend = (b[0] - a[0]).abs().max(1e-3) * rng.uniform(-0.3, 0.3);
     let p1 = lerp(1.0 / 3.0);
     let p2 = lerp(2.0 / 3.0);
@@ -1022,7 +1156,9 @@ fn gen_join_curve(rng: &mut Rng, a: [f64; 3], b: [f64; 3]) -> Crv {
 }
 
 fn gen_corner(rng: &mut Rng) -> Inputs {
-    let scale = *rng.choose(&[1.0, 1e-3, 1e3, 10.0, 0.1, 1e-6, 1e5]).unwrap_or(&1.0);
+    let scale = *rng
+        .choose(&[1.0, 1e-3, 1e3, 10.0, 0.1, 1e-6, 1e5])
+        .unwrap_or(&1.0);
     let tol = match rng.below(5) {
         0 => 1e-3 * scale,
         1 => 1e-6 * scale,
@@ -1044,7 +1180,11 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
         // Nx2 shaped: the adjustments
         0..=5 => {
             let (model, tsects) = gen_nx2_model(rng, scale);
-            let n_all = if rng.chance(0.8) { 4 } else { rng.below(6) as usize };
+            let n_all = if rng.chance(0.8) {
+                4
+            } else {
+                rng.below(6) as usize
+            };
             let all: Vec<EuSel> = (0..n_all).map(|i| eu(i % 4, usize::from(i >= 4))).collect();
             let solver = match rng.below(10) {
                 0 => None,
@@ -1062,7 +1202,11 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
                 0 => vec![4, 5, 2],
                 _ => vec![4, 5],
             };
-            let kind = if rng.chance(0.85) { 7 } else { rng.below(11) as usize };
+            let kind = if rng.chance(0.85) {
+                7
+            } else {
+                rng.below(11) as usize
+            };
             let blending = rng.chance(0.25);
             Inputs::Corner {
                 op,
@@ -1104,7 +1248,11 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
             if rng.chance(0.15) {
                 edges.swap(0, 2);
             }
-            let kind = if rng.chance(0.8) { 6 } else { rng.below(11) as usize };
+            let kind = if rng.chance(0.8) {
+                6
+            } else {
+                rng.below(11) as usize
+            };
             Inputs::Corner {
                 op: if rng.chance(0.7) { CornerOp::Patch } else { op },
                 model,
@@ -1126,7 +1274,11 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
                     tol,
                     tan,
                     tsects: Vec::new(),
-                    orig_faces: if rng.chance(0.85) { vec![[3, 0]] } else { Vec::new() },
+                    orig_faces: if rng.chance(0.85) {
+                        vec![[3, 0]]
+                    } else {
+                        Vec::new()
+                    },
                 },
             }
         }
@@ -1148,9 +1300,17 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
             let edges = pick(rng, ne, ke);
             let eus = |rng: &mut Rng, k: usize| -> Option<Vec<EuSel>> {
                 if nt == 0 {
-                    return if rng.chance(0.5) { None } else { Some(Vec::new()) };
+                    return if rng.chance(0.5) {
+                        None
+                    } else {
+                        Some(Vec::new())
+                    };
                 }
-                Some((0..k).map(|_| eu(rng.below(nt as u64) as usize, rng.below(2) as usize)).collect())
+                Some(
+                    (0..k)
+                        .map(|_| eu(rng.below(nt as u64) as usize, rng.below(2) as usize))
+                        .collect(),
+                )
             };
             let k1 = rng.below(4) as usize;
             let k2 = rng.below(6) as usize;
@@ -1158,7 +1318,11 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
                 op,
                 corner: CornerIn {
                     kind: rng.below(11) as usize,
-                    v_edge: if nt > 0 && rng.chance(0.7) { rng.below(nt as u64) as i64 } else { -1 },
+                    v_edge: if nt > 0 && rng.chance(0.7) {
+                        rng.below(nt as u64) as i64
+                    } else {
+                        -1
+                    },
                     v_sub: 0,
                     solver: eus(rng, k1),
                     all: eus(rng, k2),
@@ -1170,7 +1334,11 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
                     degenerate: rng.chance(0.1),
                     ext: rng.chance(0.7),
                     adjusted: rng.chance(0.1),
-                    setback: if rng.chance(0.2) { rng.uniform(0.0, 1.0) } else { 0.0 },
+                    setback: if rng.chance(0.2) {
+                        rng.uniform(0.0, 1.0)
+                    } else {
+                        0.0
+                    },
                     tol,
                     tan,
                     tsects: Vec::new(),
@@ -1209,7 +1377,8 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             solvers,
         } => create_rust(brep, *validate_only, *init_gaps, *eu, more, solvers),
         Inputs::Corner { op, model, corner } => {
-            ffi::validate_corner(&corner_input(model, corner)?).map_err(|e| harness(e.to_string()))?;
+            ffi::validate_corner(&corner_input(model, corner)?)
+                .map_err(|e| harness(e.to_string()))?;
             corner_rust(*op, model, corner)
         }
     }
@@ -1239,8 +1408,9 @@ impl UnitDiff for Runner {
             // keep corner inputs the shim builds (its model block rejects some tiny
             // geometry, as blend.fillet_geom_p1's does)
             let ok = match &inputs {
-                Inputs::Corner { op, model, corner } => corner_input(model, corner)
-                    .is_ok_and(|v| ffi::corner(op.ffi(), &v).is_ok()),
+                Inputs::Corner { op, model, corner } => {
+                    corner_input(model, corner).is_ok_and(|v| ffi::corner(op.ffi(), &v).is_ok())
+                }
                 Inputs::Create { .. } => true,
             };
             if ok {
@@ -1277,4 +1447,3 @@ mod tests {
         }
     }
 }
-

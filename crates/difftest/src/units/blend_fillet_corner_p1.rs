@@ -33,19 +33,27 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use solidcore::blend::fillet_corner::p1 as corner;
+use solidcore::blend::fillet_corner::p3::{FilletCorner, FilletCornerKind, FilletExecutiveData};
+use solidcore::blend::fillet_geom::p1::{FilStatus, FilletEdgeType, FilletSolverId};
 use solidcore::curve::curve::Curve;
 use solidcore::geom::extent2d::Extent2d;
-use solidcore::geom::vector2d::Point2;
+use solidcore::geom::vector2d::{Point2, Vec2};
 use solidcore::kernel::Kernel;
 use solidcore::math::Vec3;
 use solidcore::nurbs::b_spline_surface::p1::SurfParamType;
 use solidcore::nurbs::math::NOW;
+use solidcore::surface::plane::Plane;
 use solidcore::surface::surface::{Surface, SurfaceKind};
 use solidcore::topology::edgeuse::p1 as eu1;
 use solidcore::topology::{edge, Brep, EdgeId, EdgeuseId, VertexId};
 use solidcore::SolidError;
-use solidcore_ffi::units::blend_fillet_corner_p1::{self as ffi, Op};
+use solidcore_ffi::units::blend_fillet_corner_p1::{self as ffi, CornerOp as FfiCornerOp, Op};
 use solidcore_ffi::units::topology_edgeuse_p1 as ffi1;
+
+use super::blend_fillet_geom_p1::{
+    curve_of as model_curve_of, gen_curve as model_gen_curve, gen_model, push_model,
+    status as model_status, Crv, Model, RustModel,
+};
 
 use super::topology_edgeuse_p1::{
     brep_block_of, bspline_of, domain, flag, gen_brep, gen_curve, gen_surface, harness,
@@ -141,7 +149,168 @@ enum Inputs {
         #[serde(default)]
         adjacent: bool,
     },
+    /// `SmFilletNx1Corner::CheckNx1Degeneracy(v, eu)`: `eu` selects among the edge uses
+    /// starting at `v`.
+    Nx1 {
+        brep: BrepIn,
+        v: i64,
+        eu: i64,
+    },
+    /// An `SmFilletCorner` method on a corner built on `blend.fillet_geom_p1`'s
+    /// pseudo-B-rep model (the corner as unit `blend.fillet_corner_p3`'s corner cases,
+    /// without intersection points and original faces).
+    Corner {
+        method: CornerMethod,
+        model: Box<Model>,
+        corner: CornerIn,
+        /// `peek`: the setters to call first (`-1` not called) and the type codes to
+        /// test with `IsKindOf`.
+        #[serde(default)]
+        peek: PeekIn,
+        /// `solvers`: the solvers registered for target edge uses, and the index of the
+        /// one `GetTangentFilletSolver` is asked about (`len` = an unregistered one).
+        #[serde(default)]
+        solvers: Vec<SolverRegIn>,
+        #[serde(default)]
+        query: usize,
+        /// `ext_surface`: `AddExtendedOriginalSurface` of a plane with natural domain
+        /// `[0, s]²` per `(face, s)`, then `GetExtendedSurface` per face.
+        #[serde(default)]
+        adds: Vec<ExtAddIn>,
+        #[serde(default)]
+        queries: Vec<usize>,
+        /// `squeeze`: the model edge to squeeze.
+        #[serde(default)]
+        squeeze: usize,
+        /// `rail_rail`: the curve to test.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        curve: Option<Crv>,
+    },
 }
+
+/// The `SmFilletCorner` method of a `corner` case.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum CornerMethod {
+    /// The data access methods, predicates and setters.
+    Peek,
+    /// `GetTangentFilletSolver` and `GetFilletSolvers`.
+    Solvers,
+    /// `AddExtendedOriginalSurface` and `GetExtendedSurface`.
+    ExtSurface,
+    /// `ReInitializeCornerEdges`.
+    Reinit,
+    /// `SqueezeEdge`.
+    Squeeze,
+    /// `SmFilletConcaveNxNCorner::TestRailRailInterpolationCurve`.
+    RailRail,
+}
+
+impl CornerMethod {
+    const fn ffi(self) -> FfiCornerOp {
+        match self {
+            Self::Peek => FfiCornerOp::Peek,
+            Self::Solvers => FfiCornerOp::Solvers,
+            Self::ExtSurface => FfiCornerOp::ExtSurface,
+            Self::Reinit => FfiCornerOp::Reinit,
+            Self::Squeeze => FfiCornerOp::Squeeze,
+            Self::RailRail => FfiCornerOp::RailRail,
+        }
+    }
+}
+
+/// An edge use of the model's target wire edge `e`: `0` its primary edge use, `1` the
+/// mate.
+type EuSel = [usize; 2];
+
+/// The corner of a `corner` case (as `blend.fillet_corner_p3`'s, without intersection
+/// points and original faces).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)] // the corner's independent SmBoolean members
+struct CornerIn {
+    /// The derived class (order of [`FilletCornerKind`]).
+    kind: usize,
+    /// The filleted vertex: start (`v_sub` 0) or end vertex of target edge `v_edge`
+    /// (`-1` none).
+    v_edge: i64,
+    #[serde(default)]
+    v_sub: usize,
+    solver: Option<Vec<EuSel>>,
+    all: Option<Vec<EuSel>>,
+    #[serde(default)]
+    verts: Vec<usize>,
+    #[serde(default)]
+    edges: Vec<usize>,
+    #[serde(default)]
+    bevel: bool,
+    #[serde(default)]
+    blending: bool,
+    #[serde(default)]
+    chamfer: bool,
+    #[serde(default)]
+    degenerate: bool,
+    #[serde(default = "yes")]
+    ext: bool,
+    #[serde(default)]
+    adjusted: bool,
+    #[serde(default)]
+    setback: f64,
+    tol: f64,
+    tan: f64,
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// The `peek` method's setters (`-1` not called, else the flag) and type codes.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct PeekIn {
+    #[serde(default = "minus_one")]
+    set_bevel: i64,
+    #[serde(default = "minus_one")]
+    set_const_rad: i64,
+    #[serde(default = "minus_one")]
+    set_chamfer: i64,
+    #[serde(default = "minus_one")]
+    add_vertex: i64,
+    #[serde(default)]
+    kinds: Vec<f64>,
+}
+
+fn minus_one() -> i64 {
+    -1
+}
+
+/// A solver registered in the executive for a target edge use.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SolverRegIn {
+    e: usize,
+    which: usize,
+    approx: f64,
+    tang: f64,
+}
+
+/// An `AddExtendedOriginalSurface` call: the target face and the plane's domain size.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ExtAddIn {
+    face: usize,
+    s: f64,
+}
+
+const KINDS: [FilletCornerKind; 11] = [
+    FilletCornerKind::OneByOne,
+    FilletCornerKind::TwoByTwo,
+    FilletCornerKind::NByOneClosed,
+    FilletCornerKind::NByOne,
+    FilletCornerKind::Degenerate,
+    FilletCornerKind::Open,
+    FilletCornerKind::ThreeByTwoMixed,
+    FilletCornerKind::NByTwo,
+    FilletCornerKind::FourByThree,
+    FilletCornerKind::ConvexNByN,
+    FilletCornerKind::ConcaveNByN,
+];
 
 // ---- shared -----------------------------------------------------------------------------
 
@@ -300,7 +469,8 @@ fn topo(i: &Inputs) -> Result<Result<Topo, Output>, HarnessError> {
     let (Inputs::G1 { brep, .. }
     | Inputs::FaceByTwo { brep, .. }
     | Inputs::Tangential { brep, .. }
-    | Inputs::Concavity { brep, .. }) = i
+    | Inputs::Concavity { brep, .. }
+    | Inputs::Nx1 { brep, .. }) = i
     else {
         return Err(harness("not a topology case"));
     };
@@ -398,6 +568,14 @@ fn topo(i: &Inputs) -> Result<Result<Topo, Output>, HarnessError> {
                 }
             }
             vec![vv, a, bb, sel(*ref_eu, n_eu)]
+        }
+        Inputs::Nx1 { v, eu, .. } => {
+            let vv = sel(*v, n_v);
+            let ring = ring_eus(vv);
+            if vv < 0 || ring.is_empty() {
+                return Ok(Err(Output::err("no_edge_use")));
+            }
+            vec![vv, pick(*eu, &ring, n_eu)]
         }
         _ => return Err(harness("not a topology case")),
     };
@@ -541,6 +719,7 @@ fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
             v.extend(dom);
             Ok(Output::new().values("closure", call(Op::Closure, "", &v)?))
         }
+        Inputs::Corner { .. } => corner_cpp(i),
         _ => {
             let t = match topo(i)? {
                 Ok(t) => t,
@@ -550,6 +729,7 @@ fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
                 Inputs::G1 { tol, .. } => (Op::G1, vec![*tol]),
                 Inputs::FaceByTwo { .. } => (Op::FaceByTwo, vec![]),
                 Inputs::Tangential { tol, .. } => (Op::Tangential, vec![*tol]),
+                Inputs::Nx1 { .. } => (Op::Nx1Degeneracy, vec![]),
                 _ => (Op::Concavity, vec![]),
             };
             let mut v = t.block.clone();
@@ -569,6 +749,7 @@ fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
             let key = match op {
                 Op::G1 => "g1",
                 Op::FaceByTwo => "face",
+                Op::Nx1Degeneracy => "ret",
                 _ => "flag",
             };
             Ok(Output::new().values(key, rest.to_vec()))
@@ -621,6 +802,7 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
                 Err(e) => Ok(rust_err(&e)),
             }
         }
+        Inputs::Corner { .. } => corner_rust(i),
         _ => {
             let mut t = match topo(i)? {
                 Ok(t) => t,
@@ -659,6 +841,37 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
                     corner::check_tangential_edgeuse(&k, &mut t.brep, e, *tol)
                         .map(|f| vec![flag(f)])
                 }
+                Inputs::Nx1 { .. } => {
+                    let v = VertexId::from_index(idx_u32(a(0)?)?);
+                    let e = EdgeuseId::from_index(idx_u32(a(1)?)?);
+                    // the side edge uses the routine evaluates
+                    let b = &t.brep;
+                    let mut eus = vec![e];
+                    if let Ok(Some(s1)) = eu1::cw_edgeuse(b, e) {
+                        eus.push(s1);
+                        let s2 = eu1::radial(b, e)
+                            .ok()
+                            .flatten()
+                            .and_then(|r| eu1::ccw_edgeuse(b, r).ok().flatten());
+                        match s2 {
+                            Some(s2) if s2 == s1 => eus.extend(eu1::mate(b, s1).ok().flatten()),
+                            Some(s2) => eus.push(s2),
+                            None => {}
+                        }
+                    }
+                    if let Some(o) = inexact(&t, &[], &eus) {
+                        return Ok(o);
+                    }
+                    // the raw `SmBoolean` return: the flag, or the status `SER` returns
+                    match corner::check_nx1_degeneracy(&k, &mut t.brep, v, e) {
+                        Ok(f) => Ok(vec![flag(f)]),
+                        Err(e) if e.is_unported() => Err(e),
+                        Err(e) if matches!(&e, SolidError::InvalidInput { reason, .. } if *reason == NULL_DEREF) => {
+                            Err(e)
+                        }
+                        Err(e) => Ok(vec![model_status(&e)]),
+                    }
+                }
                 _ => {
                     let v = VertexId::from_index(idx_u32(a(0)?)?);
                     let (e1, e2) = (
@@ -678,6 +891,7 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
             let key = match i {
                 Inputs::G1 { .. } => "g1",
                 Inputs::FaceByTwo { .. } => "face",
+                Inputs::Nx1 { .. } => "ret",
                 _ => "flag",
             };
             match r {
@@ -1039,7 +1253,12 @@ fn gen_topology(rng: &mut Rng) -> Inputs {
             rng.range_i64(0, 1 << 20)
         }
     };
-    match rng.below(4) {
+    match rng.below(5) {
+        4 => Inputs::Nx1 {
+            brep: gen_topo_brep(rng),
+            v: rng.below(1 << 20) as i64,
+            eu: rng.below(1 << 20) as i64,
+        },
         0 => Inputs::G1 {
             brep,
             v: none_or(rng, 0.05),
@@ -1088,15 +1307,647 @@ impl UnitDiff for Runner {
     }
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
-        let i = match rng.below(12) {
+        let i = match rng.below(16) {
             0 | 1 => gen_planar(rng),
             2..=4 => gen_revolution(rng),
             5 => gen_fillet_radius(rng),
             6 => gen_seam_out(rng),
             7 => gen_closure(rng),
-            _ => gen_topology(rng),
+            8..=11 => gen_topology(rng),
+            _ => gen_corner(rng),
         };
         serde_json::to_value(i).ok()
+    }
+}
+
+// ---- the SmFilletCorner methods on the pseudo-B-rep model --------------------------------
+
+/// "Upstream would dereference null" (or free an object twice): the shim refused.
+const CORNER_REFUSED: f64 = -2.0;
+/// The shim did not run upstream (the Rust side defers).
+const CORNER_NOT_RUN: f64 = -3.0;
+
+fn push_eus(o: &mut Vec<f64>, l: Option<&Vec<EuSel>>) {
+    o.push(flag(l.is_some()));
+    let l = l.map_or(&[][..], Vec::as_slice);
+    o.push(l.len() as f64);
+    for [e, w] in l {
+        o.extend([*e as f64, *w as f64]);
+    }
+}
+
+/// The corner-method record of an output: `kind`, `model`, `corner`, the method's input.
+struct CornerCase<'a> {
+    method: CornerMethod,
+    model: &'a Model,
+    corner: &'a CornerIn,
+    peek: &'a PeekIn,
+    solvers: &'a [SolverRegIn],
+    query: usize,
+    adds: &'a [ExtAddIn],
+    queries: &'a [usize],
+    squeeze: usize,
+    curve: Option<&'a Crv>,
+}
+
+fn corner_case(i: &Inputs) -> Result<CornerCase<'_>, HarnessError> {
+    let Inputs::Corner {
+        method,
+        model,
+        corner,
+        peek,
+        solvers,
+        query,
+        adds,
+        queries,
+        squeeze,
+        curve,
+    } = i
+    else {
+        return Err(harness("not a corner case"));
+    };
+    Ok(CornerCase {
+        method: *method,
+        model: model.as_ref(),
+        corner,
+        peek,
+        solvers,
+        query: *query,
+        adds,
+        queries,
+        squeeze: *squeeze,
+        curve: curve.as_ref(),
+    })
+}
+
+fn corner_input(c: &CornerCase<'_>) -> Result<Vec<f64>, HarnessError> {
+    let ci = c.corner;
+    let mut o = Vec::new();
+    push_model(&mut o, c.model)?;
+    o.extend([ci.kind as f64, ci.v_edge as f64, ci.v_sub as f64]);
+    push_eus(&mut o, ci.solver.as_ref());
+    push_eus(&mut o, ci.all.as_ref());
+    o.push(ci.verts.len() as f64);
+    o.extend(ci.verts.iter().map(|&v| v as f64));
+    o.push(ci.edges.len() as f64);
+    o.extend(ci.edges.iter().map(|&e| e as f64));
+    o.extend([
+        flag(ci.bevel),
+        flag(ci.blending),
+        flag(ci.chamfer),
+        flag(ci.degenerate),
+        flag(ci.ext),
+        flag(ci.adjusted),
+    ]);
+    o.extend([ci.setback, ci.tol, ci.tan]);
+    match c.method {
+        CornerMethod::Peek => {
+            let p = c.peek;
+            o.extend([
+                p.set_bevel as f64,
+                p.set_const_rad as f64,
+                p.set_chamfer as f64,
+                p.add_vertex as f64,
+                p.kinds.len() as f64,
+            ]);
+            o.extend(p.kinds.iter().copied());
+        }
+        CornerMethod::Solvers => {
+            o.push(c.solvers.len() as f64);
+            for r in c.solvers {
+                o.extend([r.e as f64, r.which as f64, r.approx, r.tang]);
+            }
+            o.push(c.query as f64);
+        }
+        CornerMethod::ExtSurface => {
+            o.push(c.adds.len() as f64);
+            for a in c.adds {
+                o.extend([a.face as f64, a.s]);
+            }
+            o.push(c.queries.len() as f64);
+            o.extend(c.queries.iter().map(|&f| f as f64));
+        }
+        CornerMethod::Reinit => {}
+        CornerMethod::Squeeze => o.push(c.squeeze as f64),
+        CornerMethod::RailRail => {
+            let crv = c.curve.ok_or_else(|| harness("rail_rail: no curve"))?;
+            super::blend_fillet_geom_p1::push_crv(&mut o, crv);
+        }
+    }
+    Ok(o)
+}
+
+/// Splits a squeeze record: `status`, the corner members, the model export.
+fn squeeze_output(rec: &[f64]) -> Result<Output, HarnessError> {
+    let get = |i: usize| {
+        rec.get(i)
+            .copied()
+            .ok_or_else(|| harness("record too short"))
+    };
+    let count = |i: usize| -> Result<usize, HarnessError> {
+        usize::try_from(get(i)? as i64).map_err(|_| harness("count"))
+    };
+    let st = get(0)?;
+    let mut at = 1;
+    let nv = count(at)?;
+    at += 1 + nv;
+    let ne = count(at)?;
+    at += 1 + ne;
+    at += 7 + 2; // the flags, the setback and the surface count
+    let corner = rec
+        .get(1..at)
+        .ok_or_else(|| harness("record too short"))?
+        .to_vec();
+    let model = rec
+        .get(at..)
+        .ok_or_else(|| harness("record too short"))?
+        .to_vec();
+    Ok(Output::new()
+        .values("status", vec![st])
+        .values("corner", corner)
+        .values("model", model))
+}
+
+fn corner_cpp(i: &Inputs) -> Result<Output, HarnessError> {
+    let c = corner_case(i)?;
+    let input = corner_input(&c)?;
+    let out = ffi::corner(c.method.ffi(), &input).map_err(|e| harness(format!("c++: {e}")))?;
+    let Some((&head, rest)) = out.split_first() else {
+        return Err(harness("empty corner output"));
+    };
+    if head == CORNER_REFUSED {
+        return Ok(Output::err("refused"));
+    }
+    if head == CORNER_NOT_RUN {
+        return Ok(Output::err("not_run_by_cpp"));
+    }
+    if head != 0.0 {
+        return Err(harness(format!("unexpected corner record head {head}")));
+    }
+    Ok(match c.method {
+        CornerMethod::Peek => Output::new().values("peek", rest.to_vec()),
+        CornerMethod::Solvers => Output::new().values("solvers", rest.to_vec()),
+        CornerMethod::ExtSurface => Output::new().values("domains", rest.to_vec()),
+        CornerMethod::Reinit => Output::new().values("model", rest.to_vec()),
+        CornerMethod::Squeeze => squeeze_output(rest)?,
+        CornerMethod::RailRail => Output::new().values("ret", rest.to_vec()),
+    })
+}
+
+/// A Rust error of a corner method: deferred for `Unported`, `refused` for a null
+/// dereference, else the raw status (what upstream returns, through `SER`).
+fn corner_err(e: &SolidError) -> Result<f64, Box<Output>> {
+    if let Some(o) = Output::unported(e) {
+        return Err(Box::new(o));
+    }
+    if matches!(e, SolidError::InvalidInput { reason, .. } if *reason == NULL_DEREF) {
+        return Err(Box::new(Output::err("refused")));
+    }
+    Ok(model_status(e))
+}
+
+fn corner_rust(i: &Inputs) -> Result<Output, HarnessError> {
+    let c = corner_case(i)?;
+    let ci = c.corner;
+    let h = |e: SolidError| harness(e.to_string());
+    let mut rm = RustModel::build(c.model)?;
+    let kind = *KINDS.get(ci.kind).ok_or_else(|| harness("kind"))?;
+    let target_eu = |rm: &RustModel, [e, w]: EuSel| -> Result<EdgeuseId, HarnessError> {
+        let edge = *rm
+            .target_edges
+            .get(e)
+            .ok_or_else(|| harness("target edge"))?;
+        let prim = eu1::primary_edgeuse(&rm.target, edge)
+            .map_err(h)?
+            .ok_or_else(|| harness("primary edge use"))?;
+        if w == 1 {
+            eu1::mate(&rm.target, prim)
+                .map_err(h)?
+                .ok_or_else(|| harness("mate"))
+        } else {
+            Ok(prim)
+        }
+    };
+    let list =
+        |rm: &RustModel, l: Option<&Vec<EuSel>>| -> Result<Option<Vec<EdgeuseId>>, HarnessError> {
+            l.map(|l| l.iter().map(|&s| target_eu(rm, s)).collect())
+                .transpose()
+        };
+    let vertex_of =
+        |rm: &RustModel, v_edge: i64, v_sub: usize| -> Result<Option<VertexId>, HarnessError> {
+            match usize::try_from(v_edge) {
+                Ok(e) => {
+                    let edge = *rm
+                        .target_edges
+                        .get(e)
+                        .ok_or_else(|| harness("target edge"))?;
+                    let [vs, ve] = rm.target.edge(edge).map_err(h)?.vertices;
+                    Ok(Some(if v_sub == 0 { vs } else { ve }))
+                }
+                Err(_) => Ok(None),
+            }
+        };
+    let vertex = vertex_of(&rm, ci.v_edge, ci.v_sub)?;
+    let solver_eus = list(&rm, ci.solver.as_ref())?;
+    let all_eus = list(&rm, ci.all.as_ref())?;
+    let mut fc = FilletCorner::new(kind, vertex, solver_eus, all_eus, ci.tol, ci.tan);
+    for &v in &ci.verts {
+        fc.vertices.push(rm.vertex(v)?);
+    }
+    for &e in &ci.edges {
+        fc.edges.push(rm.edge(e)?);
+    }
+    fc.bevel = ci.bevel;
+    fc.blending = ci.blending;
+    fc.chamfer = ci.chamfer;
+    fc.degenerate = ci.degenerate;
+    fc.extended_surface_patch = ci.ext;
+    fc.topology_adjusted = ci.adjusted;
+    fc.set_back_dist = ci.setback;
+
+    match c.method {
+        CornerMethod::Peek => {
+            let p = c.peek;
+            if p.set_bevel >= 0 {
+                fc.set_bevel(p.set_bevel != 0);
+            }
+            if p.set_const_rad >= 0 {
+                fc.set_calc_as_const_rad(p.set_const_rad != 0);
+            }
+            if p.set_chamfer >= 0 && (ci.kind == 9 || ci.kind == 10) {
+                fc.set_chamfer(p.set_chamfer != 0);
+            }
+            if let Ok(v) = usize::try_from(p.add_vertex) {
+                fc.add_fillet_vertex(rm.vertex(v)?);
+            }
+            let mut rec = vec![fc.this_approx_tol_3d()];
+            let mut edges = Vec::new();
+            fc.fillet_edges(&mut edges);
+            rec.push(edges.len() as f64);
+            rec.extend(edges.iter().map(|&e| rm.edge_index(Some(e))));
+            let mut verts = Vec::new();
+            fc.fillet_vertices(&mut verts);
+            rec.push(verts.len() as f64);
+            rec.extend(verts.iter().map(|&v| rm.vertex_index(Some(v))));
+            // the filleted vertex as (target edge, 0 start / 1 end)
+            let mut found = [-1.0, -1.0];
+            if let Some(v) = fc.filleted_vertex() {
+                for (i, &e) in rm.target_edges.iter().enumerate() {
+                    let [vs, ve] = rm.target.edge(e).map_err(h)?.vertices;
+                    if vs == v {
+                        found = [i as f64, 0.0];
+                        break;
+                    }
+                    if ve == v {
+                        found = [i as f64, 1.0];
+                        break;
+                    }
+                }
+            }
+            rec.extend(found);
+            rec.push(fc.set_back_dist());
+            rec.push(fc.status() as i64 as f64);
+            rec.push(fc.type_code() as f64);
+            rec.push(flag(fc.type_string() == corner::FILLET_CORNER_TYPE_STRING));
+            for &t in &p.kinds {
+                rec.push(flag(fc.is_kind_of(t as i64)));
+            }
+            rec.extend([
+                flag(fc.is_bevel_corner()),
+                flag(fc.is_blending_corner()),
+                flag(fc.is_degenerate_corner()),
+                flag(fc.is_extended_surface_patch()),
+                flag(fc.is_calc_as_const_rad()),
+                flag(fc.is_tangent_corner()),
+            ]);
+            Ok(Output::new().values("peek", rec))
+        }
+        CornerMethod::Solvers => {
+            let mut exec = FilletExecutiveData::default();
+            for (i, r) in c.solvers.iter().enumerate() {
+                let eu = target_eu(&rm, [r.e, r.which])?;
+                exec.edgeuse_solver_map.insert(eu, FilletSolverId(i as u32));
+            }
+            let fs = FilletSolverId(c.query as u32);
+            let index = |s: Option<FilletSolverId>| s.map_or(-1.0, |s| f64::from(s.0));
+            // the solver list first: both dereference m_pSolverEUs
+            let all = match fc.fillet_solvers(&exec) {
+                Ok(v) => v,
+                Err(e) => {
+                    return Ok(corner_err(&e)
+                        .err()
+                        .map_or_else(|| Output::err("error"), |o| *o))
+                }
+            };
+            let tangent = match fc.tangent_fillet_solver(&exec, fs) {
+                Ok(t) => t,
+                Err(e) => {
+                    return Ok(corner_err(&e)
+                        .err()
+                        .map_or_else(|| Output::err("error"), |o| *o))
+                }
+            };
+            let mut rec = vec![index(tangent), all.len() as f64];
+            rec.extend(all.into_iter().map(index));
+            Ok(Output::new().values("solvers", rec))
+        }
+        CornerMethod::ExtSurface => {
+            let mut exec = FilletExecutiveData::default();
+            for a in c.adds {
+                let face = *rm.target_faces.get(a.face).ok_or_else(|| harness("face"))?;
+                let dom = Extent2d::from_bounds(0.0, 0.0, a.s, a.s);
+                let plane = Plane::new(
+                    Vec3::new(0.0, 0.0, 0.0),
+                    Vec3::new(1.0, 0.0, 0.0),
+                    Vec3::new(0.0, 1.0, 0.0),
+                    Vec2::new(1.0, 1.0),
+                    &dom,
+                );
+                fc.add_extended_original_surface(&mut exec, face, Surface::from(plane));
+            }
+            let mut rec = Vec::new();
+            for &q in c.queries {
+                let face = *rm.target_faces.get(q).ok_or_else(|| harness("face"))?;
+                match fc.extended_surface(&exec, face) {
+                    Some(s) => {
+                        let d = s.natural_uv_domain();
+                        rec.extend([d.max().x, d.max().y]);
+                    }
+                    None => rec.extend([-1.0, -1.0]),
+                }
+            }
+            Ok(Output::new().values("domains", rec))
+        }
+        CornerMethod::Reinit => {
+            if let Err(e) = fc.re_initialize_corner_edges(&mut rm.fb) {
+                return Ok(match corner_err(&e) {
+                    Err(o) => *o,
+                    Ok(st) => Output::err(format!("status_{st}")),
+                });
+            }
+            let mut rec = Vec::new();
+            rm.put(&mut rec)?;
+            Ok(Output::new().values("model", rec))
+        }
+        CornerMethod::Squeeze => {
+            let e = rm.edge(c.squeeze)?;
+            // the shim's refusal: a non-rail edge with both ends at the deleted vertex is
+            // freed at its first vertex use and read again at its second
+            {
+                let b = rm.fb.brep();
+                let surviving = edge::vertex(b, e).map_err(h)?;
+                let other = edge::other_vertex(b, e, surviving).map_err(h)?;
+                if let (Some(mut surviving), Some(mut del)) = (surviving, other) {
+                    let status = |v: VertexId| rm.fb.fillet_vertex(v).map(|r| r.status).ok();
+                    if status(del) != Some(FilStatus::ToBeDeleted) {
+                        std::mem::swap(&mut surviving, &mut del);
+                    }
+                    if status(del) == Some(FilStatus::ToBeDeleted) {
+                        // a closed edge: the surviving vertex is the deleted one
+                        if surviving == del {
+                            return Ok(Output::err("refused"));
+                        }
+                        for vu in solidcore::topology::vertex::vertexuses(b, del).map_err(h)? {
+                            let fe = eu1::vertexuse_edgeuse(b, vu)
+                                .map_err(h)?
+                                .and_then(|eu| eu1::edge(b, eu).ok().flatten());
+                            let Some(fe) = fe else {
+                                return Ok(Output::err("refused"));
+                            };
+                            let rail = rm
+                                .fb
+                                .fillet_edge(fe)
+                                .is_ok_and(|r| r.edge_type == FilletEdgeType::Rail);
+                            let ends = b.edge(fe).map_err(h)?.vertices;
+                            if !rail && ends[0] == ends[1] {
+                                return Ok(Output::err("refused"));
+                            }
+                        }
+                    }
+                }
+            }
+            let st = match fc.squeeze_edge(&mut rm.fb, e) {
+                Ok(()) => 0.0,
+                Err(e) => match corner_err(&e) {
+                    Err(o) => return Ok(*o),
+                    Ok(st) => st,
+                },
+            };
+            let mut rec = vec![st, fc.vertices.len() as f64];
+            rec.extend(fc.vertices.iter().map(|&v| rm.vertex_index(Some(v))));
+            rec.push(fc.edges.len() as f64);
+            rec.extend(fc.edges.iter().map(|&e| rm.edge_index(Some(e))));
+            rec.extend([
+                flag(fc.bevel),
+                flag(fc.blending),
+                flag(fc.chamfer),
+                flag(fc.degenerate),
+                flag(fc.calc_as_const_rad),
+                flag(fc.topology_adjusted),
+                flag(fc.extended_surface_patch),
+            ]);
+            rec.push(fc.set_back_dist);
+            rec.push(fc.surfaces.len() as f64);
+            rm.put(&mut rec)?;
+            squeeze_output(&rec)
+        }
+        CornerMethod::RailRail => {
+            let crv = c.curve.ok_or_else(|| harness("rail_rail: no curve"))?;
+            let curve = Curve::from(model_curve_of(crv)?);
+            // the raw `SmBoolean` return: the flag, or the status `SER` returns
+            let ret = match fc.test_rail_rail_interpolation_curve(&rm.k, &rm.target, &curve) {
+                Ok(f) => flag(f),
+                Err(e) => match corner_err(&e) {
+                    Err(o) => return Ok(*o),
+                    Ok(st) => st,
+                },
+            };
+            Ok(Output::new().values("ret", vec![ret]))
+        }
+    }
+}
+
+/// A corner case on a generated model: the method's inputs are biased towards the
+/// paths that do something (a vertex to delete for the squeeze, registered solvers for
+/// the lookups, a concave `NxN` corner with a vertex for the rail-rail test).
+fn gen_corner(rng: &mut Rng) -> Inputs {
+    let mut model = gen_model(rng);
+    let nv = model.vertices.len();
+    let ne = model.edges.len();
+    let nt = model.targets.len();
+    let nf = model.faces.len();
+    let method = *rng
+        .choose(&[
+            CornerMethod::Peek,
+            CornerMethod::Solvers,
+            CornerMethod::Solvers,
+            CornerMethod::ExtSurface,
+            CornerMethod::Reinit,
+            CornerMethod::Squeeze,
+            CornerMethod::Squeeze,
+            CornerMethod::Squeeze,
+            CornerMethod::RailRail,
+            CornerMethod::RailRail,
+        ])
+        .unwrap_or(&CornerMethod::Peek);
+    let kind = if method == CornerMethod::RailRail {
+        10
+    } else {
+        rng.below(11) as usize
+    };
+    let v_edge = if nt > 0 && (method == CornerMethod::RailRail || rng.chance(0.8)) {
+        rng.below(nt as u64) as i64
+    } else {
+        -1
+    };
+    let v_sub = if v_edge >= 0 {
+        rng.below(2) as usize
+    } else {
+        0
+    };
+    let eus = |rng: &mut Rng| -> Option<Vec<EuSel>> {
+        if nt == 0 || rng.chance(0.15) {
+            return None;
+        }
+        let n = rng.below(4) as usize;
+        Some(
+            (0..n)
+                .map(|_| [rng.below(nt as u64) as usize, rng.below(2) as usize])
+                .collect(),
+        )
+    };
+    let solver = eus(rng);
+    let all = eus(rng);
+    let subset = |rng: &mut Rng, n: usize| -> Vec<usize> {
+        let mut v: Vec<usize> = (0..n).filter(|_| rng.chance(0.7)).collect();
+        if rng.chance(0.2) {
+            v.reverse();
+        }
+        v
+    };
+    let mut verts = subset(rng, nv);
+    let mut edges = subset(rng, ne);
+    let scale = *rng.choose(&[1.0, 1e-3, 1e3, 10.0, 0.1]).unwrap_or(&1.0);
+    let tol = match rng.below(4) {
+        0 => 1e-3 * scale,
+        1 => 1e-6 * scale,
+        2 => 0.0,
+        _ => scale * 10f64.powf(rng.uniform(-9.0, -2.0)),
+    };
+    let tan = rng.uniform(1e-4, 0.2);
+
+    // the squeeze: a vertex of the edge to be deleted, its edges in the corner
+    let squeeze = rng.below(ne.max(1) as u64) as usize;
+    if let (CornerMethod::Squeeze, Some(e)) = (method, model.edges.get(squeeze)) {
+        let (vs, ve) = (e.vs, e.ve);
+        if rng.chance(0.8) {
+            let del = if rng.chance(0.5) { vs } else { ve };
+            if let Some(v) = model.vertices.get_mut(del) {
+                v.status = 9; // SM_FV_TO_BE_DELETED
+            }
+            if rng.chance(0.1) {
+                if let Some(v) = model.vertices.get_mut(if del == vs { ve } else { vs }) {
+                    v.status = 9;
+                }
+            }
+            for (i, ed) in model.edges.iter_mut().enumerate() {
+                if (ed.vs == del || ed.ve == del) && rng.chance(0.5) {
+                    ed.etype = 9; // SM_FE_RAIL
+                }
+                if (ed.vs == del || ed.ve == del) && rng.chance(0.85) && !edges.contains(&i) {
+                    edges.push(i);
+                }
+            }
+            if rng.chance(0.9) && !verts.contains(&del) {
+                verts.push(del);
+            }
+        }
+    }
+    let peek = PeekIn {
+        set_bevel: rng.range_i64(-1, 1),
+        set_const_rad: rng.range_i64(-1, 1),
+        set_chamfer: if kind >= 9 { rng.range_i64(-1, 1) } else { -1 },
+        add_vertex: if nv > 0 && rng.chance(0.5) {
+            rng.below(nv as u64) as i64
+        } else {
+            -1
+        },
+        kinds: (0..rng.below(4))
+            .map(|_| {
+                *rng.choose(&[16036.0, 11001.0, 16033.0, 15002.0, 0.0])
+                    .unwrap_or(&0.0)
+            })
+            .collect(),
+    };
+    let solvers: Vec<SolverRegIn> = if nt > 0 {
+        (0..rng.below(4))
+            .map(|_| SolverRegIn {
+                e: rng.below(nt as u64) as usize,
+                which: rng.below(2) as usize,
+                approx: tol,
+                tang: tan,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let query = rng.below(solvers.len() as u64 + 1) as usize;
+    let adds: Vec<ExtAddIn> = if nf > 0 {
+        (0..rng.below(4))
+            .map(|_| ExtAddIn {
+                face: rng.below(nf as u64) as usize,
+                s: *rng
+                    .choose(&[0.5, 1.0, 1.0, 2.0, 3.0, 1.0 + 1e-13])
+                    .unwrap_or(&1.0),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let queries: Vec<usize> = if nf > 0 {
+        (0..rng.below(3))
+            .map(|_| rng.below(nf as u64) as usize)
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let curve = if method == CornerMethod::RailRail {
+        Some(model_gen_curve(rng, 3, scale))
+    } else {
+        None
+    };
+    Inputs::Corner {
+        method,
+        model: Box::new(model),
+        corner: CornerIn {
+            kind,
+            v_edge,
+            v_sub,
+            solver,
+            all,
+            verts,
+            edges,
+            bevel: rng.chance(0.5),
+            blending: rng.chance(0.3),
+            chamfer: rng.chance(0.2),
+            degenerate: rng.chance(0.2),
+            ext: rng.chance(0.8),
+            adjusted: rng.chance(0.2),
+            setback: if rng.chance(0.5) {
+                0.0
+            } else {
+                rng.uniform(0.0, scale)
+            },
+            tol,
+            tan,
+        },
+        peek,
+        solvers,
+        query,
+        adds,
+        queries,
+        squeeze,
+        curve,
     }
 }
 
@@ -1117,11 +1968,11 @@ mod tests {
 
     /// The op name of a case.
     fn op_name(case: &Case) -> String {
-        case.inputs
-            .get("op")
-            .and_then(Value::as_str)
-            .unwrap_or("?")
-            .to_string()
+        let op = case.inputs.get("op").and_then(Value::as_str).unwrap_or("?");
+        match case.inputs.get("method").and_then(Value::as_str) {
+            Some(m) => format!("{op}:{m}"),
+            None => op.to_string(),
+        }
     }
 
     /// With `CASE_CENSUS`: the outcome of every case of the unit run (fixtures plus
@@ -1161,6 +2012,16 @@ mod tests {
                             (if f == 0.0 { "false" } else { "true" }).to_string()
                         } else if let Some(f) = first("g1") {
                             (if f == 0.0 { "false" } else { "true" }).to_string()
+                        } else if let Some(f) = first("ret") {
+                            // the raw SmBoolean return: the flag, or a status
+                            (if f == 0.0 {
+                                "false"
+                            } else if f == 1.0 {
+                                "true"
+                            } else {
+                                "status"
+                            })
+                            .to_string()
                         } else if let Some(f) = first("face") {
                             (if f >= 0.0 { "face" } else { "no_face" }).to_string()
                         } else if let Some(f) = first("seam") {
@@ -1223,6 +2084,7 @@ mod tests {
         };
         for i in indices {
             let case = &cases[i];
+            eprintln!("case_start: {i} {} {}", case.name, case.inputs);
             let r = if rust_side {
                 Runner.run_rust(case).map(|o| o.error)
             } else {

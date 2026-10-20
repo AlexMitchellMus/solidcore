@@ -38,9 +38,10 @@
 //!   [`FilletCorner::create`] can build every kind. `m_eStatus` (never initialised
 //!   upstream) starts as [`FilStatus::Unprocessed`]; `SmFilletNx2Corner`'s `m_bG1Case`
 //!   (set by its `MakeCornerTopology`) starts as `false`.
-//! - **Unported callees.** `sm_TestG1Continuity`, `SmFilletNx1Corner::CheckNx1Degeneracy`,
-//!   `CreateEndPatch`, `MakeFaceBrep` and `CalcCornerVertGeom` (unit
-//!   `blend.fillet_corner_p1`), `sm_FindConcaveEdgeuses`, `MakeAnalyticCornerSurface`,
+//! - **Unported callees.** `CreateEndPatch`, `MakeFaceBrep` and `CalcCornerVertGeom`
+//!   (unit `blend.fillet_corner_p1`; `sm_TestG1Continuity` and
+//!   `SmFilletNx1Corner::CheckNx1Degeneracy` are wired to
+//!   [`crate::blend::fillet_corner::p1`]), `sm_FindConcaveEdgeuses`, `MakeAnalyticCornerSurface`,
 //!   `AdjustConcaveCornerTopology` and the `SmFilletConvexNxNCorner` /
 //!   `SmFilletNx1ClosedCorner` overrides (`blend.fillet_corner_p2`),
 //!   `TestAndConvertBigRadFillet` and `NoteFilletError` (`blend.fillet_executive_p1`),
@@ -74,6 +75,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::blend::fillet_corner::p1;
 use crate::blend::fillet_geom::p1::{
     FilStatus, FilletBrep, FilletCornerId, FilletCornerType, FilletEdgeType, FilletGeomId,
     FilletGeomType, FilletSolverId, FilletVertex, FilletVertexType,
@@ -176,6 +178,10 @@ impl FilletCornerKind {
 pub struct FilletExecutiveData {
     /// `m_vEdgeuseSolverMap`: the fillet solver of each filleted edge use.
     pub edgeuse_solver_map: BTreeMap<EdgeuseId, FilletSolverId>,
+    /// `m_vExtendedSurfacesMap`: the extended surface registered for a face of the
+    /// original B-rep (`SmFilletCorner::AddExtendedOriginalSurface` /
+    /// `GetExtendedSurface`, unit `blend.fillet_corner_p1`).
+    pub extended_surfaces_map: BTreeMap<FaceId, Surface>,
 }
 
 impl FilletExecutiveData {
@@ -530,7 +536,7 @@ impl FilletCorner {
                         2 | 3 => Some(make(FilletCornerKind::NByOneClosed)),
                         _ => None, // MSG: Corner Case Not Implemented
                     }
-                } else if check_nx1_degeneracy(b, vertex, eu0)? {
+                } else if check_nx1_degeneracy(k, b, vertex, eu0)? {
                     // Degeneracy-check needs to be checked first
                     Some(make(FilletCornerKind::Degenerate))
                 } else if is_open_end_corner {
@@ -1707,23 +1713,18 @@ fn store_bspline(brep: &mut Brep, e: EdgeId, c: BSplineCurve) -> Result<()> {
 
 /// `sm_TestG1Continuity` (unit `blend.fillet_corner_p1`).
 fn test_g1_continuity(
-    _b: &Brep,
-    _vertex: VertexId,
-    _edge1: EdgeId,
-    _edge2: EdgeId,
-    _ang_tol_deg: f64,
+    b: &Brep,
+    vertex: VertexId,
+    edge1: EdgeId,
+    edge2: EdgeId,
+    ang_tol_deg: f64,
 ) -> Result<bool> {
-    // UNPORTED(blend.fillet_corner_p1): sm_TestG1Continuity
-    Err(unported("sm_TestG1Continuity", "blend.fillet_corner_p1"))
+    Ok(p1::test_g1_continuity(b, Some(vertex), Some(edge1), Some(edge2), ang_tol_deg)?.0)
 }
 
 /// `SmFilletNx1Corner::CheckNx1Degeneracy` (unit `blend.fillet_corner_p1`).
-fn check_nx1_degeneracy(_b: &Brep, _vertex: VertexId, _eu: EdgeuseId) -> Result<bool> {
-    // UNPORTED(blend.fillet_corner_p1): SmFilletNx1Corner::CheckNx1Degeneracy
-    Err(unported(
-        "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "blend.fillet_corner_p1",
-    ))
+fn check_nx1_degeneracy(k: &Kernel, b: &mut Brep, vertex: VertexId, eu: EdgeuseId) -> Result<bool> {
+    p1::check_nx1_degeneracy(k, b, vertex, eu)
 }
 
 /// `sm_FindConcaveEdgeuses` (unit `blend.fillet_corner_p2`).
