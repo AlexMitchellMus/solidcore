@@ -15,12 +15,14 @@
 //! documented in the ffi module, reported as the `out` values. A Rust error maps to its
 //! `SmStatus` (`InvalidInput` 1007); an `Unported` error anywhere defers the case.
 //!
-//! Deferred cases: the topology zone tolerances of point classifications (vertex, edge and
-//! face objects, through `intersect.point_class`), the live-topology test of
-//! `HasDeadTopologyPointObject` (`topology.brep_p1`) and the face surface of `GetMinUV` /
-//! `GetMaxUV` for a 3D curve (`topology.face_p2`). Generated scripts are filtered by the
-//! shim's run-time checks (scripts it rejects as undefined upstream, or as topology walks over
-//! the bare stand-ins, are dropped).
+//! The vertex, edge and face objects are B-rep records (see unit `intersect.curve_class_p1`,
+//! [`BareTopology`](super::intersect_curve_class_p1::BareTopology)).
+//!
+//! Deferred cases: the live-topology test of `HasDeadTopologyPointObject` (`topology.brep_p1`)
+//! and the surface point drop of `GetMinUV` / `GetMaxUV` for a 3D curve on a face (its
+//! `SmFace::GetTolerance`, unit `topology.face_p2`, when the surface belongs to a face).
+//! Generated scripts are filtered by the shim's run-time checks (scripts it rejects as
+//! undefined upstream, or as topology walks over the bare stand-ins, are dropped).
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -516,9 +518,9 @@ fn rust_run(s: &Script) -> Result<Vec<f64>, Fail> {
             OpIn::MinUv { j, uv, .. } | OpIn::MaxUv { j, uv, .. } => {
                 let given = Point2::new(uv[0], uv[1]);
                 let r = if matches!(x, OpIn::MinUv { .. }) {
-                    cc.interval_min_uv(&pool, *j, given)
+                    cc.interval_min_uv(&k, &pool, *j, given)
                 } else {
-                    cc.interval_max_uv(&pool, *j, given)
+                    cc.interval_max_uv(&k, &pool, *j, given)
                 };
                 match st(r)? {
                     Ok(p) => o.extend([0.0, p.x, p.y]),

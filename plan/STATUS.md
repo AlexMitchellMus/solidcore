@@ -2,6 +2,8 @@
 
 Last updated: 2026-10-16, PR #127 (`sweep.trans_sweep_geometry` partial: 719 bit-identical passes, 50 deferred on `surface.cone_p2`, 19 rejected native fixtures). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
+Latest harness: PR #295 (B-rep records for the classification shims' topology handles): curve_class_p1 2048->2070, p2 1462->1649, p7 1077->1186, point_class 2411->2442 passes, 0 failed; stacked PR #296: curve_class_p3 3163->3288, p6 4216->4316.
+
 Latest topology integration: `topology.brep_p6` partial (PR #169, after its dependency #154: 498 cases, 450 pass, 48 deferred, 0 failed; 206 units, 113 green and 93 partial); before: `topology.shell` partial (PR #154, continuing @0xlillith's PR #80: 192 ported units, 109 green and 83 partial); before: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green); before: `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
 
 Latest main integration: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green).

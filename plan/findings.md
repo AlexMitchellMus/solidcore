@@ -10753,3 +10753,33 @@ with maximum relative error 0.
   `sm_GetEllipseTrimIntervals` through `IntersectWithCone`, which has no such guard yet.
   Reproduced with main's unpatched `cone/p2.rs` too. Tracked in issue #276; the
   `surface.cone_p2` refusals that are now stricter than needed are issue #277.
+
+## Classification shims: topology handles resolve to B-rep records (2026-10-20; harness gap, no port disagreement)
+
+- **Gap.** The shims of `intersect.curve_class_p1/p2/p3/p7` and `intersect.point_class` build
+  their vertex, edge and face objects as default-constructed `SmVertex` / `SmEdge` / `SmFace`
+  with only `m_pCurve` / `m_pSurface` set, never joined to a B-rep; `intersect.curve_class_p6`
+  uses the first face, edge, vertex and region of an `SmApiCreateBox` B-rep. Their Rust
+  adapters answered none of the `ClassGeometry` topology hooks, so every topology member
+  reached through them deferred as `topology.edge` / `topology.vertex` / `topology.face_p2`.
+- **Fix (harness).** `BareTopology` (`crates/difftest/src/units/intersect_curve_class_p1.rs`)
+  holds those objects as records of one `Brep` in exactly the state the shims give them
+  (`Vertex::default()`, an edge with the curve, `Extent1d::new()` interval and tolerance 0,
+  `Face::new` with the surface; an edge follows edits of the pool curve it shares). The p6
+  runner imports the same box through `heal.stitch_p1`'s export and `topology.brep_p1`'s
+  importer. The C++ shims are unchanged: every op they run needs only the bare object (the
+  shims reject walks over the missing topology), so the compared values did not change.
+- **Fix (library).** `PointClassification::compute_point_parameters` reads the edge curve /
+  interval and face surface / UV domain, and `CurveClassification::interval_min_uv` /
+  `interval_max_uv` drop to the face's surface (now taking the kernel), through
+  `ClassGeometry::topology_entity`; a handle the adapter cannot resolve still defers.
+- **Remaining stubs** these handles now reach (follow-up; they need a `ClassGeometry` (and
+  some `&mut Brep`) parameter threaded through callers in `heal.heal_data_p3`,
+  `query.face_p3`, `topology.face_p1` and `intersect.curve_class_p4`): p7 `SmEdge` /
+  `SmVertex::IsConnectedTo`, `SmEdge::GetInterval`, `SmVertex::GetPoint` / `SetPoint`,
+  `SmEdge::SetCurve`; point_class `IsConnectedTo`, `GetBrep`, `SetPoint`. PR #285 wires
+  `SmEdge::GetCurve` / `SmVertex::GetPoint` in p3/p7/point_class through the same hooks; once it
+  lands those cases resolve against these records too. `geom.solution_array` has its own
+  stubs without an adapter; `topology.proto_topology_p1..p3` mirror their stand-ins through
+  `ProtoBrep` and would need `classification_vertex_point` / `topology_zone_tol_3d` plus a
+  B-rep for `topology_entity`.
