@@ -148,13 +148,15 @@ are also logged, one entry each, in `plan/upstream-issues.md` for the upstream m
   `sm_MakeConsistentClassifications`; its shim exports each vertex's list order
   (`VertexUses` op) and the runner reorders the imported lists. Exporting the order in the
   shared fixture would fix every runner at once.
-- **Units that fail in a Debian bookworm / GCC 12 container, also on `main`.** Building the
-  reference in `rust:1.98.0-bookworm` (GCC 12.2) and running `--green` on `origin/main` at
-  `bc296e26` gives `heal.heal_data_p1` 2, `heal.heal_data_p2` 41, `heal.heal_data_p3` 2 and
-  `geom.hash_table` 435 failing cases. CI (and the PRs' own runs, with GCC 15) pass them.
-  Either the reference depends on the compiler beyond `-ffp-contract=off`, or something in
-  those runners is environment-dependent. Not investigated further. (Found while working on
-  `boolean.topology_intersector_p3`, 2026-10-17.)
+- **The `heal.heal_data_p1/p2/p3` and `geom.hash_table` failures seen in a Debian
+  bookworm container on an Apple Silicon host are the arm64 conversion difference above,
+  not GCC 12.** Docker there runs `linux/arm64` (`uname -m`: `aarch64`). On `main`
+  `bb137d7d` the container gives 3 / 104 / 7 / 435 failed. With the two Rust conversions
+  switched to saturating `as u64` for the experiment, `heal.heal_data_p2` passes every case
+  it runs (452 on the `boolean.topology_intersector_p3` branch, 0 failed), including 4
+  generated cases (`gen0070`, `gen0211`, `gen0544`, `gen0549`) that `main` defers and that
+  branch reaches through `intersect.curve_class_p4`'s wired part-2 calls. An earlier note
+  here blamed the compiler; that was wrong. (2026-10-20.)
 
 ## nlib.knots (green; no disagreements)
 
@@ -9227,10 +9229,23 @@ rejected: nothing runs on either side.
 
 ## boolean.topology_intersector_p3 (`SmTopologyIntersector.cpp` part 3: `MergeCurveClasses`, `MergeCurveOnSurfaces`, `MergeCoincidentSurfaces`; PR #211, 2026-10-17; partial, no disagreements)
 
-- **Built on unmerged PRs.** Parts 1 and 2 (#146, #203) and `intersect.curve_class_p2` /
-  `_p4` (#85, #137) are merged into the branch. The constructor `MergeCurveOnSurfaces`
-  needs is part 4's `with_curve`, whose `ReSet` is part 2's. In the merged branch, part 4's
-  stubs for `ReSet`, `ConnectIntervals` and `GetMinUV` / `GetMaxUV` are wired to part 2.
+- **Dependencies.** Parts 1 and 2 (#146, #203) and `intersect.curve_class_p2` / `_p4`
+  (#85, #137) are on `main`. The constructor `MergeCurveOnSurfaces` needs is part 4's
+  `with_curve`, whose `ReSet` is part 2's. `main` still has part 4's stubs for `ReSet`,
+  `ConnectIntervals` and `GetMinUV` / `GetMaxUV` (the two PRs merged separately); this
+  branch wires them to part 2.
+- **`query.face_p1` wired (2026-10-20).** `SmFace::Point3DClassify` and
+  `CalculateBoundingBox` are `IntersectorBrepP3` hooks; the difftest adapter calls
+  `query::face::p1`, mapping the classification's handles both ways with
+  `PointClassification::map_objects`. Upstream passes the `double` `dCurveTolerance` where
+  an `SmZoneTol3d` is expected (the classify call and the `SmPointClassification`
+  constructor); the port applies `zone_tol3d` at both, as that implicit conversion does.
+- **`curve_class_p7` cast fixed (2026-10-20).** With the edge queries wired, the fuzz run
+  reached `TestForPartialCoincidentEdges` with `SmLine` edges (the shared import keeps
+  lines). p7 accepted only a plain B-spline; upstream's `SM_CAST_PTR(SmBSplineCurve, ..)`
+  succeeds for every kind derived from it, and `new SmBSplineCurve(*p)` copies its B-spline
+  base. Three fuzz inputs gave `SM_ERR` in C++ and a null-dereference error in Rust; with
+  the fix, 2000 fuzz cases give 0 differs.
 - **Wired stubs of partial units.** `sm_MakeConsistentClassifications` (`curve_class_p1`)
   was a stub on `SmEdge::GetVertex` (`topology.edge`, already partial). It is now ported in
   full, reaching the edges and vertices through `ClassGeometry::topology_entity` and the new
@@ -9249,13 +9264,20 @@ rejected: nothing runs on either side.
   those lists. Part 2 gained `check_for_squeeze_vertices_into`, which appends to the
   caller's lists.
 - **Still deferred:**
-  - `SmFace::CalculateBoundingBox` / `Point3DClassify` (`query.face_p1`), reached by every
-    `MergeCoincidentSurfaces` and by a degenerate curve;
+  - `SmFace::GetEdges` / `GetUpwardLoopuses` (`topology.face_p4`), reached by
+    `MergeCoincidentSurfaces` once the face boxes overlap;
   - the imprinting of `MergeInterval` (`curve_class_p6`);
-  - `CombineCoincidentVertices` (`topology.brep_p5`) when squeezing;
+  - `topology.brep_p5`'s own stubs (`m_bEditingEnabled`, `topology.brep_p1`; `SqueezeEdge`,
+    `topology.brep_p3`), reached through `CombineCoincidentVertices` when squeezing;
   - `SmBrep::DeleteEdge` (`topology.brep_p4`) when repairing an edge relation;
   - the remaining `topology.edge` / `topology.vertex` stubs of `curve_class_p7`, which are
     in functions without classification geometry.
+- **Back-edges.** `blend.fillet_geom_p4`'s `MergeCurveOnSurfaces` stub is retagged
+  `blend.fillet_executive_p1`: it runs on the executive's intersector, which that unit
+  provides (as its `RegisterExistingSSI` stub already is). `boolean.merge_p1`'s
+  `MergeCoincidentSurfaces` stays `UNPORTED(boolean.topology_intersector_p3)`: wiring it
+  needs an `IntersectorBrepP3` for `boolean.merge_p4`'s `ArenaPair` and the kernels and
+  notification context in `fix_face_coincidence`; left for a follow-up PR.
 
 ## query.face_p1 (face/shell/region boxes, `Point3DClassify`, `EdgeCurveOnClassify`, `SmApiEvaluateCurve`; takeover of #105, 2026-10-18; partial, no disagreements)
 

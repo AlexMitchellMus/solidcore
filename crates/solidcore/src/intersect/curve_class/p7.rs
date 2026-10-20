@@ -52,7 +52,9 @@
 //! - **Undefined behaviour upstream** is an error here (`InvalidInput`): interval or
 //!   boundary indices past the intervals, the first interval of an empty
 //!   classification, a missing curve where it is dereferenced, and a coincident edge
-//!   whose curve is not a B-spline (`SM_CAST_PTR` gives `NULL`).
+//!   whose curve is not derived from `SmBSplineCurve` (`SM_CAST_PTR` gives `NULL`). For
+//!   the kinds derived from it (`SmLine`, `SmEllipse`/`SmCircle`, `SmHyperbola`,
+//!   `SmParabola`) the cast succeeds and the copy is of their B-spline base.
 //! - **Debug-only work** (`SM_DEBUG_CODE`, `SM_DBG_WARN`, `bReportProb` messages, the
 //!   unused `AreCoincidentMaybe` angle check) is dropped; the angle is still computed.
 //! - **Callees in units not ported yet** return [`SolidError::Unported`]: the topology
@@ -890,7 +892,7 @@ impl<O: ClassObject> CurveClassification<O> {
     /// # Errors
     ///
     /// [`SolidError::InvalidInput`] for an unresolved curve handle or a coincident
-    /// edge curve that is not a B-spline; those of [`Curve::is_closed`] and the
+    /// edge curve of a kind not derived from `SmBSplineCurve`; those of [`Curve::is_closed`] and the
     /// coincidence checks; [`SolidError::Unported`] where edges are examined (unit
     /// `topology.edge`).
     pub fn test_for_partial_coincident_edges(
@@ -1535,7 +1537,9 @@ fn partial_coincidence<O: ClassObject>(
         }
 
         // return a copy of the edge curve trimmed to the coincident range
-        let CurveKind::BSpline(bsc) = curve.kind() else {
+        // new SmBSplineCurve(*SM_CAST_PTR(SmBSplineCurve, pEdge->GetCurve())): a copy of
+        // the B-spline (base) of the curve
+        let Some(bsc) = as_b_spline(curve) else {
             return Err(SolidError::invalid_input(
                 OP_PARTIAL,
                 "coincident edge curve is not a B-spline",
@@ -1821,6 +1825,27 @@ fn face_point_3d_classify<O: ClassObject>(
         "SmFace::Point3DClassify",
         "query.face_p1",
     ))
+}
+
+/// `SM_CAST_PTR(SmBSplineCurve, pCurve)`: the B-spline (base) of the kinds derived from
+/// `SmBSplineCurve` (`SmLine`, `SmEllipse`/`SmCircle`, `SmHyperbola`, `SmParabola`),
+/// `None` for the others.
+const fn as_b_spline(c: &Curve) -> Option<&BSplineCurve> {
+    match c.kind() {
+        CurveKind::BSpline(b) => Some(b),
+        CurveKind::Line(l) => Some(l.base()),
+        CurveKind::Ellipse(e) => Some(e.base()),
+        CurveKind::Hyperbola(h) => Some(h.base()),
+        CurveKind::Parabola(p) => Some(p.base()),
+        CurveKind::Hermite(_)
+        | CurveKind::Conic(_)
+        | CurveKind::Projected(_)
+        | CurveKind::Iso(_)
+        | CurveKind::Offset(_)
+        | CurveKind::CrvInVolume(_)
+        | CurveKind::CrvOnSurf(_)
+        | CurveKind::Composite(_) => None,
+    }
 }
 
 #[cfg(test)]

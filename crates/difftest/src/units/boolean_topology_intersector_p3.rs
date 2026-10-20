@@ -593,7 +593,7 @@ fn run_rust_merge(i: &Inputs, p: Prepared) -> Result<Vec<f64>, SolidError> {
         relates,
         merge,
     } = p;
-    let k = Kernel::default();
+    let mut k = Kernel::default();
     let mut ti = TopologyIntersector::new(
         Some(brep_h(0)),
         two.brep(brep_h(1)).map(|_| brep_h(1)),
@@ -660,7 +660,7 @@ fn run_rust_merge(i: &Inputs, p: Prepared) -> Result<Vec<f64>, SolidError> {
                 ti: Some(TI_HANDLE),
                 classifications: None,
             };
-            let r = ti.merge_curve_on_surfaces(&k, &mut two, &input);
+            let r = ti.merge_curve_on_surfaces(&mut k, &mut two, &input);
             if let Some(m) = status(r, &mut o)? {
                 o.push(flag(m.deleted_topology));
                 put_list(&mut o, &m.deleted_edges.unwrap_or_default());
@@ -679,7 +679,8 @@ fn run_rust_merge(i: &Inputs, p: Prepared) -> Result<Vec<f64>, SolidError> {
             }
             let mut cc1 = new_class(&k, &c1)?;
             let mut cc2 = new_class(&k, &c2)?;
-            let r = ti.merge_curve_classes(&k, &mut two, &mut cc1, &mut cc2, merge_singularities);
+            let r =
+                ti.merge_curve_classes(&mut k, &mut two, &mut cc1, &mut cc2, merge_singularities);
             if let Some(m) = status(r, &mut o)? {
                 o.push(flag(m.topology_was_deleted));
                 put_list(&mut o, &m.deleted_edges.unwrap_or_default());
@@ -698,7 +699,7 @@ fn run_rust_merge(i: &Inputs, p: Prepared) -> Result<Vec<f64>, SolidError> {
                 o.push(NULL_DEREF);
                 return Ok(o);
             }
-            let r = ti.merge_coincident_surfaces(&k, &mut two, s1, s2, Some(TI_HANDLE));
+            let r = ti.merge_coincident_surfaces(&mut k, &mut two, s1, s2, Some(TI_HANDLE));
             if let Some(m) = status(r, &mut o)? {
                 put_list(&mut o, &m.faces);
                 put_list(&mut o, &m.other_faces);
