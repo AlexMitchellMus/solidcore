@@ -136,7 +136,10 @@ pub(super) enum Coincident {
 
 /// `SmEdge::GetVertex` and `SmEdge::GetOtherVertex(GetVertex())`: the edge's two vertices
 /// (a `NULL` vertex is dereferenced by the caller).
-fn edge_vertices<O: ClassObject>(geometry: &impl ClassGeometry<O>, edge: O) -> Result<(O, O)> {
+pub(super) fn edge_vertices<O: ClassObject>(
+    geometry: &impl ClassGeometry<O>,
+    edge: O,
+) -> Result<(O, O)> {
     let (b, e) = edge_of(geometry, edge, "SmEdge::GetVertex")?;
     let v1 = topo_edge::vertex(b, e)?;
     let v2 = topo_edge::other_vertex(b, e, v1)?;
@@ -150,13 +153,16 @@ fn edge_vertices<O: ClassObject>(geometry: &impl ClassGeometry<O>, edge: O) -> R
 }
 
 /// `SmEdge::GetInterval`.
-fn edge_interval<O: ClassObject>(geometry: &impl ClassGeometry<O>, edge: O) -> Result<Extent1d> {
+pub(super) fn edge_interval<O: ClassObject>(
+    geometry: &impl ClassGeometry<O>,
+    edge: O,
+) -> Result<Extent1d> {
     let (b, e) = edge_of(geometry, edge, "SmEdge::GetInterval")?;
     topo_edge::interval(b, e)
 }
 
 /// `SmEdge::GetCurve`.
-fn edge_curve<O: ClassObject, G: ClassGeometry<O>>(
+pub(super) fn edge_curve<O: ClassObject, G: ClassGeometry<O>>(
     geometry: &G,
     edge: O,
 ) -> Result<Option<&Curve>> {
@@ -165,7 +171,10 @@ fn edge_curve<O: ClassObject, G: ClassGeometry<O>>(
 }
 
 /// `SmVertex::GetPoint`.
-fn vertex_point<O: ClassObject>(geometry: &impl ClassGeometry<O>, vertex: O) -> Result<Point3> {
+pub(super) fn vertex_point<O: ClassObject>(
+    geometry: &impl ClassGeometry<O>,
+    vertex: O,
+) -> Result<Point3> {
     let (b, v) = vertex_of(geometry, vertex, "SmVertex::GetPoint")?;
     topo_vertex::point(b, v)
 }

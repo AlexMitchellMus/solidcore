@@ -45,13 +45,12 @@ use solidcore_ffi::units::intersect_curve_class_p1::kind;
 use solidcore_ffi::units::intersect_curve_class_p7::{self as ffi, op};
 
 use super::intersect_curve_class_p1::{
-    b, build_pool, curve_block, gen_bspline, gen_objects, gen_tol, id, must, obj_kind, of_kind,
+    add_face, b, build_pool, curve_block, gen_bspline, gen_objects, gen_tol, id, must, obj_kind, of_kind,
     opt_id, put_curve, put_pc, rp, st, surface_block, BSplineIn, ConicIn, CurveIn, Fail, LineIn,
-    ObjIn, Pool, PoolObj, PoolTopology, H, NOW, SC_ERR_ARG, USE_DEFAULT,
+    ObjIn, Pool, H, NOW, SC_ERR_ARG, USE_DEFAULT,
 };
-use super::intersect_curve_class_p4::{face_brep, gen_face, topology_entities, topology_kinds};
+use super::intersect_curve_class_p4::{gen_face, topology_kinds};
 use crate::units::heal_face_props::{self as hfp, FaceIn};
-use solidcore::EntityRef;
 use solidcore_ffi::units::heal_face_props::FaceSpec;
 use crate::case::{CaseContext, CaseSource};
 use crate::runner::default_cases;
@@ -419,31 +418,6 @@ fn rust(s: &Script) -> Result<Output, HarnessError> {
         Err(Fail::Deferred(d)) => Ok(*d),
         Err(Fail::Harness(e)) => Err(e),
     }
-}
-
-/// Appends the topology of `face`'s one-face B-rep to the pool, in the shim's order.
-fn add_face(k: &Kernel, pool: &mut Pool, face: &FaceIn) -> Result<(), HarnessError> {
-    let (mut b, f) = face_brep(k, face)?;
-    // the down face use's loops, so that edge mates (an edge's end vertex) exist as upstream
-    hfp::add_down_side(&mut b, f)?;
-    let first = pool.handles.len();
-    let mut entities = Vec::new();
-    for (e, kd) in topology_entities(&b, f)? {
-        let ck = match e {
-            EntityRef::Face(_) => ClassObjectKind::Face,
-            EntityRef::Loop(_) => ClassObjectKind::Loop,
-            EntityRef::Edge(_) => ClassObjectKind::Edge,
-            EntityRef::Vertex(_) => ClassObjectKind::Vertex,
-            EntityRef::Edgeuse(_) => ClassObjectKind::Edgeuse,
-            _ => ClassObjectKind::Other,
-        };
-        pool.handles.push(H(pool.objs.len(), ck));
-        pool.objs.push(PoolObj::Bare);
-        pool.kinds.push(kd);
-        entities.push(e);
-    }
-    pool.topo = Some(PoolTopology { brep: b, first, entities });
-    Ok(())
 }
 
 // ---- generation -------------------------------------------------------------------------
