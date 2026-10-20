@@ -59,8 +59,9 @@
 //!   `SmFilletEdge::CalcBlendingRail` (`blend.fillet_geom_p6`); the fillet executive's
 //!   topology intersector, attribute users and topology bookkeeping
 //!   (`blend.fillet_executive_p1`), `SmTopologyIntersector::MergeCurveOnSurfaces`
-//!   (`boolean.topology_intersector_p3`), `RegisterExistingSSI`
-//!   (`boolean.topology_intersector_p2`) and `RecordFilletError`
+//!   (`boolean.topology_intersector_p3`), `RegisterExistingSSI` (ported in
+//!   `boolean.topology_intersector_p2`, but it needs the executive's intersector, so its
+//!   stub is tagged `blend.fillet_executive_p1`) and `RecordFilletError`
 //!   (`blend.fillet_geom_p6`) in `InsertIntersectionTopology`. Each stub replaces only
 //!   its call; the code behind it is ported. The 777/778 marker attributes
 //!   `InsertIntersectionTopology` puts on a face for the executive's split check travel
@@ -92,7 +93,6 @@ use crate::error::{EntityRef, Result, SolidError};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
-use crate::geom::object::ObjectRef;
 use crate::geom::solution_array::{ObjectKind, SolutionArray, SolutionObject};
 use crate::geom::tol::zone_tol3d;
 use crate::geom::vector2d::{Point2, Vec2};
@@ -448,18 +448,20 @@ fn merge_curve_on_surfaces(
     )
 }
 
-/// `SmTopologyIntersector::RegisterExistingSSI` with no curves (unit
-/// `boolean.topology_intersector_p2`).
+/// `SmTopologyIntersector::RegisterExistingSSI` with no curves. The routine itself is
+/// ported ([`crate::boolean::topology_intersector::p2`]), but it runs on the executive's
+/// topology intersector, which [`TopologyIntersectorRef`] only stands for until
+/// `blend.fillet_executive_p1` is ported; the stub is tagged with that unit.
 fn register_existing_ssi(
     ti: TopologyIntersectorRef,
     face_surface: FaceId,
     fillet_surface: Option<&Surface>,
 ) -> Result<()> {
-    // UNPORTED(boolean.topology_intersector_p2): SmTopologyIntersector::RegisterExistingSSI
+    // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::GetTopologyIntersector()->RegisterExistingSSI
     unported_on(
         (ti, face_surface, fillet_surface),
         "SmTopologyIntersector::RegisterExistingSSI",
-        "boolean.topology_intersector_p2",
+        "blend.fillet_executive_p1",
     )
 }
 
@@ -1849,10 +1851,8 @@ impl FilletBrep {
                 orientations: lists1.orients,
                 loop_points: Vec::new(),
             };
-            let face_ref = |f: FaceId| ObjectRef {
-                type_code: crate::topology::face::p2::TYPE,
-                key: crate::geom::attribute::ObjectKey(1 + u64::from(f.index())),
-            };
+            let key_of = env.key_of;
+            let face_ref = |f: FaceId| key_of(EntityRef::Face(f));
             make_face_with_curves(
                 k,
                 brep,
@@ -1927,7 +1927,7 @@ impl FilletBrep {
     ///
     /// `SM_ERR_NULL_POINTER` without solver or executive; the merge's status;
     /// [`SolidError::Unported`] for the executive (`blend.fillet_executive_p1`) and the
-    /// topology intersector (`boolean.topology_intersector_p2`, `_p3`).
+    /// topology intersector's merge (`boolean.topology_intersector_p3`).
     #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn insert_intersection_topology(
         &mut self,
@@ -2435,7 +2435,7 @@ mod tests {
         let mut b = Brep::new();
         let mut records = std::collections::BTreeMap::new();
         let mut attributes = crate::geom::attribute::AttributeStore::default();
-        let key_of = |_e: EntityRef| ObjectRef {
+        let key_of = |_e: EntityRef| crate::geom::object::ObjectRef {
             type_code: 0,
             key: crate::geom::attribute::ObjectKey(0),
         };
