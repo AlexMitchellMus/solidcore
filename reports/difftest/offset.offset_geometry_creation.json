@@ -131,8 +131,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0007",
@@ -311,8 +311,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0025",
@@ -723,8 +723,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0067",
@@ -823,8 +823,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0077",
@@ -1035,8 +1035,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0098",
@@ -1287,8 +1287,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0123",
@@ -1599,8 +1599,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0154",
@@ -1735,8 +1735,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0168",
@@ -1823,8 +1823,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0176",
@@ -2343,8 +2343,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0231",
@@ -3003,8 +3003,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0296",
@@ -3339,8 +3339,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0330",
@@ -3351,8 +3351,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0331",
@@ -3599,8 +3599,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0356",
@@ -3715,8 +3715,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0367",
@@ -4215,8 +4215,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0417",
@@ -4483,8 +4483,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0445",
@@ -4959,8 +4959,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0492",
@@ -4995,8 +4995,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0495",
@@ -5187,8 +5187,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0515",
@@ -5267,8 +5267,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0523",
@@ -5375,8 +5375,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0534",
@@ -5551,8 +5551,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0551",
@@ -6071,8 +6071,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0602",
@@ -6115,8 +6115,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0607",
@@ -6387,8 +6387,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0633",
@@ -6719,8 +6719,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0667",
@@ -7015,8 +7015,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0696",
@@ -7183,8 +7183,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0714",
@@ -7315,8 +7315,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0728",
@@ -7779,8 +7779,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+        "unit": "upstream:HANG-26"
       },
       "max_rel_err": 0.0,
       "name": "gen0773",
@@ -8630,14 +8630,15 @@
   "deferred_by_unit": {
     "blend.fillet_standard_solver_p1": 4,
     "curve.crv_on_surf": 25,
-    "harness:analytic-geometry-export": 70,
+    "harness:analytic-geometry-export": 39,
     "intersect.surface_drop_curve": 27,
     "intersect.surface_drop_lib_p3": 7,
     "surface.sphere": 2,
     "surface.surface_cache_p2": 78,
     "topology.brep_p2": 166,
     "topology.face_p2": 12,
-    "topology.face_p4": 42
+    "topology.face_p4": 42,
+    "upstream:HANG-26": 31
   },
   "max_rel_err": 0.0,
   "pass": true,

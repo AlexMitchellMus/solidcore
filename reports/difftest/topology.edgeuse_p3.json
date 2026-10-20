@@ -33558,196 +33558,132 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu0_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#556 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu0_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#557 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu1_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#558 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu1_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#559 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu2_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#560 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu2_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#561 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu3_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#562 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu3_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#563 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu4_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#564 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu4_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#565 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu5_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#566 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu5_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#567 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu6_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#568 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu6_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#569 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu7_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#570 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_surf_rev_eu7_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#571 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
       "deferred": {
@@ -33942,580 +33878,388 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_torus_eu0_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#588 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_torus_eu0_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#589 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_torus_eu1_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#590 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_torus_eu1_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#591 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_torus_eu2_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#592 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_torus_eu2_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#593 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_torus_eu3_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#594 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_torus_eu3_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#595 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_torus_eu4_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#596 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_torus_eu4_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#597 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_torus_eu5_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#598 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_torus_eu5_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#599 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_torus_eu6_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#600 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_torus_eu6_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#601 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_torus_eu7_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#602 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_torus_eu7_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#603 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu0_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#604 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu0_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#605 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu1_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#606 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu1_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#607 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu2_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#608 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu2_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#609 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu3_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#610 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu3_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#611 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu4_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#612 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu4_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#613 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu5_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#614 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu5_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#615 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu6_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#616 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu6_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#617 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu7_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#618 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_toruswvy_eu7_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#619 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu0_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#620 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu0_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#621 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu1_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#622 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu1_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#623 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu2_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#624 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu2_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#625 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu3_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#626 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu3_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#627 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu4_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#628 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu4_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#629 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu5_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#630 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu5_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#631 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu6_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#632 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu6_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#633 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu7_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#634 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "review_vase_rev_eu7_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/review.json#635 (upstream source/SMLib/src/SmEdgeuse.cpp:2740 (SmEdgeuse::EvaluateBinormal, pOptUVVector))",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
       "deferred": {
@@ -42418,141 +42162,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#780 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#781 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#782 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#783 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#784 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#785 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#786 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#787 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#788 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#789 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#790 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_create_dev",
@@ -42563,8 +42263,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu0_create_plain",
@@ -42574,141 +42274,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#793 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#794 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#795 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#796 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#797 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#798 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#799 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#800 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#801 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#802 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#803 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_create_dev",
@@ -42719,8 +42375,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu1_create_plain",
@@ -42730,141 +42386,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#806 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#807 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#808 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#809 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#810 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#811 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#812 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#813 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#814 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#815 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#816 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_create_dev",
@@ -42875,8 +42487,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu5_create_plain",
@@ -42886,141 +42498,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#819 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#820 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#821 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#822 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#823 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#824 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#825 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#826 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#827 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#828 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#829 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_create_dev",
@@ -43031,8 +42599,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b20_eu9_create_plain",
@@ -43042,141 +42610,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#832 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#833 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#834 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#835 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#836 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#837 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#838 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#839 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#840 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#841 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#842 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_create_dev",
@@ -43187,8 +42711,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu2_create_plain",
@@ -43198,141 +42722,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#845 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#846 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#847 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#848 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#849 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#850 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#851 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#852 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#853 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#854 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#855 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_create_dev",
@@ -43343,8 +42823,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b21_eu7_create_plain",
@@ -44290,141 +43770,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#936 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#937 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#938 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#939 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#940 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#941 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#942 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#943 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#944 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#945 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#946 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_create_dev",
@@ -44435,8 +43871,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu0_create_plain",
@@ -44446,141 +43882,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#949 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#950 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#951 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#952 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#953 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#954 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#955 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#956 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#957 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#958 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#959 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_create_dev",
@@ -44591,8 +43983,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu1_create_plain",
@@ -44602,141 +43994,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#962 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#963 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#964 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#965 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#966 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#967 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#968 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#969 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#970 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#971 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#972 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_create_dev",
@@ -44747,8 +44095,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu5_create_plain",
@@ -44758,141 +44106,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#975 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#976 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#977 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#978 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#979 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#980 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#981 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#982 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#983 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#984 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#985 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_create_dev",
@@ -44903,8 +44207,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b24_eu9_create_plain",
@@ -44914,141 +44218,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#988 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#989 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#990 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#991 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#992 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#993 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#994 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#995 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#996 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#997 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#998 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_create_dev",
@@ -45059,8 +44319,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu2_create_plain",
@@ -45070,141 +44330,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1001 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1002 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1003 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1004 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1005 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1006 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1007 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1008 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1009 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1010 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1011 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_create_dev",
@@ -45215,8 +44431,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b25_eu7_create_plain",
@@ -45226,141 +44442,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1014 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1015 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1016 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1017 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1018 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1019 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1020 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1021 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1022 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1023 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1024 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_create_dev",
@@ -45371,8 +44543,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu0_create_plain",
@@ -45382,141 +44554,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1027 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1028 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1029 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1030 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1031 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1032 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1033 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1034 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1035 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1036 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1037 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_create_dev",
@@ -45527,8 +44655,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu1_create_plain",
@@ -45538,141 +44666,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1040 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1041 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1042 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1043 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1044 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1045 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1046 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1047 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1048 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1049 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1050 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_create_dev",
@@ -45683,8 +44767,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu5_create_plain",
@@ -45694,141 +44778,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1053 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1054 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1055 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1056 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1057 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1058 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1059 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1060 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1061 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1062 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1063 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_create_dev",
@@ -45839,8 +44879,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b26_eu9_create_plain",
@@ -45850,141 +44890,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1066 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1067 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1068 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1069 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1070 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1071 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1072 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1073 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1074 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1075 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1076 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_create_dev",
@@ -45995,8 +44991,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu2_create_plain",
@@ -46006,141 +45002,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1079 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1080 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1081 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1082 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1083 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1084 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1085 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1086 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1087 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1088 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1089 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_create_dev",
@@ -46151,8 +45103,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b27_eu7_create_plain",
@@ -46162,141 +45114,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1092 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1093 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1094 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1095 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1096 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1097 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1098 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1099 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1100 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1101 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1102 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_create_dev",
@@ -46307,8 +45215,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu0_create_plain",
@@ -46318,141 +45226,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1105 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1106 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1107 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1108 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1109 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1110 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1111 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1112 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1113 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1114 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1115 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_create_dev",
@@ -46463,8 +45327,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu1_create_plain",
@@ -46474,141 +45338,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1118 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1119 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1120 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1121 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1122 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1123 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1124 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1125 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1126 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1127 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1128 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_create_dev",
@@ -46619,8 +45439,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu5_create_plain",
@@ -46630,141 +45450,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1131 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1132 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1133 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1134 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1135 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1136 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1137 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1138 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1139 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1140 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1141 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_create_dev",
@@ -46775,8 +45551,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b28_eu9_create_plain",
@@ -46786,141 +45562,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1144 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1145 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1146 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1147 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1148 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1149 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1150 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1151 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1152 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1153 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1154 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_create_dev",
@@ -46931,8 +45663,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu2_create_plain",
@@ -46942,141 +45674,97 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_norm_3d_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1157 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_norm_3d_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1158 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_norm_uv_mid",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1159 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_norm_uv_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1160 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_norm_uv_end",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1161 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_binormal_uv",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1162 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_binormal_3d",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1163 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_binormal_start",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1164 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_binormal_out",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1165 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_getcreate_all",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1166 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_getcreate_nomake",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p3/upstream_files.json#1167 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_create_dev",
@@ -47087,8 +45775,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "upstream_files_b29_eu7_create_plain",
@@ -47794,16 +46482,12 @@
       "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "gen0002",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=15768384652651002752",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
       "max_rel_err": 0.0,
@@ -47858,28 +46542,20 @@
       "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "gen0008",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=15768384652651002758",
-      "values_compared": 0
+      "values_compared": 31
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "gen0009",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=15768384652651002759",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
       "max_rel_err": 0.0,
@@ -47891,8 +46567,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0011",
@@ -47902,16 +46578,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "gen0012",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=15768384652651002762",
-      "values_compared": 0
+      "values_compared": 44
     },
     {
       "max_rel_err": 0.0,
@@ -47939,15 +46611,14 @@
     }
   ],
   "cases_both_errored": 24,
-  "cases_deferred": 2400,
+  "cases_deferred": 2068,
   "cases_failed": 0,
-  "cases_passed": 2389,
+  "cases_passed": 2721,
   "cases_total": 4789,
   "deferred_by_unit": {
-    "intersect.surface_drop_lib_p3": 1227,
+    "intersect.surface_drop_lib_p3": 1276,
     "surface.surf_of_extrusion_p2": 189,
     "surface.surface_p2": 329,
-    "topology.brep_p10": 381,
     "topology.face_p3": 274
   },
   "max_rel_err": 0.0,

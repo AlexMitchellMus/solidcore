@@ -9648,6 +9648,28 @@ listed mutation, sharing, opaque-adapter and reader coverage limits still apply.
 
 Raised by oursland's review of #145. The B-rep graph export of `harness/cpp/shim/sc_edgeuse_graph.h` (shared by topology.edgeuse_p1/p2, topology.vertexuse, topology.brep_p1 and every runner that imports through them, e.g. heal.stitch_p1) carries `SmBSplineSurface`/`SmPlane` faces and `SmBSplineCurve`/`SmLine` edges exactly. `SmCone`, `SmCylinder`, `SmSphere`, `SmTorus`, `SmSurfOfExtrusion`, `SmSurfOfRevolution` faces and `SmEllipse`/`SmCircle`/other analytic edges arrive as their B-spline part, so the Rust side would evaluate different geometry. Runners therefore defer every op that evaluates such geometry under `harness:analytic-geometry-export` (topology.brep_p1: 217 of 2343 cases; heal.stitch_p1: 12). Those analytic branches are never compared (AGENTS.md §4 step 5 item 5). Closing it needs the export to carry the analytic kinds (type code + defining data) and the importers to rebuild them; it is a harness task, not a unit's, and every topology unit that exports faces inherits it until then.
 
+**Update (exact `SmSurfOfRevolution` export, 2026-10-20).** Both shared graph exports
+(`sc_edgeuse_graph.h`, `sc_topology_fixture.h`) now put an exact head before a face surface
+that is an `SmSurfOfRevolution` itself (`harness/cpp/shim/sc_analytic_export.h`):
+`2 type version surf_oob gen_oob nbytes bytes`, the surface's binary `WriteToDB` record
+(generator, polar converter with its circle, placement, analytic domain, swap flag, NURB),
+then the regular block. The shim sends it only when it is lossless for the C++ object (NURBs
+present so the write mutates nothing; a C++ `ReadFromDB` of the bytes writes back the same
+bytes; the polar curve and its out-of-bounds flag survive). The importers
+(`topology_edgeuse_p1::read_face_surface`, `topology_vertexuse::read_face_surface`) rebuild
+it with the ported `SurfOfRevolution::read_from_db`, set the two out-of-bounds flags the
+record lacks, and check that its B-spline part is bit for bit the regular block. Every
+newly compared case passes bit for bit (`--green`: 0 failed; e.g. `topology.brep_p1` 92
+revolution deferrals -> 56 pass, 36 defer on real stubs; `topology.edgeuse_p1` +200,
+`topology.edgeuse_p3` +332, `topology.loopuse` +87, `blend.fillet_standard_solver_p1` +6
+passes). With the parallel owner-zone-tolerance `SmFace::GetTolerance` PR on top, the `surf_rev` / `vase_rev` /
+`torus` / `toruswvy` `edge_edge_blend` cases (flag != 0) match at 0, including the two that
+differed by up to 7.3e-4 through `DropPointFast`. Still flattened (no `SurfaceKind`, the
+dispatch gap of `Surface::read_from_db`): `SmSurfOfExtrusion`, `SmCone`, `SmCylinder`,
+`SmSphere`, `SmTorus`, and analytic edge curves. A non-local `FaceuseOffset` of a revolution
+face is still not run by the `offset.offset_geometry_creation` shim (HANG-26); it now defers
+under `upstream:HANG-26` instead of the harness label.
+
 ## boolean.topology_intersector_p1: B-rep cache of the difftest adapter (exposed by topology.brep_p1)
 
 Wiring #146's `UNPORTED(topology.brep_p1)` stubs `SmBrep::GetEdges` / `GetVertices` (#145; `IntersectorBrep::brep_edges` / `brep_vertices`) lets the wire/lamina pass reach `TopologySolver::brep_curve_solve`, which reads the B-rep's cache trees through `TopologyObjects::brep_cache`. The difftest adapter `Two` (crates/difftest/src/units/boolean_topology_intersector_p1.rs) had no cache mapping (the trait default returns `InvalidInput`), so 16 cases reported the null-dereference guard where the C++ (which builds the cache on demand) succeeds. The adapter now builds each B-rep's `BrepCache<H>` on first use (a `OnceCell`, the adapter's own handles, as query.api_queries' runner maps its objects), never an empty cache. Building it starts with `SmBrep::CalculateBoundingBox` (`topology/brep_cache.rs`, `UNPORTED(query.brep)`), so these cases now defer under `query.brep`, the real blocker; they compare once query.brep lands. The cache is built at the state of the first solve that needs it, as upstream; mutating ops before it are not re-reflected (upstream invalidates stale caches through B-rep notifications, `DeleteStaleCaches`, unit topology.brep_p2).

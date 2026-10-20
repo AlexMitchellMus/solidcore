@@ -14494,21 +14494,17 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_lists_5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1395 (upstream TestFiles/pt_TestFiles/surf_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 2
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_lists_6",
@@ -15171,28 +15167,20 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_check_uv_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1477 (upstream TestFiles/pt_TestFiles/surf_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_check_uv_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1478 (upstream TestFiles/pt_TestFiles/surf_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -15211,40 +15199,28 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_check_uv_8",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1481 (upstream TestFiles/pt_TestFiles/surf_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_check_uv_10",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1482 (upstream TestFiles/pt_TestFiles/surf_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_check_uv_rebuilt_3",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1483 (upstream TestFiles/pt_TestFiles/surf_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -15268,8 +15244,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_find_sector_0",
@@ -15280,8 +15256,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_find_sector_1",
@@ -15291,52 +15267,36 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_find_sector_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1488 (upstream TestFiles/pt_TestFiles/surf_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_find_sector_3",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1489 (upstream TestFiles/pt_TestFiles/surf_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_find_sector_4",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1490 (upstream TestFiles/pt_TestFiles/surf_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_find_sector_5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1491 (upstream TestFiles/pt_TestFiles/surf_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -15422,21 +15382,17 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_split_uv_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1502 (upstream TestFiles/pt_TestFiles/surf_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 28
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_split_uv_1",
@@ -15446,16 +15402,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_split_uv_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1504 (upstream TestFiles/pt_TestFiles/surf_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 28
     },
     {
       "max_rel_err": 0.0,
@@ -15466,28 +15418,20 @@
       "values_compared": 17
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_split_uv_4",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1506 (upstream TestFiles/pt_TestFiles/surf_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 28
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_split_uv_rebuilt",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1507 (upstream TestFiles/pt_TestFiles/surf_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 28
     },
     {
       "deferred": {
@@ -15623,8 +15567,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_parallel_proj_0",
@@ -15635,8 +15579,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_parallel_proj_1",
@@ -15647,8 +15591,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_parallel_proj_2",
@@ -15659,8 +15603,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_parallel_proj_3",
@@ -15671,8 +15615,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_parallel_proj_cubic",
@@ -15694,16 +15638,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_heal_backpointers",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1528 (upstream TestFiles/pt_TestFiles/surf_rev.smb (SmBrep::ReadFromFile; SmBrep::HealBrep SM_HO_FIX_BACKPOINTERS))",
-      "values_compared": 0
+      "values_compared": 516
     },
     {
       "max_rel_err": 0.0,
@@ -16994,21 +16934,17 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "torus_lists_5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1673 (upstream TestFiles/pt_TestFiles/torus.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 2
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "torus_lists_6",
@@ -17683,28 +17619,20 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "torus_check_uv_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1755 (upstream TestFiles/pt_TestFiles/torus.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "torus_check_uv_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1756 (upstream TestFiles/pt_TestFiles/torus.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -17723,28 +17651,20 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "torus_check_uv_8",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1759 (upstream TestFiles/pt_TestFiles/torus.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "torus_check_uv_10",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1760 (upstream TestFiles/pt_TestFiles/torus.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -17776,8 +17696,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "torus_find_sector_0",
@@ -17788,8 +17708,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "torus_find_sector_1",
@@ -17799,52 +17719,36 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "torus_find_sector_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1766 (upstream TestFiles/pt_TestFiles/torus.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "torus_find_sector_3",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1767 (upstream TestFiles/pt_TestFiles/torus.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "torus_find_sector_4",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1768 (upstream TestFiles/pt_TestFiles/torus.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "torus_find_sector_5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1769 (upstream TestFiles/pt_TestFiles/torus.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -17939,21 +17843,17 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "torus_split_uv_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1780 (upstream TestFiles/pt_TestFiles/torus.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 28
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "torus_split_uv_1",
@@ -17963,16 +17863,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "torus_split_uv_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1782 (upstream TestFiles/pt_TestFiles/torus.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 28
     },
     {
       "max_rel_err": 0.0,
@@ -17983,16 +17879,12 @@
       "values_compared": 17
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "torus_split_uv_4",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1784 (upstream TestFiles/pt_TestFiles/torus.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 28
     },
     {
       "max_rel_err": 0.0,
@@ -18136,8 +18028,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "torus_parallel_proj_0",
@@ -18148,8 +18040,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "torus_parallel_proj_1",
@@ -18160,8 +18052,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "torus_parallel_proj_2",
@@ -18172,8 +18064,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "torus_parallel_proj_3",
@@ -18184,8 +18076,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "torus_parallel_proj_cubic",
@@ -18207,16 +18099,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "torus_heal_backpointers",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1806 (upstream TestFiles/pt_TestFiles/torus.smb (SmBrep::ReadFromFile; SmBrep::HealBrep SM_HO_FIX_BACKPOINTERS))",
-      "values_compared": 0
+      "values_compared": 653
     },
     {
       "max_rel_err": 0.0,
@@ -18259,21 +18147,17 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "toruswvy_lists_5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1812 (upstream TestFiles/pt_TestFiles/toruswvy.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 2
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_lists_6",
@@ -18948,28 +18832,20 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "toruswvy_check_uv_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1894 (upstream TestFiles/pt_TestFiles/toruswvy.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "toruswvy_check_uv_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1895 (upstream TestFiles/pt_TestFiles/toruswvy.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -18988,28 +18864,20 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "toruswvy_check_uv_8",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1898 (upstream TestFiles/pt_TestFiles/toruswvy.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "toruswvy_check_uv_10",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1899 (upstream TestFiles/pt_TestFiles/toruswvy.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -19041,8 +18909,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_find_sector_0",
@@ -19053,8 +18921,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_find_sector_1",
@@ -19064,52 +18932,36 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "toruswvy_find_sector_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1905 (upstream TestFiles/pt_TestFiles/toruswvy.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "toruswvy_find_sector_3",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1906 (upstream TestFiles/pt_TestFiles/toruswvy.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "toruswvy_find_sector_4",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1907 (upstream TestFiles/pt_TestFiles/toruswvy.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "toruswvy_find_sector_5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1908 (upstream TestFiles/pt_TestFiles/toruswvy.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -19204,21 +19056,17 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "toruswvy_split_uv_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1919 (upstream TestFiles/pt_TestFiles/toruswvy.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 28
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_split_uv_1",
@@ -19228,16 +19076,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "toruswvy_split_uv_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1921 (upstream TestFiles/pt_TestFiles/toruswvy.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 28
     },
     {
       "max_rel_err": 0.0,
@@ -19248,16 +19092,12 @@
       "values_compared": 17
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "toruswvy_split_uv_4",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1923 (upstream TestFiles/pt_TestFiles/toruswvy.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 28
     },
     {
       "max_rel_err": 0.0,
@@ -19401,8 +19241,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_parallel_proj_0",
@@ -19413,8 +19253,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_parallel_proj_1",
@@ -19425,8 +19265,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_parallel_proj_2",
@@ -19437,8 +19277,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_parallel_proj_3",
@@ -19449,8 +19289,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_parallel_proj_cubic",
@@ -19472,16 +19312,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "toruswvy_heal_backpointers",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1945 (upstream TestFiles/pt_TestFiles/toruswvy.smb (SmBrep::ReadFromFile; SmBrep::HealBrep SM_HO_FIX_BACKPOINTERS))",
-      "values_compared": 0
+      "values_compared": 839
     },
     {
       "max_rel_err": 0.0,
@@ -19524,21 +19360,17 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "vase_rev_lists_5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1951 (upstream TestFiles/pt_TestFiles/vase_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 2
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_lists_6",
@@ -20201,28 +20033,20 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "vase_rev_check_uv_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#2033 (upstream TestFiles/pt_TestFiles/vase_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "vase_rev_check_uv_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#2034 (upstream TestFiles/pt_TestFiles/vase_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -20241,28 +20065,20 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "vase_rev_check_uv_8",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#2037 (upstream TestFiles/pt_TestFiles/vase_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "vase_rev_check_uv_10",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#2038 (upstream TestFiles/pt_TestFiles/vase_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -20294,8 +20110,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_find_sector_0",
@@ -20306,8 +20122,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_find_sector_1",
@@ -20317,52 +20133,36 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "vase_rev_find_sector_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#2044 (upstream TestFiles/pt_TestFiles/vase_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "vase_rev_find_sector_3",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#2045 (upstream TestFiles/pt_TestFiles/vase_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "vase_rev_find_sector_4",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#2046 (upstream TestFiles/pt_TestFiles/vase_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "vase_rev_find_sector_5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#2047 (upstream TestFiles/pt_TestFiles/vase_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -20451,21 +20251,17 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "vase_rev_split_uv_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#2058 (upstream TestFiles/pt_TestFiles/vase_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 28
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_split_uv_1",
@@ -20475,16 +20271,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "vase_rev_split_uv_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#2060 (upstream TestFiles/pt_TestFiles/vase_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 28
     },
     {
       "max_rel_err": 0.0,
@@ -20495,16 +20287,12 @@
       "values_compared": 17
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "vase_rev_split_uv_4",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#2062 (upstream TestFiles/pt_TestFiles/vase_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 28
     },
     {
       "max_rel_err": 0.0,
@@ -20648,8 +20436,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_parallel_proj_0",
@@ -20660,8 +20448,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_parallel_proj_1",
@@ -20672,8 +20460,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_parallel_proj_2",
@@ -20684,8 +20472,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_parallel_proj_3",
@@ -20696,8 +20484,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "surface.surface_cache_p2"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_parallel_proj_cubic",
@@ -20719,16 +20507,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "vase_rev_heal_backpointers",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#2084 (upstream TestFiles/pt_TestFiles/vase_rev.smb (SmBrep::ReadFromFile; SmBrep::HealBrep SM_HO_FIX_BACKPOINTERS))",
-      "values_compared": 0
+      "values_compared": 713
     },
     {
       "both_errored": true,
@@ -22754,16 +22538,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0002",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427431755999862645",
-      "values_compared": 0
+      "values_compared": 28
     },
     {
       "max_rel_err": 0.0,
@@ -22838,16 +22618,12 @@
       "values_compared": 4
     },
     {
-      "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0011",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427431755999862654",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -22887,18 +22663,18 @@
     }
   ],
   "cases_both_errored": 45,
-  "cases_deferred": 465,
+  "cases_deferred": 409,
   "cases_failed": 0,
-  "cases_passed": 2109,
+  "cases_passed": 2165,
   "cases_rejected": 15,
   "cases_total": 2589,
   "deferred_by_unit": {
-    "curve.crv_on_surf": 4,
-    "harness:analytic-geometry-export": 217,
+    "curve.crv_on_surf": 8,
+    "harness:analytic-geometry-export": 125,
     "intersect.surface_drop_lib_p3": 10,
     "query.brep": 71,
-    "surface.surface_cache_p2": 37,
-    "topology.face_p2": 89,
+    "surface.surface_cache_p2": 64,
+    "topology.face_p2": 94,
     "topology.face_p3": 21,
     "topology.face_p4": 16
   },
