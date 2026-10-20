@@ -25,6 +25,10 @@ enum : int32_t
     C1_REINIT = 3,
     C1_SQUEEZE = 4,
     C1_RAIL_RAIL = 5,
+    C1_VERT_GEOM = 6,
+    C1_EDGE_GEOM = 7,
+    C1_FIX_DEGENERACY = 8,
+    C1_END_PATCH = 9,
 };
 
 const double C1_REFUSE = -2.0;
@@ -38,6 +42,7 @@ struct C1ExecPeek : SmFilletExecutive
     {
         return &C1ExecPeek::m_vEdgeuseSolverMap;
     }
+    static SmTArray<SmEdge*> SmFilletExecutive::*topo() { return &C1ExecPeek::m_vTopoEdges; }
 };
 
 // The solvers registered in the executive's edge-use-to-solver map (owned here).
@@ -93,6 +98,19 @@ struct C1Corner
         bool bevel = rd.flag(), blending = rd.flag(), chamfer = rd.flag(), degen = rd.flag();
         bool ext = rd.flag(), adjusted = rd.flag();
         double setback = rd.num(), tol = rd.num(), tan = rd.num();
+        // original faces: `n (edge face)..` (SetOriginalFace of a pseudo edge)
+        int64_t no = rd.idx();
+        for (int64_t i = 0; i < no && !rd.bad && ok; ++i)
+        {
+            SmFilletEdge* e = M.edge(rd.idx());
+            int64_t f = rd.idx();
+            if (e == NULL || f < 0 || (size_t)f >= M.targetFaces.size())
+            {
+                ok = false;
+                break;
+            }
+            e->SetOriginalFace(M.targetFaces[(size_t)f]);
+        }
         if (vEdge >= 0)
         {
             if ((size_t)vEdge >= M.targetEdges.size())
@@ -498,6 +516,168 @@ void c1_rail_rail(C1Corner& C, Rd& rd, std::vector<double>& o)
     o.push_back((double)ret);
 }
 
+// The corner geometry steps. `CalcCornerVertGeom` / `CalcCornerEdgeGeom` call
+// SmFilletVertex::CalcCornerVertGeom / SmFilletEdge::CalcCornerEdgeGeom per vertex / edge,
+// whose Rust ports are stubs (blend.fillet_geom_p3): with any vertex / edge the case is not
+// run. Output `0 status` corner Model.
+void c1_vert_geom(C1Corner& C, std::vector<double>& o)
+{
+    if ((C.c->*P3CornerPeek::verts()).GetSize() > 0)
+    {
+        o.push_back(C1_NOT_RUN);
+        return;
+    }
+    SmStatus r = C.c->CalcCornerVertGeom();
+    o.push_back(0.0);
+    o.push_back(st(r));
+    c1_put_corner(o, C.c, C.M);
+    C.M.put(o);
+}
+
+void c1_edge_geom(C1Corner& C, std::vector<double>& o)
+{
+    if ((C.c->*P3CornerPeek::edges()).GetSize() > 0)
+    {
+        o.push_back(C1_NOT_RUN);
+        return;
+    }
+    SmStatus r = C.c->CalcCornerEdgeGeom();
+    o.push_back(0.0);
+    o.push_back(st(r));
+    c1_put_corner(o, C.c, C.M);
+    C.M.put(o);
+}
+
+// `nt topo..` -> `ret ntopo topo..` corner Model: the executive's topology edges (model
+// edges) before CheckAndFixDegeneracy, the remaining ones after.
+void c1_fix_degeneracy(C1Corner& C, Rd& rd, std::vector<double>& o)
+{
+    SmFilletCorner* c = C.c;
+    Model& M = C.M;
+    SmTArray<SmEdge*>& topo = C.exec->*C1ExecPeek::topo();
+    int64_t nt = rd.idx();
+    for (int64_t i = 0; i < nt && !rd.bad; ++i)
+    {
+        SmFilletEdge* e = M.edge(rd.idx());
+        if (e == NULL)
+        {
+            rd.bad = true;
+            return;
+        }
+        topo.Add(e);
+    }
+    if (rd.bad)
+        return;
+    if (C.vertex == NULL)
+    {
+        o.push_back(C1_REFUSE); // m_cpVertex->GetPoint() on NULL
+        return;
+    }
+    SmTArray<SmFilletVertex*>& V = c->*P3CornerPeek::verts();
+    SmTArray<SmFilletEdge*>& E = c->*P3CornerPeek::edges();
+    // upstream's own early-outs: an unprocessed or far vertex
+    bool degenerate = true;
+    SmPoint3d cornerPnt = C.vertex->GetPoint();
+    for (ULONG i = 0; i < V.GetSize() && degenerate; ++i)
+    {
+        if (!V[i]->IsProcessed() || V[i]->GetPoint().DistanceBetween(cornerPnt) > c->*P3CornerPeek::tol())
+            degenerate = false;
+    }
+    if (degenerate)
+    {
+        if (V.GetSize() == 0)
+        {
+            o.push_back(C1_REFUSE); // m_vVertices[0] of an empty list
+            return;
+        }
+        // The vertex uses the merged first vertex ends up with: those of every corner
+        // vertex except the ones of the (deleted) corner edges, the first vertex's own
+        // first. For each, in order, upstream returns a status for a rail without original
+        // face or a rail edge use without fillet geometry, dereferences the geometry's
+        // (NULL) solver, and then the original vertex uses' (NULL) face uses.
+        std::vector<SmFilletVertexuse*> fil;
+        for (ULONG i = 0; i < V.GetSize(); ++i)
+        {
+            SmTArray<SmVertexuse*> vus;
+            V[i]->GetVertexuses(vus);
+            for (ULONG j = 0; j < vus.GetSize(); ++j)
+            {
+                SmEdgeuse* eu = vus[j]->GetEdgeuse();
+                SmFilletEdge* e = eu ? (SmFilletEdge*)eu->GetEdge() : NULL;
+                ULONG idx = 0;
+                if (e == NULL)
+                {
+                    o.push_back(C1_REFUSE);
+                    return;
+                }
+                if (!E.FindElement(e, idx))
+                    fil.push_back((SmFilletVertexuse*)vus[j]);
+            }
+        }
+        for (size_t i = 0; i < fil.size(); ++i)
+        {
+            SmFilletEdgeuse* eu = (SmFilletEdgeuse*)fil[i]->GetEdgeuse();
+            SmFilletEdge* rail = (SmFilletEdge*)eu->GetEdge();
+            if (rail->GetOriginalFace() == NULL)
+                break; // NER: a status
+            if (eu->GetFilletGeom() == NULL)
+                break; // NER: a status
+            // pFG->GetFilletSolver() is NULL on the Model: FindIndexOfRailOnFace on NULL
+            o.push_back(C1_REFUSE);
+            return;
+        }
+        // the merged vertices are deleted
+        std::vector<SmFilletVertex*>& mv = M.verts;
+        for (ULONG i = 1; i < V.GetSize(); ++i)
+            for (size_t k = 0; k < mv.size(); ++k)
+                if (mv[k] == V[i])
+                {
+                    mv.erase(mv.begin() + (std::ptrdiff_t)k);
+                    break;
+                }
+    }
+    SmBoolean ret = c->CheckAndFixDegeneracy();
+    o.push_back(0.0);
+    o.push_back((double)ret);
+    o.push_back((double)topo.GetSize());
+    for (ULONG i = 0; i < topo.GetSize(); ++i)
+        o.push_back(M.edge_index(topo[i]));
+    topo.ReSet(); // the Model owns the edges
+    c1_put_corner(o, c, M);
+    M.put(o);
+}
+
+// -> `status` corner Model: CreateEndPatch; its MakeFaceBrep is a Rust stub, so a corner
+// whose first fillet-side-face edge has an original face is not run.
+void c1_end_patch(C1Corner& C, std::vector<double>& o)
+{
+    SmFilletCorner* c = C.c;
+    SmTArray<SmFilletEdge*>& E = c->*P3CornerPeek::edges();
+    for (ULONG i = 0; i < E.GetSize(); ++i)
+    {
+        if (E[i]->GetFilletEdgeType() != SM_FE_FILLET_X_SIDE_FACE)
+            continue;
+        SmFace* f = E[i]->GetOriginalFace();
+        if (f == NULL)
+            break; // NER: a status
+        SmSurface* s = c->GetExtendedSurface(f);
+        if (s == NULL)
+            s = f->GetSurface();
+        if (s == NULL)
+        {
+            o.push_back(C1_REFUSE); // CopyAndAddAnalytics on NULL
+            return;
+        }
+        o.push_back(C1_NOT_RUN); // MakeFaceBrep
+        return;
+    }
+    SmStatus r = c->CreateEndPatch();
+    o.push_back(0.0);
+    o.push_back(st(r));
+    c1_put_corner(o, c, C.M);
+    C.M.put(o);
+}
+
 int32_t c1_run(int32_t op, Rd& rd, std::vector<double>& o)
 {
     const SmContext& ctx = the_context();
@@ -515,6 +695,10 @@ int32_t c1_run(int32_t op, Rd& rd, std::vector<double>& o)
     case C1_REINIT: c1_reinit(C, o); break;
     case C1_SQUEEZE: c1_squeeze(C, rd, o); break;
     case C1_RAIL_RAIL: c1_rail_rail(C, rd, o); break;
+    case C1_VERT_GEOM: c1_vert_geom(C, o); break;
+    case C1_EDGE_GEOM: c1_edge_geom(C, o); break;
+    case C1_FIX_DEGENERACY: c1_fix_degeneracy(C, rd, o); break;
+    case C1_END_PATCH: c1_end_patch(C, o); break;
     default: return SC_ERR_ARG;
     }
     return rd.bad ? SC_ERR_ARG : SC_OK;
@@ -524,7 +708,7 @@ int32_t c1_run(int32_t op, Rd& rd, std::vector<double>& o)
 SC_EXPORT int32_t sc_blend_fillet_corner_p1_corner(int32_t op, const double* in, int64_t n_in, double* out,
                                                    int64_t cap, int64_t* out_len)
 {
-    if (op < C1_PEEK || op > C1_RAIL_RAIL)
+    if (op < C1_PEEK || op > C1_END_PATCH)
         return SC_ERR_ARG;
     if (out == NULL || out_len == NULL || n_in < 0 || cap < 0)
         return SC_ERR_ARG;

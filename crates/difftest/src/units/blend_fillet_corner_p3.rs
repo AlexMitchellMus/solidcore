@@ -21,16 +21,17 @@
 //!   vertex uses with their user surfaces) and one operation. Compared: the status, the
 //!   corner's members and the model's whole export.
 //!
-//! Deferred on the Rust side (unported callees, `Output::deferred`): `Create` reaching
-//! `sm_TestG1Continuity` / `CheckNx1Degeneracy` (`blend.fillet_corner_p1`); every patch
-//! builder past its state checks (`MakeAnalyticCornerSurface`, `CreateEndPatch`,
-//! `SmSurface::DropCurve`); the Nx2 adjustments where they change the topology
-//! (`MakeFilletEdge`, `GetRailIndexOfVertexuse`), the big-radius test of blending corners
-//! and the `NxN` / closed Nx1 overrides. The shim does not call upstream on those paths
-//! (`-3`; a Rust side that is not deferred there fails the case) and refuses (`-2`, a
-//! rejected case) the inputs that make upstream dereference null or free the harness's
-//! objects. A `create` case whose sector convexity test runs on geometry the import holds
-//! only approximately (analytic surfaces and curves) is deferred like
+//! Deferred on the Rust side (unported callees, `Output::deferred`; `Create` itself runs:
+//! `sm_TestG1Continuity` and `CheckNx1Degeneracy` are `blend.fillet_corner_p1`'s,
+//! `sm_FindConcaveEdgeuses` `blend.fillet_corner_p2`'s, the geometry they evaluate
+//! pre-deferred like the convexity test's): the patch builders past their state checks (`MakeAnalyticCornerSurface`, `MakeFaceBrep` behind
+//! `CreateEndPatch`, `SmSurface::DropCurve`); the Nx2 adjustments where they change the
+//! topology (`MakeFilletEdge`, `GetRailIndexOfVertexuse`), the big-radius test of
+//! blending corners and the `NxN` / closed Nx1 overrides. The shim does not call upstream
+//! on those paths (`-3`; a Rust side that is not deferred there fails the case) and
+//! refuses (`-2`, a rejected case) the inputs that make upstream dereference null or free
+//! the harness's objects. A `create` case whose sector convexity test runs on geometry
+//! the import holds only approximately (analytic surfaces and curves) is deferred like
 //! `topology.edgeuse_p2`'s (`inexact_geometry`).
 
 use std::collections::BTreeMap;
@@ -827,10 +828,12 @@ pub(super) fn corner_rust_with(
     }
     let faces = rm.target_faces.clone();
     let r = {
+        let mut exec = FilletExecutiveData::default();
         let mut env = CornerEnv {
             k: &rm.k,
             target: &mut rm.target,
             pseudo: &mut rm.fb,
+            exec: &mut exec,
             corner: None,
             tsect_surfaces: &surfaces,
         };

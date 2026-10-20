@@ -45,7 +45,8 @@
 //! all edge uses (`has n (edge which)..`: target wire edge, `0` its primary edge use / `1`
 //! the mate; `has = 0` for NULL), the corner's fillet vertices (`n v..`) and fillet edges
 //! (`n e..`), the flags `bevel blending chamfer degenerate ext_patch adjusted`, then
-//! `setback approx tang`, then the op's own input:
+//! `setback approx tang`, the original faces (`n (edge face)..`: `SetOriginalFace` of a
+//! pseudo edge to a target face), then the op's own input:
 //!
 //! | [`CornerOp`]              | upstream                                  | input after the corner | output after `0` |
 //! |---------------------------|-------------------------------------------|------------------------|------------------|
@@ -55,12 +56,18 @@
 //! | [`CornerOp::Reinit`]      | `ReInitializeCornerEdges`                 |                        | the model export |
 //! | [`CornerOp::Squeeze`]     | `SqueezeEdge`                             | `e`                    | `status` corner-members model export (as `blend.fillet_corner_p3`'s corner record) |
 //! | [`CornerOp::RailRail`]    | `SmFilletConcaveNxNCorner::TestRailRailInterpolationCurve` | `curve` (3D)  | `ret` (the raw `SmBoolean` return) |
+//! | [`CornerOp::VertGeom`]    | `CalcCornerVertGeom`                      |                        | `status` corner-members model export |
+//! | [`CornerOp::EdgeGeom`]    | `CalcCornerEdgeGeom`                      |                        | `status` corner-members model export |
+//! | [`CornerOp::FixDegeneracy`] | `CheckAndFixDegeneracy`                 | `nt topo..` (the executive's topology edges, model edges) | `ret ntopo topo..` corner-members model export |
+//! | [`CornerOp::EndPatch`]    | `CreateEndPatch`                          |                        | `status` corner-members model export |
 //!
 //! A record of `-2` is "refused" (upstream would dereference null, or free an object twice:
 //! a squeezed non-rail edge with both ends at the deleted vertex, or a squeezed closed edge
-//! whose surviving vertex is the deleted one), `-3` "not run" (the Rust
-//! port of the override is a stub: `GetTangentFilletSolver` of the closed Nx1 and Nx2
-//! corners, unit `blend.fillet_corner_p2`).
+//! whose surviving vertex is the deleted one), `-3` "not run" (the Rust port of a
+//! callee is a stub: `GetTangentFilletSolver` of the closed Nx1 and Nx2 corners, unit
+//! `blend.fillet_corner_p2`; `SmFilletVertex::CalcCornerVertGeom` /
+//! `SmFilletEdge::CalcCornerEdgeGeom` of `blend.fillet_geom_p3` for a corner with any
+//! vertex / edge; `MakeFaceBrep` for an end patch with an original face).
 
 use crate::{call_with_buffer, FfiError};
 
@@ -325,17 +332,29 @@ pub enum CornerOp {
     Squeeze = 4,
     /// `SmFilletConcaveNxNCorner::TestRailRailInterpolationCurve`.
     RailRail = 5,
+    /// `CalcCornerVertGeom`.
+    VertGeom = 6,
+    /// `CalcCornerEdgeGeom`.
+    EdgeGeom = 7,
+    /// `CheckAndFixDegeneracy`.
+    FixDegeneracy = 8,
+    /// `CreateEndPatch`.
+    EndPatch = 9,
 }
 
 impl CornerOp {
     /// Every corner op, in code order.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 10] = [
         Self::Peek,
         Self::Solvers,
         Self::ExtSurface,
         Self::Reinit,
         Self::Squeeze,
         Self::RailRail,
+        Self::VertGeom,
+        Self::EdgeGeom,
+        Self::FixDegeneracy,
+        Self::EndPatch,
     ];
 }
 
@@ -390,6 +409,13 @@ pub fn validate_corner(op: CornerOp, input: &[f64]) -> Result<(), FfiError> {
         rd.flag()?;
     }
     rd.finites(3)?;
+    let no = rd.index(MAX_LIST)?;
+    for _ in 0..no {
+        rd.opt_index(b.ne())?
+            .ok_or_else(|| bad("original face: edge -1"))?;
+        rd.opt_index(b.nf)?
+            .ok_or_else(|| bad("original face: face -1"))?;
+    }
     match op {
         CornerOp::Peek => {
             // the setters: -1 (not called), 0 or 1
@@ -435,7 +461,7 @@ pub fn validate_corner(op: CornerOp, input: &[f64]) -> Result<(), FfiError> {
                     .ok_or_else(|| bad("extended surface query: face -1"))?;
             }
         }
-        CornerOp::Reinit => {}
+        CornerOp::Reinit | CornerOp::VertGeom | CornerOp::EdgeGeom | CornerOp::EndPatch => {}
         CornerOp::Squeeze => {
             rd.opt_index(b.ne())?
                 .ok_or_else(|| bad("squeeze: edge -1"))?;
@@ -447,6 +473,13 @@ pub fn validate_corner(op: CornerOp, input: &[f64]) -> Result<(), FfiError> {
                 ));
             }
             p1_curve(&mut rd, 3, "rail-rail curve")?;
+        }
+        CornerOp::FixDegeneracy => {
+            let nt = rd.index(MAX_CORNER_LIST)?;
+            for _ in 0..nt {
+                rd.opt_index(b.ne())?
+                    .ok_or_else(|| bad("topology edge -1"))?;
+            }
         }
     }
     rd.done()
@@ -495,8 +528,8 @@ mod tests {
         let mut v = vec![0.0; 6];
         // kind, no filleted vertex; no solver / all edge uses; no vertices / edges
         v.extend([0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
-        // the flags, setback, tolerances
-        v.extend([0.0; 9]);
+        // the flags, setback, tolerances, no original faces
+        v.extend([0.0; 10]);
         // peek: no setters, no added vertex, no G1 / status, no prefill, the type codes
         v.extend([-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 0.0, kinds.len() as f64]);
         v.extend_from_slice(kinds);
