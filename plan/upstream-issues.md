@@ -2217,7 +2217,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** no (the fillet geometry queries are unported).
 - **Severity:** wrong result (incomplete error report).
 - **Cause:** copy-paste slip (`GetRail(0)` for `GetRail(1)`).
-- **Rust port:** not reached yet (`SmFilletGeom::GetFilletSurface` is an `UNPORTED(blend.fillet_geom_p1)` stub); whoever wires it reproduces the slip.
+- **Rust port:** Reproduced (`FilletSolver::record_fillet_error` adds rail 0 where it tests rail 1); the list only feeds `SmFilletExecutive::NoteFilletError`, an `UNPORTED(blend.fillet_executive_p1)` stop, so it is not observable yet.
 
 #### WR-167. `SmTArray::FindElementInMaskedArray` tests `1<ii` instead of `1<<ii`
 - **Location:** `source/SMLib/inc/SmTArray.h:1543`, `SmTArray<TYPE>::FindElementInMaskedArray` (def. `:1531`). Called by `sms_FindAndClassifyLoopBisector` (`SmFace.cpp:2588`) on `SmFaceProps::m_sPolePoints` with the `m_lPoles` side mask.

@@ -56,7 +56,7 @@
 use crate::blend::fillet_custom_solver::OffsetSurface;
 use crate::blend::fillet_geom::p1::{
     FilletBrep, FilletEdgeType, FilletGeom, FilletGeomId, FilletGeomType, FilletSolverId,
-    FilletVertex, FilletVertexType,
+    FilletVertex, FilletVertexType, FilletVertexuse,
 };
 use crate::blend::fillet_geom::p2::{srf_srf_intersection, SrfSrfOptions};
 use crate::blend::fillet_geom::p4::{set_edge_curve, set_vertex_point};
@@ -100,7 +100,7 @@ use crate::topology::edgeuse::p1 as eu;
 use crate::topology::edgeuse::p3::get_or_create_uv_trim_curve;
 use crate::topology::face::p2 as face_p2;
 use crate::topology::{edge, vertexuse, Brep, EdgeId, EdgeuseId, FaceId, VertexId};
-use crate::topology::{vertex, VertexuseId};
+use crate::topology::{vertex, Vertexuse};
 
 const OP: &str = "blend::fillet_solver::p2";
 

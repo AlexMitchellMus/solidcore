@@ -187,11 +187,11 @@ fn solver_index(
 }
 
 /// `solvers[i]` for an index from [`solver_index`].
-fn assisted_at(
-    solvers: &[ConstantRadiusAssistedFs],
+fn assisted_at<'s>(
+    solvers: &'s [ConstantRadiusAssistedFs],
     i: usize,
     op: &'static str,
-) -> Result<&ConstantRadiusAssistedFs> {
+) -> Result<&'s ConstantRadiusAssistedFs> {
     solvers
         .get(i)
         .ok_or_else(|| SolidError::invalid_input(op, "fillet solver id not in the solver table"))
@@ -199,22 +199,22 @@ fn assisted_at(
 
 /// `solvers[i]` for an index from [`solver_index`], for writing (the virtuals change the
 /// solver: offsets, surface extensions).
-fn assisted_at_mut(
-    solvers: &mut [ConstantRadiusAssistedFs],
+fn assisted_at_mut<'s>(
+    solvers: &'s mut [ConstantRadiusAssistedFs],
     i: usize,
     op: &'static str,
-) -> Result<&mut ConstantRadiusAssistedFs> {
+) -> Result<&'s mut ConstantRadiusAssistedFs> {
     solvers
         .get_mut(i)
         .ok_or_else(|| SolidError::invalid_input(op, "fillet solver id not in the solver table"))
 }
 
 /// The `SmFilletSolver` base of `solvers[i]` for an index from [`solver_index`].
-fn solver_at(
-    solvers: &[ConstantRadiusAssistedFs],
+fn solver_at<'s>(
+    solvers: &'s [ConstantRadiusAssistedFs],
     i: usize,
     op: &'static str,
-) -> Result<&FilletSolver> {
+) -> Result<&'s FilletSolver> {
     Ok(&assisted_at(solvers, i, op)?.solver)
 }
 
