@@ -1,14 +1,37 @@
 # solidcore status
 
-Last updated: 2026-10-19, PR #222 review (`sweep.topology_sweep` partial: 554 exact integer state passes, 14 deferred, 0 rejected). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
+Last updated: 2026-10-20, PR #222 review (`sweep.topology_sweep` partial: 554 passes, max_rel_err=0, 14 deferred, 0 rejected). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
-Latest port: `sweep.topology_sweep` ([PR #222](https://github.com/tangency-labs/solidcore/pull/222)) implements the complete sweep orchestration through an explicit `SweepAccess` service boundary. The 568-case gate compares maps, stitch-callback decisions, options and edge-profile tags; topology creation and whole-B-rep/HCR/merge/stitch paths await dependencies and are not claimed as differential coverage. Safety regression tests cover failed traversal progress, temporary ownership, context restoration and consuming union across repetitions. Review integration wires available B-rep/shell queries, copying, face construction and binormal evaluation, corrects the stitch owner to `heal.stitch_p2`, and converts edge/vertex tolerances through the owning kernel. A concrete production access adapter remains integration work, tracked in [issue #255](https://github.com/tangency-labs/solidcore/issues/255); see `plan/findings.md`.
+Latest port: `sweep.topology_sweep` ([PR #222](https://github.com/tangency-labs/solidcore/pull/222)) implements the complete sweep orchestration through an explicit `SweepAccess` service boundary. The 568-case gate compares maps, stitch-callback decisions and f64 distances, successful helper frames, options and edge-profile tags; topology creation and whole-B-rep/HCR/merge/stitch paths await dependencies and are not claimed as differential coverage. Safety regression tests cover failed traversal progress, temporary ownership, context restoration and consuming union across repetitions. Review integration wires available B-rep/shell queries, copying, face construction and binormal evaluation, calls the newly available part 9/5 constructors and edits, HCR, lamina queries and part 2 stitching with the sweep callback, and converts face/edge/vertex tolerances through the owning kernel. All 14 deferrals now reach `MakeShellVertexTopology` in `topology.brep_p2`. A concrete production access adapter remains integration work, tracked in [issue #255](https://github.com/tangency-labs/solidcore/issues/255); see `plan/findings.md`.
 
 Latest topology integration: `topology.brep_p6` partial (PR #169, after its dependency #154: 498 cases, 450 pass, 48 deferred, 0 failed; 206 units, 113 green and 93 partial); before: `topology.shell` partial (PR #154, continuing @0xlillith's PR #80: 192 ported units, 109 green and 83 partial); before: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green); before: `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
 
 Latest main integration: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green).
 
 Latest unit: `intersect.curve_class_p9` ([PR #151](https://github.com/bherbruck/solidcore/pull/151)) is partial on a standalone official-main base: review validation has 424 differential cases, 225 bit-identical passes, 197 dependency deferrals, 2 native setup rejections and zero failures. It ports edge and trim-boundary intersections with concrete query handle mappings. Pole lookup now matches the native FALSE default; collapsed caches, wider input ranges and positive endpoint classification are covered. Interior partition insertion awaits part 2. No open dependency PR is bundled. The manifest has 195 ported units (108 green, 87 partial); final integration results are recorded in the PR checks.
+
+
+## Port review note (2026-10-18, issue #210)
+
+Carry forward [issue #210](https://github.com/tangency-labs/solidcore/issues/210)
+when extending or reviewing partial ports:
+
+- Stub the missing call and retain the upstream logic after it. A function that stops
+  at its first missing callee does not establish completion of its assigned body.
+- Separate successful operations that change geometry/topology from refusals, empty
+  results, no-ops and guard assertions. `partial`, `max_rel_err=0` and `with_values`
+  alone do not certify the success paths; record the unexercised operations explicitly.
+- Treat B-rep `Notify` integration as a critical dependency for meaningful topology
+  coverage, and coordinate the canonical `Brep` fields and editing state across ports.
+- Review defaults and unreachable tails against upstream before their dependencies
+  land. Merge current main before readiness, wire stale stubs, and rerun affected
+  topology units with expanded seeds when the shared dependencies become available.
+
+These are review/handoff notes from the issue, not a claim that its proposed process
+or reporting changes have already been implemented. For cone follow-up #207, the
+rejection fixtures compare only the native guard (Rust runs on them but its result is
+not compared) and the missing general Cone adapter remains an explicit dependency
+deferral.
 
 
 ## Integration update (2026-10-15, PR #119)

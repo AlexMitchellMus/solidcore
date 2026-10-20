@@ -1225,6 +1225,11 @@ mod tests {
 
     #[derive(Default)]
     struct Access {
+        records: std::collections::BTreeMap<
+            crate::geom::attribute::ObjectKey,
+            crate::topology::topology::Topology,
+        >,
+        attributes: crate::geom::attribute::AttributeStore,
         kernel: Kernel,
         breps: Vec<Brep>,
         deleted: Vec<BrepId>,
@@ -1243,6 +1248,35 @@ mod tests {
             let mut access = Self::default();
             access.new_brep(BrepId::from_index(0)).unwrap();
             access
+        }
+    }
+    fn service_object(
+        brep: BrepId,
+        entity: crate::error::EntityRef,
+    ) -> crate::geom::object::ObjectRef {
+        use crate::error::EntityRef as R;
+        use crate::geom::assert_array::labels;
+        let (type_code, index) = match entity {
+            R::Brep(id) => (labels::BREP_TYPE, id.index()),
+            R::Region(id) => (labels::REGION_TYPE, id.index()),
+            R::Shell(id) => (labels::SHELL_TYPE, id.index()),
+            R::Face(id) => (labels::FACE_TYPE, id.index()),
+            R::Loop(id) => (labels::LOOP_TYPE, id.index()),
+            R::Edge(id) => (labels::EDGE_TYPE, id.index()),
+            R::Vertex(id) => (labels::VERTEX_TYPE, id.index()),
+            R::Faceuse(id) => (labels::FACEUSE_TYPE, id.index()),
+            R::Loopuse(id) => (labels::LOOPUSE_TYPE, id.index()),
+            R::Edgeuse(id) => (labels::EDGEUSE_TYPE, id.index()),
+            R::Vertexuse(id) => (labels::VERTEXUSE_TYPE, id.index()),
+        };
+        crate::geom::object::ObjectRef {
+            type_code,
+            key: crate::geom::attribute::ObjectKey(
+                1_000_000
+                    + u64::from(brep.index()) * 100_000
+                    + (type_code as u64) * 1000
+                    + u64::from(index),
+            ),
         }
     }
     impl SweepAccess for Access {
@@ -1273,29 +1307,34 @@ mod tests {
                 &mut Kernel,
                 &mut Brep,
                 &dyn Fn(FaceId) -> crate::geom::object::ObjectRef,
+                &mut edge::NotifyEnv<'_>,
             ) -> Result<T>,
         ) -> Result<T> {
             let brep = self
                 .breps
                 .get_mut(id.index() as usize)
                 .ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
-            let face_objects = |face: FaceId| crate::geom::object::ObjectRef {
-                type_code: crate::geom::assert_array::labels::FACE_TYPE,
-                key: crate::geom::attribute::ObjectKey(
-                    100_000 + u64::from(id.index()) * 10_000 + u64::from(face.index()) * 97,
-                ),
+            let face_objects =
+                |face: FaceId| service_object(id, crate::error::EntityRef::Face(face));
+            let key_of = |entity| service_object(id, entity);
+            let mut env = edge::NotifyEnv {
+                records: &mut self.records,
+                attributes: &mut self.attributes,
+                context: None,
+                key_of: &key_of,
             };
-            body(&mut self.kernel, brep, &face_objects)
+            body(&mut self.kernel, brep, &face_objects, &mut env)
         }
         fn with_breps_mut<T>(
             &mut self,
             source: BrepId,
             destination: BrepId,
             body: impl FnOnce(
-                &Kernel,
+                &mut Kernel,
                 &mut Brep,
                 &mut Brep,
                 &dyn Fn(FaceId) -> crate::geom::object::ObjectRef,
+                &mut edge::NotifyEnv<'_>,
             ) -> Result<T>,
         ) -> Result<T> {
             let si = source.index() as usize;
@@ -1317,15 +1356,46 @@ mod tests {
             };
             let src = src.ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
             let dst = dst.ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
-            let face_objects = |face: FaceId| crate::geom::object::ObjectRef {
-                type_code: crate::geom::assert_array::labels::FACE_TYPE,
-                key: crate::geom::attribute::ObjectKey(
-                    100_000
-                        + u64::from(destination.index()) * 10_000
-                        + u64::from(face.index()) * 97,
-                ),
+            let face_objects =
+                |face: FaceId| service_object(destination, crate::error::EntityRef::Face(face));
+            let key_of = |entity| service_object(destination, entity);
+            let mut env = edge::NotifyEnv {
+                records: &mut self.records,
+                attributes: &mut self.attributes,
+                context: None,
+                key_of: &key_of,
             };
-            body(&self.kernel, src, dst, &face_objects)
+            body(&mut self.kernel, src, dst, &face_objects, &mut env)
+        }
+        fn with_brep_notifications<T>(
+            &mut self,
+            id: BrepId,
+            body: impl FnOnce(&mut Brep, &mut edge::NotifyEnv<'_>) -> Result<T>,
+        ) -> Result<T> {
+            let brep = self
+                .breps
+                .get_mut(id.index() as usize)
+                .ok_or_else(|| SolidError::null_pointer("sweep test model"))?;
+            let key_of = |entity| service_object(id, entity);
+            let mut env = edge::NotifyEnv {
+                records: &mut self.records,
+                attributes: &mut self.attributes,
+                context: Some(&mut self.kernel.context),
+                key_of: &key_of,
+            };
+            body(brep, &mut env)
+        }
+        fn retain_hcr(&mut self, _: BrepId, _: crate::blend::hcr::Hcr) -> Result<BrepId> {
+            Err(SolidError::invalid_input(
+                "sweep test model",
+                "fixture has no retained HCR service",
+            ))
+        }
+        fn hcr_session(&self, _: BrepId) -> Result<&crate::blend::hcr::Hcr> {
+            Err(SolidError::invalid_input(
+                "sweep test model",
+                "fixture has no retained HCR service",
+            ))
         }
         fn new_brep(&mut self, _: BrepId) -> Result<BrepId> {
             let id = BrepId::from_index(self.breps.len() as u32);

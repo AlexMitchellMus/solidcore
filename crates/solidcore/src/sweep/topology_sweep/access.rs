@@ -11,7 +11,9 @@
 //! the sweep's remaining control flow is implemented by the caller of each service.
 
 use super::{SweepEntity, TopologySweep};
+use crate::blend::hcr::{Hcr, HcrOptions};
 use crate::curve::curve::Curve;
+use crate::error::EntityRef;
 use crate::error::{Result, SolidError};
 use crate::geom::attribute::TagData;
 use crate::geom::axis2_placement::Axis2Placement;
@@ -23,6 +25,7 @@ use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3};
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::surface::surface::Surface;
+use crate::topology::edge::NotifyEnv;
 use crate::topology::{Brep, BrepId, EdgeId, EdgeuseId, FaceId, RegionId, ShellId, VertexId};
 
 /// A region and its owning B-rep.
@@ -108,24 +111,51 @@ pub trait SweepAccess {
     fn kernel_mut(&mut self, id: BrepId) -> Result<&mut Kernel>;
     /// Borrow a B-rep with its actual caller context and face identity resolver.
     /// The resolver also covers future face ids allocated by the operation.
+    /// `NotifyEnv` borrows persistent notification records and attributes. Context
+    /// notifications use `with_brep_notifications` to avoid aliasing the kernel.
     fn with_brep_mut<T>(
         &mut self,
         brep: BrepId,
-        body: impl FnOnce(&mut Kernel, &mut Brep, &dyn Fn(FaceId) -> ObjectRef) -> Result<T>,
+        body: impl FnOnce(
+            &mut Kernel,
+            &mut Brep,
+            &dyn Fn(FaceId) -> ObjectRef,
+            &mut NotifyEnv<'_>,
+        ) -> Result<T>,
     ) -> Result<T>;
     /// Borrow distinct source and destination B-reps, using the destination's
-    /// actual context and face identity resolver. The engine only copies between
+    /// actual mutable context, face identity resolver and persistent notification
+    /// records/attributes. The engine only copies between
     /// distinct B-reps; implementations must reject aliasing rather than fabricate
-    /// a second mutable reference.
+    /// a second mutable reference. Face identities must agree with `NotifyEnv::key_of`.
     fn with_breps_mut<T>(
         &mut self,
         source: BrepId,
         destination: BrepId,
-        body: impl FnOnce(&Kernel, &mut Brep, &mut Brep, &dyn Fn(FaceId) -> ObjectRef) -> Result<T>,
+        body: impl FnOnce(
+            &mut Kernel,
+            &mut Brep,
+            &mut Brep,
+            &dyn Fn(FaceId) -> ObjectRef,
+            &mut NotifyEnv<'_>,
+        ) -> Result<T>,
     ) -> Result<T>;
+    /// Borrow topology with its persistent records, attributes, entity resolver
+    /// and the owning kernel's mutable notification context.
+    fn with_brep_notifications<T>(
+        &mut self,
+        brep: BrepId,
+        body: impl FnOnce(&mut Brep, &mut NotifyEnv<'_>) -> Result<T>,
+    ) -> Result<T>;
+    /// Retain the entire HCR session until `delete_brep`, resolving its actual
+    /// scene through `brep`, `brep_mut` and the borrowing callbacks.
+    fn retain_hcr(&mut self, context_of: BrepId, hcr: Hcr) -> Result<BrepId>;
+    /// Resolve the retained session belonging to this scene.
+    fn hcr_session(&self, scene: BrepId) -> Result<&Hcr>;
     /// Allocate an empty B-rep in `context_of`'s context.
     fn new_brep(&mut self, context_of: BrepId) -> Result<BrepId>;
     /// Release live temporary topology and geometry, including on error.
+    /// For an HCR scene, drop the retained session and unregister its scene id.
     /// A successful `union` already consumes its source, so it is never released twice.
     fn delete_brep(&mut self, id: BrepId);
     /// Find a tag by resolved object identity.
@@ -204,13 +234,18 @@ pub trait SweepAccess {
         faces: &mut Vec<FaceId>,
     ) -> Result<()>;
 
-    // UNPORTED(topology.brep_p9): SmBrep::MakeShellVertex
-    deferred!(
-        /// `SmBrep::MakeShellVertex`.
-        fn make_shell_vertex(region: RegionRef, point: Point3) -> (ShellRef, VertexRef);,
-        "topology.brep_p9",
-        "SmBrep::MakeShellVertex"
-    );
+    /// `SmBrep::MakeShellVertex`, including its owning notification context.
+    fn make_shell_vertex(
+        &mut self,
+        region: RegionRef,
+        point: Point3,
+    ) -> Result<(ShellRef, VertexRef)> {
+        self.with_brep_notifications(region.0, |brep, env| {
+            let (shell, vertex) =
+                crate::topology::brep::p9::make_shell_vertex(brep, Some(region.1), point, env)?;
+            Ok(((region.0, shell), (region.0, vertex)))
+        })
+    }
     // UNPORTED(topology.brep_p3): SmBrep::MakeWireEdgeVertex
     deferred!(
         /// `SmBrep::MakeWireEdgeVertex`.
@@ -252,7 +287,7 @@ pub trait SweepAccess {
             domain,
             orientation,
         } = input;
-        self.with_brep_mut(region.0, |kernel, brep, face_objects| {
+        self.with_brep_mut(region.0, |kernel, brep, face_objects, env| {
             let mut owners = Vec::new();
             let built = crate::topology::brep::p7::make_face_with_curve_owners(
                 kernel,
@@ -271,6 +306,7 @@ pub trait SweepAccess {
                 None,
                 face_objects,
                 &mut owners,
+                env,
             )?;
             Ok(FaceBuild {
                 face: (
@@ -286,36 +322,71 @@ pub trait SweepAccess {
             })
         })
     }
-    // UNPORTED(topology.face_p3): SmFace::SetTolerance
-    deferred!(
-        /// `SmFace::SetTolerance` with upstream's default options.
-        fn set_face_tolerance(face: FaceRef, tolerance: f64) -> ();,
-        "topology.face_p3",
-        "SmFace::SetTolerance"
-    );
-    // UNPORTED(topology.brep_p9): SmBrep::MakeVertexLoop
-    deferred!(
-        /// `SmBrep::MakeVertexLoop` (the new loop is not used by the sweep).
-        fn make_vertex_loop(face: FaceRef, point: Point3) -> VertexRef;,
-        "topology.brep_p9",
-        "SmBrep::MakeVertexLoop"
-    );
-    // UNPORTED(topology.brep_p5): SmBrep::MakeEdgeInFace
-    deferred!(
-        /// `SmBrep::MakeEdgeInFace` (new loop/face outputs are unused).
-        fn make_edge_in_face(
-            face: FaceRef,
-            start: VertexRef,
-            end: VertexRef,
-            curve: Curve,
-            uv_curve: Option<Curve>,
-            interval: Extent1d,
-            orientation: OrientType,
-            tolerance: f64,
-        ) -> EdgeRef;,
-        "topology.brep_p5",
-        "SmBrep::MakeEdgeInFace"
-    );
+    /// `SmFace::SetTolerance` with upstream's default flags and double conversion.
+    fn set_face_tolerance(&mut self, face: FaceRef, tolerance: f64) -> Result<()> {
+        let tolerance = crate::geom::tol::zone_tol3d(self.kernel(face.0)?, tolerance);
+        crate::topology::face::p3::set_tolerance(
+            self.brep_mut(face.0)?,
+            face.1,
+            tolerance,
+            true,
+            true,
+        )
+    }
+    /// `SmBrep::MakeVertexLoop`, with upstream's default opposite orientation.
+    fn make_vertex_loop(&mut self, face: FaceRef, point: Point3) -> Result<VertexRef> {
+        self.with_brep_notifications(face.0, |brep, env| {
+            let (_, vertex) = crate::topology::brep::p9::make_vertex_loop(
+                brep,
+                face.1,
+                point,
+                OrientType::Opposite,
+                env,
+            )?;
+            Ok((face.0, vertex))
+        })
+    }
+    /// `SmBrep::MakeEdgeInFace` (the new loop and face outputs are unused).
+    fn make_edge_in_face(
+        &mut self,
+        face: FaceRef,
+        start: VertexRef,
+        end: VertexRef,
+        curve: Curve,
+        uv_curve: Option<Curve>,
+        interval: Extent1d,
+        orientation: OrientType,
+        tolerance: f64,
+    ) -> Result<EdgeRef> {
+        let brep = self.brep_mut(face.0)?;
+        let editing = brep.editing_enabled();
+        if editing && (start.0 != face.0 || end.0 != face.0) {
+            return Err(SolidError::invalid_input(
+                super::OP,
+                "edge vertices belong to a different B-rep",
+            ));
+        }
+        let mut output = crate::topology::brep::p5::EdgeInFace::default();
+        crate::topology::brep::p5::make_edge_in_face_with_uv_curve(
+            brep,
+            editing,
+            Some(face.1),
+            Some(start.1),
+            Some(end.1),
+            curve,
+            uv_curve,
+            interval,
+            orientation,
+            tolerance,
+            &mut output,
+        )?;
+        Ok((
+            face.0,
+            output
+                .edge
+                .ok_or_else(|| SolidError::null_pointer(super::OP))?,
+        ))
+    }
     /// `SmBrep::GetFaces`, preserving the owning list's order.
     fn faces(&mut self, brep: BrepId) -> Result<Vec<FaceId>> {
         crate::topology::brep::p1::faces(self.brep(brep)?, None)
@@ -339,35 +410,44 @@ pub trait SweepAccess {
             })
             .collect()
     }
-    // UNPORTED(topology.brep_p5): SmBrep::RemoveFaces
-    deferred!(
-        /// `SmBrep::RemoveFaces`.
-        fn remove_faces(brep: BrepId, faces: &[FaceId]) -> ();,
-        "topology.brep_p5",
-        "SmBrep::RemoveFaces"
-    );
-    // UNPORTED(blend.hcr): SmHCR::ComputeGlobalVisibility
-    deferred!(
-        /// HCR constructor, silhouette mode, visibility and scene ownership.
-        fn hcr(
-            brep: BrepId,
-            inverse: Axis2Placement,
-            tolerance: f64,
-            angle: f64,
-            seams: bool,
-            smooth: bool,
-            silhouettes: bool,
-        ) -> SweepScene;,
-        "blend.hcr",
-        "SmHCR::ComputeGlobalVisibility"
-    );
-    // UNPORTED(blend.hcr): SmHCR::GetSilhouetteEdges
-    deferred!(
-        /// Query the retained HCR session at the original call site.
-        fn silhouette_edges(scene: BrepId) -> Vec<EdgeId>;,
-        "blend.hcr",
-        "SmHCR::GetSilhouetteEdges"
-    );
+    /// `SmBrep::RemoveFaces` using the actual editing flag and context marks.
+    fn remove_faces(&mut self, brep: BrepId, faces: &[FaceId]) -> Result<()> {
+        self.with_brep_mut(brep, |kernel, brep, _, _| {
+            crate::topology::brep::p5::remove_faces(kernel, brep, brep.editing_enabled(), faces)
+        })
+    }
+    /// HCR constructor, silhouette mode, visibility and scene ownership.
+    fn hcr(
+        &mut self,
+        brep: BrepId,
+        inverse: Axis2Placement,
+        tolerance: f64,
+        angle: f64,
+        seams: bool,
+        smooth: bool,
+        silhouettes: bool,
+    ) -> Result<SweepScene> {
+        let mut hcr = Hcr::with_transform(
+            self.kernel(brep)?,
+            self.brep(brep)?,
+            &inverse,
+            HcrOptions {
+                approx_tol_3d: tolerance,
+                ang_tol_rad: angle,
+                display_seams: seams,
+                display_smooth_edges: smooth,
+            },
+        )?;
+        hcr.set_hcr_for_silhouettes(silhouettes);
+        crate::error::ignore_status(hcr.compute_global_visibility(self.kernel(brep)?))?;
+        Ok(SweepScene {
+            brep: self.retain_hcr(brep, hcr)?,
+        })
+    }
+    /// Query the retained HCR session at the original upstream call site.
+    fn silhouette_edges(&mut self, scene: BrepId) -> Result<Vec<EdgeId>> {
+        Ok(self.hcr_session(scene)?.silhouette_edges())
+    }
     /// `SmBrep::GetWireEdges`, preserving the owning list's order.
     fn wire_edges(&mut self, brep: BrepId) -> Result<Vec<EdgeId>> {
         crate::topology::brep::p1::wire_edges(self.brep(brep)?, None)
@@ -386,7 +466,7 @@ pub trait SweepAccess {
         edges: &[EdgeId],
         destination: BrepId,
     ) -> Result<Vec<EdgeId>> {
-        self.with_breps_mut(source, destination, |kernel, source, destination, _| {
+        self.with_breps_mut(source, destination, |kernel, source, destination, _, _| {
             crate::topology::brep::p6::copy_edges(kernel, source, edges, destination)
         })
     }
@@ -403,7 +483,7 @@ pub trait SweepAccess {
     );
     /// `SmBrep::RemoveAllTopology`, using its actual mutable caller context.
     fn remove_all_topology(&mut self, brep: BrepId) -> Result<()> {
-        self.with_brep_mut(brep, |kernel, brep, _| {
+        self.with_brep_mut(brep, |kernel, brep, _, _| {
             crate::topology::brep::p10::remove_all_topology(kernel, brep)
         })
     }
@@ -420,7 +500,7 @@ pub trait SweepAccess {
         let status = self.with_breps_mut(
             source,
             destination,
-            |kernel, source, destination, face_objects| {
+            |kernel, source, destination, face_objects, env| {
                 // Keep resolver errors outside the native copy status: a
                 // declined borrow must not become a deferred notifier lookup.
                 Ok(crate::topology::brep::p7::copy_faces(
@@ -430,6 +510,7 @@ pub trait SweepAccess {
                     destination,
                     use_merge,
                     face_objects,
+                    env,
                 )
                 .and_then(|(_, all_ok)| {
                     if all_ok {
@@ -463,13 +544,12 @@ pub trait SweepAccess {
         "boolean.merge_p2",
         "SmMerge::SmMerge"
     );
-    // UNPORTED(topology.brep_p5): SmBrep::Transform
-    deferred!(
-        /// `SmBrep::Transform`.
-        fn transform(brep: BrepId, frame: Axis2Placement) -> ();,
-        "topology.brep_p5",
-        "SmBrep::Transform"
-    );
+    /// `SmBrep::Transform` with default scale and tolerance-scaling arguments.
+    fn transform(&mut self, brep: BrepId, frame: Axis2Placement) -> Result<()> {
+        self.with_brep_mut(brep, |kernel, brep, _, _| {
+            crate::topology::brep::p5::transform(kernel, brep, &frame, None, true)
+        })
+    }
     // UNPORTED(query.brep): SmBrep::CalculateBoundingBox
     deferred!(
         /// `SmBrep::CalculateBoundingBox`.
@@ -487,7 +567,7 @@ pub trait SweepAccess {
         point: &mut Point3,
         binormal: &mut Vec3,
     ) -> Result<()> {
-        self.with_brep_mut(edgeuse.0, |kernel, brep, _| {
+        self.with_brep_mut(edgeuse.0, |kernel, brep, _, _| {
             let evaluated = crate::topology::edgeuse::p3::evaluate_binormal(
                 kernel,
                 brep,
@@ -501,13 +581,10 @@ pub trait SweepAccess {
             Ok(())
         })
     }
-    // UNPORTED(topology.face_p3): SmFace::HasLaminaEdge
-    deferred!(
-        /// `SmFace::HasLaminaEdge`.
-        fn has_lamina_edge(face: FaceRef) -> bool;,
-        "topology.face_p3",
-        "SmFace::HasLaminaEdge"
-    );
+    /// `SmFace::HasLaminaEdge`, using the existing traversal co-port.
+    fn has_lamina_edge(&mut self, face: FaceRef) -> Result<bool> {
+        crate::topology::topology_traverser::has_lamina_edge(self.brep(face.0)?, face.1)
+    }
     // UNPORTED(topology.brep_p3): SmBrep::MergeBrep
     deferred!(
         /// `SmBrep::MergeBrep`.
@@ -526,18 +603,30 @@ pub trait SweepAccess {
         "boolean.merge_p3",
         "SmMerge::PiecewiseMerge"
     );
-    // UNPORTED(heal.stitch_p2): SmStitch::DoStitching
-    deferred!(
-        /// Sweep callback, default targets, non-manifold mode.
-        fn stitch(
-            brep: BrepId,
-            sweep: &mut TopologySweep,
-            tolerance: f64,
-            making_manifold_solid: bool,
-        ) -> ();,
-        "heal.stitch_p2",
-        "SmStitch::DoStitching"
-    );
+    /// Sweep callback, default targets and caller-selected manifold mode.
+    fn stitch(
+        &mut self,
+        brep: BrepId,
+        sweep: &mut TopologySweep,
+        tolerance: f64,
+        making_manifold_solid: bool,
+    ) -> Result<()> {
+        self.with_brep_mut(brep, |kernel, model, _, _| {
+            let mut callback = SweepStitchCallback { brep, sweep };
+            let mut stitch =
+                crate::heal::stitch::p1::Stitch::new(&mut callback, tolerance, true, true);
+            stitch.making_manifold_solid = making_manifold_solid;
+            stitch
+                .do_stitching(
+                    kernel,
+                    model,
+                    None,
+                    None,
+                    crate::heal::stitch::p2::MinGapRequest::default(),
+                )
+                .map(|_| ())
+        })
+    }
     // UNPORTED(topology.brep_p3): SmBrep::OrientTrimmedSurfaces
     deferred!(
         /// `SmBrep::OrientTrimmedSurfaces`.
@@ -557,3 +646,78 @@ pub trait SweepAccess {
 
 /// Correspondence from source to copied edges, filled by the merge notifier.
 pub type BTreeEdgeMap = std::collections::BTreeMap<EdgeId, EdgeId>;
+
+struct SweepStitchCallback<'a> {
+    brep: BrepId,
+    sweep: &'a mut TopologySweep,
+}
+impl crate::heal::stitch::p1::StitchCallback for SweepStitchCallback<'_> {
+    fn select_topology_to_keep(
+        &mut self,
+        _: &Kernel,
+        _: &Brep,
+        first: EntityRef,
+        second: EntityRef,
+        distance: f64,
+    ) -> Result<crate::heal::stitch::p1::KeepChoice> {
+        let entity = |value| match value {
+            EntityRef::Vertex(id) => Ok(SweepEntity::Vertex(self.brep, id)),
+            EntityRef::Edge(id) => Ok(SweepEntity::Edge(self.brep, id)),
+            _ => Err(SolidError::invalid_input(
+                super::OP,
+                "stitch callback requires vertices or edges",
+            )),
+        };
+        let mut maximum_distance = 0.0;
+        let mut keep_first = true;
+        self.sweep.select_topology_to_keep(
+            Some(entity(first)?),
+            Some(entity(second)?),
+            distance,
+            &mut maximum_distance,
+            &mut keep_first,
+        )?;
+        Ok(crate::heal::stitch::p1::KeepChoice {
+            max_distance: maximum_distance,
+            keep_first,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::heal::stitch::p1::StitchCallback;
+
+    #[test]
+    fn stitch_callback_preserves_brep_namespace_and_map_side_effects() {
+        let brep = BrepId::from_index(7);
+        let other = BrepId::from_index(2);
+        let original = VertexId::from_index(3);
+        let image = VertexId::from_index(4);
+        let mut sweep = TopologySweep::default();
+        let from = SweepEntity::Vertex(brep, original);
+        let to = SweepEntity::Vertex(brep, image);
+        let unrelated = SweepEntity::Vertex(other, original);
+        sweep.set_same(Some(from), Some(to));
+        sweep.set_same(Some(unrelated), Some(unrelated));
+        let mut callback = SweepStitchCallback {
+            brep,
+            sweep: &mut sweep,
+        };
+        let result = callback
+            .select_topology_to_keep(
+                &Kernel::default(),
+                &Brep::new(),
+                EntityRef::Vertex(original),
+                EntityRef::Vertex(image),
+                0.375,
+            )
+            .unwrap();
+        assert!(result.keep_first);
+        assert_eq!(result.max_distance, 0.0);
+        assert_eq!(sweep.get_to_same(Some(from)), Some(from));
+        assert_eq!(sweep.get_from_same(Some(to)), None);
+        assert_eq!(sweep.get_to_same(Some(unrelated)), Some(unrelated));
+    }
+}
