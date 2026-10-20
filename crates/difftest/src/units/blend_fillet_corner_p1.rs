@@ -61,9 +61,10 @@ pub struct Runner;
 const NULL_DEREF: &str = "upstream dereferences null";
 
 /// The box-like fillet test files (planar faces with convex and concave corners, one
-/// all-NURBS box, one with a cylinder). Not `SmallBox.smb`: `SmBrep::ReadFromFile`
+/// all-NURBS box, one with a cylinder; filleted and B-spline parts whose tangential
+/// edges reach the success paths of the tangency tests). Not `SmallBox.smb`: `SmBrep::ReadFromFile`
 /// crashes on it (UB-1).
-const CORNER_FILES: [&str; 9] = [
+const CORNER_FILES: [&str; 13] = [
     "Fillet/box1x1x2.smb",
     "Fillet/brick.smb",
     "Fillet/corner_box.smb",
@@ -73,6 +74,10 @@ const CORNER_FILES: [&str; 9] = [
     "Fillet/nurb_box.smb",
     "Fillet/box_on_box.smb",
     "Fillet/cyl_on_box.smb",
+    "Fillet/filleted_box.smb",
+    "Fillet/nurb_nurb_1.smb",
+    "Fillet/nurb_plane_w_notch1.smb",
+    "Fillet/brepForFillet1.smb",
 ];
 
 /// One case.
@@ -131,6 +136,10 @@ enum Inputs {
         eu2: i64,
         #[serde(rename = "ref")]
         ref_eu: i64,
+        /// `eu2` is `eu1`'s corner mate at `v` (taken outward), as the edge uses around
+        /// a corner are paired upstream; else `eu2` selects among those at `v`.
+        #[serde(default)]
+        adjacent: bool,
     },
 }
 
@@ -363,6 +372,7 @@ fn topo(i: &Inputs) -> Result<Result<Topo, Output>, HarnessError> {
             eu1,
             eu2,
             ref_eu,
+            adjacent,
             ..
         } => {
             let vv = sel(*v, n_v);
@@ -371,7 +381,22 @@ fn topo(i: &Inputs) -> Result<Result<Topo, Output>, HarnessError> {
                 return Ok(Err(Output::err("no_edge_use")));
             }
             let a = pick(eu1.rem_euclid(1 << 30), &ring, n_eu);
-            let bb = pick(eu2.rem_euclid(1 << 30), &ring, n_eu);
+            let mut bb = pick(eu2.rem_euclid(1 << 30), &ring, n_eu);
+            if *adjacent {
+                // the corner mate of `a` at the vertex, outward (itself or its mate)
+                let vid = VertexId::from_index(idx_u32(vv)?);
+                let eu_a = EdgeuseId::from_index(idx_u32(a)?);
+                if let Ok(Some(cm)) = eu1::corner_mate_edgeuse(&b, eu_a, Some(vid)) {
+                    let out = if eu_vertex(&b, cm) == Some(vid) {
+                        Some(cm)
+                    } else {
+                        eu1::mate(&b, cm).ok().flatten()
+                    };
+                    if let Some(o) = out {
+                        bb = i64::from(o.index());
+                    }
+                }
+            }
             vec![vv, a, bb, sel(*ref_eu, n_eu)]
         }
         _ => return Err(harness("not a topology case")),
@@ -975,6 +1000,26 @@ fn gen_topo_brep(rng: &mut Rng) -> BrepIn {
     }
 }
 
+/// The fillet test files with concave corners (most vertices of the others are convex,
+/// where the concavity test is `false`).
+const CONCAVE_FILES: [&str; 5] = [
+    "Fillet/l_shaped_box.smb",
+    "Fillet/box_w_slot.smb",
+    "Fillet/box_on_box.smb",
+    "Fillet/6_sided_corner.smb",
+    "Fillet/corner_box.smb",
+];
+
+fn concave_brep(rng: &mut Rng) -> BrepIn {
+    BrepIn::File {
+        file: (*rng
+            .choose(&CONCAVE_FILES)
+            .unwrap_or(&"Fillet/l_shaped_box.smb"))
+        .to_string(),
+        rebuild: false,
+    }
+}
+
 fn gen_topology(rng: &mut Rng) -> Inputs {
     let brep = gen_topo_brep(rng);
     let s = |rng: &mut Rng| rng.range_i64(0, 1 << 20);
@@ -1006,11 +1051,16 @@ fn gen_topology(rng: &mut Rng) -> Inputs {
             tol: *rng.choose(&[0.1, 2.0, 5.0, 45.0]).unwrap_or(&2.0),
         },
         _ => Inputs::Concavity {
-            brep,
+            brep: if rng.chance(0.7) {
+                concave_brep(rng)
+            } else {
+                brep
+            },
             v: s(rng),
             eu1: s(rng),
             eu2: s(rng),
             ref_eu: none_or(rng, 0.8),
+            adjacent: rng.chance(0.7),
         },
     }
 }
@@ -1053,6 +1103,92 @@ mod tests {
             let back: Inputs =
                 serde_json::from_value(v.clone()).unwrap_or_else(|e| panic!("{e}: {v}"));
             assert_eq!(serde_json::to_value(back).unwrap(), v);
+        }
+    }
+
+    /// The op name of a case.
+    fn op_name(case: &Case) -> String {
+        case.inputs
+            .get("op")
+            .and_then(Value::as_str)
+            .unwrap_or("?")
+            .to_string()
+    }
+
+    /// With `CASE_CENSUS`: the outcome of every case of the unit run (fixtures plus
+    /// `CASE_SEEDS` generated, default 16) by op: `deferred`, `refused` / other errors,
+    /// `error_status` (a non-zero `SmStatus`) or the result (`success`, and for the
+    /// flag ops `true` / `false`, for `face_by_two` `face` / `no_face`, for `seam_out`
+    /// `moved` / `kept`). Without it: runs the cases `CASE_INDICES` (or the first
+    /// `CASE_PER_OP` of each op) on one side (`CASE_SIDE=rust`, else C++), for valgrind.
+    #[test]
+    #[ignore = "census and valgrind sample; run on demand"]
+    fn case_sample() {
+        let env = |name: &str| std::env::var(name).ok();
+        let ctx = crate::case::CaseContext {
+            root: crate::case::repo_root(),
+            seeds: env("CASE_SEEDS").map_or(16, |s| s.parse().unwrap()),
+        };
+        let cases = Runner.cases(&ctx).unwrap();
+        if env("CASE_CENSUS").is_some() {
+            let mut tally = std::collections::BTreeMap::<(String, String), usize>::new();
+            for case in &cases {
+                let kind = match Runner.run_rust(case) {
+                    Ok(o) if o.deferred.is_some() => "deferred".to_string(),
+                    Ok(o) if o.error.is_some() => {
+                        let e = o.error.unwrap_or_default();
+                        e.split(|c: char| c == ':' || c.is_ascii_digit())
+                            .next()
+                            .unwrap_or("")
+                            .to_string()
+                    }
+                    Ok(o) => {
+                        let first = |k: &str| o.values.get(k).and_then(|v| v.first()).copied();
+                        if first("status").is_some_and(|st| st != 0.0) {
+                            "error_status".to_string()
+                        } else if let Some(f) = first("flag") {
+                            (if f == 0.0 { "false" } else { "true" }).to_string()
+                        } else if let Some(f) = first("g1") {
+                            (if f == 0.0 { "false" } else { "true" }).to_string()
+                        } else if let Some(f) = first("face") {
+                            (if f >= 0.0 { "face" } else { "no_face" }).to_string()
+                        } else if let Some(f) = first("seam") {
+                            (if f == 0.0 { "kept" } else { "moved" }).to_string()
+                        } else {
+                            "success".to_string()
+                        }
+                    }
+                    Err(_) => "harness_error".to_string(),
+                };
+                *tally.entry((op_name(case), kind)).or_default() += 1;
+            }
+            for ((op, kind), n) in tally {
+                eprintln!("case_census: {op} {kind} {n}");
+            }
+            return;
+        }
+        let rust_side = env("CASE_SIDE").is_some_and(|s| s == "rust");
+        let indices: Vec<usize> = if let Some(t) = env("CASE_INDICES") {
+            t.split(',').map(|x| x.trim().parse().unwrap()).collect()
+        } else {
+            let per_op = env("CASE_PER_OP").map_or(10, |s| s.parse().unwrap());
+            let mut taken = std::collections::BTreeMap::<String, usize>::new();
+            (0..cases.len())
+                .filter(|&i| {
+                    let n = taken.entry(op_name(&cases[i])).or_default();
+                    *n += 1;
+                    *n <= per_op
+                })
+                .collect()
+        };
+        for i in indices {
+            let case = &cases[i];
+            let r = if rust_side {
+                Runner.run_rust(case).map(|o| o.error)
+            } else {
+                Runner.run_cpp(case).map(|o| o.error)
+            };
+            eprintln!("case_sample: {i} {} {r:?}", case.name);
         }
     }
 

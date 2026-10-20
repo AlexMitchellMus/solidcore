@@ -1759,6 +1759,446 @@
     "eu2": 2,
     "ref": 1
    }
+  },
+  {
+   "name": "concavity_adjacent_l_shaped_box_0",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/l_shaped_box.smb",
+     "rebuild": false
+    },
+    "v": 0,
+    "eu1": 0,
+    "eu2": 0,
+    "ref": -1,
+    "adjacent": true
+   }
+  },
+  {
+   "name": "concavity_adjacent_l_shaped_box_1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/l_shaped_box.smb",
+     "rebuild": false
+    },
+    "v": 3,
+    "eu1": 1,
+    "eu2": 0,
+    "ref": -1,
+    "adjacent": true
+   }
+  },
+  {
+   "name": "concavity_adjacent_l_shaped_box_2",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/l_shaped_box.smb",
+     "rebuild": false
+    },
+    "v": 6,
+    "eu1": 2,
+    "eu2": 0,
+    "ref": -1,
+    "adjacent": true
+   }
+  },
+  {
+   "name": "concavity_adjacent_l_shaped_box_3",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/l_shaped_box.smb",
+     "rebuild": false
+    },
+    "v": 9,
+    "eu1": 3,
+    "eu2": 0,
+    "ref": -1,
+    "adjacent": true
+   }
+  },
+  {
+   "name": "concavity_adjacent_box_w_slot_0",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_w_slot.smb",
+     "rebuild": false
+    },
+    "v": 0,
+    "eu1": 0,
+    "eu2": 0,
+    "ref": -1,
+    "adjacent": true
+   }
+  },
+  {
+   "name": "concavity_adjacent_box_w_slot_1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_w_slot.smb",
+     "rebuild": false
+    },
+    "v": 3,
+    "eu1": 1,
+    "eu2": 0,
+    "ref": -1,
+    "adjacent": true
+   }
+  },
+  {
+   "name": "concavity_adjacent_box_w_slot_2",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_w_slot.smb",
+     "rebuild": false
+    },
+    "v": 6,
+    "eu1": 2,
+    "eu2": 0,
+    "ref": -1,
+    "adjacent": true
+   }
+  },
+  {
+   "name": "concavity_adjacent_box_w_slot_3",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_w_slot.smb",
+     "rebuild": false
+    },
+    "v": 9,
+    "eu1": 3,
+    "eu2": 0,
+    "ref": -1,
+    "adjacent": true
+   }
+  },
+  {
+   "name": "concavity_adjacent_box_on_box_0",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_on_box.smb",
+     "rebuild": false
+    },
+    "v": 0,
+    "eu1": 0,
+    "eu2": 0,
+    "ref": -1,
+    "adjacent": true
+   }
+  },
+  {
+   "name": "concavity_adjacent_box_on_box_1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_on_box.smb",
+     "rebuild": false
+    },
+    "v": 3,
+    "eu1": 1,
+    "eu2": 0,
+    "ref": -1,
+    "adjacent": true
+   }
+  },
+  {
+   "name": "concavity_adjacent_box_on_box_2",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_on_box.smb",
+     "rebuild": false
+    },
+    "v": 6,
+    "eu1": 2,
+    "eu2": 0,
+    "ref": -1,
+    "adjacent": true
+   }
+  },
+  {
+   "name": "concavity_adjacent_box_on_box_3",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_on_box.smb",
+     "rebuild": false
+    },
+    "v": 9,
+    "eu1": 3,
+    "eu2": 0,
+    "ref": -1,
+    "adjacent": true
+   }
+  },
+  {
+   "name": "concavity_adjacent_nurb_box_0",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/nurb_box.smb",
+     "rebuild": false
+    },
+    "v": 0,
+    "eu1": 0,
+    "eu2": 0,
+    "ref": -1,
+    "adjacent": true
+   }
+  },
+  {
+   "name": "concavity_adjacent_nurb_box_1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/nurb_box.smb",
+     "rebuild": false
+    },
+    "v": 3,
+    "eu1": 1,
+    "eu2": 0,
+    "ref": -1,
+    "adjacent": true
+   }
+  },
+  {
+   "name": "concavity_adjacent_nurb_box_2",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/nurb_box.smb",
+     "rebuild": false
+    },
+    "v": 6,
+    "eu1": 2,
+    "eu2": 0,
+    "ref": -1,
+    "adjacent": true
+   }
+  },
+  {
+   "name": "concavity_adjacent_nurb_box_3",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/nurb_box.smb",
+     "rebuild": false
+    },
+    "v": 9,
+    "eu1": 3,
+    "eu2": 0,
+    "ref": -1,
+    "adjacent": true
+   }
+  },
+  {
+   "name": "tangential_filleted_box_0",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/filleted_box.smb",
+     "rebuild": false
+    },
+    "eu": 0,
+    "tol": 2.0
+   }
+  },
+  {
+   "name": "tangential_filleted_box_1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/filleted_box.smb",
+     "rebuild": false
+    },
+    "eu": 7,
+    "tol": 2.0
+   }
+  },
+  {
+   "name": "tangential_filleted_box_2",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/filleted_box.smb",
+     "rebuild": false
+    },
+    "eu": 14,
+    "tol": 2.0
+   }
+  },
+  {
+   "name": "tangential_filleted_box_3",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/filleted_box.smb",
+     "rebuild": false
+    },
+    "eu": 21,
+    "tol": 2.0
+   }
+  },
+  {
+   "name": "tangential_nurb_nurb_1_0",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/nurb_nurb_1.smb",
+     "rebuild": false
+    },
+    "eu": 0,
+    "tol": 2.0
+   }
+  },
+  {
+   "name": "tangential_nurb_nurb_1_1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/nurb_nurb_1.smb",
+     "rebuild": false
+    },
+    "eu": 7,
+    "tol": 2.0
+   }
+  },
+  {
+   "name": "tangential_nurb_nurb_1_2",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/nurb_nurb_1.smb",
+     "rebuild": false
+    },
+    "eu": 14,
+    "tol": 2.0
+   }
+  },
+  {
+   "name": "tangential_nurb_nurb_1_3",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/nurb_nurb_1.smb",
+     "rebuild": false
+    },
+    "eu": 21,
+    "tol": 2.0
+   }
+  },
+  {
+   "name": "tangential_brepForFillet1_0",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/brepForFillet1.smb",
+     "rebuild": false
+    },
+    "eu": 0,
+    "tol": 2.0
+   }
+  },
+  {
+   "name": "tangential_brepForFillet1_1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/brepForFillet1.smb",
+     "rebuild": false
+    },
+    "eu": 7,
+    "tol": 2.0
+   }
+  },
+  {
+   "name": "tangential_brepForFillet1_2",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/brepForFillet1.smb",
+     "rebuild": false
+    },
+    "eu": 14,
+    "tol": 2.0
+   }
+  },
+  {
+   "name": "tangential_brepForFillet1_3",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/brepForFillet1.smb",
+     "rebuild": false
+    },
+    "eu": 21,
+    "tol": 2.0
+   }
   }
  ]
 }
