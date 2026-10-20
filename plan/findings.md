@@ -7566,30 +7566,34 @@ stubbed: they need an `OffsetBrep` over the executive's original and offset B-re
 follow-up once this PR merges.
 
 **Results.** 874 cases (5 upstream-derived fixtures, 69 cases built in code, 800 generated
-two-B-rep scripts): 441 pass bit for bit (`max_rel_err 0`), 0 fail, 433 deferred, 0 cases
-where both sides reject the script. 439 passes compare an upstream result (one of them, `network_vertex_three_edges`, an
+two-B-rep scripts): 565 pass bit for bit (`max_rel_err 0`), 0 fail, 309 deferred, 0 cases
+where both sides reject the script (441 / 433 before main e5f3e441, where #149 wired
+`topology.brep_p2`'s stubs: the report equals main's #149 re-run case for case plus this
+branch's 13 cases). 560 passes compare an upstream result (one of them, `network_vertex_three_edges`, an
 error status from `VertexOffset`'s 3-edge branch); 2 (`gen0264`, `gen0685`) are guard
 agreements: the shim refuses the only op as an upstream null dereference, so no C++ runs
-and both sides compare `[0, op, -2]` (they count under `with_values=441 no_values=0`
-because the record has three values). Deferred, by the unit that blocks: `topology.brep_p2` 166,
-`geom.tol` 78 (`SmTol::GetZoneTol3d(const SmObject*)`, labelled `surface.surface_cache_p2`
-before main's relabelling), `harness:analytic-geometry-export` 70, `topology.face_p4` 42,
-`intersect.surface_drop_curve` 27, `curve.crv_on_surf` 25, `topology.face_p2` 12,
-`intersect.surface_drop_lib_p3` 7, `blend.fillet_standard_solver_p1` 4, `surface.sphere` 2.
-Success-path coverage (counted at this head): 228 of the 441 passes complete at least one
+and both sides compare `[0, op, -2]` (they count under `with_values=565 no_values=0`
+because the record has three values; `gen0191` and `gen0255`, passing since #149, are
+three-value records too, a single refused or erroring op on both sides, not probed).
+Deferred, by the unit that blocks: `harness:analytic-geometry-export` 107, `geom.tol` 82
+(`SmTol::GetZoneTol3d(const SmObject*)`, labelled `surface.surface_cache_p2` before main's
+relabelling), `topology.face_p4` 43, `curve.crv_on_surf` 27, `intersect.surface_drop_curve`
+17, `topology.face_p2` 13, `blend.fillet_standard_solver_p1` 11, `intersect.surface_drop_lib_p3`
+7, `surface.sphere` 2 (`topology.brep_p2` 166 before #149).
+Success-path coverage (counted at this head): 327 of the 565 passes complete at least one
 successful call among the unit's ops (the rest compare matching `-2` refusals or matching
 upstream error statuses). Per op, the passing cases that contain a success / a refusal / an
-upstream error (a case can count in several): `FaceuseOffset` 33 / 15 / 0, `VertexOffset`
-60 / 14 / 28, `ReplaceEdgeCurves` 49 / 9 / 0, `TrimExtendedEdge` 46 / 50 / 0,
-`ExtendTrimEdges` 1 / 39 / 7, `HaveTangentGaps` 56 / 30 / 0, `EdgeuseOffset` 35 / 22 / 10,
-`LocalFaceuseOffset` 6 / 37 / 52 (`HaveTangentGaps`' points: upstream ignores
+upstream error (a case can count in several): `FaceuseOffset` 47 / 19 / 0, `VertexOffset`
+77 / 20 / 42, `ReplaceEdgeCurves` 99 / 12 / 0, `TrimExtendedEdge` 62 / 55 / 0,
+`ExtendTrimEdges` 6 / 44 / 12, `HaveTangentGaps` 74 / 39 / 0, `EdgeuseOffset` 53 / 29 / 13,
+`LocalFaceuseOffset` 6 / 47 / 68 (`HaveTangentGaps`' points: upstream ignores
 `NormalizedEvaluate`'s status and a failed evaluation leaves `sPnt` at `SM_UNDEF_DOUBLE`, which
 the port mirrors; an evaluator that wrote part of the point before failing would diverge, a
-theoretical case no input reaches); no successful pass: `UpdateFaceSurfaceDomain` (55
-refusals), `MateEdges` (18 refusals, 55 upstream errors). (This PR's earliest per-op
+theoretical case no input reaches); no successful pass: `UpdateFaceSurfaceDomain` (73
+refusals), `MateEdges` (24 refusals, 67 upstream errors). (This PR's earliest per-op
 counts swapped the `FaceuseOffset` and `ReplaceEdgeCurves` labels.) A 4000-seed sweep
-(4074 cases) passes 2127, fails 0, defers 1947, with no C++ crash or stall. Perturb:
-`SENSITIVE 441/441`. `--fuzz 2000`'s verdict depends on the draw (see the fuzz paragraph
+(4074 cases) passes 2650, fails 0, defers 1424, with no C++ crash or stall. Perturb:
+`SENSITIVE 565/565`. `--fuzz 2000`'s verdict depends on the draw (see the fuzz paragraph
 below: a far-control-point mutation of a `trim_extended_edge` script is a known Rust-only
 slow path that can exceed the 20 s budget). `--fuzz 2000` at the #156 head: `FUZZ-PASS
 cases=2000 rejected=224 malformed=627 ran=1149 differs=0 crashes=0 panics=0 timeouts=0`;
@@ -7671,7 +7675,7 @@ domain, not the offset distance.
 `nurbs.b_spline_surface_p2` (touched): 764 cases, 759 pass, 5 deferred; its
 `three_arcs_about_two_centres` case (arcs about two centres, the first two sharing their
 start point) compares 94 values and fails with the first arc's centre captured by value, so
-it pins WR-103. All green/partial units: `green-par: 231 units, failed=0` on main 39ceb995 +
+it pins WR-103. All green/partial units: `green-par: 234 units, failed=0` on main e5f3e441 +
 this PR (#147 merged).
 
 ## boolean.topology_intersector_p1 (`SmTopologyIntersector.cpp` part 1, PR #146, 2026-10-16; partial, no disagreements)
