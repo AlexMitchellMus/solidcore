@@ -26,7 +26,7 @@
 //! (UB-50, both chaining passes; with the end cap at the offset end, any chain that
 //! encloses nothing), a planar path without path curves (`rPathCurves[0]`), skin
 //! profile counts past the curves (`r3DCurves[lCount]`), a partial cone or torus that
-//! sweeps a profile edge shorter than the zone tolerance (UB-213, use after free), and
+//! sweeps a profile edge shorter than the zone tolerance (UB-215, use after free), and
 //! a sphere, torus or cone a few zone tolerances across, at any turn (HANG-35).
 //! Values are finite with magnitude at most `1e6`, frames nondegenerate, lists at
 //! most 32 curves.
@@ -171,7 +171,7 @@ fn cone_lines(d: &[f64]) -> Option<Vec<f64>> {
     (lines.len() >= 3).then_some(lines)
 }
 
-/// UB-213: a turn below [`ANALYTIC_TURN`] sweeps the profile edges, and
+/// UB-215: a turn below [`ANALYTIC_TURN`] sweeps the profile edges, and
 /// `SweepEdgeHigh` uses an edge's curve after the face build freed it for being
 /// shorter than the zone tolerance. A sphere's line lies on the axis and its arc's
 /// face fails the degenerate-surface test first, so spheres never reach it.
@@ -576,7 +576,7 @@ mod tests {
 
     #[test]
     fn short_swept_edges_are_rejected_and_early_exits_kept() {
-        // UB-213 at its native edges: a 9e-6 cone line segfaults, 1e-5 does not
+        // UB-215 at its native edges: a 9e-6 cone line segfaults, 1e-5 does not
         assert!(primitive(1, &[1., 1., 9e-6], 0., 90.).is_err());
         assert!(primitive(1, &[2e-6, 1., 1.], 0., 90.).is_err());
         assert!(primitive(1, &[1., 1., 1e-5], 0., 90.).is_ok());

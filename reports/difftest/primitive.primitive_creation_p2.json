@@ -208,7 +208,7 @@
         "op": 3
       },
       "max_rel_err": 0.0,
-      "name": "ub213_partial_torus_tiny_circle_tiny_turn",
+      "name": "ub215_partial_torus_tiny_circle_tiny_turn",
       "outcome": "rejected",
       "pass": false,
       "rejected": "guarded native crash or hang (fixtures README)",
@@ -222,7 +222,7 @@
         "op": 3
       },
       "max_rel_err": 0.0,
-      "name": "ub213_partial_torus_tiny_circle_far_origin",
+      "name": "ub215_partial_torus_tiny_circle_far_origin",
       "outcome": "rejected",
       "pass": false,
       "rejected": "guarded native crash or hang (fixtures README)",
@@ -236,7 +236,7 @@
         "op": 1
       },
       "max_rel_err": 0.0,
-      "name": "ub213_partial_cone_top_line_9e-6",
+      "name": "ub215_partial_cone_top_line_9e-6",
       "outcome": "rejected",
       "pass": false,
       "rejected": "guarded native crash or hang (fixtures README)",
@@ -250,7 +250,7 @@
         "op": 1
       },
       "max_rel_err": 0.0,
-      "name": "ub213_partial_cone_apex_top_line_1e-6",
+      "name": "ub215_partial_cone_apex_top_line_1e-6",
       "outcome": "rejected",
       "pass": false,
       "rejected": "guarded native crash or hang (fixtures README)",
