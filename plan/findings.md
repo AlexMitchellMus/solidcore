@@ -2469,6 +2469,31 @@ arbitrary returned offset B-reps or live cross-object alias mutation. The broade
 analytic-kind dispatch work in #76 and the production executive/SSI bridge remain
 separate.
 
+### Final local integration evidence
+
+The final merged source passed all 44 affected native runners: 111,157 cases,
+102,616 passing, zero failed, 8,524 deferred and 17 native setup rejections.
+The largest relative error was `1.7805513589745123e-13`; every passing case's
+perturbation was detected. No manifest-green unit regressed to partial.
+
+| Runner | Cases | Passed | Deferred | Remaining limitation |
+|---|---:|---:|---:|---|
+| `curve.crv_on_surf` | 2107 | 1800 | 307 | Uncached classification breaks in `intersect.curve_class_p2` |
+| `blend.fillet_intersector` | 1286 | 1037 | 249 | Fillet solver parts 1–4; 162 former concrete-surface deferrals now pass |
+| `offset.offset_geometry_creation` | 861 | 428 | 433 | Face ownership/tolerance, B-rep and cache dependencies remain |
+| `intersect.curve_class_p5` | 1081 | 1081 | 0 | Owned SSS/edge-target insertion remains unported and unexercised |
+
+The last row is fixture coverage, not a green promotion: its manifest status stays
+partial. In the offset creator, 25 former concrete-surface deferrals now reach
+`topology.face_p2`; the `box_edgeuse_offset_shell` smoke observes the real
+owner/tolerance dependency rather than a fabricated standalone tolerance.
+
+Workspace tests passed (1,531 kernel tests), as did formatting, strict workspace
+Clippy both with and without C++, and the wasm32 check. Independent reviews
+explicitly selected `openai-codex/gpt-6-astra`; the final snapshot/owner/transform
+and fuzz-safety deltas received no blockers. Canonical x86 full-green CI is the
+publication integration gate; the selected ARM comparisons above do not replace it.
+
 ### Rust safety bounds and malformed-stream fuzz
 
 The final fuzz run exposed caller-sized derivative allocation and unbounded
@@ -3942,8 +3967,9 @@ cases, 169 deferred; `SmSurface::EvaluateNormal` and `DropVectors` now call the
 - **Not wired**, still `UNPORTED(surface.surface_p1)`: `Grid::expand_hierarchy` (needs a
   surface handle type for the grid elements), the surface cache's
   `CalculateBoundingBox` of curve-bounded and STEP surfaces (called while that cache is
-  being built), and the `SmIsoCurve` / `SmCrvOnSurf` readers of non-B-spline surfaces
-  (those curves hold an `SmBSplineSurface`).
+  being built), and the `SmIsoCurve` reader of non-B-spline surfaces (that curve still
+  holds a B-spline part). `CrvOnSurf` now uses the concrete `Surface` reader dispatcher;
+  its former B-spline-only reader restriction is removed.
 
 ## topology.edgeuse_p1 (`SmEdgeuse` / `SmFaceuse` part 1, 2026-10-14; partial, no disagreements)
 
@@ -4157,13 +4183,11 @@ cases, 169 deferred; `SmSurface::EvaluateNormal` and `DropVectors` now call the
   collapsed-edge, out-of-bounds and Hermite UV curves; USE_DEFAULT, negative, 0 and 1e3
   tolerances; in- and out-of-domain params), and half the generated TolPair ops now use a
   fresh UV curve on a surface. All pass with max_rel_err 0.
-- **DISPATCH GAP: SmCrvOnSurf over a non-B-spline surface.** `cull_or_refine_cci_in_3d`
-  (`sm_CullOrRefineCCIIn3d`) builds an `SmCrvOnSurf` over the classification surface, but
-  `curve::crv_on_surf::CrvOnSurf` holds only a `BSplineSurface`, so a plane (or any other
-  surface) returns `Unported { unit: "curve.crv_on_surf" }` (24 deferred cases, all
-  Cull on planes). There is no `UNPORTED(..)` marker, as in `curve/crv_on_surf.rs`:
-  whoever generalises `CrvOnSurf` over `Surface` should grep `DISPATCH GAP` and wire this
-  site. It was tagged `surface.surface_p1` before, which is partial and not the gap.
+- **Concrete-Surface mapping wired.** `cull_or_refine_cci_in_3d`
+  (`sm_CullOrRefineCCIIn3d`) now builds its `CrvOnSurf` over the actual classification
+  surface. Exact UV/surface snapshots preserve shared raw knots and owners instead of
+  replacing a plane with its B-spline part. The old `curve.crv_on_surf` construction
+  deferral is removed; genuine classification/topology dependencies remain explicit.
 - **Not compared.** The shim never builds an `SmSurfOfRevolution` or `SmSurfOfExtrusion`,
   so the `SurfOfRevolution` arm of `out_of_bounds()` (the base-flag-only
   `SmTemporaryChangeValue`) is ported but not difftested; planes and B-spline surfaces are.
@@ -7053,11 +7077,10 @@ Dependency boundaries and integration handoffs:
   must be retained when replacing the stub. The implementation is now inherited
   from main; plane handle registration and the WR-155 buffer lifecycle remain
   the reviewed integration boundary.
-- Real `SmCrvOnSurf` iso-curves are built over B-spline surfaces. Other concrete
-  surface types stop at the existing `curve.crv_on_surf` generic-surface adapter
-  gap; they are not replaced by a B-spline stand-in.
-  Existing `CrvOnSurf` cache/break evaluation can also reach the earlier part-4
-  constructor stub, so that transitive blocker is reported separately.
+- Real `SmCrvOnSurf` iso-curves now retain the existing concrete surface, including
+  offset wrappers, with checked exact snapshots and native temporary-owner semantics.
+  They are not replaced by B-spline stand-ins. Cache/break classification can still
+  reach the independent construction/context dependencies recorded in its report.
 - Incoming p8 sites in `curve.crv_on_surf` and `curve.crv_in_volume` are after
   their earlier `intersect.curve_class_p4` construction stubs (#137). Part 4 is
   still independent. Stale p8 UNPORTED comments now name the available methods;
@@ -7489,11 +7512,12 @@ curve and a null UV curve dereferences the UV curve only when the curves run opp
 the shim replicates the shape test (end-point matches, then the tangent dot product)
 and refuses only then. These refusals are C++ crash guards, not `UNPORTED` deferrals.
 
-**Deferred (Rust `Unported`, never compared).** `SmCrvOnSurf::SmCrvOnSurf` over a
-non-B-spline surface (`curve.crv_on_surf`, main's label for that dispatch gap): the
-offset-surface rail of `EdgeuseOffset` without an offset edge use builds its
-`SmOffsetSurface` (`surface.offset_surface`, PR #62, wired) but the ported `CrvOnSurf`
-holds an `SmBSplineSurface` only, so the curve on it and its `ApproximateCurve` defer;
+**Offset rail mapping, now wired.** `EdgeuseOffset` constructs the actual
+`SmOffsetSurface`/`CrvOnSurf` rail and runs its supplied-knot approximation. The old
+non-B-spline `curve.crv_on_surf` gate is removed; those cases now reach the genuine
+face-owner/tolerance dependency in `topology.face_p2`.
+
+**Remaining deferred (Rust `Unported`, never compared).**
 `SmFace::CreateUVTrimCurves` (`topology.face_p3`, inside `UpdateFaceSurfaceDomain`'s
 `CalculateUVDomainFromUVTrimCurves`, wired since `topology.face_p1` merged); the
 trimmed surface cache of a face's own surface (its construction first reaches
@@ -7969,14 +7993,15 @@ FALSE; the port preserves that native quirk.
 
 The edge-target insertion branch remains unported: vertex snapping,
 sm_RefineCCIToSurfaces and the 2D class object need p2 InsertAt and p7 point-index
-queries. The entire SSS block (SmCurveClass.cpp:14826-15095) remains unported
-before mutation. Its real missing callees are GetOtherMate/GetBrepMate in
-boolean.topology_intersector_p1; the preceding knot snapping, surface solves,
-through-point edits and edgeuse UV-trim clearing have ported callees but still
-need mutable ownership wiring here. This block does not call
-sm_RefineCCIToSurfaces. The reviewer explicitly accepted this minimum tag and
-description correction. Generic-Surface SmCrvOnSurf construction is a missing
-type/dispatch extension of the already-partial curve unit, recorded in its notes.
+queries. The entire owned SSS block (SmCurveClass.cpp:14826-15095) remains
+unported before mutation. It needs mutable curve/B-rep access and a mate-lookup
+adapter for the ported GetOtherMate/GetBrepMate helpers in
+boolean.topology_intersector_p1. Knot snapping, surface solves, through-point
+edits and edgeuse UV-trim clearing also still need ownership wiring here.
+This block does not call sm_RefineCCIToSurfaces. Concrete-Surface `CrvOnSurf`
+construction is now wired, independently of that remaining owned work.
+Part 5 remains partial despite all 1,081 current fixture/generated cases passing:
+its owned SSS block and nonempty large-gap path are not certified by that corpus.
 
 Missing vertex-point and vertex/face-gap callback data returns InvalidInput.
 Big-gap lookup requires an explicit classification face or direct face owner of
@@ -8989,13 +9014,12 @@ rejected: nothing runs on either side.
 - **Upward face use.** The shared import leaves `Face::faceuse` (`m_pFU`) unset; this runner
   sets it to the face's `SAME`-oriented face use (needed by `GetLoops`, `sm_MarkLoopsToDelete`,
   `sm_FindSectorOfFace`).
-- **`sm_MakeVertexSplitUVTrimCurve` on a plane face.** Upstream lifts the UV trim curve through
-  `SmCrvOnSurf(uv, *pSurface)`, whose `EvaluatePoint` is the surface evaluation of the UV curve
-  point; the Rust `CrvOnSurf` exists only over a `BSplineSurface` (a `Plane`'s base has no NURB
-  data), so the port lifts through the face `Surface` itself and builds the `CrvOnSurf` only for
-  the tessellation branch's local solve (deferred to `curve.crv_on_surf` for a non-B-spline
-  face). `CreateCornerBlend` likewise needs B-spline face surfaces and NURBS 3D curves (a Rust
-  type gap, reported as `curve.crv_on_surf` / `InvalidInput`).
+- **`sm_MakeVertexSplitUVTrimCurve` on a concrete face surface.** The point lift uses
+  the face `Surface` itself, and the tessellation branch now constructs its local-solve
+  `CrvOnSurf` over that same concrete kind. Exact snapshots retain shared UV/surface
+  geometry rather than erasing a plane into a B-spline base. The separate
+  `CreateCornerBlend` path still requires B-spline face parts and NURBS 3D curves;
+  those caller-specific requirements are not a missing `CrvOnSurf` type.
 - **Bounds.** `sm_MarkLoopsToDelete` is bounded in depth (`MAX_LOOP_NESTING` = 256) and in
   total calls (`MAX_LOOP_MARK_CALLS` = 2^20): the recursion branches at every other loop of a
   face, so a cyclic radial chain through faces with three or more loops would otherwise grow
@@ -9841,10 +9865,10 @@ listed mutation, sharing, opaque-adapter and reader coverage limits still apply.
   kinds dispatch before the argument is read upstream, and without targets upstream
   returns at once, so those call the port. One built-in case reaches the deferral
   (`face_curves_cos_open_loop`: three UV sides with `crv_on_surf` TRUE; C++ builds it,
-  status 0 in the round-3 review run). The gap is also recorded in `curve.curve_p6`'s notes. The port's `CrvOnSurf` holds only
-  `SmBSplineSurface` kinds (`curve.crv_on_surf`, partial): a curve on surface of another
-  surface kind defers to `curve.crv_on_surf`, with the same tag and label as that gap's
-  other sites.
+  status 0 in the round-3 review run). That target-deformation gap remains recorded in
+  `curve.curve_p6`'s notes. The old B-spline-only `CrvOnSurf` gate is removed:
+  `MakeFaceWithCurves` now retains the actual surface with checked exact snapshots
+  and native owning-copy semantics.
 - **MakeFace with a square loop** (`kind 1`): the shim builds the loop with
   `MakeShellVertex`, `MakeWireEdgeVertex` and `MakeWireEdge`. The Rust side mirrors its
   `-3` when `CreateLineSegment` fails for the side, and otherwise defers at
@@ -9870,11 +9894,11 @@ listed mutation, sharing, opaque-adapter and reader coverage limits still apply.
   surface degenerate to a curve or a point) return before it and are run and compared.
 - **Reviews of PR #155 (maintainer at a5359b48; cross-model and oursland at bbdb8bf1),
   all verified against upstream and fixed:**
-  - With `pbOptCrvOnSurf` the port built the `CrvOnSurf` over a plane's or a surface of
-    revolution's B-spline base; upstream keeps the real surface (`SmPlane::EvaluatePoint`,
-    `SmSurfOfRevolution::EvaluateSTEP` are overrides). Those kinds now defer to
-    `curve.crv_on_surf` like every other non-B-spline kind; `face_curves_cos_open_loop`
-    moved to a B-spline patch so it still reaches the `curve.curve_p6` deferral.
+  - The earlier review caught erasure of plane/surface-of-revolution kinds into their
+    B-spline bases (`SmPlane::EvaluatePoint` and `SmSurfOfRevolution::EvaluateSTEP`
+    are overrides). The concrete-Surface follow-up now preserves those kinds rather
+    than deferring construction. The existing B-spline `face_curves_cos_open_loop`
+    fixture remains unchanged and still exercises the `curve.curve_p6` target gap.
   - `MergeSelfIntersectionCurves` keeps upstream's loop: the classification is a stub
     (`intersect.curve_class_p4`), then a second classification of fewer or more than one
     interval is skipped before its merge, is `SM_ERR` after it, and one whose middle is

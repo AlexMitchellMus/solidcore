@@ -341,8 +341,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "internal_box_with_large_fillet_f0",
@@ -393,8 +393,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "internal_box_with_large_fillet_f1",
@@ -445,8 +445,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "internal_box_with_large_fillet_f2",
@@ -497,8 +497,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "internal_box_with_large_fillet_f3",
@@ -549,8 +549,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "internal_box_with_large_fillet_f4",
@@ -601,8 +601,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "internal_box_with_large_fillet_f5",
@@ -698,8 +698,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "internal_box_with_large_fillet_f7",
@@ -907,8 +907,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "internal_plane_circ_f0",
@@ -959,8 +959,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "internal_plane_square_f0",
@@ -1427,14 +1427,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "sector_plane_square_eu0_m0_c2_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/cases.json#140 (upstream source/SMLib/src/SmFace.cpp:9967 SectorClassifyCurveOn at a vertex / 9064 at an edge, on upstream TestFiles plane_square.smb)",
       "values_compared": 0
     },
@@ -1463,14 +1459,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "sector_plane_square_eu0_m1_c2_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/cases.json#144 (upstream source/SMLib/src/SmFace.cpp:9967 SectorClassifyCurveOn at a vertex / 9064 at an edge, on upstream TestFiles plane_square.smb)",
       "values_compared": 0
     },
@@ -1523,26 +1515,18 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "sector_plane_square_eu0_m2_c2_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/cases.json#151 (upstream source/SMLib/src/SmFace.cpp:9967 SectorClassifyCurveOn at a vertex / 9064 at an edge, on upstream TestFiles plane_square.smb)",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "sector_plane_square_eu0_m2_c2_0.5_0.5_sing",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/cases.json#152 (upstream source/SMLib/src/SmFace.cpp:9967 SectorClassifyCurveOn at a vertex / 9064 at an edge, on upstream TestFiles plane_square.smb)",
       "values_compared": 0
     },
@@ -1571,14 +1555,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "sector_plane_square_eu1_m0_c2_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/cases.json#156 (upstream source/SMLib/src/SmFace.cpp:9967 SectorClassifyCurveOn at a vertex / 9064 at an edge, on upstream TestFiles plane_square.smb)",
       "values_compared": 0
     },
@@ -1607,14 +1587,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "sector_plane_square_eu1_m1_c2_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/cases.json#160 (upstream source/SMLib/src/SmFace.cpp:9967 SectorClassifyCurveOn at a vertex / 9064 at an edge, on upstream TestFiles plane_square.smb)",
       "values_compared": 0
     },
@@ -1667,26 +1643,18 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "sector_plane_square_eu1_m2_c2_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/cases.json#167 (upstream source/SMLib/src/SmFace.cpp:9967 SectorClassifyCurveOn at a vertex / 9064 at an edge, on upstream TestFiles plane_square.smb)",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "sector_plane_square_eu1_m2_c2_0.5_0.5_sing",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/cases.json#168 (upstream source/SMLib/src/SmFace.cpp:9967 SectorClassifyCurveOn at a vertex / 9064 at an edge, on upstream TestFiles plane_square.smb)",
       "values_compared": 0
     },
@@ -1715,14 +1683,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "sector_plane_square_eu2_m0_c2_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/cases.json#172 (upstream source/SMLib/src/SmFace.cpp:9967 SectorClassifyCurveOn at a vertex / 9064 at an edge, on upstream TestFiles plane_square.smb)",
       "values_compared": 0
     },
@@ -1751,14 +1715,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "sector_plane_square_eu2_m1_c2_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/cases.json#176 (upstream source/SMLib/src/SmFace.cpp:9967 SectorClassifyCurveOn at a vertex / 9064 at an edge, on upstream TestFiles plane_square.smb)",
       "values_compared": 0
     },
@@ -1811,26 +1771,18 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "sector_plane_square_eu2_m2_c2_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/cases.json#183 (upstream source/SMLib/src/SmFace.cpp:9967 SectorClassifyCurveOn at a vertex / 9064 at an edge, on upstream TestFiles plane_square.smb)",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "sector_plane_square_eu2_m2_c2_0.5_0.5_sing",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/cases.json#184 (upstream source/SMLib/src/SmFace.cpp:9967 SectorClassifyCurveOn at a vertex / 9064 at an edge, on upstream TestFiles plane_square.smb)",
       "values_compared": 0
     },
@@ -1859,14 +1811,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "sector_plane_square_eu3_m0_c2_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/cases.json#188 (upstream source/SMLib/src/SmFace.cpp:9967 SectorClassifyCurveOn at a vertex / 9064 at an edge, on upstream TestFiles plane_square.smb)",
       "values_compared": 0
     },
@@ -1896,14 +1844,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "sector_plane_square_eu3_m1_c2_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/cases.json#192 (upstream source/SMLib/src/SmFace.cpp:9967 SectorClassifyCurveOn at a vertex / 9064 at an edge, on upstream TestFiles plane_square.smb)",
       "values_compared": 0
     },
@@ -1958,26 +1902,18 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "sector_plane_square_eu3_m2_c2_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/cases.json#199 (upstream source/SMLib/src/SmFace.cpp:9967 SectorClassifyCurveOn at a vertex / 9064 at an edge, on upstream TestFiles plane_square.smb)",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "sector_plane_square_eu3_m2_c2_0.5_0.5_sing",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/cases.json#200 (upstream source/SMLib/src/SmFace.cpp:9967 SectorClassifyCurveOn at a vertex / 9064 at an edge, on upstream TestFiles plane_square.smb)",
       "values_compared": 0
     },
@@ -2891,8 +2827,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::CreateUVTrimCurves",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b1_e3_m0_f1e-09_c2_t0.25_0.75",
@@ -2940,8 +2876,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::CreateUVTrimCurves",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b3_e1_m0_f1e-09_c2_t0.0_0.5",
@@ -2992,21 +2928,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "adv_sec_b7_e0_m0_f0.5_c2_t0.5_0.0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/review_adversarial.json#91 (upstream review adversarial case (PR #132): source/SMLib/src/SmFace.cpp)",
       "values_compared": 0
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b0_e0_m0_f0.5_c2_t0.5_0.0",
@@ -3016,21 +2948,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "adv_sec_b7_e0_m2_f0.5_c2_t0.0_0.0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/review_adversarial.json#93 (upstream review adversarial case (PR #132): source/SMLib/src/SmFace.cpp)",
       "values_compared": 0
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b4_e1_m0_f0.0_c2_t0.0_0.5",
@@ -3053,8 +2981,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::CreateUVTrimCurves",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b1_e2_m0_f1e-09_c2_t0.0_0.5",
@@ -3076,21 +3004,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "adv_sec_b0_e1_m2_f0.5_c2_t1.0_1.0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/review_adversarial.json#98 (upstream review adversarial case (PR #132): source/SMLib/src/SmFace.cpp)",
       "values_compared": 0
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b0_e1_m0_f1.0_c2_t0.5_0.5",
@@ -3101,8 +3025,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b0_e1_m0_f1e-09_c2_t1.0_1.0",
@@ -3198,14 +3122,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "adv_sec_b7_e0_m0_f1.0_c2_t0.5_0.0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/review_adversarial.json#109 (upstream review adversarial case (PR #132): source/SMLib/src/SmFace.cpp)",
       "values_compared": 0
     },
@@ -3229,8 +3149,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::CreateUVTrimCurves",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b3_e3_m0_f0.5_c2_t1.0_1.0",
@@ -3423,8 +3343,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b4_e2_m0_f1.0_c2_t0.5_0.0",
@@ -3482,8 +3402,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b3_e3_m1_f0.5_c2_t0.5_0.5",
@@ -3555,8 +3475,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b1_e1_m0_f1e-09_c2_t0.0_0.0",
@@ -3596,8 +3516,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b2_e2_m0_f1e-09_c2_t0.0_0.5",
@@ -3659,8 +3579,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b0_e2_m1_f0.5_c2_t0.25_0.75",
@@ -3737,8 +3657,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::CreateUVTrimCurves",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b0_e0_m1_f0.5_c2_t1.0_0.0",
@@ -3749,8 +3669,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::CreateUVTrimCurves",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b3_e0_m2_f0.5_c2_t0.5_0.0",
@@ -3936,8 +3856,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::CreateUVTrimCurves",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b0_e3_m0_f1e-09_c2_t0.0_0.5",
@@ -3947,14 +3867,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "adv_sec_b7_e3_m0_f0.0_c2_t0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/review_adversarial.json#180 (upstream review adversarial case (PR #132): source/SMLib/src/SmFace.cpp)",
       "values_compared": 0
     },
@@ -3969,8 +3885,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b3_e0_m2_f0.5_c2_t0.25_0.75",
@@ -4081,8 +3997,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b0_e1_m1_f0.5_c2_t1.0_1.0",
@@ -4209,21 +4125,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "adv_sec_b7_e1_m0_f1.0_c2_t0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/review_adversarial.json#205 (upstream review adversarial case (PR #132): source/SMLib/src/SmFace.cpp)",
       "values_compared": 0
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b0_e0_m2_f0.5_c2_t0.5_0.5",
@@ -4234,8 +4146,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::CreateUVTrimCurves",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b4_e2_m0_f0.0_c2_t0.5_0.5",
@@ -4267,8 +4179,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b1_e3_m0_f0.5_c2_t0.5_0.5",
@@ -4393,8 +4305,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b4_e3_m0_f0.5_c2_t0.0_0.5",
@@ -4433,14 +4345,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "adv_sec_b7_e2_m1_f0.5_c2_t0.5_0.0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/review_adversarial.json#225 (upstream review adversarial case (PR #132): source/SMLib/src/SmFace.cpp)",
       "values_compared": 0
     },
@@ -4530,8 +4438,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b4_e0_m1_f0.5_c2_t1.0_0.0",
@@ -4554,8 +4462,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b4_e0_m0_f1.0_c2_t0.0_0.5",
@@ -4604,8 +4512,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b3_e2_m0_f1e-09_c2_t1.0_1.0",
@@ -4616,8 +4524,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::CreateUVTrimCurves",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b0_e1_m0_f0.5_c2_t0.25_0.75",
@@ -4672,14 +4580,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "adv_sec_b7_e0_m2_f0.5_c2_t0.5_0.0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/review_adversarial.json#246 (upstream review adversarial case (PR #132): source/SMLib/src/SmFace.cpp)",
       "values_compared": 0
     },
@@ -4735,14 +4639,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "adv_sec_b7_e1_m0_f0.0_c2_t0.0_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/review_adversarial.json#252 (upstream review adversarial case (PR #132): source/SMLib/src/SmFace.cpp)",
       "values_compared": 0
     },
@@ -4769,8 +4669,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::CreateUVTrimCurves",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b0_e1_m2_f0.5_c2_t0.25_0.75",
@@ -4888,8 +4788,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b1_e0_m2_f0.5_c2_t0.5_0.0",
@@ -4921,8 +4821,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::CreateUVTrimCurves",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b2_e2_m0_f0.0_c2_t0.0_0.0",
@@ -4945,8 +4845,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::CreateUVTrimCurves",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b2_e0_m0_f1.0_c2_t0.0_0.5",
@@ -4969,8 +4869,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b0_e2_m0_f1.0_c2_t1.0_0.0",
@@ -4981,8 +4881,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b3_e2_m0_f0.5_c2_t0.0_0.5",
@@ -4992,21 +4892,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "adv_sec_b7_e1_m2_f0.5_c2_t1.0_0.0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/review_adversarial.json#275 (upstream review adversarial case (PR #132): source/SMLib/src/SmFace.cpp)",
       "values_compared": 0
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b2_e3_m0_f0.5_c2_t1.0_1.0",
@@ -5101,8 +4997,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b3_e0_m0_f1e-09_c2_t0.0_0.0",
@@ -5122,8 +5018,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b1_e2_m1_f0.5_c2_t0.0_0.0",
@@ -5176,8 +5072,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b0_e1_m0_f0.5_c2_t0.5_0.5",
@@ -5212,8 +5108,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b4_e2_m0_f0.0_c2_t0.0_0.0",
@@ -5269,8 +5165,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b2_e0_m1_f0.5_c2_t0.0_0.0",
@@ -5317,8 +5213,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b4_e1_m0_f0.0_c2_t0.25_0.75",
@@ -5412,8 +5308,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b0_e2_m0_f1e-09_c2_t0.0_0.0",
@@ -5436,8 +5332,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b2_e0_m0_f1e-09_c2_t0.0_0.5",
@@ -5460,8 +5356,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b2_e2_m1_f0.5_c2_t0.25_0.75",
@@ -5580,8 +5476,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b3_e3_m0_f0.0_c2_t0.0_0.0",
@@ -5591,21 +5487,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "adv_sec_b7_e3_m1_f0.5_c2_t0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/review_adversarial.json#329 (upstream review adversarial case (PR #132): source/SMLib/src/SmFace.cpp)",
       "values_compared": 0
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b2_e0_m1_f0.5_c2_t1.0_0.0",
@@ -5625,8 +5517,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b1_e2_m1_f0.5_c2_t0.5_0.5",
@@ -5706,8 +5598,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::CreateUVTrimCurves",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b2_e0_m0_f0.5_c2_t1.0_0.0",
@@ -5730,8 +5622,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b1_e3_m0_f1.0_c2_t0.0_0.0",
@@ -5741,14 +5633,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "adv_sec_b1_e0_m2_f0.5_c2_t0.0_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/review_adversarial.json#342 (upstream review adversarial case (PR #132): source/SMLib/src/SmFace.cpp)",
       "values_compared": 0
     },
@@ -5775,8 +5663,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b1_e1_m0_f0.0_c2_t0.0_0.5",
@@ -5872,14 +5760,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "adv_sec_b0_e2_m2_f0.5_c2_t0.5_0.0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/review_adversarial.json#354 (upstream review adversarial case (PR #132): source/SMLib/src/SmFace.cpp)",
       "values_compared": 0
     },
@@ -5897,8 +5781,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b0_e0_m1_f0.5_c2_t0.5_0.0",
@@ -5909,8 +5793,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b1_e1_m2_f0.5_c2_t1.0_0.0",
@@ -5933,8 +5817,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b1_e3_m0_f1.0_c2_t0.0_0.5",
@@ -6068,8 +5952,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b4_e3_m0_f0.5_c2_t0.5_0.5",
@@ -6080,8 +5964,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b4_e0_m0_f1.0_c2_t0.5_0.0",
@@ -6124,8 +6008,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b3_e1_m0_f1.0_c2_t0.25_0.75",
@@ -6260,14 +6144,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "adv_sec_b7_e1_m0_f1e-09_c2_t0.5_0.0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.face_p3/review_adversarial.json#388 (upstream review adversarial case (PR #132): source/SMLib/src/SmFace.cpp)",
       "values_compared": 0
     },
@@ -6297,8 +6177,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "adv_sec_b3_e1_m2_f0.5_c2_t1.0_1.0",
@@ -8830,8 +8710,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0241",
@@ -9801,8 +9681,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "gen0335",
@@ -11138,14 +11018,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0462",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634844329422695932",
       "values_compared": 0
     },
@@ -11247,8 +11123,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0473",
@@ -11371,14 +11247,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0485",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634844329422695955",
       "values_compared": 0
     },
@@ -12534,16 +12406,16 @@
     }
   ],
   "cases_both_errored": 235,
-  "cases_deferred": 676,
+  "cases_deferred": 644,
   "cases_failed": 0,
-  "cases_passed": 523,
+  "cases_passed": 555,
   "cases_total": 1199,
   "deferred_by_unit": {
-    "curve.crv_on_surf": 99,
-    "intersect.surface_drop_lib_p3": 215,
+    "intersect.surface_drop_lib_p3": 259,
     "query.face_p2": 2,
+    "topology.edge": 10,
     "topology.face_p2": 305,
-    "topology.face_p3": 55
+    "topology.face_p3": 68
   },
   "max_rel_err": 0.0,
   "pass": true,

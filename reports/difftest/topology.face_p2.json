@@ -8180,16 +8180,12 @@
       "values_compared": 58
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#978 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8200,16 +8196,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#980 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8220,16 +8212,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#982 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8240,16 +8228,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_3",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#984 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8260,16 +8244,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_4",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#986 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8280,16 +8260,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#988 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8300,16 +8276,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_6",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#990 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8320,16 +8292,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_7",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#992 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8340,16 +8308,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_box_side_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#994 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8360,16 +8324,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_box_side_1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#996 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8380,16 +8340,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_box_side_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#998 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8400,16 +8356,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_box_side_3",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1000 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8420,16 +8372,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_box_side_4",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1002 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8440,16 +8388,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_box_side_5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1004 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8460,16 +8404,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_box_side_6",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1006 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8480,16 +8420,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_box_side_7",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1008 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8500,16 +8436,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_tilted_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1010 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8520,16 +8452,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_tilted_1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1012 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8540,16 +8468,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_tilted_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1014 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8560,16 +8484,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_tilted_3",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1016 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8580,16 +8500,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_tilted_4",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1018 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8600,16 +8516,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_tilted_5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1020 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8620,16 +8532,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_tilted_6",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1022 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -8640,16 +8548,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_plane_tilted_7",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1024 (upstream sm_FindBestUVCurve (called by SmFace::CreateUVTrimCurves))",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -9368,52 +9272,36 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_file_box_with_large_fillet.smb_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1114 (upstream sm_FindBestUVCurve on upstream B-reps)",
-      "values_compared": 0
+      "values_compared": 32
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_file_box_with_large_fillet.smb_1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1115 (upstream sm_FindBestUVCurve on upstream B-reps)",
-      "values_compared": 0
+      "values_compared": 32
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_file_box_with_large_fillet.smb_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1116 (upstream sm_FindBestUVCurve on upstream B-reps)",
-      "values_compared": 0
+      "values_compared": 32
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_file_box_with_large_fillet.smb_3",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1117 (upstream sm_FindBestUVCurve on upstream B-reps)",
-      "values_compared": 0
+      "values_compared": 32
     },
     {
       "both_errored": true,
@@ -9452,52 +9340,36 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_file_disk.smb_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1122 (upstream sm_FindBestUVCurve on upstream B-reps)",
-      "values_compared": 0
+      "values_compared": 38
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_file_disk.smb_1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1123 (upstream sm_FindBestUVCurve on upstream B-reps)",
-      "values_compared": 0
+      "values_compared": 32
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_file_disk.smb_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1124 (upstream sm_FindBestUVCurve on upstream B-reps)",
-      "values_compared": 0
+      "values_compared": 38
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_file_disk.smb_3",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1125 (upstream sm_FindBestUVCurve on upstream B-reps)",
-      "values_compared": 0
+      "values_compared": 32
     },
     {
       "max_rel_err": 0.0,
@@ -9532,100 +9404,68 @@
       "values_compared": 79
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_file_plane_circ.smb_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1130 (upstream sm_FindBestUVCurve on upstream B-reps)",
-      "values_compared": 0
+      "values_compared": 58
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_file_plane_circ.smb_1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1131 (upstream sm_FindBestUVCurve on upstream B-reps)",
-      "values_compared": 0
+      "values_compared": 58
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_file_plane_circ.smb_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1132 (upstream sm_FindBestUVCurve on upstream B-reps)",
-      "values_compared": 0
+      "values_compared": 58
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_file_plane_circ.smb_3",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1133 (upstream sm_FindBestUVCurve on upstream B-reps)",
-      "values_compared": 0
+      "values_compared": 58
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_file_plane_square.smb_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1134 (upstream sm_FindBestUVCurve on upstream B-reps)",
-      "values_compared": 0
+      "values_compared": 32
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_file_plane_square.smb_1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1135 (upstream sm_FindBestUVCurve on upstream B-reps)",
-      "values_compared": 0
+      "values_compared": 32
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_file_plane_square.smb_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1136 (upstream sm_FindBestUVCurve on upstream B-reps)",
-      "values_compared": 0
+      "values_compared": 32
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "best_file_plane_square.smb_3",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.face_p2/upstream.json#1137 (upstream sm_FindBestUVCurve on upstream B-reps)",
-      "values_compared": 0
+      "values_compared": 32
     },
     {
       "deferred": {
@@ -10032,16 +9872,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0002",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=9751866595074104336",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -10500,8 +10336,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "extra00037",
@@ -10873,16 +10709,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00079",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
       "max_rel_err": 0.0,
@@ -10989,8 +10821,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "extra00092",
@@ -11000,16 +10832,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00093",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 5
     },
     {
       "max_rel_err": 0.0,
@@ -11028,16 +10856,12 @@
       "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00096",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 5
     },
     {
       "both_errored": true,
@@ -11076,16 +10900,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00101",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -11216,16 +11036,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00117",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 5
     },
     {
       "max_rel_err": 0.0,
@@ -11236,16 +11052,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00119",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -11623,16 +11435,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00162",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -11887,16 +11695,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00191",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "deferred": {
@@ -13034,16 +12838,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00318",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "deferred": {
@@ -13164,16 +12964,12 @@
       "values_compared": 46
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00331",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "both_errored": true,
@@ -13502,16 +13298,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00370",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "both_errored": true,
@@ -13548,16 +13340,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00375",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 57
     },
     {
       "max_rel_err": 0.0,
@@ -13952,16 +13740,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00423",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "both_errored": true,
@@ -14371,16 +14155,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00469",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "both_errored": true,
@@ -15205,16 +14985,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00564",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 5
     },
     {
       "both_errored": true,
@@ -15366,8 +15142,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "extra00581",
@@ -15426,16 +15202,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00588",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 5
     },
     {
       "max_rel_err": 0.0,
@@ -15580,16 +15352,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00606",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 60
     },
     {
       "deferred": {
@@ -15636,16 +15404,12 @@
       "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00612",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -15821,16 +15585,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00633",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -15985,16 +15745,12 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00651",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -16256,16 +16012,12 @@
       "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00681",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 33
     },
     {
       "deferred": {
@@ -16927,16 +16679,12 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00756",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 5
     },
     {
       "max_rel_err": 0.0,
@@ -17219,16 +16967,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00787",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 5
     },
     {
       "max_rel_err": 0.0,
@@ -17980,16 +17724,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra00876",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "deferred": {
@@ -19449,16 +19189,12 @@
       "values_compared": 44
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra01046",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
       "both_errored": true,
@@ -19665,8 +19401,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "extra01070",
@@ -20663,16 +20399,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra01184",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
       "max_rel_err": 0.0,
@@ -20934,16 +20666,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra01215",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 59
     },
     {
       "max_rel_err": 0.0,
@@ -21215,16 +20943,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra01248",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 5
     },
     {
       "max_rel_err": 0.0,
@@ -21251,16 +20975,12 @@
       "values_compared": 4
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra01252",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 59
     },
     {
       "max_rel_err": 0.0,
@@ -21413,16 +21133,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra01270",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "both_errored": true,
@@ -22078,16 +21794,12 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra01347",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "both_errored": true,
@@ -22100,8 +21812,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "extra01349",
@@ -22394,16 +22106,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra01383",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 4
     },
     {
       "max_rel_err": 0.0,
@@ -22440,8 +22148,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "extra01388",
@@ -22941,16 +22649,12 @@
       "values_compared": 46
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "extra01446",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4207804418",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -23417,15 +23121,15 @@
     }
   ],
   "cases_both_errored": 494,
-  "cases_deferred": 346,
+  "cases_deferred": 272,
   "cases_failed": 0,
-  "cases_passed": 2346,
+  "cases_passed": 2420,
   "cases_total": 2692,
   "deferred_by_unit": {
-    "curve.crv_on_surf": 80,
     "intersect.curve_class_p2": 37,
     "intersect.surface_drop_lib_p3": 62,
     "query.face_p2": 1,
+    "topology.edge": 6,
     "topology.face_p2": 103,
     "topology.face_p4": 63
   },

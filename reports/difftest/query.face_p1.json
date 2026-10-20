@@ -8499,8 +8499,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::CreateUVTrimCurves",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0032",
@@ -11038,14 +11038,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0286",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439334",
       "values_compared": 0
     },
@@ -11139,8 +11135,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0296",
@@ -11250,14 +11246,10 @@
       "values_compared": 9
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0307",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439355",
       "values_compared": 0
     },
@@ -12758,14 +12750,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0452",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439500",
       "values_compared": 0
     },
@@ -15130,14 +15118,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0687",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439735",
       "values_compared": 0
     },
@@ -15294,14 +15278,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0702",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439750",
       "values_compared": 0
     },
@@ -16374,14 +16354,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0807",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439855",
       "values_compared": 0
     },
@@ -16486,14 +16462,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0818",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439866",
       "values_compared": 0
     },
@@ -17183,8 +17155,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0884",
@@ -17418,14 +17390,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0908",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439956",
       "values_compared": 0
     },
@@ -17634,14 +17602,10 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0930",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439978",
       "values_compared": 0
     },
@@ -17926,14 +17890,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0958",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399440006",
       "values_compared": 0
     },
@@ -18755,8 +18715,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::CreateUVTrimCurves",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1040",
@@ -18886,14 +18846,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen1052",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399440100",
       "values_compared": 0
     },
@@ -19130,14 +19086,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen1075",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399440123",
       "values_compared": 0
     },
@@ -19474,14 +19426,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen1108",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399440156",
       "values_compared": 0
     },
@@ -20238,14 +20186,10 @@
       "values_compared": 9
     },
     {
-      "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen1183",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399440231",
       "values_compared": 0
     },
@@ -20259,8 +20203,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1185",
@@ -20411,20 +20355,19 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 654,
+  "cases_deferred": 640,
   "cases_failed": 0,
-  "cases_passed": 1570,
+  "cases_passed": 1584,
   "cases_total": 2224,
   "deferred_by_unit": {
-    "curve.crv_on_surf": 19,
     "harness:analytic-geometry-export": 31,
-    "intersect.surface_drop_lib_p3": 36,
+    "intersect.surface_drop_lib_p3": 39,
     "surface.cone_p1": 41,
     "surface.sphere": 12,
     "surface.surf_of_extrusion_p2": 59,
     "surface.surface_cache_p2": 57,
     "topology.face_p2": 397,
-    "topology.face_p3": 2
+    "topology.face_p3": 4
   },
   "max_rel_err": 0.0,
   "pass": true,

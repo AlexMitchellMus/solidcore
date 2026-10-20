@@ -2495,8 +2495,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmBrep::MakeShellVertexTopology",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_4",
@@ -2531,8 +2531,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmBrep::MakeShellVertexTopology",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_7",
@@ -3013,11 +3013,10 @@
   "cases_total": 316,
   "deferred_by_unit": {
     "cpp-guard:ub-165": 3,
-    "curve.crv_on_surf": 2,
     "curve.curve_p6": 2,
     "surface.sphere": 20,
     "surface.surface_p2": 4,
-    "topology.brep_p2": 81,
+    "topology.brep_p2": 83,
     "topology.face_p2": 6,
     "topology.face_p3": 1
   },

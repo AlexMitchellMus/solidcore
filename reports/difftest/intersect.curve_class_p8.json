@@ -859,8 +859,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "op2_3d_s0_inside",
@@ -871,8 +871,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "op2_3d_s0_outside",
@@ -883,8 +883,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "op2_3d_s0_cross",
@@ -895,8 +895,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "op2_3d_s0_parallel",
@@ -907,8 +907,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "op2_3d_s0_pierce",
@@ -919,8 +919,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "op2_3d_s0_preclassified",
@@ -1311,8 +1311,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "op3_3d_s0_inside",
@@ -1323,8 +1323,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "op3_3d_s0_outside",
@@ -1335,8 +1335,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "op3_3d_s0_cross",
@@ -1347,8 +1347,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "op3_3d_s0_parallel",
@@ -1359,8 +1359,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "op3_3d_s0_pierce",
@@ -1371,8 +1371,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "op3_3d_s0_preclassified",
@@ -2863,8 +2863,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0007",
@@ -2939,8 +2939,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0015",
@@ -3519,8 +3519,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0081",
@@ -3567,8 +3567,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0086",
@@ -3579,8 +3579,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0087",
@@ -3719,8 +3719,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0103",
@@ -3847,8 +3847,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0117",
@@ -4039,8 +4039,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0138",
@@ -4275,8 +4275,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0166",
@@ -4531,8 +4531,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0196",
@@ -4639,8 +4639,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0207",
@@ -4995,8 +4995,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0248",
@@ -5063,8 +5063,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0256",
@@ -5135,8 +5135,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0264",
@@ -5535,8 +5535,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0310",
@@ -5559,8 +5559,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0312",
@@ -5631,8 +5631,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0320",
@@ -5659,8 +5659,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0323",
@@ -5767,8 +5767,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0334",
@@ -6079,8 +6079,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0369",
@@ -6147,8 +6147,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0376",
@@ -6263,8 +6263,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0389",
@@ -6367,8 +6367,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0400",
@@ -6395,8 +6395,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0403",
@@ -6747,8 +6747,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0442",
@@ -6759,8 +6759,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0443",
@@ -6951,8 +6951,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0465",
@@ -7119,8 +7119,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0485",
@@ -7163,8 +7163,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0490",
@@ -7199,8 +7199,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0494",
@@ -7539,8 +7539,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0533",
@@ -7983,8 +7983,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0583",
@@ -8043,8 +8043,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0589",
@@ -8163,8 +8163,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0602",
@@ -8207,8 +8207,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0607",
@@ -8551,8 +8551,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0648",
@@ -8739,8 +8739,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0670",
@@ -8951,8 +8951,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0693",
@@ -9303,8 +9303,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0733",
@@ -9487,8 +9487,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf on a generic SmSurface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0754",
@@ -9880,8 +9880,7 @@
   "cases_passed": 913,
   "cases_total": 1127,
   "deferred_by_unit": {
-    "curve.crv_on_surf": 52,
-    "intersect.curve_class_p2": 162
+    "intersect.curve_class_p2": 214
   },
   "max_rel_err": 0.0,
   "pass": true,

@@ -234,16 +234,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "lifted_plane_dispatch_gap",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/intersect.curve_class_p9/usage.json#22 (upstream source/SMLib/src/SmCurveClass.cpp:15270-16520 (boundary/tolerance regression))",
-      "values_compared": 0
+      "values_compared": 54
     },
     {
       "max_rel_err": 0.0,
@@ -712,8 +708,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0033",
@@ -887,16 +883,12 @@
       "values_compared": 54
     },
     {
-      "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0052",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12816342691050780746",
-      "values_compared": 0
+      "values_compared": 54
     },
     {
       "deferred": {
@@ -1004,8 +996,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0064",
@@ -1156,8 +1148,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0080",
@@ -1176,8 +1168,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0082",
@@ -1251,16 +1243,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0089",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12816342691050780783",
-      "values_compared": 0
+      "values_compared": 104
     },
     {
       "max_rel_err": 0.0,
@@ -1340,8 +1328,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0099",
@@ -1559,16 +1547,12 @@
       "values_compared": 54
     },
     {
-      "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0124",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12816342691050780818",
-      "values_compared": 0
+      "values_compared": 54
     },
     {
       "deferred": {
@@ -1680,8 +1664,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0136",
@@ -1743,16 +1727,12 @@
       "values_compared": 104
     },
     {
-      "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0142",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12816342691050780836",
-      "values_compared": 0
+      "values_compared": 104
     },
     {
       "max_rel_err": 0.0,
@@ -1900,8 +1880,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0159",
@@ -2023,16 +2003,12 @@
       "values_compared": 104
     },
     {
-      "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0171",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12816342691050780865",
-      "values_compared": 0
+      "values_compared": 54
     },
     {
       "deferred": {
@@ -2187,16 +2163,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0189",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12816342691050780883",
-      "values_compared": 0
+      "values_compared": 104
     },
     {
       "max_rel_err": 0.0,
@@ -2891,16 +2863,12 @@
       "values_compared": 54
     },
     {
-      "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0264",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12816342691050780958",
-      "values_compared": 0
+      "values_compared": 54
     },
     {
       "max_rel_err": 0.0,
@@ -3051,16 +3019,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0282",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12816342691050780976",
-      "values_compared": 0
+      "values_compared": 54
     },
     {
       "max_rel_err": 0.0,
@@ -3407,16 +3371,12 @@
       "values_compared": 54
     },
     {
-      "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0319",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12816342691050781013",
-      "values_compared": 0
+      "values_compared": 104
     },
     {
       "max_rel_err": 0.0,
@@ -3472,8 +3432,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0326",
@@ -3483,16 +3443,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0327",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12816342691050781021",
-      "values_compared": 0
+      "values_compared": 104
     },
     {
       "max_rel_err": 0.0,
@@ -3531,16 +3487,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0332",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12816342691050781026",
-      "values_compared": 0
+      "values_compared": 54
     },
     {
       "deferred": {
@@ -3699,16 +3651,12 @@
       "values_compared": 54
     },
     {
-      "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0350",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12816342691050781044",
-      "values_compared": 0
+      "values_compared": 104
     },
     {
       "deferred": {
@@ -3795,16 +3743,12 @@
       "values_compared": 54
     },
     {
-      "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0360",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12816342691050781054",
-      "values_compared": 0
+      "values_compared": 54
     },
     {
       "deferred": {
@@ -3827,16 +3771,12 @@
       "values_compared": 54
     },
     {
-      "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0363",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12816342691050781057",
-      "values_compared": 0
+      "values_compared": 104
     },
     {
       "max_rel_err": 0.0,
@@ -3847,16 +3787,12 @@
       "values_compared": 104
     },
     {
-      "deferred": {
-        "symbol": "SmCrvOnSurf over a generic Surface",
-        "unit": "curve.crv_on_surf"
-      },
       "max_rel_err": 0.0,
       "name": "gen0365",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12816342691050781059",
-      "values_compared": 0
+      "values_compared": 104
     },
     {
       "deferred": {
@@ -4036,14 +3972,13 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 149,
+  "cases_deferred": 133,
   "cases_failed": 0,
-  "cases_passed": 277,
+  "cases_passed": 293,
   "cases_rejected": 2,
   "cases_total": 428,
   "deferred_by_unit": {
-    "curve.crv_on_surf": 24,
-    "intersect.curve_class_p2": 10,
+    "intersect.curve_class_p2": 18,
     "topology.edge": 115
   },
   "max_rel_err": 0.0,

@@ -95,8 +95,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0003",
@@ -271,8 +271,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0021",
@@ -379,8 +379,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0032",
@@ -843,8 +843,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0079",
@@ -1755,8 +1755,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0170",
@@ -2003,8 +2003,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0195",
@@ -2159,8 +2159,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0211",
@@ -2283,8 +2283,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0225",
@@ -2423,8 +2423,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0238",
@@ -4027,8 +4027,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0398",
@@ -4887,8 +4887,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0485",
@@ -5207,8 +5207,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0517",
@@ -6051,8 +6051,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0600",
@@ -6447,8 +6447,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0639",
@@ -6599,8 +6599,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0655",
@@ -7003,8 +7003,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0695",
@@ -7239,8 +7239,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0720",
@@ -7411,8 +7411,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0737",
@@ -7447,8 +7447,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0740",
@@ -7743,8 +7743,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0769",
@@ -8227,8 +8227,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "box_edgeuse_offset_shell",
@@ -8239,8 +8239,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "torus_edgeuse_offset_plain",
@@ -8271,8 +8271,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "torus_edgeuse_offset_shell",
@@ -8327,8 +8327,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "mouse_edgeuse_offset_plain",
@@ -8363,8 +8363,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "mouse_edgeuse_offset_shell",
@@ -8629,14 +8629,13 @@
   "cases_total": 861,
   "deferred_by_unit": {
     "blend.fillet_standard_solver_p1": 4,
-    "curve.crv_on_surf": 25,
     "harness:analytic-geometry-export": 70,
     "intersect.surface_drop_curve": 27,
     "intersect.surface_drop_lib_p3": 7,
     "surface.sphere": 2,
     "surface.surface_cache_p2": 78,
     "topology.brep_p2": 166,
-    "topology.face_p2": 12,
+    "topology.face_p2": 37,
     "topology.face_p4": 42
   },
   "max_rel_err": 0.0,
