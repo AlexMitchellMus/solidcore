@@ -9,6 +9,8 @@
 //! | [`find_concave_edgeuses`]                         | `sm_FindConcaveEdgeuses`                         |
 //! | [`FilletCorner::adjust_concave_corner_topology`]  | `SmFilletNx2Corner::AdjustConcaveCornerTopology` |
 //! | [`FilletCorner::update_split_face`]               | `SmFilletCorner::UpdateSplitFace`                |
+//! | [`FilletCorner::tangent_fillet_solver_nx1_closed`] | `SmFilletNx1ClosedCorner::GetTangentFilletSolver` |
+//! | [`FilletCorner::tangent_fillet_solver_nx2`]       | `SmFilletNx2Corner::GetTangentFilletSolver`      |
 //!
 //! Deviations:
 //! - **Out-param.** The concave edge uses (`rConcaveEUs`, appended to) are returned; the
@@ -29,6 +31,10 @@
 //!   errors (lookups, `SmFilletEdge::ShouldSwapFaces` and face classification
 //!   unported) propagate. The faces are ids (upstream compares and dereferences the
 //!   pointers).
+//! - **`GetTangentFilletSolver`** overrides take the executive's edge-use-to-solver map
+//!   ([`FilletExecutiveData`]) and the B-rep being filleted (for `sm_TestG1Continuity`)
+//!   explicitly; `SM_ASSERT_ERR` (a debug assertion) is not reproduced, the `NULL` it
+//!   returns is `None`.
 //! - **Unported callees.** `SmFilletEdge::MakeFilletEdge` (`blend.fillet_geom_p5`) and
 //!   `SmFilletCorner::AddExtendedOriginalSurface` (`blend.fillet_corner_p1`) return
 //!   [`SolidError::Unported`]; the code after them is ported, so wiring them is the only
@@ -36,23 +42,26 @@
 //!
 //! Every loop runs over a given list once; there is no recursion.
 
-use crate::blend::fillet_corner::p1::check_face_complimentary_corner_concavity;
+use crate::blend::fillet_corner::p1::{
+    check_face_complimentary_corner_concavity, test_g1_continuity,
+};
 use crate::blend::fillet_corner::p3::{
-    move_vertexuse, primary_eu, unchecked_point, CornerEnv, FilletCorner,
+    move_vertexuse, primary_eu, unchecked_point, CornerEnv, FilletCorner, FilletExecutiveData,
 };
 use crate::blend::fillet_geom::p1::{
-    FilStatus, FilletBrep, FilletEdgeType, FilletVertex, FilletVertexType,
+    FilStatus, FilletBrep, FilletEdgeType, FilletSolverId, FilletVertex, FilletVertexType,
 };
 use crate::error::{EntityRef, Result, SolidError};
 use crate::geom::geom_utility::p2::ContinuityType;
 use crate::kernel::Kernel;
-use crate::math::Point3;
+use crate::math::{rad_to_deg, Point3};
 use crate::surface::surface::Surface;
 use crate::topology::edgeuse::p1 as eu1;
 use crate::topology::{edge, Brep, EdgeId, EdgeuseId, FaceId, VertexId};
 
 const OP_CONCAVE: &str = "blend::fillet_corner::p2::find_concave_edgeuses";
 const OP_CONCAVE_TOPO: &str = "blend::fillet_corner::p2::adjust_concave_corner_topology";
+const OP_TANGENT_SOLVER: &str = "blend::fillet_corner::p2::tangent_fillet_solver";
 
 /// `sm_FindConcaveEdgeuses`: the first pair of consecutive edge uses of `all_eus`
 /// (cyclically, starting with the last and the first) that bound a concave face corner
@@ -89,6 +98,90 @@ pub fn find_concave_edgeuses(
 }
 
 impl FilletCorner {
+    /// `SmFilletNx1ClosedCorner::GetTangentFilletSolver(pFS)`: the corner's one solver
+    /// when it is `fs` and its edge meets itself with G1 continuity at the corner vertex
+    /// (`sm_TestG1Continuity` within `m_dTangencyTolRadians`); `None` otherwise
+    /// (`SM_ASSERT_ERR` when the corner does not have exactly one filleted edge use or
+    /// `fs` is not its solver; not an error when it is not G1).
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::InvalidInput`] for an unset `m_pSolverEUs` (upstream dereferences
+    /// it); those of [`test_g1_continuity`].
+    pub fn tangent_fillet_solver_nx1_closed(
+        &self,
+        b: &Brep,
+        exec: &FilletExecutiveData,
+        fs: FilletSolverId,
+    ) -> Result<Option<FilletSolverId>> {
+        let solver_eus = self
+            .solver_eus
+            .as_deref()
+            .ok_or_else(|| SolidError::invalid_input(OP_TANGENT_SOLVER, "m_pSolverEUs is NULL"))?;
+        let [edge_use] = solver_eus else {
+            return Ok(None); // SM_ASSERT_ERR
+        };
+        let fil_solver = exec.fillet_solver_of_edgeuse(*edge_use);
+
+        if fil_solver != Some(fs) {
+            return Ok(None); // SM_ASSERT_ERR
+        }
+
+        // We have to test its continuity.
+        let edge = eu1::edge(b, *edge_use)?;
+        let tangency_tol_deg = rad_to_deg(self.tangency_tol_radians);
+        if test_g1_continuity(b, self.vertex, edge, edge, tangency_tol_deg)?.0 {
+            return Ok(fil_solver);
+        }
+
+        Ok(None) // not an error.
+    }
+
+    /// `SmFilletNx2Corner::GetTangentFilletSolver(pFS)`: when the corner's two filleted
+    /// edges meet with G1 continuity at the corner vertex, the solver of the other one
+    /// than `fs`; `None` otherwise (`SM_ASSERT_ERR` when the corner does not have
+    /// exactly two filleted edge uses or `fs` is neither solver).
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::InvalidInput`] for an unset `m_pSolverEUs` (upstream dereferences
+    /// it); those of [`test_g1_continuity`].
+    pub fn tangent_fillet_solver_nx2(
+        &self,
+        b: &Brep,
+        exec: &FilletExecutiveData,
+        fs: FilletSolverId,
+    ) -> Result<Option<FilletSolverId>> {
+        let solver_eus = self
+            .solver_eus
+            .as_deref()
+            .ok_or_else(|| SolidError::invalid_input(OP_TANGENT_SOLVER, "m_pSolverEUs is NULL"))?;
+        let [eu0, eu1_] = solver_eus else {
+            return Ok(None); // SM_ASSERT_ERR
+        };
+
+        // We have to test its continuity.
+        let edge0 = eu1::edge(b, *eu0)?;
+        let edge1 = eu1::edge(b, *eu1_)?;
+
+        let tangency_tol_deg = rad_to_deg(self.tangency_tol_radians);
+        if !test_g1_continuity(b, self.vertex, edge0, edge1, tangency_tol_deg)?.0 {
+            return Ok(None); // not an error.
+        }
+
+        let fs0 = exec.fillet_solver_of_edgeuse(*eu0);
+        let fs1 = exec.fillet_solver_of_edgeuse(*eu1_);
+
+        if fs0 == Some(fs) {
+            return Ok(fs1);
+        }
+        if fs1 == Some(fs) {
+            return Ok(fs0);
+        }
+
+        Ok(None) // SM_ASSERT_ERR
+    }
+
     /// `SmFilletCorner::UpdateSplitFace`: the target face `orig_face` was split, making
     /// `split_face`; every fillet vertex of the corner (then every fillet edge) moves to
     /// the face it now lies in.

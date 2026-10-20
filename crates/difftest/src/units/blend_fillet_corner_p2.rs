@@ -21,6 +21,13 @@
 //! Compared: the status, the corner's members and the model's whole export. 80 built-in
 //! corner cases (a fixed seed) plus generated ones.
 //!
+//! **Tangent-solver cases** (`p1_corner`): unit `blend.fillet_corner_p1`'s `solvers`
+//! corner cases (its runner, model and shim, `sc_blend_fillet_corner_p1_corner`) on
+//! closed Nx1 and Nx2 corners, which run this unit's `GetTangentFilletSolver` overrides
+//! through the virtual call: 40 built-in, drawn from that runner's generator with a fixed
+//! seed and kept when they are such cases with registered solvers; run and compared by
+//! that runner unchanged.
+//!
 //! **Cases.** `find_concave` on a real B-rep (unit `topology.edgeuse_p1`'s B-rep block:
 //! the box-like fillet test files of `TestFiles/pt_TestFiles/Fillet` that unit
 //! `blend.fillet_corner_p1` uses, with convex and concave corners, and that unit's
@@ -57,6 +64,7 @@ use solidcore_ffi::units::topology_edgeuse_p1 as ffi1;
 use super::blend_fillet_corner_p3::{
     corner_cpp_op, corner_rust_with, gen_nx2_model, CornerIn, EuSel,
 };
+use super::blend_fillet_corner_p1 as p1;
 use super::blend_fillet_geom_p1::Model;
 
 use super::blend_fillet_corner_p1::{
@@ -78,6 +86,15 @@ const CORNER_CASES: usize = 80;
 
 /// The seed of the built-in corner cases.
 const CORNER_SEED: u64 = 0x00c0_47e2;
+
+/// Built-in tangent-solver cases (from [`TANGENT_SEED`]).
+const TANGENT_CASES: usize = 40;
+
+/// The seed of the built-in tangent-solver cases.
+const TANGENT_SEED: u64 = 0x7a46_e275;
+
+/// Draws to find [`TANGENT_CASES`] (generous: about 1 in 70 draws qualifies).
+const TANGENT_DRAWS: usize = 200_000;
 
 /// The corner method of a `corner` case.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -104,6 +121,8 @@ enum Inputs {
         eus: Vec<i64>,
         walk: bool,
     },
+    /// A case of unit `blend.fillet_corner_p1`'s runner (its JSON inputs), run by it.
+    P1Corner { inner: Value },
     /// A corner method on unit `blend.fillet_corner_p3`'s corner harness; `split` are
     /// the target faces of `update_split_face`.
     Corner {
@@ -243,7 +262,38 @@ fn corner_rust(
     })
 }
 
+/// `inner` as a case of unit `blend.fillet_corner_p1`.
+fn p1_case(inner: &Value) -> Case {
+    Case {
+        unit: "blend.fillet_corner_p1".to_string(),
+        name: "p1_corner".to_string(),
+        source: crate::CaseSource::Fixture {
+            path: "built-in: blend.fillet_corner_p2 cases".to_string(),
+            index: 0,
+            upstream_ref: None,
+        },
+        inputs: inner.clone(),
+    }
+}
+
+/// Whether a `blend.fillet_corner_p1` case is a `solvers` corner case on a closed Nx1
+/// (kind 2) or Nx2 (kind 7) corner with registered solvers.
+fn is_tangent_case(v: &Value) -> bool {
+    v.get("op").and_then(Value::as_str) == Some("corner")
+        && v.get("method").and_then(Value::as_str) == Some("solvers")
+        && matches!(
+            v.get("corner").and_then(|c| c.get("kind")).and_then(Value::as_u64),
+            Some(2 | 7)
+        )
+        && v.get("solvers")
+            .and_then(Value::as_array)
+            .is_some_and(|a| !a.is_empty())
+}
+
 fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
+    if let Inputs::P1Corner { inner } = i {
+        return p1::Runner.run_cpp(&p1_case(inner));
+    }
     if let Inputs::Corner {
         method,
         model,
@@ -280,6 +330,9 @@ fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
 }
 
 fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
+    if let Inputs::P1Corner { inner } = i {
+        return p1::Runner.run_rust(&p1_case(inner));
+    }
     if let Inputs::Corner {
         method,
         model,
@@ -532,6 +585,23 @@ impl UnitDiff for Runner {
                 "SmFilletCorner.cpp (Nx2-shaped corner model)",
                 i,
             )?;
+        }
+        let mut rng = Rng::new(TANGENT_SEED);
+        let mut n = 0;
+        for _ in 0..TANGENT_DRAWS {
+            if n == TANGENT_CASES {
+                break;
+            }
+            let Some(inner) = p1::Runner.generate(&mut rng) else {
+                continue;
+            };
+            if !is_tangent_case(&inner) {
+                continue;
+            }
+            let name = format!("p1_corner_tangent_solver_{n:02}");
+            let src = "SmFilletCorner.cpp (blend.fillet_corner_p1 corner model)";
+            push(&mut v, name, src, Inputs::P1Corner { inner })?;
+            n += 1;
         }
         Ok(v)
     }
