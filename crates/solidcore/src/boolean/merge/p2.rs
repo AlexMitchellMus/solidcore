@@ -6,8 +6,8 @@
 //! | Rust                               | Upstream                                       |
 //! |------------------------------------|------------------------------------------------|
 //! | [`MergeState::with_breps`]         | `SmMerge::SmMerge(crContext, pBrep, pOtherBrep, ...)` |
-//! | [`merge_edge`]                     | `SmMerge::MergeEdge`                           |
-//! | [`make_faceuse`], [`MadeFaceuse`]  | `SmMerge::MakeFaceuse`                         |
+//! | [`merge_edge`], [`merge_edge_with`], [`MergeContext`] | `SmMerge::MergeEdge`              |
+//! | [`make_faceuse`], [`make_faceuse_with`], [`MadeFaceuse`] | `SmMerge::MakeFaceuse`        |
 //! | [`TopologyCopy`]                   | the `Notify(SM_NO_COPY, ...)` identities       |
 //! | [`MergeOperand`]                   | the two B-rep pointers of a concrete merge     |
 //! | `reverse_orientation` (private)    | `SM_REVERSE_ORIENTATION`                       |
@@ -75,11 +75,11 @@
 //!   tagged `UNPORTED(<unit>)`: `SmBrep::GetMinEdgeBBoxSize` (`topology.brep_p2`) and
 //!   `SmBrep::MakeWireEdge` (`topology.brep_p3`); the [`MergeBrep`] defaults do the
 //!   same for `SmBrep::Notify` / `IsManifoldSolid` (`topology.brep_p2`),
-//!   `SmFace::GetEdges` / `GetVertices` / `GetBrep` (`topology.face_p4`),
-//!   `SmFace::CalculateBoundingBox` (`query.face_p1`) and `OrientTrimmedSurfaces`
-//!   (`topology.brep_p3`). The code after each stub is ported in full. The callees
+//!   `SmFace::GetEdges` / `GetVertices` / `GetBrep` (`topology.face_p4`) and
+//!   `OrientTrimmedSurfaces` (`topology.brep_p3`). The code after each stub is ported in full. The callees
 //!   ported on arena B-reps are required [`MergeBrep`] methods (`SmEdge::GetVertices`,
-//!   `SmFace::GetFaceuses`, `SmFaceuse::GetShell`, `SmBrep::GetFaces`, the three
+//!   `SmFace::GetFaceuses`, `SmFaceuse::GetShell`, `SmBrep::GetFaces`,
+//!   `SmFace::CalculateBoundingBox` (`bTight = FALSE`), the three
 //!   `SmStitch` calls, `TestClosureSplitRegion`, `FindAndSetInfiniteRegion`) or come
 //!   from the intersector traits (`SmBrep::GetEdges` / `GetVertices`);
 //!   `SmBrep::GetTolerance` is [`Brep::tolerance`], `SmBrep::MakeFace`
@@ -301,7 +301,66 @@ pub fn merge_edge(
     region: Option<RegionId>,
     relations: &mut Relations,
     copy: &mut TopologyCopy<'_>,
-    mut context: Option<&mut Context>,
+    context: Option<&mut Context>,
+) -> Result<Option<EdgeId>> {
+    merge_edge_with(
+        MergeContext::Split(k, context),
+        brep,
+        other,
+        edgeuse,
+        region,
+        relations,
+        copy,
+    )
+}
+
+/// The kernel `MergeEdge` copies the curve with (the primary B-rep's context) and the
+/// context the source edge and vertices are notified through.
+pub enum MergeContext<'a> {
+    /// A kernel and a separate notification context (or none).
+    Split(&'a Kernel, Option<&'a mut Context>),
+    /// One kernel whose own context is notified (both B-reps share it).
+    Shared(&'a mut Kernel),
+}
+
+impl MergeContext<'_> {
+    fn kernel(&self) -> &Kernel {
+        match self {
+            Self::Split(k, _) => k,
+            Self::Shared(k) => k,
+        }
+    }
+
+    fn context(&mut self) -> Option<&mut Context> {
+        match self {
+            Self::Split(_, context) => context.as_deref_mut(),
+            Self::Shared(k) => Some(&mut k.context),
+        }
+    }
+
+    fn reborrow(&mut self) -> MergeContext<'_> {
+        match self {
+            Self::Split(k, context) => MergeContext::Split(k, context.as_deref_mut()),
+            Self::Shared(k) => MergeContext::Shared(k),
+        }
+    }
+}
+
+/// [`merge_edge`] with the kernel and notification context given as a
+/// [`MergeContext`] (for callers whose two B-reps share one kernel). The curve is
+/// copied before any notification, so the two uses never overlap.
+///
+/// # Errors
+///
+/// As [`merge_edge`].
+pub fn merge_edge_with(
+    mut ctx: MergeContext<'_>,
+    brep: &mut Brep,
+    other: &mut Brep,
+    edgeuse: Option<EdgeuseId>,
+    region: Option<RegionId>,
+    relations: &mut Relations,
+    copy: &mut TopologyCopy<'_>,
 ) -> Result<Option<EdgeId>> {
     // The caller knows better whether this is a problem.
     let Some(edgeuse) = edgeuse else {
@@ -322,7 +381,7 @@ pub fn merge_edge(
             .curve
             .as_ref()
             .ok_or(dangling(OP_EDGE, "edge without curve"))?
-            .copy(k)?;
+            .copy(ctx.kernel())?;
 
         // get OtherBrep edge->vertices
         let vu = eu::vertexuse(other, edgeuse)?
@@ -347,7 +406,7 @@ pub fn merge_edge(
                     region,
                     relations,
                     &mut copy.vertices,
-                    context.as_deref_mut(),
+                    ctx.context(),
                 )?;
             }
             *slot = Some(mate.ok_or(SolidError::null_pointer(OP_EDGE))?);
@@ -376,7 +435,7 @@ pub fn merge_edge(
         (copy.edge_source_key)(other_edge),
         (copy.edge_destination_key)(brep_edge),
     );
-    copy.notify(context, source, dest)?;
+    copy.notify(ctx.context(), source, dest)?;
 
     Ok(Some(brep_edge))
 }
@@ -480,7 +539,36 @@ pub fn make_faceuse(
     region: Option<RegionId>,
     relations: &mut Relations,
     copy: &mut TopologyCopy<'_>,
-    mut context: Option<&mut Context>,
+    context: Option<&mut Context>,
+    new_faces: Option<&mut Vec<FaceId>>,
+) -> Result<MadeFaceuse> {
+    make_faceuse_with(
+        MergeContext::Split(k, context),
+        brep,
+        other,
+        faceuse,
+        region,
+        relations,
+        copy,
+        new_faces,
+    )
+}
+
+/// [`make_faceuse`] with the kernel and notification context given as a
+/// [`MergeContext`] (for callers whose two B-reps share one kernel).
+///
+/// # Errors
+///
+/// As [`make_faceuse`].
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)] // one upstream routine
+pub fn make_faceuse_with(
+    mut ctx: MergeContext<'_>,
+    brep: &mut Brep,
+    other: &mut Brep,
+    faceuse: FaceuseId,
+    region: Option<RegionId>,
+    relations: &mut Relations,
+    copy: &mut TopologyCopy<'_>,
     mut new_faces: Option<&mut Vec<FaceId>>,
 ) -> Result<MadeFaceuse> {
     // init output
@@ -507,7 +595,7 @@ pub fn make_faceuse(
             (copy.face_source_key)(face_to_make),
             (copy.face_destination_key)(face),
         );
-        copy.notify(context, source, dest)?;
+        copy.notify(ctx.context(), source, dest)?;
         return Ok(MadeFaceuse::default());
     }
 
@@ -515,11 +603,11 @@ pub fn make_faceuse(
     let region = match region {
         Some(r) => Some(r),
         None => p1::find_brep_region_of_other_face(
-            k,
+            ctx.kernel(),
             brep,
             other,
             faceuse,
-            relations.edges.primary_map(),
+            relations.edges.other_to_primary(),
         )?,
     };
     // error - unable to classify input OtherBrep faceuse into a Brep region
@@ -557,7 +645,7 @@ pub fn make_faceuse(
                 Some(region),
                 relations,
                 &mut copy.vertices,
-                context.as_deref_mut(),
+                ctx.context(),
             )?;
 
             // load VertexLoopuses into sLoopVertices
@@ -572,25 +660,31 @@ pub fn make_faceuse(
                 eu::edge(other, eu_other)?.ok_or(dangling(OP_FACEUSE, "edge use without edge"))?;
 
             // merge the edge
-            let brep_edge = merge_edge(
-                k,
+            let brep_edge = merge_edge_with(
+                ctx.reborrow(),
                 brep,
                 other,
                 Some(eu_other),
                 Some(region),
                 relations,
                 copy,
-                context.as_deref_mut(),
             )?
             .ok_or(dangling(OP_FACEUSE, "merged edge use without edge"))?;
 
             // Find the orientation of the Edgeuse to look for in the radial sector.
-            let orient =
-                orientation_to_find(k, brep, other, eu_other, other_edge, brep_edge, relations)?;
+            let orient = orientation_to_find(
+                ctx.kernel(),
+                brep,
+                other,
+                eu_other,
+                other_edge,
+                brep_edge,
+                relations,
+            )?;
 
             // classify Edgeuse->Face against BrepEdge
             let found = match edge::find_radial_sector_between(
-                k,
+                ctx.kernel(),
                 brep,
                 brep_edge,
                 Some(&mut *other),
@@ -618,7 +712,7 @@ pub fn make_faceuse(
         .surface
         .as_ref()
         .ok_or(dangling(OP_FACEUSE, "face without surface"))?
-        .copy_and_add_analytics(k)?;
+        .copy_and_add_analytics(ctx.kernel())?;
 
     // If we have the case of a faceuse bordering an infinite region in the other
     // brep being merged into the infinite region in this brep, temporarily set Brep's
@@ -640,7 +734,7 @@ pub fn make_faceuse(
     let orientation = other.faceuse(faceuse)?.orientation;
     // bVerifyRadialSectors = FALSE, bCalculateTrims = FALSE, cpOptUVCurves = NULL
     let made = brep_p7::make_face(
-        k,
+        ctx.kernel(),
         brep,
         Some(region),
         &edge_loops,
@@ -667,7 +761,7 @@ pub fn make_faceuse(
         (copy.face_source_key)(face_to_make),
         (copy.face_destination_key)(new_face),
     );
-    copy.notify(context, source, dest)?;
+    copy.notify(ctx.context(), source, dest)?;
 
     // set output
     if let Some(list) = new_faces {
@@ -821,6 +915,15 @@ pub trait MergeBrep<O>: IntersectorBrepP2<O> {
     /// Those of the topology walk.
     fn faceuse_shell(&self, faceuse: O) -> Result<Option<O>>;
 
+    /// `SmFace::CalculateBoundingBox(rBox)` with its default `bTight = FALSE`
+    /// (`query::face::p1::calculate_bounding_box(.., false)`; the merge ignores its
+    /// status).
+    ///
+    /// # Errors
+    ///
+    /// Those of the face box.
+    fn face_bounding_box(&self, k: &Kernel, face: O) -> Result<Extent3d>;
+
     /// `SmBrep::GetFaces(rFaces)` (`topology::brep::p1::faces`, no attribute).
     ///
     /// # Errors
@@ -942,17 +1045,6 @@ pub trait MergeBrep<O>: IntersectorBrepP2<O> {
         let _ = face;
         // UNPORTED(topology.face_p4): SmFace::GetBrep
         unavailable("SmFace::GetBrep", "topology.face_p4")
-    }
-
-    /// `SmFace::CalculateBoundingBox(rBox)` (status ignored by the merge).
-    ///
-    /// # Errors
-    ///
-    /// [`SolidError::Unported`] until `query.face_p1` is ported.
-    fn face_bounding_box(&self, k: &Kernel, face: O) -> Result<Extent3d> {
-        let _ = (k, face);
-        // UNPORTED(query.face_p1): SmFace::CalculateBoundingBox
-        unavailable("SmFace::CalculateBoundingBox", "query.face_p1")
     }
 
     /// `SmBrep::IsManifoldSolid`.

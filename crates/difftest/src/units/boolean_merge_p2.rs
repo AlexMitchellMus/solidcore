@@ -27,6 +27,7 @@ use solidcore::boolean::merge::p2::{
 use solidcore::boolean::topology_intersector::p1::{Relations, TopologyIntersector};
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
 use solidcore::geom::context::MarkLock;
+use solidcore::geom::extent3d::Extent3d;
 use solidcore::geom::object::ObjectRef;
 use solidcore::heal::stitch::p1::{DefaultStitchCallback, Stitch};
 use solidcore::kernel::Kernel;
@@ -358,6 +359,15 @@ impl MergeBrep<H> for Two {
         let b = self.brep_r(fu)?;
         Ok(edgeuse::p1::faceuse_shell(b, FaceuseId::from_index(fu.i))?
             .map(|s| hd(fu.b, K_SHELL, s.index())))
+    }
+    fn face_bounding_box(&self, k: &Kernel, face: H) -> solidcore::Result<Extent3d> {
+        // bTight = FALSE, the header default
+        solidcore::query::face::p1::calculate_bounding_box(
+            k,
+            self.brep_r(face)?,
+            FaceId::from_index(face.i),
+            false,
+        )
     }
     fn brep_faces(&self, brep: H) -> solidcore::Result<Vec<H>> {
         let b = self.brep_r(brep)?;
