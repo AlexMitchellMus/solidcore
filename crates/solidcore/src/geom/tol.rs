@@ -162,10 +162,10 @@ use crate::topology::{Brep, EdgeId, FaceId, VertexId};
 // UNPORTED(topology.vertex): SmTol::GetScaledZero(const SmVertex&) (SmVertex::GetPoint).
 // UNPORTED(topology.edge): SmTol::GetScaledZero(const SmEdge&) (SmEdge::GetCurve).
 // UNPORTED(topology.face_p2): SmTol::GetScaledZero(const SmFace&) (SmFace::GetSurface).
-// UNPORTED(query.face_p1): SmTol::GetScaledZero(const SmRegion&) and (const SmShell&) are
-// each one call to SmRegion::CalculateBoundingBox / SmShell::CalculateBoundingBox, which
-// harness/callgraph/units.json assigns to query.face_p1 (the blocking callee is in that
-// unit, not in geom.tol).
+// SmTol::GetScaledZero(const SmRegion&) and (const SmShell&) (SmTol.cpp:1394-1395) are not
+// ported: nothing calls them yet. Each is the scaled zero of one box, now
+// query::face::p1::calculate_region_bounding_box / calculate_shell_bounding_box (query.face_p1);
+// geom cannot call query, so port them beside those when a caller needs them.
 // SmTol::UpdateObjectTolerance(SmTopology*, double, double, SmBoolean) is
 // update_object_tolerance below (CO-PORTED in boolean.topology_intersector_p1).
 
@@ -1167,17 +1167,19 @@ fn ignore_soft<T>(r: Result<T>) -> Result<Option<T>> {
 
 /// `SmFace::SetTolerance(tol)`.
 fn face_set_tolerance(
-    _b: &mut Brep,
-    _f: FaceId,
-    _tol: f64,
-    _update_only_if_larger: bool,
-    _cascade_to_boundaries: bool,
+    b: &mut Brep,
+    f: FaceId,
+    tol: f64,
+    update_only_if_larger: bool,
+    cascade_to_boundaries: bool,
 ) -> Result<()> {
-    // UNPORTED(topology.face_p3): SmFace::SetTolerance
-    Err(SolidError::unported(
-        "SmFace::SetTolerance",
-        "topology.face_p3",
-    ))
+    crate::topology::face::p3::set_tolerance(
+        b,
+        f,
+        tol,
+        update_only_if_larger,
+        cascade_to_boundaries,
+    )
 }
 
 /// `SmFace::GetEdges(rEdges)`.
@@ -1210,8 +1212,8 @@ pub enum TopologyToUpdate {
 /// # Errors
 ///
 /// `SM_ERR_INVALID_INPUT` (as [`SolidError::Upstream`]) when the tolerance to use is
-/// below `SM_EFF_ZERO`; [`SolidError::Unported`] for `SmFace::SetTolerance`
-/// (`topology.face_p3`) and `SmFace::GetEdges` (`topology.face_p4`); those of the
+/// below `SM_EFF_ZERO`; [`SolidError::Unported`] for `SmFace::GetEdges`
+/// (`topology.face_p4`); those of `SmFace::SetTolerance`, the
 /// setters and gap queries.
 pub fn update_object_tolerance(
     k: &Kernel,
