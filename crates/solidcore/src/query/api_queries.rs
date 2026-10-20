@@ -573,13 +573,9 @@ pub fn find_faces(
     tools::find_face(k, brep, id, point, keys, owners)?.ok_or(SolidError::sm_err(OP))
 }
 
-/// Manifold solid predicate (`SmApiBrepIsManifoldSolid`); waits for B-rep traversal.
-pub fn brep_is_manifold_solid(_brep: &Brep) -> Result<bool> {
-    // UNPORTED(topology.brep_p2): SmBrep::IsManifoldSolid
-    Err(SolidError::unported(
-        "SmBrep::IsManifoldSolid",
-        "topology.brep_p2",
-    ))
+/// Manifold solid predicate (`SmApiBrepIsManifoldSolid`: `SmBrep::IsManifoldSolid`).
+pub fn brep_is_manifold_solid(brep: &Brep) -> Result<bool> {
+    crate::topology::brep::p2::is_manifold_solid(brep)
 }
 
 /// Loose or tight B-rep box (`SmApiBrepBoundingBox`); missing queries are `Unported`.
@@ -599,11 +595,7 @@ pub fn brep_bounding_box(_k: &Kernel, _brep: &Brep, tight: bool) -> Result<Exten
 pub fn face_bounding_box(k: &Kernel, brep: &Brep, face: FaceId, tight: bool) -> Result<Extent3d> {
     if tight {
         brep.face(face)?;
-        // UNPORTED(query.face_p3): SmFace::CalculateTightBoundingBox
-        return Err(SolidError::unported(
-            "SmFace::CalculateTightBoundingBox",
-            "query.face_p3",
-        ));
+        return crate::query::face::p3::calculate_tight_bounding_box(k, brep, face);
     }
     crate::query::face::p1::calculate_bounding_box(k, brep, face, false)
 }
