@@ -15,19 +15,34 @@
 //! constructor's default) and optional data written before the copy, laid out as the
 //! ffi module documents. Both sides produce `id behavior type data` of the constructed
 //! attribute, then of its `MakeCopy` (the quadric edge's sort index NaN while unset).
+//!
+//! A `box` case is a B-rep (unit `topology.edgeuse_p1`'s B-rep block, as in the
+//! `query.face_p1` runner: the C++ side builds a real `SmBrep`, the Rust side imports its
+//! export) and up to [`MAX_BOX_STEPS`] steps run on it in order: `box` (the arguments of
+//! `CalculateBoundingBox`, or its defaults), `tight`, `lock` and `unlock`. Both sides
+//! produce every step's status and box (seeded, so what a failing call leaves is
+//! compared). A B-rep with a face surface or edge curve the export carries only as its
+//! B-spline part is deferred, as in that runner.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+use solidcore::geom::extent3d::Extent3d;
+use solidcore::kernel::Kernel;
+use solidcore::topology::Brep;
+use solidcore::SolidError;
 
 use solidcore::geom::attribute::{Attribute, AttributeValue, Behavior};
 use solidcore::math::{Point2, Vec3};
 use solidcore::query::brep::{self as qb, PolyVertexClass};
 use solidcore::surface::surface::Surface;
-use solidcore_ffi::units::query_brep::{self as ffi, AttrKind, EvalOp};
+use solidcore_ffi::units::query_brep::{self as ffi, AttrKind, BoxStep, EvalOp, MAX_BOX_STEPS};
 
 use super::surface_surface_cache_p1::harness;
 use super::surface_surface_cache_p3::{gen_surf, push_surf, surf_domain, surface_in, SurfIn};
+use super::query_face_p1::{everything, gen_face_brep, inexact, model};
 use super::surface_surface_p7::{st, Fail};
+use super::topology_edgeuse_p1::{fixture_input, gen_brep};
 use crate::case::CaseContext;
 use crate::runner::default_cases;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
@@ -104,6 +119,55 @@ struct AttrIn {
 enum Inputs {
     Evaluate(EvalIn),
     Attribute(AttrIn),
+    Box(BoxIn),
+}
+
+/// A step of a `box` case.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(tag = "step", rename_all = "snake_case")]
+enum StepIn {
+    Box {
+        approx: bool,
+        tight: bool,
+        expand: bool,
+        #[serde(default)]
+        defaults: bool,
+    },
+    Tight,
+    Lock {
+        tight: bool,
+        #[serde(default)]
+        defaults: bool,
+    },
+    Unlock,
+}
+
+impl StepIn {
+    fn ffi(self) -> BoxStep {
+        match self {
+            Self::Box {
+                approx,
+                tight,
+                expand,
+                defaults,
+            } => BoxStep::Box {
+                approx,
+                tight,
+                expand,
+                defaults,
+            },
+            Self::Tight => BoxStep::Tight,
+            Self::Lock { tight, defaults } => BoxStep::Lock { tight, defaults },
+            Self::Unlock => BoxStep::Unlock,
+        }
+    }
+}
+
+/// A `box` case.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct BoxIn {
+    brep: Value,
+    steps: Vec<StepIn>,
 }
 
 /// A `[f64; 2]` whose entries may be `"NaN"`, `"inf"` or `"-inf"` (JSON has no
@@ -176,6 +240,13 @@ fn attr_input(i: &AttrIn) -> Vec<f64> {
 fn cpp_attribute(i: &AttrIn) -> Result<Output, HarnessError> {
     let flat = ffi::attribute(i.kind.ffi(), &attr_input(i)).map_err(|e| harness(e.to_string()))?;
     Ok(Output::new().values("attributes", flat))
+}
+
+fn cpp_box(i: &BoxIn) -> Result<Output, HarnessError> {
+    let (path, block) = fixture_input(i.brep.clone())?;
+    let steps: Vec<BoxStep> = i.steps.iter().map(|s| s.ffi()).collect();
+    let flat = ffi::box_steps(&path, &block, &steps).map_err(|e| harness(e.to_string()))?;
+    Ok(Output::new().values("steps", flat))
 }
 
 // ---- Rust side ----------------------------------------------------------------------
@@ -303,6 +374,89 @@ fn rust_attribute(i: &AttrIn) -> Result<Output, HarnessError> {
     Ok(Output::new().values("attributes", o))
 }
 
+/// The sentinel box the shim seeds every box with.
+fn seed_box() -> Extent3d {
+    Extent3d::from_points(Vec3::new(-17.0, -19.0, -23.0), Vec3::new(29.0, 31.0, 37.0))
+}
+
+/// The `SmStatus` of a Rust result; `None` for an error upstream has no status for.
+fn status_code(e: &SolidError) -> Option<f64> {
+    match e {
+        SolidError::Upstream { code, .. } => Some(f64::from(*code)),
+        _ => None,
+    }
+}
+
+/// Appends a box step's status and box (the seed when it failed).
+fn push_box(o: &mut Vec<f64>, r: solidcore::Result<Extent3d>) -> Result<(), Fail> {
+    let (status, bx) = match r {
+        Ok(bx) => (0.0, bx),
+        Err(e) => match Output::unported(&e) {
+            Some(d) => return Err(Fail::Deferred(Box::new(d))),
+            None => (
+                status_code(&e).ok_or_else(|| harness(format!("rust error: {e}")))?,
+                seed_box(),
+            ),
+        },
+    };
+    let (lo, hi) = (bx.min(), bx.max());
+    o.extend([status, lo.x, lo.y, lo.z, hi.x, hi.y, hi.z]);
+    Ok(())
+}
+
+fn run_steps(k: &Kernel, b: &mut Brep, steps: &[StepIn]) -> Result<Vec<f64>, Fail> {
+    let mut o = Vec::new();
+    for s in steps {
+        match *s {
+            StepIn::Box {
+                approx,
+                tight,
+                expand,
+                defaults,
+            } => {
+                let opts = if defaults {
+                    qb::BoundingBoxOptions::default()
+                } else {
+                    qb::BoundingBoxOptions {
+                        approx,
+                        tight,
+                        expand_by_zone_tol_3d: expand,
+                    }
+                };
+                push_box(&mut o, qb::calculate_bounding_box(k, b, opts))?;
+            }
+            StepIn::Tight => push_box(&mut o, qb::calculate_tight_bounding_box(k, b))?,
+            StepIn::Lock { tight, defaults } => {
+                // the default argument is `FALSE`
+                let r = qb::lock_bounding_box(k, b, tight && !defaults);
+                o.push(match st(r)? {
+                    Ok(()) => 0.0,
+                    Err(code) => code,
+                });
+            }
+            StepIn::Unlock => {
+                qb::unlock_bounding_box(b);
+                o.push(0.0);
+            }
+        }
+    }
+    Ok(o)
+}
+
+fn rust_box(i: &BoxIn) -> Result<Output, Fail> {
+    if i.steps.is_empty() || i.steps.len() > MAX_BOX_STEPS {
+        return Err(Fail::Harness(harness("box steps: count")));
+    }
+    let mut m = model(&i.brep)?;
+    let (faces, edges) = everything(&m.brep);
+    if let Some(o) = inexact(&m, &faces, &edges) {
+        return Ok(o);
+    }
+    let k = Kernel::default();
+    let flat = run_steps(&k, &mut m.brep, &i.steps)?;
+    Ok(Output::new().values("steps", flat))
+}
+
 // ---- generation ---------------------------------------------------------------------
 
 /// A value for a data field: mostly moderate, sometimes zero, huge, tiny or non-finite
@@ -413,6 +567,38 @@ fn gen_uv(rng: &mut Rng, d: [f64; 4]) -> [f64; 2] {
     }
 }
 
+fn gen_step(rng: &mut Rng) -> StepIn {
+    match rng.below(10) {
+        0..=4 => StepIn::Box {
+            approx: rng.chance(0.3),
+            tight: rng.chance(0.2),
+            expand: rng.chance(0.7),
+            defaults: rng.chance(0.3),
+        },
+        5 | 6 => StepIn::Tight,
+        7 | 8 => StepIn::Lock {
+            tight: rng.chance(0.3),
+            defaults: rng.chance(0.3),
+        },
+        _ => StepIn::Unlock,
+    }
+}
+
+fn gen_box(rng: &mut Rng) -> Option<Value> {
+    let brep = if rng.chance(0.6) {
+        gen_face_brep(rng)
+    } else {
+        gen_brep(rng)
+    };
+    let n = 1 + rng.below(MAX_BOX_STEPS as u64) as usize;
+    let steps = (0..n).map(|_| gen_step(rng)).collect();
+    serde_json::to_value(Inputs::Box(BoxIn {
+        brep: serde_json::to_value(&brep).ok()?,
+        steps,
+    }))
+    .ok()
+}
+
 fn gen_eval(rng: &mut Rng) -> Result<EvalIn, HarnessError> {
     let what = gen_what(rng);
     let mut sentinel = [0.0; 9];
@@ -449,6 +635,9 @@ impl UnitDiff for Runner {
             let i = gen_attr(rng);
             return serde_json::to_value(Inputs::Attribute(i)).ok();
         }
+        if rng.chance(0.4) {
+            return gen_box(rng);
+        }
         for _ in 0..64 {
             let Ok(i) = gen_eval(rng) else {
                 continue;
@@ -475,6 +664,7 @@ impl UnitDiff for Runner {
         match case.parse::<Inputs>()? {
             Inputs::Evaluate(i) => cpp_evaluate(&i),
             Inputs::Attribute(i) => cpp_attribute(&i),
+            Inputs::Box(i) => cpp_box(&i),
         }
     }
 
@@ -482,6 +672,7 @@ impl UnitDiff for Runner {
         let r = match case.parse::<Inputs>()? {
             Inputs::Evaluate(i) => rust_evaluate(&i),
             Inputs::Attribute(i) => return rust_attribute(&i),
+            Inputs::Box(i) => rust_box(&i),
         };
         match r {
             Ok(o) => Ok(o),

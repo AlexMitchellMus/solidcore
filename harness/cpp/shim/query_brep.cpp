@@ -4,19 +4,28 @@
 // (source/SM_API/src/SmApiSurfaces.cpp), called through the public API; the decimation
 // attribute constructors and MakeCopy overrides (source/SMLib/inc/SmPolyDecimate.h,
 // source/SMLib/src/SmPolyDecimate.cpp), whose protected data is reached through derived
-// "peek" classes.
+// "peek" classes; and SmBrep::CalculateBoundingBox, CalculateTightBoundingBox,
+// LockBoundingBox and UnLockBoundingBox (source/SMLib/src/SmBrep.cpp) on a real SmBrep
+// built with the shared topology fixture (sc_topology_fixture::apply: unit
+// topology.edgeuse_p1's B-rep block and traversal order, which the Rust side imports from
+// that unit's export).
 //
 // The surface reader is a copy of the surface.surface_cache_p3 shim's (another translation
 // unit). Layouts are documented in crates/solidcore-ffi/src/units/query_brep.rs, which
 // validates every input.
 #include "sc_shim.h"
+#include "support/topology_fixture.h"
 
 #include "StdAfx.h"
 #include <SmApiGeneral.h>
 #include <SmApiSurfaces.h>
 #include <SmBSplineSurface.h>
+#include <SmBrep.h>
+#include <SmCacheMgr.h>
 #include <SmContext.h>
 #include <SmCurveBoundedSurface.h>
+#include <SmExtent3d.h>
+#include <SmFace.h>
 #include <SmExtent2d.h>
 #include <SmNurbsSrf.h>
 #include <SmPlane.h>
@@ -314,6 +323,96 @@ SC_EXPORT int32_t sc_query_brep_evaluate(int32_t op, const double* in, int64_t n
     put_vec(o, p);
     put_vec(o, du);
     put_vec(o, dv);
+    return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len);
+    SC_CATCH
+}
+
+namespace sc_query_brep
+{
+enum
+{
+    STEP_BOX = 0,
+    STEP_TIGHT = 1,
+    STEP_LOCK = 2,
+    STEP_UNLOCK = 3,
+};
+
+// Appends the status and `min max` of a box seeded with the runner's sentinel box.
+template <typename F> void put_box(std::vector<double>& o, F call)
+{
+    SmExtent3d box;
+    box.SetMinMax(SmPoint3d(-17, -19, -23), SmPoint3d(29, 31, 37));
+    SmStatus s = call(box);
+    o.push_back(s == SM_SUCCESS ? 0.0 : (double)s);
+    SmPoint3d lo = box.GetMin(), hi = box.GetMax();
+    o.insert(o.end(), {lo.x, lo.y, lo.z, hi.x, hi.y, hi.z});
+}
+
+// Runs `n` steps `kind a b c d` on the B-rep (layouts in the ffi module).
+int32_t run_steps(const double* args, int64_t n_args, SmBrep& brep, std::vector<double>& o)
+{
+    if (n_args < 1)
+        return SC_ERR_ARG;
+    int64_t n = (int64_t)args[0];
+    if (n < 0 || n_args != 1 + 5 * n)
+        return SC_ERR_ARG;
+    for (int64_t i = 0; i < n; i++)
+    {
+        const double* a = args + 1 + 5 * i;
+        int64_t kind = (int64_t)a[0];
+        SmBoolean x = a[1] != 0.0 ? TRUE : FALSE;
+        SmBoolean y = a[2] != 0.0 ? TRUE : FALSE;
+        SmBoolean z = a[3] != 0.0 ? TRUE : FALSE;
+        bool defaults = a[4] != 0.0;
+        if (kind == STEP_BOX)
+            put_box(o, [&](SmExtent3d& b) {
+                return defaults ? brep.CalculateBoundingBox(b) : brep.CalculateBoundingBox(b, x, y, z);
+            });
+        else if (kind == STEP_TIGHT)
+            put_box(o, [&](SmExtent3d& b) { return brep.CalculateTightBoundingBox(b); });
+        else if (kind == STEP_LOCK)
+        {
+            SmStatus s = defaults ? brep.LockBoundingBox() : brep.LockBoundingBox(x);
+            o.push_back(s == SM_SUCCESS ? 0.0 : (double)s);
+        }
+        else if (kind == STEP_UNLOCK)
+        {
+            brep.UnLockBoundingBox();
+            o.push_back(0.0);
+        }
+        else
+            return SC_ERR_ARG;
+    }
+    return 0;
+}
+} // namespace sc_query_brep
+
+// Builds the B-rep of `path` / `block` and runs the box steps `args` on it; the output is
+// each step's values in order.
+SC_EXPORT int32_t sc_query_brep_box(const char* path, const double* block, int64_t n_block,
+                                    const double* args, int64_t n_args, double* out, int64_t cap,
+                                    int64_t* out_len)
+{
+    if (path == nullptr || block == nullptr || n_block < 1 || args == nullptr || n_args < 1 ||
+        out_len == nullptr)
+        return SC_ERR_ARG;
+    SC_TRY
+    std::vector<double> o;
+    int32_t rc = sc_topology_fixture::apply(path, block, n_block, [&](const sc_topology_fixture::View& g) -> int32_t {
+        // the trimmed surface caches a file read leaves on face surfaces (the port has
+        // no object caches)
+        for (SmFace* f : g.faces)
+        {
+            SmSurface* srf = f->GetSurface();
+            if (srf == nullptr)
+                return SC_ERR_ARG; // SmFace::CalculateBoundingBox dereferences it unchecked
+            if (SmCacheMgr::GetObjectCache(SM_OC_TRIMSRF, srf) != nullptr)
+                SmCacheMgr::DeleteObjectsCache(SM_OC_TRIMSRF, srf);
+        }
+        return sc_query_brep::run_steps(args, n_args, g.brep, o);
+    });
+    if (rc != 0)
+        return rc;
     return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len);
     SC_CATCH
 }

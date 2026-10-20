@@ -1,9 +1,9 @@
 //! FFI wrappers for unit `query.brep`.
 //!
 //! Shim: `harness/cpp/shim/query_brep.cpp` (`sc_query_brep_evaluate`,
-//! `sc_query_brep_attribute`).
+//! `sc_query_brep_attribute`, `sc_query_brep_box`).
 //! Upstream: `source/SM_API/src/SmApiSurfaces.cpp`, `source/SMLib/inc/SmPolyDecimate.h`,
-//! `source/SMLib/src/SmPolyDecimate.cpp`.
+//! `source/SMLib/src/SmPolyDecimate.cpp`, `source/SMLib/src/SmBrep.cpp`.
 //!
 //! Notation as in [`super::surface_surface_cache_p3`]: `S` a surface `kind ..` (`0 B`:
 //! B-spline; `1 o x y sx sy D`: bounded `SmPlane`; `2 B`: `SmCurveBoundedSurface` over the
@@ -31,6 +31,18 @@
 //! constructed attribute, then of its `MakeCopy`; the data as written above (the
 //! quadric edge's sort index NaN while unset). Ids and sort indices are integers in
 //! `0..=2^53`, classes `0..=5`.
+//!
+//! [`box_steps`] builds a real `SmBrep` from unit `topology.edgeuse_p1`'s B-rep block
+//! (`path` names the `.smb` file of a file block; validated and built once through that
+//! unit's wrapper first) and runs the [`BoxStep`]s on it in order, each `kind a b c
+//! defaults`: `Box` `CalculateBoundingBox(box, a, b, c)` (`bApprox bTight
+//! bExpandByZoneTol3d`; with `defaults` the default arguments), `Tight`
+//! `CalculateTightBoundingBox`, `Lock` `LockBoundingBox(a)` (with `defaults` the default
+//! argument), `Unlock` `UnLockBoundingBox`. The output is, per step: for `Box` and
+//! `Tight` the status and the box `min max` (seeded with `(-17 -19 -23) (29 31 37)`, so
+//! what a failing call leaves is compared), for `Lock` the status, for `Unlock` `0`.
+//! At most [`MAX_BOX_STEPS`] steps; a B-rep with a face without surface is rejected by
+//! the shim (upstream dereferences it).
 
 use super::surface_surface_cache_p1::{bad, Reader};
 use super::surface_surface_cache_p3::sized_surface;
@@ -87,11 +99,76 @@ impl AttrKind {
     }
 }
 
+/// A step of [`box_steps`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BoxStep {
+    /// `CalculateBoundingBox(box, approx, tight, expand)`, or with the default arguments.
+    Box {
+        /// `bApprox`.
+        approx: bool,
+        /// `bTight`.
+        tight: bool,
+        /// `bExpandByZoneTol3d`.
+        expand: bool,
+        /// Call with the default arguments instead.
+        defaults: bool,
+    },
+    /// `CalculateTightBoundingBox`.
+    Tight,
+    /// `LockBoundingBox(tight)`, or with the default argument.
+    Lock {
+        /// `bTight`.
+        tight: bool,
+        /// Call with the default argument instead.
+        defaults: bool,
+    },
+    /// `UnLockBoundingBox`.
+    Unlock,
+}
+
+impl BoxStep {
+    fn record(self) -> [f64; 5] {
+        let f = |b: bool| f64::from(u8::from(b));
+        match self {
+            Self::Box {
+                approx,
+                tight,
+                expand,
+                defaults,
+            } => [0.0, f(approx), f(tight), f(expand), f(defaults)],
+            Self::Tight => [1.0, 0.0, 0.0, 0.0, 0.0],
+            Self::Lock { tight, defaults } => [2.0, f(tight), 0.0, 0.0, f(defaults)],
+            Self::Unlock => [3.0, 0.0, 0.0, 0.0, 0.0],
+        }
+    }
+
+    /// The length of the step's output.
+    const fn output_len(self) -> usize {
+        match self {
+            Self::Box { .. } | Self::Tight => 7,
+            Self::Lock { .. } | Self::Unlock => 1,
+        }
+    }
+}
+
+/// Largest number of [`box_steps`] steps.
+pub const MAX_BOX_STEPS: usize = 8;
+
 /// Largest id or sort index (every integer up to it is exact in an `f64`).
 const MAX_ULONG: f64 = 9_007_199_254_740_992.0;
 
 mod sys {
     extern "C" {
+        pub fn sc_query_brep_box(
+            path: *const std::ffi::c_char,
+            block: *const f64,
+            n_block: i64,
+            args: *const f64,
+            n_args: i64,
+            out: *mut f64,
+            cap: i64,
+            out_len: *mut i64,
+        ) -> i32;
         pub fn sc_query_brep_attribute(
             input: *const f64,
             n_in: i64,
@@ -230,6 +307,53 @@ pub fn attribute(kind: AttrKind, data: &[f64]) -> Result<Vec<f64>, FfiError> {
     })?;
     if out.len() != 2 * kind.block_len() {
         return Err(bad("attribute: unexpected output length"));
+    }
+    Ok(out)
+}
+
+/// Runs `steps` on the B-rep of `block` (see the module docs); returns every step's
+/// output in order.
+///
+/// # Errors
+///
+/// [`FfiError::InvalidArgument`] for a block the graph wrapper rejects, a B-rep that
+/// cannot be built, no or too many steps; the shim's status (also for a face without
+/// surface).
+pub fn box_steps(path: &str, block: &[f64], steps: &[BoxStep]) -> Result<Vec<f64>, FfiError> {
+    use super::topology_edgeuse_p1 as graph;
+    if steps.is_empty() || steps.len() > MAX_BOX_STEPS {
+        return Err(bad("box steps: count"));
+    }
+    let export = graph::eval(graph::Op::Export, path, block)?;
+    if graph::counts(&export).is_none() {
+        return Err(bad("native fixture construction failed"));
+    }
+    let mut args = vec![steps.len() as f64];
+    for s in steps {
+        args.extend(s.record());
+    }
+    let want: usize = steps.iter().map(|s| s.output_len()).sum();
+    let path = std::ffi::CString::new(path).map_err(|_| bad("path contains NUL"))?;
+    let n_block = i64::try_from(block.len()).map_err(|_| bad("block too large"))?;
+    let out = call_with_buffer(want, |buf, len| {
+        // SAFETY: the block was validated (and built) by the graph wrapper and the steps
+        // are well-formed records; all buffers and the C string stay live for the call,
+        // and the shim honours `cap`.
+        unsafe {
+            sys::sc_query_brep_box(
+                path.as_ptr(),
+                block.as_ptr(),
+                n_block,
+                args.as_ptr(),
+                args.len() as i64,
+                buf.as_mut_ptr(),
+                buf.len() as i64,
+                &raw mut *len,
+            )
+        }
+    })?;
+    if out.len() != want {
+        return Err(bad("box steps: unexpected output length"));
     }
     Ok(out)
 }

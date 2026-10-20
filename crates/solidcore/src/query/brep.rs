@@ -1,11 +1,16 @@
 //! B-rep bounding boxes and point classification, the polygon decimation attributes,
 //! and the checked surface evaluation entry points of `SM_API`.
 //!
-//! Upstream: `source/SM_API/src/SmApiSurfaces.cpp`, `source/SMLib/inc/SmPolyDecimate.h`,
+//! Upstream: `source/SMLib/src/SmBrep.cpp`, `source/SMLib/inc/SmBrep.h`,
+//! `source/SM_API/src/SmApiSurfaces.cpp`, `source/SMLib/inc/SmPolyDecimate.h`,
 //! `source/SMLib/src/SmPolyDecimate.cpp`.
 //!
 //! | Rust                                         | Upstream                                       |
 //! |----------------------------------------------|------------------------------------------------|
+//! | [`calculate_bounding_box`], [`BoundingBoxOptions`] | `SmBrep::CalculateBoundingBox`           |
+//! | [`calculate_tight_bounding_box`]             | `SmBrep::CalculateTightBoundingBox`            |
+//! | [`lock_bounding_box`]                        | `SmBrep::LockBoundingBox`                      |
+//! | [`unlock_bounding_box`]                      | `SmBrep::UnLockBoundingBox`                    |
 //! | [`evaluate_surface_point`]                   | `SmApiEvaluateSurfacePoint`                    |
 //! | [`evaluate_surface_normal`]                  | `SmApiEvaluateSurfaceNormal`                   |
 //! | [`evaluate_surface_derivatives`]             | `SmApiEvaluateSurfaceDerivatives`              |
@@ -18,6 +23,20 @@
 //! | [`QuadricEdgeData::make_copy`]               | `SmQuadricEdgeAttr::MakeCopy`                  |
 //!
 //! Deviations:
+//! - **Tolerances.** Upstream is built with `SM_USE_OLDTOL`, so the zone tolerance
+//!   expansions use `GetTolerance()` of the vertex, edge and face (not
+//!   `SmTol::GetZoneTol3d`).
+//! - **Locked box.** `m_pLockedBoundingBox` is [`Brep::locked_bounding_box`], an
+//!   `Option` instead of a heap pointer.
+//! - **Ignored statuses.** [`calculate_tight_bounding_box`] ignores the statuses of the
+//!   edge and face boxes, as upstream, and keeps what a failed call leaves: the
+//!   previous face's box after a failed loose face box (upstream writes it only on
+//!   success), the box of the face's vertices and edges after a failure in the
+//!   surface part of the tight face box
+//!   ([`crate::query::face::p3::calculate_tight_bounding_box_into`]), the loose box
+//!   after a failed tight edge box. A failed loose edge box leaves the freshly
+//!   initialised (empty) box: the curve boxes write their output once their
+//!   computation succeeded. [`SolidError::Unported`] still propagates.
 //! - **Out-params.** The evaluated point, normal or point and derivatives are the
 //!   return value; on failure there is none (upstream evaluates into locals and leaves
 //!   the caller's outputs untouched).
@@ -33,15 +52,214 @@
 //!   ([`QuadricEdgeData::sort_index`]). `SmPolyVertexClass` (`SmPoly.h`) is defined
 //!   here, the only place that uses it so far.
 
-use crate::error::{Result, SolidError};
+use crate::error::{ignore_status, ignored, Result, SolidError};
 use crate::geom::attribute::{Attribute, AttributeValue, Behavior};
+use crate::geom::extent3d::Extent3d;
+use crate::kernel::Kernel;
 use crate::math::{Point2, Point3, Vec3, BIG_DOUBLE};
+use crate::nurbs::b_spline_curve::BoundingBoxRequest;
 use crate::nurbs::knots::Side;
+use crate::query::edge as qe;
+use crate::query::face::{p1 as qf1, p3 as qf3};
 use crate::surface::surface::Surface;
+use crate::topology::brep::p1 as bp1;
+use crate::topology::{edge, face, vertex, Brep};
 
 const OP_EVAL_POINT: &str = "query::brep::evaluate_surface_point";
 const OP_EVAL_NORMAL: &str = "query::brep::evaluate_surface_normal";
 const OP_EVAL_DERIVS: &str = "query::brep::evaluate_surface_derivatives";
+
+/// The axis aligned box only (`CalculateBoundingBox(&box, NULL, NULL, ..)`).
+const NORMAL_BOX: BoundingBoxRequest = BoundingBoxRequest {
+    normal: true,
+    pseudo: false,
+    polar: false,
+};
+
+// ---- bounding boxes -----------------------------------------------------------------
+
+/// The arguments of [`calculate_bounding_box`]; [`Default`] gives upstream's default
+/// arguments.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BoundingBoxOptions {
+    /// `bApprox` (default `FALSE`): leave out the faces and, on a B-rep with more than
+    /// 500 vertices and more than 100 edges, the edges too.
+    pub approx: bool,
+    /// `bTight` (default `FALSE`): the tight box of every edge and face (expensive).
+    pub tight: bool,
+    /// `bExpandByZoneTol3d` (default `TRUE`): expand each vertex, edge and face box by
+    /// that entity's tolerance.
+    pub expand_by_zone_tol_3d: bool,
+}
+
+impl Default for BoundingBoxOptions {
+    fn default() -> Self {
+        Self {
+            approx: false,
+            tight: false,
+            expand_by_zone_tol_3d: true,
+        }
+    }
+}
+
+/// `SmBrep::CalculateBoundingBox`: the locked box when there is one; else the union of
+/// the B-rep's vertex points, the boxes of its edges with a curve and, unless
+/// `approx`, the boxes of its faces (each expanded by the entity's tolerance with
+/// `expand_by_zone_tol_3d`), in list order. With `approx` on a B-rep of more than 500
+/// vertices and 100 edges only the vertices are used.
+///
+/// # Errors
+///
+/// Those of the B-rep lists, [`qe::calculate_bounding_box`] and
+/// [`qf1::calculate_bounding_box`].
+pub fn calculate_bounding_box(k: &Kernel, b: &Brep, opts: BoundingBoxOptions) -> Result<Extent3d> {
+    // when LockedBoundingBox exists - return that value
+    if let Some(locked) = b.locked_bounding_box() {
+        return Ok(locked);
+    }
+
+    let mut brep_bbox = Extent3d::new();
+
+    // add every Brep->Vertex->point to Bounding box
+    let vertices = bp1::vertices(b, None)?;
+
+    // for every vertex - union location into BBox
+    for &v in &vertices {
+        let mut v_bbox = Extent3d::from_point(vertex::point(b, v)?);
+
+        if opts.expand_by_zone_tol_3d {
+            v_bbox.expand_absolute(vertex::tolerance(b, v)?); // SM_USE_OLDTOL
+        }
+
+        // union vertex bounding box into brep bounding box
+        brep_bbox = brep_bbox.union(&v_bbox);
+    } // end iter every vertex
+
+    // Union in every Brep->Edge bounding box
+    let edges = bp1::edges(b, None)?;
+
+    // when asked - if this is a large brep, settle for a fast approximation
+    if opts.approx && vertices.len() > 500 && edges.len() > 100 {
+        return Ok(brep_bbox);
+    }
+
+    // for every edge - union together edge BBoxes
+    for &e in &edges {
+        if b.edge(e)?.curve.is_some() {
+            let mut e_bbox = qe::calculate_bounding_box(k, b, e, NORMAL_BOX, opts.tight)?
+                .normal
+                .unwrap_or_default();
+
+            if opts.expand_by_zone_tol_3d {
+                e_bbox.expand_absolute(edge::tolerance(b, e)?); // SM_USE_OLDTOL
+            }
+
+            // union edge bounding box into brep bounding box
+            brep_bbox = brep_bbox.union(&e_bbox);
+        }
+    }
+
+    // when asked - union in every Brep->Face bounding box
+    if !opts.approx {
+        // for every face
+        for f in bp1::faces(b, None)? {
+            let mut f_bbox = qf1::calculate_bounding_box(k, b, f, opts.tight)?;
+
+            if opts.expand_by_zone_tol_3d {
+                f_bbox.expand_absolute(face::p2::tolerance(b, f)?); // SM_USE_OLDTOL
+            }
+
+            // union face bounding box into brep bounding box
+            brep_bbox = brep_bbox.union(&f_bbox);
+        }
+    }
+
+    Ok(brep_bbox)
+}
+
+/// `SmBrep::CalculateTightBoundingBox`: the union of the vertex points, then of the
+/// tight box of every edge and face whose loose box is not already inside the box so
+/// far (the locked box is not used, nothing is expanded). The statuses of the edge and
+/// face boxes are ignored (see the module's deviations).
+///
+/// # Errors
+///
+/// Those of the B-rep lists and vertex points; [`SolidError::Unported`] from the edge
+/// and face boxes.
+pub fn calculate_tight_bounding_box(k: &Kernel, b: &Brep) -> Result<Extent3d> {
+    let mut brep_bbox = Extent3d::new();
+
+    for v in bp1::vertices(b, None)? {
+        let v_bbox = Extent3d::from_point(vertex::point(b, v)?);
+        brep_bbox = brep_bbox.union(&v_bbox);
+    }
+
+    // Union all of the Tight Edge bounding boxes.
+    for e in bp1::edges(b, None)? {
+        // (CalculateBoundingBox initialises the box first)
+        let mut edge_bbox = ignored(qe::calculate_bounding_box(k, b, e, NORMAL_BOX, false))?
+            .and_then(|boxes| boxes.normal)
+            .unwrap_or_default();
+        if edge_bbox.is_contained_by(&brep_bbox, 0.0) {
+            continue;
+        }
+        // (an edge without curve, or a failure, leaves the loose box)
+        if let Some(Some(tight)) = ignored(qe::calculate_tight_bounding_box(k, b, e))? {
+            edge_bbox = tight;
+        }
+        brep_bbox = brep_bbox.union(&edge_bbox);
+    }
+
+    // Union all of the Tight Face bounding boxes (`rFaceBBox` is kept from face to
+    // face).
+    let mut face_bbox = Extent3d::new();
+    for f in bp1::faces(b, None)? {
+        if let Some(loose) = ignored(qf1::calculate_bounding_box(k, b, f, false))? {
+            face_bbox = loose;
+        }
+        if face_bbox.is_contained_by(&brep_bbox, 0.0) {
+            continue;
+        }
+        ignore_status(qf3::calculate_tight_bounding_box_into(
+            k,
+            b,
+            f,
+            &mut face_bbox,
+        ))?;
+        brep_bbox = brep_bbox.union(&face_bbox);
+    }
+
+    Ok(brep_bbox)
+}
+
+/// `SmBrep::LockBoundingBox(bTight)` (upstream default `FALSE`): unlocks the box, then
+/// computes it ([`calculate_tight_bounding_box`] with `tight`, else
+/// [`calculate_bounding_box`] with the default arguments) and locks it. On failure the
+/// box stays unlocked.
+///
+/// # Errors
+///
+/// Those of the box computation.
+pub fn lock_bounding_box(k: &Kernel, b: &mut Brep, tight: bool) -> Result<()> {
+    if b.locked_bounding_box().is_some() {
+        unlock_bounding_box(b);
+    }
+
+    let bbox = if tight {
+        calculate_tight_bounding_box(k, b)?
+    } else {
+        calculate_bounding_box(k, b, BoundingBoxOptions::default())?
+    };
+
+    // Okay, now lock it.
+    b.set_locked_bounding_box(Some(bbox));
+    Ok(())
+}
+
+/// `SmBrep::UnLockBoundingBox`: forgets the locked box, if any.
+pub fn unlock_bounding_box(b: &mut Brep) {
+    b.set_locked_bounding_box(None);
+}
 
 // ---- SM_API surface evaluation ------------------------------------------------------
 
@@ -282,6 +500,37 @@ mod tests {
         )));
         // the domain bounds are inside
         assert!(evaluate_surface_point(Some(&s), Point2::new(1.0, 0.0)).is_ok());
+    }
+
+    #[test]
+    fn bounding_box_lock_and_vertex_only_paths() {
+        let k = Kernel::default();
+        let mut b = Brep::new();
+        let v0 = b.add_vertex(Point3::new(0.0, 0.0, 0.0)).unwrap();
+        b.add_vertex(Point3::new(1.0, 2.0, 3.0)).unwrap();
+        b.vertex_mut(v0).unwrap().tolerance = 0.5;
+
+        let expanded = calculate_bounding_box(&k, &b, BoundingBoxOptions::default()).unwrap();
+        assert_eq!(expanded.min().x, -0.5);
+        let plain = BoundingBoxOptions {
+            expand_by_zone_tol_3d: false,
+            ..BoundingBoxOptions::default()
+        };
+        let bare = calculate_bounding_box(&k, &b, plain).unwrap();
+        assert_eq!((bare.min().x, bare.max().z), (0.0, 3.0));
+        assert_eq!(calculate_tight_bounding_box(&k, &b).unwrap(), bare);
+
+        lock_bounding_box(&k, &mut b, false).unwrap();
+        b.vertex_mut(v0).unwrap().point = Point3::new(-9.0, 0.0, 0.0);
+        // the locked box is returned whatever the arguments; the tight box ignores it
+        assert_eq!(calculate_bounding_box(&k, &b, plain).unwrap(), expanded);
+        assert_eq!(calculate_tight_bounding_box(&k, &b).unwrap().min().x, -9.0);
+        // relocking recomputes
+        lock_bounding_box(&k, &mut b, true).unwrap();
+        assert_eq!(calculate_bounding_box(&k, &b, plain).unwrap().min().x, -9.0);
+        unlock_bounding_box(&mut b);
+        assert_eq!(b.locked_bounding_box(), None);
+        assert_eq!(calculate_bounding_box(&k, &b, plain).unwrap().min().x, -9.0);
     }
 
     #[test]
