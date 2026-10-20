@@ -797,7 +797,7 @@ fn delete_manifold_edge(
     // When merging two faces - see if Face Surfaces need to be swapped
     if !split_loop && !both_inner {
         if let Some(keep) = surface_to_keep {
-            // UB-198: upstream reads pSurvF->GetSurface() here although pSurvF is set
+            // UB-210: upstream reads pSurvF->GetSurface() here although pSurvF is set
             // only when merging faces; unreachable on well-formed topology (a strut end
             // implies a split loop), kept as a defensive null-dereference error.
             let sf = deref(surv_f, OP)?;
