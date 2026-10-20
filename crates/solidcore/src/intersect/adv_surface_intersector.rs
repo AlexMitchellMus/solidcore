@@ -1296,7 +1296,7 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for AdvSurfaceIntersector<'_
             .sum::<usize>()
             .saturating_add(2)
             .min(global_solver::MAX_SOLVE_DEPTH);
-        if self.solve_depth > limit {
+        if self.solve_depth >= limit {
             return Err(SolidError::invalid_input(OP_SOLVE, "tree links are cyclic"));
         }
         self.solve_depth += 1;
@@ -1553,6 +1553,27 @@ mod tests {
         assert_eq!(si.solver.solution_requested, SolutionRequested::Nodes);
         assert!(si.is_kind_of(TYPE));
         assert!(!si.is_kind_of(7));
+    }
+
+    #[test]
+    fn solve_depth_guard_rejects_before_touching_branch_state() {
+        let s = plane();
+        let d = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
+        let mut tree = crate::geom::tree::Tree::new(None);
+        for _ in 0..global_solver::MAX_SOLVE_DEPTH {
+            tree.add_node(TreeNode::new());
+        }
+        let mut si: AdvSurfaceIntersector<'_, '_, H> =
+            AdvSurfaceIntersector::new(&s, &d, &s, &d, false).unwrap();
+        si.solver.trees[0] = Some(&tree);
+        si.solve_depth = global_solver::MAX_SOLVE_DEPTH;
+        si.separate_gauss_maps = false;
+        assert!(matches!(
+            si.solve_branch(&[None; global_solver::MAX_SOLVER_TREES]),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        assert_eq!(si.solve_depth, global_solver::MAX_SOLVE_DEPTH);
+        assert!(!si.separate_gauss_maps);
     }
 
     #[test]
