@@ -35,8 +35,7 @@
 //! classification without face (UB-124: `GetUpwardFaceuse` / `GetSurface` on `NULL`), and of an
 //! edge end on a face with a surface when the classification or edge curve is `NULL` (both are
 //! evaluated); `GetLoopCrossings` over loops for a classification without curve (UB-124:
-//! `GetNaturalInterval` on `NULL`) or without intervals (its first interval is read past
-//! `m_lSize`).
+//! `GetNaturalInterval` on `NULL`).
 
 use crate::units::heal_face_props::{self, FaceSpec, Loops};
 use crate::{call_with_buffer, FfiError};

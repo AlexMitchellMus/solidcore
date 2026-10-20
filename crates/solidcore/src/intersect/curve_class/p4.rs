@@ -54,8 +54,9 @@
 //!   whose interval index is past the intervals.
 //! - **Not ported (reporting only).** `SM_ASSERT*`, `SM_DBG_WARN`, `ERR_MSG` and `MSG`
 //!   messages and the `SM_DEBUG_CODE` blocks (the release build compiles them out).
-//! - **`GetMinUV` / `GetMaxUV`** of a 3D classification curve on a face still return
-//!   [`SolidError::Unported`] from part 2 (`SmFace::GetSurface`, unit `topology.face_p2`).
+//! - **Callees in units not ported yet** return [`SolidError::Unported`]:
+//!   `intersect.curve_class_p2` (`ReSet`, `ConnectIntervals`, `SmCurveInterval::GetMinUV`
+//!   / `GetMaxUV`).
 //! - **`EvaluateBinormal`** takes `&mut Brep` in the port; with `bUse3DOnly` true it
 //!   creates nothing, so it runs on a copy of the B-rep, as `ComputeUVSector` does. Both
 //!   upstream call sites ignore its status: a failure keeps the out-vectors as upstream
@@ -77,9 +78,8 @@ use crate::geom::tol::{
 };
 use crate::heal::face_props::{FaceProps, HealerOpType, LoopObject, PropStage, Tri, UNDEF_ULONG};
 use crate::intersect::curve_class::p1::{
-    get_connected_touches, CrvDirOnFaceType, CurveClassification, TouchData,
+    get_connected_touches, CrvDirOnFaceType, CurveClassification, IntervalPosition, TouchData,
 };
-use crate::intersect::curve_class::p2::ResetOptions;
 use crate::intersect::curve_class::p3::curve_is_degenerate;
 use crate::intersect::point_class::{
     object_zone_tol_3d, ClassGeometry, ClassObject, PointClassType, PointClassification,
@@ -186,44 +186,55 @@ impl SolutionObject for SurfHandle {
     }
 }
 
-// ---- part 2 members ------------------------------------------------------------------------
+// ---- callees in units not ported yet ----------------------------------------------------
 
-/// `SmCurveClassification::ReSet(...)` with the constructor's arguments (`lOptDataSize`
-/// and the borrowed array are not modelled, see part 1).
+/// `SmCurveClassification::ReSet(...)` with the constructor's arguments.
 fn reset<O: ClassObject>(
-    k: &Kernel,
     cc: &mut CurveClassification<O>,
     init: &ClassificationInit<O>,
 ) -> Result<()> {
-    cc.reset(
-        k,
-        &ResetOptions {
-            curve: init.curve,
-            interval: Some(init.interval),
-            uv_curve: init.uv_curve,
-            zone_tol_3d: init.src_zone_tol_3d,
-            is_curve_owned: init.is_curve_owned,
-            is_curve_current: init.is_curve_current,
-            surface1: init.surface1,
-            surface2: init.surface2,
-            uv_curve2: init.uv_curve2,
-            ti: init.ti,
-        },
-    )
+    let _ = (cc, init);
+    // UNPORTED(intersect.curve_class_p2): SmCurveClassification::ReSet
+    Err(SolidError::unported(
+        "SmCurveClassification::ReSet",
+        "intersect.curve_class_p2",
+    ))
 }
 
-/// `SmCurveInterval::GetMinUV` (`do_min`) or `GetMaxUV` of interval `index`, into a
-/// default-constructed `SmVector2d` (`UNDEF`).
+/// `SmCurveClassification::ConnectIntervals(index, end, allowRemovalOfEnds)`.
+fn connect_intervals<O: ClassObject>(
+    cc: &mut CurveClassification<O>,
+    index: usize,
+    end: IntervalPosition,
+    allow_removal_of_ends: bool,
+) -> Result<()> {
+    let _ = (cc, index, end, allow_removal_of_ends);
+    // UNPORTED(intersect.curve_class_p2): SmCurveClassification::ConnectIntervals
+    Err(SolidError::unported(
+        "SmCurveClassification::ConnectIntervals",
+        "intersect.curve_class_p2",
+    ))
+}
+
+/// `SmCurveInterval::GetMinUV` (`do_min`) or `GetMaxUV` of interval `index`.
 fn interval_end_uv<O: ClassObject>(
     cc: &CurveClassification<O>,
-    geometry: &impl ClassGeometry<O>,
     index: usize,
     do_min: bool,
 ) -> Result<Point2> {
+    let _ = (cc, index);
     if do_min {
-        cc.interval_min_uv(geometry, index, Vec2::UNDEF)
+        // UNPORTED(intersect.curve_class_p2): SmCurveInterval::GetMinUV
+        Err(SolidError::unported(
+            "SmCurveInterval::GetMinUV",
+            "intersect.curve_class_p2",
+        ))
     } else {
-        cc.interval_max_uv(geometry, index, Vec2::UNDEF)
+        // UNPORTED(intersect.curve_class_p2): SmCurveInterval::GetMaxUV
+        Err(SolidError::unported(
+            "SmCurveInterval::GetMaxUV",
+            "intersect.curve_class_p2",
+        ))
     }
 }
 
@@ -722,7 +733,8 @@ fn end_on_seams<O: LoopObject>(
 /// # Errors
 ///
 /// [`SolidError::InvalidInput`] for a classification without intervals (upstream reads
-/// `m_pData[0]`); those of `ConnectIntervals` (`SM_ERR` for an index out of range).
+/// `m_pData[0]`); those of `ConnectIntervals` ([`SolidError::Unported`]: unit
+/// `intersect.curve_class_p2`).
 pub fn squeeze_out_smallest_interval<O: ClassObject>(
     cc: &mut CurveClassification<O>,
 ) -> Result<()> {
@@ -746,7 +758,7 @@ pub fn squeeze_out_smallest_interval<O: ClassObject>(
     let squeeze_pos = cc.find_best_squeeze_end(smallest)?;
 
     // remove smallest interval target endBoundary (SER)
-    cc.connect_intervals(smallest, squeeze_pos, false)?;
+    connect_intervals(cc, smallest, squeeze_pos, false)?;
 
     // all done
     Ok(())
@@ -761,13 +773,12 @@ impl<O: ClassObject> CurveClassification<O> {
     ///
     /// # Errors
     ///
-    /// None in practice: `ReSet`'s only error (a new curve without an interval) cannot
-    /// occur, and its status is ignored as upstream.
+    /// [`SolidError::Unported`] from `ReSet` (unit `intersect.curve_class_p2`).
     pub fn with_curve(k: &Kernel, init: &ClassificationInit<O>) -> Result<Self> {
         let mut cc = Self::new(k);
 
         // pass the call along
-        ignore_status(reset(k, &mut cc, init))?;
+        ignore_status(reset(&mut cc, init))?;
         Ok(cc)
     }
 
@@ -783,8 +794,8 @@ impl<O: ClassObject> CurveClassification<O> {
     ///
     /// [`SolidError::InvalidInput`] for `index >= size()`, a classification without a
     /// face (upstream calls `GetUpwardFaceuse` on `NULL`, UB-124) and a face, edge or edge
-    /// use handle `geometry` does not resolve; [`SolidError::Unported`] from `GetMinUV` /
-    /// `GetMaxUV` of a 3D curve (`SmFace::GetSurface`, unit `topology.face_p2`).
+    /// use handle `geometry` does not resolve; [`SolidError::Unported`] for `GetMinUV` /
+    /// `GetMaxUV` (unit `intersect.curve_class_p2`).
     pub fn ivl_bound_edgeuse_obj<G: ClassGeometry<O>>(
         &self,
         geometry: &G,
@@ -831,7 +842,7 @@ impl<O: ClassObject> CurveClassification<O> {
 
         // CrvClassification Face locals (statuses ignored)
         let tgt_classify_surf_uv =
-            ignored(interval_end_uv(self, geometry, index, do_min))?.unwrap_or(Vec2::UNDEF);
+            ignored(interval_end_uv(self, index, do_min))?.unwrap_or(Vec2::UNDEF);
         let tgt_classify_surf_norm = ignored(classify_surface.evaluate_normal(
             tgt_classify_surf_uv,
             Side::Left,

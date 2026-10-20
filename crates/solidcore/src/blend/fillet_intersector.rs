@@ -245,14 +245,17 @@ pub trait FilletSolverOps {
         ))
     }
 
-    /// `ComputeUVVectors(rTsectPnt)` (non-virtual): the UV tangents of the point
-    /// ([`crate::blend::fillet_solver::p1::compute_uv_vectors`]).
+    /// `ComputeUVVectors(rTsectPnt)`: the UV tangents of the point.
     ///
     /// # Errors
     ///
-    /// Those of `smsurf_DropVectors`.
-    fn compute_uv_vectors(&mut self, _k: &Kernel, point: &mut TsectPnt) -> Result<()> {
-        crate::blend::fillet_solver::p1::compute_uv_vectors(point)
+    /// The solver's failure; [`SolidError::Unported`] until ported.
+    fn compute_uv_vectors(&mut self, _k: &Kernel, _point: &mut TsectPnt) -> Result<()> {
+        // UNPORTED(blend.fillet_solver_p1): SmFilletSolver::ComputeUVVectors
+        Err(SolidError::unported(
+            "SmFilletSolver::ComputeUVVectors",
+            "blend.fillet_solver_p1",
+        ))
     }
 
     /// `StepSolve(rTsectPnt, rdStep, crUVDomain1, crUVDomain2, rbFoundAnswer,

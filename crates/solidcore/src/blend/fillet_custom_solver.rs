@@ -17,7 +17,7 @@
 //! | [`SecantConstantRadiusFs::load_initial_values`]   | `SmSecantConstantRadiusFS::LoadInitialValues`     |
 //! | [`SecantConstantRadiusFs::load_jacobian`]         | `SmSecantConstantRadiusFS::LoadJacobian`          |
 //! | [`ConstantRadiusAssistedFs`] (CO-PORTED)          | `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` over the `SmFilletSolver` base ([`FilletSolver`]) |
-//! | `impl FilletSolverOps` for both solvers            | their `LoadJacobian` / `LoadInitialValues` overrides; the inherited `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` overrides (`GetJacobianSize`, `SetupOffsetValues`, `OffsetRadiiCanChange`, `GetType`) call `blend.fillet_standard_solver_p1`; `IsKindOf` returns [`SolidError::Unported`] (`_p2`) |
+//! | `impl FilletSolverOps` for both solvers            | their `LoadJacobian` / `LoadInitialValues` overrides; the inherited `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` overrides (`GetJacobianSize`, `SetupOffsetValues`, `OffsetRadiiCanChange`, `GetType`, `IsKindOf`) return [`SolidError::Unported`] (units `blend.fillet_standard_solver_p1` / `_p2`) |
 //! | [`OffsetSurface`], [`SurfaceId`]                  | an `SmOffsetSurface*` rail surface (unit `surface.offset_surface`) and the identity of its base pointer |
 //! | [`JacobianLoad`], [`InitialValues`]               | the in/out arguments of `LoadJacobian`, `LoadInitialValues` |
 //!
@@ -1590,33 +1590,48 @@ macro_rules! fillet_solver_ops {
                 &mut self.base.solver
             }
 
-            /// `SmConstantRadiusFS::GetJacobianSize` (inherited): 4.
+            /// `SmConstantRadiusFS::GetJacobianSize` (unit
+            /// `blend.fillet_standard_solver_p1`, not ported).
             fn jacobian_size(&self) -> Result<usize> {
-                Ok(self.base.jacobian_size())
+                // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusFS::GetJacobianSize
+                Err(SolidError::unported(
+                    "SmConstantRadiusFS::GetJacobianSize",
+                    "blend.fillet_standard_solver_p1",
+                ))
             }
 
-            /// `SmConstantRadiusFS::SetupOffsetValues` (inherited): sets both offset
-            /// distances and writes the rail 0 radius to `offset_dist` when given.
+            /// `SmConstantRadiusFS::SetupOffsetValues` (unit
+            /// `blend.fillet_standard_solver_p1`, not ported).
             fn setup_offset_values(
                 &mut self,
-                tsect: &TsectPnt,
-                offset_dist: Option<&mut f64>,
+                _tsect: &TsectPnt,
+                _offset_dist: Option<&mut f64>,
             ) -> Result<()> {
-                let d = self.base.setup_offset_values(tsect)?;
-                if let Some(out) = offset_dist {
-                    *out = d;
-                }
-                Ok(())
+                // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusFS::SetupOffsetValues
+                Err(SolidError::unported(
+                    "SmConstantRadiusFS::SetupOffsetValues",
+                    "blend.fillet_standard_solver_p1",
+                ))
             }
 
-            /// `SmConstantRadiusFS::OffsetRadiiCanChange` (inherited): never.
+            /// `SmConstantRadiusFS::OffsetRadiiCanChange` (unit
+            /// `blend.fillet_standard_solver_p1`, not ported).
             fn offset_radii_can_change(&self) -> Result<bool> {
-                Ok(self.base.offset_radii_can_change())
+                // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusFS::OffsetRadiiCanChange
+                Err(SolidError::unported(
+                    "SmConstantRadiusFS::OffsetRadiiCanChange",
+                    "blend.fillet_standard_solver_p1",
+                ))
             }
 
-            /// `SmConstantRadiusAssistedFS::GetType` (`SM_COMMON`, inherited).
+            /// `SmConstantRadiusAssistedFS::GetType` (`SM_COMMON`, unit
+            /// `blend.fillet_standard_solver_p1`, not ported).
             fn type_code(&self) -> Result<i64> {
-                Ok(crate::blend::fillet_standard_solver::p1::CONSTANT_RADIUS_ASSISTED_FS_TYPE)
+                // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusAssistedFS::GetType
+                Err(SolidError::unported(
+                    "SmConstantRadiusAssistedFS::GetType",
+                    "blend.fillet_standard_solver_p1",
+                ))
             }
 
             /// `SmConstantRadiusAssistedFS::IsKindOf` (unit
