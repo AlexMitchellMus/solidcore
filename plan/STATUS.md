@@ -1187,11 +1187,13 @@ integrated. Face bounding boxes call the real query port with tight=false and
 caller owner/face ids. HCR uses the owning mutable Kernel and edge blending
 uses the current same-Brep API. The face-box and empty linear-cap native-feature
 runner regressions pass; 1549 kernel tests, plain/native Clippy, wasm32 and five
-FFI regressions pass. Additional inherited sweep service assertions are refreshed
-for the landed topology/notification ports.
+FFI regressions pass. All eight inherited sweep service regressions pass, including nonzero-owner
+shell-vertex queries in list order, empty cleanup success and open-loop
+validation after the landed topology/notification ports.
 
-All twelve affected native gates pass every comparable case (maximum relative
-error zero). P3 remains 296 cases / 285 pass / 10 deferred at topology.brep_p8 /
+All thirteen affected native gates pass every comparable case (maximum relative
+error zero), including the newly wired p2 shell-vertex query (1709 cases, 1437
+pass, 272 deferred). P3 remains 296 cases / 285 pass / 10 deferred at topology.brep_p8 /
 1 rejected. Sweep is 568 / 558 pass / 10 deferred at topology.brep_p3 / 0 rejected.
 The four newly comparable sweep cases certify the exported helper records and
 maps, not new vertex coordinates or complete B-rep topology. Primitive topology

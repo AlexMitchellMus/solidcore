@@ -11425,3 +11425,17 @@ retagged as a new-Brep constructor deferral. The planar-boolean cleanup now
 forwards the caller's existing notification environment into p5. Two Rust
 static-sheet regressions reach the actual p3 constructor blocker rather than
 the former p1 stub. Successful primitive topology remains uncertified.
+
+
+### PR #233 final shell-query and native verification
+
+The newly available `GetShellVertices` now delegates to p2 for the actual owner
+and native vertex-list order. Eight native-feature sweep service regressions
+pass, including asymmetric owner lists; both p3 access regressions also pass.
+All thirteen affected native gates have zero failures and maximum relative
+error zero. P3 remains 296/285 pass/10 deferred/1 rejected, sweep 568/558 pass/
+10 deferred/0 rejected, and p2 is 1709/1437 pass/272 deferred. Native sweep records
+do not expose new vertex coordinates; their owner/point checks are Rust-only.
+Complete primitive topology and nonempty HCR/merge/stitch continuations remain
+uncertified. Final full-gate and actual-head CI evidence is recorded in the PR
+discussion. No production code uses the earlier unavailable-query stub.
