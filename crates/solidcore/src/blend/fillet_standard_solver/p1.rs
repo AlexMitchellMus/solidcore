@@ -49,7 +49,7 @@
 //! | [`FilletSolverData`] (CO-PORTED)                         | the `SmFilletSolver` members these solvers read       |
 //! | [`fillet_solver_is_kind_of`] (CO-PORTED)                 | `SmFilletSolver::IsKindOf`                            |
 //! | [`FilletSolverType`], [`FilletSurfaceGeneratorType`], [`BoundaryTrimmingType`] (re-exported from `blend.fillet_geom_p1`) | `SmFilletSolverType`, `SmFilletSurfaceGeneratorType`, `SmBoundaryTrimmingType` |
-//! | [`FilletLaw`], [`FilletLawKind`] (CO-PORTED)             | `SmFilletLaw`, `SmLinearFilletLaw`, `SmBSplineFilletLaw` (the data these solvers read; `Evaluate` and the constructors are in `blend::fillet_executive::p1`) |
+//! | [`FilletLaw`], [`FilletLawKind`] (CO-PORTED)             | `SmFilletLaw`, `SmLinearFilletLaw`, `SmBSplineFilletLaw` (the data these solvers read; `Evaluate` is in `blend::fillet_executive::p1`, the constructors in `blend::fillet_executive::p2`) |
 //! | [`JacobianSurfaces`]                                     | the `rpSurface1`, `rpSurface2` arguments of `LoadJacobian` |
 //!
 //! Deviations:

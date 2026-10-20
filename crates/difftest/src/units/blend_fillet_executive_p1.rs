@@ -89,31 +89,27 @@ fn to_output(flat: &[f64]) -> Output {
         .values("out", rest.to_vec())
 }
 
-/// The law the shim builds. The `SmLinearFilletLaw(r0, r1, pOptEdgeMap)` and
-/// `SmBSplineFilletLaw(pCurve, crEdgeMap)` constructors belong to unit
-/// `blend.fillet_executive_p2` (PR #267); until they land the harness mirrors their one
-/// rule: an edge map shorter than `SM_EFF_ZERO` (or none) means `[0, 1]`
-/// (`SmFilletExecutive.cpp:5336`, `:5682`).
+/// The law the shim builds. Linear laws go through `SmLinearFilletLaw(r0, r1,
+/// pOptEdgeMap)` ([`FilletLaw::linear`], `blend.fillet_executive_p2`). The
+/// `SmBSplineFilletLaw(pCurve, crEdgeMap)` constructor is not ported yet, so the
+/// harness mirrors its one rule: an edge map shorter than `SM_EFF_ZERO` (or none)
+/// means `[0, 1]` (`SmFilletExecutive.cpp:5682`).
 fn law_of(i: &Inputs) -> Result<FilletLaw, HarnessError> {
-    let kind = match &i.law {
-        LawIn::Base => FilletLawKind::Base,
-        LawIn::Linear { r0, r1 } => FilletLawKind::Linear {
-            start_radius: *r0,
-            end_radius: *r1,
-        },
-        LawIn::Bspline { c } => FilletLawKind::BSpline {
-            law_curve: bcurve_of(c)?,
-            extended_law: None,
-        },
-    };
-    let mut law = FilletLaw::new(kind);
-    if let (Some([a, b]), false) = (i.map, matches!(law.kind, FilletLawKind::Base)) {
-        let map = Extent1d::from_min_max(a, b);
-        if map.length() >= EFF_ZERO {
-            law.edge_map = map;
+    let map = i.map.map(|[a, b]| Extent1d::from_min_max(a, b));
+    Ok(match &i.law {
+        LawIn::Base => FilletLaw::new(FilletLawKind::Base),
+        LawIn::Linear { r0, r1 } => FilletLaw::linear(*r0, *r1, map.as_ref()),
+        LawIn::Bspline { c } => {
+            let mut law = FilletLaw::new(FilletLawKind::BSpline {
+                law_curve: bcurve_of(c)?,
+                extended_law: None,
+            });
+            if let Some(map) = map.filter(|m| m.length() >= EFF_ZERO) {
+                law.edge_map = map;
+            }
+            law
         }
-    }
-    Ok(law)
+    })
 }
 
 fn rust(i: &Inputs) -> Result<Output, HarnessError> {
