@@ -10479,6 +10479,16 @@ length, 0 when absent); it needs a kernel and a non-caching gap computation, sin
 More generally, an adapter gap reported as `InvalidInput` is indistinguishable from an upstream status under
 `ignored`: no `ClassGeometry` implementation provides `vertex_face_gap` today.
 
+Resolved: the gap is a B-rep property, so `query::face::p2::curve_on_classify` (which has the B-rep and kernel)
+now computes it for every caller, not only `LoopObjectCurves`: with `has_big_gaps` it reads
+`vertex::vertexuse_of_face` -> `vertexuse::vertex_face_gap(.., false)` length (0 without a gap) of each face
+vertex on one private B-rep snapshot per call (it keeps the gap caches across both passes, as upstream's
+`GetVertexFaceGap` caches into the B-rep), and answers `ClassGeometry::vertex_face_gap` for those vertex handles
+through a wrapper around the caller's geometry. With the gap tolerance in place, all 75 cases reach
+`SmCrvGeometry::GlobalPointSolve` on the bisector's `SmCrvOnSurf`, whose `Curve::knots` stops at the known
+`UNPORTED(intersect.curve_class_p2): SmCurveClassification::ReSet` (`crates/solidcore/src/curve/crv_on_surf.rs:218`,
+no `Kernel` under `Curve::knots`): 75 FAIL -> 75 deferred. `query.face_p3`: 543 pass / 0 fail / 656 deferred.
+
 ### query.face_p1 `gen0160` (1 FAIL, previously deferred on `SmFace::GetTolerance`)
 
 Generated `Point3DClassify` on a 1e-3 x 3e-3 bilinear-in-u B-spline sliver whose u=0 edge collapses onto the z axis
@@ -10487,6 +10497,22 @@ Generated `Point3DClassify` on a 1e-3 x 3e-3 bilinear-in-u B-spline sliver whose
 solve's UV is bit-identical on both sides (probe), and the three face-tolerance reads (`is_on_boundary`,
 `local_point_solve_1`) all return 1e-5 as in C++; the divergence is inside `query::face::p2::point_classify`, which
 reads no surface face tolerance. Not localised further.
+
+Resolved (C++ probe, hunks in the worktree's `GEN0160-PROBES.diff`, reverted): after `Point3DClassify` the face
+surface has an `SmTrimSrfCache` with `m_bHaveTSurfaceCache` 1, `m_bFaceContainmentDone` 1, `m_bFaceWasModified` 0,
+`GetSurface()->GetFace() == this`; the one leaf node at the UV is `SM_NC_INSIDE`. The face's 4 vertices (tolerance
+1e-5) are 1.083e-3 from the surface point, inside the vertex test's `max(1e-5, 1e-5, GetTolerance()=src 0.01)`.
+C++ `PointClassify` at the same UV with the cache dropped returns VERTEX (104), as Rust. Cause: upstream
+`Point3DClassify` calls `smsurf_GetSurfaceCache(pSurface)` first (SmFace.cpp:12792), which builds the trimmed
+surface cache with its face containment; `PointClassify` then classifies through the inside leaf and returns FACE
+before the vertex test. The port skipped that call (its header claimed a fresh cache is never
+face-containment-complete, which is wrong for a face with loops: SmTrimSrfCache.cpp:330-347). Fix:
+`point_3d_classify` now builds it (`make_trim_srf_cache`, else `make_surface_cache`) and passes it to
+`point_classify`. The trimmed cache's face walk is unported (`Unported("SmFace handle of a surface's face",
+topology.face_p2)`), so every `Point3DClassify` case on a face-owned surface now defers there: the 288 point cases
+that passed with the skipped call (the cache path and the vertex/loop path agree outside such tolerance edges)
+plus `gen0160`. `query.face_p1`: 1580 pass / 0 fail / 644 deferred (main 862746f4: 1570 / 0 / 654). They become
+comparable with `surface.surface_cache_p1` `mark_face_containment` and the `TrimSrfCache` face walk.
 
 ## query.face_p4: review fixes (PR #129, 2026-10-20; harness bug, no port disagreement)
 
