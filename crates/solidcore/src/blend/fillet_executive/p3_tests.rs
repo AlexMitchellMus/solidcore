@@ -581,6 +581,29 @@ impl ExecutiveAccess<Handle> for Access {
     fn variable_radius_solver_mut(&mut self, _: Handle) -> Result<Option<&mut crate::blend::fillet_standard_solver::p1::VariableRadiusFs>> {
         absent()
     }
+    fn solver_edgeuse(&self, _: Handle, _: usize) -> Result<Option<Handle>> {
+        absent()
+    }
+    fn corner_setback_distance(&self, _: Handle) -> Result<f64> {
+        absent()
+    }
+    fn new_surface_generator(&mut self, _: &mut Kernel, _: FilletSurfaceGenerator) -> Result<Handle> {
+        absent()
+    }
+    fn new_constant_radius_solver(
+        &mut self,
+        _: &mut Kernel,
+        _: f64,
+        _: f64,
+        _: f64,
+        _: f64,
+        _: Handle,
+    ) -> Result<Handle> {
+        absent()
+    }
+    fn set_surface_generator(&mut self, _: Handle, _: Handle) -> Result<()> {
+        absent()
+    }
 }
 
 fn state() -> FilletExecutive<Handle> {

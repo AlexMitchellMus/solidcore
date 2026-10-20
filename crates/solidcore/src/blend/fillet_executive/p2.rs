@@ -23,13 +23,14 @@
 //!   generators, laws handed in by the caller and B-reps are handles `O` resolved by an
 //!   [`ExecutiveAccess`] adapter; the executive is p3's [`FilletExecutive`] state.
 //!   Constructors that allocate upstream objects (`new SmFilletSolver`,
-//!   `new SmFilletSurfaceGenerator`) are adapter calls taking a spec
-//!   ([`SolverSpec`], [`SurfaceGeneratorSpec`]) with every upstream argument.
+//!   `new SmFilletSurfaceGenerator`) are adapter calls taking every upstream
+//!   argument: a [`SolverSpec`], or the `blend.fillet_solver_p1`
+//!   `FilletSurfaceGenerator` record.
 //! - **Fillet laws** build on the `FilletLaw` co-ported by `blend.fillet_standard_solver_p1`
 //!   (PR #168), with the edge map, arc length and extended law curve of
 //!   `blend.fillet_executive_p1` (PR #260, commit 38c5677c, a declared dependency). An elliptical B-spline law whose interpolation fails keeps a null law
 //!   curve upstream (`SE` only logs), which every later use dereferences; the port
-//!   returns that interpolation error instead (UB-198 in `plan/upstream-issues.md`).
+//!   returns that interpolation error instead (UB-207 in `plan/upstream-issues.md`).
 //! - **RAII.** `SmTemporaryRadiusChange`'s destructor is
 //!   [`TemporaryRadiusChange::revert`]; [`with_temporary_radius_change`] runs it after
 //!   the body, also on errors. `SmTemporaryChangeValue` on the context's doing-Boolean
@@ -38,8 +39,8 @@
 //!   `SmFilletExecutive::NoteFilletError` belong to `blend.fillet_executive_p1`; their
 //!   `%p` message text cannot be reproduced and the messages carry the edge index only.
 //! - **Null input.** `SetFilletParameters` dereferences a null B-rep (with a non-empty
-//!   edge list) and a null variable-radius law list (for a variable-radius type);
-//!   `SurfaceSurfaceFillet` dereferences a null UV curve. The port returns
+//!   edge list) and a null variable-radius law list (for a variable-radius type)
+//!   (UB-206); `SurfaceSurfaceFillet` dereferences a null UV curve. The port returns
 //!   `SM_ERR_NULL_POINTER` there.
 //! - **Bounds.** `CollectTangentEdgeSequence` follows tangent solver chains through
 //!   the corners; a chain that cycles without returning to its first solver never
@@ -55,6 +56,7 @@
 use crate::blend::fillet_executive::p3::{
     ContextMark, ErrorInfo, ExecutionOptions, ExecutiveAccess, FilletExecutive,
 };
+use crate::blend::fillet_solver::p1::FilletSurfaceGenerator;
 use crate::blend::fillet_standard_solver::p1::{
     BoundaryTrimmingType, FilletLaw, FilletLawKind, FilletSolverType,
     FilletSurfaceGeneratorType,
@@ -137,7 +139,7 @@ impl FilletLaw {
     ///
     /// # Errors
     ///
-    /// Those of the interpolation (upstream keeps a law with a null curve; UB-198).
+    /// Those of the interpolation (upstream keeps a law with a null curve; UB-207).
     #[allow(clippy::too_many_arguments)] // upstream's constructor
     pub fn bspline_elliptical(
         start_radius: f64,
@@ -213,33 +215,6 @@ fn law_evaluate(
 }
 
 // ---- adapter specs -----------------------------------------------------------------------
-
-/// The fillet surface generator to allocate (`new SmLinearCrossSectionFSG`,
-/// `SmCircularCrossSectionFSG(bApproximateArcs, dTolPercentRadius, bMirror,
-/// bComplement)`, `SmBlendCurveCrossSectionFSG(dBlendScale, lContinuity)`).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum SurfaceGeneratorSpec {
-    /// `SmLinearCrossSectionFSG`.
-    Linear,
-    /// `SmCircularCrossSectionFSG`.
-    Circular {
-        /// `bApproximateArcs`.
-        approximate_arcs: bool,
-        /// `dTolPercentRadius`.
-        tol_percent_radius: f64,
-        /// `bMirror`.
-        mirror: bool,
-        /// `bComplement`.
-        complement: bool,
-    },
-    /// `SmBlendCurveCrossSectionFSG`.
-    BlendCurve {
-        /// `dBlendScale` (the thumbweight).
-        blend_scale: f64,
-        /// `lContinuity`.
-        continuity: u32,
-    },
-}
 
 /// The fillet solver to allocate, with every constructor argument and the setters
 /// `SurfaceSurfaceFillet` applies right after construction.
@@ -548,16 +523,16 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         let mut generator: Option<O> = None;
 
         let generator_spec = |kind: FilletSurfaceGeneratorType, circular_tol: f64| match kind {
-            FilletSurfaceGeneratorType::Linear => Some(SurfaceGeneratorSpec::Linear),
-            FilletSurfaceGeneratorType::Circular => Some(SurfaceGeneratorSpec::Circular {
+            FilletSurfaceGeneratorType::Linear => Some(FilletSurfaceGenerator::Linear),
+            FilletSurfaceGeneratorType::Circular => Some(FilletSurfaceGenerator::Circular {
                 approximate_arcs: true,
                 tol_percent_radius: circular_tol,
                 mirror: false,
                 complement: false,
             }),
-            FilletSurfaceGeneratorType::BlendCurve => Some(SurfaceGeneratorSpec::BlendCurve {
+            FilletSurfaceGeneratorType::BlendCurve => Some(FilletSurfaceGenerator::BlendCurve {
+                continuity: u64::from(params.continuity),
                 blend_scale: params.thumbweight,
-                continuity: params.continuity,
             }),
             FilletSurfaceGeneratorType::Unknown => None,
         };
@@ -1253,11 +1228,11 @@ where
     // 0: linear, 1: approximated circular, 2: exact (rational) circular. All of the
     // user options apply only to the circular one.
     let generator = if options.xsect_type == 0 {
-        access.new_surface_generator(k, SurfaceGeneratorSpec::Linear)?
+        access.new_surface_generator(k, FilletSurfaceGenerator::Linear)?
     } else {
         access.new_surface_generator(
             k,
-            SurfaceGeneratorSpec::Circular {
+            FilletSurfaceGenerator::Circular {
                 approximate_arcs: options.xsect_type == 1,
                 tol_percent_radius: options.xsect_accuracy,
                 mirror: options.mirror,

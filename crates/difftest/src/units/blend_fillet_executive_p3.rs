@@ -355,6 +355,29 @@ impl ExecutiveAccess<Handle> for Access {
     fn variable_radius_solver_mut(&mut self, _: Handle) -> SolidResult<Option<&mut solidcore::blend::fillet_standard_solver::p1::VariableRadiusFs>> {
         missing()
     }
+    fn solver_edgeuse(&self, _: Handle, _: usize) -> SolidResult<Option<Handle>> {
+        missing()
+    }
+    fn corner_setback_distance(&self, _: Handle) -> SolidResult<f64> {
+        missing()
+    }
+    fn new_surface_generator(&mut self, _: &mut Kernel, _: solidcore::blend::fillet_solver::p1::FilletSurfaceGenerator) -> SolidResult<Handle> {
+        missing()
+    }
+    fn new_constant_radius_solver(
+        &mut self,
+        _: &mut Kernel,
+        _: f64,
+        _: f64,
+        _: f64,
+        _: f64,
+        _: Handle,
+    ) -> SolidResult<Handle> {
+        missing()
+    }
+    fn set_surface_generator(&mut self, _: Handle, _: Handle) -> SolidResult<()> {
+        missing()
+    }
 }
 
 fn flag(value: bool) -> f64 {

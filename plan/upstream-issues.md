@@ -3116,3 +3116,30 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Guard:** The native fixture's derived executive explicitly writes
   `m_bIsInitialized` for every case before invoking an operation. Rust requires
   callers to supply an initialized `bool` in the executive state.
+
+#### UB-206. `SmFilletExecutive::SetFilletParameters` dereferences a null `pBrep` and a null `pOptVarRadLaws`
+- **Location:** `source/SMLib/src/SmFilletExecutive.cpp:917` (`pBrep->GetContext()`) and `:998` (`pOptVarRadLaws->GetSize()`), the edge-pointer overload at `:865`.
+- **What happens:** `pBrep` may be null (`:884` only skips the target assignment), but once the edge list is non-empty and the list sizes pass, `:917` reads its context. `pOptVarRadLaws` is optional (`NULL` default), yet the first variable-radius edge reads its size.
+- **Trigger:** a null B-rep with a non-empty edge list whose type and value lists have one entry or one per edge; or a variable-radius type with a null law list (with a valid cross-section type, so the edge loop is reached).
+- **How found:** read during porting (`blend.fillet_executive_p2`, PR #267).
+- **Confirmed:** no. The shim refuses exactly these inputs, following upstream's order of early returns.
+- **Severity:** crash/UB (null dereference).
+- **Rust port:** `SM_ERR_NULL_POINTER` at the same points; the difftest compares both as guard errors.
+
+#### UB-207. The elliptical `SmBSplineFilletLaw` constructor keeps a null law curve when the interpolation fails
+- **Location:** `source/SMLib/src/SmFilletExecutive.cpp:5594-5666` (`SmBSplineFilletLaw(crContext, dStartRadius, dEndRadius, dOuterRadius, dAngleSpan, ...)`): `SE(SmBSplineCurve::InterpolatePoints(...))` only logs, and `m_pLawCurve = pLawCurve` stores `NULL`.
+- **What happens:** every later use dereferences the law curve without a check: `Evaluate` (`:6025-6031`, `pLawCurve->GetNaturalInterval()`), `IsLinearLaw` (`SmFilletExecutive.h:886`) and `SmTemporaryRadiusChange::SetUp` (`:5097`); the destructor only asserts (`:5962`).
+- **Trigger:** samples the degree-2 chord-length interpolation rejects, e.g. coincident sample points from a zero angle span with equal radii.
+- **How found:** read during porting (`blend.fillet_executive_p2`, PR #267).
+- **Confirmed:** no.
+- **Severity:** crash/UB (null dereference on first use).
+- **Rust port:** `FilletLaw::bspline_elliptical` returns the interpolation error; the difftest compares a law without a curve (C++) and that error as an error on both sides.
+
+#### HANG-36. `SmFilletExecutive::CollectTangentEdgeSequence` never returns on a tangent chain that cycles without its first solver
+- **Location:** `source/SMLib/src/SmFilletExecutive.cpp:4633` (backward walk `while ( pPrevFS != NULL && pPrevFS != pFS )`) and `:4672` (forward walk `while ( pNextFS != NULL && pNextFS != pFS )`).
+- **What happens:** each walk stops only at a null tangent solver or back at the first solver `pFS`. A chain whose tangent links enter a loop that does not contain `pFS` (corners whose `GetTangentFilletSolver` pairs are not mutually consistent) walks the loop forever, appending to the sequence.
+- **Trigger:** three or more solvers where corner tangency links solver A to B, B to C and C back to B.
+- **How found:** read during porting (`blend.fillet_executive_p2`, PR #267).
+- **Confirmed:** no (needs inconsistent corner tangency, not reached by the box fixtures).
+- **Severity:** hang (unbounded memory growth).
+- **Rust port:** each walk is bounded by the solver count plus one step and returns `SolidError::InvalidInput` past it.

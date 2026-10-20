@@ -25,6 +25,7 @@
 //! stage hooks borrow this live executive, never an adapter-owned duplicate.
 
 use crate::blend::fillet_geom::p1::FilletCornerType;
+use crate::blend::fillet_solver::p1::FilletSurfaceGenerator;
 use crate::boolean::topology_intersector::p1::TopologyIntersector;
 use crate::error::{Result, SolidError};
 use crate::geom::object::NotifyOperation;
@@ -784,14 +785,9 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         solver: O,
     ) -> Result<Option<&mut crate::blend::fillet_standard_solver::p1::VariableRadiusFs>>;
 
-    /// `SmFilletSolver::GetEdgeuse(lIndex)`; waiting for `blend.fillet_solver_p1`.
-    fn solver_edgeuse(&self, _solver: O, _index: usize) -> Result<Option<O>> {
-        // UNPORTED(blend.fillet_solver_p1): SmFilletSolver::GetEdgeuse
-        Err(SolidError::unported(
-            "SmFilletSolver::GetEdgeuse",
-            "blend.fillet_solver_p1",
-        ))
-    }
+    /// `SmFilletSolver::GetEdgeuse(lIndex)`: delegate to the solver's
+    /// `FilletSolver::edgeuse` (`blend.fillet_solver_p1`).
+    fn solver_edgeuse(&self, solver: O, index: usize) -> Result<Option<O>>;
 
     /// `SmFilletSolver::GetFilletCorner(lIndex)`; waiting for `blend.fillet_solver_p2`.
     fn solver_corner(&self, _solver: O, _index: usize) -> Result<Option<O>> {
@@ -822,72 +818,77 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         ))
     }
 
-    /// `SmFilletCorner::GetSetBackDist`; waiting for `blend.fillet_corner_p1`.
-    fn corner_setback_distance(&self, _corner: O) -> Result<f64> {
-        // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::GetSetBackDist
-        Err(SolidError::unported(
-            "SmFilletCorner::GetSetBackDist",
-            "blend.fillet_corner_p1",
-        ))
-    }
+    /// `SmFilletCorner::GetSetBackDist()`: the inline read of `m_dSetBackDist`
+    /// (`FilletCorner::set_back_dist`).
+    fn corner_setback_distance(&self, corner: O) -> Result<f64>;
 
     /// `new SmLinearCrossSectionFSG` / `SmCircularCrossSectionFSG(bApproximateArcs,
     /// dTolPercentRadius, bMirror, bComplement)` / `SmBlendCurveCrossSectionFSG(
-    /// dBlendScale, lContinuity)` in the executive context; waiting for
-    /// `blend.fillet_solver_p1`.
-    fn new_surface_generator(
+    /// dBlendScale, lContinuity)` in the executive context: store `generator` (the
+    /// `blend.fillet_solver_p1` record) and return its handle.
+    fn new_surface_generator(&mut self, k: &mut Kernel, generator: FilletSurfaceGenerator)
+        -> Result<O>;
+
+    /// `new SmConstantRadiusFS(ctx, dApproxTol, dAngTolRad, dTanTolRad, dRadius, pEU)`:
+    /// delegate to `fillet_standard_solver::p1::constant_radius_from_edgeuse` on the
+    /// B-rep of `edgeuse` (no second radius) and return the new solver's handle.
+    fn new_constant_radius_solver(
         &mut self,
-        _k: &mut Kernel,
-        _spec: super::p2::SurfaceGeneratorSpec,
-    ) -> Result<O> {
-        // UNPORTED(blend.fillet_solver_p1): SmLinearCrossSectionFSG::SmLinearCrossSectionFSG / SmCircularCrossSectionFSG::SmCircularCrossSectionFSG / SmBlendCurveCrossSectionFSG::SmBlendCurveCrossSectionFSG
-        Err(SolidError::unported(
-            "SmFilletSurfaceGenerator constructors",
-            "blend.fillet_solver_p1",
-        ))
-    }
+        k: &mut Kernel,
+        approx_tol: f64,
+        ang_tol_rad: f64,
+        tan_tol_rad: f64,
+        radius: f64,
+        edgeuse: O,
+    ) -> Result<O>;
 
     /// The fillet solver constructors `SetFilletParameters` and `SurfaceSurfaceFillet`
-    /// call, dispatched on the spec: `SmConstantRadiusFS` (unit
-    /// `blend.fillet_standard_solver_p1`), `SmConstantDistanceFS`, `SmVariableRadiusFS`
-    /// and `SmSurfaceSurfaceFS` (unit `blend.fillet_standard_solver_p2`). Adapters must
-    /// return the owning unit's `Unported` while it is missing.
-    // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusFS::SmConstantRadiusFS
-    // UNPORTED(blend.fillet_standard_solver_p2): SmConstantDistanceFS::SmConstantDistanceFS / SmVariableRadiusFS::SmVariableRadiusFS / SmSurfaceSurfaceFS::SmSurfaceSurfaceFS
+    /// call, dispatched on the spec: `SmConstantRadiusFS` through
+    /// [`ExecutiveAccess::new_constant_radius_solver`]; `SmConstantDistanceFS`,
+    /// `SmVariableRadiusFS` and `SmSurfaceSurfaceFS` wait for
+    /// `blend.fillet_standard_solver_p2`.
     fn new_fillet_solver(
         &mut self,
-        _k: &mut Kernel,
+        k: &mut Kernel,
         spec: &super::p2::SolverSpec<'_, O>,
     ) -> Result<O> {
-        Err(match spec {
-            super::p2::SolverSpec::ConstantRadius { .. } => SolidError::unported(
-                "SmConstantRadiusFS::SmConstantRadiusFS",
-                "blend.fillet_standard_solver_p1",
+        match *spec {
+            super::p2::SolverSpec::ConstantRadius {
+                approx_tol,
+                ang_tol_rad,
+                tan_tol_rad,
+                radius,
+                edgeuse,
+            } => self.new_constant_radius_solver(
+                k,
+                approx_tol,
+                ang_tol_rad,
+                tan_tol_rad,
+                radius,
+                edgeuse,
             ),
-            super::p2::SolverSpec::ConstantDistance { .. } => SolidError::unported(
+            // UNPORTED(blend.fillet_standard_solver_p2): SmConstantDistanceFS::SmConstantDistanceFS
+            super::p2::SolverSpec::ConstantDistance { .. } => Err(SolidError::unported(
                 "SmConstantDistanceFS::SmConstantDistanceFS",
                 "blend.fillet_standard_solver_p2",
-            ),
-            super::p2::SolverSpec::VariableRadius { .. } => SolidError::unported(
+            )),
+            // UNPORTED(blend.fillet_standard_solver_p2): SmVariableRadiusFS::SmVariableRadiusFS
+            super::p2::SolverSpec::VariableRadius { .. } => Err(SolidError::unported(
                 "SmVariableRadiusFS::SmVariableRadiusFS",
                 "blend.fillet_standard_solver_p2",
-            ),
-            super::p2::SolverSpec::SurfaceSurface { .. } => SolidError::unported(
+            )),
+            // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::SmSurfaceSurfaceFS
+            super::p2::SolverSpec::SurfaceSurface { .. } => Err(SolidError::unported(
                 "SmSurfaceSurfaceFS::SmSurfaceSurfaceFS",
                 "blend.fillet_standard_solver_p2",
-            ),
-        })
+            )),
+        }
     }
 
-    /// `SmFilletSolver::SetFilletSurfaceGenerator(pFSG)`; waiting for
-    /// `blend.fillet_solver_p1`.
-    fn set_surface_generator(&mut self, _solver: O, _generator: O) -> Result<()> {
-        // UNPORTED(blend.fillet_solver_p1): SmFilletSolver::SetFilletSurfaceGenerator
-        Err(SolidError::unported(
-            "SmFilletSolver::SetFilletSurfaceGenerator",
-            "blend.fillet_solver_p1",
-        ))
-    }
+    /// `SmFilletSolver::SetFilletSurfaceGenerator(pFSG)`: delegate to
+    /// `FilletSolver::set_fillet_surface_generator` (`blend.fillet_solver_p1`) with
+    /// the generator's record.
+    fn set_surface_generator(&mut self, solver: O, generator: O) -> Result<()>;
 }
 
 /// A mark lock's context identity and mark type; the adapter keeps its real
