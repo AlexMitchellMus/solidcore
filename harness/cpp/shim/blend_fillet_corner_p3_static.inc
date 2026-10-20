@@ -215,8 +215,8 @@ double p3_check_patch(int64_t kind, SmFilletCorner* c, Model& M)
         // face's surface; the mate of the primary edge use is dereferenced after it. Run the
         // DropCurve here (a pure function of the surface and the joined copy; the model's
         // faces are unit bilinear patches, so UB-182 / HANG-38 do not arise): when it (or the
-        // one-curve check) fails, upstream returns before the unported MakeFaceBrep, so the
-        // real op runs and the failure is compared; else the op reaches MakeFaceBrep.
+        // one-curve check) fails, upstream returns having deleted the Model's objects (refused,
+        // like a missing original face above); else the op reaches the unported MakeFaceBrep.
         SmSurface* srf = onExt->GetOriginalFace()->GetSurface();
         if (srf == NULL)
         {
@@ -232,7 +232,7 @@ double p3_check_patch(int64_t kind, SmFilletCorner* c, Model& M)
             delete uv[i];
         delete k1;
         if (ds != SM_SUCCESS || !one)
-            return 0.0;
+            return P3C_REFUSE; // pFEOnEdge and pCornerV are already deleted: the Model's export would walk freed objects
         SmEdgeuse* primary = onExt->GetPrimaryEdgeuse();
         if (primary == NULL || primary->GetMate() == NULL)
             return P3C_REFUSE;
