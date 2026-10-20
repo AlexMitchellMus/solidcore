@@ -394,6 +394,42 @@ impl Context {
         Ok(n)
     }
 
+    /// Borrow notification callbacks alongside the live kernel without moving
+    /// the kernel's traversal marks or tolerances. Notification APIs use mutable
+    /// Context while geometry APIs borrow Kernel; both refer to one upstream
+    /// context. The callbacks travel with their identity domain
+    /// ([`Context::lend_notify`]), and are restored on every returned error as well.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput`, before anything moves, when they are already lent (a nested
+    /// lend would notify nobody, in another domain).
+    pub(crate) fn with_notification_context<T>(
+        k: &mut Kernel,
+        action: impl FnOnce(&mut Kernel, &mut Context) -> T,
+    ) -> Result<T> {
+        let mut notifications = k.context.metadata_copy();
+        notifications.restore_notify_lease(k.context.lend_notify()?);
+        let result = action(k, &mut notifications);
+        k.context.restore_notify_lease(notifications.take_notify_lease());
+        Ok(result)
+    }
+
+    /// An immutable metadata snapshot, without copying callback ownership.
+    pub(crate) fn metadata_copy(&self) -> Self {
+        Self {
+            current_marks: self.current_marks,
+            mark_locks: self.mark_locks,
+            doing_boolean: self.doing_boolean,
+            model_size_estimate: self.model_size_estimate,
+            large_small_size_ratio: self.large_small_size_ratio,
+            zone_tol_3d: self.zone_tol_3d,
+            user_notify_callback: None,
+            sys_notify_callback: None,
+            identities: IdentityDomain::new(),
+        }
+    }
+
     /// Creates a context (`SmContext::SmContext(double, double)`): every mark at 1 and
     /// unlocked, not in a Boolean, no callbacks; the zone tolerance follows from the
     /// model size estimate as in [`Context::set_this_model_size_estimate`]. Pass

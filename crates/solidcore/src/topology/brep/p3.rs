@@ -487,21 +487,6 @@ fn destroy_face(b: &mut Brep, env: &mut NotifyEnv<'_>, f: FaceId) -> Result<()> 
 
 // ---- construction -----------------------------------------------------------------------------
 
-/// The constructor's infinite region (`SmBrep()`): a void region, made `b`'s
-/// infinite region and put into its region list. Returns the region.
-///
-/// # Errors
-///
-/// Those of the B-rep's region list (a corrupt list).
-pub(crate) fn add_infinite_region(b: &mut Brep) -> Result<RegionId> {
-    // Create infinite region and put into brep's region list
-    let r = b.add_region_record(Region::default())?;
-    b.set_infinite_region(Some(r));
-    region_set_is_void(b, r, TRUE)?;
-    b.pre_insert_region(r)?;
-    Ok(r)
-}
-
 /// `SmBrep(dThisModelSizeEstimate, dThisLargeSmallSizeRatio, pOptContextForStack)`: a
 /// new B-rep with the given size estimate and large/small ratio (upstream defaults
 /// [`tol::USE_DEFAULT`]), the context's zone tolerance, editing disabled, and an
@@ -524,7 +509,11 @@ pub fn new_brep(
     b.set_this_large_small_size_ratio(k, large_small_size_ratio);
     b.tolerance = tol::context_zone_tol_3d(k, Some(&k.context), SmallTopoType::NormalSize);
 
-    add_infinite_region(&mut b)?;
+    // Create infinite region and put into brep's region list
+    let r = b.add_region_record(Region::default())?;
+    b.set_infinite_region(Some(r));
+    region_set_is_void(&mut b, r, TRUE)?;
+    b.pre_insert_region(r)?;
 
     // report construction at SmObject::Notify level - skip other levels
     let this = p2::brep_ref(&b);
