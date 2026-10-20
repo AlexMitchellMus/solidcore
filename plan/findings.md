@@ -10078,14 +10078,24 @@ targets are `FilletBrep::copy_fillet_geom`, `create_end_curve`, `trim_rail_curve
   (`NER(m_cpCorner)` cpp:2491, `NER(pOptCorner)` cpp:7638), because the shim refuses a
   real corner: the bodies of `calc_fillet_int_fillet` and `calc_edge_on_extended_edge` are
   compared by no case until `blend.fillet_corner_p1` lands. The builders
-  (`MakeFilletEdge`, `MakeRailEdge`, `CreateEndCurve`) compare the status and the edge
-  count only, and all of them past their early exits defer at `topology.brep_p3` (the
-  infinite region of `SmBrep()`); when it lands, extend the shim and runner to dump the new
-  edge's records (type, both uses' orientations and list order, vertex uses' vertices;
-  for `EndCurve` the 3D curve, interval, primary UV curve and `side_eus`; for
-  `RailEdge` the geometry's rail and vertices). `MakeRailEdgeuse` and `copy_fillet_geom`
-  have no shim op (no unit test of their own beyond the arithmetic ones): add a
-  `RailEdgeuse` op then.
+  (`MakeFilletEdge`, `MakeRailEdge`, `MakeRailEdgeuse`, `CreateEndCurve`) compare the
+  status and the edge count today, and all of them past their early exits defer at
+  `topology.brep_p3` (the infinite region of `SmBrep()`). After a success both sides now
+  also append `blend.fillet_geom_p1`'s whole pseudo-B-rep export (the new edge's type,
+  both uses' orientations and list order, each vertex use's vertex, for `EndCurve` the 3D
+  curve, interval, primary UV curve and the geometry's side uses, for `RailEdge` the
+  geometry's rail and vertices): its Rust side is written but unreachable until
+  `topology.brep_p3` lands, so it has never run against the C++ record; the porter of
+  `topology.brep_p3` should expect to debug it. One known difference to account for
+  then: a rail made by `MakeRailEdgeuse` has no vertex uses at the far end, while the
+  Rust arena record `Edge.vertices` names the fillet vertex at both ends (the export reads
+  that field; every topology accessor derives the vertices from the uses). The
+  `RailEdgeuse` op compares its two checks before the allocations (`NER(pFilletSolver)`,
+  `NER(pFilletVertex)`); the base solvers of the harness carry no edge uses, so past them
+  upstream ends in `NER(pBaseEU)` and the Rust side defers at the edge-use constructor.
+  `copy_fillet_geom` has no shim op: its first dereference is
+  `SmFilletExecutive::GetPseudoBrep` (`blend.fillet_executive_p1`), which the harness
+  cannot build.
 - **Unreachable**: the `SM_OT_OPPOSITE` primary-use `SER(SM_ERR)` in `TrimRailCurves`
   (cpp:10625-10628): the model builds every primary edge use `SM_OT_SAME` (`EuIn` has no
   orientation).
