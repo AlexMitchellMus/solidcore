@@ -38,10 +38,10 @@
 //!   [`FilletCorner::create`] can build every kind. `m_eStatus` (never initialised
 //!   upstream) starts as [`FilStatus::Unprocessed`]; `SmFilletNx2Corner`'s `m_bG1Case`
 //!   (set by its `MakeCornerTopology`) starts as `false`.
-//! - **Unported callees.** `CreateEndPatch`, `MakeFaceBrep` and `CalcCornerVertGeom`
-//!   (unit `blend.fillet_corner_p1`; `sm_TestG1Continuity` and
-//!   `SmFilletNx1Corner::CheckNx1Degeneracy` are wired to
-//!   [`crate::blend::fillet_corner::p1`]), `sm_FindConcaveEdgeuses`, `MakeAnalyticCornerSurface`,
+//! - **Unported callees.** `MakeFaceBrep` (unit `blend.fillet_corner_p1`;
+//!   `sm_TestG1Continuity`, `SmFilletNx1Corner::CheckNx1Degeneracy`, `CreateEndPatch`
+//!   and `CalcCornerVertGeom` are [`crate::blend::fillet_corner::p1`]'s),
+//!   `sm_FindConcaveEdgeuses`, `MakeAnalyticCornerSurface`,
 //!   `AdjustConcaveCornerTopology` and the `SmFilletConvexNxNCorner` /
 //!   `SmFilletNx1ClosedCorner` overrides (`blend.fillet_corner_p2`),
 //!   `TestAndConvertBigRadFillet` and `NoteFilletError` (`blend.fillet_executive_p1`),
@@ -182,6 +182,11 @@ pub struct FilletExecutiveData {
     /// original B-rep (`SmFilletCorner::AddExtendedOriginalSurface` /
     /// `GetExtendedSurface`, unit `blend.fillet_corner_p1`).
     pub extended_surfaces_map: BTreeMap<FaceId, Surface>,
+    /// `m_bDoGlobalMerge` (read by `SmFilletCorner::CalcCornerEdgeGeom`).
+    pub do_global_merge: bool,
+    /// `m_vTopoEdges`: the fillet edges recorded for the topology insertion, in order
+    /// (`None` keeps a null entry).
+    pub topo_edges: Vec<Option<EdgeId>>,
 }
 
 impl FilletExecutiveData {
@@ -190,6 +195,14 @@ impl FilletExecutiveData {
     #[must_use]
     pub fn fillet_solver_of_edgeuse(&self, eu: EdgeuseId) -> Option<FilletSolverId> {
         self.edgeuse_solver_map.get(&eu).copied()
+    }
+
+    /// `SmFilletExecutive::RemoveFromTopoEdges` (CO-PORTED from
+    /// `blend.fillet_executive_p1`): drops the first entry equal to `e`, if any.
+    pub fn remove_from_topo_edges(&mut self, e: EdgeId) {
+        if let Some(i) = self.topo_edges.iter().position(|&x| x == Some(e)) {
+            self.topo_edges.remove(i);
+        }
     }
 }
 
@@ -209,8 +222,9 @@ pub struct FilletCorner {
     pub vertices: Vec<VertexId>,
     /// `m_vEdges`: the fillet edges around the corner (pseudo B-rep).
     pub edges: Vec<EdgeId>,
-    /// `m_vSurfaces`: the surfaces built for the corner.
-    pub surfaces: Vec<BSplineSurface>,
+    /// `m_vSurfaces`: the surfaces built for the corner (`SM_FILLETSURF_TYPE` is
+    /// `SmSurface`: an end patch copied with `CopyAndAddAnalytics` can be analytic).
+    pub surfaces: Vec<Surface>,
     /// `m_bBevel`.
     pub bevel: bool,
     /// `m_bBlending`.
@@ -246,6 +260,8 @@ pub struct CornerEnv<'a> {
     pub target: &'a mut Brep,
     /// `m_pPseudoBrep`.
     pub pseudo: &'a mut FilletBrep,
+    /// `m_pExecutive`'s members the corner methods read and write.
+    pub exec: &'a mut FilletExecutiveData,
     /// The corner's identity (`this`, as new fillet vertices and edges store it).
     pub corner: Option<FilletCornerId>,
     /// `m_apUserPointer[0..2]` of the intersection point of each fillet vertex use (see
@@ -858,7 +874,7 @@ impl FilletCorner {
             )?;
 
             // store New FilletSurface in m_vSurfaces
-            self.surfaces.extend(blends);
+            self.surfaces.extend(blends.into_iter().map(Surface::from));
         }
 
         // Create Face (and Edges and Verts) in m_pFilletBrep from m_vSurfaces with call m_pFilletBrep->MakeFaceWithCurves()
@@ -1040,7 +1056,7 @@ impl FilletCorner {
         let mut first_three_edges: Vec<EdgeId> = Vec::new();
         let mut last_three_edges: Vec<EdgeId> = Vec::new();
         let mut last_two_verts: Vec<VertexId> = Vec::new();
-        let mut end_patch: Option<BSplineSurface> = None;
+        let mut end_patch: Option<Surface> = None;
         if total_edges > 3 {
             first_three_edges.extend(self.edges.iter().take(3).copied());
             last_three_edges.extend(self.edges.iter().skip(3).copied());
@@ -1667,26 +1683,6 @@ impl FilletCorner {
             "blend.fillet_corner_p2",
         ))
     }
-
-    /// `SmFilletCorner::CreateEndPatch` (unit `blend.fillet_corner_p1`).
-    #[allow(clippy::unused_self)]
-    fn create_end_patch(&self, _env: &CornerEnv<'_>) -> Result<()> {
-        // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::CreateEndPatch
-        Err(unported(
-            "SmFilletCorner::CreateEndPatch",
-            "blend.fillet_corner_p1",
-        ))
-    }
-
-    /// `SmFilletCorner::MakeFaceBrep` (unit `blend.fillet_corner_p1`).
-    #[allow(clippy::unused_self)]
-    fn make_face_brep(&self, _env: &CornerEnv<'_>) -> Result<()> {
-        // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::MakeFaceBrep
-        Err(unported(
-            "SmFilletCorner::MakeFaceBrep",
-            "blend.fillet_corner_p1",
-        ))
-    }
 }
 
 /// An evaluation whose status upstream ignores (`EvaluatePoint` without `SER`): a
@@ -1757,14 +1753,16 @@ fn test_g1_continuity(
 
 /// `SmFilletNx1Corner::CheckNx1Degeneracy` as `Create` tests it
 /// (`if (CheckNx1Degeneracy(...))`): the routine returns an `SmBoolean`, and on an
-/// evaluation failure its `SER` returns the status through it, which is nonzero, so such
-/// a failure selects the degenerate corner. An unported callee and a null dereference
-/// stay errors.
+/// evaluation failure its `SER` returns the status through it, which is nonzero, so any
+/// failure selects the degenerate corner, whichever Rust error variant carries the
+/// native status (an `Upstream` code, or the `InvalidInput` an evaluator reports for a
+/// degenerate input, as `SmOffsetCurve::Evaluate`'s zero binormal). Only an unported
+/// callee stays an error (the case is deferred).
 fn check_nx1_degeneracy(k: &Kernel, b: &mut Brep, vertex: VertexId, eu: EdgeuseId) -> Result<bool> {
     match p1::check_nx1_degeneracy(k, b, vertex, eu) {
         Ok(flag) => Ok(flag),
-        Err(SolidError::Upstream { .. }) => Ok(true),
-        Err(e) => Err(e),
+        Err(e @ SolidError::Unported { .. }) => Err(e),
+        Err(_) => Ok(true),
     }
 }
 
@@ -1860,16 +1858,110 @@ mod tests {
         assert!(check_nx1_degeneracy(&k, &mut b, v, fil).unwrap());
     }
 
+    /// The same vertex with side loop edge uses whose edge carries an `SmOffsetCurve`
+    /// with a zero binormal (base line along `z`, offset-plane normal `z`): upstream's
+    /// `SmOffsetCurve::Evaluate` returns `SM_ERR_INVALID_INPUT` from `SER(sUBin.Unitize())`
+    /// before the binormal evaluation reads the face, `CheckNx1Degeneracy` forwards it and
+    /// `Create` reads the nonzero value as true. The Rust evaluator reports the same
+    /// failure as `InvalidInput`, which the wrapper must read as true too.
+    #[test]
+    fn nx1_degeneracy_evaluator_status_selects_the_degenerate_corner() {
+        use crate::curve::line::Line;
+        use crate::curve::offset_curve::OffsetCurve;
+        use crate::geom::extent1d::Extent1d;
+        use crate::topology::{Edgeuse, EdgeuseOwner, Vertexuse, VertexuseOwner};
+
+        let k = Kernel::default();
+        let mut b = Brep::new();
+        let v = b.add_vertex(Point3::new(0.0, 0.0, 0.0)).unwrap();
+        let w = b.add_vertex(Point3::new(0.0, 0.0, 1.0)).unwrap();
+        let e_fil = b.add_edge(v, w).unwrap();
+        let e_side = b.add_edge(v, w).unwrap();
+        let ivl = Extent1d::from_min_max(0.0, 1.0);
+        for e in [e_fil, e_side] {
+            b.edge_mut(e).unwrap().interval = ivl;
+        }
+        let line = Line::from_points(Point3::new(0.0, 0.0, 0.0), Point3::new(0.0, 0.0, 1.0), 3);
+        let offset = OffsetCurve::new(
+            3,
+            Curve::from(line),
+            ivl,
+            Vec3::new(0.0, 0.0, 1.0),
+            1.0,
+            false,
+        );
+        b.edge_mut(e_side).unwrap().curve = Some(Curve::from(offset));
+        let add_eu = |b: &mut Brep,
+                      e: EdgeId,
+                      orientation: OrientType,
+                      at: VertexId,
+                      owner: EdgeuseOwner| {
+            let eu = b
+                .add_edgeuse_record(Edgeuse {
+                    edge: Some(e),
+                    owner,
+                    orientation,
+                    ..Edgeuse::default()
+                })
+                .unwrap();
+            let vu = b
+                .add_vertexuse_record(Vertexuse {
+                    vertex: Some(at),
+                    owner: VertexuseOwner::Edgeuse(Some(eu)),
+                    ..Vertexuse::default()
+                })
+                .unwrap();
+            b.edgeuse_mut(eu).unwrap().vertexuse = Some(vu);
+            b.edge_mut(e).unwrap().edgeuses.push(eu);
+            b.vertex_mut(at).unwrap().vertexuses.push(vu);
+            eu
+        };
+        let fil = add_eu(&mut b, e_fil, OrientType::Same, v, EdgeuseOwner::Unknown);
+        let fil_radial = add_eu(
+            &mut b,
+            e_fil,
+            OrientType::Opposite,
+            w,
+            EdgeuseOwner::Unknown,
+        );
+        // the side edge uses bound a loop: the evaluation reaches the curve
+        let side1 = add_eu(
+            &mut b,
+            e_side,
+            OrientType::Same,
+            v,
+            EdgeuseOwner::Loopuse(None),
+        );
+        let _side1_mate = add_eu(
+            &mut b,
+            e_side,
+            OrientType::Opposite,
+            w,
+            EdgeuseOwner::Loopuse(None),
+        );
+        b.edgeuse_mut(fil).unwrap().cw = Some(side1);
+        b.edgeuse_mut(fil_radial).unwrap().ccw = Some(side1);
+
+        let raw = p1::check_nx1_degeneracy(&k, &mut b, v, fil);
+        assert!(
+            matches!(raw, Err(SolidError::InvalidInput { .. })),
+            "{raw:?}"
+        );
+        assert!(check_nx1_degeneracy(&k, &mut b, v, fil).unwrap());
+    }
+
     #[test]
     fn calc_corner_geom_early_outs() {
         let k = Kernel::default();
         let mut target = Brep::new();
         let mut pseudo = FilletBrep::new();
         let surfaces = BTreeMap::new();
+        let mut exec = FilletExecutiveData::default();
         let mut env = CornerEnv {
             k: &k,
             target: &mut target,
             pseudo: &mut pseudo,
+            exec: &mut exec,
             corner: None,
             tsect_surfaces: &surfaces,
         };

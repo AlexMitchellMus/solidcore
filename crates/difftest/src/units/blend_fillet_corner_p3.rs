@@ -22,9 +22,11 @@
 //!   corner's members and the model's whole export.
 //!
 //! Deferred on the Rust side (unported callees, `Output::deferred`): `Create` reaching
-//! `sm_TestG1Continuity` / `CheckNx1Degeneracy` (`blend.fillet_corner_p1`) or
-//! `sm_FindConcaveEdgeuses` (`blend.fillet_corner_p2`); every patch builder past its state
-//! checks (`MakeAnalyticCornerSurface`, `CreateEndPatch`, `SmSurface::DropCurve`); the
+//! `sm_FindConcaveEdgeuses` (`blend.fillet_corner_p2`; `sm_TestG1Continuity` and
+//! `CheckNx1Degeneracy` are `blend.fillet_corner_p1`'s and run, the geometry they
+//! evaluate pre-deferred like the convexity test's); the patch builders past their state
+//! checks (`MakeAnalyticCornerSurface`, `MakeFaceBrep` behind `CreateEndPatch`,
+//! `SmSurface::DropCurve`); the
 //! Nx2 adjustments where they change the topology (`MakeFilletEdge`,
 //! `GetRailIndexOfVertexuse`), the big-radius test of blending corners and the `NxN` /
 //! closed Nx1 overrides. The shim does not call upstream on those paths (`-3`; a Rust
@@ -790,10 +792,12 @@ fn corner_rust(op: CornerOp, model: &Model, ci: &CornerIn) -> Result<Output, Har
             Some(solidcore::curve::curve::Curve::from(circle));
     }
     let r = {
+        let mut exec = FilletExecutiveData::default();
         let mut env = CornerEnv {
             k: &rm.k,
             target: &mut rm.target,
             pseudo: &mut rm.fb,
+            exec: &mut exec,
             corner: None,
             tsect_surfaces: &surfaces,
         };

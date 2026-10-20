@@ -1,5 +1,6 @@
 //! Runner for unit `blend.fillet_corner_p1`: the file-static helpers of
-//! `SmFilletCorner.cpp` (the corner methods wait for the `FilletCorner` record of #256).
+//! `SmFilletCorner.cpp` and the `SmFilletCorner` methods the unit owns, on main's
+//! `FilletCorner` record (`blend::fillet_corner::p3`).
 //!
 //! C++: `solidcore_ffi::units::blend_fillet_corner_p1` (the shim compiles
 //! `source/SMLib/src/SmFilletCorner.cpp`). Rust: `solidcore::blend::fillet_corner::p1`.
@@ -29,11 +30,15 @@
 //! part (analytic surfaces and curves) is deferred as `topology.edgeuse_p2`'s runner
 //! defers it.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use solidcore::blend::fillet_corner::p1 as corner;
-use solidcore::blend::fillet_corner::p3::{FilletCorner, FilletCornerKind, FilletExecutiveData};
+use solidcore::blend::fillet_corner::p3::{
+    CornerEnv, FilletCorner, FilletCornerKind, FilletExecutiveData,
+};
 use solidcore::blend::fillet_geom::p1::{FilStatus, FilletEdgeType, FilletSolverId};
 use solidcore::curve::curve::Curve;
 use solidcore::geom::extent2d::Extent2d;
@@ -185,6 +190,9 @@ enum Inputs {
         /// `rail_rail`: the curve to test.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         curve: Option<Crv>,
+        /// `fix_degeneracy`: the executive's topology edges (model edges).
+        #[serde(default)]
+        topo: Vec<usize>,
     },
 }
 
@@ -204,6 +212,14 @@ enum CornerMethod {
     Squeeze,
     /// `SmFilletConcaveNxNCorner::TestRailRailInterpolationCurve`.
     RailRail,
+    /// `CalcCornerVertGeom`.
+    VertGeom,
+    /// `CalcCornerEdgeGeom`.
+    EdgeGeom,
+    /// `CheckAndFixDegeneracy`.
+    FixDegeneracy,
+    /// `CreateEndPatch`.
+    EndPatch,
 }
 
 impl CornerMethod {
@@ -215,6 +231,10 @@ impl CornerMethod {
             Self::Reinit => FfiCornerOp::Reinit,
             Self::Squeeze => FfiCornerOp::Squeeze,
             Self::RailRail => FfiCornerOp::RailRail,
+            Self::VertGeom => FfiCornerOp::VertGeom,
+            Self::EdgeGeom => FfiCornerOp::EdgeGeom,
+            Self::FixDegeneracy => FfiCornerOp::FixDegeneracy,
+            Self::EndPatch => FfiCornerOp::EndPatch,
         }
     }
 }
@@ -257,6 +277,9 @@ struct CornerIn {
     setback: f64,
     tol: f64,
     tan: f64,
+    /// `SetOriginalFace` of pseudo edges: `[edge, target face]`.
+    #[serde(default)]
+    orig_faces: Vec<[usize; 2]>,
 }
 
 fn yes() -> bool {
@@ -1265,7 +1288,13 @@ fn gen_topology(rng: &mut Rng) -> Inputs {
     };
     match rng.below(5) {
         4 => Inputs::Nx1 {
-            brep: gen_topo_brep(rng),
+            // a single-face B-rep now and then: both side edge uses lie on that face,
+            // so their face use normals are parallel and the corner is degenerate
+            brep: if rng.chance(0.3) {
+                gen_brep(rng)
+            } else {
+                gen_topo_brep(rng)
+            },
             v: rng.below(1 << 20) as i64,
             eu: rng.below(1 << 20) as i64,
         },
@@ -1358,6 +1387,7 @@ struct CornerCase<'a> {
     queries: &'a [usize],
     squeeze: usize,
     curve: Option<&'a Crv>,
+    topo: &'a [usize],
 }
 
 fn corner_case(i: &Inputs) -> Result<CornerCase<'_>, HarnessError> {
@@ -1372,6 +1402,7 @@ fn corner_case(i: &Inputs) -> Result<CornerCase<'_>, HarnessError> {
         queries,
         squeeze,
         curve,
+        topo,
     } = i
     else {
         return Err(harness("not a corner case"));
@@ -1387,6 +1418,7 @@ fn corner_case(i: &Inputs) -> Result<CornerCase<'_>, HarnessError> {
         queries,
         squeeze: *squeeze,
         curve: curve.as_ref(),
+        topo,
     })
 }
 
@@ -1410,6 +1442,10 @@ fn corner_input(c: &CornerCase<'_>) -> Result<Vec<f64>, HarnessError> {
         flag(ci.adjusted),
     ]);
     o.extend([ci.setback, ci.tol, ci.tan]);
+    o.push(ci.orig_faces.len() as f64);
+    for [e, f] in &ci.orig_faces {
+        o.extend([*e as f64, *f as f64]);
+    }
     match c.method {
         CornerMethod::Peek => {
             let p = c.peek;
@@ -1440,14 +1476,75 @@ fn corner_input(c: &CornerCase<'_>) -> Result<Vec<f64>, HarnessError> {
             o.push(c.queries.len() as f64);
             o.extend(c.queries.iter().map(|&f| f as f64));
         }
-        CornerMethod::Reinit => {}
+        CornerMethod::Reinit
+        | CornerMethod::VertGeom
+        | CornerMethod::EdgeGeom
+        | CornerMethod::EndPatch => {}
         CornerMethod::Squeeze => o.push(c.squeeze as f64),
         CornerMethod::RailRail => {
             let crv = c.curve.ok_or_else(|| harness("rail_rail: no curve"))?;
             super::blend_fillet_geom_p1::push_crv(&mut o, crv);
         }
+        CornerMethod::FixDegeneracy => {
+            o.push(c.topo.len() as f64);
+            o.extend(c.topo.iter().map(|&e| e as f64));
+        }
     }
     Ok(o)
+}
+
+/// Splits a degeneracy record: `ret`, the remaining topology edges, the corner members,
+/// the model export.
+fn degeneracy_output(rec: &[f64]) -> Result<Output, HarnessError> {
+    let get = |i: usize| {
+        rec.get(i)
+            .copied()
+            .ok_or_else(|| harness("record too short"))
+    };
+    let count = |i: usize| -> Result<usize, HarnessError> {
+        usize::try_from(get(i)? as i64).map_err(|_| harness("count"))
+    };
+    let ret = get(0)?;
+    let nt = count(1)?;
+    let topo = rec
+        .get(2..2 + nt)
+        .ok_or_else(|| harness("record too short"))?
+        .to_vec();
+    let rest = rec
+        .get(2 + nt..)
+        .ok_or_else(|| harness("record too short"))?;
+    Ok(squeeze_output_rest(rest)?
+        .values("ret", vec![ret])
+        .values("topo", topo))
+}
+
+/// The corner members and the model export of a record (after its leading values).
+fn squeeze_output_rest(rec: &[f64]) -> Result<Output, HarnessError> {
+    let get = |i: usize| {
+        rec.get(i)
+            .copied()
+            .ok_or_else(|| harness("record too short"))
+    };
+    let count = |i: usize| -> Result<usize, HarnessError> {
+        usize::try_from(get(i)? as i64).map_err(|_| harness("count"))
+    };
+    let mut at = 0;
+    let nv = count(at)?;
+    at += 1 + nv;
+    let ne = count(at)?;
+    at += 1 + ne;
+    at += 7 + 2; // the flags, the setback and the surface count
+    let corner = rec
+        .get(..at)
+        .ok_or_else(|| harness("record too short"))?
+        .to_vec();
+    let model = rec
+        .get(at..)
+        .ok_or_else(|| harness("record too short"))?
+        .to_vec();
+    Ok(Output::new()
+        .values("corner", corner)
+        .values("model", model))
 }
 
 /// Splits a squeeze record: `status`, the corner members, the model export.
@@ -1502,8 +1599,12 @@ fn corner_cpp(i: &Inputs) -> Result<Output, HarnessError> {
         CornerMethod::Solvers => Output::new().values("solvers", rest.to_vec()),
         CornerMethod::ExtSurface => Output::new().values("domains", rest.to_vec()),
         CornerMethod::Reinit => Output::new().values("model", rest.to_vec()),
-        CornerMethod::Squeeze => squeeze_output(rest)?,
+        CornerMethod::Squeeze
+        | CornerMethod::VertGeom
+        | CornerMethod::EdgeGeom
+        | CornerMethod::EndPatch => squeeze_output(rest)?,
         CornerMethod::RailRail => Output::new().values("ret", rest.to_vec()),
+        CornerMethod::FixDegeneracy => degeneracy_output(rest)?,
     })
 }
 
@@ -1577,6 +1678,34 @@ fn corner_rust(i: &Inputs) -> Result<Output, HarnessError> {
     fc.extended_surface_patch = ci.ext;
     fc.topology_adjusted = ci.adjusted;
     fc.set_back_dist = ci.setback;
+    for &[e, f] in &ci.orig_faces {
+        let eid = rm.edge(e)?;
+        let face = *rm.target_faces.get(f).ok_or_else(|| harness("face"))?;
+        rm.fb
+            .fillet_edge_mut(eid)
+            .map_err(h)?
+            .set_original_face(Some(face));
+    }
+    // the corner record (as `blend.fillet_corner_p3`'s) after a geometry step
+    let corner_rec =
+        |fc: &FilletCorner, rm: &RustModel, rec: &mut Vec<f64>| -> Result<(), HarnessError> {
+            rec.push(fc.vertices.len() as f64);
+            rec.extend(fc.vertices.iter().map(|&v| rm.vertex_index(Some(v))));
+            rec.push(fc.edges.len() as f64);
+            rec.extend(fc.edges.iter().map(|&e| rm.edge_index(Some(e))));
+            rec.extend([
+                flag(fc.bevel),
+                flag(fc.blending),
+                flag(fc.chamfer),
+                flag(fc.degenerate),
+                flag(fc.calc_as_const_rad),
+                flag(fc.topology_adjusted),
+                flag(fc.extended_surface_patch),
+            ]);
+            rec.push(fc.set_back_dist);
+            rec.push(fc.surfaces.len() as f64);
+            rm.put(rec)
+        };
 
     match c.method {
         CornerMethod::Peek => {
@@ -1664,7 +1793,7 @@ fn corner_rust(i: &Inputs) -> Result<Output, HarnessError> {
                         .map_or_else(|| Output::err("error"), |o| *o))
                 }
             };
-            let tangent = match fc.tangent_fillet_solver(&exec, fs) {
+            let tangent = match fc.tangent_fillet_solver(&rm.target, &exec, fs) {
                 Ok(t) => t,
                 Err(e) => {
                     return Ok(corner_err(&e)
@@ -1772,23 +1901,67 @@ fn corner_rust(i: &Inputs) -> Result<Output, HarnessError> {
                     Ok(st) => st,
                 },
             };
-            let mut rec = vec![st, fc.vertices.len() as f64];
-            rec.extend(fc.vertices.iter().map(|&v| rm.vertex_index(Some(v))));
-            rec.push(fc.edges.len() as f64);
-            rec.extend(fc.edges.iter().map(|&e| rm.edge_index(Some(e))));
-            rec.extend([
-                flag(fc.bevel),
-                flag(fc.blending),
-                flag(fc.chamfer),
-                flag(fc.degenerate),
-                flag(fc.calc_as_const_rad),
-                flag(fc.topology_adjusted),
-                flag(fc.extended_surface_patch),
-            ]);
-            rec.push(fc.set_back_dist);
-            rec.push(fc.surfaces.len() as f64);
-            rm.put(&mut rec)?;
+            let mut rec = vec![st];
+            corner_rec(&fc, &rm, &mut rec)?;
             squeeze_output(&rec)
+        }
+        CornerMethod::VertGeom | CornerMethod::EdgeGeom | CornerMethod::EndPatch => {
+            let mut exec = FilletExecutiveData::default();
+            let surfaces = BTreeMap::new();
+            let r = {
+                let mut env = CornerEnv {
+                    k: &rm.k,
+                    target: &mut rm.target,
+                    pseudo: &mut rm.fb,
+                    exec: &mut exec,
+                    corner: None,
+                    tsect_surfaces: &surfaces,
+                };
+                match c.method {
+                    CornerMethod::VertGeom => fc.calc_corner_vert_geom(&mut env, &[]),
+                    CornerMethod::EdgeGeom => fc.calc_corner_edge_geom(&mut env),
+                    _ => fc.create_end_patch(&mut env),
+                }
+            };
+            let st = match r {
+                Ok(()) => 0.0,
+                Err(e) => match corner_err(&e) {
+                    Err(o) => return Ok(*o),
+                    Ok(st) => st,
+                },
+            };
+            let mut rec = vec![st];
+            corner_rec(&fc, &rm, &mut rec)?;
+            squeeze_output(&rec)
+        }
+        CornerMethod::FixDegeneracy => {
+            let mut exec = FilletExecutiveData::default();
+            for &e in c.topo {
+                exec.topo_edges.push(Some(rm.edge(e)?));
+            }
+            let surfaces = BTreeMap::new();
+            let r = {
+                let mut env = CornerEnv {
+                    k: &rm.k,
+                    target: &mut rm.target,
+                    pseudo: &mut rm.fb,
+                    exec: &mut exec,
+                    corner: None,
+                    tsect_surfaces: &surfaces,
+                };
+                fc.check_and_fix_degeneracy(&mut env, &[])
+            };
+            let ret = match r {
+                Ok(f) => flag(f),
+                Err(e) => match corner_err(&e) {
+                    Err(o) => return Ok(*o),
+                    Ok(st) => st,
+                },
+            };
+            let mut rec = vec![ret, exec.topo_edges.len() as f64];
+            rec.extend(exec.topo_edges.iter().map(|&e| rm.edge_index(e)));
+            corner_rec(&fc, &rm, &mut rec)?;
+            degeneracy_output(&rec)
         }
         CornerMethod::RailRail => {
             let crv = c.curve.ok_or_else(|| harness("rail_rail: no curve"))?;
@@ -1827,6 +2000,13 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
             CornerMethod::Squeeze,
             CornerMethod::RailRail,
             CornerMethod::RailRail,
+            CornerMethod::VertGeom,
+            CornerMethod::EdgeGeom,
+            CornerMethod::FixDegeneracy,
+            CornerMethod::FixDegeneracy,
+            CornerMethod::FixDegeneracy,
+            CornerMethod::EndPatch,
+            CornerMethod::EndPatch,
         ])
         .unwrap_or(&CornerMethod::Peek);
     let kind = if method == CornerMethod::RailRail {
@@ -1866,6 +2046,58 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
     };
     let mut verts = subset(rng, nv);
     let mut edges = subset(rng, ne);
+    // the geometry steps run only on an empty list (their per-element callees are stubs)
+    if method == CornerMethod::VertGeom && rng.chance(0.5) {
+        verts.clear();
+    }
+    if method == CornerMethod::EdgeGeom && rng.chance(0.5) {
+        edges.clear();
+    }
+    // the degeneracy fix: processed corner vertices at the filleted vertex
+    let mut topo = Vec::new();
+    if method == CornerMethod::FixDegeneracy {
+        let p = usize::try_from(v_edge)
+            .ok()
+            .and_then(|e| model.targets.get(e))
+            .and_then(|e| {
+                if v_sub == 0 {
+                    e.cpts.first()
+                } else {
+                    e.cpts.last()
+                }
+            })
+            .map(|c| [c[0], c[1], c[2]]);
+        if let Some(p) = p {
+            if rng.chance(0.6) {
+                for &v in &verts {
+                    if let Some(rec) = model.vertices.get_mut(v) {
+                        rec.status = 1; // SM_FIL_PROCESSED
+                        if rng.chance(0.9) {
+                            rec.point = p;
+                        }
+                    }
+                }
+            }
+        }
+        topo = (0..ne).filter(|_| rng.chance(0.5)).collect();
+    }
+    // the end patch: a fillet-side-face edge, with or without an original face
+    let mut orig_faces: Vec<[usize; 2]> = Vec::new();
+    if method == CornerMethod::EndPatch && ne > 0 && rng.chance(0.7) {
+        let e = rng.below(ne as u64) as usize;
+        if let Some(rec) = model.edges.get_mut(e) {
+            rec.etype = 5; // SM_FE_FILLET_X_SIDE_FACE
+        }
+        if !edges.contains(&e) && rng.chance(0.8) {
+            edges.push(e);
+        }
+        if nf > 0 && rng.chance(0.5) {
+            orig_faces.push([e, rng.below(nf as u64) as usize]);
+        }
+    }
+    if nf > 0 && ne > 0 && rng.chance(0.3) {
+        orig_faces.push([rng.below(ne as u64) as usize, rng.below(nf as u64) as usize]);
+    }
     let scale = *rng.choose(&[1.0, 1e-3, 1e3, 10.0, 0.1]).unwrap_or(&1.0);
     let tol = match rng.below(4) {
         0 => 1e-3 * scale,
@@ -1990,6 +2222,7 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
             },
             tol,
             tan,
+            orig_faces,
         }),
         peek,
         solvers,
@@ -1998,6 +2231,7 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
         queries,
         squeeze,
         curve,
+        topo,
     }
 }
 
@@ -2043,7 +2277,7 @@ mod tests {
         };
         let cases = Runner.cases(&ctx).unwrap();
         if env("CASE_CENSUS").is_some() {
-            let mut tally = std::collections::BTreeMap::<(String, String), usize>::new();
+            let mut tally = BTreeMap::<(String, String), usize>::new();
             for case in &cases {
                 let kind = match Runner.run_rust(case) {
                     Ok(o) if o.deferred.is_some() => "deferred".to_string(),
@@ -2123,7 +2357,7 @@ mod tests {
             t.split(',').map(|x| x.trim().parse().unwrap()).collect()
         } else {
             let per_op = env("CASE_PER_OP").map_or(10, |s| s.parse().unwrap());
-            let mut taken = std::collections::BTreeMap::<String, usize>::new();
+            let mut taken = BTreeMap::<String, usize>::new();
             (0..cases.len())
                 .filter(|&i| {
                     let n = taken.entry(op_name(&cases[i])).or_default();
