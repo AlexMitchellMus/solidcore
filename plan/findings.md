@@ -2469,6 +2469,40 @@ arbitrary returned offset B-reps or live cross-object alias mutation. The broade
 analytic-kind dispatch work in #76 and the production executive/SSI bridge remain
 separate.
 
+### Rust safety bounds and malformed-stream fuzz
+
+The final fuzz run exposed caller-sized derivative allocation and unbounded
+approximation work. `CrvOnSurf::evaluate` now limits requested output order to
+4096, with checked size arithmetic before allocation; it still evaluates at most
+three derivatives, preserves earlier geometry errors and fills accepted higher
+orders with zeros. The common Hermite approximation permits 8192 adaptive
+bisections per call, preserving the native depth-first order and formulas rather
+than rejecting, sorting or clamping supplied breaks. A non-finite/non-progressing
+midpoint or an infinite computed tangent returns an error instead of looping.
+These are documented Rust safety deviations, not native-verified status codes for
+inputs outside the existing FFI oracle domain.
+
+| Fuzz corpus | Cases | Rejected | Malformed | Ran | Differs | Crashes | Panics | Timeouts |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Offset fixtures, before bounds | 1000 | 488 | 205 | 289 | 0 | 5 | 1 | 12 |
+| Offset fixtures, after bounds | 1000 | 506 | 205 | 289 | 0 | 0 | 0 | 0 |
+| Unfiltered, after bounds | 1000 | 394 | 326 | 280 | 6 | 0 | 0 | 0 |
+
+The fuzzer still exercises Rust after a C++ harness error; the saved extreme
+derivative/break requests were rejected by the existing native guards before
+geometry operations ran. No guards, tolerances, expected outputs or original
+inputs were changed to obtain these results.
+
+The six unfiltered differences reproduce the existing malformed-binary-reader
+safety deviation described below, not accepted-record parity: `fuzz00062`,
+`fuzz00070`, `fuzz00511`, `fuzz00516` and `fuzz00762` empty/truncate database bytes
+(`SM_ERR` 1001 upstream versus bounded-read `InvalidInput` 1007); `fuzz00322`
+duplicates byte 615 and is rejected because its header-declared size exceeds the
+remaining input, while C++ emits state (176 output values versus Rust's two-value
+error). A direct Rust reader probe confirmed those exact rejection reasons.
+Malformed-record status/state equivalence is not claimed, and the mandatory
+input-size protections remain unchanged.
+
 ### Historical original-port notes
 
 - **Partial, not blocked.** Every non-deferred difftest case is bit-identical

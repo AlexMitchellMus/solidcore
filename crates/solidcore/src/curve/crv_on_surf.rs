@@ -71,6 +71,12 @@
 //!   `EvaluateSurfaceNormal` returns the UV point and tangent with the normal.
 //!   Derivatives `Evaluate` cannot compute (the surface gave fewer) are
 //!   [`Vec3::UNDEF`] (upstream leaves the caller's values).
+//! - **Requested derivative storage.** `Evaluate` accepts orders through 4096
+//!   (98,328 bytes of output), retaining zero derivatives above third order.
+//!   Larger requests return [`SolidError::InvalidInput`] after the bounded UV
+//!   and surface evaluations, preserving their error precedence. Upstream writes
+//!   into caller-owned storage without a bound; the port must bound allocation
+//!   and zero-filling work, well above the native fixture orders (at most six).
 //! - **Ignored statuses.** Where upstream ignores a status (`GetKnots` of the UV curve
 //!   and of this curve in `CalculateContinuities`, `GetNumberNaturalKnots`,
 //!   `GetOrCreateBSApproxPointer` and `SurfaceCurveMaxDistanceBetween`, the
@@ -128,6 +134,7 @@ use crate::surface::surface::p2::Surface;
 use crate::topology::database_io::{DatabaseReader, FileType};
 
 const OP: &str = "curve::crv_on_surf::CrvOnSurf";
+const OP_EVAL: &str = "curve::crv_on_surf::CrvOnSurf::evaluate";
 const OP_KNOTS: &str = "curve::crv_on_surf::CrvOnSurf::knots";
 const OP_CONTS: &str = "curve::crv_on_surf::CrvOnSurf::calculate_continuities";
 const OP_APPROX: &str = "curve::crv_on_surf::CrvOnSurf::get_or_create_bs_approx";
@@ -135,6 +142,10 @@ const OP_READ: &str = "curve::crv_on_surf::CrvOnSurf::read_from_db";
 
 /// `MAX_DERIVS` of `Evaluate`: the surface lifts go up to third derivatives.
 const MAX_DERIVS: usize = 3;
+
+/// Requested output bound, not the computed order: at most 4097 `Vec3`s (96 KiB + 24).
+/// Unlike a fallible reserve alone, this also bounds successful zero-filling work.
+const MAX_REQUESTED_DERIVS: usize = 4096;
 
 /// `SM_APPROX_TOL_3D` (`SM_ZONE_TOL_3D / 2`): the default approximation tolerance of
 /// `GetOrCreateBSApproxPointer`.
@@ -604,6 +615,7 @@ impl CrvOnSurf {
     /// # Errors
     ///
     /// Those of the UV curve's evaluation; the surface's last failure.
+    /// `InvalidInput` for requested orders above 4096, after those geometry errors.
     pub fn evaluate(
         &self,
         t: f64,
@@ -644,6 +656,16 @@ impl CrvOnSurf {
         }
         let srf = srf?;
 
+        // The children only see orders <= 3. Check the requested output size after
+        // their native error paths, but before any caller-sized arithmetic/storage.
+        let output_len = num_derivs
+            .checked_add(1)
+            .filter(|&len| len <= MAX_REQUESTED_DERIVS + 1)
+            .ok_or(SolidError::InvalidInput {
+                operation: OP_EVAL,
+                reason: "requested derivative order exceeds 4096",
+            })?;
+
         // For subscripting into the surface pt/deriv array
         let ss = |u: usize, v: usize| {
             srf.get(u)
@@ -652,7 +674,7 @@ impl CrvOnSurf {
                 .unwrap_or(Vec3::UNDEF)
         };
 
-        let mut out = vec![Vec3::UNDEF; num_derivs + 1];
+        let mut out = vec![Vec3::UNDEF; output_len];
         let mut put = |i: usize, v: Vec3| {
             if let Some(o) = out.get_mut(i) {
                 *o = v;
@@ -1757,6 +1779,53 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_request_bound_preserves_lifted_derivatives() {
+        use crate::surface::offset_surface::OffsetSurface;
+
+        let k = Kernel::default();
+        let surface = OffsetSurface::new(&k, 0.15, patch().into(), true, 0).unwrap();
+        let curve = CrvOnSurf::new(&k, uv(), surface.into(), None, 0).unwrap();
+        let expected = curve.evaluate(0.3, 3, true, false).unwrap();
+        for n in [0, 1, 2, 3, 4, 6, MAX_REQUESTED_DERIVS] {
+            let values = curve.evaluate(0.3, n, true, false).unwrap();
+            assert_eq!(values.len(), n + 1);
+            let computed = n.min(3) + 1;
+            assert_eq!(&values[..computed], &expected[..computed]);
+            assert!(values.iter().skip(4).all(|v| *v == Vec3::ZERO));
+        }
+        // Include every fuzzed giant order and the architecture's own maximum.
+        let excessive = [
+            (MAX_REQUESTED_DERIVS + 1) as u64,
+            2_147_483_648,
+            4_294_967_296,
+            9_223_372_036_854_775_807,
+        ];
+        for n in excessive
+            .into_iter()
+            .filter_map(|n| usize::try_from(n).ok())
+            .chain(std::iter::once(usize::MAX))
+        {
+            assert!(matches!(
+                curve.evaluate(0.3, n, true, false),
+                Err(SolidError::InvalidInput {
+                    operation: OP_EVAL,
+                    ..
+                })
+            ));
+        }
+    }
+
+    #[test]
+    fn evaluate_excessive_request_preserves_uv_error_precedence() {
+        let curve = CrvOnSurf::empty(BSplineCurve::new(2).into(), patch().into()).unwrap();
+        let expected = curve.evaluate(0.3, 3, true, false).unwrap_err();
+        assert_eq!(
+            curve.evaluate(0.3, usize::MAX, true, false).unwrap_err(),
+            expected
+        );
+    }
+
+    #[test]
     fn shared_surface_copies_preserve_the_face_owner_chain() {
         use crate::geom::attribute::ObjectKey;
         use crate::geom::object::ObjectRef;
@@ -2132,5 +2201,25 @@ mod tests {
         let text = "0 0 1 1 SmCrvOnSurf Domain of interest \n1 SmCrvOnSurf Has breaks flag \n";
         let mut db = DatabaseReader::with_stream(FileType::Ascii, InputStream::new(text.into()));
         assert!(CrvOnSurf::read_from_db(&Kernel::default(), &mut db, 0).is_err());
+    }
+
+    #[test]
+    fn offset_approximation_keeps_duplicate_supplied_breaks_and_reuses_the_cache() {
+        use crate::surface::offset_surface::OffsetSurface;
+
+        let k = Kernel::default();
+        let surface = OffsetSurface::new(&k, -0.1, patch().into(), true, 0).unwrap();
+        let mut curve = CrvOnSurf::new(&k, uv(), surface.into(), None, 0).unwrap();
+        let breaks = [0.0, 0.5, 0.5, 1.0];
+        let (approximation, gap) = curve.approximate_curve(&k, &breaks, 1e-4, true).unwrap();
+        assert_eq!(curve.breaks(), &breaks);
+        let point = approximation.evaluate_point(0.4).unwrap();
+        assert!(point.distance(curve.evaluate_point(0.4).unwrap()) <= 1e-4);
+        let reused = curve
+            .get_or_create_bs_approx(&k, gap, Some(&breaks), Some(true))
+            .unwrap();
+        assert_eq!(reused.evaluate_point(0.4).unwrap(), point);
+        assert_eq!(curve.bs_approx_max_gap_3d(), gap);
+        assert_eq!(curve.breaks(), &breaks);
     }
 }

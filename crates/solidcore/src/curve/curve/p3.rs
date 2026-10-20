@@ -51,7 +51,9 @@
 //!   (`NER`); a node whose data is not a leaf span is `InvalidInput` (upstream casts
 //!   whatever `m_pData` holds).
 //! - **`SmFindPCExtremaEFO::Evaluate`** is implemented for [`Curve`] (it calls the
-//!   virtual `IsDegenerate`).
+//!   virtual `IsDegenerate`). An infinite evaluated tangent returns `SM_ERR`
+//!   instead of looping forever while dividing infinity by ten; finite tangents
+//!   retain upstream's exact scaling operations and order.
 //! - **`SmBestLineFitENFO`** keeps the solver's intervals as copies; its
 //!   `m_dSolutionSize` / `m_dScaledZero` are fields read through
 //!   [`EvalNFunctions::solution_size`] / [`EvalNFunctions::scaled_zero`]. The status
@@ -694,6 +696,9 @@ impl EvalFunction for FindPcExtremaEfo<'_, Curve> {
             }
         } else {
             while pv[1].length_squared() > 1.0e4 {
+                if pv[1].x.is_infinite() || pv[1].y.is_infinite() || pv[1].z.is_infinite() {
+                    return Err(SolidError::sm_err(OP_PC));
+                }
                 self.num_scale += 1;
                 sv = div(sv, 10.0);
                 pv[0] = div(pv[0], 10.0);
@@ -2133,6 +2138,39 @@ mod tests {
             .unwrap();
         assert!(found);
         assert!((sol.start.parameters[0] - 0.5).abs() < 1e-8);
+    }
+
+    #[test]
+    fn point_extrema_rejects_overflowed_hermite_tangent_without_scaling_forever() {
+        let c = hermite(
+            [0.0; 3],
+            [f64::MAX / 2.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0; 3],
+        );
+        let domain = c.natural_interval();
+        let mut evaluator = FindPcExtremaEfo::new(
+            &c,
+            Vec3::ZERO,
+            domain,
+            EFF_ZERO_SQ,
+            SolverOperation::Minimize,
+        );
+        let mut value = FunctionValue::default();
+        assert!(matches!(
+            evaluator.evaluate(0.25, &mut value, true),
+            Err(SolidError::Upstream { code: 1001, .. })
+        ));
+        let (found, _): (bool, Solution<()>) = c
+            .local_point_solve(
+                &domain,
+                SolverOperation::Minimize,
+                Vec3::ZERO,
+                &PointSolveOptions::default(),
+                0.25,
+            )
+            .unwrap();
+        assert!(!found);
     }
 
     #[test]
