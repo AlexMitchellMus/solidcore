@@ -10864,7 +10864,7 @@ relative error zero, no absolute floors. Deferrals: 56 at `SmBrep::SmBrep`
 faces, `CreateFacesFromSurface` of the sweep faces) and 19 at `SmBrep::Notify`
 (`topology.brep_p2`, inside the ported `SmBrep::Transform` of p3's curve sweep that the
 pipe calls). The six rejections are
-the guarded regression fixtures of `guarded.json` (UB-202, HANG-35), never passes.
+the guarded regression fixtures of `guarded.json` (UB-212, HANG-35), never passes.
 
 Comparable cases are early exits: the cone's height, turn, zero-side and axis checks
 with the editing flag they leave on, degenerate sphere/torus radii (line or circle
@@ -10890,7 +10890,7 @@ Deviations, none compared yet:
 - **Upstream null dereferences** (a missing edge curve, a failed copy) are errors.
 
 Native defects found while building the harness (see `plan/upstream-issues.md`):
-- **UB-202:** `SweepEdgeHigh` uses an edge's curve after `MakeFaceWithCurves` freed it
+- **UB-212:** `SweepEdgeHigh` uses an edge's curve after `MakeFaceWithCurves` freed it
   (partial cones with a profile line below the zone tolerance, partial tori with a small
   minor circle). The FFI rejects those, mirroring the cone's own early failures.
 - **HANG-35:** closed shells a few zone tolerances across take minutes to place in their
@@ -10918,7 +10918,7 @@ zero differences, crashes, panics or timeouts. All six touched units pass with t
 remaining deferrals: p1 689/75/9 rejected, p3 284/8/1 rejected, B-rep sweep API 306/267,
 surface sweep API 831/51, offset executive p1 687/5/1 rejected, topology sweep 554/14
 (pass/deferred). Nine planted faults (cone height, turn and edit flag; skin report,
-profile count and output reset; pipe output reset; the full-turn window; the UB-202
+profile count and output reset; pipe output reset; the full-turn window; the UB-212
 guard) are each caught by the kernel tests; six also fail the difftest, and the other
 three cannot show there (one turns compared cases into deferrals, two reset lists the
 runner always passes empty). `topology.face_p3` and `topology.brep_p5` became partial on
