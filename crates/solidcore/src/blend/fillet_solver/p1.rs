@@ -329,8 +329,9 @@ impl FilletSurfaceGenerator {
     /// # Errors
     ///
     /// `SM_ERR` for [`FilletSurfaceGenerator::Base`]; those of
-    /// `SmEiffelTowerCrossSectionFSG::CreateSurface`; [`SolidError::Unported`] for the
-    /// linear, circular and blend-curve generators.
+    /// `SmEiffelTowerCrossSectionFSG::CreateSurface` and
+    /// `SmLinearCrossSectionFSG::CreateSurface`; [`SolidError::Unported`] for the
+    /// circular and blend-curve generators.
     pub fn create_surface(
         &self,
         k: &Kernel,
@@ -345,11 +346,8 @@ impl FilletSurfaceGenerator {
                 crate::blend::fillet_custom_solver::EiffelTowerCrossSectionFsg::new()
                     .create_surface(k, approx_tol_3d, rail1, rail2, points)
             }
-            // UNPORTED(blend.fillet_standard_solver_p1): SmLinearCrossSectionFSG::CreateSurface
-            Self::Linear => Err(SolidError::unported(
-                "SmLinearCrossSectionFSG::CreateSurface",
-                "blend.fillet_standard_solver_p1",
-            )),
+            Self::Linear => crate::blend::fillet_standard_solver::p1::LinearCrossSectionFsg
+                .create_surface(rail1, rail2),
             // UNPORTED(blend.fillet_standard_solver_p2): SmCircularCrossSectionFSG::CreateSurface
             Self::Circular { .. } => Err(SolidError::unported(
                 "SmCircularCrossSectionFSG::CreateSurface",

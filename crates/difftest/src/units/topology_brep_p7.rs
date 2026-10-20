@@ -30,7 +30,7 @@
 //! `MakeTopologyFromData` of `topology.brep_p10` on a B-rep with the infinite region
 //! and defers later: `sm_CheckAndFixUVTrimCurves`, analytic copies, `HealBrep`'s
 //! callees), every face made
-//! (`MakeShellVertex`, `MakeFaceTopology`, `GetInfiniteRegion`), every glue past its
+//! (`MakeShellVertex`, `MakeFaceTopology`, ...), every glue past its
 //! early returns, every copy (`SmBrep::SetTolerance`). The comparisons are the read
 //! errors of damaged files, the input errors of the face makers, the null-surface status
 //! of `MakeFace`, the glue no-ops and `MergeSelfIntersectionCurves` without curves.
@@ -808,17 +808,13 @@ fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
                     "SmBrep::MakeFaceWithCurves",
                 ));
             }
-            let mut b = Brep::new();
+            // `new SmBrep(ctx)`: the B-rep starts with its infinite region, which the
+            // shim passes (or NULL, which MakeFace* also resolves to it)
+            let mut b = Brep::new_with_infinite_region().map_err(hfail)?;
             let region = if *region_null {
                 None
             } else {
-                Some(
-                    b.add_region_record(Region {
-                        in_brep: true,
-                        ..Region::default()
-                    })
-                    .map_err(hfail)?,
-                )
+                b.infinite_region()
             };
             let mut c3 = Vec::new();
             let mut uv = Vec::new();
@@ -926,17 +922,13 @@ let mut records = BTreeMap::new();
                     "SmBrep::MakeWireEdgeVertex",
                 ))));
             }
-            let mut b = Brep::new();
+            // `new SmBrep(ctx)`: the B-rep starts with its infinite region, which the
+            // shim passes (or NULL, which MakeFace* also resolves to it)
+            let mut b = Brep::new_with_infinite_region().map_err(hfail)?;
             let region = if *region_null {
                 None
             } else {
-                Some(
-                    b.add_region_record(Region {
-                        in_brep: true,
-                        ..Region::default()
-                    })
-                    .map_err(hfail)?,
-                )
+                b.infinite_region()
             };
             let surface = (*kind == 1).then(|| {
                 Surface::from(Plane::from_normal(

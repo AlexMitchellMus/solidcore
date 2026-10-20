@@ -882,8 +882,11 @@ int32_t run(Rd& rd, std::vector<double>& o)
                 double v = rd.num();
                 sc_one_face::seed(props, of.face, field, idx, v);
             }
-            // UB-124: the classification curve's GetNaturalInterval() before its NULL check
-            if (rd.bad || (n > 0 && cc.GetCurve() == NULL))
+            // UB-124: the classification curve's GetNaturalInterval() before its NULL check;
+            // a classification without intervals (e.g. after squeezing its only one) has its
+            // first interval read past m_lSize (GetPointClassifiesConnectedTo /
+            // FindVertexObjects / FindEdgeObjects read m_pData[0])
+            if (rd.bad || (n > 0 && (cc.GetCurve() == NULL || cc.GetSize() == 0)))
                 return SC_ERR_ARG;
             SmTArray<ULONG> counts;
             SmTArray<SmTouchData> raw, done;

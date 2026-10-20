@@ -57,8 +57,7 @@
 //!   a failed `GetEnds` keeps the previous end point. A failed `CopyAndAddAnalytics` is
 //!   [`SolidError::InvalidInput`] (upstream then dereferences the null copy), as is
 //!   `pbOptCrvOnSurf` without UV curves (upstream loops over a null array).
-//! - **Unported callees** return [`SolidError::Unported`]: `SmBrep::GetInfiniteRegion`
-//!   (`topology.brep_p1`); `SmBrep::Notify`, `SetTolerance`, `sm_CheckAndFixUVTrimCurves`,
+//! - **Unported callees** return [`SolidError::Unported`]: `SmBrep::Notify`, `SetTolerance`, `sm_CheckAndFixUVTrimCurves`,
 //!   `RebuildUVTrimCurves` (`topology.brep_p2`); `MakeWireEdge`, `MakeWireEdgeVertex`
 //!   (`topology.brep_p3`); `DeleteEdge` (`topology.brep_p4`); `MakeShellVertexTopology`
 //!   (`topology.brep_p2`, reached through `topology.brep_p9`'s `MakeShellVertex`);
@@ -125,13 +124,11 @@ const DEGENERATE_TOL_3D: f64 = crate::geom::tol::ZONE_TOL_3D / 10.0;
 
 // ---- unported callees ---------------------------------------------------------------------
 
-/// `GetInfiniteRegion()` (and the raw `m_pInfiniteRegion`).
-fn infinite_region(_b: &Brep) -> Result<RegionId> {
-    // UNPORTED(topology.brep_p1): SmBrep::GetInfiniteRegion
-    Err(SolidError::unported(
-        "SmBrep::GetInfiniteRegion",
-        "topology.brep_p1",
-    ))
+/// `GetInfiniteRegion()` (and the raw `m_pInfiniteRegion`) where upstream goes on to
+/// dereference it: a null infinite region is an error.
+fn infinite_region(b: &Brep) -> Result<RegionId> {
+    b.infinite_region()
+        .ok_or_else(|| SolidError::null_pointer(OP))
 }
 
 /// `m_pInfiniteRegion = SM_CAST_PTR(SmRegion, m_pList)` after a region was removed.
@@ -418,12 +415,13 @@ fn edge_remove(b: &mut Brep, e: EdgeId, eu: EdgeuseId) -> Result<()> {
 /// Merges `del_shell` into `keep_shell` and drops the empty region (the shell-merging
 /// tails of `GlueEdgesGeneral`).
 fn merge_shells(k: &mut Kernel, b: &mut Brep, mut del: ShellId, mut keep: ShellId) -> Result<()> {
-    let inf = infinite_region(b)?;
+    // (upstream only compares the pointer, so a null infinite region is not an error)
+    let inf = b.infinite_region();
     let keep_region = eu1::shell_region(b, keep)?;
     let del_region = eu1::shell_region(b, del)?;
-    if keep_region == Some(inf) {
+    if keep_region == inf {
         // ok.
-    } else if del_region == Some(inf)
+    } else if del_region == inf
         // pKeepShell->IsInnerShell(bIsInner): swap when it succeeds with TRUE (asked
         // only when neither region is the infinite one)
         || ignored(b.shell(keep)?.is_inner_shell(k, b))? == Some(true)
@@ -1660,7 +1658,14 @@ mod tests {
             &opts,
             &face_ref,
         );
-        assert!(e.unwrap_err().is_unported());
+        // no infinite region to default to
+        assert!(matches!(
+            e,
+            Err(SolidError::Upstream {
+                code: crate::error::SM_ERR_NULL_POINTER,
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -1714,14 +1719,20 @@ mod tests {
             run(&mut b, input, Some(r)),
             Err(SolidError::InvalidInput { .. })
         ));
-        // the infinite region is unported
+        // no infinite region to default to
         let input = FaceCurvesInput {
             loops: vec![1],
             curves_3d: Some(vec![None]),
             orientations: vec![OrientType::Same],
             ..Default::default()
         };
-        assert!(run(&mut b, input.clone(), None).unwrap_err().is_unported());
+        assert!(matches!(
+            run(&mut b, input.clone(), None),
+            Err(SolidError::Upstream {
+                code: crate::error::SM_ERR_NULL_POINTER,
+                ..
+            })
+        ));
         // a degenerate curve only: the face topology is unported
         assert!(run(&mut b, input, Some(r)).unwrap_err().is_unported());
         // more loop entries than curves
