@@ -2,7 +2,7 @@
 //! (`TrimRailCurves`, `TrimCliffRails`), the cross-section and side-face curves of a
 //! fillet edge, the fillet/fillet intersection vertex, the edge on an extended edge, the
 //! split-face update and the pseudo-B-rep builders (`MakeFilletEdge`, `MakeRailEdge`,
-//! `CreateEndCurve`).
+//! `MakeRailEdgeuse`, `CreateEndCurve`).
 //!
 //! C++: `solidcore_ffi::units::blend_fillet_geom_p5` (upstream
 //! `source/SMLib/src/SmFilletGeom.cpp`). Rust: `solidcore::blend::fillet_geom::p5`.
@@ -17,8 +17,10 @@
 //! points; for `cross_section` the edge curve and both UV curves and every geometry's
 //! side-use count; for `side_face` the edge status and the side-use counts; for
 //! `int_fillet` the status, and the vertex point and status; for `split_face` per edge its
-//! original face and split faces; for the builders only the edge count (a status-only
-//! comparison until their bodies run: see below).
+//! original face and split faces; for the builders the edge count and, after a success,
+//! `blend.fillet_geom_p1`'s whole pseudo-B-rep export (the new edge's type, both uses'
+//! orientations and list order, each vertex use's vertex, an end curve's 3D curve, interval
+//! and UV curve, the geometry's rails, vertices and side uses).
 //!
 //! What the comparisons cover: `trim_rails`, `cross_section`, `side_face` and `split_face`
 //! compare real values (curves, intervals, UV points, face lists). `int_fillet` and
@@ -27,7 +29,13 @@
 //! (and for `int_fillet` the vertex point and status of that early exit), not the bodies of
 //! `calc_fillet_int_fillet` / `calc_edge_on_extended_edge`, which no case reaches until
 //! `blend.fillet_corner_p1` lands. The builders (`make_fillet_edge`, `make_rail_edge`,
-//! `create_end_curve`) compare the status and the edge count of their early exits.
+//! `make_rail_edgeuse`, `create_end_curve`) compare the status and the edge count of their
+//! early exits today; the export comparison on the success path (its Rust side is written
+//! but unreachable: the edge-use constructor needs the infinite region) starts to run when
+//! `topology.brep_p3` lands. `make_rail_edgeuse`'s two checks before its allocations
+//! (`NER(pFilletSolver)`, `NER(pFilletVertex)`) are compared; past them the base solvers have
+//! no edge uses, so upstream ends in `NER(pBaseEU)` (a status the Rust side only reaches after
+//! the constructor).
 //!
 //! Deferred on the Rust side (unported callees): every builder past its checks (the edge
 //! use constructor needs `SmBrep()`'s infinite region, `topology.brep_p3`); `SM_BT_BLEND`
@@ -46,6 +54,7 @@ use solidcore::blend::fillet_solver::p1::FilletSolver;
 use solidcore::curve::curve::{Curve, CurveKind};
 use solidcore::kernel::Kernel;
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
+use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use solidcore::nurbs::math::NOW;
 use solidcore::topology::{edge, edgeuse::p1 as eu1};
 use solidcore::SolidError;
@@ -53,7 +62,7 @@ use solidcore_ffi::units::blend_fillet_geom_p5::{self as ffi, Op};
 
 use super::blend_fillet_geom_p1::{
     curve_of, dump_bcurve, gen_model, gen_surface, push_model, scale_of, status, surface_of, Crv,
-    EdgeIn, EuIn, GeomIn, Model, RustModel, Srf, VertexIn,
+    EdgeIn, EuIn, GeomIn, Model, RustModel, Split, Srf, VertexIn,
 };
 use crate::case::CaseContext;
 use crate::runner::default_cases;
@@ -118,6 +127,15 @@ enum Query {
         end: usize,
         trim: usize,
     },
+    /// `MakeRailEdgeuse(pseudo, rail, fv, eu, orient, belonging)`: `fv` and `belonging` `-1`
+    /// for NULL, `orient` an `SmOrientType` (0 unknown, 1 same, 2 opposite).
+    RailEdgeuse {
+        g: usize,
+        rail: usize,
+        fv: i64,
+        orient: usize,
+        belonging: i64,
+    },
 }
 
 impl Query {
@@ -132,6 +150,7 @@ impl Query {
             Self::MakeEdge { .. } => Op::MakeEdge,
             Self::RailEdge { .. } => Op::RailEdge,
             Self::EndCurve { .. } => Op::EndCurve,
+            Self::RailEdgeuse { .. } => Op::RailEdgeuse,
         }
     }
 }
@@ -182,6 +201,19 @@ fn cpp_input(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
         Query::MakeEdge { vs, ve } => o.extend([*vs as f64, *ve as f64]),
         Query::RailEdge { g, rail } => o.extend([*g as f64, *rail as f64]),
         Query::EndCurve { g, end, trim } => o.extend([*g as f64, *end as f64, *trim as f64]),
+        Query::RailEdgeuse {
+            g,
+            rail,
+            fv,
+            orient,
+            belonging,
+        } => o.extend([
+            *g as f64,
+            *rail as f64,
+            *fv as f64,
+            *orient as f64,
+            *belonging as f64,
+        ]),
     }
     Ok(o)
 }
@@ -194,54 +226,7 @@ fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
 
 // ---- output splitting ---------------------------------------------------------------
 
-struct Split<'a> {
-    flat: &'a [f64],
-    at: usize,
-    out: Output,
-}
-
-impl Split<'_> {
-    fn take(&mut self, k: usize) -> Result<Vec<f64>, HarnessError> {
-        let part = self
-            .at
-            .checked_add(k)
-            .and_then(|end| self.flat.get(self.at..end))
-            .ok_or_else(|| harness(format!("record too short ({} values)", self.flat.len())))?;
-        self.at += k;
-        Ok(part.to_vec())
-    }
-
-    fn put(&mut self, key: &str, v: Vec<f64>) {
-        let out = std::mem::take(&mut self.out);
-        self.out = out.values(key, v);
-    }
-
-    fn vals(&mut self, key: &str, k: usize) -> Result<(), HarnessError> {
-        let v = self.take(k)?;
-        self.put(key, v);
-        Ok(())
-    }
-
-    /// A curve record `has [dim n p m cpts knots]` under `pfx`.
-    fn curve(&mut self, pfx: &str) -> Result<(), HarnessError> {
-        let has = self.take(1)?;
-        let set = has.first().copied() == Some(1.0);
-        self.put(&format!("{pfx}has"), has);
-        if set {
-            let dims = self.take(4)?;
-            let cnt = |i: usize| dims.get(i).copied().unwrap_or(f64::NAN);
-            let ok = |x: f64| x.fract() == 0.0 && (0.0..=1e6).contains(&x);
-            let (n, m) = (cnt(1), cnt(3));
-            if !(ok(n) && ok(m)) {
-                return Err(harness(format!("bad curve dims {dims:?}")));
-            }
-            self.put(&format!("{pfx}dims"), dims);
-            self.vals(&format!("{pfx}cpts"), 4 * (n as usize + 1))?;
-            self.vals(&format!("{pfx}knots"), m as usize + 1)?;
-        }
-        Ok(())
-    }
-}
+// (the splitter, with the pseudo-B-rep export, is `blend.fillet_geom_p1`'s)
 
 fn to_output(i: &Inputs, flat: &[f64]) -> Result<Output, HarnessError> {
     let mut s = Split {
@@ -303,8 +288,17 @@ fn to_output(i: &Inputs, flat: &[f64]) -> Result<Output, HarnessError> {
                 s.vals(&format!("e{e}_split"), count as usize)?;
             }
         }
-        Query::MakeEdge { .. } | Query::RailEdge { .. } | Query::EndCurve { .. } => {
+        Query::MakeEdge { .. }
+        | Query::RailEdge { .. }
+        | Query::EndCurve { .. }
+        | Query::RailEdgeuse { .. } => {
             s.vals("edges", 1)?;
+            // after a success the whole pseudo B-rep: the new edge's type, both uses'
+            // orientations and list order, each vertex use's vertex, the end curve's 3D curve,
+            // interval and UV curves, the geometry's rails, vertices and side uses
+            if flat.first() == Some(&0.0) {
+                s.export()?;
+            }
         }
         Query::ExtEdge { .. } => {}
     }
@@ -516,12 +510,18 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
             let r = rm.fb.make_fillet_edge(a, b, None);
             o.push(status_of!(r));
             o.push(rm.fb.edge_list().len() as f64);
+            if r.is_ok() {
+                rm.put(&mut o)?;
+            }
         }
         Query::RailEdge { g, rail } => {
             let gid = rm.geom(*g)?;
             let r = rm.fb.make_rail_edge(&k, gid, *rail);
             o.push(status_of!(r));
             o.push(rm.fb.edge_list().len() as f64);
+            if r.is_ok() {
+                rm.put(&mut o)?;
+            }
         }
         Query::EndCurve { g, end, trim } => {
             let gid = rm.geom(*g)?;
@@ -530,6 +530,39 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
                 .create_end_curve(&k, gid, *end, trim_type(*trim), &solvers);
             o.push(status_of!(r));
             o.push(rm.fb.edge_list().len() as f64);
+            if r.is_ok() {
+                rm.put(&mut o)?;
+            }
+        }
+        Query::RailEdgeuse {
+            g,
+            rail,
+            fv,
+            orient,
+            belonging,
+        } => {
+            let gid = rm.geom(*g)?;
+            let fv = usize::try_from(*fv)
+                .ok()
+                .map(|i| rm.vertex(i))
+                .transpose()?;
+            let belonging = usize::try_from(*belonging)
+                .ok()
+                .map(|i| rm.edge(i))
+                .transpose()?;
+            let orient = match orient {
+                0 => OrientType::Unknown,
+                1 => OrientType::Same,
+                _ => OrientType::Opposite,
+            };
+            let r = rm
+                .fb
+                .make_rail_edgeuse(gid, *rail, fv, orient, belonging, &solvers, &target);
+            o.push(status_of!(r));
+            o.push(rm.fb.edge_list().len() as f64);
+            if r.is_ok() {
+                rm.put(&mut o)?;
+            }
         }
     }
     Ok(Rec::Flat(o))
@@ -977,7 +1010,7 @@ fn gen_topology(rng: &mut Rng) -> Inputs {
     let g = rng.below(ng as u64) as usize;
     let e = rng.below(ne as u64) as usize;
     // (`SplitFace` and the `CreateEndCurve` blends come from `gen_split` / `gen_end`)
-    let query = match rng.below(8) {
+    let query = match rng.below(9) {
         0 => Query::IntFillet {
             v: rng.below(nv as u64) as usize,
         },
@@ -992,6 +1025,13 @@ fn gen_topology(rng: &mut Rng) -> Inputs {
         6 => Query::RailEdge {
             g,
             rail: rng.below(2) as usize,
+        },
+        7 => Query::RailEdgeuse {
+            g,
+            rail: rng.below(2) as usize,
+            fv: rng.below(nv as u64) as i64 - i64::from(rng.chance(0.3)),
+            orient: rng.below(3) as usize,
+            belonging: rng.below(ne as u64) as i64 - i64::from(rng.chance(0.5)),
         },
         _ => Query::EndCurve {
             g,

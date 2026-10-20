@@ -19,9 +19,10 @@
 //! | `ExtEdge`     | `SmFilletEdge::CalcEdgeOnExtendedEdge(ctx, NULL)` | `e` | (none) |
 //! | `TrimRails`   | `SmFilletGeom::TrimRailCurves`             | `g`        | per rail (the two rails, then the other rails of side 1, then of side 2): `has`, then its curve, interval, primary and mate UV curves, both vertex uses' UV points |
 //! | `SplitFace`   | `SmFilletGeom::UpdateSplitFace(f1, f2)` (the edges' original faces are set first) | `g f1 f2` then per edge (edge-list order) its original face or `-1` | per edge: its original face index (`-1` none), the split-face count and the indices |
-//! | `MakeEdge`    | `SmFilletEdge::MakeFilletEdge(pseudo, vs, ve, e, NULL)` | `vs ve` (`-1`: NULL) | the edge count |
-//! | `RailEdge`    | `SmFilletGeom::MakeRailEdge(pseudo, rail, e)` | `g rail` | the edge count |
-//! | `EndCurve`    | `SmFilletGeom::CreateEndCurve(end, trim, pseudo)` | `g end trim` | the edge count |
+//! | `MakeEdge`    | `SmFilletEdge::MakeFilletEdge(pseudo, vs, ve, e, NULL)` | `vs ve` (`-1`: NULL) | the edge count; after a success the pseudo-B-rep export of [`super::blend_fillet_geom_p1`] (the new edge's type, both uses' orientations and list order, each vertex use's vertex, the vertex use lists) |
+//! | `RailEdge`    | `SmFilletGeom::MakeRailEdge(pseudo, rail, e)` | `g rail` | the edge count; after a success the export (the geometry's rail and vertices, with the two new vertices appended to the model's vertex list) |
+//! | `EndCurve`    | `SmFilletGeom::CreateEndCurve(end, trim, pseudo)` | `g end trim` | the edge count; after a success the export (the new edge's 3D curve, interval and UV curves, the geometry's side uses) |
+//! | `RailEdgeuse` | `SmFilletGeom::MakeRailEdgeuse(pseudo, rail, fv, eu, orient, belonging)` | `g rail fv orient belonging` (`-1`: NULL; `orient` is `SmOrientType`) | the edge count; after a success the export. The base solvers carry no edge uses, so every run past the allocations ends in `NER(pBaseEU)`; only the two checks before them (`NER(pFilletSolver)`, `NER(pFilletVertex)`) are compared until `topology.brep_p3` |
 //!
 //! Refusals (`SC_ERR_ARG`, decided by the shim on the built model; each is an input that is UB
 //! or a crash upstream, not one C++ handles):
@@ -57,6 +58,7 @@ pub enum Op {
     MakeEdge = 6,
     RailEdge = 7,
     EndCurve = 8,
+    RailEdgeuse = 9,
 }
 
 mod sys {
@@ -128,6 +130,13 @@ pub fn validate(op: Op, input: &[f64]) -> Result<(), FfiError> {
             rd.opt_index(b.ng())?.ok_or_else(|| bad("geometry -1"))?;
             rd.index(2)?;
             rd.index(5)?;
+        }
+        Op::RailEdgeuse => {
+            rd.opt_index(b.ng())?.ok_or_else(|| bad("geometry -1"))?;
+            rd.index(2)?;
+            rd.opt_index(b.nv())?;
+            rd.index(3)?;
+            rd.opt_index(b.ne())?;
         }
     }
     rd.done()

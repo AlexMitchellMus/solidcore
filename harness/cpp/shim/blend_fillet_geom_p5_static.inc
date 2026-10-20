@@ -27,6 +27,7 @@ enum : int32_t
     P5_MAKE_EDGE = 6,
     P5_RAIL_EDGE = 7,
     P5_END = 8,
+    P5_RAIL_EU = 9,
 };
 
 bool p5_is_bspline(const SmCurve* c) { return c != NULL && c->IsKindOf(SmBSplineCurve_TYPE); }
@@ -379,6 +380,10 @@ int32_t p5_run(int32_t op, Rd& rd, std::vector<double>& o)
         SmStatus r = SmFilletEdge::MakeFilletEdge(M.pseudo, vs, ve, ne, NULL);
         o.push_back(st(r));
         o.push_back((double)M.edges().size());
+        // after a success the whole pseudo B-rep (the new edge's type, both uses' orientations
+        // and list order, each vertex use's vertex, the vertices' use lists)
+        if (r == SM_SUCCESS)
+            M.put(o);
         return SC_OK;
     }
     case P5_RAIL_EDGE:
@@ -391,6 +396,47 @@ int32_t p5_run(int32_t op, Rd& rd, std::vector<double>& o)
         SmStatus r = g->MakeRailEdge(M.pseudo, (ULONG)rail, ne);
         o.push_back(st(r));
         o.push_back((double)M.edges().size());
+        if (r == SM_SUCCESS)
+        {
+            // the geometry's rail and its two new vertices (appended to the model's vertex list
+            // in creation order, as the Rust model lists every live vertex) are in the export
+            SmVertex* nvs = NULL;
+            SmVertex* nve = NULL;
+            if (ne != NULL)
+                ne->GetVertices(nvs, nve);
+            if (nvs != NULL)
+                M.verts.push_back((SmFilletVertex*)nvs);
+            if (nve != NULL)
+                M.verts.push_back((SmFilletVertex*)nve);
+            M.put(o);
+        }
+        return SC_OK;
+    }
+    case P5_RAIL_EU:
+    {
+        // MakeRailEdgeuse(pseudo, rail, fv, eu, orient, belonging): its checks are
+        // NER(pFilletSolver) and NER(pFilletVertex), then it allocates; the base solvers carry
+        // no edge uses, so past the allocation upstream fails NER(pBaseEU) and its SmObjDelete
+        // clean-up deletes the new vertex use while it is still linked in fv's use list (a
+        // vertex use's destructor does not unlink it): ~SmFilletVertex then deletes it a second
+        // time (UB-215). Refused, so only the two defined early exits run.
+        SmFilletGeom* g = M.geom(rd.idx());
+        int64_t rail = rd.idx();
+        int64_t fvi = rd.idx();
+        int64_t orient = rd.idx();
+        int64_t bi = rd.idx();
+        if (rd.bad || g == NULL || rail < 0 || rail > 1 || orient < 0 || orient > 2)
+            return SC_ERR_ARG;
+        SmFilletVertex* fv = fvi < 0 ? NULL : M.vertex(fvi);
+        SmFilletEdge* belonging = bi < 0 ? NULL : M.edge(bi);
+        if ((fvi >= 0 && fv == NULL) || (bi >= 0 && belonging == NULL))
+            return SC_ERR_ARG;
+        SmFilletEdgeuse* neu = NULL;
+        SmStatus r = g->MakeRailEdgeuse(M.pseudo, (ULONG)rail, fv, neu, (SmOrientType)orient, belonging);
+        o.push_back(st(r));
+        o.push_back((double)M.edges().size());
+        if (r == SM_SUCCESS)
+            M.put(o);
         return SC_OK;
     }
     case P5_END:
@@ -428,6 +474,10 @@ int32_t p5_run(int32_t op, Rd& rd, std::vector<double>& o)
         SmStatus r = g->CreateEndCurve((ULONG)end, (SmBoundaryTrimmingType)trim, M.pseudo);
         o.push_back(st(r));
         o.push_back((double)M.edges().size());
+        // the new cross-section edge: its 3D curve and interval, the primary use's UV curve,
+        // the geometry's side uses, everything else in the export
+        if (r == SM_SUCCESS)
+            M.put(o);
         return SC_OK;
     }
     default:

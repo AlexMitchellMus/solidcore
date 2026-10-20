@@ -1313,7 +1313,13 @@ impl FilletBrep {
             r
         } else {
             // Create a new one; SmFilletEdge(pPseudoBrep) has no vertices, the
-            // record names the fillet vertex at both ends until uses are added
+            // record names the fillet vertex at both ends until uses are added. The
+            // placeholder is only the arena record's `vertices` field: every topology
+            // accessor (`edge::vertex`, `start_end_vertices`, `vertices`) derives the
+            // vertices from the edge uses' vertex uses, as upstream's `GetVertex(es)`
+            // do, so it is never returned as the rail's vertex; the difftest export
+            // reads that field, which the first success-path comparison of this
+            // routine (after `topology.brep_p3`) has to account for
             let r = self.new_fillet_edge(fv, fv, None)?;
             self.fillet_edge_mut(r)?
                 .set_fillet_edge_type(FilletEdgeType::Rail);
@@ -2157,6 +2163,33 @@ mod tests {
         // FilletBrep::new has no infinite region yet (SmBrep())
         assert!(fb
             .make_fillet_edge(Some(v[0]), Some(v[1]), None)
+            .unwrap_err()
+            .is_unported());
+    }
+
+    #[test]
+    fn make_rail_edgeuse_checks_solver_and_vertex_then_allocates() {
+        let k = kernel();
+        let (mut fb, v) = fb_with_points(&k, &[Point3::ZERO]);
+        let g = fb.add_geom(FilletGeom::new(&k, None, FilletGeomType::Default).unwrap());
+        let target = Brep::new();
+        // NER(pFilletSolver)
+        assert!(matches!(
+            fb.make_rail_edgeuse(g, 0, Some(v[0]), OrientType::Same, None, &[], &target)
+                .unwrap_err(),
+            SolidError::Upstream { .. }
+        ));
+        let solvers = [FilletSolver::new(1e-6, 1e-3, 1e-3)];
+        fb.geom_mut(g).unwrap().solver = Some(FilletSolverId(0));
+        // NER(pFilletVertex)
+        assert!(matches!(
+            fb.make_rail_edgeuse(g, 0, None, OrientType::Same, None, &solvers, &target)
+                .unwrap_err(),
+            SolidError::Upstream { .. }
+        ));
+        // the allocation of the edge use needs the infinite region (SmBrep())
+        assert!(fb
+            .make_rail_edgeuse(g, 0, Some(v[0]), OrientType::Same, None, &solvers, &target)
             .unwrap_err()
             .is_unported());
     }

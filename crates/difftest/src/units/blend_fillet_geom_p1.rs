@@ -896,14 +896,14 @@ fn cpp(i: &Inputs, expected_rejection: bool) -> Result<Output, HarnessError> {
 
 // ---- output splitting ---------------------------------------------------------------
 
-struct Split<'a> {
-    flat: &'a [f64],
-    at: usize,
-    out: Output,
+pub(crate) struct Split<'a> {
+    pub(crate) flat: &'a [f64],
+    pub(crate) at: usize,
+    pub(crate) out: Output,
 }
 
 impl Split<'_> {
-    fn take(&mut self, k: usize) -> Result<Vec<f64>, HarnessError> {
+    pub(crate) fn take(&mut self, k: usize) -> Result<Vec<f64>, HarnessError> {
         let part = self
             .at
             .checked_add(k)
@@ -925,19 +925,19 @@ impl Split<'_> {
         Ok(x as usize)
     }
 
-    fn put(&mut self, key: &str, v: Vec<f64>) {
+    pub(crate) fn put(&mut self, key: &str, v: Vec<f64>) {
         let out = std::mem::take(&mut self.out);
         self.out = out.values(key, v);
     }
 
-    fn vals(&mut self, key: &str, k: usize) -> Result<(), HarnessError> {
+    pub(crate) fn vals(&mut self, key: &str, k: usize) -> Result<(), HarnessError> {
         let v = self.take(k)?;
         self.put(key, v);
         Ok(())
     }
 
     /// A curve record `has [dim n p m cpts knots]` under `pfx`.
-    fn curve(&mut self, pfx: &str) -> Result<(), HarnessError> {
+    pub(crate) fn curve(&mut self, pfx: &str) -> Result<(), HarnessError> {
         let has = self.take(1)?;
         let set = has.first().copied() == Some(1.0);
         self.put(&format!("{pfx}has"), has);
@@ -980,7 +980,7 @@ impl Split<'_> {
     }
 
     /// The pseudo-B-rep export.
-    fn export(&mut self) -> Result<(), HarnessError> {
+    pub(crate) fn export(&mut self) -> Result<(), HarnessError> {
         let nv = self.count()?;
         self.put("v_count", vec![nv as f64]);
         for i in 0..nv {
