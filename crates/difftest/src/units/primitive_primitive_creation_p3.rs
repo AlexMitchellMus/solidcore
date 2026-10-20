@@ -530,6 +530,27 @@ mod tests {
     use solidcore::sweep::topology_sweep::{TopologySweep, TopologySweepOptions};
 
     #[test]
+    fn face_box_default_resolves_the_selected_face_and_uses_the_normal_box() {
+        let mut model = EmptyModel::new().unwrap();
+        let shell = model.b.add_shell().unwrap();
+        let _without_surface = model.b.add_face(shell).unwrap();
+        let selected = model.b.add_face(shell).unwrap();
+        let plane =
+            solidcore::surface::plane::Plane::create_canonical(&Axis2Placement::IDENTITY).unwrap();
+        model.b.face_mut(selected).unwrap().surface = Some(Surface::from(plane));
+        // A linear surface without trims has an empty normal box. Tight mode
+        // instead reaches a different, unavailable query and cannot succeed.
+        let bound = model
+            .primitive_face_box((BrepId::from_index(0), selected))
+            .unwrap();
+        assert_eq!(bound, solidcore::geom::extent3d::Extent3d::new());
+        assert!(matches!(
+            model.primitive_face_box((BrepId::from_index(1), selected)),
+            Err(SolidError::InvalidInput { .. })
+        ));
+    }
+
+    #[test]
     fn linear_cap_stitch_calls_port_and_restores_caller_state() {
         let mut model = EmptyModel::new().unwrap();
         let mut sweep = TopologySweep::new(TopologySweepOptions::default());

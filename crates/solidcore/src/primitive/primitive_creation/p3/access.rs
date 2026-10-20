@@ -150,12 +150,9 @@ pub trait PrimitiveAccess: SweepAccess {
     }
     /// Face's normal bounding box for the rotational axis check.
     fn primitive_face_box(&mut self, face: FaceRef) -> Result<Extent3d> {
-        let _ = face;
-        // UNPORTED(query.face_p1): SmFace::CalculateBoundingBox
-        Err(SolidError::unported(
-            "SmFace::CalculateBoundingBox",
-            "query.face_p1",
-        ))
+        self.with_brep_mut(face.0, |kernel, model, _, _| {
+            crate::query::face::p1::calculate_bounding_box(kernel, model, face.1, false)
+        })
     }
     /// Run `query::face::p2::curve_on_classify` with caller-resolved object handles;
     /// report whether any interval midpoint is `SM_PC_FACE`.
