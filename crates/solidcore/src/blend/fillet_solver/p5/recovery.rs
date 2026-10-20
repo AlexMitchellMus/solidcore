@@ -199,15 +199,19 @@ pub(super) trait RecoveryOps {
     }
     fn corner_vertex(
         &mut self,
-        _c: &mut Recovery<'_>,
-        _vertex: VertexId,
-        _geom: FilletGeomId,
+        c: &mut Recovery<'_>,
+        vertex: VertexId,
+        geom: FilletGeomId,
     ) -> Result<()> {
-        // UNPORTED(blend.fillet_geom_p2): SmFilletVertex::CalcRailIntEdgeuse
-        Err(SolidError::unported(
-            "SmFilletVertex::CalcRailIntEdgeuse",
-            "blend.fillet_geom_p2",
-        ))
+        let solver_id = required(c.fillets.geom(geom)?.fillet_solver())?;
+        c.fillets.calc_rail_int_edgeuse_with_solver(
+            c.k,
+            vertex,
+            Some(geom),
+            solver_id,
+            c.solver,
+            c.target,
+        )
     }
     fn recalc(
         &mut self,

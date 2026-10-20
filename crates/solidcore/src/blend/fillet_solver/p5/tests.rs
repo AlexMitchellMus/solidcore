@@ -860,7 +860,7 @@ fn offset_copy_uses_the_real_port_and_preserves_base_identity_and_options() {
 }
 
 #[test]
-fn public_p1_helpers_reach_only_the_actually_missing_callees() {
+fn public_split_helper_reaches_only_the_missing_edge_constructor() {
     let mut f = Fixture::new([&[1.0], &[1.0]], false);
     let id = f.geom;
     let rail = f.fb.geom(id).unwrap().rail(0).unwrap();
@@ -869,32 +869,6 @@ fn public_p1_helpers_reach_only_the_actually_missing_callees() {
         outcome,
         Err(SolidError::Unported {
             unit: "blend.fillet_geom_p5",
-            ..
-        })
-    ));
-    let mut f = Fixture::new([&[1.0], &[1.0]], false);
-    let id = f.geom;
-    let rail = f.fb.geom(id).unwrap().rail(0).unwrap();
-    let start = f.context().start(rail).unwrap();
-    f.fb.fillet_vertex_mut(start)
-        .unwrap()
-        .set_status(FilStatus::Processed);
-    for eu in f.fb.brep().edge(rail).unwrap().edgeuses.clone() {
-        f.fb.set_edgeuse_fillet_geom(eu, Some(id)).unwrap();
-    }
-    let outcome = super::super::super::p1::compute_support_edge(
-        &f.k,
-        &mut f.fb,
-        &mut f.owners,
-        rail,
-        id,
-        1e-5,
-        1e-3,
-    );
-    assert!(matches!(
-        outcome,
-        Err(SolidError::Unported {
-            unit: "blend.fillet_geom_p2",
             ..
         })
     ));
@@ -928,4 +902,74 @@ fn split_preserves_tolerances_smaller_than_the_zone_default() {
     assert_eq!(f.fb.brep().edge(new_rail).unwrap().tolerance, 1e-12);
     assert_eq!(f.fb.brep().vertex(middle).unwrap().tolerance, 1e-12);
     assert_eq!(f.fb.brep().vertex(end).unwrap().tolerance, 1e-12);
+}
+
+#[test]
+fn public_support_helper_uses_the_real_surface_intersection() {
+    let mut f = Fixture::new([&[1.0], &[1.0]], false);
+    let id = f.geom;
+    let rail = f.fb.geom(id).unwrap().rail(0).unwrap();
+    let start = f.context().start(rail).unwrap();
+    let end = f.context().end(rail).unwrap();
+    f.fb.brep_mut().vertex_mut(start).unwrap().point = Vec3::Z;
+    f.fb.fillet_vertex_mut(start)
+        .unwrap()
+        .set_status(FilStatus::Processed);
+    let eus = f.fb.brep().edge(rail).unwrap().edgeuses.clone();
+    for (eu, normal) in eus.into_iter().zip([Vec3::X, Vec3::Y]) {
+        let mut geom = FilletGeom::new(&f.k, None, FilletGeomType::Default).unwrap();
+        geom.set_fillet_surface(Some(Plane::from_normal(Point3::ZERO, normal).into()));
+        let g = f.fb.add_geom(geom);
+        f.fb.set_edgeuse_fillet_geom(eu, Some(g)).unwrap();
+    }
+    super::super::super::p1::compute_support_edge(
+        &f.k,
+        &mut f.fb,
+        &mut f.owners,
+        rail,
+        id,
+        1e-5,
+        1e-3,
+    )
+    .unwrap();
+    assert_eq!(f.fb.brep().vertex(end).unwrap().point, Vec3::ZERO);
+    assert_eq!(
+        f.fb.fillet_vertex(end).unwrap().status(),
+        FilStatus::Processed
+    );
+    let curve = f.fb.brep().edge(rail).unwrap().curve.as_ref().unwrap();
+    assert!(
+        (curve
+            .evaluate_point(curve.natural_interval().min())
+            .unwrap()
+            - Vec3::Z)
+            .length()
+            < 1e-12
+    );
+    assert!(
+        curve
+            .evaluate_point(curve.natural_interval().max())
+            .unwrap()
+            .length()
+            < 1e-12
+    );
+    assert_eq!(curve.owner(), Some(f.owners.edge_owner(rail).unwrap().0));
+    assert_eq!(f.owners.notifications.len(), 1);
+}
+
+#[test]
+fn rollover_corner_vertex_delegates_to_the_available_geom_port() {
+    let mut f = Fixture::new([&[1.0], &[1.0]], false);
+    let id = f.geom;
+    f.fb.geom_mut(id).unwrap().solver = Some(crate::blend::fillet_geom::p1::FilletSolverId(37));
+    let rail = f.fb.geom(id).unwrap().rail(0).unwrap();
+    let start = f.context().start(rail).unwrap();
+    let r = Missing.corner_vertex(&mut f.context(), start, id);
+    assert!(matches!(
+        r,
+        Err(SolidError::Unported {
+            unit: "blend.fillet_corner_p1",
+            ..
+        })
+    ));
 }

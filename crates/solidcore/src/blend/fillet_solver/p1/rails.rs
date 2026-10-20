@@ -8,7 +8,8 @@
 //! | [`compute_support_edge`] | `sm_ComputeSupportEdge` |
 //!
 //! Deviations: typed arena ids and caller-owned notification routing; unavailable
-//! edge construction and surface intersection retain typed call boundaries.
+//! edge construction retains a typed call boundary; surface intersection calls
+//! the ported `blend::fillet_geom::p2::srf_srf_intersection`.
 //! No recursion.
 use crate::blend::fillet_geom::p1::{
     CliffHandle, FilStatus, FilletBrep, FilletEdgeType, FilletGeomId, FilletVertex,
@@ -57,14 +58,14 @@ pub(crate) trait RailOps {
     }
     fn surface_intersection(
         &mut self,
-        _k: &Kernel,
-        _fb: &mut FilletBrep,
+        k: &Kernel,
+        fb: &mut FilletBrep,
         request: SupportIntersection<'_>,
     ) -> Result<Option<Curve>> {
         let SupportIntersection {
             start,
             end,
-            start_direction,
+            mut start_direction,
             end_direction,
             surfaces,
             approx_tol,
@@ -72,22 +73,23 @@ pub(crate) trait RailOps {
             skip_two_points_intersection,
             reference_point,
         } = request;
-        let _ = (
-            start,
-            end,
-            start_direction,
+        let [first, second] = surfaces;
+        crate::blend::fillet_geom::p2::srf_srf_intersection(
+            k,
+            Some(fb.vertex_point(start)?),
+            end.map(|v| fb.vertex_point(v)).transpose()?,
+            start_direction.as_mut(),
             end_direction,
-            surfaces,
+            first,
+            second,
             approx_tol,
             angle_tol,
-            skip_two_points_intersection,
-            reference_point,
-        );
-        // UNPORTED(blend.fillet_geom_p2): sm_SrfSrfIntersection
-        Err(SolidError::unported(
-            "sm_SrfSrfIntersection",
-            "blend.fillet_geom_p2",
-        ))
+            crate::blend::fillet_geom::p2::SrfSrfOptions {
+                skip_two_pnts_intersection: skip_two_points_intersection,
+                ref_point: reference_point,
+            },
+        )
+        .map(|curves| curves.curve_3d)
     }
 }
 pub(crate) struct Missing;

@@ -73,6 +73,10 @@
 //!   `SmEdge::SetCurve`, `SmOwningTopology::Remove` / `PostInsert` of a vertex use)
 //!   are stubs (`plan/findings.md`, "`blend.fillet_solver_p1`: pseudo-B-rep
 //!   mutations"); every one is after an unported fillet geometry call.
+//!   The shared [`split_rail`] / [`compute_support_edge`] helpers instead take the
+//!   typed [`crate::blend::fillet_geom::p1::FilletBrep`] and [`RailOwnership`]; they
+//!   perform those mutations and use the real surface/surface intersection port.
+//!   Only edge construction remains unavailable in `split_rail`.
 //! - **Virtual overrides of unported units.** A derived solver's override owned by a
 //!   unit that is not ported (the `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS`
 //!   overrides of the custom solvers) returns [`SolidError::Unported`]; the
