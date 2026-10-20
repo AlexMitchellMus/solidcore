@@ -72,13 +72,13 @@
 //!   drops them, which changes nothing because `FindCommonElements` never matches a
 //!   null against a face's vertices.
 //! - Callees not ported yet return [`SolidError::Unported`] at the call site,
-//!   tagged `UNPORTED(<unit>)`: `SmBrep::GetMinEdgeBBoxSize` (`topology.brep_p2`) and
-//!   `SmBrep::MakeWireEdge` (`topology.brep_p3`); the [`MergeBrep`] defaults do the
-//!   same for `SmBrep::Notify` / `IsManifoldSolid` (`topology.brep_p2`),
-//!   `SmFace::GetEdges` / `GetVertices` / `GetBrep` (`topology.face_p4`) and
-//!   `OrientTrimmedSurfaces` (`topology.brep_p3`). The code after each stub is ported in full. The callees
-//!   ported on arena B-reps are required [`MergeBrep`] methods (`SmEdge::GetVertices`,
-//!   `SmFace::GetFaceuses`, `SmFaceuse::GetShell`,
+//!   tagged `UNPORTED(<unit>)`: `SmBrep::MakeWireEdge` (`topology.brep_p3`); the
+//!   [`MergeBrep`] defaults do the same for `SmFace::GetEdges` / `GetVertices` /
+//!   `GetBrep` (`topology.face_p4`) and `OrientTrimmedSurfaces` (`topology.brep_p3`).
+//!   The code after each stub is ported in full. `SmBrep::GetMinEdgeBBoxSize` is
+//!   `topology::brep::p2::min_edge_bbox_size`. The callees ported on arena B-reps are
+//!   required [`MergeBrep`] methods (`SmEdge::GetVertices`, `SmFace::GetFaceuses`,
+//!   `SmFaceuse::GetShell`, `SmBrep::Notify` / `IsManifoldSolid` (`topology.brep_p2`),
 //!   `SmFace::CalculateBoundingBox` (`bTight = FALSE`), the three
 //!   `SmStitch` calls, `TestClosureSplitRegion`, `FindAndSetInfiniteRegion`) or come
 //!   from the intersector traits (`SmBrep::GetEdges` / `GetVertices` / `GetFaces`);
@@ -137,9 +137,10 @@ const fn reverse_orientation(o: OrientType) -> OrientType {
 
 // ---- the constructor ---------------------------------------------------------------
 
-fn min_edge_bbox_size(_brep: &Brep) -> Result<f64> {
-    // UNPORTED(topology.brep_p2): SmBrep::GetMinEdgeBBoxSize
-    unavailable("SmBrep::GetMinEdgeBBoxSize", "topology.brep_p2")
+/// `SmBrep::GetMinEdgeBBoxSize(rpEdge)` (`topology::brep::p2::min_edge_bbox_size`); the
+/// constructor drops the edge.
+fn min_edge_bbox_size(k: &Kernel, brep: &Brep) -> Result<f64> {
+    Ok(crate::topology::brep::p2::min_edge_bbox_size(k, brep)?.0)
 }
 
 impl<O: ClassObject + SolutionObject + Ord> MergeState<TopologyIntersector<O>> {
@@ -155,8 +156,9 @@ impl<O: ClassObject + SolutionObject + Ord> MergeState<TopologyIntersector<O>> {
     /// # Errors
     ///
     /// [`SolidError::InvalidInput`] for a computed tolerance without other B-rep
-    /// (upstream dereferences null); [`SolidError::Unported`] from the B-rep queries.
+    /// (upstream dereferences null); those of `SmBrep::GetMinEdgeBBoxSize`.
     pub fn with_breps(
+        k: &Kernel,
         brep: (&Brep, O),
         other: Option<(&Brep, O)>,
         approx_tol_3d: f64,
@@ -177,10 +179,10 @@ impl<O: ClassObject + SolutionObject + Ord> MergeState<TopologyIntersector<O>> {
         // specifying a zero tolerance.
         if approx_tol_3d < EFF_ZERO {
             // Get the minimum Edge length.
-            let edge1_size = min_edge_bbox_size(brep.0)?;
+            let edge1_size = min_edge_bbox_size(k, brep.0)?;
             let (other_brep, _) =
                 other.ok_or(dangling(OP, "computed tolerance without other B-rep"))?;
-            let edge2_size = min_edge_bbox_size(other_brep)?;
+            let edge2_size = min_edge_bbox_size(k, other_brep)?;
             let edge_size = min2(edge1_size, edge2_size);
 
             // siWhichTol == 3: 1/2 of Min of two Brep's tols.
@@ -264,7 +266,6 @@ impl TopologyCopy<'_> {
     }
 }
 
-#[allow(clippy::too_many_arguments)] // upstream's MakeWireEdge
 fn make_wire_edge(
     brep: &mut Brep,
     region: Option<RegionId>,
@@ -292,7 +293,6 @@ fn make_wire_edge(
 /// [`SolidError::InvalidInput`] for a null edge, curve, vertex use or vertex of the
 /// edge use (upstream dereferences them); those of the curve copy, `Relate` and
 /// [`p1::merge_vertex`]; [`SolidError::Unported`] (module docs).
-#[allow(clippy::too_many_arguments)]
 pub fn merge_edge(
     k: &Kernel,
     brep: &mut Brep,
@@ -530,7 +530,6 @@ fn orientation_to_find(
 /// [`SolidError::InvalidInput`] for missing topology upstream dereferences or a zero
 /// tangent (`Unitize`); those of the merges, evaluations, copies and `Relate`;
 /// [`SolidError::Unported`] (module docs).
-#[allow(clippy::too_many_arguments, clippy::too_many_lines)] // one upstream routine
 pub fn make_faceuse(
     k: &Kernel,
     brep: &mut Brep,
@@ -560,7 +559,6 @@ pub fn make_faceuse(
 /// # Errors
 ///
 /// As [`make_faceuse`].
-#[allow(clippy::too_many_arguments, clippy::too_many_lines)] // one upstream routine
 pub fn make_faceuse_with(
     mut ctx: MergeContext<'_>,
     brep: &mut Brep,
@@ -996,16 +994,13 @@ pub trait MergeBrep<O>: IntersectorBrepP2<O> {
     /// Those of the region search.
     fn find_and_set_infinite_region(&mut self, k: &mut Kernel, brep: O) -> Result<()>;
 
-    /// `SmBrep::Notify(eOperation, pBrep, NULL, NULL)`.
+    /// `SmBrep::Notify(eOperation, pBrep, NULL, NULL)` (`topology::brep::p2::notify`
+    /// with the B-rep as caller).
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] until `topology.brep_p2` is ported.
-    fn notify_brep(&mut self, k: &mut Kernel, brep: O, operation: NotifyOperation) -> Result<()> {
-        let _ = (k, brep, operation);
-        // UNPORTED(topology.brep_p2): SmBrep::Notify
-        unavailable("SmBrep::Notify", "topology.brep_p2")
-    }
+    /// Those of the notification.
+    fn notify_brep(&mut self, k: &mut Kernel, brep: O, operation: NotifyOperation) -> Result<()>;
 
     /// `SmFace::GetEdges(rEdges)`.
     ///
@@ -1040,16 +1035,12 @@ pub trait MergeBrep<O>: IntersectorBrepP2<O> {
         unavailable("SmFace::GetBrep", "topology.face_p4")
     }
 
-    /// `SmBrep::IsManifoldSolid`.
+    /// `SmBrep::IsManifoldSolid` (`topology::brep::p2::is_manifold_solid`).
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] until `topology.brep_p2` is ported.
-    fn is_manifold_solid(&self, brep: O) -> Result<bool> {
-        let _ = brep;
-        // UNPORTED(topology.brep_p2): SmBrep::IsManifoldSolid
-        unavailable("SmBrep::IsManifoldSolid", "topology.brep_p2")
-    }
+    /// Those of the topology walk.
+    fn is_manifold_solid(&self, brep: O) -> Result<bool>;
 
     /// `SmBrep::OrientTrimmedSurfaces(bArg1, rbMaybeNotClosed, bArg3)` (no face
     /// list): returns `rbMaybeNotClosed`.
@@ -1241,7 +1232,6 @@ impl<O: ClassObject + SolutionObject + Ord> MergeState<TopologyIntersector<O>> {
         Ok(out)
     }
 
-    #[allow(clippy::too_many_arguments, clippy::too_many_lines)] // one upstream routine
     fn merge_added_body<B: MergeBrep<O>>(
         &mut self,
         k: &mut Kernel,
@@ -1835,9 +1825,15 @@ mod tests {
         let brep = Brep::new();
         let other = Brep::new();
         let options = MergeOptions::new(true, false, false, true, true);
-        let m =
-            MergeState::with_breps((&brep, B), Some((&other, OTHER)), 0.25, 0.5, Some(&options))
-                .unwrap();
+        let m = MergeState::with_breps(
+            &Kernel::default(),
+            (&brep, B),
+            Some((&other, OTHER)),
+            0.25,
+            0.5,
+            Some(&options),
+        )
+        .unwrap();
         assert_eq!(m.intersector.primary_brep(), Some(B));
         assert_eq!(m.intersector.other_brep(), Some(OTHER));
         assert_eq!(
@@ -1856,7 +1852,8 @@ mod tests {
 
         // A zero angle tolerance becomes 20 degrees; a null options pointer keeps the
         // defaults; the other B-rep may be null (the stitch entry points).
-        let m = MergeState::with_breps((&brep, B), None, EFF_ZERO, 0.0, None).unwrap();
+        let m = MergeState::with_breps(&Kernel::default(), (&brep, B), None, EFF_ZERO, 0.0, None)
+            .unwrap();
         assert_eq!(m.intersector.other_brep(), None);
         assert_eq!(
             m.intersector.this_ang_tol_rad().to_bits(),
@@ -1864,12 +1861,14 @@ mod tests {
         );
         assert_eq!(m.options, MergeOptions::default());
         // `-0.0 == 0.0`, so a negative zero is replaced too; other angles are kept.
-        let m = MergeState::with_breps((&brep, B), None, 1.0, -0.0, None).unwrap();
+        let m =
+            MergeState::with_breps(&Kernel::default(), (&brep, B), None, 1.0, -0.0, None).unwrap();
         assert_eq!(
             m.intersector.this_ang_tol_rad().to_bits(),
             (20.0 * (PI / 180.0)).to_bits()
         );
-        let m = MergeState::with_breps((&brep, B), None, 1.0, -1.0, None).unwrap();
+        let m =
+            MergeState::with_breps(&Kernel::default(), (&brep, B), None, 1.0, -1.0, None).unwrap();
         assert_eq!(
             m.intersector.this_ang_tol_rad().to_bits(),
             (-1.0f64).to_bits()
@@ -1877,24 +1876,35 @@ mod tests {
     }
 
     #[test]
-    fn computed_tolerance_waits_on_the_brep_queries() {
+    fn computed_tolerance_takes_the_smaller_of_brep_and_edge_sizes() {
+        // Edgeless B-reps: GetMinEdgeBBoxSize gives the standard 0.001 for both.
         let brep = Brep::new();
+        let expected = min2(0.5 * min2(brep.tolerance(), brep.tolerance()), 0.001 * 0.33);
         for tol in [0.0, -1.0, EFF_ZERO / 2.0] {
-            let e = MergeState::<TopologyIntersector<H>>::with_breps(
+            let m = MergeState::<TopologyIntersector<H>>::with_breps(
+                &Kernel::default(),
                 (&brep, B),
                 Some((&brep, OTHER)),
                 tol,
                 0.0,
                 None,
             )
+            .unwrap();
+            assert_eq!(
+                m.intersector.this_approx_tol_3d().to_bits(),
+                expected.to_bits()
+            );
+            // Without other B-rep upstream dereferences null.
+            let e = MergeState::<TopologyIntersector<H>>::with_breps(
+                &Kernel::default(),
+                (&brep, B),
+                None,
+                tol,
+                0.0,
+                None,
+            )
             .unwrap_err();
-            assert!(matches!(
-                e,
-                SolidError::Unported {
-                    upstream: "SmBrep::GetMinEdgeBBoxSize",
-                    unit: "topology.brep_p2"
-                }
-            ));
+            assert!(matches!(e, SolidError::InvalidInput { .. }));
         }
     }
 

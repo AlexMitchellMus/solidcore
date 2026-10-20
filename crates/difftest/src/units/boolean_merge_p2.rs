@@ -28,7 +28,7 @@ use solidcore::boolean::topology_intersector::p1::{Relations, TopologyIntersecto
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
 use solidcore::geom::context::MarkLock;
 use solidcore::geom::extent3d::Extent3d;
-use solidcore::geom::object::ObjectRef;
+use solidcore::geom::object::{NotifyOperation, ObjectRef};
 use solidcore::heal::stitch::p1::{DefaultStitchCallback, Stitch};
 use solidcore::kernel::Kernel;
 use solidcore::topology;
@@ -341,12 +341,16 @@ impl MergeBrep<H> for Two {
         faceuse: H,
     ) -> solidcore::Result<(Option<H>, Option<H>)> {
         // The SmTopology marks live in a record per call (upstream's object marks);
-        // the region split takes and releases its own mark locks.
+        // the region split takes and releases its own mark locks. The fixtures carry no
+        // attribute records: its notifications run on an empty store over the regions,
+        // as topology.brep_p10's runner.
         let b = self.brep_m(brep)?;
+        let mut state = topology::brep::p2::RegionNotifyState::new(b);
         let (shell, region) = topology::brep::p6::test_closure_split_region(
             k,
             b,
             &mut Marks::default(),
+            &mut state.env(),
             test_closure,
             FaceuseId::from_index(faceuse.i),
         )?;
@@ -354,6 +358,36 @@ impl MergeBrep<H> for Two {
             shell.map(|s| hd(brep.b, K_SHELL, s.index())),
             region.map(|r| hd(brep.b, K_REGION, r.index())),
         ))
+    }
+    fn notify_brep(
+        &mut self,
+        k: &mut Kernel,
+        brep: H,
+        operation: NotifyOperation,
+    ) -> solidcore::Result<()> {
+        let _ = k;
+        // PRE_EDIT and DESTRUCTION delete the B-rep's cache; it is rebuilt on demand.
+        if matches!(
+            operation,
+            NotifyOperation::PreEdit | NotifyOperation::Destruction
+        ) {
+            self.delete_cache(brep)?;
+        }
+        // The fixtures carry no attribute records: an empty store over the regions, as
+        // heal.stitch_p1's PRE_EDIT.
+        let b = self.brep_r(brep)?;
+        let mut state = topology::brep::p2::RegionNotifyState::new(b);
+        let this = topology::brep::p2::NotifyArg::Object(topology::brep::p2::brep_ref(b));
+        topology::brep::p2::notify(
+            b,
+            &mut state.env(),
+            None,
+            operation,
+            [Some(this), None, None],
+        )
+    }
+    fn is_manifold_solid(&self, brep: H) -> solidcore::Result<bool> {
+        topology::brep::p2::is_manifold_solid(self.brep_r(brep)?)
     }
     fn faceuse_shell(&self, fu: H) -> solidcore::Result<Option<H>> {
         let b = self.brep_r(fu)?;
@@ -496,6 +530,7 @@ fn run_rust(i: &Inputs, p: &Prepared) -> Result<Output, HarnessError> {
     match &i.op {
         Op::Construct => {
             let m = match MergeState::<TopologyIntersector<H>>::with_breps(
+                &k,
                 (&a, brep_h(0)),
                 b.as_ref().map(|b| (b, brep_h(1))),
                 p.tol,
@@ -637,6 +672,7 @@ fn run_rust(i: &Inputs, p: &Prepared) -> Result<Output, HarnessError> {
         }
         Op::MergeAddedTopology { .. } | Op::MergeAddedFace { .. } => {
             let mut state = match MergeState::<TopologyIntersector<H>>::with_breps(
+                &k,
                 (&a, brep_h(0)),
                 None,
                 p.tol,

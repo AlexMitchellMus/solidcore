@@ -58,14 +58,14 @@
 //! - `SmBrep::GlueVertices`, `RemoveFaces` (with the B-rep's own editing flag) and
 //!   `StitchAndOrient` call `topology.brep_p5`, which defers at its own barriers.
 //! - The calls into `GlueEdgesGeneral` (`topology.brep_p7`), `SqueezeEdge`
-//!   (`topology.brep_p3`), `Notify`
-//!   (`topology.brep_p2`), `CalculateBoundingBox` (`query.brep`), `SmFace::GetBrep`,
+//!   (`topology.brep_p3`), `CalculateBoundingBox` (`query.brep`), `SmFace::GetBrep`,
 //!   `GetVertices`, `GetEdges` (`topology.face_p4`) return [`SolidError::Unported`].
 //!   `SmApiStitch(pBrep, pFace)` builds its `SmMerge` with `boolean.merge_p2`'s
 //!   [`MergeState::with_breps`], whose computed tolerance fails on the null other
 //!   B-rep where upstream crashes (UB-167), so its `MergeAddedFace` is never reached.
 //!   The API entry points call `DoStitching`, `StitchIntoSolid` and `StitchIntoShell`
-//!   in [`super::p2`].
+//!   in [`super::p2`]. `SmBrep::Notify(SM_NO_PRE_EDIT)` is `topology::brep::p2::notify`
+//!   on an empty notify state (no B-rep cache, no attribute state on the heal path).
 
 use std::collections::BTreeMap;
 
@@ -2085,11 +2085,22 @@ fn local_identity(type_code: i64, index: u32) -> ObjectRef {
     }
 }
 
-/// `SmBrep::Notify(SM_NO_PRE_EDIT, this, NULL, NULL)` (unit `topology.brep_p2`).
+/// `SmBrep::Notify(SM_NO_PRE_EDIT, this, NULL, NULL)` ([`crate::topology::brep::p2::notify`]).
+/// No Rust caller holds the B-rep's `SM_OC_BREP` cache, and the stitcher, like the rest
+/// of the heal path, carries no attribute state (`plan/findings.md`, "heal: no attribute
+/// state on the heal path"), so the notification runs on an empty state; `PRE_EDIT` reads
+/// no topology record.
 pub(crate) fn brep_notify_pre_edit(b: &mut Brep) -> Result<()> {
-    let _ = b;
-    // UNPORTED(topology.brep_p2): SmBrep::Notify
-    Err(SolidError::unported("SmBrep::Notify", "topology.brep_p2"))
+    use crate::topology::brep::p2;
+    let mut state = p2::RegionNotifyState::new(b);
+    let this = Some(p2::NotifyArg::Object(p2::brep_ref(b)));
+    p2::notify(
+        b,
+        &mut state.env(),
+        None,
+        crate::geom::object::NotifyOperation::PreEdit,
+        [this, None, None],
+    )
 }
 
 /// `SmBrep::CalculateBoundingBox(rBox, bApprox, bTight, bExpandByZoneTol3d)` (unit
@@ -2194,8 +2205,8 @@ pub fn api_stitch(k: &mut Kernel, b: Option<&mut Brep>) -> Result<()> {
 /// # Errors
 ///
 /// [`SolidError::InvalidInput`] for a null B-rep or face, and from the merge
-/// constructor for the null other B-rep (after [`SolidError::Unported`] of its
-/// `SmBrep::GetMinEdgeBBoxSize`, unit `topology.brep_p2`).
+/// constructor for the null other B-rep (after the primary's
+/// `SmBrep::GetMinEdgeBBoxSize`).
 pub fn api_stitch_face(k: &mut Kernel, b: Option<&mut Brep>, face: Option<FaceId>) -> Result<()> {
     let (Some(b), Some(face)) = (b, face) else {
         return Err(SolidError::invalid_input(
@@ -2208,6 +2219,7 @@ pub fn api_stitch_face(k: &mut Kernel, b: Option<&mut Brep>, face: Option<FaceId
     // constructor returns that error (after the primary's GetMinEdgeBBoxSize), so the
     // MergeAddedFace that follows upstream is never reached.
     let merge = MergeState::<TopologyIntersector<MergeOperand>>::with_breps(
+        k,
         (&*b, MergeOperand::Primary),
         None,
         0.0,
