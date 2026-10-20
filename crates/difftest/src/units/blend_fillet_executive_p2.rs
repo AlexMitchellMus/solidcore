@@ -635,8 +635,9 @@ fn status_of(e: &SolidError) -> f64 {
     }
 }
 
+/// The shim's `SmExtent1d(mn, mx)`, which swaps reversed ends.
 fn map_of(map: Option<[f64; 2]>) -> Option<Extent1d> {
-    map.map(|[a, b]| Extent1d::from_raw(a, b))
+    map.map(|[a, b]| Extent1d::from_min_max(a, b))
 }
 
 fn law_linear(start: f64, end: f64, map: Option<[f64; 2]>) -> Output {
@@ -990,6 +991,9 @@ fn temp_radius(variable: bool, start: f64, end: f64, bx: &BoxIn) -> Result<Outpu
 }
 
 fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
+    // Only what the shim may see runs on either side (counts and codes bounded).
+    let (op, rec) = record(i);
+    ffi::validate(op, &rec).map_err(|e| harness(format!("rejected: {e}")))?;
     match i {
         Inputs::LawLinear { start, end, map } => Ok(law_linear(*start, *end, *map)),
         Inputs::LawElliptic {
@@ -1048,12 +1052,17 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
 // ---- generated cases --------------------------------------------------------------------
 
 fn gen_map(rng: &mut Rng) -> Option<[f64; 2]> {
-    match rng.below(4) {
+    match rng.below(5) {
         0 => None,
         1 => Some([0.0, 1.0]),
         2 => {
             let a = rng.uniform(0.0, 1.0);
             Some([a, rng.uniform(a, 1.0)])
+        }
+        3 => {
+            // reversed ends: SmExtent1d(mn, mx) swaps them
+            let a = rng.uniform(-1.0, 1.0);
+            Some([a, a - rng.uniform(0.0, 1.0)])
         }
         _ => {
             let a = rng.uniform(-1.0, 2.0);
