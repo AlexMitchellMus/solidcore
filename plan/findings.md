@@ -8664,6 +8664,42 @@ with owner-tagged `Unported` errors and documented continuations.
   on the host bind mount versus 5.38 seconds on the Linux volumes; this is a
   warmed FFI rebuild measurement, not an end-to-end cold-suite speedup.
 
+- **Vertex-cap executive adapter follow-up (2026-10-20).** Both ordinary and
+  exactly-one-boundary strut creator calls now reuse the landed `VertexOffset`
+  algorithm through a narrow internal backend. Tagged typed handles distinguish
+  original vertices from result edges/faces; selection uses the result tolerance,
+  while the creator reads the original vertex's B-rep tolerance. Seam queries borrow
+  the real mutable result arena, concrete curve kinds are preserved, and generated
+  geometry is moved into the owned output. There is no analytic sphere shortcut.
+  Sixteen new fixtures cover isolated vertices, translated/scaled strut caps,
+  mate-faceuse fallback and no-cap filters. Snapshots compare surface type/domain,
+  full homogeneous NURBS data, knots, second derivatives, and trims/orientations.
+  ABI mode 6 leaves modes 4/5 available for the independent face-tail work in #282.
+  The unit remains **partial**: 709 cases, 704 compared passes, four deferred,
+  one native constructor rejection, zero failures; maximum relative error remains
+  `2.9158035700250084e-14`, unchanged `1e-9` tolerance, no absolute floors.
+  All 18 vertex-named cases compare bit for bit. Remaining first stops are
+  `CalculateBoundingBox`, editing metadata, `ShrinkGeometry` and the legacy
+  normalized-evaluation adapter. The old `RemoveEmpty` test expectation is corrected
+  to the actual part 1 editing-metadata boundary rather than part 5 removal.
+  After merging main `aabae414`, formatting, strict C++-enabled Clippy, default
+  workspace tests (1501 kernel tests), wasm checking and the complete p1/creator
+  differential runs pass locally in Docker. Sensitivity detects 704/704 p1 and
+  428/428 creator comparisons; the creator report remains unchanged. Before that
+  merge, the 16 p1 FFI tests and 24 p1 runner tests passed serially, and the p1
+  report also passed against the x86-64 C++ reference. Independent GPT-6-Astra
+  review found no remaining code blockers for a **draft** PR. Executive-level
+  ordinary multi-boundary caps, threshold-sensitive tolerance routing, actual
+  nonempty trim production, and analytic/closed-surface seam paths remain coverage
+  gaps. Empty trim snapshots do not certify those paths.
+  **Full canonical x86-64 manifest validation is pending CI.** The local ARM
+  campaign on the earlier `ef504a4a` base ran all 228 selected units but reproduced
+  the four documented architecture-specific hash/healing failures (General above).
+  Local x86-64 emulation timed out before completing the full gate; no full-gate
+  pass is claimed. Shared native synchronization remains separate work in #201;
+  this main-based follow-up retains main's native calling convention and makes no
+  new cross-wrapper thread-safety guarantee.
+
 ## topology.brep_p1 (`SmBrep` members, collections, `sm_*` helpers of `SmBrep.cpp`, PR #145, 2026-10-16; partial, no disagreements)
 
 Difftest (`fixtures/topology.brep_p1/`: 2335 cases on the 15 upstream `.smb` files read by
