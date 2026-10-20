@@ -1,0 +1,2146 @@
+{
+  "abs_floors": [],
+  "cases": [
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0000",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=10924743301330177829",
+      "values_compared": 1
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0001",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=10924743301330177830",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0002",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=10924743301330177831",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0003",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=10924743301330177832",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0004",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=10924743301330177833",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0005",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=10924743301330177834",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0006",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=10924743301330177835",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0007",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=10924743301330177836",
+      "values_compared": 3
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0008",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=10924743301330177837",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0009",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=10924743301330177838",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0010",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=10924743301330177839",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0011",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=10924743301330177840",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0012",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=10924743301330177841",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0013",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=10924743301330177842",
+      "values_compared": 1
+    },
+    {
+      "deferred": {
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0014",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=10924743301330177843",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0015",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=10924743301330177844",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v0_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#16 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v0_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#17 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v1_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#18 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v1_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#19 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v2_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#20 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v2_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#21 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v3_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#22 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v3_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#23 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v4_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#24 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v4_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#25 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v5_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#26 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v5_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#27 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v6_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#28 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v6_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#29 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v7_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#30 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v7_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#31 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v8_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#32 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v8_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#33 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v9_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#34 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v9_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#35 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v10_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#36 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v10_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#37 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v11_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#38 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box1x1x2_v11_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#39 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v0_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#40 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v0_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#41 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v1_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#42 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v1_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#43 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v2_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#44 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v2_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#45 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v3_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#46 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v3_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#47 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v4_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#48 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v4_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#49 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v5_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#50 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v5_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#51 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v6_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#52 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v6_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#53 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v7_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#54 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v7_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#55 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v8_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#56 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v8_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#57 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v9_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#58 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v9_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#59 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v10_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#60 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v10_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#61 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v11_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#62 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brick_v11_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#63 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v0_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#64 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v0_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#65 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v1_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#66 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v1_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#67 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v2_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#68 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v2_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#69 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v3_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#70 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v3_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#71 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v4_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#72 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v4_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#73 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v5_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#74 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v5_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#75 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v6_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#76 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v6_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#77 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v7_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#78 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v7_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#79 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v8_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#80 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v8_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#81 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v9_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#82 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v9_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#83 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v10_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#84 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v10_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#85 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v11_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#86 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_corner_box_v11_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#87 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v0_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#88 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v0_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#89 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v1_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#90 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v1_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#91 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v2_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#92 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v2_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#93 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v3_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#94 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v3_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#95 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v4_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#96 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v4_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#97 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v5_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#98 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v5_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#99 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v6_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#100 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v6_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#101 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v7_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#102 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v7_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#103 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v8_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#104 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v8_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#105 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v9_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#106 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v9_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#107 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v10_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#108 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v10_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#109 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v11_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#110 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_l_shaped_box_v11_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#111 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v0_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#112 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v0_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#113 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v1_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#114 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v1_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#115 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v2_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#116 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v2_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#117 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v3_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#118 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v3_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#119 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v4_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#120 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v4_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#121 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v5_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#122 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v5_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#123 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v6_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#124 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v6_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#125 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v7_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#126 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v7_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#127 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v8_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#128 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v8_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#129 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v9_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#130 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v9_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#131 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v10_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#132 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v10_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#133 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v11_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#134 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_6_sided_corner_v11_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#135 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v0_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#136 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v0_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#137 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v1_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#138 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v1_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#139 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v2_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#140 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v2_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#141 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v3_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#142 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v3_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#143 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v4_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#144 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v4_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#145 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v5_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#146 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v5_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#147 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v6_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#148 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v6_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#149 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v7_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#150 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v7_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#151 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v8_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#152 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v8_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#153 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v9_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#154 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v9_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#155 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v10_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#156 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v10_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#157 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v11_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#158 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_w_slot_v11_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#159 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v0_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#160 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v0_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#161 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v1_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#162 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v1_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#163 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v2_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#164 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v2_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#165 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v3_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#166 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v3_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#167 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v4_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#168 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v4_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#169 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v5_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#170 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v5_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#171 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v6_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#172 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v6_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#173 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v7_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#174 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v7_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#175 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v8_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#176 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v8_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#177 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v9_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#178 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v9_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#179 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v10_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#180 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v10_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#181 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v11_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#182 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_box_v11_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#183 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v0_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#184 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v0_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#185 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v1_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#186 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v1_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#187 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v2_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#188 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v2_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#189 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v3_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#190 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v3_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#191 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v4_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#192 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v4_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#193 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v5_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#194 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v5_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#195 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v6_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#196 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v6_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#197 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v7_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#198 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v7_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#199 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v8_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#200 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v8_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#201 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v9_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#202 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v9_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#203 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v10_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#204 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v10_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#205 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v11_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#206 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_box_on_box_v11_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#207 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v0_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#208 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v0_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#209 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v1_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#210 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v1_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#211 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v2_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#212 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v2_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#213 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v3_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#214 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v3_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#215 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v4_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#216 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v4_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#217 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v5_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#218 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v5_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#219 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v6_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#220 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v6_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#221 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v7_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#222 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v7_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#223 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v8_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#224 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v8_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#225 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v9_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#226 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v9_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#227 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v10_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#228 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v10_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#229 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v11_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#230 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_cyl_on_box_v11_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#231 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    }
+  ],
+  "cases_both_errored": 0,
+  "cases_deferred": 67,
+  "cases_failed": 0,
+  "cases_passed": 165,
+  "cases_total": 232,
+  "deferred_by_unit": {
+    "intersect.surface_drop_lib_p3": 1,
+    "surface.surf_of_extrusion_p2": 45,
+    "surface.surface_p2": 14,
+    "topology.brep_p10": 7
+  },
+  "max_rel_err": 0.0,
+  "pass": true,
+  "rel_tol": 1e-9,
+  "seeds": 16,
+  "status": "partial",
+  "unit": "blend.fillet_corner_p2"
+}

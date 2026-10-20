@@ -6,3 +6,4 @@
 //! `blend.fillet_corner_p3`); each part is a submodule.
 
 pub mod p1;
+pub mod p2;
