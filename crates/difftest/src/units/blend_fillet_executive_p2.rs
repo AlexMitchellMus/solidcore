@@ -561,6 +561,22 @@ impl ExecutiveAccess<Handle> for Access {
     fn delete_brep(&mut self, _: Handle) -> SolidResult<()> {
         missing()
     }
+    fn set_brep_tolerance(
+        &mut self,
+        k: &mut Kernel,
+        brep: Handle,
+        tolerance: f64,
+        update_only_if_larger: bool,
+        cascade_to_boundaries: bool,
+    ) -> SolidResult<()> {
+        solidcore::topology::brep::p2::set_tolerance(
+            k,
+            self.brep_mut(brep)?,
+            tolerance,
+            update_only_if_larger,
+            cascade_to_boundaries,
+        )
+    }
     fn tolerance(&self, k: &Kernel, brep: Handle, approx: bool) -> SolidResult<f64> {
         let tolerance = self.brep(brep)?.tolerance();
         Ok(if approx {
