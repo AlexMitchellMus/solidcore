@@ -595,23 +595,21 @@ fn bspline(r: &BsIn) -> Result<BSplineVolume, HarnessError> {
 fn build_map(m: &MapIn) -> Result<Volume, HarnessError> {
     let orient = m.orient.as_ref().map(transform_of);
     Ok(match m.kind {
-        1 => Volume::with_maps(
+        1 => Volume::oriented(
             VolumeKind::Transform(transform_of(
                 m.t.as_ref().ok_or_else(|| harness("transform map without t"))?,
             )),
             orient,
-            None,
         ),
         2 => {
             let t = m.tw.as_ref().ok_or_else(|| harness("twist map without tw"))?;
             TwistVolume::create(v3(t.o), v3(t.axis), v3(t.mid), t.period, t.min)
         }
-        3 => Volume::with_maps(
+        3 => Volume::oriented(
             VolumeKind::BSpline(bspline(
                 m.bs.as_ref().ok_or_else(|| harness("B-spline map without bs"))?,
             )?),
             orient,
-            None,
         ),
         4 => Volume::oriented(VolumeKind::Unbend(UnbendVolume::new()), orient),
         5 => {
