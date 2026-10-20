@@ -61,7 +61,7 @@ mod tests {
     //! Difftest compares these exits too; here a removed check cannot hide behind a
     //! deferred construction.
     use super::*;
-    use crate::curve::composite_curve::OffsetMapAttribute;
+    use crate::curve::composite_curve::{OffsetCornerType, OffsetMapAttribute};
     use crate::error::{Result, SolidError};
     use crate::geom::attribute::TagData;
     use crate::geom::axis2_placement::Axis2Placement;
@@ -80,6 +80,9 @@ mod tests {
     struct Model {
         k: Kernel,
         b: Brep,
+        /// Hand out the one B-rep as a scratch B-rep with a settable tolerance, so a
+        /// taper reaches its normal.
+        scratch: bool,
     }
     fn none<T>() -> Result<T> {
         Err(SolidError::invalid_input("p2 test model", "no topology"))
@@ -95,6 +98,7 @@ mod tests {
             Ok(Self {
                 k: Kernel::default(),
                 b,
+                scratch: false,
             })
         }
     }
@@ -138,6 +142,9 @@ mod tests {
             none()
         }
         fn new_brep(&mut self, _: BrepId) -> Result<BrepId> {
+            if self.scratch {
+                return Ok(B);
+            }
             Err(SolidError::unported("SmBrep::SmBrep", "topology.brep_p3"))
         }
         fn delete_brep(&mut self, _: BrepId) {}
@@ -188,6 +195,12 @@ mod tests {
         }
     }
     impl PrimitiveCreationAccess for Model {
+        fn set_brep_tolerance(&mut self, _: BrepId, _: f64) -> Result<()> {
+            if self.scratch {
+                return Ok(());
+            }
+            none()
+        }
         fn copy_faces_into(&mut self, _: BrepId, _: &[FaceId], _: BrepId) -> Result<()> {
             none()
         }
@@ -274,6 +287,28 @@ mod tests {
         assert!(starts.is_empty() && sides.is_empty() && ends.is_empty());
         assert_eq!(transferred, vec![false]);
         assert!(curves.first().is_some_and(Option::is_some));
+        Ok(())
+    }
+
+    #[test]
+    fn a_curves_normal_that_cannot_be_computed_is_zero() -> Result<()> {
+        // ComputeCrvsNormal zeroes its output before failing on one linear curve, so
+        // a small normal given to be computed comes back zero
+        let mut a = Model::new()?;
+        a.scratch = true;
+        let line = BSplineCurve::create_line_segment(3, Vec3::ZERO, Vec3::X)?;
+        let mut normal = Vec3::new(1e-3, 0.0, 0.0);
+        let _ = primitive().create_taper_extrude(
+            &mut a,
+            B,
+            vec![Curve::from(line)],
+            1.0,
+            5.0,
+            3,
+            &mut normal,
+            OffsetCornerType::LinearExtension,
+        );
+        assert_eq!(normal, Vec3::ZERO);
         Ok(())
     }
 

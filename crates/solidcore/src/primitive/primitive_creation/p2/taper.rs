@@ -211,10 +211,8 @@ fn taper(
     .curves;
 
     if normal.length_squared() < 0.00001 {
-        // compute the normal from curve sample points
-        if let Some(computed) = ignored(compute_crvs_normal(&input))? {
-            *normal = computed;
-        }
+        // compute the normal from curve sample points (zeroed before it can fail)
+        *normal = ignored(compute_crvs_normal(&input))?.unwrap_or(Vec3::ZERO);
         // snap curves to Z axis when close
         if normal.z > 0.98 {
             normal.x = 0.0;
@@ -228,7 +226,7 @@ fn taper(
         }
     } else {
         // check that the curves order conforms to the specified input normal
-        let computed = ignored(compute_crvs_normal(&input))?.unwrap_or(Vec3::UNDEF);
+        let computed = ignored(compute_crvs_normal(&input))?.unwrap_or(Vec3::ZERO);
         let angle = ignored(computed.angle_between(*normal))?.unwrap_or(0.0);
         if (angle - PI).abs() < 0.0001 {
             // reverse all the curves, then rechain them
