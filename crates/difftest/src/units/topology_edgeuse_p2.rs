@@ -241,11 +241,17 @@ fn uv_curve(b: &Brep, eu: EdgeuseId, src: &UvSrc) -> Option<CrvIn> {
 const EXACT_SURFACES: [i64; 2] = [15002, 15011];
 const EXACT_CURVES: [i64; 3] = [14033, 14010, 14048];
 
+/// The deferral label of cases whose geometry the shared B-rep export holds only as a
+/// B-spline part (an analytic face surface or edge curve the import cannot rebuild
+/// exactly): a harness limitation, not an unported unit (`topology.brep_p1`'s
+/// convention).
+const HARNESS_ANALYTIC_EXPORT: &str = "harness:analytic-geometry-export";
+
 /// The deferral of a `CheckSet` case whose face surface or edge curve the import holds
 /// only as its B-spline part (an analytic `SmBSplineSurface` / `SmBSplineCurve`
 /// subclass): the Rust `Surface` has no kind for it (the unit named, as in
-/// `Surface::read_from_db`), or its exact import needs the B-rep reader
-/// (`SmBrep::MakeTopologyFromData`, unit `topology.brep_p10`, behind `ReadFromFile`).
+/// `Surface::read_from_db`), or the shared export flattened it
+/// ([`HARNESS_ANALYTIC_EXPORT`]).
 pub(super) fn inexact_geometry(s: &Setup) -> Option<Output> {
     let b = &s.brep;
     let surface_type = eu1::face(b, s.eu)
@@ -279,14 +285,17 @@ pub(super) fn inexact_geometry(s: &Setup) -> Option<Output> {
                 "surface.surf_of_extrusion_p2",
                 "SurfaceKind::SurfOfExtrusion",
             ),
-            _ => ("topology.brep_p10", "SmBrep::MakeTopologyFromData"),
+            _ => (
+                HARNESS_ANALYTIC_EXPORT,
+                "face surface of an analytic kind exported as its B-spline part",
+            ),
         };
         return Some(Output::deferred(unit, symbol));
     }
     if curve_type >= 0 && !EXACT_CURVES.contains(&curve_type) {
         return Some(Output::deferred(
-            "topology.brep_p10",
-            "SmBrep::MakeTopologyFromData",
+            HARNESS_ANALYTIC_EXPORT,
+            "edge curve of an analytic kind exported as its B-spline part",
         ));
     }
     None
