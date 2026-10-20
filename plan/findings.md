@@ -7257,6 +7257,11 @@ exactly and 48 defer deeper to p2 (plus the 12 new wr155 fixtures).
   reaches the genuine `topology.edgeuse_p3` `NormalizedEvaluate` dependency;
   `GetEdges` remains the existing `topology.face_p4` dependency. End-to-end query
   classification is not certified.
+- **Shim cache runs with the face point test off.** The p9 shim attaches `P9Trim` with
+  `m_bPointTestEnabled = FALSE` when it computes cache vertex UVs (matches the Rust cache default and the
+  still-`UNPORTED(query.face_p2)` face-owned branch of `GlobalPointSolve`, `surface/surface/p4.rs`). The
+  `query.face_p2` porter should revisit the `fuzz_*` fixtures in `fixtures/intersect.curve_class_p9/` when the
+  switch lands in Rust.
 - **Oracle guards review fix.** Removed numeric caps on zone tolerance, scale,
   source/edge parameter domains, UV position and vertex gap. Source point intervals
   are accepted. Counts/lengths, finite inputs and constructed coordinates, flag and
