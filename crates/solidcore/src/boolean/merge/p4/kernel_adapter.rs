@@ -117,15 +117,18 @@ pub struct KernelManifoldIntersector {
 impl KernelManifoldIntersector {
     /// Create an adapter with default merge options and no relationships.
     /// The caller reserves `namespace` exclusively among all object keys in the
-    /// supplied attribute/notification stores; its complete block is `2^37` keys.
+    /// supplied attribute/notification stores; its complete block is `2^37` keys. Keys
+    /// stay below the kernel's reserved range (`geom::context::KERNEL_KEY_BASE`, bit
+    /// 63), which `topology::brep::p3`'s edits refuse as caller keys, so the namespace
+    /// has 26 bits.
     ///
     /// # Errors
-    /// A namespace exceeding 27 bits.
+    /// A namespace exceeding 26 bits.
     pub fn new(namespace: u32) -> Result<Self> {
-        if namespace > 0x07ff_ffff {
+        if namespace > 0x03ff_ffff {
             return Err(SolidError::invalid_input(
                 OP,
-                "object namespace exceeds 27 bits",
+                "object namespace exceeds 26 bits",
             ));
         }
         Ok(Self {
@@ -1295,8 +1298,12 @@ mod tests {
     #[test]
     fn notification_key_blocks_never_alias_across_operands_or_classes() {
         let a = KernelManifoldIntersector::new(0).unwrap();
-        let b = KernelManifoldIntersector::new(0x07ff_ffff).unwrap();
-        assert!(KernelManifoldIntersector::new(0x0800_0000).is_err());
+        let b = KernelManifoldIntersector::new(0x03ff_ffff).unwrap();
+        assert!(KernelManifoldIntersector::new(0x0400_0000).is_err());
+        // the largest namespace's keys stay below the kernel's reserved range
+        assert!(!crate::geom::context::is_reserved_key(
+            b.object_key(true, MergeEntity::Vertex(VertexId::from_index(u32::MAX)))
+        ));
         let mut keys = BTreeSet::new();
         for adapter in [&a, &b] {
             for other in [false, true] {

@@ -1175,7 +1175,7 @@ fn run_rust_op(
     let r = run_rust_op_in(k, b, second, op, a, Some(&mut ctx));
     let lists = tracker.lists();
     tracker.finish(Some(&mut ctx));
-    drop(ctx.take_notify_lease());
+    drop(must(ctx.take_notify_lease())?);
     let mut out = r?;
     let geometry_seen = seen
         .lock()

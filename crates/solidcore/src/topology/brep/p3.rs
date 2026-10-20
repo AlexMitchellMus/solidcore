@@ -852,9 +852,9 @@ pub(crate) fn with_lent_context<R>(
     run: impl FnOnce(&mut Kernel, &mut Context) -> R,
 ) -> Result<R> {
     let mut ctx = Context::default();
-    ctx.restore_notify_lease(k.context.lend_notify()?);
+    ctx.install_lease(k.context.lend_notify()?);
     let r = run(k, &mut ctx);
-    k.context.restore_notify_lease(ctx.take_notify_lease());
+    k.context.install_lease(ctx.take_lease());
     Ok(r)
 }
 
@@ -863,7 +863,7 @@ pub(crate) fn with_lent_context<R>(
 /// with `b`'s serial in `context`'s domain, [`notify_serial`]) and the B-rep by its
 /// kernel key for the edit (`Brep::key` is restored afterwards, whatever the result),
 /// with default `SmTopology` records and an empty attribute store (attribute
-/// propagation is not modelled for such callers).
+/// propagation is not modelled for such callers, nor flags kept between their edits).
 ///
 /// # Errors
 ///
@@ -3897,6 +3897,11 @@ mod tests {
                 matches!(inner, Err(SolidError::InvalidInput { .. })),
                 "{inner:?}"
             );
+            // nor can the public lease calls swap the lent context's placeholder
+            assert!(k.context.take_notify_lease().is_err());
+            let mut other = Context::default();
+            let lease = other.take_notify_lease().unwrap();
+            assert!(k.context.restore_notify_lease(lease).is_err());
             // (the edge is still there: its uses are kept)
             assert!(!b.edge(e0).unwrap().edgeuses.is_empty());
             assert_eq!((b.notify_serial(), b.key()), (serial, key));
@@ -3925,7 +3930,7 @@ mod tests {
         let kb = curve_identity(&mut c2, &mut b).unwrap();
         assert_eq!(ka.key, kb.key);
         // an unreturned lease leaves c1 a new domain
-        drop(c1.take_notify_lease());
+        drop(c1.take_notify_lease().unwrap());
         let kc = curve_identity(&mut c1, &mut c).unwrap();
         assert_eq!(kc.key, ka.key);
         // a returning object is renamed, never aliased: a now has a key c1's new

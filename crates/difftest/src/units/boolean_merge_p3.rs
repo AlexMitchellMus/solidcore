@@ -585,14 +585,16 @@ fn destroy_brep(
     Err(SolidError::unported("SmBrep::~SmBrep", "topology.brep_p4"))
 }
 
+/// `new SmBrep(dSize, dRatio, pOptContextForStack)`
+/// (`topology::brep::p3::new_brep`; `pOptContextForStack` is the allocating kernel).
 fn empty_brep(
-    _k: &mut Kernel,
-    _model_size_estimate: f64,
-    _large_small_size_ratio: f64,
-    _stack_context: Option<&Kernel>,
+    k: &mut Kernel,
+    model_size_estimate: f64,
+    large_small_size_ratio: f64,
+    stack_context: Option<&Kernel>,
 ) -> solidcore::Result<Brep> {
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
-    Err(SolidError::unported("SmBrep::SmBrep", "topology.brep_p3"))
+    let _ = stack_context;
+    solidcore::topology::brep::p3::new_brep(k, model_size_estimate, large_small_size_ratio)
 }
 
 /// `pNewBrep->SetTolerance(tol, bUpdateOnlyIfLarger, bCascadeToBndries)`

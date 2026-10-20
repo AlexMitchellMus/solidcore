@@ -409,10 +409,9 @@ impl Context {
         action: impl FnOnce(&mut Kernel, &mut Context) -> T,
     ) -> Result<T> {
         let mut notifications = k.context.metadata_copy();
-        notifications.restore_notify_lease(k.context.lend_notify()?);
+        notifications.install_lease(k.context.lend_notify()?);
         let result = action(k, &mut notifications);
-        k.context
-            .restore_notify_lease(notifications.take_notify_lease());
+        k.context.install_lease(notifications.take_lease());
         Ok(result)
     }
 
@@ -512,7 +511,36 @@ impl Context {
     /// identities (notification records and attributes, a tracker, a callback's state)
     /// must be scoped to one domain. A lease that is never given back leaves the context
     /// a new domain for good.
-    pub fn take_notify_lease(&mut self) -> NotifyLease {
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput`, before anything moves, while a crate edit has lent this context's
+    /// callbacks ([`Context::lend_notify`]): swapping the lent context's placeholder would
+    /// let a nested edit through, notifying nobody.
+    pub fn take_notify_lease(&mut self) -> Result<NotifyLease> {
+        self.check_not_lent()?;
+        Ok(self.take_lease())
+    }
+
+    /// Installs a lease's callbacks and identity domain, dropping this context's own
+    /// callbacks and domain (returning a lease to the context it came from, or lending
+    /// it to a stand-in); take them out first to keep them.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput`, before anything moves, while a crate edit has lent this context's
+    /// callbacks: the edit's own return of them would drop what this installs. (Callbacks
+    /// set on a lent context with the `set_*` setters are dropped the same way when the
+    /// edit gives the lent ones back.)
+    pub fn restore_notify_lease(&mut self, lease: NotifyLease) -> Result<()> {
+        self.check_not_lent()?;
+        self.install_lease(lease);
+        Ok(())
+    }
+
+    /// [`Context::take_notify_lease`] without the lent check: a crate lending helper
+    /// taking its stand-in's callbacks back.
+    pub(crate) fn take_lease(&mut self) -> NotifyLease {
         NotifyLease {
             user: self.user_notify_callback.take(),
             sys: self.sys_notify_callback.take(),
@@ -520,10 +548,10 @@ impl Context {
         }
     }
 
-    /// Installs a lease's callbacks and identity domain, dropping this context's own
-    /// callbacks and domain (returning a lease to the context it came from, or lending
-    /// it to a stand-in); take them out first to keep them.
-    pub fn restore_notify_lease(&mut self, lease: NotifyLease) {
+    /// [`Context::restore_notify_lease`] without the lent check: a crate lending helper
+    /// installing a lease on its stand-in, or giving a lease back to the context that
+    /// lent it (which ends the lend).
+    pub(crate) fn install_lease(&mut self, lease: NotifyLease) {
         self.user_notify_callback = lease.user;
         self.sys_notify_callback = lease.sys;
         self.identities = lease.identities;
@@ -531,7 +559,7 @@ impl Context {
 
     /// Lends the callbacks and the identity domain for a crate edit, as
     /// [`Context::take_notify_lease`], and marks this context as lent until
-    /// [`Context::restore_notify_lease`] gives them back.
+    /// [`Context::install_lease`] gives them back.
     ///
     /// # Errors
     ///
@@ -539,7 +567,7 @@ impl Context {
     /// moves.
     pub(crate) fn lend_notify(&mut self) -> Result<NotifyLease> {
         self.check_not_lent()?;
-        let lease = self.take_notify_lease();
+        let lease = self.take_lease();
         self.identities.lent = true;
         Ok(lease)
     }
