@@ -276,9 +276,7 @@ fn cpp_input(i: &Inputs) -> Result<(Op, Vec<f64>), HarnessError> {
                     ]);
                     o.extend(dom);
                     if *aux == 3 {
-                        let b = bez
-                            .as_ref()
-                            .ok_or_else(|| harness("aux 3 needs a Bezier"))?;
+                        let b = bez.as_ref().ok_or_else(|| harness("aux 3 needs a Bezier"))?;
                         push_srf(&mut o, &srf(b)?)?;
                         for [lo, hi] in ivl {
                             o.extend([*lo, *hi]);
@@ -327,10 +325,12 @@ fn surface_in(s: &SurfIn) -> Result<Surface, HarnessError> {
             Vec2::new(p.scale[0], p.scale[1]),
             &dom_of(p.dom),
         )),
-        SurfIn::CurveBounded(b) => Surface::from(
-            CurveBoundedSurface::new(Surface::from(bss_of(b)?), Vec::new(), Vec::new(), true)
-                .map_err(|e| HarnessError::new(e.to_string()))?,
-        ),
+        SurfIn::CurveBounded(b) => Surface::from(CurveBoundedSurface::new(
+            Surface::from(bss_of(b)?),
+            Vec::new(),
+            Vec::new(),
+            true,
+        ).map_err(|e| HarnessError::new(e.to_string()))?),
     })
 }
 
@@ -414,10 +414,7 @@ fn dump_tree(o: &mut Vec<f64>, cache: &SurfaceCache<i64>) -> Result<(), HarnessE
     Ok(())
 }
 
-fn push_nurb(
-    o: &mut Vec<f64>,
-    s: &solidcore::nurbs::srf_basic::Surface,
-) -> Result<(), HarnessError> {
+fn push_nurb(o: &mut Vec<f64>, s: &solidcore::nurbs::srf_basic::Surface) -> Result<(), HarnessError> {
     let (n, m, r, ss) = s.array_sizes();
     let (p, q) = s.degrees();
     o.extend([n, m, p, q, r, ss].map(|x| x as f64));
@@ -569,9 +566,7 @@ fn rust_op(i: &Inputs) -> Result<Run, HarnessError> {
             data.chord_height_satisfied = *chsat;
             data.angle_tol_satisfied = *angsat;
             let slot = if aux_type == AuxDataType::BezierSurface {
-                let b = bez
-                    .as_ref()
-                    .ok_or_else(|| harness("aux 3 needs a Bezier"))?;
+                let b = bez.as_ref().ok_or_else(|| harness("aux 3 needs a Bezier"))?;
                 let mut pb = PseudoBox::new();
                 pb.set_intervals(
                     Extent1d::from_raw(ivl[0][0], ivl[0][1]),
@@ -610,7 +605,11 @@ fn rust_op(i: &Inputs) -> Result<Run, HarnessError> {
             let r = cache.test_against_tolerances(&k, NodeId(0));
             let mut o = Vec::new();
             match &r {
-                Ok(t) => o.extend([0.0, flag(t.needs_subdivision), f64::from(t.direction as u8)]),
+                Ok(t) => o.extend([
+                    0.0,
+                    flag(t.needs_subdivision),
+                    f64::from(t.direction as u8),
+                ]),
                 Err(e) if e.is_unported() => return Ok(Err(e.clone())),
                 Err(e) => o.push(status(e)),
             }

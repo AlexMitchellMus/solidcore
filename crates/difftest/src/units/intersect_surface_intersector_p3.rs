@@ -55,8 +55,8 @@ use solidcore::nurbs::math::{CPoint, NOW};
 use solidcore::nurbs::srf_basic::Surface as NurbSurface;
 use solidcore::surface::curve_bounded_surface::CurveBoundedSurface;
 use solidcore::surface::plane::Plane;
-use solidcore::surface::surface::p2::surface_cache;
 use solidcore::surface::surface::{Surface, SurfaceKind};
+use solidcore::surface::surface::p2::surface_cache;
 use solidcore::surface::surface_cache::SurfaceCache;
 use solidcore::SolidError;
 use solidcore_ffi::units::intersect_surface_intersector_p3::{self as ffi};
@@ -163,6 +163,8 @@ fn harness(msg: impl Into<String>) -> HarnessError {
     HarnessError::new(msg)
 }
 
+
+
 // ---- inputs ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -185,7 +187,9 @@ enum SurfaceIn {
     },
     /// An `SmCurveBoundedSurface` (implicit outer, no boundary curves) over a plane or
     /// B-spline basis.
-    CurveBounded { basis: Box<SurfaceIn> },
+    CurveBounded {
+        basis: Box<SurfaceIn>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -203,6 +207,7 @@ enum CurveIn {
         knots: Vec<f64>,
     },
 }
+
 
 fn weight(w: Option<f64>) -> f64 {
     w.unwrap_or(NOW)
@@ -363,10 +368,12 @@ fn rust_surface(s: &SurfaceIn) -> Result<Surface, Fail> {
                 .map_err(|e| harness(format!("surface: {e}")))?;
             Ok(Surface::from(BSplineSurface::from_nurb(sur, false)))
         }
-        SurfaceIn::CurveBounded { basis } => Ok(Surface::from(
-            CurveBoundedSurface::new(rust_surface(basis)?, Vec::new(), Vec::new(), true)
-                .map_err(|e| HarnessError::new(e.to_string()))?,
-        )),
+        SurfaceIn::CurveBounded { basis } => Ok(Surface::from(CurveBoundedSurface::new(
+            rust_surface(basis)?,
+            Vec::new(),
+            Vec::new(),
+            true,
+        ).map_err(|e| HarnessError::new(e.to_string()))?)),
     }
 }
 
@@ -392,10 +399,7 @@ fn rust_curve(c: &CurveIn) -> Result<Curve, Fail> {
                 .len()
                 .checked_sub(1)
                 .ok_or_else(|| harness("empty B-spline"))?;
-            let m = knots
-                .len()
-                .checked_sub(1)
-                .ok_or_else(|| harness("no knots"))?;
+            let m = knots.len().checked_sub(1).ok_or_else(|| harness("no knots"))?;
             BSplineCurve::from_data(u64::from(*dim), n, m, *p, &pw, knots)
                 .map(Curve::from)
                 .map_err(|e| Fail::Harness(harness(format!("B-spline: {e}"))))
@@ -455,12 +459,7 @@ fn put_uv(o: &mut Vec<f64>, v: Vec2) {
 
 fn put_point(o: &mut Vec<f64>, t: &TsectPnt) {
     o.push(f64::from(t.point_type.code()));
-    o.extend(
-        t.uv_param_type
-            .iter()
-            .flatten()
-            .map(|pt| f64::from(pt.code())),
-    );
+    o.extend(t.uv_param_type.iter().flatten().map(|pt| f64::from(pt.code())));
     for uv in t.uv_curve_pv.iter().flatten() {
         put_uv(o, *uv);
     }
@@ -472,6 +471,7 @@ fn put_point(o: &mut Vec<f64>, t: &TsectPnt) {
     o.extend([t.curve_parameter, t.tangent_plane_angle_rad, t.deviation]);
     o.extend(t.user_doubles);
 }
+
 
 fn put_bspline(o: &mut Vec<f64>, c: &Curve) -> Result<(), Fail> {
     o.extend([c.type_code() as f64, c.dim() as f64]);
@@ -532,6 +532,7 @@ fn set_pt(si: &mut SurfaceIntersector<'_>, i: usize, p: TsectPnt) -> Result<(), 
         .map_err(|e| Fail::Harness(harness(format!("point: {e}"))))? = p;
     Ok(())
 }
+
 
 // ---- generation -----------------------------------------------------------------------------
 
@@ -636,9 +637,7 @@ fn gen_plane(rng: &mut Rng, s: f64, near: Option<([f64; 3], f64)>) -> SurfaceIn 
 fn clamped_knots(rng: &mut Rng, n: usize, p: usize, lo: f64, hi: f64) -> Vec<f64> {
     let interior = n - p - 1;
     let mut inner: Vec<f64> = (0..interior)
-        .map(|i| {
-            lo + (hi - lo) * (i as f64 + 1.0 + rng.uniform(-0.3, 0.3)) / (interior as f64 + 1.0)
-        })
+        .map(|i| lo + (hi - lo) * (i as f64 + 1.0 + rng.uniform(-0.3, 0.3)) / (interior as f64 + 1.0))
         .collect();
     inner.sort_by(f64::total_cmp);
     let mut k = vec![lo; p + 1];
@@ -847,23 +846,24 @@ fn gen_curve(rng: &mut Rng, s: f64) -> CurveIn {
             b: [a[0] + s * d[0], a[1] + s * d[1], a[2] + s * d[2]],
         }
     } else {
-        let p = 1 + rng.below(3) as usize;
-        let n = p + 1 + rng.below(3) as usize;
-        let cpts = (0..n)
-            .map(|i| {
-                let q = rng.point3(-s, s);
-                [Some(q[0] + i as f64 * s), Some(q[1]), Some(q[2]), None]
-            })
-            .collect();
-        let knots = clamped_knots(rng, n, p, 0.0, 1.0);
-        CurveIn::BSpline {
-            dim: 3,
-            p,
-            cpts,
-            knots,
-        }
+            let p = 1 + rng.below(3) as usize;
+            let n = p + 1 + rng.below(3) as usize;
+            let cpts = (0..n)
+                .map(|i| {
+                    let q = rng.point3(-s, s);
+                    [Some(q[0] + i as f64 * s), Some(q[1]), Some(q[2]), None]
+                })
+                .collect();
+            let knots = clamped_knots(rng, n, p, 0.0, 1.0);
+            CurveIn::BSpline {
+                dim: 3,
+                p,
+                cpts,
+                knots,
+            }
     }
 }
+
 
 fn heights(rng: &mut Rng, n: usize, s: f64, flat_row0: Option<&[f64]>) -> Vec<Vec<f64>> {
     (0..n)
@@ -962,15 +962,11 @@ fn ffi_program(i: &Inputs) -> ffi::Program {
     }
 }
 
+
 // ---- Rust side: state and ops -------------------------------------------------------------
 
 /// A list entry: a program point's index, or `-1` and the point.
-fn put_ref(
-    o: &mut Vec<f64>,
-    si: &SurfaceIntersector<'_>,
-    nprog: usize,
-    id: TsectId,
-) -> Result<(), Fail> {
+fn put_ref(o: &mut Vec<f64>, si: &SurfaceIntersector<'_>, nprog: usize, id: TsectId) -> Result<(), Fail> {
     if id.index() < nprog {
         o.push(id.index() as f64);
     } else {
@@ -981,12 +977,7 @@ fn put_ref(
     Ok(())
 }
 
-fn put_list(
-    o: &mut Vec<f64>,
-    si: &SurfaceIntersector<'_>,
-    nprog: usize,
-    l: &[TsectId],
-) -> Result<(), Fail> {
+fn put_list(o: &mut Vec<f64>, si: &SurfaceIntersector<'_>, nprog: usize, l: &[TsectId]) -> Result<(), Fail> {
     o.push(l.len() as f64);
     for &id in l {
         put_ref(o, si, nprog, id)?;
@@ -1081,12 +1072,7 @@ impl Run<'_> {
 }
 
 #[allow(clippy::too_many_lines)]
-fn run_op(
-    run: &mut Run<'_>,
-    si: &mut SurfaceIntersector<'_>,
-    op: &OpIn,
-    o: &mut Vec<f64>,
-) -> Result<(), Fail> {
+fn run_op(run: &mut Run<'_>, si: &mut SurfaceIntersector<'_>, op: &OpIn, o: &mut Vec<f64>) -> Result<(), Fail> {
     let nprog = run.nprog;
     match op {
         OpIn::State => {
@@ -1117,13 +1103,7 @@ fn run_op(
                 Some(j) => Some(pt_of(si, *j)?),
                 None => None,
             };
-            let r = si.compute_point_values(
-                &Kernel::default(),
-                [p2(uvs[0]), p2(uvs[1])],
-                &mut p,
-                prev_p.as_ref(),
-                *step,
-            );
+            let r = si.compute_point_values(&Kernel::default(), [p2(uvs[0]), p2(uvs[1])], &mut p, prev_p.as_ref(), *step);
             st(o, r)?;
             put_point(o, &p);
             set_pt(si, *i, p)?;
@@ -1226,9 +1206,7 @@ fn run_op(
             let k = Kernel::default();
             let mut outs = core::mem::take(&mut run.outs);
             let r = match run.caches(&k) {
-                Some(caches) => {
-                    si.find_boundary_start_points_with_caches(&k, caches, &bx, &mut outs)
-                }
+                Some(caches) => si.find_boundary_start_points_with_caches(&k, caches, &bx, &mut outs),
                 None => si.find_boundary_start_points(&k, &bx, &mut outs),
             };
             run.outs = outs;
@@ -1394,16 +1372,8 @@ fn gen_trace_case(rng: &mut Rng) -> Inputs {
         1 => (a, bounded(b_plane)),
         _ => (a, b_plane),
     };
-    let dom1 = if rng.chance(0.8) {
-        dom
-    } else {
-        gen_domain(rng, dom)
-    };
-    let dom2 = if rng.chance(0.8) {
-        dom
-    } else {
-        gen_domain(rng, dom)
-    };
+    let dom1 = if rng.chance(0.8) { dom } else { gen_domain(rng, dom) };
+    let dom2 = if rng.chance(0.8) { dom } else { gen_domain(rng, dom) };
 
     // the trace points along the line
     let mid = rng.uniform(0.05, 0.5);
@@ -1692,10 +1662,7 @@ fn gen_fbsp(rng: &mut Rng, s: f64, size: f64) -> OpIn {
             [p, add3(p, [1e-6 * s; 3])]
         }
         4 => [[-size, -size, -size], [-size, -size, -size]],
-        _ => [
-            [-size, -size, 2.0 * size],
-            [3.0 * size, 3.0 * size, 3.0 * size],
-        ],
+        _ => [[-size, -size, 2.0 * size], [3.0 * size, 3.0 * size, 3.0 * size]],
     };
     OpIn::Fbsp {
         bbox,
@@ -1710,52 +1677,24 @@ fn gen_fbsp_case(rng: &mut Rng) -> Inputs {
     let deg = 2 + rng.below(2) as usize;
     let n = deg + 1 + rng.below(3) as usize;
     let h1 = heights(rng, n, s, None);
-    let a = bump_bspline(
-        s,
-        0.0,
-        deg,
-        &h1,
-        false,
-        [param_range(rng), param_range(rng)],
-    );
+    let a = bump_bspline(s, 0.0, deg, &h1, false, [param_range(rng), param_range(rng)]);
     let b = match rng.below(4) {
         0 => {
             let o = [0.0, 0.0, s * rng.uniform(-0.2, 0.2)];
-            plane_in(
-                o,
-                [1.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0],
-                [-s, -s, 2.0 * s, 2.0 * s],
-                [1.0, 1.0],
-            )
+            plane_in(o, [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [-s, -s, 2.0 * s, 2.0 * s], [1.0, 1.0])
         }
         1 => gen_bspline(rng, s, true),
         _ => {
             let mut h2 = heights(rng, n, s, None);
             h2.reverse();
             let gap = s * pick_f(rng, &[0.0, -0.2, 0.5, 5.0]);
-            bump_bspline(
-                s,
-                2.0 * s + gap,
-                deg,
-                &h2,
-                true,
-                [param_range(rng), param_range(rng)],
-            )
+            bump_bspline(s, 2.0 * s + gap, deg, &h2, true, [param_range(rng), param_range(rng)])
         }
     };
     let na = natural(&a);
     let nb = natural(&b);
-    let dom1 = if rng.chance(0.8) {
-        na
-    } else {
-        gen_domain(rng, na)
-    };
-    let dom2 = if rng.chance(0.8) {
-        nb
-    } else {
-        gen_domain(rng, nb)
-    };
+    let dom1 = if rng.chance(0.8) { na } else { gen_domain(rng, na) };
+    let dom2 = if rng.chance(0.8) { nb } else { gen_domain(rng, nb) };
     let doms = [na, nb];
     let points = gen_points(rng, doms, s);
     let mut ops = Vec::new();
@@ -1802,25 +1741,10 @@ fn plane_json(o: [f64; 3], x: [f64; 3], y: [f64; 3], d: [f64; 4]) -> Value {
 #[allow(clippy::too_many_lines)]
 fn edge_cases() -> Vec<(String, Value)> {
     // z = 0 and y = 0.5 planes over [0, 1]^2: they cross along x at v = 0.5 on both
-    let xy = plane_json(
-        [0.0, 0.0, 0.0],
-        [1.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0],
-        [0.0, 0.0, 1.0, 1.0],
-    );
-    let xz = plane_json(
-        [0.0, 0.5, -0.5],
-        [1.0, 0.0, 0.0],
-        [0.0, 0.0, 1.0],
-        [0.0, 0.0, 1.0, 1.0],
-    );
+    let xy = plane_json([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0, 1.0]);
+    let xz = plane_json([0.0, 0.5, -0.5], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 1.0]);
     // y = 0 plane: crosses z = 0 along A's v = 0 boundary
-    let xz0 = plane_json(
-        [0.0, 0.0, -0.5],
-        [1.0, 0.0, 0.0],
-        [0.0, 0.0, 1.0],
-        [0.0, 0.0, 1.0, 1.0],
-    );
+    let xz0 = plane_json([0.0, 0.0, -0.5], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 1.0]);
     let d = [0.0, 0.0, 1.0, 1.0];
     let pts: Vec<Vec<f64>> = (0..10).map(|i| blank_point(0.1 * f64::from(i))).collect();
     let prog = |a: &Value, bb: &Value, ops: Value| {
@@ -1828,7 +1752,9 @@ fn edge_cases() -> Vec<(String, Value)> {
                "curves": [{"kind": "segment", "a": [0.0, 0.0, 0.0], "b": [1.0, 0.0, 0.0]}],
                "points": pts, "ops": ops})
     };
-    let cpv = |x: f64, v: f64, i: usize, prev: Option<usize>| json!({"op": "cpv", "uvs": [[x, v], [x, 0.5]], "i": i, "prev": prev, "step": null});
+    let cpv = |x: f64, v: f64, i: usize, prev: Option<usize>| {
+        json!({"op": "cpv", "uvs": [[x, v], [x, 0.5]], "i": i, "prev": prev, "step": null})
+    };
     // a trace 0.1, 0.2, 0.3 with next at 0.4; point i at x = 0.1 * (i + 1)
     let trace = |extra: Vec<Value>| {
         let mut ops = vec![
@@ -1847,118 +1773,83 @@ fn edge_cases() -> Vec<(String, Value)> {
     let mut v = Vec::new();
     v.push((
         "edge_end_point".into(),
-        prog(
-            &xy,
-            &xz,
-            trace(vec![
-                cpv(0.35, 0.5, 5, None),
-                json!({"op": "ends", "start": 0, "end": 5}),
-                json!({"op": "test", "i": 3, "done": false}),
-            ]),
-        ),
+        prog(&xy, &xz, trace(vec![
+            cpv(0.35, 0.5, 5, None),
+            json!({"op": "ends", "start": 0, "end": 5}),
+            json!({"op": "test", "i": 3, "done": false}),
+        ])),
     ));
     v.push((
         "edge_through_points_extension".into(),
-        prog(
-            &xy,
-            &xz,
-            trace(vec![
-                cpv(0.33, 0.5, 5, None),
-                cpv(0.37, 0.5, 6, None),
-                json!({"op": "add_through", "i": 5}),
-                json!({"op": "add_through", "i": 6}),
-                json!({"op": "ext", "clip": true, "last_through": 0.0, "distance": 0.05}),
-                json!({"op": "test", "i": 3, "done": true}),
-                cpv(0.45, 0.5, 7, Some(3)),
-                json!({"op": "add_curve", "i": 3}),
-                json!({"op": "test", "i": 7, "done": true}),
-            ]),
-        ),
+        prog(&xy, &xz, trace(vec![
+            cpv(0.33, 0.5, 5, None),
+            cpv(0.37, 0.5, 6, None),
+            json!({"op": "add_through", "i": 5}),
+            json!({"op": "add_through", "i": 6}),
+            json!({"op": "ext", "clip": true, "last_through": 0.0, "distance": 0.05}),
+            json!({"op": "test", "i": 3, "done": true}),
+            cpv(0.45, 0.5, 7, Some(3)),
+            json!({"op": "add_curve", "i": 3}),
+            json!({"op": "test", "i": 7, "done": true}),
+        ])),
     ));
     v.push((
         "edge_extension_clip_past_last_through".into(),
-        prog(
-            &xy,
-            &xz,
-            trace(vec![
-                json!({"op": "ext", "clip": true, "last_through": 0.1, "distance": 0.05}),
-                json!({"op": "test", "i": 3, "done": false}),
-            ]),
-        ),
+        prog(&xy, &xz, trace(vec![
+            json!({"op": "ext", "clip": true, "last_through": 0.1, "distance": 0.05}),
+            json!({"op": "test", "i": 3, "done": false}),
+        ])),
     ));
     v.push((
         "edge_start_points".into(),
-        prog(
-            &xy,
-            &xz,
-            trace(vec![
-                cpv(0.35, 0.5, 5, None),
-                cpv(0.8, 0.5, 6, None),
-                cpv(0.3, 0.5, 7, None),
-                json!({"op": "add_start", "i": 6}),
-                json!({"op": "add_start", "i": 5}),
-                json!({"op": "add_start", "i": 7}),
-                json!({"op": "test", "i": 3, "done": false}),
-            ]),
-        ),
+        prog(&xy, &xz, trace(vec![
+            cpv(0.35, 0.5, 5, None),
+            cpv(0.8, 0.5, 6, None),
+            cpv(0.3, 0.5, 7, None),
+            json!({"op": "add_start", "i": 6}),
+            json!({"op": "add_start", "i": 5}),
+            json!({"op": "add_start", "i": 7}),
+            json!({"op": "test", "i": 3, "done": false}),
+        ])),
     ));
     v.push((
         "edge_closed_curve".into(),
-        prog(
-            &xy,
-            &xz,
-            trace(vec![
-                cpv(0.35, 0.5, 5, None),
-                json!({"op": "ends", "start": 5, "end": null}),
-                json!({"op": "test", "i": 3, "done": false}),
-            ]),
-        ),
+        prog(&xy, &xz, trace(vec![
+            cpv(0.35, 0.5, 5, None),
+            json!({"op": "ends", "start": 5, "end": null}),
+            json!({"op": "test", "i": 3, "done": false}),
+        ])),
     ));
     v.push((
         "edge_end_point_single_span_seam".into(),
-        prog(
-            &xy,
-            &xz,
-            json!([
+        prog(&xy, &xz, json!([
             cpv(0.1, 0.5, 0, None), cpv(0.2, 0.5, 1, Some(0)), cpv(0.1, 0.5, 2, None),
             {"op": "add_curve", "i": 0},
             {"op": "ends", "start": null, "end": 2},
-            {"op": "test", "i": 1, "done": false}, {"op": "state"}]),
-        ),
+            {"op": "test", "i": 1, "done": false}, {"op": "state"}])),
     ));
     v.push((
         "edge_boundary_exit".into(),
-        prog(
-            &xy,
-            &xz,
-            json!([
+        prog(&xy, &xz, json!([
             cpv(0.9, 0.5, 0, None), cpv(1.0, 0.5, 1, Some(0)), cpv(1.0, 0.5, 2, None),
             {"op": "add_curve", "i": 0}, {"op": "add_start", "i": 2},
-            {"op": "test", "i": 1, "done": false}, {"op": "state"}]),
-        ),
+            {"op": "test", "i": 1, "done": false}, {"op": "state"}])),
     ));
     // the crossing along A's v = 0 boundary: a start point there is a through point
     v.push((
         "edge_start_on_boundary_along".into(),
-        prog(
-            &xy,
-            &xz0,
-            json!([
+        prog(&xy, &xz0, json!([
             {"op": "cpv", "uvs": [[0.1, 0.0], [0.1, 0.5]], "i": 0, "prev": null, "step": null},
             {"op": "cpv", "uvs": [[0.2, 0.0], [0.2, 0.5]], "i": 1, "prev": 0, "step": null},
             {"op": "cpv", "uvs": [[0.3, 0.0], [0.3, 0.5]], "i": 2, "prev": 1, "step": null},
             {"op": "cpv", "uvs": [[0.25, 0.0], [0.25, 0.5]], "i": 3, "prev": null, "step": null},
             {"op": "add_curve", "i": 0}, {"op": "add_curve", "i": 1},
             {"op": "add_start", "i": 3},
-            {"op": "test", "i": 2, "done": false}, {"op": "state"}]),
-        ),
+            {"op": "test", "i": 2, "done": false}, {"op": "state"}])),
     ));
     v.push((
         "edge_rejected_tests".into(),
-        prog(
-            &xy,
-            &xz,
-            json!([
+        prog(&xy, &xz, json!([
             cpv(0.1, 0.5, 0, None),
             {"op": "ends", "start": null, "end": 0},
             {"op": "test", "i": 1, "done": false},
@@ -1966,32 +1857,23 @@ fn edge_cases() -> Vec<(String, Value)> {
             {"op": "test", "i": 1, "done": true},
             {"op": "add_curve", "i": 0},
             {"op": "test", "i": 0, "done": true},
-            {"op": "next", "prev": 0, "step": 0.1, "next": 0, "dev": -7.0, "ang": -8.0}]),
-        ),
+            {"op": "next", "prev": 0, "step": 0.1, "next": 0, "dev": -7.0, "ang": -8.0}])),
     ));
     v.push((
         "edge_next_points".into(),
-        prog(
-            &xy,
-            &xz,
-            json!([
+        prog(&xy, &xz, json!([
             {"op": "cpv", "uvs": [[1.5, 0.5], [1.5, 0.5]], "i": 0, "prev": null, "step": null},
             {"op": "next", "prev": 0, "step": 0.1, "next": 5, "dev": -7.0, "ang": -8.0},
             {"op": "next", "prev": 1, "step": 0.1, "next": 5, "dev": -7.0, "ang": -8.0},
             {"op": "next", "prev": 1, "step": 0.0, "next": 5, "dev": -7.0, "ang": -8.0},
             {"op": "next", "prev": 1, "step": -0.1, "next": 6, "dev": -7.0, "ang": -8.0},
-            {"op": "state"}]),
-        ),
+            {"op": "state"}])),
     ));
     // a tangent-point previous point (not refined: the next point is the domain
     // corner) on the line where z = 0 meets y = 0 (both planes' corner is the origin):
     // a good step back to the corner
-    let xz_origin = plane_json(
-        [0.0, 0.0, 0.0],
-        [1.0, 0.0, 0.0],
-        [0.0, 0.0, 1.0],
-        [0.0, 0.0, 1.0, 1.0],
-    );
+    let xz_origin =
+        plane_json([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 1.0]);
     let tangent_prev = |x: f64, dx: f64| {
         // evaluation matrix (row major [i][j]): pos, Sv, Svv, Su, Suv, -, -, -, normal
         let mat = |n: [f64; 3], sv: [f64; 3]| {
@@ -2041,15 +1923,11 @@ fn edge_cases() -> Vec<(String, Value)> {
     }
     v.push((
         "edge_split_zero_normals".into(),
-        prog(
-            &xy,
-            &xz,
-            json!([
+        prog(&xy, &xz, json!([
             cpv(0.1, 0.5, 0, None), cpv(0.2, 0.5, 1, Some(0)),
             {"op": "split", "curr": 0, "next": 1, "delta": 1e-3,
              "normals": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], "average": true, "orient": false,
-             "curve": 0, "interval": [0.0, 1.0], "orientations": [1.0, -1.0]}]),
-        ),
+             "curve": 0, "interval": [0.0, 1.0], "orientations": [1.0, -1.0]}])),
     ));
     // boundary start points of two bumps (part 2's patches) and of a plane
     let h = [
@@ -2060,32 +1938,13 @@ fn edge_cases() -> Vec<(String, Value)> {
     ];
     let bump = |x0: f64, mirror: bool| {
         let hs: Vec<Vec<f64>> = h.iter().map(|r| r.to_vec()).collect();
-        serde_json::to_value(bump_bspline(
-            1.0,
-            x0,
-            2,
-            &hs,
-            mirror,
-            [(0.0, 1.0), (0.0, 1.0)],
-        ))
-        .unwrap_or(Value::Null)
+        serde_json::to_value(bump_bspline(1.0, x0, 2, &hs, mirror, [(0.0, 1.0), (0.0, 1.0)]))
+            .unwrap_or(Value::Null)
     };
     for (name, bbox, use_edges) in [
-        (
-            "edge_fbsp_far_box",
-            [[50.0, 50.0, 50.0], [51.0, 51.0, 51.0]],
-            [true, true],
-        ),
-        (
-            "edge_fbsp_no_edges",
-            [[-1.0, -1.0, -1.0], [3.0, 2.0, 1.0]],
-            [false, false],
-        ),
-        (
-            "edge_fbsp_meeting",
-            [[-1.0, -1.0, -1.0], [3.0, 2.0, 1.0]],
-            [true, true],
-        ),
+        ("edge_fbsp_far_box", [[50.0, 50.0, 50.0], [51.0, 51.0, 51.0]], [true, true]),
+        ("edge_fbsp_no_edges", [[-1.0, -1.0, -1.0], [3.0, 2.0, 1.0]], [false, false]),
+        ("edge_fbsp_meeting", [[-1.0, -1.0, -1.0], [3.0, 2.0, 1.0]], [true, true]),
     ] {
         v.push((
             name.into(),

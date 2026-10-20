@@ -278,11 +278,7 @@ fn db_bytes(d: &DbIn) -> Vec<u8> {
             vs.push(d.aux);
         }
         for v in vs {
-            let _ = writeln!(
-                s,
-                "{:.17e} {:.17e} {:.17e} SmProjectedCurve data",
-                v[0], v[1], v[2]
-            );
+            let _ = writeln!(s, "{:.17e} {:.17e} {:.17e} SmProjectedCurve data", v[0], v[1], v[2]);
         }
         let _ = writeln!(s, "{} SmProjectedCurve Projection Type", d.ptype);
         s.push_str(" ProjectedCurve->ProjectedCurve \n");
@@ -369,9 +365,7 @@ fn cpp_input(i: &Inputs) -> Result<(Op, Vec<f64>), HarnessError> {
         v.extend(bytes.iter().map(|&x| f64::from(x)));
         return Ok((op, v));
     }
-    let pc =
-        i.pc.as_ref()
-            .ok_or_else(|| harness("curve op without pc"))?;
+    let pc = i.pc.as_ref().ok_or_else(|| harness("curve op without pc"))?;
     pc_block(&mut v, pc);
     match &i.op {
         OpIn::State | OpIn::MakeOrtho | OpIn::Copy | OpIn::Ends | OpIn::ReadDb(_) => {}
@@ -431,15 +425,8 @@ fn v3(p: [f64; 3]) -> Vec3 {
 fn build_curve(c: &CurveIn) -> Result<Curve, HarnessError> {
     match c {
         CurveIn::Bspline(bs) => {
-            let n = bs
-                .cpts
-                .len()
-                .checked_sub(1)
-                .ok_or_else(|| harness("no points"))?;
-            let m =
-                bs.u.len()
-                    .checked_sub(1)
-                    .ok_or_else(|| harness("no knots"))?;
+            let n = bs.cpts.len().checked_sub(1).ok_or_else(|| harness("no points"))?;
+            let m = bs.u.len().checked_sub(1).ok_or_else(|| harness("no knots"))?;
             let mut cur =
                 allocate_nurb_curve(n, bs.p, m).map_err(|e| harness(format!("curve: {e}")))?;
             for (d, s) in cur.cpts_mut().iter_mut().zip(&bs.cpts) {
@@ -494,8 +481,7 @@ fn build(pc: &PcIn) -> Result<(ProjectedCurve, f64), HarnessError> {
                 pc.aux.map(v3),
                 ptype,
                 owns,
-            )
-            .map_err(|e| HarnessError::new(e.to_string()))?,
+            ).map_err(|e| HarnessError::new(e.to_string()))?,
             0.0,
         ))
     } else {
@@ -507,8 +493,7 @@ fn build(pc: &PcIn) -> Result<(ProjectedCurve, f64), HarnessError> {
             None,
             ProjectionType::Unknown,
             OwnsCurve::No,
-        )
-        .map_err(|e| HarnessError::new(e.to_string()))?;
+        ).map_err(|e| HarnessError::new(e.to_string()))?;
         let undef = Vec3::UNDEF;
         let st = match c.set_canonical(
             base,
@@ -614,18 +599,13 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                 FileType::Ascii
             },
         );
-        let c = tri!(
-            o,
-            ProjectedCurve::read_from_db(&Kernel::default(), &mut db, d.version)
-        );
+        let c = tri!(o, ProjectedCurve::read_from_db(&Kernel::default(), &mut db, d.version));
         o.push(0.0);
         state(&mut o, &c);
         o.push(c.type_code() as f64);
         return Ok(to_output(&o));
     }
-    let pc_in =
-        i.pc.as_ref()
-            .ok_or_else(|| harness("curve op without pc"))?;
+    let pc_in = i.pc.as_ref().ok_or_else(|| harness("curve op without pc"))?;
     let (mut pc, ctor_status) = build(pc_in)?;
     let k = Kernel::default();
     match &i.op {
@@ -695,9 +675,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         }
         OpIn::EditParam { a, b: bb } => {
             let mut c = Curve::from(pc);
-            let s = match st_of(
-                c.edit_parameterization(&Kernel::default(), &Extent1d::from_min_max(*a, *bb)),
-            ) {
+            let s = match st_of(c.edit_parameterization(&Kernel::default(), &Extent1d::from_min_max(*a, *bb))) {
                 Ok(s) => s,
                 Err(d) => return Ok(*d),
             };
@@ -805,21 +783,11 @@ fn gen_bspline(rng: &mut Rng) -> BSplineIn {
     let n = p + rng.below(6) as usize;
     let rational = rng.chance(0.25);
     let two_d = rng.chance(0.1);
-    let a = if rng.chance(0.5) {
-        0.0
-    } else {
-        rng.uniform(-5.0, 5.0)
-    };
-    let len = if rng.chance(0.5) {
-        1.0
-    } else {
-        rng.uniform(0.1, 10.0)
-    };
+    let a = if rng.chance(0.5) { 0.0 } else { rng.uniform(-5.0, 5.0) };
+    let len = if rng.chance(0.5) { 1.0 } else { rng.uniform(0.1, 10.0) };
     let mut u = vec![a; p + 1];
     let inner = n - p;
-    let mut ks: Vec<f64> = (0..inner)
-        .map(|_| a + len * rng.uniform(0.05, 0.95))
-        .collect();
+    let mut ks: Vec<f64> = (0..inner).map(|_| a + len * rng.uniform(0.05, 0.95)).collect();
     ks.sort_by(f64::total_cmp);
     if inner >= 2 && p >= 2 && rng.chance(0.3) {
         if let Some(&v) = ks.first() {
@@ -936,21 +904,9 @@ fn gen_vec(rng: &mut Rng) -> [f64; 3] {
 
 fn gen_pc(rng: &mut Rng) -> PcIn {
     let curve = gen_curve(rng);
-    let ptype = if rng.chance(0.05) {
-        3
-    } else {
-        rng.below(3) as u8
-    };
-    let point = if rng.chance(0.9) {
-        Some(rp(rng, 10.0))
-    } else {
-        None
-    };
-    let vec = if rng.chance(0.92) {
-        Some(gen_vec(rng))
-    } else {
-        None
-    };
+    let ptype = if rng.chance(0.05) { 3 } else { rng.below(3) as u8 };
+    let point = if rng.chance(0.9) { Some(rp(rng, 10.0)) } else { None };
+    let vec = if rng.chance(0.92) { Some(gen_vec(rng)) } else { None };
     let aux = if rng.chance(0.85) {
         Some(if ptype == 1 {
             // an eye point off the plane, usually
@@ -999,11 +955,7 @@ fn gen_transform(rng: &mut Rng) -> OpIn {
             let f = rng.uniform(0.5, 2.0);
             Some([f, f, f])
         } else {
-            Some([
-                rng.uniform(0.5, 2.0),
-                rng.uniform(0.5, 2.0),
-                rng.uniform(0.5, 2.0),
-            ])
+            Some([rng.uniform(0.5, 2.0), rng.uniform(0.5, 2.0), rng.uniform(0.5, 2.0)])
         }
     } else {
         None

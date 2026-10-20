@@ -22,6 +22,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use solidcore::kernel::Kernel;
 use solidcore::curve::curve::p2::Curve;
 use solidcore::curve::line::Line;
 use solidcore::geom::axis2_placement::Axis2Placement;
@@ -31,14 +32,14 @@ use solidcore::geom::local_solve_nd::EvalNFunctions;
 use solidcore::geom::matrix::Matrix;
 use solidcore::geom::transform::Transform;
 use solidcore::geom::vector3d::Vec3;
-use solidcore::kernel::Kernel;
-use solidcore::surface::twist_volume::TwistVolume;
-use solidcore::surface::unbend_volume::UnbendVolume;
 use solidcore::surface::volume::p1::{
     concat_evals, lift_first_derivative, lift_first_derivative_srf, lift_first_derivative_vol,
     lift_second_derivative, lift_second_derivative_srf, lift_second_derivative_vol,
-    lift_third_derivative, lift_third_derivative_srf, lift_third_derivative_vol, FindPvIntersect,
+    lift_third_derivative, lift_third_derivative_srf, lift_third_derivative_vol,
+    FindPvIntersect,
 };
+use solidcore::surface::twist_volume::TwistVolume;
+use solidcore::surface::unbend_volume::UnbendVolume;
 use solidcore::surface::volume::{Discontinuities3d, EvalOptions, Volume, VolumeKind};
 use solidcore::SolidError;
 use solidcore_ffi::units::surface_volume_p1::{self as ffi, Op};
@@ -419,18 +420,10 @@ fn cpp_input(i: &Inputs) -> Result<(Op, Vec<f64>), HarnessError> {
             }
         }
         Inputs::Transform {
-            o: org,
-            x,
-            y,
-            scale,
-            ..
+            o: org, x, y, scale, ..
         }
         | Inputs::TransformSimple {
-            o: org,
-            x,
-            y,
-            scale,
-            ..
+            o: org, x, y, scale, ..
         } => {
             push3(&mut o, *org);
             push3(&mut o, *x);
@@ -461,7 +454,9 @@ fn cpp_input(i: &Inputs) -> Result<(Op, Vec<f64>), HarnessError> {
         }
         Inputs::MakeSimple { .. } => Op::MakeSimple,
         Inputs::Refresh { .. } => Op::Refresh,
-        Inputs::TrimBox { a, b: e, c, d, .. } => {
+        Inputs::TrimBox {
+            a, b: e, c, d, ..
+        } => {
             for p in [a, e, c, d] {
                 push3(&mut o, *p);
             }
@@ -806,10 +801,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             pv(&mut o, q);
         }
         Inputs::OrientDir { p, d, n, .. } => {
-            let r = tri!(
-                o,
-                v.orient_directional_derivs(v3(*p), v3(*d), *n, [true; 3])
-            );
+            let r = tri!(o, v.orient_directional_derivs(v3(*p), v3(*d), *n, [true; 3]));
             o.push(0.0);
             pvs(&mut o, r.into_iter().take(n + 1));
         }
@@ -842,10 +834,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         Inputs::SimplePreds { p, a, b: e, .. } => {
             let pt = tri!(o, v.is_point_in_param_domain_simple(v3(*p)));
             let ln = tri!(o, v.is_line_in_param_domain_simple(v3(*a), v3(*e)));
-            let cv = tri!(
-                o,
-                v.is_curve_in_param_domain_simple(&Kernel::default(), &line(*a, *e))
-            );
+            let cv = tri!(o, v.is_curve_in_param_domain_simple(&Kernel::default(), &line(*a, *e)));
             o.extend([0.0, b(pt), b(ln), b(cv)]);
         }
         Inputs::PtInInSpace { p, comp, .. } => {
@@ -854,39 +843,22 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             pv(&mut o, q);
         }
         Inputs::LineInParam { a, b: e, comp, .. } => {
-            let r = tri!(
-                o,
-                v.is_line_in_param_domain(&Kernel::default(), v3(*a), v3(*e), *comp)
-            );
+            let r = tri!(o, v.is_line_in_param_domain(&Kernel::default(), v3(*a), v3(*e), *comp));
             o.extend([0.0, b(r)]);
         }
         Inputs::CurveInParam { a, b: e, comp, .. } => {
-            let r = tri!(
-                o,
-                v.is_curve_in_param_domain(&Kernel::default(), &line(*a, *e), *comp)
-            );
+            let r = tri!(o, v.is_curve_in_param_domain(&Kernel::default(), &line(*a, *e), *comp));
             o.extend([0.0, b(r)]);
         }
         Inputs::CurveInInSpace { a, b: e, comp, .. } => {
-            let r = tri!(
-                o,
-                v.is_curve_in_in_space_domain(&Kernel::default(), &line(*a, *e), *comp)
-            );
+            let r = tri!(o, v.is_curve_in_in_space_domain(&Kernel::default(), &line(*a, *e), *comp));
             o.extend([0.0, b(r)]);
         }
         Inputs::Transform {
-            o: org,
-            x,
-            y,
-            scale,
-            ..
+            o: org, x, y, scale, ..
         }
         | Inputs::TransformSimple {
-            o: org,
-            x,
-            y,
-            scale,
-            ..
+            o: org, x, y, scale, ..
         } => {
             let ax = Axis2Placement::new(v3(*org), v3(*x), v3(*y));
             let r = if matches!(i, Inputs::Transform { .. }) {
@@ -938,7 +910,9 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             });
             put_state(&mut o, &v);
         }
-        Inputs::TrimBox { a, b: e, c, d, .. } => {
+        Inputs::TrimBox {
+            a, b: e, c, d, ..
+        } => {
             let bx = Extent3d::from_points(v3(*a), v3(*e));
             let mut trim = Extent3d::from_points(v3(*c), v3(*d));
             let r = v.trim_param_bounding_box_simple(&bx, &mut trim);
@@ -956,14 +930,13 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             o.extend([0.0, b(r)]);
             put_disc(&mut o, &d);
         }
-        Inputs::PvEval { p, sq, x, jac, .. } => {
+        Inputs::PvEval {
+            p, sq, x, jac, ..
+        } => {
             let mut e = FindPvIntersect::new(v3(*p), &v, *sq);
             let mut f = [0.0; 3];
             let mut m = Matrix::new(3, 3);
-            let found = tri!(
-                o,
-                e.evaluate(x, &mut f, if *jac { Some(&mut m) } else { None })
-            );
+            let found = tri!(o, e.evaluate(x, &mut f, if *jac { Some(&mut m) } else { None }));
             o.extend([0.0, b(found)]);
             o.extend(f);
             if *jac {
@@ -1010,12 +983,7 @@ fn gen_transform(rng: &mut Rng) -> [[f64; 3]; 4] {
             let s = rng.uniform(0.1, 4.0);
             [coord(rng, 5.0), [s, 0.0, 0.0], [0.0, s, 0.0], [0.0, 0.0, s]]
         }
-        _ => [
-            coord(rng, 5.0),
-            coord(rng, 2.0),
-            coord(rng, 2.0),
-            coord(rng, 2.0),
-        ],
+        _ => [coord(rng, 5.0), coord(rng, 2.0), coord(rng, 2.0), coord(rng, 2.0)],
     }
 }
 
@@ -1162,11 +1130,7 @@ fn gen_case(rng: &mut Rng) -> Inputs {
                 if rng.chance(0.3) {
                     [1.0, 1.0, 1.0]
                 } else {
-                    [
-                        rng.uniform(0.2, 3.0),
-                        rng.uniform(0.2, 3.0),
-                        rng.uniform(0.2, 3.0),
-                    ]
+                    [rng.uniform(0.2, 3.0), rng.uniform(0.2, 3.0), rng.uniform(0.2, 3.0)]
                 }
             });
             if rng.chance(0.75) {

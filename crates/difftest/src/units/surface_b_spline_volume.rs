@@ -306,10 +306,11 @@ fn build(v: &VolIn) -> Result<Volume, HarnessError> {
     }
     let mut next: Option<Volume> = None;
     for t in v.next.iter().rev() {
-        next = Some(
-            Volume::with_maps(VolumeKind::Transform(transform_of(*t)), None, next)
-                .map_err(|e| HarnessError::new(e.to_string()))?,
-        );
+        next = Some(Volume::with_maps(
+            VolumeKind::Transform(transform_of(*t)),
+            None,
+            next,
+        ).map_err(|e| HarnessError::new(e.to_string()))?);
     }
     Volume::with_maps(
         VolumeKind::BSpline(BSplineVolume::new(rec)),
@@ -632,12 +633,7 @@ fn gen_transform(rng: &mut Rng) -> Tf {
             let s = rng.uniform(0.1, 4.0);
             [coord(rng, 5.0), [s, 0.0, 0.0], [0.0, s, 0.0], [0.0, 0.0, s]]
         }
-        _ => [
-            coord(rng, 5.0),
-            coord(rng, 2.0),
-            coord(rng, 2.0),
-            coord(rng, 2.0),
-        ],
+        _ => [coord(rng, 5.0), coord(rng, 2.0), coord(rng, 2.0), coord(rng, 2.0)],
     }
 }
 
@@ -927,25 +923,11 @@ mod tests {
             let ok = flat.first() == Some(&0.0);
             *seen.entry((format!("{op:?}"), ok)).or_default() += 1;
         }
-        for op in [
-            "Info",
-            "Copy",
-            "Equal",
-            "BBox",
-            "InvGuess",
-            "Transform",
-            "Preds",
-        ] {
-            assert!(
-                seen.contains_key(&(op.to_string(), true)),
-                "{op} never succeeds: {seen:?}"
-            );
+        for op in ["Info", "Copy", "Equal", "BBox", "InvGuess", "Transform", "Preds"] {
+            assert!(seen.contains_key(&(op.to_string(), true)), "{op} never succeeds: {seen:?}");
         }
         for op in ["BBox", "Iso", "Transform"] {
-            assert!(
-                seen.contains_key(&(op.to_string(), false)),
-                "{op} never fails: {seen:?}"
-            );
+            assert!(seen.contains_key(&(op.to_string(), false)), "{op} never fails: {seen:?}");
         }
         eprintln!("{seen:?}");
     }

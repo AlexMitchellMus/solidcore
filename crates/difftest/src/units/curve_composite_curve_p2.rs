@@ -405,11 +405,7 @@ fn db_bytes(text: Option<&String>, bytes: Option<&Vec<u8>>) -> Result<Vec<u8>, H
 fn cpp_input(op: &OpIn) -> Result<(Op, Vec<f64>), HarnessError> {
     let mut v = Vec::new();
     let code = match op {
-        OpIn::Offsets {
-            comps,
-            dirs,
-            params,
-        } => {
+        OpIn::Offsets { comps, dirs, params } => {
             v.push(comps.len() as f64);
             for c in comps {
                 comp_block(&mut v, c)?;
@@ -583,10 +579,7 @@ fn build(c: &CurveIn) -> Result<Curve, HarnessError> {
                 .len()
                 .checked_sub(1)
                 .ok_or_else(|| harness("no points"))?;
-            let m =
-                bs.u.len()
-                    .checked_sub(1)
-                    .ok_or_else(|| harness("no knots"))?;
+            let m = bs.u.len().checked_sub(1).ok_or_else(|| harness("no knots"))?;
             let mut cur =
                 allocate_nurb_curve(n, bs.p, m).map_err(|e| harness(format!("curve: {e}")))?;
             for (d, s) in cur.cpts_mut().iter_mut().zip(&bs.cpts) {
@@ -611,10 +604,14 @@ fn build(c: &CurveIn) -> Result<Curve, HarnessError> {
         CurveIn::Offset(o) => {
             let base = build(&o.base)?;
             let ivl = base.natural_interval();
-            Ok(Curve::from(
-                OffsetCurve::new(3, base, ivl, v3(o.n), o.dist, false)
-                    .map_err(|e| HarnessError::new(e.to_string()))?,
-            ))
+            Ok(Curve::from(OffsetCurve::new(
+                3,
+                base,
+                ivl,
+                v3(o.n),
+                o.dist,
+                false,
+            ).map_err(|e| HarnessError::new(e.to_string()))?))
         }
         CurveIn::Circle(_) | CurveIn::Segment(_) | CurveIn::Canon(_) => {
             Err(harness("unresolved curve"))
@@ -776,23 +773,16 @@ fn status_of(r: solidcore::Result<()>) -> Result<f64, Fail> {
 fn rust(op: &OpIn) -> Result<Output, HarnessError> {
     let k = Kernel::default();
     Ok(match op {
-        OpIn::Offsets {
-            comps,
-            dirs,
-            params: pin,
-        } => {
+        OpIn::Offsets { comps, dirs, params: pin } => {
             let p = params(pin)?;
             let mut built = Vec::with_capacity(comps.len());
             for c in comps {
                 built.push(composite(c)?);
             }
             run_body(|o| {
-                let built: Vec<CompositeCurve> =
-                    built.into_iter().map(ftry).collect::<Result<_, _>>()?;
+                let built: Vec<CompositeCurve> = built.into_iter().map(ftry).collect::<Result<_, _>>()?;
                 let refs: Vec<&CompositeCurve> = built.iter().collect();
-                let r = ftry(CompositeCurve::create_offsets_of_many_curves(
-                    &k, &refs, dirs, &p,
-                ))?;
+                let r = ftry(CompositeCurve::create_offsets_of_many_curves(&k, &refs, dirs, &p))?;
                 o.extend([0.0, r.offsets.len() as f64]);
                 for piece in &r.offsets {
                     put_piece(o, piece, false)?;
@@ -967,8 +957,7 @@ fn rust(op: &OpIn) -> Result<Output, HarnessError> {
         } => {
             let c = build(seg)?;
             run_body(|o| {
-                let a =
-                    OffsetMapAttribute::new(*id, *corner, *left, *comp, *curve, *other, None, *err);
+                let a = OffsetMapAttribute::new(*id, *corner, *left, *comp, *curve, *other, None, *err);
                 let cp = a.make_copy();
                 o.push(0.0);
                 o.extend([
@@ -1027,20 +1016,10 @@ fn lerp(a: [f64; 3], b: [f64; 3], t: f64) -> [f64; 3] {
 fn bspline_between(rng: &mut Rng, a: [f64; 3], bb: [f64; 3], bulge: f64) -> BSplineIn {
     let p = 1 + rng.below(3) as usize;
     let n = p + rng.below(3) as usize;
-    let a0 = if rng.chance(0.6) {
-        0.0
-    } else {
-        rng.uniform(-2.0, 2.0)
-    };
-    let len = if rng.chance(0.5) {
-        1.0
-    } else {
-        rng.uniform(0.3, 4.0)
-    };
+    let a0 = if rng.chance(0.6) { 0.0 } else { rng.uniform(-2.0, 2.0) };
+    let len = if rng.chance(0.5) { 1.0 } else { rng.uniform(0.3, 4.0) };
     let mut u = vec![a0; p + 1];
-    let mut ks: Vec<f64> = (0..n - p)
-        .map(|_| a0 + len * rng.uniform(0.1, 0.9))
-        .collect();
+    let mut ks: Vec<f64> = (0..n - p).map(|_| a0 + len * rng.uniform(0.1, 0.9)).collect();
     ks.sort_by(f64::total_cmp);
     u.extend(ks);
     u.extend(vec![a0 + len; p + 1]);
@@ -1125,11 +1104,7 @@ fn polygon(rng: &mut Rng, o: [f64; 3], k: usize, r: f64) -> Vec<[f64; 3]> {
 /// stored reversed with sense `false`), or a full circle.
 fn gen_comp(rng: &mut Rng, o: [f64; 3], r: f64) -> CompIn {
     if rng.chance(0.15) {
-        let a0 = if rng.chance(0.5) {
-            0.0
-        } else {
-            rng.uniform(-90.0, 90.0)
-        };
+        let a0 = if rng.chance(0.5) { 0.0 } else { rng.uniform(-90.0, 90.0) };
         let y = if rng.chance(0.5) {
             [0.0, 1.0, 0.0]
         } else {
@@ -1567,10 +1542,7 @@ mod tests {
         let mut why: BTreeMap<String, usize> = BTreeMap::new();
         for _ in 0..400 {
             let op = gen_case(&mut rng);
-            let name = serde_json::to_value(&op).unwrap()["op"]
-                .as_str()
-                .unwrap()
-                .to_string();
+            let name = serde_json::to_value(&op).unwrap()["op"].as_str().unwrap().to_string();
             if matches!(op, OpIn::ReadDb { .. }) {
                 continue;
             }
@@ -1592,16 +1564,12 @@ mod tests {
                 Ok(o) if o.ints.get("status").is_some_and(|s| s == &vec![0]) => e[1] += 1,
                 Ok(o) => {
                     e[2] += 1;
-                    *why.entry(format!("{name}: status {:?}", o.ints.get("status")))
-                        .or_default() += 1;
+                    *why.entry(format!("{name}: status {:?}", o.ints.get("status"))).or_default() += 1;
                 }
             }
         }
         for (k, v) in &stats {
-            eprintln!(
-                "{k}: total {} ok {} err {} deferred/harness {}",
-                v[0], v[1], v[2], v[3]
-            );
+            eprintln!("{k}: total {} ok {} err {} deferred/harness {}", v[0], v[1], v[2], v[3]);
         }
         for (k, v) in &why {
             eprintln!("  {v} x {k}");

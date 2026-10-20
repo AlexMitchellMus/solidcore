@@ -616,10 +616,12 @@ fn cbs_of(b: &CbsIn) -> Result<Surface, HarnessError> {
     s.set_b_spline_surface_form(form);
     let c3d = b.c3d.iter().map(curve_of).collect::<Result<_, _>>()?;
     let cuv = b.cuv.iter().map(curve_of).collect::<Result<_, _>>()?;
-    Ok(Surface::from(
-        CurveBoundedSurface::new(Surface::from(s), c3d, cuv, b.implicit)
-            .map_err(|e| HarnessError::new(e.to_string()))?,
-    ))
+    Ok(Surface::from(CurveBoundedSurface::new(
+        Surface::from(s),
+        c3d,
+        cuv,
+        b.implicit,
+    ).map_err(|e| HarnessError::new(e.to_string()))?))
 }
 
 fn p2(p: [f64; 2]) -> Point2 {

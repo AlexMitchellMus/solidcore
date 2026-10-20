@@ -212,10 +212,7 @@ struct Inputs {
 fn numbers(path: &str) -> Result<Vec<f64>, HarnessError> {
     let text = std::fs::read_to_string(path).map_err(|e| harness(format!("{path}: {e}")))?;
     text.split_whitespace()
-        .map(|t| {
-            t.parse::<f64>()
-                .map_err(|e| harness(format!("{path}: {e}")))
-        })
+        .map(|t| t.parse::<f64>().map_err(|e| harness(format!("{path}: {e}"))))
         .collect()
 }
 
@@ -230,10 +227,7 @@ fn int(path: &str, v: f64) -> Result<usize, HarnessError> {
 fn read_sms(path: &str) -> Result<BssIn, HarnessError> {
     let v = numbers(path)?;
     let mut it = v.into_iter();
-    let mut num = || {
-        it.next()
-            .ok_or_else(|| harness(format!("{path}: truncated")))
-    };
+    let mut num = || it.next().ok_or_else(|| harness(format!("{path}: truncated")));
     let n = int(path, num()?)?;
     let m = int(path, num()?)?;
     let p = int(path, num()?)?;
@@ -249,12 +243,8 @@ fn read_sms(path: &str) -> Result<BssIn, HarnessError> {
         }
         net.push(row);
     }
-    let u = (0..n + p + 2)
-        .map(|_| num())
-        .collect::<Result<Vec<_>, _>>()?;
-    let v = (0..m + q + 2)
-        .map(|_| num())
-        .collect::<Result<Vec<_>, _>>()?;
+    let u = (0..n + p + 2).map(|_| num()).collect::<Result<Vec<_>, _>>()?;
+    let v = (0..m + q + 2).map(|_| num()).collect::<Result<Vec<_>, _>>()?;
     Ok(BssIn {
         oob: false,
         form: default_form(),
@@ -284,15 +274,9 @@ fn b(x: bool) -> f64 {
 }
 
 fn shape(s: &BssIn) -> Result<(usize, usize), HarnessError> {
-    let n = s
-        .net
-        .len()
-        .checked_sub(1)
-        .ok_or_else(|| harness("empty net"))?;
+    let n = s.net.len().checked_sub(1).ok_or_else(|| harness("empty net"))?;
     let cols = s.net.first().map_or(0, Vec::len);
-    let m = cols
-        .checked_sub(1)
-        .ok_or_else(|| harness("empty net row"))?;
+    let m = cols.checked_sub(1).ok_or_else(|| harness("empty net row"))?;
     if s.net.iter().any(|r| r.len() != cols) {
         return Err(harness("net rows differ in length"));
     }
@@ -330,15 +314,8 @@ fn push_srf(o: &mut Vec<f64>, s: &SrfIn) -> Result<(), HarnessError> {
             let (n, m) = shape(bs)?;
             o.extend([0.0, b(bs.oob), f64::from(bs.form)]);
             o.extend(
-                [
-                    n,
-                    m,
-                    bs.p,
-                    bs.q,
-                    bs.u.len().saturating_sub(1),
-                    bs.v.len().saturating_sub(1),
-                ]
-                .map(|x| x as f64),
+                [n, m, bs.p, bs.q, bs.u.len().saturating_sub(1), bs.v.len().saturating_sub(1)]
+                    .map(|x| x as f64),
             );
             for row in &bs.net {
                 for p in row {
@@ -533,8 +510,7 @@ fn surface_of(k: &Kernel, s: &SrfIn) -> Result<Option<Surface>, HarnessError> {
             swap,
         } => {
             let mut gen = Line::from_points(v3(*a), v3(*b), 3);
-            gen.make_nurb()
-                .map_err(|e| harness(format!("line nurb: {e}")))?;
+            gen.make_nurb().map_err(|e| harness(format!("line nurb: {e}")))?;
             SurfOfRevolution::create_canonical(k, SmCurve::from(gen), v3(*p), v3(*axis), *swap)
                 .ok()
                 .map(Surface::from)
@@ -551,11 +527,7 @@ fn surface_of(k: &Kernel, s: &SrfIn) -> Result<Option<Surface>, HarnessError> {
             let net = bs
                 .net
                 .iter()
-                .map(|r| {
-                    r.iter()
-                        .map(|&[x, y, z, w]| CPoint::new(x, y, z, w))
-                        .collect()
-                })
+                .map(|r| r.iter().map(|&[x, y, z, w]| CPoint::new(x, y, z, w)).collect())
                 .collect();
             let nl = NlSurface::new(net, bs.p, bs.q, bs.u.clone(), bs.v.clone())
                 .map_err(|e| harness(format!("surface input: {e}")))?;
@@ -576,10 +548,7 @@ fn curve_of(c: &CrvIn) -> Result<Option<SmCurve>, HarnessError> {
             .ok()
             .map(SmCurve::from),
         CrvIn::Bspline { dim, cpts, p, u } => {
-            let pw = cpts
-                .iter()
-                .map(|&[x, y, z, w]| CPoint::new(x, y, z, w))
-                .collect();
+            let pw = cpts.iter().map(|&[x, y, z, w]| CPoint::new(x, y, z, w)).collect();
             let cur =
                 Curve::new(pw, *p, u.clone()).map_err(|e| harness(format!("curve input: {e}")))?;
             Some(SmCurve::from(BSplineCurve::from_nurb(cur, *dim, false)))
@@ -748,8 +717,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
             Err(c) => o.push(c),
         },
         OpIn::Trim { dom, side, remove } => {
-            match st(s.create_natural_uv_trim_curves(&k, &dom_of(*dom), param_of(*side)?, *remove))?
-            {
+            match st(s.create_natural_uv_trim_curves(&k, &dom_of(*dom), param_of(*side)?, *remove))? {
                 Ok(t) => {
                     o.extend([0.0, t.curves_3d.len() as f64]);
                     for (j, c) in t.curves_3d.iter().enumerate() {
@@ -964,8 +932,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
                 curve_box: cbox.map(box_of),
             };
             let vecs: Vec<Vec3> = vec.iter().map(|v| v3(*v)).collect();
-            let r = sc_local_solve::<Obj>(
-                &k,
+            let r = sc_local_solve::<Obj>(&k,
                 &nodes,
                 &dom_of(*dom),
                 [cont_of(uc[0])?, cont_of(uc[1])?],
@@ -1089,11 +1056,7 @@ fn gen_bss(rng: &mut Rng, shape: Shape) -> BssIn {
         .map(|i| {
             (0..=m)
                 .map(|j| {
-                    let jit = if shape == Shape::Herringbone {
-                        0.0
-                    } else {
-                        0.2
-                    };
+                    let jit = if shape == Shape::Herringbone { 0.0 } else { 0.2 };
                     let x = i as f64 + rng.uniform(-jit, jit);
                     let y = j as f64 + rng.uniform(-jit, jit);
                     let z = amp * rng.uniform(-1.0, 1.0);
@@ -1104,11 +1067,7 @@ fn gen_bss(rng: &mut Rng, shape: Shape) -> BssIn {
         .collect();
     match shape {
         Shape::Pole | Shape::TwoPoles => {
-            let apex = [
-                -scale,
-                m as f64 * scale / 2.0,
-                rng.uniform(-0.5, 0.5) * scale,
-            ];
+            let apex = [-scale, m as f64 * scale / 2.0, rng.uniform(-0.5, 0.5) * scale];
             if let Some(row) = net.first_mut() {
                 for c in row.iter_mut() {
                     *c = apex;
@@ -1150,11 +1109,7 @@ fn gen_bss(rng: &mut Rng, shape: Shape) -> BssIn {
         .collect();
     BssIn {
         oob: rng.chance(0.05),
-        form: if rng.chance(0.9) {
-            11
-        } else {
-            rng.below(10) as u8
-        },
+        form: if rng.chance(0.9) { 11 } else { rng.below(10) as u8 },
         net,
         p,
         q,
@@ -1194,11 +1149,7 @@ fn gen_revolution(rng: &mut Rng) -> SrfIn {
         [1.0, -1.0, 0.0]
     };
     let r0 = rng.uniform(0.5, 3.0);
-    let r1 = if rng.chance(0.5) {
-        r0
-    } else {
-        rng.uniform(0.5, 3.0)
-    };
+    let r1 = if rng.chance(0.5) { r0 } else { rng.uniform(0.5, 3.0) };
     let h0 = rng.uniform(-2.0, 0.0);
     let h1 = rng.uniform(0.5, 3.0);
     let at = |r: f64, h: f64| {
@@ -1236,13 +1187,7 @@ fn gen_surface(rng: &mut Rng) -> SrfIn {
 
 fn gen_bspline_surface(rng: &mut Rng) -> BssIn {
     let shape = *rng
-        .choose(&[
-            Shape::Bumpy,
-            Shape::Bumpy,
-            Shape::Flat,
-            Shape::Crease,
-            Shape::Pole,
-        ])
+        .choose(&[Shape::Bumpy, Shape::Bumpy, Shape::Flat, Shape::Crease, Shape::Pole])
         .unwrap_or(&Shape::Bumpy);
     gen_bss(rng, shape)
 }
@@ -1251,14 +1196,8 @@ fn gen_bspline_surface(rng: &mut Rng) -> BssIn {
 fn natural_domain(s: &SrfIn) -> [f64; 4] {
     match s {
         SrfIn::Bspline(b) => {
-            let (u0, u1) = (
-                b.u.first().copied().unwrap_or(0.0),
-                b.u.last().copied().unwrap_or(1.0),
-            );
-            let (v0, v1) = (
-                b.v.first().copied().unwrap_or(0.0),
-                b.v.last().copied().unwrap_or(1.0),
-            );
+            let (u0, u1) = (b.u.first().copied().unwrap_or(0.0), b.u.last().copied().unwrap_or(1.0));
+            let (v0, v1) = (b.v.first().copied().unwrap_or(0.0), b.v.last().copied().unwrap_or(1.0));
             [u0, v0, u1, v1]
         }
         SrfIn::Bounded { basis, .. } => natural_domain(basis),
@@ -1298,11 +1237,7 @@ fn gen_curve(rng: &mut Rng, scale: f64) -> (CrvIn, [f64; 2]) {
             bb = [a[0] + scale, a[1], a[2]];
         }
         let len = ((bb[0] - a[0]).powi(2) + (bb[1] - a[1]).powi(2) + (bb[2] - a[2]).powi(2)).sqrt();
-        let hi = if rng.chance(0.5) {
-            len
-        } else {
-            len * rng.uniform(0.2, 1.0)
-        };
+        let hi = if rng.chance(0.5) { len } else { len * rng.uniform(0.2, 1.0) };
         return (CrvIn::Line { a, b: bb }, [0.0, hi.max(1e-3)]);
     }
     let p = 1 + rng.below(3) as usize;
@@ -1311,26 +1246,27 @@ fn gen_curve(rng: &mut Rng, scale: f64) -> (CrvIn, [f64; 2]) {
     let base = rng.point3(-scale, scale);
     let cpts = (0..=n)
         .map(|_| {
-            let q = if degenerate {
-                base
-            } else {
-                rng.point3(-2.0 * scale, 2.0 * scale)
-            };
+            let q = if degenerate { base } else { rng.point3(-2.0 * scale, 2.0 * scale) };
             [q[0], q[1], q[2], NOW]
         })
         .collect();
     let u = gen_knots(rng, p, n, false);
-    let (a, b) = (
-        u.first().copied().unwrap_or(0.0),
-        u.last().copied().unwrap_or(1.0),
-    );
+    let (a, b) = (u.first().copied().unwrap_or(0.0), u.last().copied().unwrap_or(1.0));
     let ivl = if rng.chance(0.6) {
         [a, b]
     } else {
         let x = a + (b - a) * rng.uniform(0.0, 0.4);
         [x, x + (b - a) * rng.uniform(0.2, 0.6)]
     };
-    (CrvIn::Bspline { dim: 3, cpts, p, u }, ivl)
+    (
+        CrvIn::Bspline {
+            dim: 3,
+            cpts,
+            p,
+            u,
+        },
+        ivl,
+    )
 }
 
 fn gen_sol(rng: &mut Rng, ty: u8, nvars: usize, near: [f64; 4]) -> SolIn {
@@ -1429,11 +1365,7 @@ fn gen_case(rng: &mut Rng) -> Inputs {
             let surface = gen_surface(rng);
             let dom = gen_subdomain(rng, natural_domain(&surface));
             // far curves have disjoint boxes (the comparable path)
-            let off = if rng.chance(0.7) {
-                rng.uniform(50.0, 500.0)
-            } else {
-                0.0
-            };
+            let off = if rng.chance(0.7) { rng.uniform(50.0, 500.0) } else { 0.0 };
             let (mut curve, ivl) = gen_curve(rng, 1.0);
             match &mut curve {
                 CrvIn::Line { a, b } => {
@@ -1479,12 +1411,7 @@ fn gen_case(rng: &mut Rng) -> Inputs {
             };
             let d1 = natural_domain(&surface);
             let d2 = natural_domain(&other);
-            let near = [
-                0.0,
-                (d1[0] + d1[2]) / 2.0,
-                (d1[1] + d1[3]) / 2.0,
-                (d2[0] + d2[2]) / 2.0,
-            ];
+            let near = [0.0, (d1[0] + d1[2]) / 2.0, (d1[1] + d1[3]) / 2.0, (d2[0] + d2[2]) / 2.0];
             let ty = *rng.choose(&[1, 1, 1, 2]).unwrap_or(&1);
             let sol1 = gen_sol(rng, ty, 4, near);
             let mut sol2 = gen_sol(rng, ty, 4, near);

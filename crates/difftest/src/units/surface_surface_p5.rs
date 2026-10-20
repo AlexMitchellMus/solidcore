@@ -94,27 +94,18 @@ fn default_form() -> u8 {
 #[serde(rename_all = "snake_case")]
 enum SrfIn {
     Bspline(BssIn),
-    Plane {
-        o: [f64; 3],
-        n: [f64; 3],
-    },
+    Plane { o: [f64; 3], n: [f64; 3] },
     /// An upstream `.sms` file (absolute path after fixture expansion), as a B-spline
     /// with the default form.
     Sms(String),
     /// An `SmCurveBoundedSurface` without boundary curves over `basis`.
-    Bounded {
-        basis: Box<SrfIn>,
-        implicit: bool,
-    },
+    Bounded { basis: Box<SrfIn>, implicit: bool },
 }
 
 fn numbers(path: &str) -> Result<Vec<f64>, HarnessError> {
     let text = std::fs::read_to_string(path).map_err(|e| harness(format!("{path}: {e}")))?;
     text.split_whitespace()
-        .map(|t| {
-            t.parse::<f64>()
-                .map_err(|e| harness(format!("{path}: {e}")))
-        })
+        .map(|t| t.parse::<f64>().map_err(|e| harness(format!("{path}: {e}"))))
         .collect()
 }
 
@@ -131,10 +122,7 @@ fn int(path: &str, v: f64) -> Result<usize, HarnessError> {
 fn read_sms(path: &str) -> Result<BssIn, HarnessError> {
     let v = numbers(path)?;
     let mut it = v.into_iter();
-    let mut num = || {
-        it.next()
-            .ok_or_else(|| harness(format!("{path}: truncated")))
-    };
+    let mut num = || it.next().ok_or_else(|| harness(format!("{path}: truncated")));
     let n = int(path, num()?)?;
     let m = int(path, num()?)?;
     let p = int(path, num()?)?;
@@ -150,12 +138,8 @@ fn read_sms(path: &str) -> Result<BssIn, HarnessError> {
         }
         net.push(row);
     }
-    let u = (0..n + p + 2)
-        .map(|_| num())
-        .collect::<Result<Vec<_>, _>>()?;
-    let v = (0..m + q + 2)
-        .map(|_| num())
-        .collect::<Result<Vec<_>, _>>()?;
+    let u = (0..n + p + 2).map(|_| num()).collect::<Result<Vec<_>, _>>()?;
+    let v = (0..m + q + 2).map(|_| num()).collect::<Result<Vec<_>, _>>()?;
     Ok(BssIn {
         oob: false,
         form: default_form(),
@@ -194,34 +178,11 @@ struct SolIn {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum OpIn {
-    IsSing {
-        uv: [f64; 2],
-        tol: f64,
-        pt_only: bool,
-    },
-    NormalSing {
-        uv: [f64; 2],
-        tol: f64,
-    },
-    Iso {
-        param: u8,
-        iso: f64,
-        tol: f64,
-        dom: Option<[f64; 4]>,
-        want_uv: bool,
-    },
-    Lps {
-        dom: [f64; 4],
-        sop: u8,
-        p: [f64; 3],
-        guess: [f64; 2],
-    },
-    Lps0 {
-        dom: [f64; 4],
-        sop: u8,
-        p: [f64; 3],
-        guess: [f64; 2],
-    },
+    IsSing { uv: [f64; 2], tol: f64, pt_only: bool },
+    NormalSing { uv: [f64; 2], tol: f64 },
+    Iso { param: u8, iso: f64, tol: f64, dom: Option<[f64; 4]>, want_uv: bool },
+    Lps { dom: [f64; 4], sop: u8, p: [f64; 3], guess: [f64; 2] },
+    Lps0 { dom: [f64; 4], sop: u8, p: [f64; 3], guess: [f64; 2] },
     Drop {
         dom: [f64; 4],
         p: [f64; 3],
@@ -239,11 +200,7 @@ enum OpIn {
         p: [f64; 3],
         p2: Option<[f64; 3]>,
     },
-    Cover {
-        other: SrfIn,
-        tol: f64,
-        merged: bool,
-    },
+    Cover { other: SrfIn, tol: f64, merged: bool },
     Filter {
         dom: [f64; 4],
         curve: CrvIn,
@@ -265,19 +222,8 @@ enum OpIn {
         solve_surf: bool,
         proc_bnd: bool,
     },
-    Ident {
-        kind: u8,
-        tol: f64,
-        a: SolIn,
-        b: SolIn,
-    },
-    MaxDist {
-        dom: [f64; 4],
-        curve: CrvIn,
-        ivl: [f64; 2],
-        n: usize,
-        needed: Option<f64>,
-    },
+    Ident { kind: u8, tol: f64, a: SolIn, b: SolIn },
+    MaxDist { dom: [f64; 4], curve: CrvIn, ivl: [f64; 2], n: usize, needed: Option<f64> },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -293,15 +239,9 @@ fn b(x: bool) -> f64 {
 }
 
 fn shape(s: &BssIn) -> Result<(usize, usize), HarnessError> {
-    let n = s
-        .net
-        .len()
-        .checked_sub(1)
-        .ok_or_else(|| harness("empty net"))?;
+    let n = s.net.len().checked_sub(1).ok_or_else(|| harness("empty net"))?;
     let cols = s.net.first().map_or(0, Vec::len);
-    let m = cols
-        .checked_sub(1)
-        .ok_or_else(|| harness("empty net row"))?;
+    let m = cols.checked_sub(1).ok_or_else(|| harness("empty net row"))?;
     if s.net.iter().any(|r| r.len() != cols) {
         return Err(harness("net rows differ in length"));
     }
@@ -325,15 +265,8 @@ fn push_srf(o: &mut Vec<f64>, s: &SrfIn) -> Result<(), HarnessError> {
             let (n, m) = shape(bs)?;
             o.extend([0.0, b(bs.oob), f64::from(bs.form)]);
             o.extend(
-                [
-                    n,
-                    m,
-                    bs.p,
-                    bs.q,
-                    bs.u.len().saturating_sub(1),
-                    bs.v.len().saturating_sub(1),
-                ]
-                .map(|x| x as f64),
+                [n, m, bs.p, bs.q, bs.u.len().saturating_sub(1), bs.v.len().saturating_sub(1)]
+                    .map(|x| x as f64),
             );
             for row in &bs.net {
                 for p in row {
@@ -374,13 +307,7 @@ fn cpp_input(i: &Inputs) -> Result<(Op, Vec<f64>), HarnessError> {
             o.extend([uv[0], uv[1], *tol]);
             Op::NormalSing
         }
-        OpIn::Iso {
-            param,
-            iso,
-            tol,
-            dom,
-            want_uv,
-        } => {
+        OpIn::Iso { param, iso, tol, dom, want_uv } => {
             o.extend([f64::from(*param), *iso, *tol, b(dom.is_some())]);
             o.extend_from_slice(&dom.unwrap_or_else(|| natural(&i.surface)));
             o.push(b(*want_uv));
@@ -397,14 +324,7 @@ fn cpp_input(i: &Inputs) -> Result<(Op, Vec<f64>), HarnessError> {
                 Op::Lps0
             }
         }
-        OpIn::Drop {
-            dom,
-            p,
-            guess,
-            sop,
-            tgt,
-            want,
-        } => {
+        OpIn::Drop { dom, p, guess, sop, tgt, want } => {
             o.extend_from_slice(dom);
             o.extend_from_slice(p);
             o.push(b(guess.is_some()));
@@ -415,15 +335,7 @@ fn cpp_input(i: &Inputs) -> Result<(Op, Vec<f64>), HarnessError> {
             o.push(b(*want));
             Op::Drop
         }
-        OpIn::Lssi {
-            dom,
-            s2,
-            dom2,
-            s3,
-            dom3,
-            p,
-            p2,
-        } => {
+        OpIn::Lssi { dom, s2, dom2, s3, dom3, p, p2 } => {
             o.extend_from_slice(dom);
             push_srf(&mut o, s2)?;
             o.extend_from_slice(dom2);
@@ -439,17 +351,7 @@ fn cpp_input(i: &Inputs) -> Result<(Op, Vec<f64>), HarnessError> {
             o.extend([*tol, b(*merged)]);
             Op::Cover
         }
-        OpIn::Filter {
-            dom,
-            curve,
-            ivl,
-            uc,
-            vc,
-            tc,
-            value,
-            t,
-            uv,
-        } => {
+        OpIn::Filter { dom, curve, ivl, uc, vc, tc, value, t, uv } => {
             o.extend_from_slice(dom);
             push_crv(&mut o, curve);
             o.extend_from_slice(ivl);
@@ -459,16 +361,7 @@ fn cpp_input(i: &Inputs) -> Result<(Op, Vec<f64>), HarnessError> {
             o.extend([*value, *t, uv[0], uv[1]]);
             Op::Filter
         }
-        OpIn::SpLocal {
-            dom,
-            uc,
-            vc,
-            p,
-            tol,
-            sop,
-            solve_surf,
-            proc_bnd,
-        } => {
+        OpIn::SpLocal { dom, uc, vc, p, tol, sop, solve_surf, proc_bnd } => {
             o.extend_from_slice(dom);
             for c in uc.iter().chain(vc) {
                 o.push(f64::from(*c));
@@ -477,25 +370,14 @@ fn cpp_input(i: &Inputs) -> Result<(Op, Vec<f64>), HarnessError> {
             o.extend([*tol, f64::from(*sop), b(*solve_surf), b(*proc_bnd)]);
             Op::SpLocal
         }
-        OpIn::MaxDist {
-            dom,
-            curve,
-            ivl,
-            n,
-            needed,
-        } => {
+        OpIn::MaxDist { dom, curve, ivl, n, needed } => {
             o.extend_from_slice(dom);
             push_crv(&mut o, curve);
             o.extend_from_slice(ivl);
             o.extend([*n as f64, b(needed.is_some()), needed.unwrap_or(0.0)]);
             Op::MaxDist
         }
-        OpIn::Ident {
-            kind,
-            tol,
-            a,
-            b: sb,
-        } => {
+        OpIn::Ident { kind, tol, a, b: sb } => {
             o.extend([f64::from(*kind), *tol]);
             push_sol(&mut o, a);
             push_sol(&mut o, sb);
@@ -528,20 +410,18 @@ fn dom_of(d: [f64; 4]) -> Extent2d {
 fn surface_of(s: &SrfIn) -> Result<Surface, HarnessError> {
     match &resolve(s)? {
         SrfIn::Sms(_) => Err(harness("unresolved surface file")),
-        SrfIn::Bounded { basis, implicit } => Ok(Surface::from(
-            CurveBoundedSurface::new(surface_of(basis)?, Vec::new(), Vec::new(), *implicit)
-                .map_err(|e| HarnessError::new(e.to_string()))?,
-        )),
+        SrfIn::Bounded { basis, implicit } => Ok(Surface::from(CurveBoundedSurface::new(
+            surface_of(basis)?,
+            Vec::new(),
+            Vec::new(),
+            *implicit,
+        ).map_err(|e| HarnessError::new(e.to_string()))?)),
         SrfIn::Plane { o, n } => Ok(Surface::from(Plane::from_normal(v3(*o), v3(*n)))),
         SrfIn::Bspline(bs) => {
             let net = bs
                 .net
                 .iter()
-                .map(|r| {
-                    r.iter()
-                        .map(|&[x, y, z, w]| CPoint::new(x, y, z, w))
-                        .collect()
-                })
+                .map(|r| r.iter().map(|&[x, y, z, w]| CPoint::new(x, y, z, w)).collect())
                 .collect();
             let nl = NlSurface::new(net, bs.p, bs.q, bs.u.clone(), bs.v.clone())
                 .map_err(|e| harness(format!("surface input: {e}")))?;
@@ -679,37 +559,19 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
     let mut o = Vec::new();
     match &i.op {
         OpIn::IsSing { uv, tol, pt_only } => {
-            let r = must(
-                s.is_singularity(&k, p2(*uv), *tol, *pt_only),
-                "is_singularity",
-            )?;
+            let r = must(s.is_singularity(&k, p2(*uv), *tol, *pt_only), "is_singularity")?;
             o.extend([0.0, b(r.singular), f64::from(r.direction as i32)]);
         }
-        OpIn::NormalSing { uv, tol } => {
-            match st(s.evaluate_normal_at_singularity(&k, p2(*uv), *tol))? {
-                Ok(n) => {
-                    o.push(0.0);
-                    pv(&mut o, n);
-                }
-                Err(c) => o.push(c),
+        OpIn::NormalSing { uv, tol } => match st(s.evaluate_normal_at_singularity(&k, p2(*uv), *tol))? {
+            Ok(n) => {
+                o.push(0.0);
+                pv(&mut o, n);
             }
-        }
-        OpIn::Iso {
-            param,
-            iso,
-            tol,
-            dom,
-            want_uv,
-        } => {
+            Err(c) => o.push(c),
+        },
+        OpIn::Iso { param, iso, tol, dom, want_uv } => {
             let d = dom.map(dom_of);
-            match st(s.create_iso_parametric_curve(
-                &k,
-                param_of(*param)?,
-                *iso,
-                *tol,
-                d.as_ref(),
-                *want_uv,
-            ))? {
+            match st(s.create_iso_parametric_curve(&k, param_of(*param)?, *iso, *tol, d.as_ref(), *want_uv))? {
                 Ok(r) => {
                     o.extend([0.0, r.max_gap_3d, b(r.uv_iso_curve.is_some())]);
                     let ivl = r.curve.natural_interval();
@@ -723,13 +585,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
             }
         }
         OpIn::Lps { dom, sop, p, guess } => {
-            match st(s.local_point_solve::<Obj>(
-                &k,
-                &dom_of(*dom),
-                sop_of(*sop)?,
-                v3(*p),
-                p2(*guess),
-            ))? {
+            match st(s.local_point_solve::<Obj>(&k, &dom_of(*dom), sop_of(*sop)?, v3(*p), p2(*guess)))? {
                 Ok(r) => {
                     o.extend([0.0, b(r.found)]);
                     if r.found {
@@ -740,12 +596,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
             }
         }
         OpIn::Lps0 { dom, sop, p, guess } => {
-            match st(s.local_point_solve_0::<Obj>(
-                &dom_of(*dom),
-                sop_of(*sop)?,
-                v3(*p),
-                p2(*guess),
-            ))? {
+            match st(s.local_point_solve_0::<Obj>(&dom_of(*dom), sop_of(*sop)?, v3(*p), p2(*guess)))? {
                 Ok(r) => {
                     o.extend([0.0, b(r.found)]);
                     if r.found {
@@ -756,14 +607,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
                 Err(c) => o.push(c),
             }
         }
-        OpIn::Drop {
-            dom,
-            p,
-            guess,
-            sop,
-            tgt,
-            want,
-        } => {
+        OpIn::Drop { dom, p, guess, sop, tgt, want } => {
             let opts = DropPointOptions {
                 guess_uv: guess.map(p2),
                 operation: sop_of(*sop)?,
@@ -772,32 +616,13 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
             };
             match st(s.drop_point::<Obj>(&k, v3(*p), &dom_of(*dom), &opts))? {
                 Ok(r) => {
-                    o.extend([
-                        0.0,
-                        b(r.success),
-                        r.result_uv.x,
-                        r.result_uv.y,
-                        r.gap,
-                        b(r.is_multivalued),
-                    ]);
-                    o.push(if *want {
-                        r.solutions.len() as f64
-                    } else {
-                        -1.0
-                    });
+                    o.extend([0.0, b(r.success), r.result_uv.x, r.result_uv.y, r.gap, b(r.is_multivalued)]);
+                    o.push(if *want { r.solutions.len() as f64 } else { -1.0 });
                 }
                 Err(c) => o.push(c),
             }
         }
-        OpIn::Lssi {
-            dom,
-            s2,
-            dom2,
-            s3,
-            dom3,
-            p,
-            p2: g2,
-        } => {
+        OpIn::Lssi { dom, s2, dom2, s3, dom3, p, p2: g2 } => {
             let (s2, s3) = (surface_of(s2)?, surface_of(s3)?);
             match st(s.local_surface_surface_intersect_xyz::<Obj>(
                 &dom_of(*dom),
@@ -820,8 +645,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
         OpIn::Cover { other, tol, merged } => {
             let mut this = s.clone();
             let mut other = surface_of(other)?;
-            match st(this.cover_other_coincident_surface(&k, &mut other, *tol, None, None, *merged))?
-            {
+            match st(this.cover_other_coincident_surface(&k, &mut other, *tol, None, None, *merged))? {
                 Ok(r) => {
                     let which = r.covering_is_other.map_or(-1.0, b);
                     o.extend([0.0, which, r.max_dist]);
@@ -829,17 +653,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
                 Err(c) => o.push(c),
             }
         }
-        OpIn::Filter {
-            dom,
-            curve,
-            ivl,
-            uc,
-            vc,
-            tc,
-            value,
-            t,
-            uv,
-        } => {
+        OpIn::Filter { dom, curve, ivl, uc, vc, tc, value, t, uv } => {
             let mut sol = Solution::<Obj>::new();
             sol.solution_type = SolutionType::SingleValue;
             sol.num_variables = 3;
@@ -864,21 +678,11 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
                 Err(c) => o.extend([c, 1.0]),
             }
         }
-        OpIn::SpLocal {
-            dom,
-            uc,
-            vc,
-            p,
-            tol,
-            sop,
-            solve_surf,
-            proc_bnd,
-        } => {
+        OpIn::SpLocal { dom, uc, vc, p, tol, sop, solve_surf, proc_bnd } => {
             let conts = |c: &[u8; 2]| -> Result<[ContinuityType; 2], HarnessError> {
                 Ok([cont_of(c[0])?, cont_of(c[1])?])
             };
-            match st(sp_local_solve::<Obj>(
-                &k,
+            match st(sp_local_solve::<Obj>(&k,
                 &s,
                 &dom_of(*dom),
                 conts(uc)?,
@@ -898,38 +702,20 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
                 Err(c) => o.extend([c, 0.0]),
             }
         }
-        OpIn::MaxDist {
-            dom,
-            curve,
-            ivl,
-            n,
-            needed,
-        } => {
+        OpIn::MaxDist { dom, curve, ivl, n, needed } => {
             let c = curve_of(curve)?;
-            match st(c.surface_max_distance_between(
-                &k,
+            match st(c.surface_max_distance_between(&k,
                 &Extent1d::from_min_max(ivl[0], ivl[1]),
                 &s,
                 &dom_of(*dom),
                 *n,
                 *needed,
             ))? {
-                Ok(g) => o.extend([
-                    0.0,
-                    g.max_distance,
-                    g.curve_param,
-                    g.surface_param.x,
-                    g.surface_param.y,
-                ]),
+                Ok(g) => o.extend([0.0, g.max_distance, g.curve_param, g.surface_param.x, g.surface_param.y]),
                 Err(code) => o.push(code),
             }
         }
-        OpIn::Ident {
-            kind,
-            tol,
-            a,
-            b: sb,
-        } => {
+        OpIn::Ident { kind, tol, a, b: sb } => {
             let (sa, sb) = (sol_of(a)?, sol_of(sb)?);
             let tree: Tree<Obj> = Tree::new_spatial(&Extent3d::from_points(
                 Vec3::new(0.0, 0.0, 0.0),
@@ -940,14 +726,8 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
             let dom = s.natural_uv_domain();
             let (pair, pref) = match kind {
                 0 => must(
-                    SpGlobalSolver {
-                        base,
-                        surface: Some(&s),
-                        uv_domain: dom,
-                        surface_cache: None,
-                        kernel: None,
-                    }
-                    .identical_solutions(&sa, &sb),
+                    SpGlobalSolver { base, surface: Some(&s), uv_domain: dom, surface_cache: None, kernel: None }
+                        .identical_solutions(&sa, &sb),
                     "identical_solutions",
                 )?,
                 1 => must(
@@ -966,14 +746,8 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
                     .identical_solutions(&sa, &sb),
                     "identical_solutions",
                 )?,
-                2 => must(
-                    cs_identical_solutions(&base, Some(&s), &sa, &sb),
-                    "identical_solutions",
-                )?,
-                _ => must(
-                    csi_identical_solutions(&base, Some(&s), &sa, &sb),
-                    "identical_solutions",
-                )?,
+                2 => must(cs_identical_solutions(&base, Some(&s), &sa, &sb), "identical_solutions")?,
+                _ => must(csi_identical_solutions(&base, Some(&s), &sa, &sb), "identical_solutions")?,
             };
             let which = match pref {
                 None => -1.0,
@@ -1068,11 +842,7 @@ fn gen_bss(rng: &mut Rng, shape: Shape) -> BssIn {
         .collect();
     match shape {
         Shape::Pole => {
-            let apex = [
-                -scale,
-                m as f64 * scale / 2.0,
-                rng.uniform(-0.5, 0.5) * scale,
-            ];
+            let apex = [-scale, m as f64 * scale / 2.0, rng.uniform(-0.5, 0.5) * scale];
             if let Some(row) = net.first_mut() {
                 for c in row.iter_mut() {
                     *c = apex;
@@ -1092,30 +862,16 @@ fn gen_bss(rng: &mut Rng, shape: Shape) -> BssIn {
             for (i, row) in net.iter_mut().enumerate() {
                 for (j, c) in row.iter_mut().enumerate() {
                     let t = (i + j) as f64;
-                    *c = [
-                        t * scale,
-                        2.0 * t * scale,
-                        rng.uniform(-noise, noise) * scale,
-                    ];
+                    *c = [t * scale, 2.0 * t * scale, rng.uniform(-noise, noise) * scale];
                 }
             }
         }
         Shape::Pinched => {
             // P[1][0] and P[0][1] on one line through P[0][0]
-            let p00 = net
-                .first()
-                .and_then(|r| r.first())
-                .copied()
-                .unwrap_or([0.0; 3]);
+            let p00 = net.first().and_then(|r| r.first()).copied().unwrap_or([0.0; 3]);
             let dir = [1.0, 0.5, 0.25];
             let (a, bb) = (rng.uniform(0.5, 1.5), -rng.uniform(0.5, 1.5));
-            let at = |k: f64| {
-                [
-                    p00[0] + k * dir[0] * scale,
-                    p00[1] + k * dir[1] * scale,
-                    p00[2] + k * dir[2] * scale,
-                ]
-            };
+            let at = |k: f64| [p00[0] + k * dir[0] * scale, p00[1] + k * dir[1] * scale, p00[2] + k * dir[2] * scale];
             if let Some(c) = net.get_mut(1).and_then(|r| r.first_mut()) {
                 *c = at(a);
             }
@@ -1142,11 +898,7 @@ fn gen_bss(rng: &mut Rng, shape: Shape) -> BssIn {
         .collect();
     BssIn {
         oob: rng.chance(0.05),
-        form: if rng.chance(0.9) {
-            11
-        } else {
-            rng.below(10) as u8
-        },
+        form: if rng.chance(0.9) { 11 } else { rng.below(10) as u8 },
         net,
         p,
         q,
@@ -1210,9 +962,7 @@ fn gen_param(rng: &mut Rng, a: f64, b: f64, knots: Option<&[f64]>) -> f64 {
     match rng.below(10) {
         0 => a,
         1 => b,
-        2 => knots
-            .and_then(|k| rng.choose(k).copied())
-            .unwrap_or(0.5 * (a + b)),
+        2 => knots.and_then(|k| rng.choose(k).copied()).unwrap_or(0.5 * (a + b)),
         3 => a + (b - a) * rng.uniform(0.0, 1e-6),
         _ => a + (b - a) * rng.unit(),
     }
@@ -1239,12 +989,7 @@ fn gen_boundary_uv(rng: &mut Rng, s: &SrfIn) -> [f64; 2] {
         match rng.below(3) {
             0 => uv[0] = if rng.chance(0.7) { u0 } else { u1 },
             1 => uv[1] = if rng.chance(0.7) { v0 } else { v1 },
-            _ => {
-                uv = [
-                    if rng.chance(0.7) { u0 } else { u1 },
-                    if rng.chance(0.7) { v0 } else { v1 },
-                ]
-            }
+            _ => uv = [if rng.chance(0.7) { u0 } else { u1 }, if rng.chance(0.7) { v0 } else { v1 }],
         }
     }
     uv
@@ -1288,9 +1033,7 @@ fn gen_point_near(rng: &mut Rng, s: &SrfIn) -> [f64; 3] {
     if let Ok(srf) = surface_of(s) {
         let uv = gen_uv(rng, s);
         if let Ok(p) = srf.evaluate_point(p2(uv)) {
-            let d = *rng
-                .choose(&[0.0, 1e-9, 1e-4, 0.1, 1.0, 5.0])
-                .unwrap_or(&0.1);
+            let d = *rng.choose(&[0.0, 1e-9, 1e-4, 0.1, 1.0, 5.0]).unwrap_or(&0.1);
             let e = rng.point3(-d, d);
             return [p.x + e[0], p.y + e[1], p.z + e[2]];
         }
@@ -1318,6 +1061,7 @@ fn unit_scale(s: &SrfIn) -> bool {
         SrfIn::Bounded { basis, .. } => unit_scale(basis),
     }
 }
+
 
 /// A parameter pair near the surface's domain (sometimes on its boundary).
 fn gen_uv_any(rng: &mut Rng, s: &SrfIn) -> [f64; 2] {
@@ -1348,16 +1092,8 @@ fn gen_sol(rng: &mut Rng, kind: u8, dom: [f64; 4]) -> SolIn {
     SolIn {
         ty: if rng.chance(0.9) { 1 } else { 2 },
         nvars: 3,
-        value: if rng.chance(0.3) {
-            0.0
-        } else {
-            rng.uniform(0.0, 1e-3)
-        },
-        p: if kind == 0 {
-            [u, v, 0.0]
-        } else {
-            [rng.uniform(0.0, 1.0), u, v]
-        },
+        value: if rng.chance(0.3) { 0.0 } else { rng.uniform(0.0, 1e-3) },
+        p: if kind == 0 { [u, v, 0.0] } else { [rng.uniform(0.0, 1.0), u, v] },
     }
 }
 
@@ -1386,20 +1122,9 @@ fn gen_point_over(rng: &mut Rng, s: &SrfIn, offset: f64) -> Option<[f64; 3]> {
 }
 
 fn gen_maxdist(rng: &mut Rng, s: &SrfIn) -> OpIn {
-    let curve = if rng.chance(0.7) {
-        gen_line(rng)
-    } else {
-        gen_curve(rng)
-    };
-    let (a, bb) = (
-        curve.u.first().copied().unwrap_or(0.0),
-        curve.u.last().copied().unwrap_or(1.0),
-    );
-    let ivl = if rng.chance(0.5) {
-        [a, bb]
-    } else {
-        [a, a + (bb - a) * rng.uniform(0.3, 1.0)]
-    };
+    let curve = if rng.chance(0.7) { gen_line(rng) } else { gen_curve(rng) };
+    let (a, bb) = (curve.u.first().copied().unwrap_or(0.0), curve.u.last().copied().unwrap_or(1.0));
+    let ivl = if rng.chance(0.5) { [a, bb] } else { [a, a + (bb - a) * rng.uniform(0.3, 1.0)] };
     OpIn::MaxDist {
         dom: gen_dom(rng, s),
         curve,
@@ -1428,11 +1153,7 @@ fn gen_op(rng: &mut Rng, s: &SrfIn) -> OpIn {
         },
         22..=33 => {
             let param = rng.below(2) as u8;
-            let (a, bb) = if param == 0 {
-                (nat[0], nat[2])
-            } else {
-                (nat[1], nat[3])
-            };
+            let (a, bb) = if param == 0 { (nat[0], nat[2]) } else { (nat[1], nat[3]) };
             let iso = match rng.below(4) {
                 0 => a,
                 1 => bb,
@@ -1441,11 +1162,7 @@ fn gen_op(rng: &mut Rng, s: &SrfIn) -> OpIn {
             OpIn::Iso {
                 param,
                 iso,
-                tol: if rng.chance(0.5) {
-                    0.0
-                } else {
-                    *rng.choose(&[1e-6, 1e-4, 1e-2]).unwrap_or(&1e-4)
-                },
+                tol: if rng.chance(0.5) { 0.0 } else { *rng.choose(&[1e-6, 1e-4, 1e-2]).unwrap_or(&1e-4) },
                 dom: match rng.below(3) {
                     0 => None,
                     1 => Some(nat),
@@ -1462,20 +1179,12 @@ fn gen_op(rng: &mut Rng, s: &SrfIn) -> OpIn {
         },
         40..=53 => OpIn::Lps0 {
             dom: gen_dom(rng, s),
-            sop: if rng.chance(0.7) {
-                0
-            } else {
-                gen_sop(rng, &[3, 4, 5])
-            },
+            sop: if rng.chance(0.7) { 0 } else { gen_sop(rng, &[3, 4, 5]) },
             p: gen_point_near(rng, s),
             guess: uv,
         },
         54..=67 => OpIn::Drop {
-            dom: if rng.chance(0.6) {
-                nat
-            } else {
-                gen_dom(rng, s)
-            },
+            dom: if rng.chance(0.6) { nat } else { gen_dom(rng, s) },
             p: {
                 let off = rng.uniform(-2.0, 2.0);
                 (matches!(s, SrfIn::Plane { .. }) && rng.chance(0.7))
@@ -1504,15 +1213,8 @@ fn gen_op(rng: &mut Rng, s: &SrfIn) -> OpIn {
         },
         71..=84 => {
             let curve = gen_curve(rng);
-            let (a, bb) = (
-                curve.u.first().copied().unwrap_or(0.0),
-                curve.u.last().copied().unwrap_or(1.0),
-            );
-            let ivl = if rng.chance(0.5) {
-                [a, bb]
-            } else {
-                [a, a + (bb - a) * rng.uniform(0.3, 1.0)]
-            };
+            let (a, bb) = (curve.u.first().copied().unwrap_or(0.0), curve.u.last().copied().unwrap_or(1.0));
+            let ivl = if rng.chance(0.5) { [a, bb] } else { [a, a + (bb - a) * rng.uniform(0.3, 1.0)] };
             let t = match rng.below(4) {
                 0 => ivl[0],
                 1 => ivl[1],
@@ -1525,19 +1227,13 @@ fn gen_op(rng: &mut Rng, s: &SrfIn) -> OpIn {
                 uc: gen_conts(rng),
                 vc: gen_conts(rng),
                 tc: gen_conts(rng),
-                value: *rng
-                    .choose(&[0.0, 1e-12, 1e-9, 1e-6, 1e-3, 0.1])
-                    .unwrap_or(&1e-6),
+                value: *rng.choose(&[0.0, 1e-12, 1e-9, 1e-6, 1e-3, 0.1]).unwrap_or(&1e-6),
                 t,
                 uv,
             }
         }
         85..=93 => OpIn::SpLocal {
-            dom: if rng.chance(0.6) {
-                nat
-            } else {
-                gen_dom(rng, s)
-            },
+            dom: if rng.chance(0.6) { nat } else { gen_dom(rng, s) },
             uc: gen_conts(rng),
             vc: gen_conts(rng),
             p: gen_point_near(rng, s),
@@ -1687,10 +1383,7 @@ mod tests {
                 continue;
             };
             let i: Inputs = serde_json::from_value(v).unwrap();
-            let name = serde_json::to_value(&i.op).unwrap()["op"]
-                .as_str()
-                .unwrap()
-                .to_string();
+            let name = serde_json::to_value(&i.op).unwrap()["op"].as_str().unwrap().to_string();
             let e = stats.entry(name).or_default();
             e[0] += 1;
             match rust_run(&i) {
