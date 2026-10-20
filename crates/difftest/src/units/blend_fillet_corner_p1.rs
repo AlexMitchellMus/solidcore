@@ -1119,8 +1119,10 @@ mod tests {
     /// `CASE_SEEDS` generated, default 16) by op: `deferred`, `refused` / other errors,
     /// `error_status` (a non-zero `SmStatus`) or the result (`success`, and for the
     /// flag ops `true` / `false`, for `face_by_two` `face` / `no_face`, for `seam_out`
-    /// `moved` / `kept`). Without it: runs the cases `CASE_INDICES` (or the first
-    /// `CASE_PER_OP` of each op) on one side (`CASE_SIDE=rust`, else C++), for valgrind.
+    /// `moved` / `kept`); with `CASE_LIST=<kind>` as well, prints the name and inputs
+    /// of every case of that kind (to pin generated cases as fixtures). Without it: runs
+    /// the cases `CASE_INDICES` (or the first `CASE_PER_OP` of each op) on one side
+    /// (`CASE_SIDE=rust`, else C++), for valgrind.
     #[test]
     #[ignore = "census and valgrind sample; run on demand"]
     fn case_sample() {
@@ -1160,6 +1162,32 @@ mod tests {
                     }
                     Err(_) => "harness_error".to_string(),
                 };
+                if env("CASE_LIST").is_some_and(|k| k == kind) {
+                    // the resolved arguments and, for a vertex op, the edge uses at the
+                    // vertex (export order), so a seeded case can be pinned with small
+                    // selectors
+                    let mut resolved = String::new();
+                    if let Ok(i) = serde_json::from_value::<Inputs>(case.inputs.clone()) {
+                        if let Ok(Ok(t)) = topo(&i) {
+                            let vid = t.args.first().and_then(|&v| u32::try_from(v).ok());
+                            let ring: Vec<u32> = t
+                                .brep
+                                .edgeuses()
+                                .iter()
+                                .map(|(id, _)| id)
+                                .filter(|&id| eu_vertex(&t.brep, id).map(VertexId::index) == vid)
+                                .map(EdgeuseId::index)
+                                .collect();
+                            resolved = format!("args={:?} ring={ring:?}", t.args);
+                        }
+                    }
+                    eprintln!(
+                        "case_item: {} {} {} {resolved}",
+                        op_name(case),
+                        case.name,
+                        case.inputs
+                    );
+                }
                 *tally.entry((op_name(case), kind)).or_default() += 1;
             }
             for ((op, kind), n) in tally {

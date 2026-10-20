@@ -2199,6 +2199,202 @@
     "eu": 21,
     "tol": 2.0
    }
+  },
+  {
+   "name": "concavity_true_l_shaped_box",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/l_shaped_box.smb",
+     "rebuild": false
+    },
+    "v": 10,
+    "eu1": 0,
+    "eu2": 3,
+    "ref": -1
+   }
+  },
+  {
+   "name": "concavity_true_6_sided_corner",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/6_sided_corner.smb",
+     "rebuild": false
+    },
+    "v": 9,
+    "eu1": 5,
+    "eu2": 1,
+    "ref": -1
+   }
+  },
+  {
+   "name": "concavity_true_brick",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/brick.smb",
+     "rebuild": false
+    },
+    "v": 15,
+    "eu1": 3,
+    "eu2": 0,
+    "ref": -1
+   }
+  },
+  {
+   "name": "concavity_true_box_on_box",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_on_box.smb",
+     "rebuild": false
+    },
+    "v": 8,
+    "eu1": 3,
+    "eu2": 0,
+    "ref": -1
+   }
+  },
+  {
+   "name": "concavity_true_adjacent_6_sided_corner",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/6_sided_corner.smb",
+     "rebuild": false
+    },
+    "v": 9,
+    "eu1": 0,
+    "eu2": 0,
+    "ref": -1,
+    "adjacent": true
+   }
+  },
+  {
+   "name": "concavity_true_adjacent_box_on_box",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "concavity",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_on_box.smb",
+     "rebuild": false
+    },
+    "v": 10,
+    "eu1": 3,
+    "eu2": 0,
+    "ref": -1,
+    "adjacent": true
+   }
+  },
+  {
+   "name": "tangential_true_box_w_slot_tight",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/box_w_slot.smb",
+     "rebuild": false
+    },
+    "eu": 3,
+    "tol": 0.1
+   }
+  },
+  {
+   "name": "tangential_true_brepForFillet1",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/brepForFillet1.smb",
+     "rebuild": false
+    },
+    "eu": 20,
+    "tol": 45.0
+   }
+  },
+  {
+   "name": "tangential_true_plane_circ",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "plane_circ.smb",
+     "rebuild": false
+    },
+    "eu": 1,
+    "tol": 45.0
+   }
+  },
+  {
+   "name": "tangential_true_disk",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "disk.smb",
+     "rebuild": false
+    },
+    "eu": 1,
+    "tol": 45.0
+   }
+  },
+  {
+   "name": "tangential_brepForFillet1_eu20",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "Fillet/brepForFillet1.smb",
+     "rebuild": false
+    },
+    "eu": 20,
+    "tol": 2.0
+   }
+  },
+  {
+   "name": "tangential_plane_circ",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "plane_circ.smb",
+     "rebuild": false
+    },
+    "eu": 1,
+    "tol": 2.0
+   }
+  },
+  {
+   "name": "tangential_disk",
+   "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp",
+   "inputs": {
+    "op": "tangential",
+    "brep": {
+     "kind": "file",
+     "file": "disk.smb",
+     "rebuild": false
+    },
+    "eu": 1,
+    "tol": 2.0
+   }
   }
  ]
 }
