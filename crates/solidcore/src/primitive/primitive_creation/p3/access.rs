@@ -15,8 +15,9 @@ use crate::error::{Result, SolidError};
 use crate::geom::axis2_placement::Axis2Placement;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::extent3d::Extent3d;
+use crate::heal::stitch::p2::MinGapRequest;
 use crate::surface::surface::Surface;
-use crate::sweep::topology_sweep::access::{FaceRef, RegionRef, SweepAccess};
+use crate::sweep::topology_sweep::access::{FaceRef, RegionRef, SweepAccess, SweepStitchCallback};
 use crate::sweep::topology_sweep::TopologySweep;
 use crate::topology::{BrepId, EdgeId, FaceId};
 
@@ -166,12 +167,20 @@ pub trait PrimitiveAccess: SweepAccess {
         brep: BrepId,
         sweep: &mut TopologySweep,
         tolerance: f64,
-    ) -> Result<()> {
-        let _ = (brep, sweep, tolerance);
-        // UNPORTED(heal.stitch_p2): SmStitch::DoStitching
-        Err(SolidError::unported(
-            "SmStitch::DoStitching",
-            "heal.stitch_p2",
-        ))
+    ) -> Result<()>
+    where
+        Self: Sized,
+    {
+        self.with_primitive_brep(brep, |kernel, model| {
+            let mut callback = SweepStitchCallback { brep, sweep };
+            let mut stitch =
+                crate::heal::stitch::p1::Stitch::new(&mut callback, tolerance, true, false);
+            stitch.fast_edge_compare = true;
+            stitch.split_edges_with_vertices = false;
+            stitch.making_manifold_solid = false;
+            stitch
+                .do_stitching(kernel, model, None, None, MinGapRequest::default())
+                .map(|_| ())
+        })
     }
 }

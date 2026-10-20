@@ -9,6 +9,8 @@
 //! Deviations: a statically dispatched access interface keeps B-rep and context
 //! identities explicit. Defaults below defer only the named unavailable callee;
 //! the sweep's remaining control flow is implemented by the caller of each service.
+//! The stitch callback qualifies arena ids with the caller's target B-rep before
+//! forwarding selection and map mutations to `TopologySweep`.
 
 use super::{SweepEntity, TopologySweep};
 use crate::curve::curve::Curve;
@@ -19,6 +21,7 @@ use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::extent3d::Extent3d;
 use crate::geom::object::ObjectRef;
+use crate::heal::stitch::p2::MinGapRequest;
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3};
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
@@ -540,18 +543,24 @@ pub trait SweepAccess {
         "boolean.merge_p3",
         "SmMerge::PiecewiseMerge"
     );
-    // UNPORTED(heal.stitch_p2): SmStitch::DoStitching
-    deferred!(
-        /// Sweep callback, default targets, non-manifold mode.
-        fn stitch(
-            brep: BrepId,
-            sweep: &mut TopologySweep,
-            tolerance: f64,
-            making_manifold_solid: bool,
-        ) -> ();,
-        "heal.stitch_p2",
-        "SmStitch::DoStitching"
-    );
+    /// Sweep callback and default targets, retaining the caller's manifold mode.
+    fn stitch(
+        &mut self,
+        brep: BrepId,
+        sweep: &mut TopologySweep,
+        tolerance: f64,
+        making_manifold_solid: bool,
+    ) -> Result<()> {
+        self.with_brep_mut(brep, |kernel, model, _, _| {
+            let mut callback = SweepStitchCallback { brep, sweep };
+            let mut stitch =
+                crate::heal::stitch::p1::Stitch::new(&mut callback, tolerance, true, true);
+            stitch.making_manifold_solid = making_manifold_solid;
+            stitch
+                .do_stitching(kernel, model, None, None, MinGapRequest::default())
+                .map(|_| ())
+        })
+    }
     // UNPORTED(topology.brep_p3): SmBrep::OrientTrimmedSurfaces
     deferred!(
         /// `SmBrep::OrientTrimmedSurfaces`.
@@ -569,5 +578,121 @@ pub trait SweepAccess {
     );
 }
 
+pub(crate) struct SweepStitchCallback<'a> {
+    pub(crate) brep: BrepId,
+    pub(crate) sweep: &'a mut TopologySweep,
+}
+
+impl SweepStitchCallback<'_> {
+    fn entity(&self, entity: crate::EntityRef) -> Result<SweepEntity> {
+        match entity {
+            crate::EntityRef::Vertex(vertex) => Ok(SweepEntity::Vertex(self.brep, vertex)),
+            crate::EntityRef::Edge(edge) => Ok(SweepEntity::Edge(self.brep, edge)),
+            crate::EntityRef::Face(face) => Ok(SweepEntity::Face(self.brep, face)),
+            crate::EntityRef::Region(region) => Ok(SweepEntity::Region(self.brep, region)),
+            _ => Err(SolidError::invalid_input(
+                "sweep::topology_sweep::stitch",
+                "unsupported stitch callback entity",
+            )),
+        }
+    }
+}
+
+impl crate::heal::stitch::p1::StitchCallback for SweepStitchCallback<'_> {
+    fn select_topology_to_keep(
+        &mut self,
+        _kernel: &Kernel,
+        _model: &Brep,
+        first: crate::EntityRef,
+        second: crate::EntityRef,
+        dist_between: f64,
+    ) -> Result<crate::heal::stitch::p1::KeepChoice> {
+        let first = self.entity(first)?;
+        let second = self.entity(second)?;
+        let mut choice = crate::heal::stitch::p1::KeepChoice {
+            max_distance: 0.0,
+            keep_first: true,
+        };
+        self.sweep.select_topology_to_keep(
+            Some(first),
+            Some(second),
+            dist_between,
+            &mut choice.max_distance,
+            &mut choice.keep_first,
+        )?;
+        Ok(choice)
+    }
+}
+
 /// Correspondence from source to copied edges, filled by the merge notifier.
 pub type BTreeEdgeMap = std::collections::BTreeMap<EdgeId, EdgeId>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::heal::stitch::p1::StitchCallback;
+    use crate::sweep::topology_sweep::TopologySweepOptions;
+
+    #[test]
+    fn stitch_callback_preserves_owner_and_updates_sweep_maps() {
+        let owner = BrepId::from_index(7);
+        let kernel = Kernel::default();
+        let model = Brep::new();
+        for (first, second, original, copy) in [
+            (
+                crate::EntityRef::Vertex(VertexId::from_index(1)),
+                crate::EntityRef::Vertex(VertexId::from_index(2)),
+                SweepEntity::Vertex(owner, VertexId::from_index(1)),
+                SweepEntity::Vertex(owner, VertexId::from_index(2)),
+            ),
+            (
+                crate::EntityRef::Edge(EdgeId::from_index(1)),
+                crate::EntityRef::Edge(EdgeId::from_index(2)),
+                SweepEntity::Edge(owner, EdgeId::from_index(1)),
+                SweepEntity::Edge(owner, EdgeId::from_index(2)),
+            ),
+        ] {
+            let mut sweep = TopologySweep::new(TopologySweepOptions::default());
+            sweep.set_same(Some(original), Some(copy));
+            let mut callback = SweepStitchCallback {
+                brep: owner,
+                sweep: &mut sweep,
+            };
+            let choice = callback
+                .select_topology_to_keep(&kernel, &model, second, first, 3.5)
+                .unwrap();
+            assert!(!choice.keep_first);
+            assert_eq!(choice.max_distance, 0.0);
+            assert_eq!(sweep.get_to_same(Some(original)), Some(original));
+            assert_eq!(sweep.get_from_same(Some(original)), Some(original));
+            assert_eq!(sweep.get_from_same(Some(copy)), None);
+        }
+    }
+
+    #[test]
+    fn stitch_callback_propagates_conflicting_sweep_originals() {
+        let owner = BrepId::from_index(7);
+        let first = EdgeId::from_index(1);
+        let second = EdgeId::from_index(2);
+        let mut sweep = TopologySweep::new(TopologySweepOptions::default());
+        for edge in [first, second] {
+            sweep.set_same(
+                Some(SweepEntity::Edge(owner, edge)),
+                Some(SweepEntity::Edge(owner, EdgeId::from_index(3))),
+            );
+        }
+        let mut callback = SweepStitchCallback {
+            brep: owner,
+            sweep: &mut sweep,
+        };
+        assert!(callback
+            .select_topology_to_keep(
+                &Kernel::default(),
+                &Brep::new(),
+                crate::EntityRef::Edge(first),
+                crate::EntityRef::Edge(second),
+                3.5,
+            )
+            .is_err());
+    }
+}

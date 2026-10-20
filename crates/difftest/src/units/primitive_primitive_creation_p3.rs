@@ -523,3 +523,31 @@ impl UnitDiff for Runner {
         .ok()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use solidcore::sweep::topology_sweep::{TopologySweep, TopologySweepOptions};
+
+    #[test]
+    fn linear_cap_stitch_calls_port_and_restores_caller_state() {
+        let mut model = EmptyModel::new().unwrap();
+        let mut sweep = TopologySweep::new(TopologySweepOptions::default());
+        for editing in [false, true] {
+            for doing_boolean in [false, true] {
+                model.b.set_editing_enabled(editing);
+                model.k.context.set_doing_boolean(doing_boolean);
+                let result = model.stitch_linear_caps(BrepId::from_index(0), &mut sweep, 0.125);
+                assert!(matches!(
+                    result,
+                    Err(SolidError::Unported {
+                        upstream: "SmBrep::Notify",
+                        unit: "topology.brep_p2",
+                    })
+                ));
+                assert_eq!(model.b.editing_enabled(), editing);
+                assert_eq!(model.k.context.doing_boolean(), doing_boolean);
+            }
+        }
+    }
+}

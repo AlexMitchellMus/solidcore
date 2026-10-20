@@ -10148,6 +10148,40 @@ constructed surface. The total kernel gate now passes 1,442 tests, alongside
 normal/native Clippy, wasm32 and the native p3 FFI guard regression. Updated
 native/full-gate/CI evidence is reported for the final PR head. Successful
 native topology and production-adapter coverage remain deferred.
+
+### Third PR #233 review: current main, stitch adapters and negative tolerances
+
+Canonical main `95b823ed` is merged, retaining both the primitive findings and
+main's new sections, including `heal.stitch_p2`. Both primitive linear-cap and
+topology-sweep defaults now invoke the landed `Stitch::do_stitching` instead of
+deferring to a partial unit. Their shared callback qualifies each entity with
+the actual target B-rep before forwarding selection and map mutations to
+`TopologySweep::select_topology_to_keep`. No guessed object keys, copied Kernel
+or default selection callback is used. Linear-cap options match pinned
+`SmPrimitiveCreation.cpp:1977-1986`; general sweeps keep the native constructor
+defaults and supplied manifold flag. Their next dependency is the stitch port's
+`SmBrep::Notify` (`topology.brep_p2`), not the production adapter tracked in #255.
+That adapter remains necessary for production construction callers.
+
+The op-4 and op-6 FFI guards accept finite negative approximation tolerances,
+retaining degree, count, geometry and non-finite checks. Three native fixtures
+add one bit-identical empty swung return (no profiles, so tolerance is unused)
+and two construction deferrals (skin and nonempty swung).
+P3 now has **296 cases: 285 pass, 10 deferred, 1 UB-78 rejection, 0 failed**,
+maximum relative error zero and no absolute floors. These comparisons still
+do not certify successful stitching or primitive topology construction.
+Reversed circular-arc inputs remain unrepresentable by this fixture format.
+
+Formatting (including the included runner/FFI files), plain/native strict
+workspace Clippy, all **1,497** kernel tests, wasm32 and the native FFI guard
+regression pass. Four Rust regressions cover the two callback behaviors and
+both adapter defaults; the latter verify flag restoration on notification
+deferral. All seven affected native gates pass their comparable cases with
+maximum relative error zero. Sensitivity detects **285/285** comparable p3
+cases (10 deferred, 1 rejected). Fuzz 300 executes **85**, rejects **161** and
+classifies **54** as malformed, with **0** differences, crashes, panics or
+timeouts. Full-gate and actual-head CI results are recorded in the PR discussion.
+
 ## blend.fillet_geom_p4 (`SmFilletGeom.cpp` part 4: `sm_CreateUVCurve`, the fillet-surface intersection vertex calculators, `GetRailIndexOfVertex`, `MakeFaceBrep`, `InsertIntersectionTopology`, `CalcBlendingGeom`; PR #252, 2026-10-19; partial)
 
 - **Built on open PRs.** The fillet object model (`FilletBrep`, `FilletGeom`, ...) is
