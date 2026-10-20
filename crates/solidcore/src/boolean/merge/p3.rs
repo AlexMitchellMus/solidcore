@@ -486,7 +486,7 @@ fn copy_base_surface(_k: &mut Kernel, _source: &Surface) -> Result<Surface> {
 }
 
 fn stitch_and_orient(
-    _k: &mut Kernel,
+    k: &mut Kernel,
     brep: &mut Brep,
     tolerance: f64,
     allow_spine_edges: bool,
@@ -494,6 +494,7 @@ fn stitch_and_orient(
     just_unify: Option<&mut bool>,
 ) -> Result<()> {
     crate::topology::brep::p5::stitch_and_orient(
+        k,
         brep,
         &crate::topology::brep::p5::StitchAndOrientOptions {
             stitch_tolerance: tolerance,
