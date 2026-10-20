@@ -365,6 +365,85 @@ impl ExecutiveAccess<Handle> for Access {
     ) -> SolidResult<()> {
         missing()
     }
+    fn geom_has_surface(&self, _: Handle) -> SolidResult<bool> {
+        missing()
+    }
+    fn geom_rails(&self, _: Handle) -> SolidResult<Vec<Option<Handle>>> {
+        missing()
+    }
+    fn geom_side_edgeuses(&self, _: Handle) -> SolidResult<Vec<Handle>> {
+        missing()
+    }
+    fn edgeuse_edge(&self, _: Handle) -> SolidResult<Option<Handle>> {
+        missing()
+    }
+    fn fillet_edge_original_face(&self, _: Handle) -> SolidResult<Option<Handle>> {
+        missing()
+    }
+    fn fillet_edge_original_edge(&self, _: Handle) -> SolidResult<Option<Handle>> {
+        missing()
+    }
+    fn find_fillet_brep_edge(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &[Handle],
+        _: bool,
+    ) -> SolidResult<()> {
+        missing()
+    }
+    fn corner_edges(&self, _: Handle) -> SolidResult<Vec<Option<Handle>>> {
+        missing()
+    }
+    fn blend_edgeuse(&mut self, _: &mut Kernel, _: Handle) -> SolidResult<Option<Handle>> {
+        missing()
+    }
+    fn edge_tolerance(&self, _: Handle) -> SolidResult<f64> {
+        missing()
+    }
+    fn edge_vertices(&self, _: Handle) -> SolidResult<(Option<Handle>, Option<Handle>)> {
+        missing()
+    }
+    fn variable_radius_solver(
+        &self,
+        _: Handle,
+    ) -> SolidResult<Option<&solidcore::blend::fillet_standard_solver::p1::VariableRadiusFs>> {
+        missing()
+    }
+    fn variable_radius_solver_mut(
+        &mut self,
+        _: Handle,
+    ) -> SolidResult<Option<&mut solidcore::blend::fillet_standard_solver::p1::VariableRadiusFs>>
+    {
+        missing()
+    }
+    fn solver_edgeuse(&self, _: Handle, _: usize) -> SolidResult<Option<Handle>> {
+        missing()
+    }
+    fn corner_setback_distance(&self, _: Handle) -> SolidResult<f64> {
+        missing()
+    }
+    fn new_surface_generator(
+        &mut self,
+        _: &mut Kernel,
+        _: solidcore::blend::fillet_solver::p1::FilletSurfaceGenerator,
+    ) -> SolidResult<Handle> {
+        missing()
+    }
+    fn new_constant_radius_solver(
+        &mut self,
+        _: &mut Kernel,
+        _: f64,
+        _: f64,
+        _: f64,
+        _: f64,
+        _: Handle,
+    ) -> SolidResult<Handle> {
+        missing()
+    }
+    fn set_surface_generator(&mut self, _: Handle, _: Handle) -> SolidResult<()> {
+        missing()
+    }
 }
 
 fn flag(value: bool) -> f64 {
@@ -491,6 +570,7 @@ fn rust(input: &Inputs) -> Result<Output, HarnessError> {
         ),
         intersection_edges: vec![],
         intersection_vertices: vec![],
+        law_sequence_edges: vec![],
     };
     // The executive constructor sets this after constructing its SmMerge base.
     executive.intersector.ignore_tangency = true;

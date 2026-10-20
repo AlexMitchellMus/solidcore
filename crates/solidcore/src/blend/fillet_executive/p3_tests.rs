@@ -536,6 +536,84 @@ impl ExecutiveAccess<Handle> for Access {
         self.events.push("corner_geom");
         Ok(())
     }
+    fn geom_has_surface(&self, _: Handle) -> Result<bool> {
+        absent()
+    }
+    fn geom_rails(&self, _: Handle) -> Result<Vec<Option<Handle>>> {
+        absent()
+    }
+    fn geom_side_edgeuses(&self, _: Handle) -> Result<Vec<Handle>> {
+        absent()
+    }
+    fn edgeuse_edge(&self, _: Handle) -> Result<Option<Handle>> {
+        absent()
+    }
+    fn fillet_edge_original_face(&self, _: Handle) -> Result<Option<Handle>> {
+        absent()
+    }
+    fn fillet_edge_original_edge(&self, _: Handle) -> Result<Option<Handle>> {
+        absent()
+    }
+    fn find_fillet_brep_edge(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &[Handle],
+        _: bool,
+    ) -> Result<()> {
+        absent()
+    }
+    fn corner_edges(&self, _: Handle) -> Result<Vec<Option<Handle>>> {
+        absent()
+    }
+    fn blend_edgeuse(&mut self, _: &mut Kernel, _: Handle) -> Result<Option<Handle>> {
+        absent()
+    }
+    fn edge_tolerance(&self, _: Handle) -> Result<f64> {
+        absent()
+    }
+    fn edge_vertices(&self, _: Handle) -> Result<(Option<Handle>, Option<Handle>)> {
+        absent()
+    }
+    fn variable_radius_solver(
+        &self,
+        _: Handle,
+    ) -> Result<Option<&crate::blend::fillet_standard_solver::p1::VariableRadiusFs>> {
+        absent()
+    }
+    fn variable_radius_solver_mut(
+        &mut self,
+        _: Handle,
+    ) -> Result<Option<&mut crate::blend::fillet_standard_solver::p1::VariableRadiusFs>> {
+        absent()
+    }
+    fn solver_edgeuse(&self, _: Handle, _: usize) -> Result<Option<Handle>> {
+        absent()
+    }
+    fn corner_setback_distance(&self, _: Handle) -> Result<f64> {
+        absent()
+    }
+    fn new_surface_generator(
+        &mut self,
+        _: &mut Kernel,
+        _: FilletSurfaceGenerator,
+    ) -> Result<Handle> {
+        absent()
+    }
+    fn new_constant_radius_solver(
+        &mut self,
+        _: &mut Kernel,
+        _: f64,
+        _: f64,
+        _: f64,
+        _: f64,
+        _: Handle,
+    ) -> Result<Handle> {
+        absent()
+    }
+    fn set_surface_generator(&mut self, _: Handle, _: Handle) -> Result<()> {
+        absent()
+    }
 }
 
 fn state() -> FilletExecutive<Handle> {
@@ -558,6 +636,7 @@ fn state() -> FilletExecutive<Handle> {
         intersector: TopologyIntersector::new(None, None, 1e-5, 0.5),
         intersection_edges: vec![],
         intersection_vertices: vec![],
+        law_sequence_edges: vec![],
     }
 }
 

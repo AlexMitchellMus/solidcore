@@ -616,7 +616,7 @@ upstream surfaces `Surface.sms` (thinly closed in u), `offset_nurb.sms` and
 
 ## nlib.basis_basic (green; no disagreements)
 
-2596 default cases (1096 fixture + 1500 generated) and a 201,096-case run
+2605 default cases (1105 fixture + 1500 generated) and a 201,105-case run
 (`--seeds 200000`) agree bit for bit with upstream (`max_rel_err = 0`). Fixtures use the
 knot vectors of every `.smc`/`.sms` file in `pt_TestFiles`, the `smTopoTest.cpp` and
 SM_API_test rectangle/polygon layouts, and the examples in the upstream doc comments.
@@ -642,8 +642,9 @@ Upstream behaviour worth knowing:
 - **`N_MakeKnotsCompatible` reads past `U[m]`** on degree-0 vectors whose ends differ by
   less than `NL_PTOL` (so no rescale happens). It can also read past `U[m]` with inner
   knots within `NL_PTOL` of an end, or with unclamped vectors. Its output buffers are
-  caller-allocated and unbounded. Rust returns `InvalidInput` for out-of-range reads. The
-  shim pads both vectors with `+inf` entries so upstream stays in bounds and terminates.
+  caller-allocated and unbounded (UB-13). Rust returns `InvalidInput` for out-of-range
+  reads. The ffi rejects exactly the inputs that read past `U[m]` (fuzz follow-up below);
+  the shim still pads both vectors with `+inf` entries.
   The generator keeps to degree >= 1 for the "ends within `NL_PTOL`" mode. It also
   pushes the end knot `U[m]` of the shorter-ended vector into the other's insert list
   when the ends differ by less than `NL_PTOL`. Rust does the same, faithfully.
@@ -653,6 +654,31 @@ Upstream behaviour worth knowing:
 - **`N_BasisFindAllSpanMaxima` with degree 1 or a `p`-fold inner knot** returns fixed
   values (`max = 1` at `U[i+1]`) without searching. Degree 0 goes through the Newton
   path with `du = span/0 = inf`. Rust does the same, faithfully.
+
+**Fuzz follow-up (issues #182, #253).** On main, `--fuzz 3000` gave 14 panics and 17
+`differs`; `--fuzz 30000` gave 119 panics and 249 `differs` (no crashes or timeouts), all
+in `make_compatible`. Two causes:
+
+- *Panics: Rust start-index overflow.* `make_knots_compatible` computed `p + 1` / `q + 1`
+  unchecked, so a degree of `i64::MAX` (the fuzz integer mutation; the C++ side rejects it,
+  upstream's degree is a `short`) panicked. The indices are now checked and such degrees
+  return `InvalidInput`; `check_index` (the `p + 1` of the basis routines) is checked too.
+- *All differs: `N_MakeKnotsCompatible` reads past the ends (UB-13).* Rust returned its
+  out-of-range `InvalidInput` while the C++ "succeeded" on the shim's `+inf` padding
+  (garbage-dependent in real callers). Inputs: degree 0 on vectors whose end knots repeat
+  (`/p = 0`, `/q = 0`, or a duplicated end knot), an inner knot moved above the end knot
+  (also after the rescale), and vectors with too few end knots for the degree. The ffi
+  guard now rejects exactly these: `make_compatible_reads_in_bounds` has the shim replay
+  upstream's rescale (calling `N_BasisReparam`) and index walk, checking each
+  `R[i]`/`S[j]` index before the read. The runner reports such inputs as `read_past_end`
+  on both sides (C++ from the walk check, Rust from its out-of-range error), so the two
+  detections are compared; the generator emits degree 0 on clamped vectors in 4 % of
+  `make_compatible` cases. No Rust port bug and no harness asymmetry was found.
+
+Regression fixtures: `fixtures/nlib.basis_basic/fuzz_regressions.json` (5 past-end
+cases, 4 in-bounds neighbours that compare values). After the fix, `--fuzz 3000` and
+`--fuzz 30000` give 0 differs, crashes, panics and timeouts.
+
 ## geom.hash_table (green; no disagreements)
 
 619 default cases (19 fixture + 600 generated) and a 10,019-case run (`--seeds 10000`)
@@ -7257,6 +7283,11 @@ exactly and 48 defer deeper to p2 (plus the 12 new wr155 fixtures).
   reaches the genuine `topology.edgeuse_p3` `NormalizedEvaluate` dependency;
   `GetEdges` remains the existing `topology.face_p4` dependency. End-to-end query
   classification is not certified.
+- **Shim cache runs with the face point test off.** The p9 shim attaches `P9Trim` with
+  `m_bPointTestEnabled = FALSE` when it computes cache vertex UVs (matches the Rust cache default and the
+  still-`UNPORTED(query.face_p2)` face-owned branch of `GlobalPointSolve`, `surface/surface/p4.rs`). The
+  `query.face_p2` porter should revisit the `fuzz_*` fixtures in `fixtures/intersect.curve_class_p9/` when the
+  switch lands in Rust.
 - **Oracle guards review fix.** Removed numeric caps on zone tolerance, scale,
   source/edge parameter domains, UV position and vertex gap. Source point intervals
   are accepted. Counts/lengths, finite inputs and constructed coordinates, flag and
@@ -11039,3 +11070,14 @@ executive p1/p2 object adapter is still needed for geometric integration; this
 change does not claim a new geometric pass. The current UNPORTED inventory is
 33 symbols across 12 owners; all remaining tagged callees are still unported.
 Final integrated-tree checks pending.
+
+## blend.fillet_executive_p2 (`SmFilletExecutive.cpp` part 2: `SetFilletParameters`, `SurfaceSurfaceFillet`, `DoSurfaceFilleting`, `SetFilletBrepEdgeMap`, smooth edge sequences, `SmTemporaryRadiusChange`, the linear and elliptical fillet-law constructors; PR #267, 2026-10-20; partial, no disagreements)
+
+- **Coverage.** The only comparisons with values are the law constructors: 224 fixture cases and 16 generated ones. They compare every field of the law, including the degree-2 law curve's control points and knots. Every executive member with a non-empty input defers at executive p1 (`NoteError`, `AddFilletSurfaceGenerator`, `LoadFilletSolver`, `CreateFilletCorners`). The remaining passes are the empty-edge `SetFilletParameters` cases (switches, solver count, error code), the two null-dereference guards (UB-206, compared as errors on both sides) and the three members on an executive without solvers. No geometric fillet output is compared.
+- **Fixture box.** The executive cases run on an `SmApiCreateBox` box. The C++ side builds it and the Rust side imports it through `heal.stitch_p2`'s export, because Rust's `primitive::api_primitives::create_box` is still `Unported` (`primitive.primitive_creation_p1`). Box edges are in `SmBrep::GetEdges` order, which is the export order.
+- **Native crashes found while building the shim** (caller misuse of internal members; the shim avoids them rather than reporting them as upstream defects):
+  - `SetFilletBrepEdgeMap` with solvers whose geometry `CalcFilletGeom` has not built reads null rails. The FFI refuses the edge map with solvers.
+  - `CollectTangentEdgeSequence` with two or more solvers before `CreateFilletCorners` reads garbage from `m_vVertexCornerMap`. The shim runs `CreateFilletCorners` first, as `CreateFilletBrep` does.
+- **Adapter.** Calls into partial units are required `ExecutiveAccess` methods: the `blend.fillet_solver_p1` surface-generator records and `SetFilletSurfaceGenerator`, `GetEdgeuse`, and `blend.fillet_standard_solver_p1`'s constant-radius constructor. `GetSetBackDist` is an inline read of `m_dSetBackDist`. The constant-distance, variable-radius and surface/surface solver constructors stay `UNPORTED(blend.fillet_standard_solver_p2)`.
+- **Duplicate enums on main.** `FilletSolverType` and `FilletSurfaceGeneratorType` exist both in `blend::fillet_solver::p1` and in `blend::fillet_standard_solver::p1` (#168's co-port), as distinct types. p2 takes the latter, as `FilletLaw` does, and maps them onto `fillet_solver::p1::FilletSurfaceGenerator`. A later dedup should re-export one of them.
+- **Not wired.** `blend::fillet_geom::p2`'s `UNPORTED(blend.fillet_executive_p2)` `SmTemporaryRadiusChange::SetUp` receives a base `FilletSolver`. Reaching the variable-radius law from it needs #260's `FilletSolverKind`, so the stub stays until that lands.
