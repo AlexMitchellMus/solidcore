@@ -40,9 +40,11 @@
 //!   and its extension are B-splines) and not ported.
 //! - A G1-closed law curve is not extended: `CreateExtendedCurve` hands back an
 //!   unextended copy (NLib evaluates such a curve periodically) and the evaluation
-//!   clamps, as upstream. `CreateExtendedCurve` returning no curve at all is impossible
-//!   for a parameter outside the domain; that path (a `NULL` dereference upstream) is
-//!   `SM_ERR_NULL_POINTER` ([`SolidError::null_pointer`]).
+//!   clamps, as upstream. `CreateExtendedCurve` returning no curve at all (its
+//!   `Ok(None)`: the parameter lies inside the NURB's own bounds, possible only if they
+//!   disagreed with `natural_interval`) is a `NULL` dereference upstream and
+//!   `SM_ERR_NULL_POINTER` ([`SolidError::null_pointer`]) here.
+//! - `GetClassType` / `GetClassTypeString` (the `SM_COMMON` statics) are not ported.
 //! - The out-parameter `dValues[3]` is the returned `[f64; 3]`.
 //! - No recursion.
 
@@ -279,7 +281,9 @@ fn bspline_evaluate(
         // save and use the extended curve (the previous one is dropped)
         *extended_law = extension;
         if extended_law.is_none() {
-            // unreachable for an out-of-domain parameter (upstream would dereference NULL)
+            // create_extended_curve found the parameter inside the NURB's own bounds
+            // (Ok(None)), which needs natural_interval and those bounds to disagree;
+            // upstream would dereference the NULL curve here
             return Err(SolidError::null_pointer(OP_EVAL));
         }
     }

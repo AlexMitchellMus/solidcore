@@ -7,11 +7,11 @@
 //!
 //! ```text
 //! kind              0 linear `r0 r1`; 1 B-spline `n p m cpts(x y z w)... knots...`; 2 base
-//! has_map e0 e1     edge map (e0 <= e1), used when has_map = 1 and kind != 2
-//! ncalls            then per call `t i0 i1 reverse` (i0 <= i1)
+//! has_map e0 e1     edge map (swapped if reversed), used when has_map = 1 and kind != 2
+//! ncalls            then per call `t i0 i1 reverse` (the interval, swapped if reversed)
 //! nk kinds[nk]      type codes for IsKindOf
 //! ```
-use crate::units::blend_fillet_standard_solver_p1::{bad, bcurve, Reader, MAX_ARRAY, MAX_CALLS};
+use crate::units::blend_fillet_standard_solver_p1::{bcurve, Reader, MAX_ARRAY, MAX_CALLS};
 use crate::{call_with_buffer, FfiError};
 
 mod sys {
@@ -26,13 +26,11 @@ mod sys {
     }
 }
 
-/// Reads an interval `a b` with `|a|, |b| <= MAX_PARAM` (`Reader::param`) and `a <= b`.
-fn interval(rd: &mut Reader<'_>, what: &str) -> Result<(), FfiError> {
-    let a = rd.param()?;
-    let b = rd.param()?;
-    if a > b {
-        return Err(bad(format!("{what}: reversed interval")));
-    }
+/// Reads an interval `a b` with `|a|, |b| <= MAX_PARAM` (`Reader::param`); a reversed
+/// pair is fine, `SmExtent1d(a, b)` swaps it.
+fn interval(rd: &mut Reader<'_>) -> Result<(), FfiError> {
+    rd.param()?;
+    rd.param()?;
     Ok(())
 }
 
@@ -50,11 +48,11 @@ fn validate(input: &[f64]) -> Result<(), FfiError> {
         _ => {}
     }
     rd.flag()?;
-    interval(rd, "edge map")?;
+    interval(rd)?;
     let calls = rd.index(MAX_CALLS)?;
     for _ in 0..calls {
         rd.param()?;
-        interval(rd, "edge interval")?;
+        interval(rd)?;
         rd.flag()?;
     }
     let nk = rd.index(MAX_ARRAY)?;
@@ -70,7 +68,7 @@ fn validate(input: &[f64]) -> Result<(), FfiError> {
 /// # Errors
 ///
 /// [`FfiError::InvalidArgument`] for input the shim must not see (a malformed curve,
-/// non-finite or oversized values, a reversed interval, too many calls);
+/// non-finite or oversized values, too many calls);
 /// [`FfiError::Status`] for a shim failure.
 pub fn law_eval(input: &[f64]) -> Result<Vec<f64>, FfiError> {
     validate(input)?;

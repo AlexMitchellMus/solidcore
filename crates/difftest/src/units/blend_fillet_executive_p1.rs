@@ -92,7 +92,8 @@ fn to_output(flat: &[f64]) -> Output {
 /// The law the shim builds. The `SmLinearFilletLaw(r0, r1, pOptEdgeMap)` and
 /// `SmBSplineFilletLaw(pCurve, crEdgeMap)` constructors belong to unit
 /// `blend.fillet_executive_p2` (PR #267); until they land the harness mirrors their one
-/// rule: an edge map shorter than `SM_EFF_ZERO` (or none) means `[0, 1]`.
+/// rule: an edge map shorter than `SM_EFF_ZERO` (or none) means `[0, 1]`
+/// (`SmFilletExecutive.cpp:5336`, `:5682`).
 fn law_of(i: &Inputs) -> Result<FilletLaw, HarnessError> {
     let kind = match &i.law {
         LawIn::Base => FilletLawKind::Base,
@@ -158,7 +159,7 @@ fn gen_law_curve(rng: &mut Rng, scale: f64, a: f64, b: f64) -> InlineCrv {
             } else {
                 NOW
             };
-            let x = scale * rng.uniform(0.2, 2.0);
+            let x = scale * rng.uniform(-0.5, 2.0);
             // the law reads x only; stray y/z must not matter
             let y = if rng.chance(0.3) { rng.uniform(-1.0, 1.0) } else { 0.0 };
             [x, y, 0.0, w]
@@ -207,9 +208,10 @@ fn gen_calls(rng: &mut Rng, domain: [f64; 2]) -> Vec<Call> {
                 8 => i1 + rng.uniform(0.0, 3.0) * (i1 - i0),
                 _ => i0 - rng.uniform(0.0, 3.0) * (i1 - i0),
             };
+            let ivl = if rng.chance(0.1) { [i1, i0] } else { [i0, i1] };
             Call {
                 t,
-                ivl: [i0, i1],
+                ivl,
                 reverse: rng.chance(0.4),
             }
         })
@@ -240,8 +242,8 @@ impl UnitDiff for Runner {
             0 => (LawIn::Base, [0.0, 1.0]),
             1..=4 => (
                 LawIn::Linear {
-                    r0: scale * rng.uniform(0.0, 2.0),
-                    r1: scale * rng.uniform(0.0, 2.0),
+                    r0: scale * rng.uniform(-1.0, 2.0),
+                    r1: scale * rng.uniform(-1.0, 2.0),
                 },
                 [0.0, 1.0],
             ),
@@ -256,10 +258,17 @@ impl UnitDiff for Runner {
             0..=2 => None,
             3..=4 => Some(domain),
             5 => {
-                // zero length: the constructors fall back to [0, 1]
+                // zero or tiny length around SM_EFF_ZERO: below it the constructors fall
+                // back to [0, 1]
                 let v = domain[0] + rng.unit() * (domain[1] - domain[0]);
-                Some([v, v])
+                let len = if rng.chance(0.5) {
+                    0.0
+                } else {
+                    10f64.powf(rng.uniform(-13.0, -11.0))
+                };
+                Some([v, v + len])
             }
+            6 if rng.chance(0.5) => Some([domain[1], domain[0]]),
             _ => {
                 let len = domain[1] - domain[0];
                 let m0 = domain[0] + rng.uniform(-0.5, 0.8) * len;

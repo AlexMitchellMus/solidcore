@@ -195,6 +195,94 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "bspline_apex_zero_tangent_replaced",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#24 (upstream source/SMLib/inc/SmCurve.h:390 (bNonZeroTangents defaults TRUE: the zero first derivative at the apex is replaced from the second))",
+      "values_compared": 27
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_cubic_apex_zero_tangent_replaced",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#25",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "linear_reversed_map_and_interval",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#26 (upstream source/SMLib/src/SmExtent1d.cpp:121 (SmExtent1d(a, b) swaps a reversed pair))",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_reversed_map_and_interval",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#27",
+      "values_compared": 50
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "linear_tiny_map_below_eff_zero_means_unit",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#28 (upstream source/SMLib/src/SmFilletExecutive.cpp:5336)",
+      "values_compared": 19
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "linear_tiny_map_above_eff_zero_kept",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#29 (upstream source/SMLib/src/SmFilletExecutive.cpp:5336)",
+      "values_compared": 19
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_tiny_map_below_eff_zero_means_unit",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#30 (upstream source/SMLib/src/SmFilletExecutive.cpp:5682)",
+      "values_compared": 19
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_tiny_map_above_eff_zero_kept",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#31 (upstream source/SMLib/src/SmFilletExecutive.cpp:5682)",
+      "values_compared": 23
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_snap_boundary_equality_is_not_a_snap",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#32 (upstream source/SMLib/src/SmFilletExecutive.cpp:6052-6062 (strict comparisons: law_t + tol == min extends))",
+      "values_compared": 48
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "linear_negative_radii",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#33",
+      "values_compared": 27
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bspline_negative_radii",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#34",
+      "values_compared": 50
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -223,7 +311,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13131444038141468810",
-      "values_compared": 15
+      "values_compared": 31
     },
     {
       "max_rel_err": 0.0,
@@ -231,7 +319,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13131444038141468811",
-      "values_compared": 25
+      "values_compared": 28
     },
     {
       "max_rel_err": 0.0,
@@ -263,7 +351,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13131444038141468815",
-      "values_compared": 73
+      "values_compared": 78
     },
     {
       "max_rel_err": 0.0,
@@ -271,7 +359,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13131444038141468816",
-      "values_compared": 72
+      "values_compared": 69
     },
     {
       "max_rel_err": 0.0,
@@ -279,7 +367,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13131444038141468817",
-      "values_compared": 23
+      "values_compared": 55
     },
     {
       "max_rel_err": 0.0,
@@ -287,7 +375,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13131444038141468818",
-      "values_compared": 95
+      "values_compared": 87
     },
     {
       "max_rel_err": 0.0,
@@ -311,7 +399,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13131444038141468821",
-      "values_compared": 65
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -325,8 +413,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 40,
-  "cases_total": 40,
+  "cases_passed": 51,
+  "cases_total": 51,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

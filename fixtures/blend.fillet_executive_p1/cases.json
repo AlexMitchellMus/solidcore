@@ -1681,6 +1681,753 @@
      16042
     ]
    }
+  },
+  {
+   "name": "bspline_apex_zero_tangent_replaced",
+   "inputs": {
+    "law": {
+     "kind": "bspline",
+     "c": {
+      "cpts": [
+       [
+        1.0,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ],
+       [
+        2.0,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ],
+       [
+        1.0,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ]
+      ],
+      "p": 2,
+      "u": [
+       0,
+       0,
+       0,
+       1,
+       1,
+       1
+      ]
+     }
+    },
+    "calls": [
+     {
+      "t": 0.5,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": false
+     },
+     {
+      "t": 0.5,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": true
+     },
+     {
+      "t": 5,
+      "ivl": [
+       3,
+       7
+      ],
+      "reverse": false
+     },
+     {
+      "t": 0.5,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": false
+     }
+    ],
+    "kinds": [
+     16039,
+     16040,
+     16041,
+     11001,
+     16042
+    ]
+   },
+   "upstream_ref": "source/SMLib/inc/SmCurve.h:390 (bNonZeroTangents defaults TRUE: the zero first derivative at the apex is replaced from the second)"
+  },
+  {
+   "name": "bspline_cubic_apex_zero_tangent_replaced",
+   "inputs": {
+    "law": {
+     "kind": "bspline",
+     "c": {
+      "cpts": [
+       [
+        1.0,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ],
+       [
+        2.0,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ],
+       [
+        2.0,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ],
+       [
+        1.0,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ]
+      ],
+      "p": 3,
+      "u": [
+       0,
+       0,
+       0,
+       0,
+       1,
+       1,
+       1,
+       1
+      ]
+     }
+    },
+    "calls": [
+     {
+      "t": 0.5,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": false
+     },
+     {
+      "t": 0.5,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": true
+     },
+     {
+      "t": 5,
+      "ivl": [
+       3,
+       7
+      ],
+      "reverse": true
+     }
+    ],
+    "kinds": [
+     16039,
+     16040,
+     16041,
+     11001,
+     16042
+    ]
+   }
+  },
+  {
+   "name": "linear_reversed_map_and_interval",
+   "inputs": {
+    "law": {
+     "kind": "linear",
+     "r0": 2.0,
+     "r1": 0.0
+    },
+    "calls": [
+     {
+      "t": 2.5,
+      "ivl": [
+       10,
+       0
+      ],
+      "reverse": false
+     },
+     {
+      "t": 2.5,
+      "ivl": [
+       10,
+       0
+      ],
+      "reverse": true
+     },
+     {
+      "t": 0,
+      "ivl": [
+       10,
+       0
+      ],
+      "reverse": false
+     }
+    ],
+    "kinds": [
+     16039,
+     16040,
+     16041,
+     11001,
+     16042
+    ],
+    "map": [
+     1.0,
+     0.0
+    ]
+   },
+   "upstream_ref": "source/SMLib/src/SmExtent1d.cpp:121 (SmExtent1d(a, b) swaps a reversed pair)"
+  },
+  {
+   "name": "bspline_reversed_map_and_interval",
+   "inputs": {
+    "law": {
+     "kind": "bspline",
+     "c": {
+      "cpts": [
+       [
+        1.0,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ],
+       [
+        2.0,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ],
+       [
+        1.5,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ],
+       [
+        2.5,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ]
+      ],
+      "p": 3,
+      "u": [
+       0,
+       0,
+       0,
+       0,
+       1,
+       1,
+       1,
+       1
+      ]
+     }
+    },
+    "calls": [
+     {
+      "t": 2,
+      "ivl": [
+       4,
+       1
+      ],
+      "reverse": false
+     },
+     {
+      "t": 2,
+      "ivl": [
+       4,
+       1
+      ],
+      "reverse": true
+     },
+     {
+      "t": 5,
+      "ivl": [
+       4,
+       1
+      ],
+      "reverse": false
+     }
+    ],
+    "kinds": [
+     16039,
+     16040,
+     16041,
+     11001,
+     16042
+    ],
+    "map": [
+     1.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "name": "linear_tiny_map_below_eff_zero_means_unit",
+   "inputs": {
+    "law": {
+     "kind": "linear",
+     "r0": 1.0,
+     "r1": 2.0
+    },
+    "calls": [
+     {
+      "t": 0.5,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": false
+     },
+     {
+      "t": 0.25,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": true
+     }
+    ],
+    "kinds": [
+     16039,
+     16040,
+     16041,
+     11001,
+     16042
+    ],
+    "map": [
+     0.5,
+     0.5000000000005
+    ]
+   },
+   "upstream_ref": "source/SMLib/src/SmFilletExecutive.cpp:5336"
+  },
+  {
+   "name": "linear_tiny_map_above_eff_zero_kept",
+   "inputs": {
+    "law": {
+     "kind": "linear",
+     "r0": 1.0,
+     "r1": 2.0
+    },
+    "calls": [
+     {
+      "t": 0.5,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": false
+     },
+     {
+      "t": 0.25,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": true
+     }
+    ],
+    "kinds": [
+     16039,
+     16040,
+     16041,
+     11001,
+     16042
+    ],
+    "map": [
+     0.5,
+     0.500000000002
+    ]
+   },
+   "upstream_ref": "source/SMLib/src/SmFilletExecutive.cpp:5336"
+  },
+  {
+   "name": "bspline_tiny_map_below_eff_zero_means_unit",
+   "inputs": {
+    "law": {
+     "kind": "bspline",
+     "c": {
+      "cpts": [
+       [
+        1.0,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ],
+       [
+        2.0,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ],
+       [
+        1.5,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ],
+       [
+        2.5,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ]
+      ],
+      "p": 3,
+      "u": [
+       0,
+       0,
+       0,
+       0,
+       1,
+       1,
+       1,
+       1
+      ]
+     }
+    },
+    "calls": [
+     {
+      "t": 0.5,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": false
+     },
+     {
+      "t": 0.25,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": true
+     }
+    ],
+    "kinds": [
+     16039,
+     16040,
+     16041,
+     11001,
+     16042
+    ],
+    "map": [
+     0.5,
+     0.5000000000005
+    ]
+   },
+   "upstream_ref": "source/SMLib/src/SmFilletExecutive.cpp:5682"
+  },
+  {
+   "name": "bspline_tiny_map_above_eff_zero_kept",
+   "inputs": {
+    "law": {
+     "kind": "bspline",
+     "c": {
+      "cpts": [
+       [
+        1.0,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ],
+       [
+        2.0,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ],
+       [
+        1.5,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ],
+       [
+        2.5,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ]
+      ],
+      "p": 3,
+      "u": [
+       0,
+       0,
+       0,
+       0,
+       1,
+       1,
+       1,
+       1
+      ]
+     }
+    },
+    "calls": [
+     {
+      "t": 0.5,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": false
+     },
+     {
+      "t": 0.25,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": true
+     },
+     {
+      "t": 1,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": false
+     }
+    ],
+    "kinds": [
+     16039,
+     16040,
+     16041,
+     11001,
+     16042
+    ],
+    "map": [
+     0.5,
+     0.500000000002
+    ]
+   },
+   "upstream_ref": "source/SMLib/src/SmFilletExecutive.cpp:5682"
+  },
+  {
+   "name": "bspline_snap_boundary_equality_is_not_a_snap",
+   "inputs": {
+    "law": {
+     "kind": "bspline",
+     "c": {
+      "cpts": [
+       [
+        1.0,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ],
+       [
+        2.0,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ],
+       [
+        1.5,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ]
+      ],
+      "p": 2,
+      "u": [
+       0,
+       0,
+       0,
+       1,
+       1,
+       1
+      ]
+     }
+    },
+    "calls": [
+     {
+      "t": -1.9e-12,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": false
+     },
+     {
+      "t": -2e-12,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": false
+     },
+     {
+      "t": 1.0000000000019,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": false
+     },
+     {
+      "t": 1.000000000002,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": false
+     }
+    ],
+    "kinds": [
+     16039,
+     16040,
+     16041,
+     11001,
+     16042
+    ]
+   },
+   "upstream_ref": "source/SMLib/src/SmFilletExecutive.cpp:6052-6062 (strict comparisons: law_t + tol == min extends)"
+  },
+  {
+   "name": "linear_negative_radii",
+   "inputs": {
+    "law": {
+     "kind": "linear",
+     "r0": -2.0,
+     "r1": 1.0
+    },
+    "calls": [
+     {
+      "t": 0,
+      "ivl": [
+       0,
+       3
+      ],
+      "reverse": false
+     },
+     {
+      "t": 1,
+      "ivl": [
+       0,
+       3
+      ],
+      "reverse": false
+     },
+     {
+      "t": 3,
+      "ivl": [
+       0,
+       3
+      ],
+      "reverse": true
+     },
+     {
+      "t": -1,
+      "ivl": [
+       0,
+       3
+      ],
+      "reverse": false
+     }
+    ],
+    "kinds": [
+     16039,
+     16040,
+     16041,
+     11001,
+     16042
+    ]
+   }
+  },
+  {
+   "name": "bspline_negative_radii",
+   "inputs": {
+    "law": {
+     "kind": "bspline",
+     "c": {
+      "cpts": [
+       [
+        -1.0,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ],
+       [
+        -2.0,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ],
+       [
+        0.5,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ],
+       [
+        -1.5,
+        0.0,
+        0.0,
+        -1.7976931348623157e+308
+       ]
+      ],
+      "p": 3,
+      "u": [
+       0,
+       0,
+       0,
+       0,
+       1,
+       1,
+       1,
+       1
+      ]
+     }
+    },
+    "calls": [
+     {
+      "t": 0.25,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": false
+     },
+     {
+      "t": 0.75,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": true
+     },
+     {
+      "t": 1.5,
+      "ivl": [
+       0,
+       1
+      ],
+      "reverse": false
+     }
+    ],
+    "kinds": [
+     16039,
+     16040,
+     16041,
+     11001,
+     16042
+    ]
+   }
   }
  ]
 }
