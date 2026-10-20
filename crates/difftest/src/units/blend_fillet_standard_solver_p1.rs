@@ -984,8 +984,7 @@ fn offsets(s: &[Option<OffsetSurface>; 2]) -> [f64; 2] {
     })
 }
 
-/// [`offsets`] of the constant-radius solver, whose surfaces are the base
-/// `FilletSolver`'s slots (unit `blend.fillet_solver_p1`).
+/// [`offsets`] for the `SmFilletSolver` base of a `ConstantRadiusAssistedFs`.
 fn slot_offsets(s: &[Option<OffsetSurfaceSlot>; 2]) -> [f64; 2] {
     [0, 1].map(|i| {
         s.get(i)
