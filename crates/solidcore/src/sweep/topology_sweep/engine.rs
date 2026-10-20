@@ -876,7 +876,7 @@ impl TopologySweep {
                         original,
                         wire_brep,
                         tolerance,
-                        20.0 * crate::math::PI / 180.0,
+                        20.0 * (crate::math::PI / 180.0),
                         SweepAccess::union,
                     )?;
                     // Successful ManifoldBoolean deletes its other B-rep. Do not
@@ -1013,7 +1013,7 @@ impl TopologySweep {
             original,
             inverse,
             0.001,
-            5.0 * crate::math::PI / 180.0,
+            5.0 * (crate::math::PI / 180.0),
             false,
             false,
             true,
