@@ -1163,8 +1163,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "face surface of an analytic kind exported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "find_concave_box_w_slot_v0_walk",
@@ -1175,8 +1175,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "face surface of an analytic kind exported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "find_concave_box_w_slot_v0_ring",
@@ -1187,8 +1187,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "face surface of an analytic kind exported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "find_concave_box_w_slot_v1_walk",
@@ -1307,8 +1307,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "face surface of an analytic kind exported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "find_concave_box_w_slot_v6_walk",
@@ -1319,8 +1319,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "face surface of an analytic kind exported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "find_concave_box_w_slot_v6_ring",
@@ -1331,8 +1331,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "face surface of an analytic kind exported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "find_concave_box_w_slot_v7_walk",
@@ -1343,8 +1343,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
+        "symbol": "face surface of an analytic kind exported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "find_concave_box_w_slot_v7_ring",
@@ -3232,10 +3232,10 @@
   "cases_passed": 190,
   "cases_total": 332,
   "deferred_by_unit": {
+    "harness:analytic-geometry-export": 7,
     "intersect.surface_drop_lib_p3": 1,
     "surface.surf_of_extrusion_p2": 94,
-    "surface.surface_p2": 40,
-    "topology.brep_p10": 7
+    "surface.surface_p2": 40
   },
   "max_rel_err": 0.0,
   "pass": true,
