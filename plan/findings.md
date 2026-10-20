@@ -10172,4 +10172,4 @@ The integrated targeted gate has 0 failures across `blend.fillet_solver_p5`,
 p1 is 346/339 pass/7 deferred; geom p2 is 351/220 pass/131 deferred. Every compared
 value is bit-identical. Perturbation detects 164/164, 339/339 and 220/220 cases in
 p5, p1 and geom p2 respectively. All 1500 kernel tests and four native p5 FFI tests
-pass. The complete sweep and CI result are recorded in the PR description.
+pass. The complete sweep and CI status are recorded in the PR description.
