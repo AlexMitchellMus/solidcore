@@ -175,8 +175,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::CalculateBoundingBox",
-        "unit": "query.face_p1"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "gen0011",
@@ -979,8 +979,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::CalculateBoundingBox",
-        "unit": "query.face_p1"
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0105",
@@ -1140,8 +1140,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::CalculateBoundingBox",
-        "unit": "query.face_p1"
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0124",
@@ -1224,8 +1224,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::CalculateBoundingBox",
-        "unit": "query.face_p1"
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0133",
@@ -1624,8 +1624,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::CalculateBoundingBox",
-        "unit": "query.face_p1"
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0180",
@@ -4472,8 +4472,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::CalculateBoundingBox",
-        "unit": "query.face_p1"
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0513",
@@ -5561,8 +5561,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::CalculateBoundingBox",
-        "unit": "query.face_p1"
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0642",
@@ -7175,11 +7175,10 @@
   "cases_passed": 690,
   "cases_total": 827,
   "deferred_by_unit": {
-    "query.brep": 16,
-    "query.face_p1": 7,
+    "query.brep": 17,
     "topology.brep_p2": 21,
     "topology.face_p2": 82,
-    "topology.face_p4": 11
+    "topology.face_p4": 17
   },
   "max_rel_err": 0.0,
   "pass": true,
