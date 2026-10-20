@@ -7743,7 +7743,16 @@ PR #203 (on main's #146). Part 2 of `SmTopologyIntersector.cpp`: `RegisterExisti
   `SM_ERR_NULL_POINTER` early returns, 28 successes without new topology (every edge
   mated, or the far vertices unmated), 19 that relate the edge pair whose midpoint drops
   onto the mated vertices' only common edge; 6 reach the coincidence test and defer in
-  `BrepCurveSolve` (`SmBrep::CalculateBoundingBox`, `query.brep`). The shim refuses a
+  `BrepCurveSolve` (`SmBrep::CalculateBoundingBox`, `query.brep`). **Uncovered:** no
+  passing case reaches `BrepCurveSolve`, so the coincidence branch, `IIREdgeBrep` and the
+  second loop past its skips have zero compared cases, and no pass makes new topology;
+  every pass ends before the first `BrepCurveSolve`. The 19 drop-path passes compare a
+  real `Relate` (removing it fails exactly those 19). The drop's tolerance
+  (`2 * dMaxDist`) is not observable here: under `SM_SO_MINIMIZE` it does not gate
+  success (the intersection tolerance is `SM_BIG_DOUBLE`) and no snap vector is passed,
+  so it reaches only the global point solve's snapping, and `bSuccess` (the drop's only
+  use) does not change; a 0.5x mutant survives for that reason, and a near-tolerance
+  case would not tell them apart. The shim refuses a
   vertex whose edges lack a curve or vertices (or, for the B-rep vertex, a primary edge
   use) and the FFI requires both B-reps.
 - **Time-budget guard on `IntersectInsertRelate` (op 47): |approx| <= 0.1.** A defined

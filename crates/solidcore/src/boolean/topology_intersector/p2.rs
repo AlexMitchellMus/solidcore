@@ -307,7 +307,10 @@ fn face_point_3d_classify<O>(
 
 /// `MergeCurveClasses(rCrvClass1, rCrvClass2, bMergeSingularities, rbTopologyWasDeleted,
 /// paDeletedEdges, paDeletedVertices)`: what it deleted. Draft PR #211 ports it as
-/// `TopologyIntersector::merge_curve_classes` (`boolean::topology_intersector::p3`).
+/// `TopologyIntersector::merge_curve_classes` (`boolean::topology_intersector::p3`), a
+/// method that also takes the kernel and the B-reps: wiring it changes the call site in
+/// [`TopologyIntersector::iir_edge_brep`] to `self.merge_curve_classes(k, brep, ..)` and
+/// widens that function's bound to `IntersectorBrepP3`.
 fn merge_curve_classes<O>(
     _crv_class1: &mut CurveClassification<O>,
     _crv_class2: &mut CurveClassification<O>,

@@ -1045,8 +1045,12 @@ impl ProtoBrep<H> for Two {
     }
     fn vertex_common_edges(&self, v1: H, v2: H) -> solidcore::Result<Vec<H>> {
         let b = self.brep_r(v1)?;
-        let other = (v2.b == v1.b && v2.kind == K_VERTEX).then(|| vid(v2));
-        Ok(vx::common_edges(b, vid(v1), other, None)?
+        // (a vertex of the other B-rep, or no vertex, ends no edge of this one: upstream
+        // finds no common edge)
+        if v2.b != v1.b || v2.kind != K_VERTEX {
+            return Ok(Vec::new());
+        }
+        Ok(vx::common_edges(b, vid(v1), Some(vid(v2)), None)?
             .into_iter()
             .map(|e| hd(v1.b, K_EDGE, e.index()))
             .collect())
