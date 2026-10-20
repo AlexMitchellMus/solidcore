@@ -1,6 +1,6 @@
 # solidcore status
 
-Last updated: 2026-10-19, PR #250 (`primitive.primitive_creation_p2` partial: 127 bit-identical passes, 150 deferred, 6 guarded rejections). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
+Last updated: 2026-10-20, PR #250 review fixes (`primitive.primitive_creation_p2` partial: 129 bit-identical passes, 169 deferred, 13 guarded rejections). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 Last updated: 2026-10-19, PR #233 second review (`primitive.primitive_creation_p3` partial: 284 bit-identical passes, 8 deferred, 1 UB-78 rejection). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
 Latest port: `primitive.primitive_creation_p2` ([PR #250](https://github.com/tangency-labs/solidcore/pull/250)) implements all twelve owned functions through `PrimitiveCreationAccess`, stacked on #233. Native comparisons certify the entry checks and the state they leave; construction tails await the B-rep units. Building the harness found UB-212, HANG-35 and WR-191. See the final validation entry below.

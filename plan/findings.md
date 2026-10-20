@@ -10985,6 +10985,43 @@ The full `--green --no-report` gate completes with 226 units: 114 passed, 112 pa
   Upstream defects kept by the port: WR-186 (`DoStitching`'s sticky candidate flags),
   WR-187 (a cancelled squeeze reported as done), UB-197 (stale edge after a failed glue with `m_bIgnoreProblems`).
 
+### PR #250 review fixes (2026-10-20)
+
+Review by bherbruck at `751f8b4d`; merged main `ed142cd9` and the stack's heads #213 `44942f7d` and
+#233 `d05892fa` first.
+
+**UB-50 through the taper.** `SmCurve::FixChainCurvesList` compares each candidate with the ends of
+the chain built so far (start, end, the end link's mid point), not with one other curve, and every
+deletion leaves a slot that is read again. Isolated native probes (one process each): two identical
+lines, a line and its reverse, two identical arcs, and the lines `(0,0,0)-(3e-5,0,0)`,
+`(3e-5,0,0)-(1,0,0)`, `(1,0,0)-(0,0,0)` (a repeat of no curve) segfault; with the first line
+`5e-5` long it runs; squares with a repeated or reversed side run under each normal and cap. With a
+supplied normal the taper may reverse all curves and chain again (`:3714`); a Python model of the
+chaining and `ComputeCrvsNormal` found sets that delete only there, and six probed natively segfault
+under the normal the curves wind against and run under the other one or a computed normal. The end
+cap at the offset end (caps 2 or 3, `:4368`) chains the trimmed offsets through a copy of their list
+(`:4382`), so a deleted curve is freed again at `:4477`: generated case 235 of the new taper
+generator (a closed back-and-forth loop, side 100, -Z) aborted with `double free or corruption
+(!prev)`, only with that cap. The FFI replays both input passes (the second whenever a normal is
+supplied) and, with that cap, refuses a closed chain narrower than `2 * SM_ZONE_TOL_3D` (vector area
+against length; wider than the crashes: a loop whose first line is 1 long runs). The offsets'
+chaining before the caps (`:3884`) is not checked. An arc record's mid parameter is its mid angle
+(within `1e-15`, measured with the Rust port).
+
+**Stubs and numbers.** The sphere, cone and torus sites of `api_primitives` name their next unported
+call (`SmBrep::SmBrep`, `topology.brep_p3`); the blend names `SmBrep::CreateFaceFromSurface`
+(`topology.brep_p8`), the first unported call after the edge-use check and blend surface. The other
+p1 and p3 stubs there belong to #213 and #233. The SweepEdgeHigh use after free is UB-212 (UB-202 went
+to #168). `ComputeCrvsNormal` failures leave a zero normal, as upstream.
+
+**Validation.** p2 311 cases / 129 pass / 169 deferred (brep_p3 71, brep_p8 78, brep_p2 20) / 13
+rejected / 0 fail; perturb 129/129; fuzz 1000 clean (536 rejected, 197 malformed, 267 ran);
+api_primitives 1981 / 1445 / 536 deferred (brep_p3 282 that named p2); p1 773 / 689 / 75 / 9; p3 296 /
+285 / 10 / 1; api_brep 573 / 306 / 267; api_surfaces 882 / 831 / 51; offset_executive_p1 693 / 687 / 5
+/ 1; topology_sweep 568 / 554 / 14; 1,547 kernel tests, 4 FFI tests, wasm, both Clippy runs, fmt and
+the two `include!`d files; green 237 units, 114 passed, 123 partial, 0 failed. Planted faults: 10 of
+11 caught (unit tests, and the four guard faults also as native crashes of `guarded.json`); a
+supplied-normal comparison against `UNDEF` instead of zero is unobservable today.
 
 ## primitive.primitive_creation_p1 — second review integration (PR #213, 2026-10-20)
 
