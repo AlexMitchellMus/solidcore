@@ -765,10 +765,8 @@ impl FilletBrep {
                             at_start_of_geom2 = fs2.vertex(target, 0)? == filleted_vertex;
                             check_connectivity = true;
                         }
-                        FilletCornerType::NByOneClosed => {
-                            if corner_is_blending(corner)? {
-                                check_connectivity = true;
-                            }
+                        FilletCornerType::NByOneClosed if corner_is_blending(corner)? => {
+                            check_connectivity = true;
                         }
                         _ => {}
                     }
@@ -974,8 +972,8 @@ impl FilletBrep {
                 let x_len = x_vector.length();
                 let y_len = y_vector.length();
                 let uv_scale = Vec2::new(1.0, 1.0);
-                x_vector = x_vector / x_len;
-                y_vector = y_vector / y_len;
+                x_vector /= x_len;
+                y_vector /= y_len;
                 y_vector = x_vector.cross(y_vector).cross(x_vector);
                 y_vector = y_vector.unitize_or_z();
                 let uv_domain = Extent2d::from_bounds(-x_len, -y_len, 2.0 * x_len, 2.0 * y_len);
@@ -1304,17 +1302,16 @@ impl FilletBrep {
         if rail_e.is_none() {
             rail_e = self.geom(g)?.rail(rail_index);
         }
-        let rail_e = match rail_e {
-            Some(r) => r,
-            None => {
-                // Create a new one; SmFilletEdge(pPseudoBrep) has no vertices, the
-                // record names the fillet vertex at both ends until uses are added
-                let r = self.new_fillet_edge(fv, fv, None)?;
-                self.fillet_edge_mut(r)?
-                    .set_fillet_edge_type(FilletEdgeType::Rail);
-                self.geom_mut(g)?.set_rail(rail_index, Some(r));
-                r
-            }
+        let rail_e = if let Some(r) = rail_e {
+            r
+        } else {
+            // Create a new one; SmFilletEdge(pPseudoBrep) has no vertices, the
+            // record names the fillet vertex at both ends until uses are added
+            let r = self.new_fillet_edge(fv, fv, None)?;
+            self.fillet_edge_mut(r)?
+                .set_fillet_edge_type(FilletEdgeType::Rail);
+            self.geom_mut(g)?.set_rail(rail_index, Some(r));
+            r
         };
 
         // 4. set topology pointers
@@ -1443,7 +1440,7 @@ impl FilletBrep {
             // when 1st tangent was found
             if found1 {
                 tangent1 = tangent1.unitize_or_z();
-                tangent1 = tangent1 * dist;
+                tangent1 *= dist;
                 uv_tan1 = drop_vector(&fillet_surface, p_start, tangent1)?;
                 if uv_tan1.y < 0.0 {
                     uv_tan1 = -uv_tan1;
@@ -1457,7 +1454,7 @@ impl FilletBrep {
             // when second tangent was found
             if found2 {
                 tangent2 = tangent2.unitize_or_z();
-                tangent2 = tangent2 * dist;
+                tangent2 *= dist;
                 uv_tan2 = drop_vector(&fillet_surface, p_end, tangent2)?;
                 if uv_tan2.y < 0.0 {
                     uv_tan2 = -uv_tan2;
@@ -1929,15 +1926,14 @@ impl FilletBrep {
                     } else {
                         self.eu_geom(mate)?
                     };
-                    let side_surface = match side_fg.filter(|&s| s != g) {
-                        Some(sg) => self.geom(sg)?.fillet_surface().cloned(),
-                        None => {
-                            let face = self
-                                .fillet_edge(rail)?
-                                .original_face()
-                                .ok_or_else(|| SolidError::null_pointer(OP_CLIFF))?;
-                            target.face(face)?.surface.clone()
-                        }
+                    let side_surface = if let Some(sg) = side_fg.filter(|&s| s != g) {
+                        self.geom(sg)?.fillet_surface().cloned()
+                    } else {
+                        let face = self
+                            .fillet_edge(rail)?
+                            .original_face()
+                            .ok_or_else(|| SolidError::null_pointer(OP_CLIFF))?;
+                        target.face(face)?.surface.clone()
                     }
                     .ok_or_else(|| SolidError::null_pointer(OP_CLIFF))?;
 

@@ -6,7 +6,7 @@ Latest topology integration: `topology.brep_p6` partial (PR #169, after its depe
 
 Latest main integration: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green).
 
-Latest fillet unit: `blend.fillet_geom_p5` (PR #264, stacked on #252) is blocked: all 13 functions ported, 300 generated cases with 283 bit-identical passes, 13 deferred (`topology.brep_p3`) and 4 tolerance-dominated tiny-scale disagreements in curve/surface callees (`plan/findings.md`).
+Latest fillet unit: `blend.fillet_geom_p5` (PR #264) is partial: all 13 functions ported, 300 generated cases with 287 bit-identical passes and 13 deferred (`topology.brep_p3`); round 2 traced the tiny-scale disagreements to solves without a solution object (upstream merges near-duplicate solutions by the object's parameter interval, `plan/findings.md`).
 
 Latest unit: `intersect.curve_class_p9` ([PR #151](https://github.com/bherbruck/solidcore/pull/151)) is partial on a standalone official-main base: review validation has 424 differential cases, 225 bit-identical passes, 197 dependency deferrals, 2 native setup rejections and zero failures. It ports edge and trim-boundary intersections with concrete query handle mappings. Pole lookup now matches the native FALSE default; collapsed caches, wider input ranges and positive endpoint classification are covered. Interior partition insertion awaits part 2. No open dependency PR is bundled. The manifest has 195 ported units (108 green, 87 partial); final integration results are recorded in the PR checks.
 

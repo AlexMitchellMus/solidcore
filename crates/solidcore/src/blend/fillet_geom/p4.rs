@@ -218,7 +218,11 @@ impl SolutionObject for UvSurfaceHandle {
 }
 
 /// The UV parameters (`m_vStart[0]`, `m_vStart[1]`) of solution `i`.
-fn solution_uv<O>(sols: &SolutionArray<O>, i: usize, op: &'static str) -> Result<Point2> {
+fn solution_uv<O: SolutionObject>(
+    sols: &SolutionArray<O>,
+    i: usize,
+    op: &'static str,
+) -> Result<Point2> {
     let s = sols
         .get(i)
         .ok_or_else(|| SolidError::invalid_input(op, "solution index out of range"))?;
