@@ -425,7 +425,16 @@ fn cpp_edgeuse(i: &Inputs) -> Result<Output, HarnessError> {
     };
     let mut input = s.block.clone();
     // mode 0: the SmConstantDistanceFS constructor
-    input.extend([0.0, f64::from(s.eu.index()), *tol, *ang, *tan, *dist, *fu, *fv]);
+    input.extend([
+        0.0,
+        f64::from(s.eu.index()),
+        *tol,
+        *ang,
+        *tan,
+        *dist,
+        *fu,
+        *fv,
+    ]);
     let out = ffi::eval_edgeuse(&s.path, &input).map_err(|e| harness(format!("c++: {e}")))?;
     let body = out.get(1..).ok_or_else(|| harness("c++: empty output"))?;
     Ok(eu_output(body))

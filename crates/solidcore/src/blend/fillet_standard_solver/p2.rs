@@ -87,7 +87,7 @@
 use crate::blend::fillet_custom_solver::{
     offset_compute_inward_vector, offset_evaluate_1st, offset_evaluate_point,
     offset_local_point_solve, surface_global_point_solve, ConstantRadiusAssistedFs, InitialValues,
-    JacobianLoad, OffsetSurface, SurfaceId,
+    OffsetSurface, SurfaceId,
 };
 use crate::blend::fillet_solver::p1::{
     FilletSolver, FilletSolverOps, FilletSphereSolveEnfo, OffsetSurfaceSlot,
@@ -725,7 +725,11 @@ pub struct GuessSphereEnfo<'a> {
 
 impl<'a> GuessSphereEnfo<'a> {
     /// `SmGuessSphereSolveENFO(crSphereCenter, dSphereRadius, crFilletSolver)`.
-    pub fn new(sphere_center: Point3, sphere_radius: f64, solver: &'a mut ConstantRadiusFs) -> Self {
+    pub fn new(
+        sphere_center: Point3,
+        sphere_radius: f64,
+        solver: &'a mut ConstantRadiusFs,
+    ) -> Self {
         Self {
             plane_abc: sphere_center,
             plane_d: sphere_radius,

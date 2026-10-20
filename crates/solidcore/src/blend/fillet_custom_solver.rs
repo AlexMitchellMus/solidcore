@@ -2074,7 +2074,7 @@ mod tests {
             [1.0, -1.0],
             [None, None],
         );
-        let fs = SecantConstantRadiusFs::new(base, 0.2);
+        let mut fs = SecantConstantRadiusFs::new(base, 0.2);
         let mut ivl = ExtentNd::new(4);
         let mut per = vec![false, true];
         let mut g = vec![0.25, 0.75];
