@@ -212,17 +212,7 @@ fn make_wire_edge(
     orient: OrientType,
     env: &mut ed::NotifyEnv<'_>,
 ) -> Result<EdgeId> {
-    crate::topology::brep::p3::make_wire_edge(
-        k,
-        b,
-        env,
-        region,
-        start,
-        end,
-        curve,
-        &ivl,
-        orient,
-    )
+    crate::topology::brep::p3::make_wire_edge(k, b, env, region, start, end, curve, &ivl, orient)
 }
 
 /// `MakeWireEdgeVertex(region, start, curve, ivl, orient, endPt, rpNewEdge, rpEndVertex)`
@@ -241,15 +231,7 @@ fn make_wire_edge_vertex(
     env: &mut ed::NotifyEnv<'_>,
 ) -> Result<(EdgeId, VertexId)> {
     crate::topology::brep::p3::make_wire_edge_vertex(
-        k,
-        b,
-        env,
-        region,
-        start,
-        curve,
-        &ivl,
-        orient,
-        end_pt,
+        k, b, env, region, start, curve, &ivl, orient, end_pt,
     )
 }
 

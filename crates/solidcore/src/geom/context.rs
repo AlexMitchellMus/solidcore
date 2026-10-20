@@ -411,7 +411,8 @@ impl Context {
         let mut notifications = k.context.metadata_copy();
         notifications.restore_notify_lease(k.context.lend_notify()?);
         let result = action(k, &mut notifications);
-        k.context.restore_notify_lease(notifications.take_notify_lease());
+        k.context
+            .restore_notify_lease(notifications.take_notify_lease());
         Ok(result)
     }
 

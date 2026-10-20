@@ -451,7 +451,9 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
                 context: None,
                 key_of: &key_of,
             };
-            let r = rm.fb.make_face_brep(&mut k, gid, &solvers, &mut brep, &mut env);
+            let r = rm
+                .fb
+                .make_face_brep(&mut k, gid, &solvers, &mut brep, &mut env);
             o.push(status_of!(r));
         }
         Query::Blending { g } => {
@@ -509,7 +511,10 @@ pub(crate) fn gen_analytic(rng: &mut Rng, scale: f64) -> AnalyticSrf {
             x_axis: [1.0, rng.uniform(-0.3, 0.3), 0.0],
             y_axis: [rng.uniform(-0.3, 0.3), 1.0, rng.uniform(-0.3, 0.3)],
             uv_scale: [rng.uniform(0.5, 2.0) * scale, rng.uniform(0.5, 2.0) * scale],
-            domain: [d, [d[0] + rng.uniform(0.5, 2.0), d[1] + rng.uniform(0.5, 2.0)]],
+            domain: [
+                d,
+                [d[0] + rng.uniform(0.5, 2.0), d[1] + rng.uniform(0.5, 2.0)],
+            ],
             make_nurb: rng.chance(0.9),
         }
     } else {
@@ -548,13 +553,25 @@ fn gen_uv_curve(rng: &mut Rng) -> Option<Inputs> {
         _ => UvSurface::Analytic(gen_analytic(rng, scale)),
     };
     let rs = uv_surface(&k, &surface).ok()?.ok()?;
-    let closed_u = kind == 1 || matches!(&surface, UvSurface::Analytic(AnalyticSrf::Revolution { .. }));
+    let closed_u = kind == 1
+        || matches!(
+            &surface,
+            UvSurface::Analytic(AnalyticSrf::Revolution { .. })
+        );
     let two = closed_u && rng.chance(0.4) || rng.chance(0.05);
     let frac = |rng: &mut Rng| *rng.choose(&[0.0, 1.0, 0.5, 0.25]).unwrap_or(&0.5);
     let (a, b) = if two {
         // seam ends: corners in v, sometimes a cut corner (mid v) or swapped
-        let v0 = if rng.chance(0.2) { rng.uniform(0.1, 0.9) } else { 0.0 };
-        let v1 = if rng.chance(0.2) { rng.uniform(0.1, 0.9) } else { 1.0 };
+        let v0 = if rng.chance(0.2) {
+            rng.uniform(0.1, 0.9)
+        } else {
+            0.0
+        };
+        let v1 = if rng.chance(0.2) {
+            rng.uniform(0.1, 0.9)
+        } else {
+            1.0
+        };
         let u = if rng.chance(0.5) { 0.0 } else { 1.0 };
         let (p, q) = (on_surface(&rs, u, v0)?, on_surface(&rs, u, v1)?);
         if rng.chance(0.5) {
@@ -577,7 +594,14 @@ fn gen_uv_curve(rng: &mut Rng) -> Option<Inputs> {
             // an iso line in u or v
             0 => {
                 let u = rng.uniform(0.0, 1.0);
-                return Some(gen_uv_from(rng, surface, scale, on_surface(&rs, u, 0.1)?, on_surface(&rs, u, 0.8)?, false));
+                return Some(gen_uv_from(
+                    rng,
+                    surface,
+                    scale,
+                    on_surface(&rs, u, 0.1)?,
+                    on_surface(&rs, u, 0.8)?,
+                    false,
+                ));
             }
             1 => q = p, // coincident
             2 => {
@@ -604,7 +628,10 @@ fn gen_uv_from(
     b: [f64; 3],
     two: bool,
 ) -> Inputs {
-    let tol = scale * *rng.choose(&[1e-6, 1e-4, 1e-3, 1e-8, 1e-2, 1e-12]).unwrap_or(&1e-6);
+    let tol = scale
+        * *rng
+            .choose(&[1e-6, 1e-4, 1e-3, 1e-8, 1e-2, 1e-12])
+            .unwrap_or(&1e-6);
     let (model, sv, ev) = if rng.chance(0.3) {
         // p1's random model with the two vertices first; rails of geometries reach the
         // vertex-use branch
@@ -915,10 +942,8 @@ fn gen_crafted(rng: &mut Rng) -> Inputs {
                 let mut e = edge_in(rng, a, b, rail_type, g as i64, scale);
                 if rng.chance(0.85) {
                     let v0 = if r == 0 { 0.1 } else { 0.9 };
-                    e.eus[0].uv_curve = Some(uv_line(
-                        [0.0, v0],
-                        [1.0, v0 + rng.uniform(-0.05, 0.05)],
-                    ));
+                    e.eus[0].uv_curve =
+                        Some(uv_line([0.0, v0], [1.0, v0 + rng.uniform(-0.05, 0.05)]));
                 }
                 if r == 1 && rng.chance(0.2) {
                     // a rail through the queried vertex

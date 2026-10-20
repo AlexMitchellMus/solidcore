@@ -1024,8 +1024,7 @@ impl ArenaPair<'_> {
             .get_mut(slot)
             .and_then(Option::as_deref_mut)
             .ok_or_else(|| invalid("handle names an absent B-rep"))?;
-        let key_of =
-            |e| super::kernel_adapter::notification_key(namespace, brep.b == 1, e);
+        let key_of = |e| super::kernel_adapter::notification_key(namespace, brep.b == 1, e);
         let mut env = ed::NotifyEnv {
             records: self.records,
             attributes: self.attributes,
