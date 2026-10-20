@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use solidcore::curve::curve::Curve;
 use solidcore::curve::line::Line;
+use solidcore::error::EntityRef;
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
 use solidcore::geom::context::MarkType;
 use solidcore::geom::extent1d::Extent1d;
@@ -44,7 +45,6 @@ use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use solidcore::nurbs::knots::Side;
 use solidcore::nurbs::math::CPoint;
 use solidcore::nurbs::srf_basic::Surface as NurbSurface;
-use solidcore::error::EntityRef;
 use solidcore::offset::offset_executive::p1::{OffsetExecutive, OffsetOperation};
 use solidcore::offset::offset_geometry_creation::SsiData;
 use solidcore::surface::plane::Plane;
@@ -1440,7 +1440,9 @@ fn curve_face(
         env,
     )
     .map_err(RunError::Kernel)?;
-    Ok(made.face.ok_or_else(|| bad("MakeFaceWithCurves made no face"))?)
+    Ok(made
+        .face
+        .ok_or_else(|| bad("MakeFaceWithCurves made no face"))?)
 }
 
 fn rust_face_tail(input: &FaceTailIn) -> RResult<Output> {
@@ -2078,7 +2080,7 @@ mod tests {
             .iter()
             .filter(|case| matches!(case.source, CaseSource::Fixture { .. }))
             .collect();
-        assert_eq!(fixtures.len(), 93);
+        assert_eq!(fixtures.len(), 93 + 298);
         for case in fixtures {
             case.parse::<Inputs>().unwrap();
         }
@@ -2387,7 +2389,8 @@ mod tests {
         for (branch, dependency, status) in [
             (Probe::ReplaceEmpty, Some("topology.brep_p4"), 1000),
             (Probe::RemoveNoMerge, None, 1000),
-            (Probe::RemoveEmpty, Some("topology.brep_p5"), 1000),
+            // The editing-flag adapter defers (main's committed report agrees).
+            (Probe::RemoveEmpty, Some("topology.brep_p1"), 1000),
             (Probe::SideWallNull, None, 1000),
             (Probe::SideWallUnmapped, None, 1000),
             (Probe::FillEmpty, None, 1000),
@@ -2400,7 +2403,9 @@ mod tests {
             (Probe::FaceuseNull, None, 1006),
             (Probe::FaceuseNoSurface, None, 1000),
             (Probe::PiecewiseEmpty, Some("query.brep"), 1000),
-            (Probe::MapPlane, Some("topology.edgeuse_p3"), 1000),
+            // MapEdgeuses now evaluates through topology.edgeuse_p3, which must
+            // build the hand-made plane face's missing UV trim curve.
+            (Probe::MapPlane, Some("intersect.surface_drop_lib_p3"), 1000),
             (Probe::EdgeusesUnmapped, None, 1000),
         ] {
             let input = Inputs::Probe {
@@ -2414,6 +2419,25 @@ mod tests {
                 assert_eq!(output.ints["probe"], [status, 0, 0, 0, 0, 1]);
             }
         }
+    }
+
+    #[test]
+    fn face_tail_fixture_reaches_the_kernel_face_constructor() {
+        // Until topology.brep_p2 lands, the shared MakeFaceWithCurves fixture defers
+        // at its vertex-shell construction rather than failing as a harness error.
+        let input: Inputs = serde_json::from_value(serde_json::json!({
+            "op": "face_tail",
+            "offset_distance": 0.25,
+            "approx_tol": 1e-6,
+            "domain": [0.0, 0.0, 1.0, 1.0],
+            "local": false,
+            "extend_convex": true,
+            "merge_results": false,
+            "mate": false
+        }))
+        .unwrap();
+        let output = Runner.run_rust(&case(&input)).unwrap();
+        assert_eq!(output.deferred.unwrap().unit, "topology.brep_p2");
     }
 
     #[test]

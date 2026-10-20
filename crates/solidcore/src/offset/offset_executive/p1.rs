@@ -2547,7 +2547,14 @@ mod tests {
         let (face, _) = add_face(&mut result, plane(1.0));
         executive.set_offset_brep(result);
         face_env(|env, offset_key_of| {
-            executive.map_edgeuses(&kernel, &mut original, original_use, face, env, offset_key_of)
+            executive.map_edgeuses(
+                &kernel,
+                &mut original,
+                original_use,
+                face,
+                env,
+                offset_key_of,
+            )
         })
         .unwrap();
     }
