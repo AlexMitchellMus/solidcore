@@ -2471,8 +2471,9 @@ separate.
 
 ### Final local integration evidence
 
-The final merged source passed all 44 affected native runners: 111,157 cases,
-102,616 passing, zero failed, 8,524 deferred and 17 native setup rejections.
+The final source, including canonical batch #305 (`bb137d7d`), passed all 44
+affected native runners: 111,195 cases, 102,648 passing, zero failed, 8,529 deferred
+and 18 native setup rejections.
 The largest relative error was `1.7805513589745123e-13`; every passing case's
 perturbation was detected. No manifest-green unit regressed to partial.
 
@@ -2488,11 +2489,21 @@ partial. In the offset creator, 25 former concrete-surface deferrals now reach
 `topology.face_p2`; the `box_edgeuse_offset_shell` smoke observes the real
 owner/tolerance dependency rather than a fabricated standalone tolerance.
 
-Workspace tests passed (1,531 kernel tests), as did formatting, strict workspace
+The remaining uncached-break `ReSet` label is an interface gap, not an algorithm
+to re-port: classification reset is available, but `Curve::knots` does not carry
+the caller's `Kernel`. A separate cutover must thread that real context through
+the query/constructor chain, including `CrvInVolume`; a fresh default kernel
+would not preserve caller tolerances. PR #137 explicitly leaves these
+Kernel-less sites outside its reset wiring, and PR #301 lists the same gap as a
+follow-up. Face-tolerance caching itself is already claimed by #301.
+
+Workspace tests passed (1,533 kernel tests), as did formatting, strict workspace
 Clippy both with and without C++, and the wasm32 check. Independent reviews
-explicitly selected `openai-codex/gpt-6-astra`; the final snapshot/owner/transform
-and fuzz-safety deltas received no blockers. Canonical x86 full-green CI is the
-publication integration gate; the selected ARM comparisons above do not replace it.
+explicitly selected `openai-codex/gpt-6-astra`; the final snapshot/owner/transform,
+fuzz-safety and batch-merge construction deltas received no blockers. The merge
+keeps main's owning-UV flag 1 together with the concrete-Surface edgeuse import.
+Canonical x86 full-green CI is the publication integration gate; the selected ARM
+comparisons above do not replace it.
 
 ### Rust safety bounds and malformed-stream fuzz
 

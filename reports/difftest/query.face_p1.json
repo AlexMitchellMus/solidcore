@@ -20360,7 +20360,7 @@
   "cases_passed": 1584,
   "cases_total": 2224,
   "deferred_by_unit": {
-
+    "geom.tol": 57,
     "harness:analytic-geometry-export": 31,
     "intersect.surface_drop_lib_p3": 39,
     "surface.cone_p1": 41,

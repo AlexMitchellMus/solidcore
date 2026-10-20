@@ -23208,13 +23208,12 @@
     }
   ],
   "cases_both_errored": 45,
-  "cases_deferred": 470,
+  "cases_deferred": 466,
   "cases_failed": 0,
-  "cases_passed": 2141,
+  "cases_passed": 2145,
   "cases_rejected": 16,
   "cases_total": 2627,
   "deferred_by_unit": {
-    "curve.crv_on_surf": 4,
     "geom.tol": 37,
     "harness:analytic-geometry-export": 217,
     "intersect.surface_drop_lib_p3": 10,

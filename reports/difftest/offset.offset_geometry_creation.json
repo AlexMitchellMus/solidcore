@@ -8629,7 +8629,7 @@
   "cases_total": 861,
   "deferred_by_unit": {
     "blend.fillet_standard_solver_p1": 4,
-
+    "geom.tol": 78,
     "harness:analytic-geometry-export": 70,
     "intersect.surface_drop_curve": 27,
     "intersect.surface_drop_lib_p3": 7,
