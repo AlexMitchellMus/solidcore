@@ -2,7 +2,7 @@
 
 Generated from `plan/modules.toml` and `reports/difftest/*.json` by `harness/plan/progress.py`; do not edit by hand.
 
-**233 / 261 units ported** (114 green, 119 partial), **339,370 / 387,903 upstream lines (87.5%)**. 28 claimed, 0 blocked, 0 todo.
+**234 / 261 units ported** (114 green, 120 partial), **341,813 / 387,903 upstream lines (88.1%)**. 27 claimed, 0 blocked, 0 todo.
 
 Legend: ✅ green (identical to C++) · 🟡 partial (passes; some cases wait on unported code) · 🔨 claimed · ▶️ ready (all dependencies done) · ⏳ claimable, dependencies still missing · ⛔ blocked.
 
@@ -21,7 +21,6 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 - [ ] 🔨 `topology.brep_p8` (1768 lines) — in progress: #72 @bherbruck (ready for review)
 - [ ] 🔨 `topology.face_p4` (1812 lines) — in progress: #239 @denelson1-dot (ready for review)
 - [ ] 🔨 `topology.brep_p4` (2113 lines) — in progress: #173 @froglemonade2 (ready for review)
-- [ ] 🔨 `topology.brep_p2` (2443 lines) — in progress: #149 @bluecmd (ready for review)
 - [ ] 🔨 `query.brep` (517 lines) — in progress: #101 @0xlillith (draft)
 - [ ] 🔨 `topology.brep_p3` (2503 lines) — in progress: #204 @bluecmd (draft)
 - [ ] 🔨 `primitive.primitive_creation_p1` (2322 lines) — in progress: #213 @damgru (ready for review)
@@ -157,7 +156,7 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 - [x] ✅ `curve.composite_curve_p1` (1700 lines) — green, 3093 cases
 - [x] ✅ `curve.composite_curve_p2` (1345 lines) — green, 661 cases
 - [ ] 🟡 `curve.curve_p5` (2299 lines) — partial, 3097 cases
-- [x] ✅ `curve.curve_p9` (1783 lines) — green, 3093 cases
+- [x] ✅ `curve.curve_p9` (1783 lines) — green, 3111 cases
 
 ### surface (40/40)
 
@@ -189,7 +188,7 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 - [x] ✅ `surface.sphere` (2861 lines) — green, 800 cases
 - [ ] 🟡 `surface.surf_of_extrusion_p2` (1420 lines) — partial, 1373 cases
 - [x] ✅ `surface.surface_p5` (2321 lines) — green, 3046 cases
-- [ ] 🟡 `surface.cone_p3` (1939 lines) — partial, 1415 cases
+- [ ] 🟡 `surface.cone_p3` (1939 lines) — partial, 1416 cases
 - [ ] 🟡 `surface.surface_p1` (2458 lines) — partial, 806 cases
 - [x] ✅ `surface.surface_p6` (2150 lines) — green, 2099 cases
 - [ ] 🟡 `surface.srf_in_volume` (779 lines) — partial, 2036 cases
@@ -202,12 +201,12 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 - [x] ✅ `surface.surface_point_solve_p2` (1882 lines) — green, 1345 cases
 - [x] ✅ `surface.surface_point_solve_p3` (1282 lines) — green, 1365 cases
 
-### topology (26/31)
+### topology (27/31)
 
 - [x] ✅ `topology.database_io` (363 lines) — green, 2059 cases
 - [x] ✅ `topology.topology` (389 lines) — green, 657 cases
 - [ ] 🟡 `topology.brep_data` (1466 lines) — partial, 2379 cases
-- [ ] 🟡 `topology.proto_topology_p1` (2746 lines) — partial, 1857 cases
+- [ ] 🟡 `topology.proto_topology_p1` (2746 lines) — partial, 1862 cases
 - [ ] 🟡 `topology.edgeuse_p1` (1157 lines) — partial, 4402 cases
 - [ ] 🟡 `topology.face_p2` (1827 lines) — partial, 2692 cases
 - [ ] 🟡 `topology.edgeuse_p2` (600 lines) — partial, 4583 cases
@@ -225,12 +224,12 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 - [ ] 🟡 `topology.topology_traverser` (784 lines) — partial, 909 cases
 - [ ] 🟡 `topology.brep_p7` (2503 lines) — partial, 316 cases
 - [ ] 🟡 `topology.face_p1` (2171 lines) — partial, 2312 cases
-- [ ] 🟡 `topology.brep_p1` (2454 lines) — partial, 2589 cases
+- [ ] 🟡 `topology.brep_p1` (2454 lines) — partial, 2627 cases
 - [ ] 🟡 `topology.brep_p6` (1479 lines) — partial, 498 cases
 - [ ] 🟡 `topology.brep_cache` (389 lines) — partial, 663 cases
 - [ ] 🔨 `topology.brep_p4` (2113 lines) — in progress: #173 @froglemonade2 (ready for review)
 - [ ] 🟡 `topology.brep_p9` (2443 lines) — partial, 684 cases
-- [ ] 🔨 `topology.brep_p2` (2443 lines) — in progress: #149 @bluecmd (ready for review)
+- [ ] 🟡 `topology.brep_p2` (2443 lines) — partial, 1709 cases
 - [ ] 🟡 `topology.brep_p5` (2193 lines) — partial, 797 cases
 - [ ] 🔨 `topology.brep_p3` (2503 lines) — in progress: #204 @bluecmd (draft)
 - [ ] 🟡 `topology.proto_topology_p2` (2091 lines) — partial, 1533 cases
@@ -315,7 +314,7 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 
 ### boolean (7/9)
 
-- [ ] 🟡 `boolean.topology_intersector_p1` (2491 lines) — partial, 827 cases
+- [ ] 🟡 `boolean.topology_intersector_p1` (2491 lines) — partial, 830 cases
 - [ ] 🟡 `boolean.topology_intersector_p2` (2195 lines) — partial, 841 cases
 - [ ] 🔨 `boolean.topology_intersector_p3` (1849 lines) — in progress: #211 @oursland (draft)
 - [ ] 🟡 `boolean.merge_p1` (993 lines) — partial, 248 cases
