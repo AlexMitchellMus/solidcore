@@ -369,13 +369,6 @@ impl MergeBrep<H> for Two {
             false,
         )
     }
-    fn brep_faces(&self, brep: H) -> solidcore::Result<Vec<H>> {
-        let b = self.brep_r(brep)?;
-        Ok(topology::brep::p1::faces(b, None)?
-            .into_iter()
-            .map(|f| hd(brep.b, K_FACE, f.index()))
-            .collect())
-    }
     fn stitch_vertex_pairs(
         &mut self,
         k: &mut Kernel,

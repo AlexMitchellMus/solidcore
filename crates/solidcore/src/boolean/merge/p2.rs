@@ -78,10 +78,10 @@
 //!   `SmFace::GetEdges` / `GetVertices` / `GetBrep` (`topology.face_p4`) and
 //!   `OrientTrimmedSurfaces` (`topology.brep_p3`). The code after each stub is ported in full. The callees
 //!   ported on arena B-reps are required [`MergeBrep`] methods (`SmEdge::GetVertices`,
-//!   `SmFace::GetFaceuses`, `SmFaceuse::GetShell`, `SmBrep::GetFaces`,
+//!   `SmFace::GetFaceuses`, `SmFaceuse::GetShell`,
 //!   `SmFace::CalculateBoundingBox` (`bTight = FALSE`), the three
 //!   `SmStitch` calls, `TestClosureSplitRegion`, `FindAndSetInfiniteRegion`) or come
-//!   from the intersector traits (`SmBrep::GetEdges` / `GetVertices`);
+//!   from the intersector traits (`SmBrep::GetEdges` / `GetVertices` / `GetFaces`);
 //!   `SmBrep::GetTolerance` is [`Brep::tolerance`], `SmBrep::MakeFace`
 //!   `topology::brep::p7::make_face`, and `RemoveRelationship` / `EdgeEdgeIntersect` /
 //!   `EdgeFaceCoincidence` the intersector's (`boolean.topology_intersector_p2`).
@@ -923,13 +923,6 @@ pub trait MergeBrep<O>: IntersectorBrepP2<O> {
     ///
     /// Those of the face box.
     fn face_bounding_box(&self, k: &Kernel, face: O) -> Result<Extent3d>;
-
-    /// `SmBrep::GetFaces(rFaces)` (`topology::brep::p1::faces`, no attribute).
-    ///
-    /// # Errors
-    ///
-    /// Those of the topology walk.
-    fn brep_faces(&self, brep: O) -> Result<Vec<O>>;
 
     /// `SmStitch::StitchVertexPairs(rVerts1, rVerts2, ...)` (two-list overload,
     /// `heal::stitch::p1::Stitch::stitch_vertex_pairs` of a `Stitch` built from
