@@ -10925,3 +10925,61 @@ runner always passes empty). `topology.face_p3` and `topology.brep_p5` became pa
 main, so the lamina-edge test and the edge/vertex cleanup now call their ports.
 
 The full `--green --no-report` gate completes with 226 units: 114 passed, 112 partial, 0 failed.
+- **Co-port with `heal.stitch_p1` (#196).** p1 owns the `Stitch` struct, the callback and
+  the `SM_API` entry points; p2 adds `impl Stitch` members in `heal::stitch::p2` and wired
+  p1's three `UNPORTED(heal.stitch_p2)` API stubs (`SmApiStitchIntoSolid`,
+  `SmApiStitchIntoShell`, `SmApiStitchAdvanced`). The harness is p2's own (same B-rep
+  blocks and export as p1's, copied, so fixtures are interchangeable).
+- **Mostly deferred by design.** `DoStitching` starts with `SmBrep::Notify`
+  (`topology.brep_p2`), so every `DoStitching` case, every `StitchIntoShell` case with a
+  positive tolerance and the three API entry points defer there; `StitchIntoSolid` defers
+  at `SmBrep::CalculateBoundingBox` (`query.brep`). Neither has a passing case. When
+  those land, `DoStitching` runs into `GlueVertices` / `FindAndSetInfiniteRegion`
+  (`topology.brep_p5`), `SqueezeEdge` / `DeleteFace` (`topology.brep_p3`),
+  `GlueEdgesGeneral` (`topology.brep_p7`), `MakeVertexSplitEdge` (`topology.brep_p9`)
+  and `SmFace::IsLamina` / `IsDegenerate` / `Notify` (`topology.face_p3`); the runner
+  already emits the full outputs and the B-rep digest after the op.
+- **What the passes cover.** One-list `StitchVertexPairs`: the sorting, coincidence scan,
+  gap bookkeeping, `SelectTopologyToKeep` and the manifold / squeeze skips (the glue is
+  deferred). `SplitEdgesWithVertices`: the per-vertex `sm_TestAndSplitEdge` drops, far and
+  close-to-boundary outcomes (an interior split defers at `MakeVertexSplitEdge`).
+  `StitchIntoShell`: only the path where the doubling loop never runs (`max_tol <= 0`).
+- **Guards.** `-3` (upstream never returns): `StitchIntoShell` when `max_tol / 100`
+  underflows to zero (HANG-33, confirmed by a C++ run), `StitchIntoSolid` from a zero
+  or negative B-rep tolerance (HANG-24; a non-finite diagonal ends or skips the loop).
+  The FFI refuses a vertex repeated in the one-list `StitchVertexPairs` list (UB-178).
+  Upstream defects kept by the port: WR-186 (`DoStitching`'s sticky candidate flags),
+  WR-187 (a cancelled squeeze reported as done), UB-197 (stale edge after a failed glue with `m_bIgnoreProblems`).
+
+
+## primitive.primitive_creation_p1 — second review integration (PR #213, 2026-10-20)
+
+Merged canonical main `95b823ed`; both conflict sections above are retained.
+The three stale `topology.brep_p5` adapters now call the landed implementation
+with upstream defaults: `StitchAndOrientOptions::default()`, `Transform` with
+no scale and tolerance scaling enabled, and topological cleanup with neither
+keep list. Existing caller status handling is retained (ignored statuses versus
+`SER`), and pole-free sphere construction now borrows the mutable Kernel needed
+by `Transform`.
+
+Main's current `MakeFaceWithCurves` also requires a notification environment.
+Cylindrical-box, pole-free sphere and planar-boolean APIs now forward the caller's
+records, attributes and identity resolver; the surface owner uses that same face
+key. The differential fixture owns its explicit, distinct topology keys and creates
+a real infinite region before passing that region into primitive construction;
+main p9 now validates it before the missing topology allocation. No throwaway
+notification store is created in library code.
+
+`IntersectInsertRelate` and `DeleteFaces` remain deferred: their generic p2
+implementation exists, but an `IntersectorBrep` adapter for `topology::Brep` does
+not. Both comments and the unit notes name this missing adapter. Wiring p5 does
+not certify paths that still stop earlier at construction or intersection.
+The runner now explains the analytic revolution base of its sphere fixture,
+and its README identifies the existing working `[0, 0, 1, 1]` sphere UV domain.
+
+Current native result: **773 cases, 689 exact passes, zero failures, 75 deferred,
+9 rejected**. Deferrals: `boolean.topology_intersector_p2` 10 (missing B-rep
+adapter), `topology.brep_p2` 1 (`MakeShellVertexTopology`, now reached through
+p7/p9 with a real infinite region), `topology.brep_p3` 5, `topology.brep_p8` 59.
+The former p9 case now reaches p2 rather than an invalid region lookup. All
+689 perturbations are detected. No tolerance or absolute floor changed.

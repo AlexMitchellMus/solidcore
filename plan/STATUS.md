@@ -12,7 +12,7 @@ Previous port integration: `sweep.topology_sweep` ([PR #222](https://github.com/
 
 Last updated: 2026-10-17, PR #213 (`primitive.primitive_creation_p1` partial: 661 bit-identical passes, 17 dependency deferrals, one UB-57 construction preflight rejection). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
-Last updated: 2026-10-19, PR #213 review (`primitive.primitive_creation_p1` partial: 689 exact passes, 75 dependency deferrals, 9 rejected native fixtures). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
+Last updated: 2026-10-20, PR #213 review (`primitive.primitive_creation_p1` partial: 689 exact passes, 75 dependency deferrals, 9 rejected native fixtures). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
 Latest topology integration: `topology.brep_p6` partial (PR #169, after its dependency #154: 498 cases, 450 pass, 48 deferred, 0 failed; 206 units, 113 green and 93 partial); before: `topology.shell` partial (PR #154, continuing @0xlillith's PR #80: 192 ported units, 109 green and 83 partial); before: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green); before: `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
 
@@ -1160,3 +1160,18 @@ kernel tests, six also by the difftest). Details in the fixture README and
 `plan/findings.md`.
 
 The full `--green --no-report` gate completes with 226 units: 114 passed, 112 partial, 0 failed.
+### PR #213 review refresh (2026-10-20)
+
+Merged canonical main `95b823ed`, retaining both sides of the findings conflict.
+`StitchAndOrient`, `Transform` (no scale, scale tolerances enabled), and
+`RemoveTopologicalEdgesAndVertices` (no keep lists) now call `topology.brep_p5`.
+The constructors and planar boolean pass the caller's `NotifyEnv` through to
+current p7 face construction, including the caller's face identity keys.
+The two intersector stubs remain because `topology::Brep` has no
+`IntersectorBrep` adapter for the generic partial p2 implementation. Their
+post-intersection topology mutations remain uncertified.
+
+Primitive p1 remains 773/689/0/75 with 9 rejected and zero relative error; the
+single former p9 deferral now reaches p2 `MakeShellVertexTopology`. All 689
+perturbations are detected. Format checks, plain/native Clippy, 1479 kernel
+tests, wasm32 and all five primitive FFI tests pass.
