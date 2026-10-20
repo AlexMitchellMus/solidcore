@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use solidcore::blend::fillet_executive::p3::{
     ContextMark, CornerView, ErrorInfo, ExecutionOptions, ExecutiveAccess, FilletExecutive,
-    TopoEdgeView,
+    StitchAttempt, StitchSettings, TopoEdgeView,
 };
 use solidcore::boolean::topology_intersector::p1::TopologyIntersector;
 use solidcore::geom::solution_array::{ObjectKind, SolutionObject};
@@ -62,7 +62,8 @@ fn missing<T>() -> SolidResult<T> {
 impl ExecutiveAccess<Handle> for Access {
     // This empty-B-rep fixture has no face handles or intersector world. These
     // required adapters reject nonexistent objects; they are not UNPORTED calls
-    // to the now-ported face p3 or topology intersector p2 implementations.
+    // to the now-ported face p3, topology intersector p2 or stitch p2
+    // implementations.
     fn notify_face(
         &mut self,
         _: &mut Kernel,
@@ -88,6 +89,19 @@ impl ExecutiveAccess<Handle> for Access {
         _: &[Handle],
         _: Option<&[Handle]>,
     ) -> SolidResult<()> {
+        missing()
+    }
+    fn do_stitching(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: f64,
+        _: Option<&[Handle]>,
+        _: Option<&[Handle]>,
+        _: StitchSettings,
+        _: Option<&mut f64>,
+        _: Option<&mut f64>,
+    ) -> SolidResult<StitchAttempt> {
         missing()
     }
     fn make_corner_topology(
