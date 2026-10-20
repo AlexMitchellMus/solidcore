@@ -1,9 +1,25 @@
-//! Runner for unit `blend.fillet_corner_p2`: `sm_FindConcaveEdgeuses` (the corner methods
-//! wait for the `FilletCorner` record of #256).
+//! Runner for unit `blend.fillet_corner_p2`: `sm_FindConcaveEdgeuses` and the corner
+//! methods ported so far (`AdjustConcaveCornerTopology`, `UpdateSplitFace`).
 //!
 //! C++: `solidcore_ffi::units::blend_fillet_corner_p2` (its shim is included in
 //! `blend_fillet_corner_p1.cpp`, which compiles `source/SMLib/src/SmFilletCorner.cpp`).
 //! Rust: `solidcore::blend::fillet_corner::p2`.
+//!
+//! **Corner cases** (`corner`) use unit `blend.fillet_corner_p3`'s corner harness (its
+//! model, corner and shim, `sc_blend_fillet_corner_p3_corner`): an Nx2-shaped model
+//! (`gen_nx2_model` there) with a corner whose method is
+//! - `adjust_concave`: the virtual `AdjustTopology` of an Nx2 corner, which with three
+//!   corner edges is `AdjustConcaveCornerTopology` (also other kinds and edge counts,
+//!   which take the other branches). The shim's pre-check refuses where upstream
+//!   dereferences null and does not run past the gap test (the first
+//!   `SmFilletEdge::MakeFilletEdge`, `blend.fillet_geom_p5`: deferred);
+//! - `update_split_face`: `UpdateSplitFace(orig, split)` on target faces, some fillet
+//!   vertices classified on (or with their other face) a target face and some fillet
+//!   edges with an original face. A fillet edge on `orig` reaches
+//!   `SmFilletEdge::ShouldSwapFaces` (`blend.fillet_geom_p6`: deferred, not run in C++).
+//!
+//! Compared: the status, the corner's members and the model's whole export. 80 built-in
+//! corner cases (a fixed seed) plus generated ones.
 //!
 //! **Cases.** `find_concave` on a real B-rep (unit `topology.edgeuse_p1`'s B-rep block:
 //! the box-like fillet test files of `TestFiles/pt_TestFiles/Fillet` that unit
@@ -21,8 +37,9 @@
 //! The shim refuses (`-2`) when a pair the loop reaches has an edge use upstream would
 //! dereference null; the Rust side returns [`SolidError::InvalidInput`] there (whatever
 //! its reason: a missing radial, or a missing edge as unit `topology.edgeuse_p1` reports
-//! it) and both report `refused`. No B-rep the harness builds reaches it (every edge use has a radial
-//! and an edge); the Rust half is covered by a unit test in `fillet_corner::p2`. A case whose evaluated geometry the import holds only as its
+//! it) and both report `refused`. No B-rep the harness builds reaches it (every edge use
+//! has a radial and an edge); the Rust half is covered by a unit test in
+//! `fillet_corner::p2`. A case whose evaluated geometry the import holds only as its
 //! B-spline part is deferred as unit `blend.fillet_corner_p1`'s runner defers it.
 
 use serde::{Deserialize, Serialize};
@@ -34,7 +51,13 @@ use solidcore::kernel::Kernel;
 use solidcore::topology::edgeuse::p1 as eu1;
 use solidcore::topology::{Brep, EdgeuseId, VertexId};
 use solidcore_ffi::units::blend_fillet_corner_p2 as ffi;
+use solidcore_ffi::units::blend_fillet_corner_p3::Op as CornerOp;
 use solidcore_ffi::units::topology_edgeuse_p1 as ffi1;
+
+use super::blend_fillet_corner_p3::{
+    corner_cpp_op, corner_rust_with, gen_nx2_model, CornerIn, EuSel,
+};
+use super::blend_fillet_geom_p1::Model;
 
 use super::blend_fillet_corner_p1::{
     eu_vertex, gen_topo_brep, inexact, rust_err, Topo, CORNER_FILES,
@@ -50,6 +73,23 @@ pub struct Runner;
 /// The upper bound of a corner walk (`SmFilletCorner::Create` stops when it closes).
 const MAX_WALK: usize = 64;
 
+/// Built-in corner cases (from [`CORNER_SEED`]).
+const CORNER_CASES: usize = 80;
+
+/// The seed of the built-in corner cases.
+const CORNER_SEED: u64 = 0x00c0_47e2;
+
+/// The corner method of a `corner` case.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum CornerMethod {
+    /// The virtual `AdjustTopology` (`AdjustConcaveCornerTopology` for an Nx2 corner with
+    /// three corner edges).
+    AdjustConcave,
+    /// `SmFilletCorner::UpdateSplitFace(orig, split)`.
+    UpdateSplitFace,
+}
+
 /// One case.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
@@ -63,6 +103,15 @@ enum Inputs {
         v: i64,
         eus: Vec<i64>,
         walk: bool,
+    },
+    /// A corner method on unit `blend.fillet_corner_p3`'s corner harness; `split` are
+    /// the target faces of `update_split_face`.
+    Corner {
+        method: CornerMethod,
+        model: Model,
+        corner: CornerIn,
+        #[serde(default)]
+        split: [usize; 2],
     },
 }
 
@@ -94,7 +143,9 @@ fn corner_walk(b: &Brep, start: EdgeuseId) -> Option<Vec<EdgeuseId>> {
 /// Builds and imports the B-rep and resolves the vertex and edge uses: `args` is
 /// `v eu..`. `Err(output)` when the case ends before the op, the same on both sides.
 fn topo(i: &Inputs) -> Result<Result<Topo, Output>, HarnessError> {
-    let Inputs::FindConcave { brep, v, eus, walk } = i;
+    let Inputs::FindConcave { brep, v, eus, walk } = i else {
+        return Err(harness("not a find_concave case"));
+    };
     let path = path_of(Some(brep))?;
     let block = brep_block_of(Some(brep), false, false)?;
     let ex = ffi1::eval(ffi1::Op::Export, &path, &block)
@@ -158,7 +209,50 @@ fn topo(i: &Inputs) -> Result<Result<Topo, Output>, HarnessError> {
     }))
 }
 
+fn corner_cpp(
+    method: CornerMethod,
+    model: &Model,
+    c: &CornerIn,
+    split: [usize; 2],
+) -> Result<Output, HarnessError> {
+    match method {
+        CornerMethod::AdjustConcave => corner_cpp_op(CornerOp::AdjustTopology, &[], model, c),
+        CornerMethod::UpdateSplitFace => corner_cpp_op(
+            CornerOp::UpdateSplitFace,
+            &[split[0] as f64, split[1] as f64],
+            model,
+            c,
+        ),
+    }
+}
+
+fn corner_rust(
+    method: CornerMethod,
+    model: &Model,
+    c: &CornerIn,
+    split: [usize; 2],
+) -> Result<Output, HarnessError> {
+    corner_rust_with(model, c, |c, env, faces| match method {
+        CornerMethod::AdjustConcave => c.adjust_topology(env),
+        CornerMethod::UpdateSplitFace => {
+            let (Some(&orig), Some(&new)) = (faces.get(split[0]), faces.get(split[1])) else {
+                return Err(SolidError::invalid_input("difftest", "split face index"));
+            };
+            c.update_split_face(env, orig, new)
+        }
+    })
+}
+
 fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
+    if let Inputs::Corner {
+        method,
+        model,
+        corner,
+        split,
+    } = i
+    {
+        return corner_cpp(*method, model, corner, *split);
+    }
     let t = match topo(i)? {
         Ok(t) => t,
         Err(o) => return Ok(o),
@@ -186,6 +280,15 @@ fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
 }
 
 fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
+    if let Inputs::Corner {
+        method,
+        model,
+        corner,
+        split,
+    } = i
+    {
+        return corner_rust(*method, model, corner, *split);
+    }
     let mut t = match topo(i)? {
         Ok(t) => t,
         Err(o) => return Ok(o),
@@ -239,6 +342,105 @@ fn gen_find_concave(rng: &mut Rng) -> Inputs {
     }
 }
 
+/// A corner case on an Nx2-shaped model (`gen_nx2_model` of unit
+/// `blend.fillet_corner_p3`): its target faces are `0` (plane x-z) and `1` (plane y-z),
+/// its corner edges `4 5` (plus `2`, a rail, for the three-edge concave case), its
+/// fillet vertices `0` (rails meet the side edge), `3`, `4`.
+fn gen_corner(rng: &mut Rng) -> Inputs {
+    let scale = *rng.choose(&[1.0, 1e-3, 1e3, 0.1, 1e5]).unwrap_or(&1.0);
+    let tol = match rng.below(4) {
+        0 => 1e-3 * scale,
+        1 => 1e-6 * scale,
+        2 => 0.0,
+        _ => scale * 10f64.powf(rng.uniform(-9.0, -2.0)),
+    };
+    let (mut model, tsects) = gen_nx2_model(rng, scale);
+    let eu = |e: usize, w: usize| -> EuSel { [e, w] };
+    let n_all = if rng.chance(0.85) {
+        4
+    } else {
+        rng.below(6) as usize
+    };
+    let all: Vec<EuSel> = (0..n_all).map(|i| eu(i % 4, usize::from(i >= 4))).collect();
+    let solver = Some(vec![eu(1, 0), eu(2, rng.below(2) as usize)]);
+    let mut verts: Vec<usize> = vec![0, 3, 4];
+    if rng.chance(0.2) {
+        verts.reverse();
+    }
+    if rng.chance(0.1) {
+        verts = vec![3, 4];
+    }
+    let method = if rng.chance(0.5) {
+        CornerMethod::AdjustConcave
+    } else {
+        CornerMethod::UpdateSplitFace
+    };
+    let (kind, edges, mut orig_faces, split) = match method {
+        CornerMethod::AdjustConcave => {
+            let kind = if rng.chance(0.9) {
+                7
+            } else {
+                rng.below(11) as usize
+            };
+            let edges = if rng.chance(0.85) {
+                vec![4, 5, 2]
+            } else {
+                vec![4, 5]
+            };
+            (kind, edges, Vec::new(), [0, 1])
+        }
+        CornerMethod::UpdateSplitFace => {
+            // fillet vertices classified on a target face (or with it as their other face)
+            for v in model.vertices.iter_mut().skip(1) {
+                if rng.chance(0.6) {
+                    v.pc_class = 102; // SM_PC_FACE
+                    v.pc_kind = 3;
+                    v.pc_index = rng.below(2) as i64;
+                }
+                if rng.chance(0.3) {
+                    v.pc_face = rng.below(2) as i64;
+                }
+            }
+            let orig = rng.below(2) as usize;
+            let split = [orig, if rng.chance(0.9) { 1 - orig } else { orig }];
+            let mut orig_faces = Vec::new();
+            for e in [4usize, 5] {
+                if rng.chance(0.3) {
+                    orig_faces.push([e, rng.below(2) as usize]);
+                }
+            }
+            (rng.below(11) as usize, vec![4, 5], orig_faces, split)
+        }
+    };
+    orig_faces.dedup_by_key(|p| p[0]);
+    let blending = rng.chance(0.25);
+    Inputs::Corner {
+        method,
+        model,
+        corner: CornerIn {
+            kind,
+            v_edge: if rng.chance(0.95) { 1 } else { -1 },
+            v_sub: 0,
+            solver,
+            all: if rng.chance(0.95) { Some(all) } else { None },
+            verts,
+            edges,
+            bevel: !blending,
+            blending,
+            chamfer: false,
+            degenerate: false,
+            ext: rng.chance(0.8),
+            adjusted: false,
+            setback: 0.0,
+            tol,
+            tan: rng.uniform(1e-4, 0.2),
+            tsects,
+            orig_faces,
+        },
+        split,
+    }
+}
+
 impl UnitDiff for Runner {
     fn id(&self) -> &'static str {
         "blend.fillet_corner_p2"
@@ -253,7 +455,12 @@ impl UnitDiff for Runner {
     }
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
-        serde_json::to_value(gen_find_concave(rng)).ok()
+        let i = if rng.chance(0.5) {
+            gen_find_concave(rng)
+        } else {
+            gen_corner(rng)
+        };
+        serde_json::to_value(i).ok()
     }
 
     fn cases(&self, ctx: &CaseContext) -> Result<Vec<Case>, HarnessError> {
@@ -306,6 +513,23 @@ impl UnitDiff for Runner {
             };
             let name = format!("find_concave_network_v{vertex}_ring");
             push(&mut v, name, "tests/prog_test (my_test_topology)", i)?;
+        }
+        let mut rng = Rng::new(CORNER_SEED);
+        for n in 0..CORNER_CASES {
+            let i = gen_corner(&mut rng);
+            let Inputs::Corner { method, .. } = &i else {
+                return Err(harness("corner case"));
+            };
+            let name = match method {
+                CornerMethod::AdjustConcave => format!("corner_adjust_concave_{n:02}"),
+                CornerMethod::UpdateSplitFace => format!("corner_update_split_face_{n:02}"),
+            };
+            push(
+                &mut v,
+                name,
+                "SmFilletCorner.cpp (Nx2-shaped corner model)",
+                i,
+            )?;
         }
         Ok(v)
     }

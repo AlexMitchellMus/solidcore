@@ -41,7 +41,7 @@
 //! - **Unported callees.** `sm_TestG1Continuity`, `SmFilletNx1Corner::CheckNx1Degeneracy`,
 //!   `CreateEndPatch`, `MakeFaceBrep` and `CalcCornerVertGeom` (unit
 //!   `blend.fillet_corner_p1`), `MakeAnalyticCornerSurface`,
-//!   `AdjustConcaveCornerTopology` and the `SmFilletConvexNxNCorner` /
+//!   the `SmFilletConvexNxNCorner` /
 //!   `SmFilletNx1ClosedCorner` overrides (`blend.fillet_corner_p2`),
 //!   `TestAndConvertBigRadFillet` and `NoteFilletError` (`blend.fillet_executive_p1`),
 //!   `SmFilletEdge::MakeFilletEdge` (`blend.fillet_geom_p5`), `GetRailVertex`
@@ -270,7 +270,7 @@ fn set_vertex_point(pseudo: &mut FilletBrep, v: VertexId, point: Point3) -> Resu
 }
 
 /// `pFrom->Remove(pVU); pTo->PostInsert(pVU)` for a vertex use of the pseudo B-rep.
-fn move_vertexuse(
+pub(super) fn move_vertexuse(
     pseudo: &mut FilletBrep,
     vu: VertexuseId,
     from: VertexId,
@@ -312,7 +312,7 @@ fn bspline_surface(surface: &Surface) -> Result<&BSplineSurface> {
 }
 
 /// The primary edge use of a pseudo-B-rep edge (`GetPrimaryEdgeuse`), required.
-fn primary_eu(pseudo: &FilletBrep, e: EdgeId, op: &'static str) -> Result<EdgeuseId> {
+pub(super) fn primary_eu(pseudo: &FilletBrep, e: EdgeId, op: &'static str) -> Result<EdgeuseId> {
     eu1::primary_edgeuse(pseudo.brep(), e)?.ok_or_else(|| SolidError::null_pointer(op))
 }
 
@@ -1126,11 +1126,7 @@ impl FilletCorner {
         let num_vertex_edges = self.edges.len();
         if num_vertex_edges == 3 {
             // Mixed-convexity corners
-            // UNPORTED(blend.fillet_corner_p2): SmFilletNx2Corner::AdjustConcaveCornerTopology
-            return Err(unported(
-                "SmFilletNx2Corner::AdjustConcaveCornerTopology",
-                "blend.fillet_corner_p2",
-            ));
+            return self.adjust_concave_corner_topology(env);
         }
 
         let mut ii = 0usize;
@@ -1681,7 +1677,7 @@ impl FilletCorner {
 /// An evaluation whose status upstream ignores (`EvaluatePoint` without `SER`): a
 /// failure leaves the default-constructed point ([`Point3::UNDEF`]); an unported
 /// evaluator still propagates.
-fn unchecked_point(r: Result<Point3>) -> Result<Point3> {
+pub(super) fn unchecked_point(r: Result<Point3>) -> Result<Point3> {
     match r {
         Ok(p) => Ok(p),
         Err(e) if e.is_unported() => Err(e),

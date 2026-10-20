@@ -31,7 +31,8 @@
 //!   v1 s0 s1)..`: the vertex use of pseudo edge `edge`'s primary edge use (`0`) or mate
 //!   (`1`) gets curve parameter `t`, UV positions and as `m_apUserPointer` the surfaces of
 //!   target faces `s0`, `s1` (`-1` NULL)), then original faces (`n (edge face)..`:
-//!   `SetOriginalFace` of a pseudo edge to a target face). Output: `-2` (refused), `-3` (not run), else
+//!   `SetOriginalFace` of a pseudo edge to a target face); [`Op::UpdateSplitFace`] (unit
+//!   `blend.fillet_corner_p2`) takes two more, `orig split` (target faces). Output: `-2` (refused), `-3` (not run), else
 //!   the op status, `n_verts verts.. n_edges edges.. bevel blending chamfer degenerate
 //!   const_rad adjusted ext_patch setback n_surfs` and the model export of
 //!   `blend.fillet_geom_p1`.
@@ -60,6 +61,8 @@ pub enum Op {
     AdjustTopology = 2,
     /// The virtual `AdjustTangentCorner`.
     AdjustTangent = 3,
+    /// `SmFilletCorner::UpdateSplitFace(orig, split)` (unit `blend.fillet_corner_p2`).
+    UpdateSplitFace = 4,
 }
 
 mod sys {
@@ -153,6 +156,15 @@ fn eu_list(rd: &mut P1Reader<'_>, nt: usize) -> Result<(), FfiError> {
 ///
 /// [`FfiError::InvalidArgument`] for an input upstream could not handle safely.
 pub fn validate_corner(input: &[f64]) -> Result<(), FfiError> {
+    validate_corner_op(Op::CalcGeom, input)
+}
+
+/// Validates the input of [`corner`] for `op` (layout in the module docs).
+///
+/// # Errors
+///
+/// [`FfiError::InvalidArgument`] for an input upstream could not handle safely.
+pub fn validate_corner_op(op: Op, input: &[f64]) -> Result<(), FfiError> {
     let mut rd = P1Reader {
         cursor: crate::reader::Cursor::new(input),
         bound: MAX_MAGNITUDE,
@@ -198,6 +210,11 @@ pub fn validate_corner(input: &[f64]) -> Result<(), FfiError> {
         rd.opt_index(b.ne())?.ok_or_else(|| bad("original face: edge -1"))?;
         rd.opt_index(b.nf)?.ok_or_else(|| bad("original face: face -1"))?;
     }
+    if op == Op::UpdateSplitFace {
+        for _ in 0..2 {
+            rd.opt_index(b.nf)?.ok_or_else(|| bad("split face: face -1"))?;
+        }
+    }
     rd.done()
 }
 
@@ -208,7 +225,7 @@ pub fn validate_corner(input: &[f64]) -> Result<(), FfiError> {
 /// [`FfiError::InvalidArgument`] for an input upstream could not handle safely;
 /// [`FfiError::Status`] for a shim error.
 pub fn corner(op: Op, input: &[f64]) -> Result<Vec<f64>, FfiError> {
-    validate_corner(input)?;
+    validate_corner_op(op, input)?;
     call_with_buffer(4096, |buf, len| {
         // SAFETY: input is valid for input.len() reads (validated above); buf is valid
         // for buf.len() writes; len is a valid pointer.

@@ -23,15 +23,14 @@
 //!
 //! Deferred on the Rust side (unported callees, `Output::deferred`): `Create` reaching
 //! `sm_TestG1Continuity` / `CheckNx1Degeneracy` (`blend.fillet_corner_p1`); every patch
-//! builder past its state
-//! checks (`MakeAnalyticCornerSurface`, `CreateEndPatch`, `SmSurface::DropCurve`); the
-//! Nx2 adjustments where they change the topology (`MakeFilletEdge`,
-//! `GetRailIndexOfVertexuse`), the big-radius test of blending corners and the `NxN` /
-//! closed Nx1 overrides. The shim does not call upstream on those paths (`-3`; a Rust
-//! side that is not deferred there fails the case) and refuses (`-2`, a rejected case)
-//! the inputs that make upstream dereference null or free the harness's objects. A
-//! `create` case whose sector convexity test runs on geometry the import holds only
-//! approximately (analytic surfaces and curves) is deferred like
+//! builder past its state checks (`MakeAnalyticCornerSurface`, `CreateEndPatch`,
+//! `SmSurface::DropCurve`); the Nx2 adjustments where they change the topology
+//! (`MakeFilletEdge`, `GetRailIndexOfVertexuse`), the big-radius test of blending corners
+//! and the `NxN` / closed Nx1 overrides. The shim does not call upstream on those paths
+//! (`-3`; a Rust side that is not deferred there fails the case) and refuses (`-2`, a
+//! rejected case) the inputs that make upstream dereference null or free the harness's
+//! objects. A `create` case whose sector convexity test runs on geometry the import holds
+//! only approximately (analytic surfaces and curves) is deferred like
 //! `topology.edgeuse_p2`'s (`inexact_geometry`).
 
 use std::collections::BTreeMap;
@@ -49,7 +48,7 @@ use solidcore::kernel::Kernel;
 use solidcore::math::EFF_ZERO_RAD;
 use solidcore::surface::surface::Surface;
 use solidcore::topology::edgeuse::p1 as eu1;
-use solidcore::topology::{Brep, EdgeuseId, VertexId, VertexuseId};
+use solidcore::topology::{Brep, EdgeuseId, FaceId, VertexId, VertexuseId};
 use solidcore::SolidError;
 use solidcore_ffi::units::blend_fillet_corner_p3::{self as ffi, Op};
 use solidcore_ffi::units::topology_edgeuse_p1 as ffi1;
@@ -95,60 +94,60 @@ struct SolverIn {
 
 /// An edge use of the model's target wire edge `e`: `0` its primary edge use, `1` the
 /// mate.
-type EuSel = [usize; 2];
+pub(super) type EuSel = [usize; 2];
 
 /// An intersection point set on the vertex use of pseudo edge `e`'s primary edge use
 /// (`which` 0) or mate (1): curve parameter, UV positions, user surfaces (target faces,
 /// `-1` none).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct TsectIn {
-    e: usize,
-    which: usize,
-    t: f64,
-    uv0: [f64; 2],
-    uv1: [f64; 2],
-    s0: i64,
-    s1: i64,
+pub(super) struct TsectIn {
+    pub(super) e: usize,
+    pub(super) which: usize,
+    pub(super) t: f64,
+    pub(super) uv0: [f64; 2],
+    pub(super) uv1: [f64; 2],
+    pub(super) s0: i64,
+    pub(super) s1: i64,
 }
 
 /// The corner of a `corner` case.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(clippy::struct_excessive_bools)] // the corner's independent SmBoolean members
-struct CornerIn {
+pub(super) struct CornerIn {
     /// The derived class (order of [`FilletCornerKind`]).
-    kind: usize,
+    pub(super) kind: usize,
     /// The filleted vertex: start (`v_sub` 0) or end vertex of target edge `v_edge`
     /// (`-1` none).
-    v_edge: i64,
+    pub(super) v_edge: i64,
     #[serde(default)]
-    v_sub: usize,
-    solver: Option<Vec<EuSel>>,
-    all: Option<Vec<EuSel>>,
+    pub(super) v_sub: usize,
+    pub(super) solver: Option<Vec<EuSel>>,
+    pub(super) all: Option<Vec<EuSel>>,
     #[serde(default)]
-    verts: Vec<usize>,
+    pub(super) verts: Vec<usize>,
     #[serde(default)]
-    edges: Vec<usize>,
+    pub(super) edges: Vec<usize>,
     #[serde(default)]
-    bevel: bool,
+    pub(super) bevel: bool,
     #[serde(default)]
-    blending: bool,
+    pub(super) blending: bool,
     #[serde(default)]
-    chamfer: bool,
+    pub(super) chamfer: bool,
     #[serde(default)]
-    degenerate: bool,
+    pub(super) degenerate: bool,
     #[serde(default = "yes")]
-    ext: bool,
+    pub(super) ext: bool,
     #[serde(default)]
-    adjusted: bool,
+    pub(super) adjusted: bool,
     #[serde(default)]
-    setback: f64,
-    tol: f64,
-    tan: f64,
+    pub(super) setback: f64,
+    pub(super) tol: f64,
+    pub(super) tan: f64,
     #[serde(default)]
-    tsects: Vec<TsectIn>,
+    pub(super) tsects: Vec<TsectIn>,
     /// `SetOriginalFace` of pseudo edges: `[edge, target face]`.
     #[serde(default)]
-    orig_faces: Vec<[usize; 2]>,
+    pub(super) orig_faces: Vec<[usize; 2]>,
 }
 
 fn yes() -> bool {
@@ -544,12 +543,39 @@ fn corner_output(rec: &[f64]) -> Result<Output, HarnessError> {
 }
 
 fn corner_cpp(op: CornerOp, model: &Model, c: &CornerIn) -> Result<Output, HarnessError> {
-    let input = corner_input(model, c)?;
-    let flat = ffi::corner(op.ffi(), &input).map_err(|e| harness(e.to_string()))?;
+    corner_cpp_op(op.ffi(), &[], model, c)
+}
+
+/// The C++ side of a corner case running `op`, whose input is the corner's followed by
+/// `tail` (unit `blend.fillet_corner_p2`'s operations).
+pub(super) fn corner_cpp_op(
+    op: Op,
+    tail: &[f64],
+    model: &Model,
+    c: &CornerIn,
+) -> Result<Output, HarnessError> {
+    let mut input = corner_input(model, c)?;
+    input.extend_from_slice(tail);
+    let flat = ffi::corner(op, &input).map_err(|e| harness(e.to_string()))?;
     corner_output(&flat)
 }
 
 fn corner_rust(op: CornerOp, model: &Model, ci: &CornerIn) -> Result<Output, HarnessError> {
+    corner_rust_with(model, ci, |c, env, _| match op {
+        CornerOp::CalcGeom => c.calc_corner_geom(env),
+        CornerOp::Patch => c.create_corner_patch(env),
+        CornerOp::AdjustTopology => c.adjust_topology(env),
+        CornerOp::AdjustTangent => c.adjust_tangent_corner(env),
+    })
+}
+
+/// The Rust side of a corner case running `run` on the corner (with the model's target
+/// faces, by index).
+pub(super) fn corner_rust_with(
+    model: &Model,
+    ci: &CornerIn,
+    run: impl FnOnce(&mut FilletCorner, &mut CornerEnv<'_>, &[FaceId]) -> solidcore::Result<()>,
+) -> Result<Output, HarnessError> {
     let h = |e: SolidError| harness(e.to_string());
     let mut rm = RustModel::build(model)?;
     let kind = *KINDS.get(ci.kind).ok_or_else(|| harness("kind"))?;
@@ -642,6 +668,7 @@ fn corner_rust(op: CornerOp, model: &Model, ci: &CornerIn) -> Result<Output, Har
         let face = *rm.target_faces.get(f).ok_or_else(|| harness("face"))?;
         rm.fb.fillet_edge_mut(eid).map_err(h)?.set_original_face(Some(face));
     }
+    let faces = rm.target_faces.clone();
     let r = {
         let mut env = CornerEnv {
             k: &rm.k,
@@ -650,12 +677,7 @@ fn corner_rust(op: CornerOp, model: &Model, ci: &CornerIn) -> Result<Output, Har
             corner: None,
             tsect_surfaces: &surfaces,
         };
-        match op {
-            CornerOp::CalcGeom => c.calc_corner_geom(&mut env),
-            CornerOp::Patch => c.create_corner_patch(&mut env),
-            CornerOp::AdjustTopology => c.adjust_topology(&mut env),
-            CornerOp::AdjustTangent => c.adjust_tangent_corner(&mut env),
-        }
+        run(&mut c, &mut env, &faces)
     };
     let st = match r {
         Ok(()) => 0.0,
@@ -831,7 +853,7 @@ fn edge_in(vs: usize, ve: usize, etype: i64, curve: Option<Crv>, g: [i64; 2]) ->
 /// `SM_FV_RAIL_X_EDGEUSE` vertex classified to the side edge's edge use with two rails
 /// (one per fillet geometry) leaving it, rails' other ends, other corner vertices and
 /// edges between them.
-fn gen_nx2_model(rng: &mut Rng, scale: f64) -> (Model, Vec<TsectIn>) {
+pub(super) fn gen_nx2_model(rng: &mut Rng, scale: f64) -> (Model, Vec<TsectIn>) {
     let s = scale;
     let tangent = rng.chance(0.6);
     let d2 = if tangent {

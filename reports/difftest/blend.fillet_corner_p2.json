@@ -2,29 +2,29 @@
   "abs_floors": [],
   "cases": [
     {
-      "max_rel_err": 0.0,
-      "name": "gen0000",
-      "outcome": "pass",
-      "pass": true,
-      "source": "generated:seed=10924743301330177829",
-      "values_compared": 1
-    },
-    {
       "deferred": {
-        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0001",
+      "name": "gen0000",
       "outcome": "deferred",
       "pass": false,
-      "source": "generated:seed=10924743301330177830",
+      "source": "generated:seed=10924743301330177829",
       "values_compared": 0
     },
     {
+      "max_rel_err": 0.0,
+      "name": "gen0001",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=10924743301330177830",
+      "values_compared": 363
+    },
+    {
       "deferred": {
-        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0002",
@@ -43,8 +43,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0004",
@@ -62,16 +62,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0006",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924743301330177835",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
@@ -86,12 +82,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen0008",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=10924743301330177837",
-      "values_compared": 1
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -103,8 +103,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0010",
@@ -115,8 +115,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0011",
@@ -131,20 +131,24 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=10924743301330177841",
-      "values_compared": 1
-    },
-    {
-      "max_rel_err": 0.0,
-      "name": "gen0013",
-      "outcome": "pass",
-      "pass": true,
-      "source": "generated:seed=10924743301330177842",
-      "values_compared": 1
+      "values_compared": 363
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmFilletEdge::MakeFilletEdge",
+        "unit": "blend.fillet_geom_p5"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0013",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=10924743301330177842",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0014",
@@ -159,7 +163,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=10924743301330177844",
-      "values_compared": 1
+      "values_compared": 364
     },
     {
       "max_rel_err": 0.0,
@@ -3224,18 +3228,1911 @@
       "pass": true,
       "source": "fixture:built-in: blend.fillet_corner_p2 cases#331 (upstream tests/prog_test (my_test_topology))",
       "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_00",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#332 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 347
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_01",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#333 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 363
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_02",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#334 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 363
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_03",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#335 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 347
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_04",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#336 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 347
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::MakeFilletEdge",
+        "unit": "blend.fillet_geom_p5"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_05",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#337 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "corner": {
+          "adjusted": false,
+          "all": [
+            [0, 0],
+            [1, 0],
+            [2, 0],
+            [3, 0]
+          ],
+          "bevel": true,
+          "blending": false,
+          "chamfer": false,
+          "degenerate": false,
+          "edges": [4, 5],
+          "ext": true,
+          "kind": 7,
+          "orig_faces": [],
+          "setback": 0.0,
+          "solver": [
+            [1, 0],
+            [2, 0]
+          ],
+          "tan": 0.01860331056365713,
+          "tol": 1e-9,
+          "tsects": [
+            {
+              "e": 0,
+              "s0": 0,
+              "s1": 1,
+              "t": 0.36277326385920483,
+              "uv0": [0.5596815713154223, 0.8250429913957782],
+              "uv1": [0.8053759944937581, 0.7568031894892072],
+              "which": 0
+            },
+            {
+              "e": 1,
+              "s0": 0,
+              "s1": 1,
+              "t": 0.4992312781620153,
+              "uv0": [0.5596815713154223, 0.8250429913957782],
+              "uv1": [0.8053759944322506, 0.7568031894892072],
+              "which": 0
+            }
+          ],
+          "v_edge": -1,
+          "v_sub": 0,
+          "verts": [0, 3, 4]
+        },
+        "method": "adjust_concave",
+        "model": {
+          "edges": [
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [0.0, 0.0, 0.00008943432798336197, 1.0],
+                  [0.001, 0.0, 0.00008943432798336197, 1.0]
+                ],
+                "dim": 3,
+                "p": 1,
+                "u": [0.0, 0.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "status": 0,
+              "ve": 1,
+              "vs": 0
+            },
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [0.0, 0.0, 0.00008943432798336197, 1.0],
+                  [-0.001, 0.0, 0.00008943432798336197, 1.0]
+                ],
+                "dim": 3,
+                "p": 1,
+                "u": [0.0, 0.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 1,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": 1,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "status": 0,
+              "ve": 2,
+              "vs": 0
+            },
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [0.0, 0.00008943432798336197, 0.0, 1.0],
+                  [0.001, 0.00008943432798336197, 0.0, 1.0]
+                ],
+                "dim": 3,
+                "p": 1,
+                "u": [0.0, 0.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "status": 0,
+              "ve": 1,
+              "vs": 3
+            },
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [0.0, -0.00008943432798336197, 0.0, 1.0],
+                  [-0.001, -0.00008943432798336197, 0.0, 1.0]
+                ],
+                "dim": 3,
+                "p": 1,
+                "u": [0.0, 0.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 1,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": 1,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "status": 0,
+              "ve": 2,
+              "vs": 4
+            },
+            {
+              "corner": -1,
+              "etype": 4,
+              "eus": [
+                {
+                  "geom": -1,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": -1,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "status": 0,
+              "ve": 3,
+              "vs": 0
+            },
+            {
+              "corner": -1,
+              "etype": 4,
+              "eus": [
+                {
+                  "geom": -1,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": -1,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "status": 0,
+              "ve": 4,
+              "vs": 3
+            }
+          ],
+          "faces": [
+            {
+              "net": [
+                [
+                  [0.0, 0.0, 0.0, 1.0],
+                  [0.0, 0.0, 0.001, 1.0]
+                ],
+                [
+                  [0.001, 0.0, 0.0, 1.0],
+                  [0.001, 0.0, 0.001, 1.0]
+                ]
+              ],
+              "p": 1,
+              "q": 1,
+              "u": [0.0, 0.0, 1.0, 1.0],
+              "v": [0.0, 0.0, 1.0, 1.0]
+            },
+            {
+              "net": [
+                [
+                  [0.0, 0.0, 0.0, 1.0],
+                  [0.0, 0.0, 0.001, 1.0]
+                ],
+                [
+                  [0.0, 0.001, 0.0, 1.0],
+                  [0.0, 0.001, 0.001, 1.0]
+                ]
+              ],
+              "p": 1,
+              "q": 1,
+              "u": [0.0, 0.0, 1.0, 1.0],
+              "v": [0.0, 0.0, 1.0, 1.0]
+            }
+          ],
+          "fillet_brep": [],
+          "geoms": [
+            {
+              "gtype": 0,
+              "other1": [],
+              "other2": [],
+              "rails": [0, 2],
+              "sides": [],
+              "status": 0
+            },
+            {
+              "gtype": 0,
+              "other1": [],
+              "other2": [],
+              "rails": [1, 3],
+              "sides": [],
+              "status": 0
+            }
+          ],
+          "targets": [
+            {
+              "cpts": [
+                [0.0, 0.0, 0.0, 1.0],
+                [0.0, 0.0, 0.001, 1.0]
+              ],
+              "dim": 3,
+              "p": 1,
+              "u": [0.0, 0.0, 1.0, 1.0]
+            },
+            {
+              "cpts": [
+                [0.0, 0.0, 0.0, 1.0],
+                [0.001, 0.0, 0.0, 1.0]
+              ],
+              "dim": 3,
+              "p": 1,
+              "u": [0.0, 0.0, 1.0, 1.0]
+            },
+            {
+              "cpts": [
+                [0.0, 0.0, 0.0, 1.0],
+                [-0.001, 0.0, 0.0, 1.0]
+              ],
+              "dim": 3,
+              "p": 1,
+              "u": [0.0, 0.0, 1.0, 1.0]
+            },
+            {
+              "cpts": [
+                [0.0, 0.0, 0.0, 1.0],
+                [0.0, -0.001, 0.0, 1.0]
+              ],
+              "dim": 3,
+              "p": 1,
+              "u": [0.0, 0.0, 1.0, 1.0]
+            }
+          ],
+          "vertices": [
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 109,
+              "pc_face": -1,
+              "pc_index": 0,
+              "pc_kind": 2,
+              "pc_sub": 0,
+              "point": [0.0, 0.0, 0.00008943432798336197],
+              "status": 0,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 9
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.001, 0.0, 0.00008943432798336197],
+              "status": 0,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 7
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [-0.001, 0.0, 0.00008943432798336197],
+              "status": 0,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 7
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.0, 0.00008943432798336197, 0.0],
+              "status": 0,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 4
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.0, -0.00008943432798336197, 0.0],
+              "status": 0,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 13
+            }
+          ]
+        },
+        "op": "corner",
+        "split": [0, 1]
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_06",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "upstream would dereference null",
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#338 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_07",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#339 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 363
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_08",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#340 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_09",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#341 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 363
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_10",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#342 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_11",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#343 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::MakeFilletEdge",
+        "unit": "blend.fillet_geom_p5"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_12",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#344 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_13",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#345 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::MakeFilletEdge",
+        "unit": "blend.fillet_geom_p5"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_14",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#346 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::MakeFilletEdge",
+        "unit": "blend.fillet_geom_p5"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_15",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#347 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_16",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#348 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 364
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_17",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#349 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_18",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#350 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::ShouldSwapFaces",
+        "unit": "blend.fillet_geom_p6"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_19",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#351 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::MakeFilletEdge",
+        "unit": "blend.fillet_geom_p5"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_20",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#352 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_21",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#353 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 363
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::MakeFilletEdge",
+        "unit": "blend.fillet_geom_p5"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_22",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#354 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_23",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#355 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 347
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_24",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#356 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 364
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::MakeFilletEdge",
+        "unit": "blend.fillet_geom_p5"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_25",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#357 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_26",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#358 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 364
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::MakeFilletEdge",
+        "unit": "blend.fillet_geom_p5"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_27",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#359 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::MakeFilletEdge",
+        "unit": "blend.fillet_geom_p5"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_28",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#360 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::MakeFilletEdge",
+        "unit": "blend.fillet_geom_p5"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_29",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#361 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_30",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#362 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_31",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#363 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 364
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_32",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#364 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 347
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_33",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#365 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 363
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_34",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#366 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 363
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_35",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#367 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 363
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_36",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#368 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 364
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_37",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#369 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 364
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_38",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#370 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 363
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_39",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#371 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 364
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_40",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#372 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 364
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletExecutive::TestAndConvertBigRadFillet",
+        "unit": "blend.fillet_executive_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_41",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#373 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_42",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#374 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_43",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#375 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 364
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_44",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#376 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_45",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#377 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::MakeFilletEdge",
+        "unit": "blend.fillet_geom_p5"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_46",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#378 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_47",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#379 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 364
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::MakeFilletEdge",
+        "unit": "blend.fillet_geom_p5"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_48",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#380 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_49",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#381 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_50",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#382 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 363
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_51",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#383 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 363
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_52",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#384 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 364
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_53",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#385 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 347
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_54",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#386 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 363
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_55",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#387 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::ShouldSwapFaces",
+        "unit": "blend.fillet_geom_p6"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_56",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#388 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_57",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#389 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 364
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_58",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#390 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 363
+    },
+    {
+      "inputs": {
+        "corner": {
+          "adjusted": false,
+          "all": null,
+          "bevel": true,
+          "blending": false,
+          "chamfer": false,
+          "degenerate": false,
+          "edges": [4, 5, 2],
+          "ext": true,
+          "kind": 7,
+          "orig_faces": [],
+          "setback": 0.0,
+          "solver": [
+            [1, 0],
+            [2, 0]
+          ],
+          "tan": 0.14846875030281925,
+          "tol": 0.0001,
+          "tsects": [
+            {
+              "e": 0,
+              "s0": 0,
+              "s1": 1,
+              "t": 1.0,
+              "uv0": [0.10631610196012742, 0.030197579062661517],
+              "uv1": [0.8201729922168876, 0.2726710645255217],
+              "which": 0
+            },
+            {
+              "e": 1,
+              "s0": 0,
+              "s1": 1,
+              "t": 1.0,
+              "uv0": [0.10631610196012742, 0.030197579062661517],
+              "uv1": [0.820172992173799, 0.2726710645255217],
+              "which": 0
+            }
+          ],
+          "v_edge": 1,
+          "v_sub": 0,
+          "verts": [3, 4]
+        },
+        "method": "adjust_concave",
+        "model": {
+          "edges": [
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [0.0, 0.0, 0.016883547882730377, 1.0],
+                  [0.1, 0.0, 0.016883547882730377, 1.0]
+                ],
+                "dim": 3,
+                "p": 1,
+                "u": [0.0, 0.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "status": 0,
+              "ve": 1,
+              "vs": 0
+            },
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [0.0, 0.0, 0.016883547882730377, 1.0],
+                  [-0.1, 0.0, 0.016883547882730377, 1.0]
+                ],
+                "dim": 3,
+                "p": 1,
+                "u": [0.0, 0.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 1,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": 1,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "status": 0,
+              "ve": 2,
+              "vs": 0
+            },
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [0.0, 0.016883547882730377, 0.0, 1.0],
+                  [0.1, 0.016883547882730377, 0.0, 1.0]
+                ],
+                "dim": 3,
+                "p": 1,
+                "u": [0.0, 0.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "status": 0,
+              "ve": 1,
+              "vs": 3
+            },
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [0.0, -0.016883547882730377, 0.0, 1.0],
+                  [-0.1, -0.016883547882730377, 0.0, 1.0]
+                ],
+                "dim": 3,
+                "p": 1,
+                "u": [0.0, 0.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 1,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": 1,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "status": 0,
+              "ve": 2,
+              "vs": 4
+            },
+            {
+              "corner": -1,
+              "etype": 5,
+              "eus": [
+                {
+                  "geom": -1,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": -1,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "status": 0,
+              "ve": 3,
+              "vs": 0
+            },
+            {
+              "corner": -1,
+              "etype": 4,
+              "eus": [
+                {
+                  "geom": -1,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": -1,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "status": 0,
+              "ve": 4,
+              "vs": 3
+            }
+          ],
+          "faces": [
+            {
+              "net": [
+                [
+                  [0.0, 0.0, 0.0, 1.0],
+                  [0.0, 0.0, 0.1, 1.0]
+                ],
+                [
+                  [0.1, 0.0, 0.0, 1.0],
+                  [0.1, 0.0, 0.1, 1.0]
+                ]
+              ],
+              "p": 1,
+              "q": 1,
+              "u": [0.0, 0.0, 1.0, 1.0],
+              "v": [0.0, 0.0, 1.0, 1.0]
+            },
+            {
+              "net": [
+                [
+                  [0.0, 0.0, 0.0, 1.0],
+                  [0.0, 0.0, 0.1, 1.0]
+                ],
+                [
+                  [0.0, 0.1, 0.0, 1.0],
+                  [0.0, 0.1, 0.1, 1.0]
+                ]
+              ],
+              "p": 1,
+              "q": 1,
+              "u": [0.0, 0.0, 1.0, 1.0],
+              "v": [0.0, 0.0, 1.0, 1.0]
+            }
+          ],
+          "fillet_brep": [],
+          "geoms": [
+            {
+              "gtype": 0,
+              "other1": [],
+              "other2": [],
+              "rails": [0, 2],
+              "sides": [],
+              "status": 0
+            },
+            {
+              "gtype": 0,
+              "other1": [],
+              "other2": [],
+              "rails": [1, 3],
+              "sides": [],
+              "status": 0
+            }
+          ],
+          "targets": [
+            {
+              "cpts": [
+                [0.0, 0.0, 0.0, 1.0],
+                [0.0, 0.0, 0.1, 1.0]
+              ],
+              "dim": 3,
+              "p": 1,
+              "u": [0.0, 0.0, 1.0, 1.0]
+            },
+            {
+              "cpts": [
+                [0.0, 0.0, 0.0, 1.0],
+                [0.1, 0.0, 0.0, 1.0]
+              ],
+              "dim": 3,
+              "p": 1,
+              "u": [0.0, 0.0, 1.0, 1.0]
+            },
+            {
+              "cpts": [
+                [0.0, 0.0, 0.0, 1.0],
+                [-0.09740132090118465, 0.1, 0.04547109869053953, 1.0]
+              ],
+              "dim": 3,
+              "p": 1,
+              "u": [0.0, 0.0, 1.0, 1.0]
+            },
+            {
+              "cpts": [
+                [0.0, 0.0, 0.0, 1.0],
+                [0.0, -0.1, 0.0, 1.0]
+              ],
+              "dim": 3,
+              "p": 1,
+              "u": [0.0, 0.0, 1.0, 1.0]
+            }
+          ],
+          "vertices": [
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 109,
+              "pc_face": -1,
+              "pc_index": 0,
+              "pc_kind": 2,
+              "pc_sub": 0,
+              "point": [0.0, 0.0, 0.016883547882730377],
+              "status": 0,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 9
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.1, 0.0, 0.016883547882730377],
+              "status": 0,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 7
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [-0.1, 0.0, 0.016883547882730377],
+              "status": 0,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 7
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.0, 0.016883547882730377, 0.0],
+              "status": 0,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 9
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.0, -0.016883547882730377, 0.0],
+              "status": 0,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 1
+            }
+          ]
+        },
+        "op": "corner",
+        "split": [0, 1]
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_59",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "upstream would dereference null",
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#391 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_60",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#392 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_61",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#393 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_62",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#394 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 363
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_63",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#395 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "corner": {
+          "adjusted": false,
+          "all": [
+            [0, 0],
+            [1, 0],
+            [2, 0],
+            [3, 0]
+          ],
+          "bevel": false,
+          "blending": true,
+          "chamfer": false,
+          "degenerate": false,
+          "edges": [4, 5, 2],
+          "ext": true,
+          "kind": 7,
+          "orig_faces": [],
+          "setback": 0.0,
+          "solver": [
+            [1, 0],
+            [2, 1]
+          ],
+          "tan": 0.06805415468450321,
+          "tol": 0.0,
+          "tsects": [
+            {
+              "e": 0,
+              "s0": 1,
+              "s1": 0,
+              "t": 0.0,
+              "uv0": [0.25238125457659377, 0.45660795829949063],
+              "uv1": [0.7286875273421316, 0.5550438416752446],
+              "which": 0
+            },
+            {
+              "e": 1,
+              "s0": 0,
+              "s1": 0,
+              "t": 0.3457908912684424,
+              "uv0": [0.25238125463479355, 0.45660795829949063],
+              "uv1": [0.8018713347283843, 0.5440509517256444],
+              "which": 0
+            }
+          ],
+          "v_edge": -1,
+          "v_sub": 0,
+          "verts": [0, 3, 4]
+        },
+        "method": "adjust_concave",
+        "model": {
+          "edges": [
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [0.0, 0.0, 0.00018797489604405827, 1.0],
+                  [0.001, 0.0, 0.00018797489604405827, 1.0]
+                ],
+                "dim": 3,
+                "p": 1,
+                "u": [0.0, 0.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "status": 0,
+              "ve": 1,
+              "vs": 0
+            },
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [0.0, 0.0, 0.00018797489604405827, 1.0],
+                  [-0.001, 0.0, 0.00018797489604405827, 1.0]
+                ],
+                "dim": 3,
+                "p": 1,
+                "u": [0.0, 0.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 1,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": 1,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "status": 0,
+              "ve": 2,
+              "vs": 0
+            },
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [0.0, 0.00018797489604405827, 0.0, 1.0],
+                  [0.001, 0.00018797489604405827, 0.0, 1.0]
+                ],
+                "dim": 3,
+                "p": 1,
+                "u": [0.0, 0.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": 0,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "status": 0,
+              "ve": 1,
+              "vs": 3
+            },
+            {
+              "corner": -1,
+              "curve": {
+                "cpts": [
+                  [0.0, -0.00018797489604405827, 0.0, 1.0],
+                  [-0.001, -0.00018797489604405827, 0.0, 1.0]
+                ],
+                "dim": 3,
+                "p": 1,
+                "u": [0.0, 0.0, 1.0, 1.0]
+              },
+              "etype": 9,
+              "eus": [
+                {
+                  "geom": 1,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": 1,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "status": 0,
+              "ve": 2,
+              "vs": 4
+            },
+            {
+              "corner": -1,
+              "etype": 4,
+              "eus": [
+                {
+                  "geom": -1,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": -1,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "status": 0,
+              "ve": 3,
+              "vs": 0
+            },
+            {
+              "corner": -1,
+              "etype": 4,
+              "eus": [
+                {
+                  "geom": -1,
+                  "vu_uv": [0.0, 0.0]
+                },
+                {
+                  "geom": -1,
+                  "vu_uv": [0.0, 0.0]
+                }
+              ],
+              "fbe": [-1, -1],
+              "status": 0,
+              "ve": 4,
+              "vs": 3
+            }
+          ],
+          "faces": [
+            {
+              "net": [
+                [
+                  [0.0, 0.0, 0.0, 1.0],
+                  [0.0, 0.0, 0.001, 1.0]
+                ],
+                [
+                  [0.001, 0.0, 0.0, 1.0],
+                  [0.001, 0.0, 0.001, 1.0]
+                ]
+              ],
+              "p": 1,
+              "q": 1,
+              "u": [0.0, 0.0, 1.0, 1.0],
+              "v": [0.0, 0.0, 1.0, 1.0]
+            },
+            {
+              "net": [
+                [
+                  [0.0, 0.0, 0.0, 1.0],
+                  [0.0, 0.0, 0.001, 1.0]
+                ],
+                [
+                  [0.0, 0.001, 0.0, 1.0],
+                  [0.0, 0.001, 0.001, 1.0]
+                ]
+              ],
+              "p": 1,
+              "q": 1,
+              "u": [0.0, 0.0, 1.0, 1.0],
+              "v": [0.0, 0.0, 1.0, 1.0]
+            }
+          ],
+          "fillet_brep": [],
+          "geoms": [
+            {
+              "gtype": 0,
+              "other1": [],
+              "other2": [],
+              "rails": [0, 2],
+              "sides": [],
+              "status": 0
+            },
+            {
+              "gtype": 0,
+              "other1": [],
+              "other2": [],
+              "rails": [1, 3],
+              "sides": [],
+              "status": 0
+            }
+          ],
+          "targets": [
+            {
+              "cpts": [
+                [0.0, 0.0, 0.0, 1.0],
+                [0.0, 0.0, 0.001, 1.0]
+              ],
+              "dim": 3,
+              "p": 1,
+              "u": [0.0, 0.0, 1.0, 1.0]
+            },
+            {
+              "cpts": [
+                [0.0, 0.0, 0.0, 1.0],
+                [0.001, 0.0, 0.0, 1.0]
+              ],
+              "dim": 3,
+              "p": 1,
+              "u": [0.0, 0.0, 1.0, 1.0]
+            },
+            {
+              "cpts": [
+                [0.0, 0.0, 0.0, 1.0],
+                [-0.0004079839164069088, 0.001, 0.00023847628170557767, 1.0]
+              ],
+              "dim": 3,
+              "p": 1,
+              "u": [0.0, 0.0, 1.0, 1.0]
+            },
+            {
+              "cpts": [
+                [0.0, 0.0, 0.0, 1.0],
+                [0.0, -0.001, 0.0, 1.0]
+              ],
+              "dim": 3,
+              "p": 1,
+              "u": [0.0, 0.0, 1.0, 1.0]
+            }
+          ],
+          "vertices": [
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 109,
+              "pc_face": -1,
+              "pc_index": 0,
+              "pc_kind": 2,
+              "pc_sub": 0,
+              "point": [0.0, 0.0, 0.00018797489604405827],
+              "status": 0,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 9
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.001, 0.0, 0.00018797489604405827],
+              "status": 0,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 7
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [-0.001, 0.0, 0.00018797489604405827],
+              "status": 0,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 7
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.0, 0.00018797489604405827, 0.0],
+              "status": 0,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 9
+            },
+            {
+              "corner": -1,
+              "mates": [-1, -1],
+              "pc_class": 100,
+              "pc_face": -1,
+              "pc_index": -1,
+              "pc_kind": 0,
+              "pc_sub": 0,
+              "point": [0.0, -0.00018797489604405827, 0.0],
+              "status": 0,
+              "t_param": 0.0,
+              "uv": [0.0, 0.0],
+              "vtype": 1
+            }
+          ]
+        },
+        "op": "corner",
+        "split": [0, 1]
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_64",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "upstream would dereference null",
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#396 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::MakeFilletEdge",
+        "unit": "blend.fillet_geom_p5"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_65",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#397 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_66",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#398 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 364
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::MakeFilletEdge",
+        "unit": "blend.fillet_geom_p5"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_67",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#399 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_68",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#400 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::MakeFilletEdge",
+        "unit": "blend.fillet_geom_p5"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_69",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#401 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletConvexNxNCorner::AdjustTopology",
+        "unit": "blend.fillet_corner_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_70",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#402 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_71",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#403 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::ShouldSwapFaces",
+        "unit": "blend.fillet_geom_p6"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_72",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#404 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::MakeFilletEdge",
+        "unit": "blend.fillet_geom_p5"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_73",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#405 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_74",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#406 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 347
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_75",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#407 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_76",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#408 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 363
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_77",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#409 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 364
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletEdge::ShouldSwapFaces",
+        "unit": "blend.fillet_geom_p6"
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_update_split_face_78",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#410 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_adjust_concave_79",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#411 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
+      "values_compared": 363
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 142,
+  "cases_deferred": 183,
   "cases_failed": 0,
-  "cases_passed": 190,
-  "cases_total": 332,
+  "cases_passed": 226,
+  "cases_rejected": 3,
+  "cases_total": 412,
   "deferred_by_unit": {
+    "blend.fillet_corner_p2": 1,
+    "blend.fillet_executive_p1": 1,
+    "blend.fillet_geom_p5": 17,
+    "blend.fillet_geom_p6": 4,
     "harness:analytic-geometry-export": 7,
-    "intersect.surface_drop_lib_p3": 1,
+    "intersect.surface_drop_lib_p3": 2,
     "surface.surf_of_extrusion_p2": 94,
-    "surface.surface_p2": 40
+    "surface.surface_p2": 38,
+    "topology.face_p4": 19
   },
   "max_rel_err": 0.0,
   "pass": true,
