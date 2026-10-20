@@ -11,8 +11,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0001",
@@ -23,7 +23,7 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
@@ -34,24 +34,24 @@
       "values_compared": 0
     },
     {
+      "max_rel_err": 0.0,
+      "name": "gen0003",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=10924743301330177832",
+      "values_compared": 1
+    },
+    {
       "deferred": {
         "symbol": "SurfaceKind::SurfOfExtrusion",
         "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0003",
+      "name": "gen0004",
       "outcome": "deferred",
       "pass": false,
-      "source": "generated:seed=10924743301330177832",
-      "values_compared": 0
-    },
-    {
-      "max_rel_err": 0.0,
-      "name": "gen0004",
-      "outcome": "pass",
-      "pass": true,
       "source": "generated:seed=10924743301330177833",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -62,20 +62,16 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0006",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=10924743301330177835",
-      "values_compared": 1
-    },
-    {
-      "max_rel_err": 0.0,
-      "name": "gen0007",
-      "outcome": "pass",
-      "pass": true,
-      "source": "generated:seed=10924743301330177836",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -83,11 +79,19 @@
         "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0008",
+      "name": "gen0007",
       "outcome": "deferred",
       "pass": false,
-      "source": "generated:seed=10924743301330177837",
+      "source": "generated:seed=10924743301330177836",
       "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0008",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=10924743301330177837",
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -95,23 +99,31 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=10924743301330177838",
-      "values_compared": 3
+      "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0010",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=10924743301330177839",
-      "values_compared": 1
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0011",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=10924743301330177840",
-      "values_compared": 1
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -2124,17 +2136,1105 @@
       "pass": true,
       "source": "fixture:built-in: blend.fillet_corner_p2 cases#231 (upstream TestFiles/pt_TestFiles/Fillet)",
       "values_compared": 1
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v0_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#232 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v0_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#233 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v1_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#234 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v1_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#235 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v2_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#236 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v2_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#237 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v3_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#238 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v3_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#239 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v4_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#240 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v4_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#241 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v5_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#242 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v5_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#243 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v6_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#244 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v6_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#245 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v7_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#246 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v7_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#247 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v8_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#248 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v8_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#249 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v9_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#250 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v9_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#251 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v10_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#252 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v10_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#253 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v11_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#254 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_filleted_box_v11_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#255 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v0_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#256 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v0_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#257 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v1_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#258 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v1_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#259 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v2_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#260 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v2_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#261 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v3_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#262 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v3_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#263 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v4_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#264 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v4_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#265 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v5_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#266 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v5_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#267 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v6_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#268 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v6_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#269 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v7_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#270 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v7_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#271 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v8_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#272 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v8_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#273 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v9_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#274 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v9_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#275 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v10_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#276 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v10_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#277 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v11_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#278 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_nurb_1_v11_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#279 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v0_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#280 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v0_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#281 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v1_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#282 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v1_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#283 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v2_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#284 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v2_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#285 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v3_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#286 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v3_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#287 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v4_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#288 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v4_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#289 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v5_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#290 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v5_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#291 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v6_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#292 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v6_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#293 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v7_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#294 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v7_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#295 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v8_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#296 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v8_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#297 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v9_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#298 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v9_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#299 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v10_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#300 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v10_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#301 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v11_walk",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#302 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "find_concave_nurb_plane_w_notch1_v11_ring",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#303 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v0_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#304 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v0_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#305 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v1_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#306 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v1_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#307 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v2_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#308 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v2_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#309 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v3_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#310 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v3_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#311 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v4_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#312 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v4_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#313 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v5_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#314 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v5_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#315 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v6_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#316 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v6_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#317 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v7_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#318 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v7_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#319 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v8_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#320 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v8_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#321 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v9_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#322 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v9_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#323 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v10_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#324 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v10_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#325 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v11_walk",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#326 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_brepForFillet1_v11_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#327 (upstream TestFiles/pt_TestFiles/Fillet)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_network_v0_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#328 (upstream tests/prog_test (my_test_topology))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_network_v1_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#329 (upstream tests/prog_test (my_test_topology))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_network_v2_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#330 (upstream tests/prog_test (my_test_topology))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "find_concave_network_v3_ring",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#331 (upstream tests/prog_test (my_test_topology))",
+      "values_compared": 1
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 67,
+  "cases_deferred": 142,
   "cases_failed": 0,
-  "cases_passed": 165,
-  "cases_total": 232,
+  "cases_passed": 190,
+  "cases_total": 332,
   "deferred_by_unit": {
     "intersect.surface_drop_lib_p3": 1,
-    "surface.surf_of_extrusion_p2": 45,
-    "surface.surface_p2": 14,
+    "surface.surf_of_extrusion_p2": 94,
+    "surface.surface_p2": 40,
     "topology.brep_p10": 7
   },
   "max_rel_err": 0.0,

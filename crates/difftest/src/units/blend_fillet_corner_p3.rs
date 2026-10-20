@@ -22,8 +22,8 @@
 //!   corner's members and the model's whole export.
 //!
 //! Deferred on the Rust side (unported callees, `Output::deferred`): `Create` reaching
-//! `sm_TestG1Continuity` / `CheckNx1Degeneracy` (`blend.fillet_corner_p1`) or
-//! `sm_FindConcaveEdgeuses` (`blend.fillet_corner_p2`); every patch builder past its state
+//! `sm_TestG1Continuity` / `CheckNx1Degeneracy` (`blend.fillet_corner_p1`); every patch
+//! builder past its state
 //! checks (`MakeAnalyticCornerSurface`, `CreateEndPatch`, `SmSurface::DropCurve`); the
 //! Nx2 adjustments where they change the topology (`MakeFilletEdge`,
 //! `GetRailIndexOfVertexuse`), the big-radius test of blending corners and the `NxN` /
