@@ -48,8 +48,8 @@
 //!   (`blend.fillet_geom_p6`), `ReCalcFilletGeom` (`blend.fillet_geom_p3`),
 //!   `SplitFilletGeomAtSideEdge` (ported in `blend.fillet_solver_p1` on its own fillet
 //!   geometry handles; its first call `GetRailIndexOfVertexuse` is
-//!   `blend.fillet_geom_p6`, so the stub carries that tag) and `SmSurface::DropCurve`
-//!   (`intersect.surface_drop_lib_p3`) return [`SolidError::Unported`] at the call site.
+//!   `blend.fillet_geom_p6`, so the stub carries that tag) return
+//!   [`SolidError::Unported`] at the call site.
 //! - **Intersection-point user pointers.** `SmTsectPnt::m_apUserPointer[0..2]` (the two
 //!   surfaces of a fillet vertex use's intersection point, read by
 //!   `AdjustTangentCorner`) are not members of the Rust [`TsectPnt`]: the caller passes
@@ -88,7 +88,8 @@ use crate::kernel::Kernel;
 use crate::math::{rad_to_deg, Point3, Vec3, BIG_DOUBLE};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_surface::BSplineSurface;
-use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::nurbs::b_spline_surface_n_lib::p2::{BlendNeighbour, OrientType};
+use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::{Surface, SurfaceKind};
 use crate::topology::edgeuse::{p1 as eu1, p2 as eu2, p3 as eu3};
 use crate::topology::{edge, Brep, EdgeId, EdgeuseId, FaceId, VertexId, VertexuseId};
@@ -834,14 +835,19 @@ impl FilletCorner {
                         .ok_or_else(|| invalid(OP_PATCH, "boundary curve is not a B-spline"))?,
                 );
             }
-            let mut surfs: Vec<Option<&BSplineSurface>> = Vec::with_capacity(ordered_surfs.len());
+            let mut surfs: Vec<Option<BlendNeighbour<'_>>> =
+                Vec::with_capacity(ordered_surfs.len());
             for s in &ordered_surfs {
                 surfs.push(match s {
-                    Some(s) => Some(bspline_surface(s)?),
+                    Some(surface) => Some(BlendNeighbour {
+                        surface,
+                        b_spline: bspline_surface(surface)?,
+                    }),
                     None => None,
                 });
             }
             let blends = BSplineSurface::create_corner_blend(
+                env.k,
                 &curves_3d,
                 &orients,
                 &ordered_uv,
@@ -971,13 +977,54 @@ impl FilletCorner {
             .fillet_edge(fe_on_extended_edge)?
             .original_face()
             .ok_or_else(|| SolidError::null_pointer(OP_3X2))?;
-        let _surface = env.target.face(orig_face)?.surface.as_ref();
-        let _ = (&curve1, self.approx_tol_3d);
-        // UNPORTED(intersect.surface_drop_lib_p3): SmSurface::DropCurve
-        let uv_curves: Vec<BSplineCurve> = Err(unported(
-            "SmSurface::DropCurve",
-            "intersect.surface_drop_lib_p3",
-        ))?;
+        let surface = env
+            .target
+            .face(orig_face)?
+            .surface
+            .as_ref()
+            .ok_or_else(|| SolidError::null_pointer(OP_3X2))?;
+        // `pSurface->DropCurve(m_crContext, pSurface->GetNaturalUVDomain(), *pCurve1,
+        // pCurve1->GetNaturalInterval(), m_dThisApproxTol3d, ..)` (virtual with the
+        // defaults `bKeepAllDropCurves = TRUE`, no fail record): the `SmPlane`
+        // override for a plane (with the surface's owner), the base body otherwise.
+        let domain = surface.natural_uv_domain();
+        let interval = curve1.natural_interval();
+        let drop_curve1 = Curve::from(curve1.clone());
+        let uv_curves: Vec<BSplineCurve> = match surface.kind() {
+            SurfaceKind::Plane(p) => p
+                .drop_curve(
+                    env.k,
+                    &domain,
+                    &drop_curve1,
+                    &interval,
+                    self.approx_tol_3d,
+                    true,
+                    true,
+                    surface.owner(),
+                )?
+                .uv_curves
+                .into_iter()
+                .map(|c| match c.kind() {
+                    // the plane drops to `SmBSplineCurve`s (a UV `SmLine` or B-spline)
+                    CurveKind::BSpline(b) => Ok(b.clone()),
+                    CurveKind::Line(l) => Ok(l.base().clone()),
+                    _ => Err(SolidError::sm_err(OP_3X2)),
+                })
+                .collect::<Result<Vec<_>>>()?,
+            _ => {
+                surface
+                    .drop_curve_base::<NoObject>(
+                        env.k,
+                        &domain,
+                        &drop_curve1,
+                        &interval,
+                        self.approx_tol_3d,
+                        true,
+                        None,
+                    )?
+                    .uv_curves
+            }
+        };
         if uv_curves.len() != 1 {
             return Err(SolidError::sm_err(OP_3X2)); // Unknown problem
         }
