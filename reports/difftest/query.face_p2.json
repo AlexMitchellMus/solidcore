@@ -4251,8 +4251,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "curve_ellips_ts2_2d",
@@ -9862,8 +9862,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "gen0174",
@@ -10925,7 +10925,7 @@
   "deferred_by_unit": {
     "curve.crv_on_surf": 5,
     "intersect.surface_drop_lib_p3": 17,
-    "topology.face_p2": 2,
+    "topology.edge": 2,
     "topology.face_p4": 10
   },
   "max_rel_err": 0.0,
