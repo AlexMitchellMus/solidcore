@@ -1107,13 +1107,20 @@ impl OffsetExecutive {
             }
         }
         if !delete_faces.is_empty() {
-            // Continuation cpp:3740–3751: delete them through a topology intersector
-            // on the offset B-rep (EFF_ZERO tolerances), then drop them from the new
-            // faces before relating and mapping the rest.
-            // UNPORTED(boolean.merge_p4): SmTopologyIntersector::DeleteFaces
-            // (no topology::Brep IntersectorBrep adapter on main yet)
+            // Continuation cpp:3749–3759:
+            //   SmTopologyIntersector sTI(m_crContext, m_pOffsetBrep, m_pOffsetBrep,
+            //                             SM_EFF_ZERO, SM_EFF_ZERO);
+            //   sTI.DeleteFaces(sDelFaces);          // pOptKeepAsWires = NULL, status ignored
+            //   for each deleted face: sNewFaces.FindElement / RemoveAt
+            // then the survivors are related and mapped below. `DeleteFaces` itself is
+            // ported (`boolean::topology_intersector::p2::TopologyIntersector::
+            // delete_faces`); what is missing is an `IntersectorBrep` implementation
+            // over `topology::Brep` to run it on the offset B-rep. #243's
+            // `KernelManifoldIntersector` adapter provides one (COORD.md).
+            // UNPORTED(boolean.merge_p4): IntersectorBrep over topology::Brep
+            // (SmTopologyIntersector::DeleteFaces)
             return Err(SolidError::unported(
-                "SmTopologyIntersector::DeleteFaces",
+                "IntersectorBrep over topology::Brep (SmTopologyIntersector::DeleteFaces)",
                 "boolean.merge_p4",
             ));
         }

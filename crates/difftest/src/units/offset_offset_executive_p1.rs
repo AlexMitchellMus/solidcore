@@ -80,6 +80,7 @@ enum Inputs {
     Extend(Extension),
     Probe { branch: Probe, approx_tol: f64 },
     FaceTail(FaceTailIn),
+    MapTwin(MapTwinIn),
 }
 
 /// `BuildOffsetOfFaceuse` of a unit-square plane face onto the plane
@@ -97,6 +98,9 @@ struct FaceTailIn {
     mate: bool,
     #[serde(default)]
     self_intersection: Option<[f64; 4]>,
+    /// The self-intersection's second UV curve when it differs from the first.
+    #[serde(default)]
+    second_uv: Option<[f64; 4]>,
 }
 
 impl FaceTailIn {
@@ -110,6 +114,35 @@ impl FaceTailIn {
             merge_results: self.merge_results,
             mate: self.mate,
             self_intersection: self.self_intersection,
+            second_uv: self.second_uv,
+        }
+    }
+}
+
+/// `MapEdgeuses` alone, between the rectangle face `original` at `z = 0` and the
+/// rectangle face `offset` at `z = offset_distance` (see [`ffi::MapTwin`]). The
+/// Rust twin faces are hand-built with the same UV trim lines the native
+/// `MakeFaceWithCurves` faces carry, so no UV evaluation needs a surface drop.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MapTwinIn {
+    offset_distance: f64,
+    original: [f64; 4],
+    offset: [f64; 4],
+    #[serde(default)]
+    flip: bool,
+    #[serde(default)]
+    mate: bool,
+}
+
+impl MapTwinIn {
+    fn ffi(&self) -> ffi::MapTwin {
+        ffi::MapTwin {
+            offset_distance: self.offset_distance,
+            original: self.original,
+            offset: self.offset,
+            flip: self.flip,
+            mate: self.mate,
         }
     }
 }
@@ -434,6 +467,120 @@ impl Probe {
 fn bad(message: impl Into<String>) -> HarnessError {
     HarnessError::new(message)
 }
+
+// The Rust side refuses exactly what the FFI packer and the shim refuse, in the
+// same order and with the same messages, so a fuzzed input the native guard turns
+// away never reaches a port that would loop, allocate or hang on it (the C++ side
+// then reports a harness error, not a fixture rejection, and Rust still runs).
+fn finite(values: &[f64]) -> HResult<()> {
+    if values.iter().all(|v| v.is_finite()) {
+        Ok(())
+    } else {
+        Err(bad("non-finite fixture value"))
+    }
+}
+fn count(n: usize) -> HResult<()> {
+    if n <= ffi::MAX_ITEMS {
+        Ok(())
+    } else {
+        Err(bad("fixture count exceeds MAX_ITEMS"))
+    }
+}
+/// Mirrors the FFI `config_input` guard.
+fn config_guard(input: &Config) -> HResult<()> {
+    finite(&[
+        input.offset_distance,
+        input.approx_tol,
+        input.tangency_tol_radians,
+    ])?;
+    if input.operation > 4 {
+        return Err(bad("invalid offset operation"));
+    }
+    for n in [
+        input.original_edges,
+        input.offset_edges,
+        input.face_count,
+        input.shell_face_sets.len(),
+        input.relations.len(),
+    ] {
+        count(n)?;
+    }
+    for selectors in &input.shell_face_sets {
+        count(selectors.len())?;
+        if selectors.iter().any(|&id| id >= input.face_count) {
+            return Err(bad("shell face selector out of range"));
+        }
+    }
+    for &[a, b] in &input.relations {
+        if a >= input.original_edges * 2 || b >= input.offset_edges * 2 {
+            return Err(bad("relation EU selector out of range"));
+        }
+    }
+    Ok(())
+}
+/// Mirrors the FFI `sync_input` guard (its per-edge geometry checks are the
+/// fixture constructors' own).
+fn sync_guard(input: &Synchronize) -> HResult<()> {
+    count(input.first.len())?;
+    count(input.second.len())?;
+    if input
+        .first
+        .len()
+        .checked_add(input.second.len())
+        .is_none_or(|n| n > ffi::MAX_SYNC_EDGES)
+    {
+        return Err(bad("synchronization exceeds MAX_SYNC_EDGES"));
+    }
+    Ok(())
+}
+/// Mirrors the FFI `extension_input` guard and the shim's refusal of a negative
+/// extension distance (HANG-16: `CreateExtendedSurface`'s doubling loop never ends
+/// for one, so the faithful port would hang too).
+fn extension_guard(input: &Extension) -> HResult<()> {
+    finite(&[
+        input.offset_distance,
+        input.offset_distance * 5.0,
+        input.approx_tol,
+    ])?;
+    if input.offset_distance < 0.0 {
+        return Err(bad("extension offset distance must be nonnegative"));
+    }
+    for n in [
+        input.surfaces.len(),
+        input.actions.len(),
+        input.samples.len(),
+    ] {
+        count(n)?;
+    }
+    Ok(())
+}
+/// Mirrors the FFI `face_tail_input` guard.
+fn face_tail_guard(input: &FaceTailIn) -> HResult<()> {
+    let [u0, v0, u1, v1] = input.domain;
+    finite(&[input.offset_distance, input.approx_tol])?;
+    finite(&input.domain)?;
+    if !(u0 < u1 && v0 < v1) {
+        return Err(bad("offset domain must be strictly increasing"));
+    }
+    if input.self_intersection.is_none() && input.second_uv.is_some() {
+        return Err(bad("second UV curve without a self-intersection"));
+    }
+    for segment in [input.self_intersection, input.second_uv].into_iter().flatten() {
+        finite(&segment)?;
+    }
+    Ok(())
+}
+/// Mirrors the FFI `map_twin_input` guard.
+fn map_twin_guard(input: &MapTwinIn) -> HResult<()> {
+    finite(&[input.offset_distance])?;
+    for [x0, y0, x1, y1] in [input.original, input.offset] {
+        finite(&[x0, y0, x1, y1])?;
+        if !(x0 < x1 && y0 < y1) {
+            return Err(bad("rectangle must be strictly increasing"));
+        }
+    }
+    Ok(())
+}
 fn setup(error: impl std::fmt::Display) -> HarnessError {
     bad(format!("Rust fixture construction: {error}"))
 }
@@ -639,18 +786,7 @@ fn decode(input: &Inputs, raw: &[f64]) -> HResult<Output> {
             }
             let counts = [snapshot.count()?, snapshot.count()?, snapshot.count()?];
             let points = snapshot.take(3 * counts[2])?.to_vec();
-            let uses = snapshot.count()?;
-            let mut mapped = Vec::new();
-            let mut ends = Vec::new();
-            for _ in 0..uses {
-                let flag = snapshot.integer()?;
-                match flag {
-                    -1 => {}
-                    1 => ends.extend_from_slice(snapshot.take(6)?),
-                    _ => return Err(bad("invalid mapped-use flag in native snapshot")),
-                }
-                mapped.push(flag);
-            }
+            let uses = mapped_uses(&mut snapshot)?;
             output = face_tail_output(
                 status,
                 FaceTailRecord {
@@ -658,14 +794,56 @@ fn decode(input: &Inputs, raw: &[f64]) -> HResult<Output> {
                     edge_counts,
                     counts: counts.map(|n| n as i64),
                     points,
-                    mapped,
-                    ends,
+                    uses,
                 },
             );
+        }
+        Inputs::MapTwin(_) => {
+            let status = snapshot.integer()?;
+            let uses = mapped_uses(&mut snapshot)?;
+            output = map_twin_output(status, uses);
         }
     }
     snapshot.done()?;
     normalize_sync_ties(output)
+}
+
+/// The per-original-use records of `face_tail` and `map_twin`, sorted by the use's
+/// start point: that point, then `-1`, or `1` and the offset use's two end points.
+#[derive(Debug, Default)]
+struct MappedUses {
+    starts: Vec<f64>,
+    mapped: Vec<i64>,
+    ends: Vec<f64>,
+}
+
+impl MappedUses {
+    fn output(self, output: Output) -> Output {
+        output
+            .values("mapped.starts", self.starts)
+            .ints("mapped", self.mapped)
+            .values("mapped.ends", self.ends)
+    }
+}
+
+fn mapped_uses(snapshot: &mut Snapshot<'_>) -> HResult<MappedUses> {
+    let uses = snapshot.count()?;
+    let mut records = MappedUses::default();
+    for _ in 0..uses {
+        records.starts.extend_from_slice(snapshot.take(3)?);
+        let flag = snapshot.integer()?;
+        match flag {
+            -1 => {}
+            1 => records.ends.extend_from_slice(snapshot.take(6)?),
+            _ => return Err(bad("invalid mapped-use flag in native snapshot")),
+        }
+        records.mapped.push(flag);
+    }
+    Ok(records)
+}
+
+fn map_twin_output(status: i64, uses: MappedUses) -> Output {
+    uses.output(Output::new().int("status", status))
 }
 
 // GetSeconds is unordered. Normalize only its unresolved exact-minimum ties in
@@ -975,7 +1153,20 @@ fn face_with_edges(
     Ok((face, upward))
 }
 fn plane_face(brep: &mut Brep, z: f64) -> HResult<(FaceId, FaceuseId)> {
-    let corners = [[0.0, 0.0, z], [1.0, 0.0, z], [1.0, 1.0, z], [0.0, 1.0, z]];
+    rect_face(brep, [0.0, 0.0, 1.0, 1.0], z, false, false)
+}
+/// A rectangle plane face at height `z` (the shim's `curve_face` geometry: plane
+/// axes `X, Y`, or `Y, X` with `flip`, domain = the rectangle's UV extent). With
+/// `uv_trims`, each edge's upward use gets the UV line of its 3D line, as the
+/// native `MakeFaceWithCurves` face holds after `CreateUVTrimCurves`.
+fn rect_face(
+    brep: &mut Brep,
+    [x0, y0, x1, y1]: [f64; 4],
+    z: f64,
+    flip: bool,
+    uv_trims: bool,
+) -> HResult<(FaceId, FaceuseId)> {
+    let corners = [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]];
     let vertices = corners
         .iter()
         .map(|&point| {
@@ -1001,7 +1192,39 @@ fn plane_face(brep: &mut Brep, z: f64) -> HResult<(FaceId, FaceuseId)> {
             Some([*at(&vertices, index)?, *at(&vertices, (index + 1) % 4)?]),
         )?);
     }
-    face_with_edges(brep, plane(z), &edges)
+    let (u_axis, v_axis, domain) = if flip {
+        (Vec3::Y, Vec3::X, Extent2d::from_bounds(y0, x0, y1, x1))
+    } else {
+        (Vec3::X, Vec3::Y, Extent2d::from_bounds(x0, y0, x1, y1))
+    };
+    let surface = Surface::from(Plane::new(
+        Vec3::new(0.0, 0.0, z),
+        u_axis,
+        v_axis,
+        Vec2::new(1.0, 1.0),
+        &domain,
+    ));
+    let made = face_with_edges(brep, surface, &edges)?;
+    if uv_trims {
+        let uv = |[x, y, _]: [f64; 3]| {
+            if flip {
+                Vec3::new(y, x, 0.0)
+            } else {
+                Vec3::new(x, y, 0.0)
+            }
+        };
+        for (index, &edge) in edges.iter().enumerate() {
+            let trim = BSplineCurve::create_line_segment(
+                2,
+                uv(*at(&corners, index)?),
+                uv(*at(&corners, (index + 1) % 4)?),
+            )
+            .map_err(setup)?;
+            let use_id = primary(brep, edge)?;
+            brep.edgeuse_mut(use_id).map_err(setup)?.uv_trim_curve = Some(Curve::from(trim));
+        }
+    }
+    Ok(made)
 }
 fn loop_fixture(brep: &mut Brep, input: &EdgeIn) -> HResult<(EdgeId, EdgeId)> {
     let edge = add_wire(brep, input.curve.rust()?, ivl(input.interval))?;
@@ -1035,6 +1258,7 @@ fn loop_fixture(brep: &mut Brep, input: &EdgeIn) -> HResult<(EdgeId, EdgeId)> {
 }
 
 fn rust_config(input: &Config) -> HResult<Output> {
+    config_guard(input)?;
     let mut original = Brep::new();
     let mut offset = Brep::new();
     let mut face_owner = Brep::new();
@@ -1142,6 +1366,7 @@ fn measured_traversal(
 }
 
 fn rust_sync(input: &Synchronize) -> RResult<Output> {
+    sync_guard(input)?;
     let mut kernel = Kernel::default();
     let mut original = Brep::new();
     let edge_a = unit_wire(&mut original, 0.0)?;
@@ -1273,6 +1498,7 @@ fn rust_sync(input: &Synchronize) -> RResult<Output> {
 }
 
 fn rust_extend(input: &Extension) -> RResult<Output> {
+    extension_guard(input)?;
     let kernel = Kernel::default();
     let bases = input
         .surfaces
@@ -1362,23 +1588,25 @@ struct FaceTailRecord {
     edge_counts: Vec<i64>,
     counts: [i64; 3],
     points: Vec<f64>,
-    mapped: Vec<i64>,
-    ends: Vec<f64>,
+    uses: MappedUses,
 }
 
 fn face_tail_output(status: i64, record: FaceTailRecord) -> Output {
-    Output::new()
-        .int("status", status)
-        .values("related.domains", record.domains)
-        .ints("related.edge_counts", record.edge_counts)
-        .ints("offset.counts", record.counts.to_vec())
-        .values("offset.vertices", record.points)
-        .ints("mapped", record.mapped)
-        .values("mapped.ends", record.ends)
+    record.uses.output(
+        Output::new()
+            .int("status", status)
+            .values("related.domains", record.domains)
+            .ints("related.edge_counts", record.edge_counts)
+            .ints("offset.counts", record.counts.to_vec())
+            .values("offset.vertices", record.points),
+    )
 }
 
 /// Distinct notification identities for the original (`base` 1) and offset
-/// (`base` 2) B-reps, typed as the entity kinds upstream notifies.
+/// (`base` 2) B-reps, typed as the entity kinds upstream notifies. No output
+/// observes the notification records or attributes: the face `SM_NO_COPY` notify
+/// and `sm_NotifyEdgeAndVertices` from `MapEdgeuses` are not compared (with no
+/// attributes attached upstream they change nothing measurable here).
 fn entity_key(entity: EntityRef, base: u64) -> ObjectRef {
     let (type_code, index) = match entity {
         EntityRef::Face(id) => (solidcore::topology::face::p2::TYPE, id.index()),
@@ -1446,6 +1674,7 @@ fn curve_face(
 }
 
 fn rust_face_tail(input: &FaceTailIn) -> RResult<Output> {
+    face_tail_guard(input)?;
     let mut kernel = Kernel::default();
     let mut original = Brep::new_with_infinite_region().map_err(setup)?;
     let mut records = BTreeMap::new();
@@ -1497,10 +1726,15 @@ fn rust_face_tail(input: &FaceTailIn) -> RResult<Output> {
         let trim =
             BSplineCurve::create_line_segment(2, Vec3::new(u0, v0, 0.0), Vec3::new(u1, v1, 0.0))
                 .map_err(setup)?;
-        intersections
-            .uv_curves1
-            .push(Some(Curve::from(trim.clone())));
-        intersections.uv_curves2.push(Some(Curve::from(trim)));
+        let second = match input.second_uv {
+            Some([a0, b0, a1, b1]) => {
+                BSplineCurve::create_line_segment(2, Vec3::new(a0, b0, 0.0), Vec3::new(a1, b1, 0.0))
+                    .map_err(setup)?
+            }
+            None => trim.clone(),
+        };
+        intersections.uv_curves1.push(Some(Curve::from(trim)));
+        intersections.uv_curves2.push(Some(Curve::from(second)));
     }
     let [u0, v0, u1, v1] = input.domain;
     let mut surface = Some(Surface::from(Plane::new(
@@ -1547,22 +1781,7 @@ fn rust_face_tail(input: &FaceTailIn) -> RResult<Output> {
         brep_p1::edges(brep, None).map_err(setup)?.len() as i64,
         points.len() as i64,
     ];
-    let mut mapped = Vec::new();
-    let mut ends = Vec::new();
-    for original_use in faceuse_edgeuses(&original, faceuse, false, None).map_err(setup)? {
-        let Some(offset) = executive.offset_edgeuse(original_use) else {
-            mapped.push(-1);
-            continue;
-        };
-        mapped.push(1);
-        let mate = edgeuse_mate(brep, offset)
-            .map_err(setup)?
-            .ok_or_else(|| bad("offset use has no mate"))?;
-        for use_id in [offset, mate] {
-            let point = vertex_point(brep, use_id)?;
-            ends.extend_from_slice(&[point.x, point.y, point.z]);
-        }
-    }
+    let uses = mapped_offset_uses(&original, faceuse, &executive, brep)?;
     Ok(face_tail_output(
         status,
         FaceTailRecord {
@@ -1570,10 +1789,79 @@ fn rust_face_tail(input: &FaceTailIn) -> RResult<Output> {
             edge_counts,
             counts,
             points: points.concat(),
-            mapped,
-            ends,
+            uses,
         },
     ))
+}
+
+/// Per edge use of `faceuse`, sorted by the use's start point (the loop's first use
+/// is construction-dependent): `-1` when unmapped, else `1` with the end points of
+/// its offset use (its own start vertex, then its mate's).
+fn mapped_offset_uses(
+    original: &Brep,
+    faceuse: FaceuseId,
+    executive: &OffsetExecutive,
+    brep: &Brep,
+) -> HResult<MappedUses> {
+    let mut records = Vec::new();
+    for original_use in faceuse_edgeuses(original, faceuse, false, None).map_err(setup)? {
+        let start = vertex_point(original, original_use)?;
+        let mut record = vec![start.x, start.y, start.z];
+        if let Some(offset) = executive.offset_edgeuse(original_use) {
+            record.push(1.0);
+            let mate = edgeuse_mate(brep, offset)
+                .map_err(setup)?
+                .ok_or_else(|| bad("offset use has no mate"))?;
+            for use_id in [offset, mate] {
+                let point = vertex_point(brep, use_id)?;
+                record.extend_from_slice(&[point.x, point.y, point.z]);
+            }
+        } else {
+            record.push(-1.0);
+        }
+        records.push(record);
+    }
+    records.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mut uses = MappedUses::default();
+    for record in &records {
+        uses.starts.extend_from_slice(record.get(0..3).ok_or_else(|| bad("use record"))?);
+        uses.mapped.push(*at(record, 3)? as i64);
+        uses.ends.extend_from_slice(record.get(4..).ok_or_else(|| bad("use record"))?);
+    }
+    Ok(uses)
+}
+
+/// `MapEdgeuses` between two hand-built rectangle faces with explicit UV trims
+/// (the shim builds both with `MakeFaceWithCurves`). Notifications are recorded
+/// but, as in [`rust_face_tail`], not compared.
+fn rust_map_twin(input: &MapTwinIn) -> RResult<Output> {
+    map_twin_guard(input)?;
+    let kernel = Kernel::default();
+    let mut original = Brep::new();
+    let (_, upward) = rect_face(&mut original, input.original, 0.0, false, true)?;
+    let faceuse = if input.mate {
+        original
+            .faceuse(upward)
+            .map_err(setup)?
+            .mate
+            .ok_or_else(|| bad("face use has no mate"))?
+    } else {
+        upward
+    };
+    let mut offset = Brep::new();
+    let (twin, _) = rect_face(&mut offset, input.offset, input.offset_distance, input.flip, true)?;
+    let mut executive =
+        OffsetExecutive::new(OffsetOperation::SolidOffset, input.offset_distance, 1e-6);
+    executive.set_offset_brep(offset);
+    let result = probe_env(|env, offset_key_of| {
+        executive.map_edgeuses(&kernel, &mut original, faceuse, twin, env, offset_key_of)
+    });
+    let (status, _) = operation(result)?;
+    let brep = executive
+        .offset_brep()
+        .ok_or_else(|| bad("offset B-rep was released"))?;
+    let uses = mapped_offset_uses(&original, faceuse, &executive, brep)?;
+    Ok(map_twin_output(status, uses))
 }
 
 fn vertex_point(brep: &Brep, edgeuse: EdgeuseId) -> HResult<Vec3> {
@@ -1770,6 +2058,7 @@ impl UnitDiff for Runner {
             Inputs::Extend(input) => ffi::extend(&input.ffi()),
             Inputs::Probe { branch, approx_tol } => ffi::probe(branch.ffi(), *approx_tol),
             Inputs::FaceTail(input) => ffi::face_tail(&input.ffi()),
+            Inputs::MapTwin(input) => ffi::map_twin(&input.ffi()),
         }
         .map_err(|error| bad(format!("native adapter: {error}")))?;
         decode(&input, &raw)
@@ -1781,6 +2070,7 @@ impl UnitDiff for Runner {
             Inputs::Extend(input) => rust_extend(&input),
             Inputs::Probe { branch, approx_tol } => rust_probe(branch, approx_tol),
             Inputs::FaceTail(input) => rust_face_tail(&input),
+            Inputs::MapTwin(input) => rust_map_twin(&input),
         };
         match result {
             Ok(output) => normalize_sync_ties(output),
@@ -2080,7 +2370,8 @@ mod tests {
             .iter()
             .filter(|case| matches!(case.source, CaseSource::Fixture { .. }))
             .collect();
-        assert_eq!(fixtures.len(), 93 + 298);
+        // 93 original, 312 face_tail, 22 map_twin.
+        assert_eq!(fixtures.len(), 93 + 312 + 22);
         for case in fixtures {
             case.parse::<Inputs>().unwrap();
         }
@@ -2438,6 +2729,58 @@ mod tests {
         .unwrap();
         let output = Runner.run_rust(&case(&input)).unwrap();
         assert_eq!(output.deferred.unwrap().unit, "topology.brep_p2");
+    }
+
+    #[test]
+    fn map_twin_compares_map_edgeuses_without_a_surface_drop() {
+        // The hand-built twin faces carry UV trims, so MapEdgeuses runs to the end:
+        // equal rectangles map every use; a smaller offset rectangle maps none.
+        for (offset, mapped) in [([0.0, 0.0, 1.0, 1.0], 1), ([0.2, 0.2, 0.8, 0.8], -1)] {
+            let input: Inputs = serde_json::from_value(serde_json::json!({
+                "op": "map_twin",
+                "offset_distance": 0.25,
+                "original": [0.0, 0.0, 1.0, 1.0],
+                "offset": offset,
+                "flip": true,
+                "mate": true
+            }))
+            .unwrap();
+            let output = Runner.run_rust(&case(&input)).unwrap();
+            assert!(output.deferred.is_none(), "{:?}", output.deferred);
+            assert_eq!(output.ints["status"], vec![i64::from(ffi::NATIVE_SUCCESS)]);
+            assert_eq!(output.ints["mapped"], vec![mapped; 4]);
+        }
+    }
+
+    #[test]
+    fn rust_side_refuses_what_the_ffi_guard_refuses() {
+        // The eight `--fuzz 2000` failures of the face-tail PR, recorded as inputs:
+        // counts past MAX_ITEMS made rust_config allocate 2^32 wires, and a negative
+        // extension distance ran into CreateExtendedSurface's doubling loop
+        // (HANG-16). They cannot be fixtures (a harness error always fails a case),
+        // so this test keeps them: the Rust side now refuses each with the FFI's
+        // message, before any construction.
+        let recorded: Value = serde_json::from_str(include_str!(
+            "../../tests/fuzz_regressions/offset.offset_executive_p1.json"
+        ))
+        .unwrap();
+        let cases = recorded["cases"].as_array().unwrap();
+        assert_eq!(cases.len(), 8);
+        for recorded in cases {
+            let input: Inputs = serde_json::from_value(recorded["inputs"].clone()).unwrap();
+            let expected = match &input {
+                Inputs::Config(_) => "fixture count exceeds MAX_ITEMS",
+                Inputs::Extend(_) => "extension offset distance must be nonnegative",
+                other => panic!("unexpected regression op {other:?}"),
+            };
+            let error = Runner.run_rust(&case(&input)).unwrap_err().to_string();
+            assert_eq!(error, expected, "{}", recorded["name"]);
+            #[cfg(feature = "cpp")]
+            {
+                let native = Runner.run_cpp(&case(&input)).unwrap_err().to_string();
+                assert!(native.ends_with(expected), "{}: {native}", recorded["name"]);
+            }
+        }
     }
 
     #[test]

@@ -9,6 +9,7 @@
 //! | [`synchronize`] | `SyncronizeOffsetEdgeuses`, indirectly `sm_RemoveSmallStuff`, `sm_InsertBreaks`, `sm_SortEdgeuses`, `sm_ExtractGaps` |
 //! | [`extend`] | `GetCreateExtendedSurface` |
 //! | [`face_tail`] | `BuildOffsetOfFaceuse` (contained-domain branch), `MapEdgeuses`, `MakeFaceWithCurves` (fixture) |
+//! | [`map_twin`] | `MapEdgeuses` alone, between two `MakeFaceWithCurves` rectangle faces |
 //! | [`probe`] | `ReplaceImplicitOffsets`, `RemoveExcessFaces`, `BuildSideWallOfEdgeuse`, `BuildOffsetOfEdgeuses`, `FillGapEdgeuses`, `BuildOffsetOfVertex`, `BuildOffsetOfFaceuse`, `PiecewiseMerge`, `MapEdgeuses`; `sm_NotifyEdgeAndVertices` indirectly via `MapEdgeuses` |
 //!
 //! Deviations: caller-owned flat snapshots instead of pointers/out-parameters;
@@ -98,8 +99,11 @@
 //!   `uv_domain[4], edge_count` (sorted by domain), then the offset B-rep's
 //!   `face_count, edge_count, vertex_count`, its vertex points `xyz[3]` sorted
 //!   lexicographically, and `number_original_edgeuses` (the measured face use's
-//!   `GetEdgeuses`) with per use `-1` when `GetOffsetEdgeuse` is null, else
+//!   `GetEdgeuses`) with per use, sorted by the use's own `start_xyz[3]` (first in
+//!   the record), `-1` when `GetOffsetEdgeuse` is null, else
 //!   `1, start_xyz[3], mate_start_xyz[3]` of the offset use.
+//! * `map_twin`: `0, status, number_original_edgeuses` and the same per-use
+//!   records as `face_tail`.
 //!
 //! **Relation ordering:** this checkout uses pointer-hashed `unordered_set`
 //! values in `SmRelation`. We preserve actual `GetSeconds` order; equal-minimum
@@ -330,8 +334,30 @@ pub struct FaceTail {
     pub merge_results: bool,
     /// Offset the downward face use instead of the upward one.
     pub mate: bool,
-    /// One self-intersection segment `u0, v0, u1, v1` on the offset plane.
+    /// One self-intersection segment `u0, v0, u1, v1` on the offset plane: its 3D
+    /// line at `z = offset_distance` and, unless [`Self::second_uv`] is given, both
+    /// UV curves.
     pub self_intersection: Option<[f64; 4]>,
+    /// The second UV curve of that self-intersection, `u0, v0, u1, v1`, when it
+    /// differs from the first (requires [`Self::self_intersection`]).
+    pub second_uv: Option<[f64; 4]>,
+}
+
+/// A [`map_twin`] fixture: `MapEdgeuses` between the rectangle plane face
+/// `original` at `z = 0` and the rectangle face `offset` at `z = offset_distance`,
+/// both made by `MakeFaceWithCurves` from explicit 3D and UV lines.
+#[derive(Debug, Clone)]
+pub struct MapTwin {
+    /// The offset face's height (also the geometry-creation distance).
+    pub offset_distance: f64,
+    /// The original rectangle `xmin, ymin, xmax, ymax` (strictly increasing).
+    pub original: [f64; 4],
+    /// The offset rectangle `xmin, ymin, xmax, ymax` (strictly increasing).
+    pub offset: [f64; 4],
+    /// Build the offset plane with axes `Y, X` (normal down, UV = `(y, x)`).
+    pub flip: bool,
+    /// Map the downward original face use instead of the upward one.
+    pub mate: bool,
 }
 
 mod sys {
@@ -742,15 +768,47 @@ fn face_tail_input(input: &FaceTail) -> Result<Pack, FfiError> {
         input.extend_convex,
         input.merge_results,
         input.mate,
-        input.self_intersection.is_some(),
     ] {
         pack.add(&[f64::from(u8::from(flag))])?;
     }
-    if let Some(segment) = input.self_intersection {
+    let segments = match (input.self_intersection, input.second_uv) {
+        (None, None) => 0.0,
+        (None, Some(_)) => return Err(bad("second UV curve without a self-intersection")),
+        (Some(_), None) => 1.0,
+        (Some(_), Some(_)) => 2.0,
+    };
+    pack.add(&[segments])?;
+    for segment in [input.self_intersection, input.second_uv].into_iter().flatten() {
         finite(&segment)?;
         pack.add(&segment)?;
     }
     Ok(pack)
+}
+
+fn rectangle([x0, y0, x1, y1]: [f64; 4]) -> Result<(), FfiError> {
+    finite(&[x0, y0, x1, y1])?;
+    if !(x0 < x1 && y0 < y1) {
+        return Err(bad("rectangle must be strictly increasing"));
+    }
+    Ok(())
+}
+
+fn map_twin_input(input: &MapTwin) -> Result<Pack, FfiError> {
+    finite(&[input.offset_distance])?;
+    rectangle(input.original)?;
+    rectangle(input.offset)?;
+    let mut pack = Pack::default();
+    pack.add(&[input.offset_distance])?;
+    pack.add(&input.original)?;
+    pack.add(&input.offset)?;
+    pack.add(&[f64::from(u8::from(input.flip)), f64::from(u8::from(input.mate))])?;
+    Ok(pack)
+}
+
+/// Runs the native `MapEdgeuses` between two real rectangle plane faces. See the
+/// module-level protocol for the returned record.
+pub fn map_twin(input: &MapTwin) -> Result<Vec<f64>, FfiError> {
+    run(5, &map_twin_input(input)?)
 }
 
 /// Offsets a real plane face use onto a real offset plane through the native

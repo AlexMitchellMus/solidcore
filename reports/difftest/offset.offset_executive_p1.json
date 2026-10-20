@@ -3923,6 +3923,350 @@
     },
     {
       "deferred": {
+        "symbol": "SmBrep::MakeShellVertexTopology",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "merge2_inner_parallel_up",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/offset.offset_executive_p1/face_tail.json#298",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeShellVertexTopology",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "merge2_crossing_parallel_up",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/offset.offset_executive_p1/face_tail.json#299",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeShellVertexTopology",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "merge2_crossing_perpendicular_up",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/offset.offset_executive_p1/face_tail.json#300",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeShellVertexTopology",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "merge2_inner_perpendicular_up",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/offset.offset_executive_p1/face_tail.json#301",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeShellVertexTopology",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "merge2_crossing_subsegment_up",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/offset.offset_executive_p1/face_tail.json#302",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeShellVertexTopology",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "merge2_crossing_reversed_up",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/offset.offset_executive_p1/face_tail.json#303",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeShellVertexTopology",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "merge2_crossing_near_identical_up",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/offset.offset_executive_p1/face_tail.json#304",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeShellVertexTopology",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "merge2_inner_near_identical_up",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/offset.offset_executive_p1/face_tail.json#305",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeShellVertexTopology",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "merge2_inner_touching_ends_up",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/offset.offset_executive_p1/face_tail.json#306",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeShellVertexTopology",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "merge2_crossing_diagonal_up",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/offset.offset_executive_p1/face_tail.json#307",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeShellVertexTopology",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "negative_tol_lamina_delete_solid_up",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/offset.offset_executive_p1/face_tail.json#308",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeShellVertexTopology",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "negative_tol_lamina_delete_solid_down",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/offset.offset_executive_p1/face_tail.json#309",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeShellVertexTopology",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "negative_tol_lamina_delete_local_up",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/offset.offset_executive_p1/face_tail.json#310",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::MakeShellVertexTopology",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "negative_tol_lamina_delete_local_down",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/offset.offset_executive_p1/face_tail.json#311",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "equal_up_same",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#0",
+      "values_compared": 36
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "equal_up_down",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#1",
+      "values_compared": 36
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "equal_flip_same",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#2",
+      "values_compared": 36
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "equal_flip_down",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#3",
+      "values_compared": 36
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "equal_d3",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#4",
+      "values_compared": 36
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "equal_negative_distance",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#5",
+      "values_compared": 36
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "equal_zero_distance",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#6",
+      "values_compared": 36
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "smaller_offset",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#7",
+      "values_compared": 12
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "smaller_offset_flip_down",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#8",
+      "values_compared": 12
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "truncated_offset",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#9",
+      "values_compared": 30
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "truncated_offset_down",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#10",
+      "values_compared": 30
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "larger_original",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#11",
+      "values_compared": 24
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "larger_original_flip",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#12",
+      "values_compared": 24
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "disjoint",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#13",
+      "values_compared": 12
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "small_rectangles",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#14",
+      "values_compared": 36
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "huge_rectangles",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#15",
+      "values_compared": 36
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "shifted_2e-23",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#16",
+      "values_compared": 36
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "shifted_2e-18",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#17",
+      "values_compared": 36
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "shifted_2e-15",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#18",
+      "values_compared": 36
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "shifted_2e-12",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#19",
+      "values_compared": 36
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "shifted_2e-8",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#20",
+      "values_compared": 24
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "shifted_2e-5",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/offset.offset_executive_p1/map_twin.json#21",
+      "values_compared": 24
+    },
+    {
+      "deferred": {
         "symbol": "SmBrep::ShrinkGeometry",
         "unit": "topology.brep_p4"
       },
@@ -9161,17 +9505,17 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 303,
+  "cases_deferred": 317,
   "cases_failed": 0,
-  "cases_passed": 687,
+  "cases_passed": 709,
   "cases_rejected": 1,
-  "cases_total": 991,
+  "cases_total": 1027,
   "deferred_by_unit": {
     "intersect.surface_drop_lib_p3": 1,
     "offset.offset_geometry_creation": 1,
     "query.brep": 1,
     "topology.brep_p1": 1,
-    "topology.brep_p2": 298,
+    "topology.brep_p2": 312,
     "topology.brep_p4": 1
   },
   "max_rel_err": 2.9158035700250084e-14,

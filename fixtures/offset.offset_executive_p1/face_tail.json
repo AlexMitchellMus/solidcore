@@ -6515,6 +6515,378 @@
         "merge_results": false,
         "mate": false
       }
+    },
+    {
+      "name": "merge2_inner_parallel_up",
+      "inputs": {
+        "op": "face_tail",
+        "offset_distance": 0.25,
+        "approx_tol": 1e-06,
+        "domain": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "local": false,
+        "extend_convex": true,
+        "merge_results": true,
+        "mate": false,
+        "self_intersection": [
+          0.25,
+          0.4,
+          0.75,
+          0.4
+        ],
+        "second_uv": [
+          0.25,
+          0.6,
+          0.75,
+          0.6
+        ]
+      }
+    },
+    {
+      "name": "merge2_crossing_parallel_up",
+      "inputs": {
+        "op": "face_tail",
+        "offset_distance": 0.25,
+        "approx_tol": 1e-06,
+        "domain": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "local": false,
+        "extend_convex": true,
+        "merge_results": true,
+        "mate": false,
+        "self_intersection": [
+          0,
+          0.4,
+          1,
+          0.4
+        ],
+        "second_uv": [
+          0,
+          0.6,
+          1,
+          0.6
+        ]
+      }
+    },
+    {
+      "name": "merge2_crossing_perpendicular_up",
+      "inputs": {
+        "op": "face_tail",
+        "offset_distance": 0.25,
+        "approx_tol": 1e-06,
+        "domain": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "local": false,
+        "extend_convex": true,
+        "merge_results": true,
+        "mate": false,
+        "self_intersection": [
+          0,
+          0.5,
+          1,
+          0.5
+        ],
+        "second_uv": [
+          0.5,
+          0,
+          0.5,
+          1
+        ]
+      }
+    },
+    {
+      "name": "merge2_inner_perpendicular_up",
+      "inputs": {
+        "op": "face_tail",
+        "offset_distance": 0.25,
+        "approx_tol": 1e-06,
+        "domain": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "local": false,
+        "extend_convex": true,
+        "merge_results": true,
+        "mate": false,
+        "self_intersection": [
+          0.25,
+          0.5,
+          0.75,
+          0.5
+        ],
+        "second_uv": [
+          0.5,
+          0.25,
+          0.5,
+          0.75
+        ]
+      }
+    },
+    {
+      "name": "merge2_crossing_subsegment_up",
+      "inputs": {
+        "op": "face_tail",
+        "offset_distance": 0.25,
+        "approx_tol": 1e-06,
+        "domain": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "local": false,
+        "extend_convex": true,
+        "merge_results": true,
+        "mate": false,
+        "self_intersection": [
+          0,
+          0.5,
+          1,
+          0.5
+        ],
+        "second_uv": [
+          0.25,
+          0.5,
+          0.75,
+          0.5
+        ]
+      }
+    },
+    {
+      "name": "merge2_crossing_reversed_up",
+      "inputs": {
+        "op": "face_tail",
+        "offset_distance": 0.25,
+        "approx_tol": 1e-06,
+        "domain": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "local": false,
+        "extend_convex": true,
+        "merge_results": true,
+        "mate": false,
+        "self_intersection": [
+          0,
+          0.5,
+          1,
+          0.5
+        ],
+        "second_uv": [
+          1,
+          0.5,
+          0,
+          0.5
+        ]
+      }
+    },
+    {
+      "name": "merge2_crossing_near_identical_up",
+      "inputs": {
+        "op": "face_tail",
+        "offset_distance": 0.25,
+        "approx_tol": 1e-06,
+        "domain": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "local": false,
+        "extend_convex": true,
+        "merge_results": true,
+        "mate": false,
+        "self_intersection": [
+          0,
+          0.5,
+          1,
+          0.5
+        ],
+        "second_uv": [
+          0,
+          0.5000001,
+          1,
+          0.5000001
+        ]
+      }
+    },
+    {
+      "name": "merge2_inner_near_identical_up",
+      "inputs": {
+        "op": "face_tail",
+        "offset_distance": 0.25,
+        "approx_tol": 1e-06,
+        "domain": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "local": false,
+        "extend_convex": true,
+        "merge_results": true,
+        "mate": false,
+        "self_intersection": [
+          0.25,
+          0.5,
+          0.75,
+          0.5
+        ],
+        "second_uv": [
+          0.25,
+          0.5000001,
+          0.75,
+          0.5000001
+        ]
+      }
+    },
+    {
+      "name": "merge2_inner_touching_ends_up",
+      "inputs": {
+        "op": "face_tail",
+        "offset_distance": 0.25,
+        "approx_tol": 1e-06,
+        "domain": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "local": false,
+        "extend_convex": true,
+        "merge_results": true,
+        "mate": false,
+        "self_intersection": [
+          0.25,
+          0.5,
+          0.75,
+          0.5
+        ],
+        "second_uv": [
+          0.25,
+          0.5,
+          0.75,
+          0.6
+        ]
+      }
+    },
+    {
+      "name": "merge2_crossing_diagonal_up",
+      "inputs": {
+        "op": "face_tail",
+        "offset_distance": 0.25,
+        "approx_tol": 1e-06,
+        "domain": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "local": false,
+        "extend_convex": true,
+        "merge_results": true,
+        "mate": false,
+        "self_intersection": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "second_uv": [
+          0,
+          1,
+          1,
+          0
+        ]
+      }
+    },
+    {
+      "name": "negative_tol_lamina_delete_solid_up",
+      "inputs": {
+        "op": "face_tail",
+        "offset_distance": 0.25,
+        "approx_tol": -1.0,
+        "domain": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "local": false,
+        "extend_convex": false,
+        "merge_results": false,
+        "mate": false
+      }
+    },
+    {
+      "name": "negative_tol_lamina_delete_solid_down",
+      "inputs": {
+        "op": "face_tail",
+        "offset_distance": 0.25,
+        "approx_tol": -1.0,
+        "domain": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "local": false,
+        "extend_convex": false,
+        "merge_results": false,
+        "mate": true
+      }
+    },
+    {
+      "name": "negative_tol_lamina_delete_local_up",
+      "inputs": {
+        "op": "face_tail",
+        "offset_distance": 0.25,
+        "approx_tol": -1.0,
+        "domain": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "local": true,
+        "extend_convex": false,
+        "merge_results": false,
+        "mate": false
+      }
+    },
+    {
+      "name": "negative_tol_lamina_delete_local_down",
+      "inputs": {
+        "op": "face_tail",
+        "offset_distance": 0.25,
+        "approx_tol": -1.0,
+        "domain": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "local": true,
+        "extend_convex": false,
+        "merge_results": false,
+        "mate": true
+      }
     }
   ]
 }
