@@ -1918,7 +1918,7 @@ fn corner_rust(i: &Inputs) -> Result<Output, HarnessError> {
                     tsect_surfaces: &surfaces,
                 };
                 match c.method {
-                    CornerMethod::VertGeom => fc.calc_corner_vert_geom(&mut env, &[]),
+                    CornerMethod::VertGeom => fc.calc_corner_vert_geom(&mut env, &mut []),
                     CornerMethod::EdgeGeom => fc.calc_corner_edge_geom(&mut env),
                     _ => fc.create_end_patch(&mut env),
                 }

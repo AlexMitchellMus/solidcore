@@ -549,7 +549,11 @@ void c1_edge_geom(C1Corner& C, std::vector<double>& o)
 }
 
 // `nt topo..` -> `ret ntopo topo..` corner Model: the executive's topology edges (model
-// edges) before CheckAndFixDegeneracy, the remaining ones after.
+// edges) before CheckAndFixDegeneracy, the remaining ones after. The FFI validator
+// (`validate_corner`) refuses the deletion sets upstream frees twice or dereferences
+// after freeing (repeated corner vertices / edges, one-way mate links to an
+// earlier-deleted corner vertex) before this runs; the dry run below covers the null
+// dereferences only.
 void c1_fix_degeneracy(C1Corner& C, Rd& rd, std::vector<double>& o)
 {
     SmFilletCorner* c = C.c;

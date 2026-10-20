@@ -61,6 +61,13 @@
 //! | [`CornerOp::FixDegeneracy`] | `CheckAndFixDegeneracy`                 | `nt topo..` (the executive's topology edges, model edges) | `ret ntopo topo..` corner-members model export |
 //! | [`CornerOp::EndPatch`]    | `CreateEndPatch`                          |                        | `status` corner-members model export |
 //!
+//! A `CheckAndFixDegeneracy` input is rejected by [`validate_corner`] when its deletions
+//! would free a model object twice or dereference a freed one: a repeated corner vertex or
+//! edge, or a corner vertex deleted after a mate it links to one-way (the destructor of the
+//! later vertex dereferences the earlier-freed mate), on a corner whose vertices are all
+//! processed (upstream's harmless unprocessed-vertex return; its far-vertex return is not
+//! modelled, so such repeats are refused as well).
+//!
 //! A record of `-2` is "refused" (upstream would dereference null, or free an object twice:
 //! a squeezed non-rail edge with both ends at the deleted vertex, or a squeezed closed edge
 //! whose surviving vertex is the deleted one), `-3` "not run" (the Rust port of a
@@ -398,12 +405,14 @@ pub fn validate_corner(op: CornerOp, input: &[f64]) -> Result<(), FfiError> {
     corner_eu_list(&mut rd, b.nt)?;
     corner_eu_list(&mut rd, b.nt)?;
     let nv = rd.index(MAX_LIST)?;
+    let mut verts = Vec::with_capacity(nv);
     for _ in 0..nv {
-        rd.opt_index(b.nv())?.ok_or_else(|| bad("vertex -1"))?;
+        verts.push(rd.opt_index(b.nv())?.ok_or_else(|| bad("vertex -1"))?);
     }
     let ne = rd.index(MAX_LIST)?;
+    let mut edges = Vec::with_capacity(ne);
     for _ in 0..ne {
-        rd.opt_index(b.ne())?.ok_or_else(|| bad("edge -1"))?;
+        edges.push(rd.opt_index(b.ne())?.ok_or_else(|| bad("edge -1"))?);
     }
     for _ in 0..6 {
         rd.flag()?;
@@ -480,9 +489,57 @@ pub fn validate_corner(op: CornerOp, input: &[f64]) -> Result<(), FfiError> {
                 rd.opt_index(b.ne())?
                     .ok_or_else(|| bad("topology edge -1"))?;
             }
+            degeneracy_deletions(&b, &verts, &edges)?;
         }
     }
     rd.done()
+}
+
+/// `CheckAndFixDegeneracy` past its early-outs (every corner vertex processed; the
+/// distance test is not modelled here, a far vertex's harmless return is refused too)
+/// deletes every corner edge and every corner vertex but the first, then uses the first:
+/// a repeated edge or vertex is freed twice (a repeated first vertex is the survivor,
+/// used after its free), and a vertex deleted after a mate it links to one-way
+/// dereferences that freed mate in `~SmFilletVertex` (a reciprocal link is cleared by
+/// the mate's destructor first). These are refused before the native call.
+fn degeneracy_deletions(b: &Block, verts: &[usize], edges: &[usize]) -> Result<(), FfiError> {
+    if !verts
+        .iter()
+        .all(|&v| b.vertex_processed.get(v).copied().unwrap_or(false))
+    {
+        return Ok(());
+    }
+    if has_repeat(verts) {
+        return Err(bad("degeneracy: repeated corner vertex"));
+    }
+    if has_repeat(edges) {
+        return Err(bad("degeneracy: repeated corner edge"));
+    }
+    let mates = |v: usize| {
+        b.vertex_mates
+            .get(v)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .copied()
+    };
+    for (pos, &v) in verts.iter().enumerate().skip(1) {
+        for m in mates(v) {
+            let deleted_earlier = verts.get(1..pos).is_some_and(|s| s.contains(&m));
+            if deleted_earlier && !mates(m).any(|x| x == v) {
+                return Err(bad(
+                    "degeneracy: one-way mate link to an earlier-deleted corner vertex",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn has_repeat(ids: &[usize]) -> bool {
+    ids.iter()
+        .enumerate()
+        .any(|(i, id)| ids.get(..i).is_some_and(|s| s.contains(id)))
 }
 
 /// Runs the corner-method op `op` (layout in the module docs).
@@ -550,6 +607,129 @@ mod tests {
         assert!(validate_corner(CornerOp::Peek, &peek_input(&[1.0e19])).is_err());
         assert!(validate_corner(CornerOp::Peek, &peek_input(&[-1.0e150])).is_err());
         assert!(validate_corner(CornerOp::Peek, &peek_input(&[f64::INFINITY])).is_err());
+    }
+
+    /// A `FixDegeneracy` input on a model of bare vertices (status `status`, mates
+    /// `mates`) and `ne` curveless edges between the first two, with the corner vertices
+    /// `verts`, edges `edges` and no topology edges.
+    fn degeneracy_input(
+        status: f64,
+        mates: &[[f64; 2]],
+        ne: usize,
+        verts: &[f64],
+        edges: &[f64],
+    ) -> Vec<f64> {
+        // the model block: no targets, faces, fillet B-rep edges; the vertices
+        let mut v = vec![0.0, 0.0, 0.0, mates.len() as f64];
+        for _ in mates {
+            // point, SmFilletVertexType, SmFilStatus, corner tag, SM_PC_UNKNOWN, no
+            // classification object, no face, t u v
+            v.extend([
+                0.0, 0.0, 0.0, 0.0, status, -1.0, 100.0, 0.0, -1.0, 0.0, -1.0,
+            ]);
+            v.extend([0.0; 3]);
+        }
+        // no geometries; the edges: vertices 0 1, type, status, corner tag, no curve, no
+        // interval, no fillet B-rep edges, no uv curves / geometries, the tolerances
+        v.push(0.0);
+        v.push(ne as f64);
+        for _ in 0..ne {
+            v.extend([
+                0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, -1.0, 0.0, -1.0, 0.0, -1.0,
+            ]);
+            v.extend([0.0; 4]);
+        }
+        // the mates
+        for m in mates {
+            v.extend(*m);
+        }
+        // kind, no filleted vertex; no solver / all edge uses; the vertices and edges
+        v.extend([0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, verts.len() as f64]);
+        v.extend_from_slice(verts);
+        v.push(edges.len() as f64);
+        v.extend_from_slice(edges);
+        // the flags, setback, tolerances, no original faces; no topology edges
+        v.extend([0.0; 10]);
+        v.push(0.0);
+        v
+    }
+
+    #[test]
+    fn degeneracy_refuses_repeated_deletions_and_one_way_mates() {
+        // guard-only: nothing here reaches the shim
+        let ok = |i: &[f64]| validate_corner(CornerOp::FixDegeneracy, i).is_ok();
+        let none = [[-1.0, -1.0]; 3];
+        assert!(ok(&degeneracy_input(
+            1.0,
+            &none,
+            1,
+            &[0.0, 1.0, 2.0],
+            &[0.0]
+        )));
+        // a repeated vertex (also the survivor), on processed vertices only
+        assert!(!ok(&degeneracy_input(1.0, &none, 0, &[0.0, 1.0, 1.0], &[])));
+        assert!(!ok(&degeneracy_input(1.0, &none, 0, &[0.0, 1.0, 0.0], &[])));
+        assert!(ok(&degeneracy_input(0.0, &none, 0, &[0.0, 1.0, 1.0], &[])));
+        // a repeated edge, unless an unprocessed vertex returns before the deletions;
+        // an empty vertex list deletes the edges before the (refused) survivor lookup
+        assert!(!ok(&degeneracy_input(1.0, &none, 1, &[0.0], &[0.0, 0.0])));
+        assert!(!ok(&degeneracy_input(1.0, &none, 2, &[], &[1.0, 0.0, 1.0])));
+        assert!(ok(&degeneracy_input(1.0, &none, 2, &[0.0], &[1.0, 0.0])));
+        assert!(ok(&degeneracy_input(0.0, &none, 1, &[0.0], &[0.0, 0.0])));
+        // vertex 2 links to vertex 1 one-way: 1 is deleted first, 2's destructor
+        // dereferences it; reciprocal links are cleared by the first destructor
+        let one_way = [[-1.0, -1.0], [-1.0, -1.0], [1.0, -1.0]];
+        assert!(!ok(&degeneracy_input(
+            1.0,
+            &one_way,
+            0,
+            &[0.0, 1.0, 2.0],
+            &[]
+        )));
+        let mutual = [[-1.0, -1.0], [-1.0, 2.0], [1.0, -1.0]];
+        assert!(ok(&degeneracy_input(
+            1.0,
+            &mutual,
+            0,
+            &[0.0, 1.0, 2.0],
+            &[]
+        )));
+        // the earlier-deleted vertex links one-way to the later one: it clears nothing,
+        // but the later one holds no dangling pointer
+        let reverse = [[-1.0, -1.0], [2.0, -1.0], [-1.0, -1.0]];
+        assert!(ok(&degeneracy_input(
+            1.0,
+            &reverse,
+            0,
+            &[0.0, 1.0, 2.0],
+            &[]
+        )));
+        // the survivor and vertices outside the corner are not deleted
+        let to_survivor = [[-1.0, -1.0], [-1.0, -1.0], [0.0, -1.0]];
+        assert!(ok(&degeneracy_input(
+            1.0,
+            &to_survivor,
+            0,
+            &[0.0, 1.0, 2.0],
+            &[]
+        )));
+        assert!(ok(&degeneracy_input(1.0, &one_way, 0, &[0.0, 2.0], &[])));
+        // deleting 2 before 1 with 2 -> 1 one-way: 1 is still alive then
+        assert!(ok(&degeneracy_input(
+            1.0,
+            &one_way,
+            0,
+            &[0.0, 2.0, 1.0],
+            &[]
+        )));
+        // an unprocessed vertex: upstream returns before any deletion
+        assert!(ok(&degeneracy_input(
+            0.0,
+            &one_way,
+            0,
+            &[0.0, 1.0, 2.0],
+            &[]
+        )));
     }
 
     #[test]
