@@ -984,7 +984,7 @@ fn offsets(s: &[Option<OffsetSurface>; 2]) -> [f64; 2] {
     })
 }
 
-/// [`offsets`] of a base `FilletSolver`'s surface slots.
+/// [`offsets`] for the `SmFilletSolver` base of a `ConstantRadiusAssistedFs`.
 fn slot_offsets(s: &[Option<OffsetSurfaceSlot>; 2]) -> [f64; 2] {
     [0, 1].map(|i| {
         s.get(i)
