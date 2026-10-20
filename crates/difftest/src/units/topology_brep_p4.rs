@@ -36,10 +36,10 @@ use solidcore::topology::brep::p4::{self, DeleteEnv};
 use solidcore::topology::brep_cache::{arena_identity, CacheObject};
 use solidcore::topology::topology::Topology as SmTopologyRecord;
 use solidcore::topology::{
-    ArenaId, Brep, EdgeId, EdgeuseOwner, FaceId, LoopuseStart, VertexId, VertexuseId,
+    ArenaId, Brep, EdgeId, EdgeuseOwner, FaceId, LoopuseStart, ShellId, VertexId, VertexuseId,
     VertexuseOwner,
 };
-use solidcore_ffi::units::topology_brep_p4::{self as ffi, Op, Request};
+use solidcore_ffi::units::topology_brep_p4::{self as ffi, Damage, Op, Request, NULL_DEREFERENCE};
 use solidcore_ffi::units::topology_vertexuse::counts;
 use std::collections::BTreeMap;
 
@@ -58,10 +58,25 @@ enum OpIn {
     Check,
 }
 
+/// A hand-made defect of the built B-rep (the fixtures build whole B-reps only), put in
+/// before the operation on both sides. Inputs upstream dereferences `NULL` on are refused
+/// by the shim (the guard) and the case is `rejected`; every other damaged input runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum DamageIn {
+    /// The face with this index loses its surface (`delete_edge`, `check`).
+    NoSurface(i64),
+    /// The shell with this index loses its region (`delete_edge`, `delete_vertex`,
+    /// `check`).
+    NoRegion(i64),
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Inputs {
     brep: BrepIn,
     op: OpIn,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    damage: Option<DamageIn>,
     #[serde(default = "yes")]
     editing: bool,
     /// The target edge or vertex index in walk order.
@@ -146,6 +161,10 @@ fn path_of(brep: &BrepIn) -> Result<String, HarnessError> {
 
 fn request(i: &Inputs) -> Request {
     Request {
+        damage: i.damage.map(|d| match d {
+            DamageIn::NoSurface(f) => Damage::NoSurface(f),
+            DamageIn::NoRegion(s) => Damage::NoRegion(s),
+        }),
         op: match i.op {
             OpIn::DeleteEdge => Op::DeleteEdge,
             OpIn::DeleteVertex => Op::DeleteVertex,
@@ -663,6 +682,26 @@ fn own_surfaces(b: &mut Brep) -> Result<(), HarnessError> {
     Ok(())
 }
 
+/// The damage of the shim, on the imported model: the face's surface is dropped, or the
+/// shell's region link is cleared (the region keeps listing the shell, as upstream's does).
+fn damage(b: &mut Brep, d: Option<DamageIn>) -> Result<(), HarnessError> {
+    let index = |i: i64| u32::try_from(i).map_err(|_| err("damaged record index"));
+    match d {
+        None => {}
+        Some(DamageIn::NoSurface(f)) => {
+            b.face_mut(FaceId::from_index(index(f)?))
+                .map_err(|e| err(&e))?
+                .surface = None;
+        }
+        Some(DamageIn::NoRegion(s)) => {
+            b.shell_mut(ShellId::from_index(index(s)?))
+                .map_err(|e| err(&e))?
+                .region = None;
+        }
+    }
+    Ok(())
+}
+
 fn key_of(e: EntityRef) -> ObjectRef {
     let (t, i) = match e {
         EntityRef::Edge(x) => (1u64, u64::from(x.index())),
@@ -694,6 +733,12 @@ impl UnitDiff for Runner {
         if status == -1.0 {
             return Ok(Output::rejected("fixture B-rep did not build"));
         }
+        if status == NULL_DEREFERENCE {
+            // the guard: upstream dereferences NULL on this damaged B-rep, nothing was run
+            return Ok(Output::rejected(
+                "upstream dereferences NULL on the damaged B-rep (FFI guard)",
+            ));
+        }
         if i.op == OpIn::Destroy {
             return Ok(status_output(status).values("doing_boolean", rest.to_vec()));
         }
@@ -724,6 +769,7 @@ impl UnitDiff for Runner {
         }
         let mut b = import(&f)?;
         own_surfaces(&mut b)?;
+        damage(&mut b, i.damage)?;
         b.set_editing_enabled(i.editing);
         let pre = record_counts(&b);
         let mut k = Kernel::default();
@@ -866,6 +912,7 @@ fn try_generate(rng: &mut Rng) -> Option<Value> {
     let i = Inputs {
         brep,
         op,
+        damage: None,
         editing: rng.below(8) != 0,
         target,
         keep,

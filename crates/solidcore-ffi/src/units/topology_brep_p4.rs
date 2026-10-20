@@ -24,6 +24,8 @@ mod sys {
             keep: i64,
             tol: f64,
             flag: i32,
+            damage: i32,
+            damage_index: i64,
             out: *mut f64,
             cap: i64,
             out_len: *mut i64,
@@ -49,9 +51,33 @@ pub enum Op {
     Check,
 }
 
+/// A hand-made defect of the fixture B-rep, applied after it is built and before the
+/// operation (the fixtures build whole B-reps only: every face has a surface and every
+/// shell sits in a region). [`eval`] answers [`NULL_DEREFERENCE`] for the damaged inputs
+/// upstream dereferences `NULL` on, and runs every other one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Damage {
+    /// The face with this index (walk order) loses its surface: `DeleteEdge` of a
+    /// manifold edge whose two faces have different surfaces, one of them missing,
+    /// evaluates a normal on the missing one (`SmBrep.cpp:5829-5843`). Only with
+    /// [`Op::DeleteEdge`] and [`Op::Check`].
+    NoSurface(i64),
+    /// The shell with this index (walk order) loses its region pointer: `DeleteEdge` of a
+    /// wire edge and `DeleteVertex` of a shell vertex call `pShell->GetRegion()->PostInsert`
+    /// / `Remove` when they make or remove a shell (`SmBrep.cpp:6827-6949`, `:7967`). Only
+    /// with [`Op::DeleteEdge`], [`Op::DeleteVertex`] and [`Op::Check`].
+    NoRegion(i64),
+}
+
+/// The first value of the output when [`eval`] refused a damaged input because upstream
+/// dereferences `NULL` on it (nothing was run).
+pub const NULL_DEREFERENCE: f64 = -2.0;
+
 /// The request of [`eval`].
 #[derive(Debug, Clone, Copy)]
 pub struct Request {
+    /// A defect to put into the B-rep first.
+    pub damage: Option<Damage>,
     /// The operation.
     pub op: Op,
     /// `m_bEditingEnabled` before the operation.
@@ -97,6 +123,31 @@ pub fn eval(path: &str, input: &[f64], r: Request) -> Result<Vec<f64>, FfiError>
     if !r.tol.is_finite() {
         return Err(invalid("tolerance"));
     }
+    let (damage, damage_index) = match r.damage {
+        None => (0, 0),
+        Some(Damage::NoSurface(i)) => {
+            if !matches!(r.op, Op::DeleteEdge | Op::Check) {
+                return Err(invalid(
+                    "a surfaceless face is only probed for delete_edge and check",
+                ));
+            }
+            if i < 0 || i as u64 >= c[3] as u64 {
+                return Err(invalid("damaged face index"));
+            }
+            (1, i)
+        }
+        Some(Damage::NoRegion(i)) => {
+            if !matches!(r.op, Op::DeleteEdge | Op::DeleteVertex | Op::Check) {
+                return Err(invalid(
+                    "a shell without a region is only probed for delete_edge, delete_vertex and check",
+                ));
+            }
+            if i < 0 || i as u64 >= c[1] as u64 {
+                return Err(invalid("damaged shell index"));
+            }
+            (2, i)
+        }
+    };
     let op = match r.op {
         Op::DeleteEdge => 0,
         Op::DeleteVertex => 1,
@@ -120,6 +171,8 @@ pub fn eval(path: &str, input: &[f64], r: Request) -> Result<Vec<f64>, FfiError>
                 r.keep,
                 r.tol,
                 i32::from(r.flag),
+                damage,
+                damage_index,
                 buf.as_mut_ptr(),
                 buf.len() as i64,
                 &raw mut *len,

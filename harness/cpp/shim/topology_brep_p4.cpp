@@ -4,7 +4,10 @@
 // built by the shared fixture (sc_topology_fixture.h).
 //
 // One entry point, sc_topology_brep_p4_eval(op, path, in, n_in, editing, target, keep,
-// tol, flag, out, cap, out_len). `in` is a fixture B-rep block (validated by the Rust
+// tol, flag, damage, damage_index, out, cap, out_len). `damage` (0 none, 1 drop the surface
+// of face `damage_index`, 2 clear the owner of shell `damage_index`; ops 0, 1 and 5 only)
+// damages the built B-rep before the op, and the guard below refuses (`[-2]`, nothing run)
+// exactly the damaged inputs upstream dereferences NULL on. `in` is a fixture B-rep block (validated by the Rust
 // wrapper through the topology.topology_traverser export, whose `walk(brep, g, true)`
 // order names `target` and `keep`). Ops:
 //   0 DeleteEdge(edges[target], keep >= 0 ? faces[keep]->GetSurface() : NULL)
@@ -31,6 +34,7 @@
 #include "sc_topology_fixture.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <utility>
 
 namespace {
@@ -41,6 +45,7 @@ constexpr double NEW_BASE = 1000000.0;
 struct TopPeek : SmTopology
 {
     static ULONG SmTopology::*mark_io() { return &TopPeek::m_lMarkIO; }
+    static SmOwningTopology* SmTopology::*list_owner() { return &TopPeek::m_pListOwner; }
 };
 
 // Names every object of the first walk by its index.
@@ -188,13 +193,98 @@ void emit_records(SmBrep* brep, Graph& after, std::vector<double>& o)
     });
 }
 
+// ---- hand-damaged B-reps and the null-dereference guard -----------------------------------
+//
+// The fixtures only build whole B-reps (every file face has a surface, every shell sits in
+// a region). An adversarial case damages the built B-rep before the operation; the damage is
+// a raw pointer write, so the objects stay in every list and the walk still reaches them:
+//   1  the surface of face `damage_index` is dropped (the face keeps its other members);
+//   2  the owner (region) pointer of shell `damage_index` is cleared.
+// A damaged B-rep upstream would dereference NULL on is refused (the status `-2`, nothing
+// run), and only that: every other damaged input runs and is compared like any other.
+//
+// Kind 1, DeleteEdge of a manifold edge (SmBrep.cpp:5829-5843): the surfaces of the two
+// faces of the edge (`pEU->GetFace()->GetSurface()`, the radial's) are compared and, when they
+// differ, a normal is evaluated on each (`pSrf->EvaluateNormal`): a face without a surface
+// facing a face with one dereferences NULL. (The swap at :6050-6051 needs the same pair, so it
+// is never the first dereference.) Two faces without surfaces compare equal and skip it. The
+// lamina and wire branches never read a face's surface. Kind 2, DeleteEdge of a wire edge
+// (:6827-6949) and DeleteVertex of a shell vertex (:7967-7969) call
+// `pShell->GetRegion()->PostInsert / Remove` on the shell of the target: whether the edit gets
+// there (a new shell is made, or the shell is removed) is read off the same operation on an
+// undamaged copy, where it shows as a change of the number of shells.
+const double ST_NULL_DEREF_GUARD = -2.0;
+
+// DeleteEdge(edges[target]) reads two surfaces, one of them missing.
+bool ub_surfaceless_edge(Graph& g, int64_t target)
+{
+    SmEdge* e = g.edges[(size_t)target];
+    if (!e->IsManifold())
+        return false;
+    SmEdgeuse* eu = e->GetPrimaryEdgeuse();
+    SmEdgeuse* rad = eu ? eu->GetRadial() : nullptr;
+    SmFace* a = eu ? eu->GetFace() : nullptr;
+    SmFace* b = rad ? rad->GetFace() : nullptr;
+    if (!a || !b)
+        return false; // not a case of this damage (the whole fixtures never get here)
+    return a->GetSurface() != b->GetSurface() && (!a->GetSurface() || !b->GetSurface());
+}
+
+// Whether the edit of the target reaches the region of shell `shell_index` on an undamaged
+// copy of the B-rep (`shells[shell_index]` is the target's own shell and the edit adds or
+// removes a shell).
+bool ub_regionless_shell(int32_t op, const char* path, const double* in, int32_t editing, int64_t target,
+                         int64_t shell_index)
+{
+    Rd rd{in, 0};
+    SmStatus st0;
+    Built clean;
+    clean.brep = build(rd, path, st0);
+    if (!clean.brep)
+        return false;
+    Graph c;
+    walk(clean.brep, c, true);
+    clean.brep->m_bEditingEnabled = editing ? TRUE : FALSE;
+    SmShell* own = nullptr;
+    if (op == 0)
+    {
+        SmEdge* e = c.edges[(size_t)target];
+        if (!e->IsWire())
+            return false;
+        SmEdgeuse* eu = e->GetPrimaryEdgeuse();
+        own = eu ? eu->GetShell() : nullptr;
+    }
+    else
+    {
+        SmVertex* v = c.vertices[(size_t)target];
+        if (!v->IsShellVertex())
+            return false;
+        std::vector<SmTopology*> vus = list_of(v->GetList());
+        if (vus.empty())
+            return false;
+        SmTopology* holder = ((SmVertexuse*)vus[0])->*VuPeek::owner();
+        own = (SmShell*)holder;
+    }
+    if (!own || own != c.shells[(size_t)shell_index])
+        return false;
+    size_t before = c.shells.size();
+    if (op == 0)
+        clean.brep->DeleteEdge(c.edges[(size_t)target], nullptr);
+    else
+        clean.brep->DeleteVertex(c.vertices[(size_t)target]);
+    Graph after;
+    walk(clean.brep, after, true);
+    return after.shells.size() != before;
+}
+
 } // namespace
 
 SC_EXPORT int32_t sc_topology_brep_p4_eval(int32_t op, const char* path, const double* in, int64_t n_in,
                                            int32_t editing, int64_t target, int64_t keep, double tol,
-                                           int32_t flag, double* out, int64_t cap, int64_t* out_len)
+                                           int32_t flag, int32_t damage, int64_t damage_index, double* out,
+                                           int64_t cap, int64_t* out_len)
 {
-    if (!path || !in || n_in < 1 || !out_len || op < 0 || op > 5)
+    if (!path || !in || n_in < 1 || !out_len || op < 0 || op > 5 || damage < 0 || damage > 2)
         return SC_ERR_ARG;
     SC_TRY
     Rd rd{in, 0};
@@ -215,6 +305,45 @@ SC_EXPORT int32_t sc_topology_brep_p4_eval(int32_t op, const char* path, const d
     SmFace* keep_face = (keep >= 0 && keep < (int64_t)g.faces.size()) ? g.faces[(size_t)keep] : nullptr;
     if (keep >= 0 && !keep_face)
         return SC_ERR_ARG;
+    // The cleared owner of a damaged shell is put back before the B-rep is deleted (the
+    // destructors of the region and of the shell expect it), when the shell is still there.
+    SmShell* damaged_shell = nullptr;
+    SmOwningTopology* shell_owner = nullptr;
+    auto repair_shell = [&](const Graph& walked) {
+        if (damaged_shell && std::find(walked.shells.begin(), walked.shells.end(), damaged_shell) != walked.shells.end())
+            damaged_shell->*TopPeek::list_owner() = shell_owner;
+        damaged_shell = nullptr;
+    };
+    if (damage != 0)
+    {
+        // the Rust wrapper allows the damages on the ops they are probed for (see above)
+        bool edge_op = op == 0, vertex_op = op == 1;
+        if (damage == 1 && (!(op == 0 || op == 5) || damage_index < 0 || damage_index >= (int64_t)g.faces.size()))
+            return SC_ERR_ARG;
+        if (damage == 2 && (!(edge_op || vertex_op || op == 5) || damage_index < 0 ||
+                            damage_index >= (int64_t)g.shells.size()))
+            return SC_ERR_ARG;
+        if ((edge_op && (target < 0 || target >= (int64_t)g.edges.size())) ||
+            (vertex_op && (target < 0 || target >= (int64_t)g.vertices.size())))
+            return SC_ERR_ARG;
+        if (damage == 1)
+            g.faces[(size_t)damage_index]->*FPeek::srf() = nullptr;
+        else
+        {
+            damaged_shell = g.shells[(size_t)damage_index];
+            shell_owner = damaged_shell->*TopPeek::list_owner();
+            damaged_shell->*TopPeek::list_owner() = nullptr;
+        }
+        bool ub = (damage == 1 && edge_op && ub_surfaceless_edge(g, target)) ||
+                  (damage == 2 && (edge_op || vertex_op) &&
+                   ub_regionless_shell(op, path, in, editing, target, damage_index));
+        if (ub && !getenv("SC_P4_NO_GUARD"))
+        {
+            repair_shell(g);
+            o.push_back(ST_NULL_DEREF_GUARD);
+            return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len);
+        }
+    }
     switch (op)
     {
     case 0:
@@ -279,6 +408,7 @@ SC_EXPORT int32_t sc_topology_brep_p4_eval(int32_t op, const char* path, const d
                        after.vertexuses.size(), after.vertices.size()})
             o.push_back((double)n);
         emit_records(brep, after, o);
+        repair_shell(after);
     }
     return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len);
     SC_CATCH
