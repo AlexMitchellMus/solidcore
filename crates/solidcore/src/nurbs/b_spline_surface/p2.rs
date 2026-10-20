@@ -209,14 +209,8 @@ fn transpose<T: Copy>(a: &mut [T], num_rows: usize) {
 /// `SmCone::IsNurbSurfaceCone` (then the sphere, revolution and extrusion
 /// recognisers).
 fn is_nurb_surface_cone(k: &Kernel, srf: &BSplineSurface) -> Result<Option<Surface>> {
-    if crate::surface::cone::Cone::is_nurb_surface_cone(k, srf, 1.0)?.is_some() {
-        // DISPATCH GAP: the cone is not a SurfaceKind yet (no variant with its
-        // SmSurface overrides; issue #76 / PR #133), so no Surface can hold the
-        // recognised cone (no UNPORTED marker: surface.surface_p2 is partial).
-        return Err(SolidError::Unported {
-            upstream: "SmCone as SmSurface",
-            unit: "surface.surface_p2",
-        });
+    if let Some(cone) = crate::surface::cone::Cone::is_nurb_surface_cone(k, srf, 1.0)? {
+        return Ok(Some(Surface::from(cone)));
     }
     // UNPORTED(surface.sphere): SmSphere::IsNurbSurfaceSphere
     Err(SolidError::Unported {

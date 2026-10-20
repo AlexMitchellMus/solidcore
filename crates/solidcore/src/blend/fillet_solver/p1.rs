@@ -2559,9 +2559,9 @@ pub fn check_edge_curve_domains(
     Ok(None)
 }
 
-/// The `SmBSplineSurface*` [`test_analytic_surface`] tests: a [`Surface`], or an
-/// `SmCone` / `SmCylinder`, `SmSphere` or `SmTorus`, which no [`Surface`] kind holds
-/// yet.
+/// The `SmBSplineSurface*` [`test_analytic_surface`] tests: a [`Surface`] (which may
+/// hold an `SmCone` / `SmCylinder`), a bare cone, or an `SmSphere` or `SmTorus`, which
+/// no [`Surface`] kind holds yet.
 #[derive(Debug, Clone, Copy)]
 pub enum AnalyticTestSurface<'a> {
     /// A surface of one of the [`Surface`] kinds.
@@ -2580,10 +2580,10 @@ pub enum AnalyticTestSurface<'a> {
 ///
 /// # Errors
 ///
-/// Those of `IsPlanar`; [`SolidError::Unported`] for the cone test of a non-planar
-/// surface (`SmCone::IsNurbSurfaceCone`).
+/// Those of `IsPlanar` and of the cone test (`SmCone::IsNurbSurfaceCone`).
 pub fn test_analytic_surface(k: &Kernel, surface: AnalyticTestSurface<'_>) -> Result<bool> {
     use crate::surface::surface::p2::{CONE_TYPE, PLANE_TYPE};
+    use crate::surface::surface::SurfaceKind;
     let type_code = match surface {
         AnalyticTestSurface::Surface(s) => s.type_code(),
         AnalyticTestSurface::Cone(c) => c.type_code(),
@@ -2608,11 +2608,28 @@ pub fn test_analytic_surface(k: &Kernel, surface: AnalyticTestSurface<'_>) -> Re
         return Ok(true);
     }
 
-    // UNPORTED(surface.cone_p2): SmCone::IsNurbSurfaceCone
-    Err(SolidError::unported(
-        "SmCone::IsNurbSurfaceCone",
-        "surface.cone_p2",
-    ))
+    // test NurbSurface to see if its a canonical cone (the SmBSplineSurface part the
+    // caller's SM_CAST_PTR found)
+    let bspline = match surface {
+        AnalyticTestSurface::Surface(s) => match s.kind() {
+            SurfaceKind::BSpline(b) => Some(b),
+            SurfaceKind::Plane(p) => Some(p.base()),
+            SurfaceKind::SurfOfRevolution(r) => Some(r.base()),
+            SurfaceKind::Cone(c) => Some(c.rev().base()),
+            // (not an SmBSplineSurface: the caller never passes one)
+            SurfaceKind::CurveBounded(_)
+            | SurfaceKind::Step(_)
+            | SurfaceKind::OffsetSurface(_)
+            | SurfaceKind::SrfInVolume(_) => None,
+        },
+        AnalyticTestSurface::Cone(c) => Some(c.rev().base()),
+        AnalyticTestSurface::Sphere(s) => Some(s.base().base()),
+        AnalyticTestSurface::Torus(t) => Some(t.base.base()),
+    };
+    match bspline {
+        Some(b) => Ok(Cone::is_nurb_surface_cone(k, b, 1.0)?.is_some()),
+        None => Ok(false),
+    }
 }
 
 /// `SE(pEU->EvaluateBinormal(dParameter, FALSE, rPnt, rBinVec, NULL, &rFaceuseNormal))`

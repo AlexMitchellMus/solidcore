@@ -893,6 +893,7 @@ impl Cone {
             IntersectTarget::Surface(s) => match s.kind() {
                 SurfaceKind::Plane(p) => IntersectTarget::Plane(p),
                 SurfaceKind::SurfOfRevolution(r) => IntersectTarget::Revolution(r),
+                SurfaceKind::Cone(c) => IntersectTarget::Cone(c.as_ref()),
                 _ => other,
             },
             _ => other,

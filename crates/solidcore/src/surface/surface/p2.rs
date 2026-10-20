@@ -1180,12 +1180,8 @@ impl Surface {
                 approx_tol_3d,
                 [self.face()?.is_some(), false],
             ),
-            SurfaceKind::Cone(_) => {
-                // UNPORTED(surface.surface_p2): common SmCone intersection adapter
-                Err(SolidError::unported(
-                    "SmCone common intersection dispatch adapter",
-                    "surface.surface_p2",
-                ))
+            SurfaceKind::Cone(s) => {
+                s.intersect_with_plane(k, uv_domain, plane, other_uv_domain, approx_tol_3d)
             }
             SurfaceKind::SurfOfRevolution(s) => {
                 s.intersect_with_plane(k, plane, other_uv_domain, approx_tol_3d)
@@ -1236,12 +1232,15 @@ impl Surface {
             SurfaceKind::CurveBounded(_) | SurfaceKind::Step(_) => base_edit(),
             SurfaceKind::SrfInVolume(s) => s.reverse(k, param),
             SurfaceKind::Plane(s) => s.reverse(param),
-            SurfaceKind::Cone(_) => {
-                // UNPORTED(surface.cone_p2): SmCone::RebuildSTEPFromNURBParameters
-                Err(SolidError::unported(
-                    "SmCone::RebuildSTEPFromNURBParameters",
-                    "surface.cone_p2",
-                ))
+            SurfaceKind::Cone(s) => {
+                // SmBSplineSurface::Reverse: GetOrCreateGwNurbPointer (the cone's
+                // MakeNurb when missing, status ignored), the NURB reversal, then the
+                // cone's RebuildSTEPFromNURBParameters (status ignored)
+                if s.rev().base().gw_nurb().is_none() {
+                    ignore_status(s.make_nurb(k))?;
+                }
+                s.base_mut().reverse(param)?;
+                ignore_status(s.rebuild_step_from_nurb_parameters(k))
             }
             SurfaceKind::SurfOfRevolution(s) => {
                 // Upstream reaches the NURB through the virtual GetOrCreateGwNurbPointer,
@@ -1268,16 +1267,8 @@ impl Surface {
             | SurfaceKind::OffsetSurface(_)
             | SurfaceKind::SrfInVolume(_) => base_edit(),
             SurfaceKind::Plane(s) => s.reparameterize(new_domain),
-            SurfaceKind::Cone(s) => {
-                let inside_out = s.inside_out();
-                s.rev
-                    .reparameterize_using(k, new_domain, &|rev, k, param, t| {
-                        Ok(crate::surface::cone::p1::cone_iso_curve(
-                            rev, inside_out, k, param, t, None, false,
-                        )?
-                        .curve)
-                    })
-            }
+            // the inherited SmSurfOfRevolution::Reparameterize with the cone's iso curves
+            SurfaceKind::Cone(s) => s.reparameterize(k, new_domain),
             SurfaceKind::SurfOfRevolution(s) => s.reparameterize(k, new_domain),
         }
     }
@@ -1295,12 +1286,13 @@ impl Surface {
             SurfaceKind::CurveBounded(_) | SurfaceKind::Step(_) => base_edit(),
             SurfaceKind::SrfInVolume(s) => s.swap_uv(k),
             SurfaceKind::Plane(s) => s.swap_uv(),
-            SurfaceKind::Cone(_) => {
-                // UNPORTED(surface.cone_p2): SmCone::RebuildSTEPFromNURBParameters
-                Err(SolidError::unported(
-                    "SmCone::RebuildSTEPFromNURBParameters",
-                    "surface.cone_p2",
-                ))
+            SurfaceKind::Cone(s) => {
+                // SmBSplineSurface::SwapUV: the NURB swap, the inherited
+                // SmSurfOfRevolution::ToggleSwapUVBit, then SetCanonical's virtual
+                // RebuildSTEPFromNURBParameters (the cone's, status ignored)
+                s.base_mut().swap_uv()?;
+                s.rev.toggle_swap_uv_bit();
+                ignore_status(s.rebuild_step_from_nurb_parameters(k))
             }
             SurfaceKind::SurfOfRevolution(s) => {
                 // As in `reverse`: the stored NURB stands for GetOrCreateGwNurbPointer.
@@ -1657,13 +1649,29 @@ impl Surface {
                 approx_tol_3d,
                 ang_tol_rad,
             ),
-            SurfaceKind::Cone(_) => {
-                // UNPORTED(surface.surface_p2): common SmCone intersection adapter
-                Err(SolidError::unported(
-                    "SmCone common intersection dispatch adapter",
-                    "surface.surface_p2",
-                ))
-            }
+            // SmCone::GlobalSurfaceIntersect: its special cases, else the base
+            // SmSurface::GlobalSurfaceIntersect of this surface
+            SurfaceKind::Cone(c) => c.global_surface_intersect_with(
+                k,
+                uv_domain,
+                crate::surface::cone::p3::IntersectTarget::Surface(other),
+                other_uv_domain,
+                use_surface_edges,
+                approx_tol_3d,
+                ang_tol_rad,
+                |req| {
+                    base_global_surface_intersect(
+                        req.kernel,
+                        self,
+                        req.domain,
+                        other,
+                        req.other_domain,
+                        req.use_surface_edges,
+                        req.approx_tol_3d,
+                        req.ang_tol_rad,
+                    )
+                },
+            ),
             SurfaceKind::SurfOfRevolution(s) => s.global_surface_intersect(
                 self,
                 k,
