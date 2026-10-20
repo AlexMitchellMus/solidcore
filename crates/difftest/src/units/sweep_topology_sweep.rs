@@ -680,7 +680,8 @@ mod tests {
             })
         ));
         model.b[0].set_editing_enabled(true);
-        assert_unported(model.remove_all_topology(brep), "topology.brep_p4");
+        // No traversable shell topology: the actual empty cleanup now completes.
+        model.remove_all_topology(brep)?;
         assert!(model.b[0].editing_enabled());
         assert!(matches!(
             model.remove_all_topology(BrepId::from_index(99)),
@@ -725,7 +726,7 @@ mod tests {
         Ok(())
     }
     #[test]
-    fn make_face_default_calls_the_port_and_retains_its_dependency_attribution() -> Result<()> {
+    fn make_face_default_calls_the_port_and_rejects_an_open_loop() -> Result<()> {
         let mut model = Model::new([1., 0., 0.])?;
         let surface = Surface::from(Plane::from_normal(Point3::ZERO, Point3::Z));
         let curve = model.b[0]
@@ -744,7 +745,13 @@ mod tests {
             surface,
             orientation: OrientType::Same,
         };
-        assert_unported(model.make_face(input), "topology.brep_p3");
+        assert!(matches!(
+            model.make_face(input),
+            Err(SolidError::InvalidInput {
+                reason: "loop does not close",
+                ..
+            })
+        ));
         Ok(())
     }
     #[test]
@@ -758,6 +765,11 @@ mod tests {
         assert_eq!(vertex.0, b);
         assert_eq!(model.b[0].shell(shell.1)?.region, Some(region));
         assert_eq!(model.b[0].vertex(vertex.1)?.point, Point3::ZERO);
+        assert_eq!(model.shell_vertices(b)?, vec![vertex.1]);
+        assert!(matches!(
+            model.shell_vertices(BrepId::from_index(99)),
+            Err(SolidError::Upstream { code: 1006, .. })
+        ));
         let face = model.b[0].add_face_record(Face::new(ShellId::from_index(0)))?;
         assert!(matches!(
             model.make_vertex_loop((b, face), Point3::ZERO),
@@ -832,6 +844,21 @@ mod tests {
         );
         assert!(!model.b[0].editing_enabled());
         assert!(!model.k.context.doing_boolean());
+        Ok(())
+    }
+
+    #[test]
+    fn shell_vertex_query_uses_nonzero_owner_and_vertex_list_order() -> Result<()> {
+        let mut model = Model::new([1., 0., 0.])?;
+        let first_owner = BrepId::from_index(0);
+        let other_owner = BrepId::from_index(1);
+        let first_region = model.infinite_region(first_owner)?;
+        let other_region = model.infinite_region(other_owner)?;
+        let (_, only) = model.make_shell_vertex((first_owner, first_region), Point3::ZERO)?;
+        let (_, first) = model.make_shell_vertex((other_owner, other_region), Point3::X)?;
+        let (_, second) = model.make_shell_vertex((other_owner, other_region), Point3::Y)?;
+        assert_eq!(model.shell_vertices(other_owner)?, vec![first.1, second.1]);
+        assert_eq!(model.shell_vertices(first_owner)?, vec![only.1]);
         Ok(())
     }
 

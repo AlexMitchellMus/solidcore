@@ -1178,3 +1178,22 @@ gates have zero failures. Workspace tests (1530 kernel tests), fmt, plain/native
 Clippy, wasm32 and five p1 native FFI tests pass. Successful primitive topology
 and post-intersection mutations remain uncertified. Full gate and actual-head
 CI evidence are recorded in the PR discussion.
+
+
+### PR #233 face-box/current-main refresh (2026-10-20)
+
+Current main through `e4dd81c4` and the #213/#222 compatibility updates are
+integrated. Face bounding boxes call the real query port with tight=false and
+caller owner/face ids. HCR uses the owning mutable Kernel and edge blending
+uses the current same-Brep API. The face-box and empty linear-cap native-feature
+runner regressions pass; 1549 kernel tests, plain/native Clippy, wasm32 and five
+FFI regressions pass. Additional inherited sweep service assertions are refreshed
+for the landed topology/notification ports.
+
+All twelve affected native gates pass every comparable case (maximum relative
+error zero). P3 remains 296 cases / 285 pass / 10 deferred at topology.brep_p8 /
+1 rejected. Sweep is 568 / 558 pass / 10 deferred at topology.brep_p3 / 0 rejected.
+The four newly comparable sweep cases certify the exported helper records and
+maps, not new vertex coordinates or complete B-rep topology. Primitive topology
+and successful nonempty stitch tails remain uncertified. Full local and
+actual-head CI results are recorded in the PR discussion.
