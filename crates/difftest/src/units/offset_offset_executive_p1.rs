@@ -1299,10 +1299,11 @@ fn rust_probe(branch: Probe, tolerance: f64) -> RResult<Output> {
                 &mut Brep::new(),
             )
         }
-        Probe::SideWallNull => executive.build_side_wall_of_edgeuse(&kernel, None),
+        Probe::SideWallNull => executive.build_side_wall_of_edgeuse(&kernel, &mut original, None),
         Probe::SideWallUnmapped => {
             let edge = unit_wire(&mut original, 0.0)?;
-            executive.build_side_wall_of_edgeuse(&kernel, Some(primary(&original, edge)?))
+            let eu = primary(&original, edge)?;
+            executive.build_side_wall_of_edgeuse(&kernel, &mut original, Some(eu))
         }
         Probe::FillEmpty => {
             executive.fill_gap_edgeuses(&kernel, EdgeId::from_index(u32::MAX), &[], &[])

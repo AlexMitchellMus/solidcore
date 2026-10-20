@@ -395,9 +395,11 @@ impl OffsetExecutive {
                     let edge = required(eu::edge(original, edgeuse)?, OP_EXTENDED)?;
                     if eu::edge_is_lamina(original, edge)? {
                         // SE, not SER, upstream: propagate Unported, ignore other errors.
-                        crate::error::ignore_status(
-                            self.build_side_wall_of_edgeuse(kernel, Some(edgeuse)),
-                        )?;
+                        crate::error::ignore_status(self.build_side_wall_of_edgeuse(
+                            kernel,
+                            original,
+                            Some(edgeuse),
+                        ))?;
                     }
                 }
             }
