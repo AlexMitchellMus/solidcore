@@ -3,6 +3,663 @@
   "cases": [
     {
       "max_rel_err": 0.0,
+      "name": "adv_island_noface1_check",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#0 (upstream source/SMLib/src/SmBrep.cpp:5829)",
+      "values_compared": 162
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface1_edge0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#1 (upstream source/SMLib/src/SmBrep.cpp:5829)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface1_edge1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#2 (upstream source/SMLib/src/SmBrep.cpp:5829)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface1_edge2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#3 (upstream source/SMLib/src/SmBrep.cpp:5829)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface1_edge3",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#4 (upstream source/SMLib/src/SmBrep.cpp:5829)",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "brep": {
+          "file": "fixture:island_swap.smb",
+          "kind": "file"
+        },
+        "damage": {
+          "no_surface": 1
+        },
+        "op": "delete_edge",
+        "target": 4
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface1_edge4",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "upstream dereferences NULL on the damaged B-rep (FFI guard)",
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#5 (upstream source/SMLib/src/SmBrep.cpp:5839)",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "brep": {
+          "file": "fixture:island_swap.smb",
+          "kind": "file"
+        },
+        "damage": {
+          "no_surface": 1
+        },
+        "op": "delete_edge",
+        "target": 5
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface1_edge5",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "upstream dereferences NULL on the damaged B-rep (FFI guard)",
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#6 (upstream source/SMLib/src/SmBrep.cpp:5839)",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "brep": {
+          "file": "fixture:island_swap.smb",
+          "kind": "file"
+        },
+        "damage": {
+          "no_surface": 1
+        },
+        "op": "delete_edge",
+        "target": 6
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface1_edge6",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "upstream dereferences NULL on the damaged B-rep (FFI guard)",
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#7 (upstream source/SMLib/src/SmBrep.cpp:5839)",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "brep": {
+          "file": "fixture:island_swap.smb",
+          "kind": "file"
+        },
+        "damage": {
+          "no_surface": 1
+        },
+        "keep": 0,
+        "op": "delete_edge",
+        "target": 4
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface1_edge4_keep0",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "upstream dereferences NULL on the damaged B-rep (FFI guard)",
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#8 (upstream source/SMLib/src/SmBrep.cpp:6050)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface1_edge7",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#9 (upstream source/SMLib/src/SmBrep.cpp:5911)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface1_edge8",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#10 (upstream source/SMLib/src/SmBrep.cpp:5911)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface1_edge9",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#11 (upstream source/SMLib/src/SmBrep.cpp:5911)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface1_edge7_keep2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#12 (upstream source/SMLib/src/SmBrep.cpp:6050)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface1_edge4_noedit",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#13 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 162
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface0_check",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#14 (upstream source/SMLib/src/SmBrep.cpp:5829)",
+      "values_compared": 162
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface0_edge0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#15 (upstream source/SMLib/src/SmBrep.cpp:5829)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface0_edge3",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#16 (upstream source/SMLib/src/SmBrep.cpp:5829)",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "brep": {
+          "file": "fixture:island_swap.smb",
+          "kind": "file"
+        },
+        "damage": {
+          "no_surface": 0
+        },
+        "op": "delete_edge",
+        "target": 4
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface0_edge4",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "upstream dereferences NULL on the damaged B-rep (FFI guard)",
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#17 (upstream source/SMLib/src/SmBrep.cpp:5829)",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "brep": {
+          "file": "fixture:island_swap.smb",
+          "kind": "file"
+        },
+        "damage": {
+          "no_surface": 0
+        },
+        "op": "delete_edge",
+        "target": 6
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface0_edge6",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "upstream dereferences NULL on the damaged B-rep (FFI guard)",
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#18 (upstream source/SMLib/src/SmBrep.cpp:5829)",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "brep": {
+          "file": "fixture:island_swap.smb",
+          "kind": "file"
+        },
+        "damage": {
+          "no_surface": 0
+        },
+        "op": "delete_edge",
+        "target": 7
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface0_edge7",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "upstream dereferences NULL on the damaged B-rep (FFI guard)",
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#19 (upstream source/SMLib/src/SmBrep.cpp:5829)",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "brep": {
+          "file": "fixture:island_swap.smb",
+          "kind": "file"
+        },
+        "damage": {
+          "no_surface": 0
+        },
+        "op": "delete_edge",
+        "target": 9
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface0_edge9",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "upstream dereferences NULL on the damaged B-rep (FFI guard)",
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#20 (upstream source/SMLib/src/SmBrep.cpp:5829)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface2_check",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#21 (upstream source/SMLib/src/SmBrep.cpp:5829)",
+      "values_compared": 162
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface2_edge4",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#22 (upstream source/SMLib/src/SmBrep.cpp:5911)",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "brep": {
+          "file": "fixture:island_swap.smb",
+          "kind": "file"
+        },
+        "damage": {
+          "no_surface": 2
+        },
+        "op": "delete_edge",
+        "target": 7
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_island_noface2_edge7",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "upstream dereferences NULL on the damaged B-rep (FFI guard)",
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#23 (upstream source/SMLib/src/SmBrep.cpp:5839)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion1_check",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#24 (upstream source/SMLib/src/SmBrep.cpp:6827)",
+      "values_compared": 105
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion1_edge0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#25 (upstream source/SMLib/src/SmBrep.cpp:6827)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion1_edge3",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#26 (upstream source/SMLib/src/SmBrep.cpp:6827)",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "brep": {
+          "file": "fixture:wire_path.smb",
+          "kind": "file"
+        },
+        "damage": {
+          "no_region": 1
+        },
+        "op": "delete_edge",
+        "target": 4
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion1_edge4",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "upstream dereferences NULL on the damaged B-rep (FFI guard)",
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#27 (upstream source/SMLib/src/SmBrep.cpp:6849)",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "brep": {
+          "file": "fixture:wire_path.smb",
+          "kind": "file"
+        },
+        "damage": {
+          "no_region": 1
+        },
+        "op": "delete_edge",
+        "target": 5
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion1_edge5",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "upstream dereferences NULL on the damaged B-rep (FFI guard)",
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#28 (upstream source/SMLib/src/SmBrep.cpp:6949)",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "brep": {
+          "file": "fixture:wire_path.smb",
+          "kind": "file"
+        },
+        "damage": {
+          "no_region": 1
+        },
+        "op": "delete_edge",
+        "target": 6
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion1_edge6",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "upstream dereferences NULL on the damaged B-rep (FFI guard)",
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#29 (upstream source/SMLib/src/SmBrep.cpp:6892)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion1_edge4_noedit",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#30 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 105
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion0_check",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#31 (upstream source/SMLib/src/SmBrep.cpp:6827)",
+      "values_compared": 105
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion0_edge0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#32 (upstream source/SMLib/src/SmBrep.cpp:6827)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion0_edge4",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#33 (upstream source/SMLib/src/SmBrep.cpp:6849)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion0_edge5",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#34 (upstream source/SMLib/src/SmBrep.cpp:6949)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion0_edge6",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#35 (upstream source/SMLib/src/SmBrep.cpp:6892)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion2_check",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#36 (upstream source/SMLib/src/SmBrep.cpp:7967)",
+      "values_compared": 105
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion2_edge4",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#37 (upstream source/SMLib/src/SmBrep.cpp:6849)",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "brep": {
+          "file": "fixture:wire_path.smb",
+          "kind": "file"
+        },
+        "damage": {
+          "no_region": 2
+        },
+        "op": "delete_vertex",
+        "target": 0
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion2_vertex0",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "upstream dereferences NULL on the damaged B-rep (FFI guard)",
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#38 (upstream source/SMLib/src/SmBrep.cpp:7967)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion2_vertex1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#39 (upstream source/SMLib/src/SmBrep.cpp:7967)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion2_vertex2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#40 (upstream source/SMLib/src/SmBrep.cpp:7967)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion2_vertex3",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#41 (upstream source/SMLib/src/SmBrep.cpp:7967)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion2_vertex4",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#42 (upstream source/SMLib/src/SmBrep.cpp:7967)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion2_vertex5",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#43 (upstream source/SMLib/src/SmBrep.cpp:7967)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion2_vertex6",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#44 (upstream source/SMLib/src/SmBrep.cpp:7967)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion2_vertex7",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#45 (upstream source/SMLib/src/SmBrep.cpp:7967)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion2_vertex8",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#46 (upstream source/SMLib/src/SmBrep.cpp:7967)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion2_vertex9",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#47 (upstream source/SMLib/src/SmBrep.cpp:7967)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_wire_noregion2_vertex7_noedit",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p4/adversarial.json#48 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 105
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "strut_check",
       "outcome": "pass",
       "pass": true,
@@ -1099,6 +1756,234 @@
       "outcome": "deferred",
       "pass": false,
       "source": "fixture:fixtures/topology.brep_p4/coverage.json#93 (upstream source/SMLib/src/SmBrep.cpp:695)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "branch_check",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p4/wire_branch.json#0 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 112
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "branch_edge0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/wire_branch.json#1 (upstream source/SMLib/src/SmBrep.cpp:6560)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "branch_edge4",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/wire_branch.json#2 (upstream source/SMLib/src/SmBrep.cpp:6849)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "branch_edge5",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/wire_branch.json#3 (upstream source/SMLib/src/SmBrep.cpp:6949)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "branch_edge6",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/wire_branch.json#4 (upstream source/SMLib/src/SmBrep.cpp:6949)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "branch_edge7",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/wire_branch.json#5 (upstream source/SMLib/src/SmBrep.cpp:6949)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "branch_edge5_noedit",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p4/wire_branch.json#6 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 112
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "branch_vertex4",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/wire_branch.json#7 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "branch_vertex5",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/wire_branch.json#8 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "branch_vertex6",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/wire_branch.json#9 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "branch_vertex7",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/wire_branch.json#10 (upstream source/SMLib/src/SmBrep.cpp:7967)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "branch_vertex9",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/wire_branch.json#11 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "branch_shrink",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/wire_branch.json#12 (upstream source/SMLib/src/SmBrep.cpp:32218)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::LockBoundingBox",
+        "unit": "query.brep"
+      },
+      "max_rel_err": 0.0,
+      "name": "branch_stitch",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/wire_branch.json#13 (upstream source/SMLib/src/SmBrep.cpp:26555)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "branch_destroy",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/wire_branch.json#14 (upstream source/SMLib/src/SmBrep.cpp:695)",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "brep": {
+          "file": "fixture:wire_branch.smb",
+          "kind": "file"
+        },
+        "damage": {
+          "no_region": 1
+        },
+        "op": "delete_edge",
+        "target": 4
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_branch_noregion1_edge4",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "upstream dereferences NULL on the damaged B-rep (FFI guard)",
+      "source": "fixture:fixtures/topology.brep_p4/wire_branch.json#15 (upstream source/SMLib/src/SmBrep.cpp:6849)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_branch_noregion1_edge5",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/wire_branch.json#16 (upstream source/SMLib/src/SmBrep.cpp:6949)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_branch_noregion1_edge6",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/wire_branch.json#17 (upstream source/SMLib/src/SmBrep.cpp:6949)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_branch_noregion1_edge7",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/wire_branch.json#18 (upstream source/SMLib/src/SmBrep.cpp:6949)",
       "values_compared": 0
     },
     {
@@ -2883,14 +3768,15 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 212,
+  "cases_deferred": 255,
   "cases_failed": 0,
-  "cases_passed": 42,
-  "cases_total": 254,
+  "cases_passed": 53,
+  "cases_rejected": 14,
+  "cases_total": 322,
   "deferred_by_unit": {
-    "query.brep": 12,
-    "topology.brep_p2": 171,
-    "topology.face_p4": 29
+    "query.brep": 13,
+    "topology.brep_p2": 212,
+    "topology.face_p4": 30
   },
   "max_rel_err": 0.0,
   "pass": true,
