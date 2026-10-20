@@ -961,6 +961,14 @@ fn loop_fixture(brep: &mut Brep, input: &EdgeIn) -> HResult<(EdgeId, EdgeId)> {
 }
 
 fn rust_config(input: &Config) -> HResult<Output> {
+    // the fixture counts the FFI guard bounds: an unbounded count only builds
+    // fixture topology until memory runs out
+    if [input.original_edges, input.offset_edges, input.face_count]
+        .iter()
+        .any(|&n| n > ffi::MAX_ITEMS)
+    {
+        return Err(bad("fixture count exceeds MAX_ITEMS"));
+    }
     let mut original = Brep::new();
     let mut offset = Brep::new();
     let mut face_owner = Brep::new();
