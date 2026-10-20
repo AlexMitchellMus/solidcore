@@ -11403,9 +11403,10 @@ including caller notification state, HCR ownership, real p5 edits and p1 API
 back-edges. The shared stitch callback retains owner-qualified map updates.
 Main's expanded edge-blend API receives both edge uses from the primitive's
 one B-rep (`b_2=None`), and HCR global visibility receives that owner's mutable
-Kernel. Current main's real pre-edit notification now completes: the two
-stitch adapter regressions instead reach `query.brep::CalculateBoundingBox`,
-while checking editing and boolean flag restoration. Native successful stitch
+Kernel. Current main's real pre-edit notification now completes: the general
+sweep adapter regression now reaches `query.brep::CalculateBoundingBox`, while
+the empty linear-cap stitch completes successfully. Both check editing and
+boolean flag restoration. Native successful stitch
 and primitive topology construction remain uncertified.
 
 ## PR #213 — API back-edge review integration (2026-10-20)
