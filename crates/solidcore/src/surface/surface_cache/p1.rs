@@ -2174,6 +2174,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
             pseudo_guess: None,
             polar_guess: guess,
             expand_by_zone_tol: true,
+            expand_tolerance: None,
         };
         let boxes = ignored(calculate_bounding_box(surface, &domain, &req))?;
         Ok(boxes.and_then(|b| b.polar))

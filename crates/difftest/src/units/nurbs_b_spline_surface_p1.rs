@@ -1116,6 +1116,7 @@ fn rust_surface(op: &OpIn, s: &mut BSplineSurface, o: &mut Vec<f64>) -> Result<(
                 pseudo_guess: pg.as_ref(),
                 polar_guess: plg.as_ref(),
                 expand_by_zone_tol: *expand,
+                expand_tolerance: None,
             };
             let b = s.calculate_bounding_box(&domain_of(*domain), &req)?;
             if let Some(nb) = b.normal {

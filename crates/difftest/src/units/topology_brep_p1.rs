@@ -799,6 +799,9 @@ pub(crate) fn import(ex: &[f64], graph_at: usize) -> Result<(Brep, ImportTypes),
         {
             let _ = surface.set_owner(Some(arena_identity(CacheObject::Face(id))));
         }
+        // the face's tolerance, as the face upstream answers GetTolerance with
+        b.sync_face_surface_tolerance(id)
+            .map_err(|e| harness(e.to_string()))?;
     }
     // the shared import leaves `m_pFU` unset: the face's upward (SAME) face use
     let ups: Vec<(FaceId, FaceuseId)> = b

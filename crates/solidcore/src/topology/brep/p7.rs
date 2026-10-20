@@ -579,6 +579,7 @@ pub fn make_face(
     // make the face->surface connections
     surface.set_owner(Some(this_face(new_face)));
     b.face_mut(new_face)?.surface = Some(surface);
+    b.sync_face_surface_tolerance(new_face)?;
 
     Ok(NewFace {
         region: new_region,

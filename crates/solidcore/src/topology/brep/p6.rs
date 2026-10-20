@@ -188,6 +188,7 @@ pub fn make_face_topology(
     let record = brep.face_mut(face)?;
     record.surface = Some(surface);
     record.uv_domain = domain;
+    brep.sync_face_surface_tolerance(face)?;
     // This call precedes primary-faceuse assignment, list insertion, loop
     // allocation, radial sectors, trims and TestClosureSplitRegion upstream.
     // UNPORTED(topology.face_p3): SmFace::SetTolerance -- justified: findings.md topology.face_p3 "Stubs left for this unit"

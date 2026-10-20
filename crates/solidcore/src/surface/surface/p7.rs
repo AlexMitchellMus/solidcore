@@ -37,6 +37,12 @@
 //! | [`good_drop_result`]                              | `sm_GoodDropResult` (static)                     |
 //!
 //! Deviations:
+//! - **Face tolerance of `IsPlanar`.** The B-spline and revolution boxes are expanded by
+//!   the face tolerance the B-rep cached on the surface ([`Surface::owner_zone_tol_3d`]).
+//!   A face-owned B-spline without it returns [`SolidError::Unported`]
+//!   (`SmFace::GetTolerance`); a face-owned surface of revolution without it keeps
+//!   `SM_ZONE_TOL_3D` (the port's behaviour before the cache existed; upstream would use
+//!   the face's tolerance).
 //! - **Generic bodies.** The `SmSurface` bodies that only call the evaluation virtuals
 //!   (`Evaluate`, `EvaluatePoint`, `GetNaturalUVDomain`) are generic over
 //!   [`SurfaceEvaluate`], so a caller holding a bare [`BSplineSurface`] (which does not
@@ -823,19 +829,18 @@ impl Surface {
                 })
             }
             SurfaceKind::BSpline(s) => {
-                // the box expansion uses the owning face's tolerance
-                if self.face()?.is_some() {
-                    // UNPORTED(topology.face_p2): SmFace::GetTolerance
-                    return Err(SolidError::unported(
-                        "SmFace::GetTolerance",
-                        "topology.face_p2",
-                    ));
-                }
-                Ok(planar_of(s, &self.natural_uv_domain())?.is_planar(tol_3d))
+                // the box expansion uses the owning face's tolerance, as cached on the
+                // surface by its B-rep (UNPORTED(topology.face_p2): SmFace::GetTolerance
+                // for a bare face handle without it)
+                let face_tol = self.face_zone_tol_3d()?;
+                Ok(planar_of(s, &self.natural_uv_domain(), face_tol)?.is_planar(tol_3d))
             }
-            // SmSurfOfRevolution inherits SmBSplineSurface::CalculateBoundingBox
+            // SmSurfOfRevolution inherits SmBSplineSurface::CalculateBoundingBox: its
+            // face's cached tolerance when there is one (a face without it keeps the
+            // port's earlier SM_ZONE_TOL_3D, see the module deviations)
             SurfaceKind::SurfOfRevolution(s) => {
-                Ok(planar_of(s.base(), &self.natural_uv_domain())?.is_planar(tol_3d))
+                let face_tol = self.owner_zone_tol_3d();
+                Ok(planar_of(s.base(), &self.natural_uv_domain(), face_tol)?.is_planar(tol_3d))
             }
             // SmSurface body: use the virtual box and ignore ordinary failures,
             // which leave the default pseudo box. The kernel is available here.
@@ -1502,12 +1507,13 @@ impl Surface {
 ///
 /// [`SolidError::Unported`] from the bounding box.
 pub fn b_spline_is_planar(s: &BSplineSurface, tol_3d: f64) -> Result<Planar> {
-    Ok(planar_of(s, &s.natural_uv_domain())?.is_planar(tol_3d))
+    Ok(planar_of(s, &s.natural_uv_domain(), None)?.is_planar(tol_3d))
 }
 
-/// The pseudo box of a B-spline surface over `uv_domain`; a failed box is the default
+/// The pseudo box of a B-spline surface over `uv_domain`, expanded by `face_tol` (the
+/// owning face's tolerance; `None` for `SM_ZONE_TOL_3D`); a failed box is the default
 /// box, as upstream ignores the status.
-fn planar_of(s: &BSplineSurface, uv_domain: &Extent2d) -> Result<PseudoBox> {
+fn planar_of(s: &BSplineSurface, uv_domain: &Extent2d, face_tol: Option<f64>) -> Result<PseudoBox> {
     let req = BoundingBoxRequest {
         normal: false,
         pseudo: true,
@@ -1515,6 +1521,7 @@ fn planar_of(s: &BSplineSurface, uv_domain: &Extent2d) -> Result<PseudoBox> {
         pseudo_guess: None,
         polar_guess: None,
         expand_by_zone_tol: true,
+        expand_tolerance: face_tol,
     };
     Ok(ignored(s.calculate_bounding_box(uv_domain, &req))?
         .and_then(|b| b.pseudo)
