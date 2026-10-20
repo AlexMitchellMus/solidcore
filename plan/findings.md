@@ -2704,6 +2704,37 @@ Upstream behaviour worth knowing:
     `LocalSolve`, and `SmCurvePropertyGS::LocalSolve`'s angle special case copies it into
     `m_apNodes[1]` of a one-object solution. The `curve.curve_p7` harness reports the second
     node only for two-object solutions.
+- **Cost of rebuilding the curve cache per call (fuzz00504, PR #149, 2026-10-20).** The
+  Caches deviation above (`make_curve_cache` builds a fresh cache for every caller, where
+  upstream's `CacheMakeOrValidate` keeps it on the curve until the curve changes) is a
+  Rust-only slowdown once a caller intersects the same curves repeatedly.
+  `offset.offset_geometry_creation --fuzz 2000` (at #149's `ed40f92c`; the same at
+  `da779c51`) reports 1 timeout, `fuzz00504`. Its inputs: base `gen0054`, mutations
+  `/pairs/0/1/2 = 4294967296` and `/ops/0/curve/cpts/2/0 = 1e+300`; `disk.smb` and
+  `sphere.smb`, `dist 100`, `approx 1e-5`, analytics on. The slow op is the fifth,
+  `trim_extended_edge` (base `[0,9,12]`, offset `[1,9,25]`).
+  - Time for the script up to that op: C++ about 2 s, Rust 18-24 s (the fuzz budget is
+    20 s a side). The case completes with no difference; it is slow, not hung.
+  - All 5 gdb samples of the Rust side are in one stack: `trim_extended_edge` ->
+    `global_curve_intersect` -> `curve::curve::p5::make_curve_cache` ->
+    `CurveCache::tessellate` -> `compute_constants` -> `solve_it` -> `evaluate` ->
+    `nurbs_crv::crv_derivs` / `basis_derivs_into`.
+  - Not related to the exact `SmSurfOfRevolution` import (`ed40f92c`): the op takes 18.8 s
+    with it and 22.0 s with it disabled. #149's wiring of the `UNPORTED(topology.brep_p2)`
+    stubs made this `TrimExtendedEdge` path reachable for the case; before, the unit's
+    `--fuzz 2000` was `FUZZ-PASS`.
+  - Not a defect of `offset.offset_geometry_creation` or `topology.brep_p2`, and no guard
+    was added (overseer ruling). The fix is a cache kept per curve across calls, as
+    `Curve::global_point_solve_cached` does for `GlobalCoincidenceChecker`; it belongs to
+    this unit's owners.
+  - See also: the "curve.curve_p8 (`SmCurve::GlobalCurveIntersect`): Rust runs for minutes
+    where C++ returns at once on a 1e300 control point" section (fuzz01278) and the
+    fuzz00405 note in the `offset.offset_geometry_creation` section (`approx = -1` with a
+    `-1e300` point, Rust 21 s in this cache's tessellation under `global_curve_intersect`,
+    the closest match), both on sc-topo_isect_p1's #156 follow-up branch
+    `fix/offset_geometry_creation-review` (bluecmd/solidcore, head `14f66bf4`, not yet a
+    PR); and `surface.surface_p8`'s "Cache cost at tiny scale" (HANG-15). fuzz00504 also
+    carries a `1e+300` control point (in its first op's curve).
 
 ## surface.surface_p9
 
@@ -8475,6 +8506,22 @@ validation section below. These results do not certify the review fixes.
   and now defer (the override returned a B-spline there, so they agreed by coincidence:
   gen0009, gen0119, gen0148, gen0376, gen0520, gen0707); gen0683 (an `EdgeuseOffset`, circle
   14021 against B-spline 14033) was the mismatch that showed the class.
+- **Exact `SmSurfOfRevolution` faces in the offset runner (#149 review round).** The shim's
+  `Export` now appends, per face, the binary `WriteToDB` record (version 33) of a surface that
+  is exactly an `SmSurfOfRevolution`; the runner reads it back with
+  `SurfOfRevolution::read_from_db` (the face keeps its owner) and marks the face exact, so
+  `sm_ExtractIsoCurve` runs the revolution's own `CreateIsoParametricCurve` on both sides. The
+  runner's `put_curve` exports every `SmBSplineCurve` kind as the fixture's does (type and
+  NURB; the lifted circle is an `SmCircle`). The non-local `FaceuseOffset` stop (HANG-26) is
+  now keyed on the face's exported type (any subclass other than `SmPlane`), as the shim's,
+  not on exactness. Of the 7 lift cases above, the 4 on surfaces of revolution (gen0009,
+  gen0148, gen0520, gen0683) pass again; gen0119 and gen0707 (`SmSurfOfExtrusion`) and gen0376
+  (`SmSphere`) stay deferred: the Rust `SurfaceKind` has no extrusion or sphere variant to
+  import them as. Overall 861 cases, 552 pass (was 542), 0 fail, 309 deferred: 10
+  `harness:analytic-geometry-export` deferrals pass (105-408 values: the 4 lifts plus
+  gen0070, gen0178, gen0187, gen0597, gen0698, gen0767, whose B-reps' only inexact faces were
+  revolutions) and 9 now defer on `intersect.surface_drop_curve`; 107 harness deferrals remain
+  (extrusion, cone, sphere, torus faces).
 - **Make ops (after `topology.shell`, #154).** `MakeShellVertexTopology`,
   `MakeEdgeVertexTopology` and `MakeEdgeTopology` run (76 cases flipped from the shell stubs)
   and output, after the status, the B-rep's topology read back through fresh list queries on
