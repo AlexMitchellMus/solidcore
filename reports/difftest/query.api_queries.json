@@ -886,14 +886,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "face_kind4_op14",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.api_queries/queries.json#107",
       "values_compared": 0
     },
@@ -910,21 +906,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::CalculateBoundingBox",
-        "unit": "query.face_p1"
-      },
       "max_rel_err": 0.0,
       "name": "face_kind4_op16",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.api_queries/queries.json#109",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_kind4_op17",
@@ -1122,14 +1114,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "face_kind5_op14",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.api_queries/queries.json#130",
       "values_compared": 0
     },
@@ -1146,21 +1134,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::CalculateBoundingBox",
-        "unit": "query.face_p1"
-      },
       "max_rel_err": 0.0,
       "name": "face_kind5_op16",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.api_queries/queries.json#132",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_kind5_op17",
@@ -1350,14 +1334,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "face_kind6_op14",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.api_queries/queries.json#152",
       "values_compared": 0
     },
@@ -1374,21 +1354,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::CalculateBoundingBox",
-        "unit": "query.face_p1"
-      },
       "max_rel_err": 0.0,
       "name": "face_kind6_op16",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.api_queries/queries.json#154",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "face_kind6_op17",
@@ -2006,21 +1982,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::CalculateBoundingBox",
-        "unit": "query.face_p1"
-      },
       "max_rel_err": 0.0,
       "name": "rational_kind8_op16",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.api_queries/queries.json#230",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "rational_kind8_op17",
@@ -2234,21 +2206,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::CalculateBoundingBox",
-        "unit": "query.face_p1"
-      },
       "max_rel_err": 0.0,
       "name": "spherical_band_op16",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/query.api_queries/queries.json#257",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "spherical_band_op17",
@@ -3670,14 +3638,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0006",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337072",
       "values_compared": 0
     },
@@ -3699,8 +3663,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0009",
@@ -3730,14 +3694,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0012",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337078",
       "values_compared": 0
     },
@@ -3770,14 +3730,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0016",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337082",
       "values_compared": 0
     },
@@ -3959,8 +3915,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0035",
@@ -3994,14 +3950,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0038",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337104",
       "values_compared": 0
     },
@@ -4139,8 +4091,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0053",
@@ -4314,21 +4266,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::CalculateTightBoundingBox",
-        "unit": "query.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0071",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337137",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
-        "symbol": "SmFace::CalculateTightBoundingBox",
-        "unit": "query.face_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0072",
@@ -4682,14 +4630,10 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0110",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337176",
       "values_compared": 0
     },
@@ -4707,8 +4651,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0112",
@@ -4742,14 +4686,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0116",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337182",
       "values_compared": 0
     },
@@ -4866,14 +4806,10 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0129",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337195",
       "values_compared": 0
     },
@@ -4894,14 +4830,10 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0132",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337198",
       "values_compared": 0
     },
@@ -5035,8 +4967,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::CalculateTightBoundingBox",
-        "unit": "query.face_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0147",
@@ -5166,14 +5098,10 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0160",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337226",
       "values_compared": 0
     },
@@ -5402,16 +5330,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::CalculateBoundingBox",
-        "unit": "query.face_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0185",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337251",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -5446,14 +5370,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0189",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337255",
       "values_compared": 0
     },
@@ -5498,14 +5418,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0194",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337260",
       "values_compared": 0
     },
@@ -5518,16 +5434,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::CalculateBoundingBox",
-        "unit": "query.face_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0196",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337262",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -5667,8 +5579,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::CalculateTightBoundingBox",
-        "unit": "query.face_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0211",
@@ -5811,8 +5723,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::CalculateTightBoundingBox",
-        "unit": "query.face_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0225",
@@ -6154,16 +6066,12 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmFace::CalculateBoundingBox",
-        "unit": "query.face_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0262",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337328",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -6451,8 +6359,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0292",
@@ -6475,8 +6383,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0294",
@@ -6486,16 +6394,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::CalculateTightBoundingBox",
-        "unit": "query.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0295",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337361",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -6563,8 +6467,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0302",
@@ -6659,8 +6563,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::CalculateTightBoundingBox",
-        "unit": "query.face_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0311",
@@ -6930,14 +6834,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0337",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337403",
       "values_compared": 0
     },
@@ -6963,8 +6863,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::CalculateTightBoundingBox",
-        "unit": "query.face_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0340",
@@ -7010,16 +6910,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmFace::CalculateBoundingBox",
-        "unit": "query.face_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0345",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337411",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -7074,16 +6970,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::CalculateTightBoundingBox",
-        "unit": "query.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0351",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337417",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -7107,8 +6999,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0354",
@@ -7202,14 +7094,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0365",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337431",
       "values_compared": 0
     },
@@ -7223,8 +7111,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0367",
@@ -7311,8 +7199,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0375",
@@ -7454,16 +7342,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmFace::CalculateTightBoundingBox",
-        "unit": "query.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0391",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337457",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -7542,21 +7426,17 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0401",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337467",
       "values_compared": 0
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0402",
@@ -7807,8 +7687,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0427",
@@ -7850,14 +7730,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0432",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337498",
       "values_compared": 0
     },
@@ -7902,21 +7778,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0437",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337503",
       "values_compared": 0
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0438",
@@ -8007,8 +7879,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::CalculateTightBoundingBox",
-        "unit": "query.face_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0447",
@@ -8035,8 +7907,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0450",
@@ -8254,16 +8126,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::CalculateBoundingBox",
-        "unit": "query.face_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0473",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337539",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -8314,16 +8182,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::CalculateBoundingBox",
-        "unit": "query.face_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0479",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337545",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -8522,26 +8386,18 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0500",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337566",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0501",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337567",
       "values_compared": 0
     },
@@ -8602,14 +8458,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0507",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337573",
       "values_compared": 0
     },
@@ -8742,14 +8594,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0521",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337587",
       "values_compared": 0
     },
@@ -8819,8 +8667,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0528",
@@ -8998,14 +8846,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0546",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337612",
       "values_compared": 0
     },
@@ -9098,14 +8942,10 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0556",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337622",
       "values_compared": 0
     },
@@ -9142,14 +8982,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0560",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337626",
       "values_compared": 0
     },
@@ -9219,8 +9055,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0568",
@@ -9239,8 +9075,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0570",
@@ -9303,8 +9139,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::CalculateTightBoundingBox",
-        "unit": "query.face_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0577",
@@ -9410,14 +9246,10 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0588",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337654",
       "values_compared": 0
     },
@@ -9447,8 +9279,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0592",
@@ -9519,8 +9351,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0599",
@@ -9630,14 +9462,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0611",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337677",
       "values_compared": 0
     },
@@ -9831,8 +9659,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0630",
@@ -9898,26 +9726,18 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::CalculateTightBoundingBox",
-        "unit": "query.face_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0637",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337703",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0638",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337704",
       "values_compared": 0
     },
@@ -10039,8 +9859,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0650",
@@ -10062,14 +9882,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0652",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337718",
       "values_compared": 0
     },
@@ -10082,14 +9898,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0654",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337720",
       "values_compared": 0
     },
@@ -10114,14 +9926,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0657",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337723",
       "values_compared": 0
     },
@@ -10135,8 +9943,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0659",
@@ -10206,21 +10014,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0667",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337733",
       "values_compared": 0
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0668",
@@ -10294,14 +10098,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0675",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337741",
       "values_compared": 0
     },
@@ -10358,21 +10158,17 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0681",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337747",
       "values_compared": 0
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0682",
@@ -10459,8 +10255,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0691",
@@ -10598,14 +10394,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0706",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337772",
       "values_compared": 0
     },
@@ -10763,8 +10555,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::CalculateTightBoundingBox",
-        "unit": "query.face_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0724",
@@ -10818,14 +10610,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0729",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337795",
       "values_compared": 0
     },
@@ -10850,26 +10638,18 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0732",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337798",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0733",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337799",
       "values_compared": 0
     },
@@ -11042,14 +10822,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0751",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337817",
       "values_compared": 0
     },
@@ -11090,14 +10866,10 @@
       "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0756",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337822",
       "values_compared": 0
     },
@@ -11158,16 +10930,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::CalculateBoundingBox",
-        "unit": "query.face_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0763",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337829",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -11275,8 +11043,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_FaceClassifyUVLine",
-        "unit": "query.face_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0775",
@@ -11466,14 +11234,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0795",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2348217451497337861",
       "values_compared": 0
     },
@@ -11515,17 +11279,16 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 472,
+  "cases_deferred": 413,
   "cases_failed": 0,
-  "cases_passed": 731,
+  "cases_passed": 790,
   "cases_total": 1203,
   "deferred_by_unit": {
+    "curve.crv_on_surf": 10,
     "curve.curve_p6": 31,
-    "intersect.surface_drop_lib_p3": 7,
+    "intersect.surface_drop_lib_p3": 28,
     "query.brep": 335,
-    "query.face_p1": 12,
-    "query.face_p3": 45,
-    "topology.brep_p2": 42
+    "topology.face_p2": 9
   },
   "max_rel_err": 0.0,
   "pass": true,
