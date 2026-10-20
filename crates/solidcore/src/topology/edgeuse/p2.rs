@@ -643,7 +643,6 @@ pub fn check_and_set_uv_trim_curve(
     };
 
     // attach pUVTrimCurve to this Edgeuse (FALSE = don't delete existing UVTrimCurve)
-    let uv_copy = uv_trim_curve_in.clone();
     let old_uv_trim_curve = set_uv_trim_curve(
         b,
         eu,
@@ -652,6 +651,10 @@ pub fn check_and_set_uv_trim_curve(
         false,
         opt_drop_curve_fail,
     )?;
+    let uv_copy = uv_trim_curve(b, eu)?
+        .0
+        .ok_or_else(|| null("CheckAndSetUVTrimCurve: attached curve missing"))?
+        .clone_for_evaluation()?;
 
     // define the 3D curve for the UVCurve projected through the Surface
     let surface = b

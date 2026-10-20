@@ -1218,19 +1218,33 @@ impl Surface {
     ///
     /// # Errors
     ///
-    /// Those of the kind's override (the base default is `SM_ERR`).
+    /// Those of the kind's override (the base default is `SM_ERR`), including
+    /// `InvalidInput` if a volume append would exceed 64 whole-geometry levels.
     pub fn transform(
         &mut self,
         k: &Kernel,
         rotate_n_move: &Axis2Placement,
         scale: Option<Vec3>,
     ) -> Result<()> {
+        self.transform_at_depth(k, rotate_n_move, scale, 0)
+    }
+
+    /// Carry geometry depth through only the branches the native transform visits.
+    pub(crate) fn transform_at_depth(
+        &mut self,
+        k: &Kernel,
+        rotate_n_move: &Axis2Placement,
+        scale: Option<Vec3>,
+        depth: usize,
+    ) -> Result<()> {
         match &mut self.kind {
-            SurfaceKind::SurfOfRevolution(s) => s.transform(k, rotate_n_move, scale),
+            SurfaceKind::SurfOfRevolution(s) => {
+                s.transform_at_depth(k, rotate_n_move, scale, depth)
+            }
             SurfaceKind::BSpline(s) => s.transform(rotate_n_move, scale),
             SurfaceKind::CurveBounded(_) | SurfaceKind::Step(_) => base_edit(),
-            SurfaceKind::OffsetSurface(s) => s.transform(k, rotate_n_move, scale),
-            SurfaceKind::SrfInVolume(s) => s.transform(rotate_n_move, scale),
+            SurfaceKind::OffsetSurface(s) => s.transform_at_depth(k, rotate_n_move, scale, depth),
+            SurfaceKind::SrfInVolume(s) => s.transform_at_depth(rotate_n_move, scale, depth),
             SurfaceKind::Plane(s) => s.transform(rotate_n_move, scale),
         }
     }

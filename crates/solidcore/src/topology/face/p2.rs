@@ -2393,7 +2393,7 @@ pub fn find_best_uv_curve(
         // project UVTrimCurve into 3D space
         let crv_on_surf = CrvOnSurf::new(
             k,
-            uv_curve.clone(),
+            uv_curve.clone_for_evaluation()?,
             surface.clone_for_evaluation()?,
             None,
             0,

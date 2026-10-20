@@ -5,13 +5,14 @@
 //!
 //! Object input ([`Op::Object`]): an object block building the `SmCrvOnSurf` `c`, then
 //! `nops` and `nops` ops, each its code ([`ObjOp`]) and parameters, run in order on `c`.
-//! The block is the UV curve (`0 n p m cpts(x y z w) knots`: a 2D `SmBSplineCurve`;
-//! or `1 x0 y0 x1 y1`: the UV-line constructor), `is_offset borrow_nurb`, the base surface (`n m
-//! p q r s cpts(x y z w, v fastest) u v`), `offset_distance owns_base` when `is_offset`,
-//! then `has_domain umin vmin umax vmax`, `owner` (the constructor's owner flag) and
-//! `has_cache [need nb B[nb]]` (loaded into `m_bNeedBreaks`, `m_vBreaks`).
-//! `borrow_nurb` uses the borrowed-NURB surface constructor, preserving close knots
-//! verbatim; the shim retains that allocation until all referencing objects are deleted.
+//! The block is the UV curve (`0 borrow_uv_nurb n p m cpts(x y z w) knots`: a 2D
+//! `SmBSplineCurve`; or `1 x0 y0 x1 y1`: the UV-line constructor), `is_offset
+//! borrow_surface_nurb`, the base surface (`n m p q r s cpts(x y z w, v fastest) u v`),
+//! `offset_distance owns_base` when `is_offset`, then `has_domain umin vmin umax vmax`,
+//! `owner` (the constructor's owner flag) and `has_cache [need nb B[nb]]`.
+//! The borrow flags use the respective borrowed-NURB constructors, preserving close
+//! knots verbatim; the shim retains each allocation until all referencing objects
+//! are deleted.
 //! Every op output starts with its status (`0` = `SM_SUCCESS`, else the `SmStatus`); the rest:
 //!
 //! | [`ObjOp`]      | upstream                              | parameters                     | outputs |
@@ -365,6 +366,7 @@ fn near(t: f64, a: f64, b: f64) -> Result<f64, FfiError> {
 fn object_block(rd: &mut Reader<'_>) -> Result<Block, FfiError> {
     let kind = rd.index(1)?;
     let (range, pts) = if kind == 0 {
+        rd.flag()?; // borrowed UV NURB: identical validation, no constructor knot repair
         uv_bspline(rd)?
     } else {
         let x0 = rd.finite()?;

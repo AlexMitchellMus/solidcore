@@ -1601,7 +1601,7 @@ fn crv_on_surf(k: &Kernel, uv_curve: &Curve, surface: Option<&Surface>) -> Resul
     };
     Ok(Curve::from(CrvOnSurf::new(
         k,
-        uv_curve.clone(),
+        uv_curve.clone_for_evaluation()?,
         surface.clone_for_evaluation()?,
         None,
         0,

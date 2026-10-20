@@ -2096,7 +2096,7 @@ pub fn make_vertex_split_uv_trim_curve(
     let face = eu1::face(b, eu_orig)?.ok_or_else(|| SolidError::null_pointer(OP))?; // NER
     let surface = face2::surface(b, face)?
         .ok_or_else(|| SolidError::null_pointer(OP))?
-        .clone(); // NER
+        .clone_for_evaluation()?; // NER
     let lift = |t: f64| -> Result<Point3> {
         let p = new_uv_curve.evaluate_point(t)?;
         surface.evaluate_point(Point2::new(p.x, p.y))
@@ -2111,7 +2111,7 @@ pub fn make_vertex_split_uv_trim_curve(
         if for_tesselation {
             let uv_3d_curve = Curve::from(CrvOnSurf::new(
                 k,
-                new_uv_curve.clone(),
+                new_uv_curve.clone_for_evaluation()?,
                 surface.clone_for_evaluation()?,
                 None,
                 0,

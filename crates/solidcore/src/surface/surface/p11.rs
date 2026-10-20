@@ -1952,7 +1952,7 @@ impl Surface {
             // define 3DCurve = SmCrvOnSurf(segment, thisSurface)
             let mut trace = CrvOnSurf::new(
                 k,
-                uv_curve.clone(),
+                uv_curve.clone_for_evaluation()?,
                 surface.clone_for_evaluation()?,
                 Some(seg_domain),
                 0,

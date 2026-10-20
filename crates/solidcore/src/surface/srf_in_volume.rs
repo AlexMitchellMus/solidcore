@@ -925,6 +925,15 @@ impl SrfInVolume {
     ///
     /// Those of [`Volume::transform`].
     pub fn transform(&mut self, rotate_n_move: &Axis2Placement, scale: Option<Vec3>) -> Result<()> {
+        self.transform_at_depth(rotate_n_move, scale, 0)
+    }
+
+    pub(crate) fn transform_at_depth(
+        &mut self,
+        rotate_n_move: &Axis2Placement,
+        scale: Option<Vec3>,
+        depth: usize,
+    ) -> Result<()> {
         let identity_scale = Vec3::new(1.0, 1.0, 1.0);
 
         // no work - identity transform
@@ -934,7 +943,8 @@ impl SrfInVolume {
         }
 
         // compounding volume transform
-        self.volume.transform(rotate_n_move, scale)
+        self.volume
+            .transform_at_depth(rotate_n_move, scale, depth + 1)
     }
 
     /// The two halves of the surface split at `param` in `surf_param`'s direction

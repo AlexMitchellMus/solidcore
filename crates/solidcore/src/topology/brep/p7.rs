@@ -732,7 +732,7 @@ pub fn make_face_with_curves(
                         .get_mut(index + jj)
                         .ok_or_else(|| null("loop counts exceed the curves"))?;
                     ignore_status(entry.convert_to_2d(k))?;
-                    let uv_curve = entry.clone();
+                    let uv_curve = entry.clone_for_evaluation()?;
                     let new3d = if crv_on_surf {
                         let c = CrvOnSurf::new(
                             k,

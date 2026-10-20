@@ -11732,6 +11732,28 @@
      {"op":"state"}
     ]
    }
+  },
+  {
+   "name": "offset_borrowed_close_uv_knot_shared_copy_evaluation",
+   "upstream_ref": "SmBSplineCurve(gw_CURVE*, 2, TRUE) preserves raw UV knots; SmBSplineCurve.cpp:88,230 passes SM_EFF_ZERO=1e-12 to sm_FixupKnotVector (SmNurbsCrv.cpp:396-421), which would collapse 1e-12 below the [0,1] scaled-zero threshold 2e-12. Owner 0 shares that UV through the real offset and Copy; endpoint/interior derivatives expose accidental repair. First control displacement of order 1e-12 limits endpoint tangent magnitude; supplied breaks [0,0.5,1] avoid explicitly requesting the narrow span.",
+   "inputs": {
+    "cos": {
+     "uv": {"bspline": {"cpts": [[0.1,0.2,-1.7976931348623157e308],[0.100000000001,0.2,-1.7976931348623157e308],[0.4,0.4,-1.7976931348623157e308],[0.7,0.6,-1.7976931348623157e308],[0.9,0.8,-1.7976931348623157e308]], "p": 2, "u": [0,0,0,1e-12,0.5,1,1,1], "borrow_nurb": true}},
+     "srf": {"net": [[[0,0,0,-1.7976931348623157e308],[0,1,0,-1.7976931348623157e308]],[[1,0,0,-1.7976931348623157e308],[1,1,0,-1.7976931348623157e308]]], "p": 1, "q": 1, "u": [0,0,1,1], "v": [0,0,1,1]},
+     "offset": {"distance": 0.125, "owns_base": false}, "owner": 0
+    },
+    "ops": [
+     {"op":"state"},
+     {"op":"eval","t":0,"n":1,"left":false,"nonzero":false},
+     {"op":"copy_eval","t":0,"n":1,"left":false,"nonzero":false},
+     {"op":"eval_point","t":7.5e-13},
+     {"op":"eval","t":7.5e-13,"n":1,"left":false,"nonzero":false},
+     {"op":"copy_eval","t":7.5e-13,"n":1,"left":false,"nonzero":false},
+     {"op":"approx","breaks":[0,0.5,1],"tol":0.0001,"match":false},
+     {"op":"get_or_create","tol":0.0001,"breaks":[0,0.5,1],"match":false},
+     {"op":"state"}
+    ]
+   }
   }
  ]
 }

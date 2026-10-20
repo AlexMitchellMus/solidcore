@@ -1859,7 +1859,7 @@ pub fn cull_or_refine_cci_in_3d<S: SolutionObject>(
     // project UVCurve into 3d space
     let curve_1 = Curve::from(CrvOnSurf::new(
         k,
-        uv_curve_1.clone(),
+        uv_curve_1.clone_for_evaluation()?,
         surface.clone_for_evaluation()?,
         None,
         0,

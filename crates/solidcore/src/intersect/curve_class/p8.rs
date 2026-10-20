@@ -334,7 +334,7 @@ impl<O: ClassObject> CurveClassification<O> {
         uv: bool,
     ) -> Result<()> {
         let mut detached = surface.clone_for_evaluation()?;
-        *detached.owner_mut() = None;
+        let _ = detached.set_owner(None);
         let surface = &detached;
         let curve = self.curve_geometry(geometry)?;
         let domain = surface.natural_uv_domain();
@@ -557,7 +557,7 @@ impl<O: ClassObject> CurveClassification<O> {
         uv: bool,
     ) -> Result<()> {
         let mut detached = surface.clone_for_evaluation()?;
-        *detached.owner_mut() = None;
+        let _ = detached.set_owner(None);
         let surface = &detached;
         let curve = self.curve_geometry(geometry)?;
         let domain = surface.natural_uv_domain();

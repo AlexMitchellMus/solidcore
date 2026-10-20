@@ -432,8 +432,8 @@ impl<O: ClassObject> CurveClassification<O> {
     /// Intersects the curve with vertices (defaults: no large gaps, UV space allowed).
     ///
     /// # Errors
-    /// Missing vertex points or vertex/face gaps are invalid input. Generic 2D
-    /// curve-on-surface dispatch and the unported SSS block defer.
+    /// Missing vertex points or vertex/face gaps are invalid input. Unported surface
+    /// dependencies and the SSS block defer.
     pub fn intersect_vertices(
         &mut self,
         k: &Kernel,
@@ -448,7 +448,7 @@ impl<O: ClassObject> CurveClassification<O> {
         let curve = if !uv_space_okay && original_curve.dim() == 2 {
             wrapped = Curve::from(CrvOnSurf::new(
                 k,
-                original_curve.clone(),
+                original_curve.clone_for_evaluation()?,
                 surface.clone_for_evaluation()?,
                 Some(surface.natural_uv_domain()),
                 0,

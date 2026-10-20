@@ -1316,12 +1316,23 @@ impl CrvOnSurf {
     ///
     /// # Errors
     ///
-    /// Those of the surface's transform.
+    /// Those of the surface's transform, including `InvalidInput` when a growing
+    /// volume map would exceed 64 whole-geometry levels. Earlier cache edits remain.
     pub fn transform(
         &mut self,
         k: &Kernel,
         rotate_n_move: &Axis2Placement,
         scale: Option<Vec3>,
+    ) -> Result<()> {
+        self.transform_at_depth(k, rotate_n_move, scale, 0)
+    }
+
+    pub(crate) fn transform_at_depth(
+        &mut self,
+        k: &Kernel,
+        rotate_n_move: &Axis2Placement,
+        scale: Option<Vec3>,
+        depth: usize,
     ) -> Result<()> {
         let identity_scale = Vec3::new(1.0, 1.0, 1.0);
 
@@ -1342,7 +1353,8 @@ impl CrvOnSurf {
         }
 
         // pass the call along to the surface
-        self.surface.transform(k, rotate_n_move, scale)
+        self.surface
+            .transform_at_depth(k, rotate_n_move, scale, depth + 1)
     }
 
     // ---- gaps -----------------------------------------------------------------------
@@ -1802,6 +1814,134 @@ mod tests {
         ));
         assert_eq!(target.evaluate_point(0.25).unwrap(), before);
         assert_eq!(target.breaks(), &[0.0, 1.0]);
+    }
+
+    /// Shared next maps retain the complete chain across native virtual copies.
+    fn volume_mapped_curve(
+        k: &Kernel,
+        tail: crate::surface::volume::Volume,
+        prefix_maps: usize,
+        offset: bool,
+    ) -> CrvOnSurf {
+        use crate::geom::transform::Transform;
+        use crate::surface::offset_surface::OffsetSurface;
+        use crate::surface::plane::Plane;
+        use crate::surface::srf_in_volume::SrfInVolume;
+        use crate::surface::volume::{Volume, VolumeKind};
+
+        let mut volume = tail;
+        for _ in 0..prefix_maps {
+            let mut prefix = Volume::new(VolumeKind::Transform(Transform::IDENTITY));
+            prefix.add_next_map(volume, 0).unwrap();
+            volume = prefix;
+        }
+        let mut surface: Surface = SrfInVolume::new(
+            k,
+            Plane::from_normal(Vec3::ZERO, Vec3::Z).into(),
+            true,
+            volume,
+            0,
+            3,
+        )
+        .unwrap()
+        .into();
+        if offset {
+            surface = OffsetSurface::new(k, 0.125, surface, true, 0)
+                .unwrap()
+                .into();
+        }
+        CrvOnSurf::new(k, uv(), surface, None, 3).unwrap()
+    }
+
+    #[test]
+    fn transform_rejects_volume_growth_without_undoing_the_earlier_cache_edit() {
+        use crate::surface::twist_volume::TwistVolume;
+
+        let k = Kernel::default();
+        let translation = Vec3::new(2.0, -3.0, 4.0);
+        let motion = Axis2Placement::new(translation, Vec3::X, Vec3::Y);
+        // Exercise both direct SrfInVolume and the owned OffsetSurface path.
+        for offset in [false, true] {
+            let twist = TwistVolume::create(Vec3::ZERO, Vec3::Z, Vec3::X, 10.0, 1e-6);
+            // Crv depth 0, surface depth 1 (+1 for an offset), volume tail 63.
+            let mut curve = volume_mapped_curve(&k, twist, 61 - usize::from(offset), offset);
+            let sample = 0.25;
+            let before = curve.evaluate(sample, 1, true, false).unwrap();
+            curve
+                .transform(&k, &Axis2Placement::IDENTITY, None)
+                .unwrap();
+            assert_eq!(curve.evaluate(sample, 1, true, false).unwrap(), before);
+            let approx = curve
+                .get_or_create_bs_approx(&k, 1e-5, Some(&[0.0, 1.0]), Some(true))
+                .unwrap();
+            let cached_before = approx.evaluate_point(sample).unwrap();
+            let gap = curve.bs_approx_max_gap_3d();
+            let breaks = curve.breaks().to_vec();
+
+            assert!(matches!(
+                curve.transform(&k, &motion, None),
+                Err(SolidError::InvalidInput { .. })
+            ));
+            // The native cache edit precedes the failed surface transform.
+            let cached_after = curve.bs_approx().unwrap().evaluate_point(sample).unwrap();
+            assert!((cached_after - cached_before - translation).length() < 1e-12);
+            assert_eq!(curve.bs_approx_max_gap_3d(), gap);
+            assert_eq!(curve.breaks(), breaks);
+            assert_eq!(curve.evaluate(sample, 1, true, false).unwrap(), before);
+            for copy in [curve.copy(&k).unwrap(), curve.clone()] {
+                assert_eq!(copy.evaluate(sample, 1, true, false).unwrap(), before);
+                assert_eq!(
+                    copy.bs_approx().unwrap().evaluate_point(sample).unwrap(),
+                    cached_after
+                );
+            }
+            if offset {
+                // Offset's native nonuniform-scale refusal precedes reaching the
+                // full volume chain and must not become a depth refusal.
+                assert!(matches!(
+                    curve.transform(&k, &motion, Some(Vec3::new(2.0, 3.0, 4.0))),
+                    Err(SolidError::Upstream { code: 1001, .. })
+                ));
+                assert_eq!(curve.evaluate(sample, 1, true, false).unwrap(), before);
+            }
+        }
+    }
+
+    #[test]
+    fn boundary_transform_allows_absorption_and_an_append_with_one_level_left() {
+        use crate::geom::transform::Transform;
+        use crate::surface::twist_volume::TwistVolume;
+        use crate::surface::volume::{Volume, VolumeKind};
+
+        let k = Kernel::default();
+        let translation = Vec3::new(2.0, -3.0, 4.0);
+        let motion = Axis2Placement::new(translation, Vec3::X, Vec3::Y);
+        for offset in [false, true] {
+            let depth_adjustment = usize::from(offset);
+            let absorb = volume_mapped_curve(
+                &k,
+                Volume::new(VolumeKind::Transform(Transform::IDENTITY)),
+                61 - depth_adjustment,
+                offset,
+            );
+            let append = volume_mapped_curve(
+                &k,
+                TwistVolume::create(Vec3::ZERO, Vec3::Z, Vec3::X, 10.0, 1e-6),
+                60 - depth_adjustment,
+                offset,
+            );
+            for mut curve in [absorb, append] {
+                let sample = 0.25;
+                let before = curve.evaluate(sample, 1, true, false).unwrap();
+                curve.transform(&k, &motion, None).unwrap();
+                let after = curve.evaluate(sample, 1, true, false).unwrap();
+                assert!((after[0] - before[0] - translation).length() < 1e-12);
+                assert_eq!(after[1], before[1]);
+                for copy in [curve.copy(&k).unwrap(), curve.clone()] {
+                    assert_eq!(copy.evaluate(sample, 1, true, false).unwrap(), after);
+                }
+            }
+        }
     }
 
     #[test]

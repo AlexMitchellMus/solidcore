@@ -306,7 +306,7 @@ fn handle(kind: ObjectKind, index: u32) -> ObjectHandle {
 fn crv_on_surf_length(k: &Kernel, surface: &Surface, uv_curve: &Curve) -> Result<f64> {
     let cos = CrvOnSurf::new(
         k,
-        uv_curve.clone(),
+        uv_curve.clone_for_evaluation()?,
         surface.clone_for_evaluation()?,
         None,
         0,
@@ -373,14 +373,16 @@ pub fn create_uv_trim_curve(
     let face_rec = b.face(f)?;
     let face_surface = face_rec
         .surface
-        .clone()
-        .ok_or_else(|| null("CreateUVTrimCurve: face without surface"))?;
+        .as_ref()
+        .ok_or_else(|| null("CreateUVTrimCurve: face without surface"))?
+        .clone_for_evaluation()?;
     let face_domain = face_rec.uv_domain;
     let edge_rec = b.edge(e)?;
     let curve = edge_rec
         .curve
-        .clone()
-        .ok_or_else(|| null("CreateUVTrimCurve: edge without curve"))?;
+        .as_ref()
+        .ok_or_else(|| null("CreateUVTrimCurve: edge without curve"))?
+        .clone_for_evaluation()?;
     let mut edge_domain = edge_rec.interval;
     let uv_trim_at_start = uv_trim_curve(b, eu)?.0.is_some();
     let surface_handle = handle(ObjectKind::Surface, f.index());
@@ -396,10 +398,10 @@ pub fn create_uv_trim_curve(
     let mut have_curves = false;
 
     if let CurveKind::CrvOnSurf(cos) = curve.kind() {
-        let base = cos.surface().clone();
+        let base = cos.surface();
         // `pSurface == base || *pSurface == *base` (identity is lost in the port: value
         // equality only) && same orientation as the primary edge use
-        if face_surface.approx_eq(&base)?
+        if face_surface.approx_eq(base)?
             && orientation(b, eu)?
                 == orientation(
                     b,

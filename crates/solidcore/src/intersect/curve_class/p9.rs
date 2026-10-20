@@ -140,7 +140,7 @@ fn curve<O: ClassObject>(g: &impl ClassGeometry<O>, handle: O) -> Result<&Curve>
 fn lifted(k: &Kernel, uv: &Curve, surface: &Surface) -> Result<Curve> {
     Ok(Curve::from(CrvOnSurf::new(
         k,
-        uv.clone(),
+        uv.clone_for_evaluation()?,
         surface.clone_for_evaluation()?,
         Some(surface.natural_uv_domain()),
         0,
@@ -189,7 +189,7 @@ impl<O: ClassObject> CurveClassification<O> {
     /// A shared curve uses the exact interval-overlap shortcut before insertion.
     ///
     /// # Errors
-    /// Missing geometry fails; unavailable generic surface lifting or mutable edge
+    /// Missing geometry fails; unavailable surface evaluation or mutable edge
     /// insertion defers to its dependency. Earlier successful insertions are retained.
     pub fn intersect_edges(
         &mut self,
@@ -203,8 +203,8 @@ impl<O: ClassObject> CurveClassification<O> {
         let source = curve(geometry, source_handle)?;
         let lift;
         let working = if !options.uv_space_okay && source.dim() == 2 {
-            let mut unowned = surface.clone();
-            *unowned.owner_mut() = None;
+            let mut unowned = surface.clone_for_evaluation()?;
+            let _ = unowned.set_owner(None);
             lift = lifted(k, source, &unowned)?;
             &lift
         } else {

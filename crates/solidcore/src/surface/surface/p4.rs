@@ -50,9 +50,9 @@
 //! - **Statuses.** `smsurf_IsPointOnNormal` returns its `SmStatus` reasons as
 //!   [`NormalTestReason`] and always succeeds, as upstream; its deviation output is `0` when
 //!   the surface could not be evaluated (upstream leaves it unset).
-//! - **`CreateSeamCurve`** returns `None` for a surface that is not closed and fails with
-//!   [`SolidError::InvalidInput`] for a closed one that is not a B-spline surface
-//!   ([`CrvOnSurf`] is built on a [`BSplineSurface`](crate::nurbs::b_spline_surface::BSplineSurface)).
+//! - **`CreateSeamCurve`** returns `None` for a surface that is not closed and builds
+//!   its [`CrvOnSurf`] on the concrete [`Surface`], retaining its virtual evaluation
+//!   and native owning-copy behavior.
 //! - **Classification** (`sm_ClassifyCurveSurfaceXSectPoint`) returns the outputs as
 //!   [`XsectClassification`]; an out-of-domain guess keeps its unclamped values, as
 //!   upstream. `SmCurve::EvaluateGeometric` failing with `SM_ERR` marks the point touching
@@ -1106,9 +1106,8 @@ impl Surface {
     ///
     /// # Errors
     ///
-    /// Those of [`Surface::is_closed`] and of the curve construction;
-    /// [`SolidError::InvalidInput`] for a closed surface that is not a B-spline
-    /// surface (a [`CrvOnSurf`] lives on a [`BSplineSurface`]).
+    /// Those of [`Surface::is_closed`], the surface's [`Surface::copy`] and the curve
+    /// construction, including its documented geometry-nesting bound.
     pub fn create_seam_curve(
         &self,
         kernel: &Kernel,

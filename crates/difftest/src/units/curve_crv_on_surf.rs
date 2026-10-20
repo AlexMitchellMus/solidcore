@@ -8,9 +8,9 @@
 //! the caches evolve as upstream's; `Info` and `Equal` go through the [`Curve`] dispatch).
 //!
 //! A case is either an object (`cos`: `uv` (`bspline` or `line`), B-spline `srf` (inline
-//! with optional `borrow_nurb` to preserve raw knots, or an upstream `.sms` file),
-//! optional `offset`, `domain`, `owner`, optional `cache` `{need, breaks}`) with an op list
-//! run in order on it, or a database record (`read_db`).
+//! or an upstream `.sms` file), optional `offset`, `domain`, `owner`, `cache` `{need, breaks}`)
+//! with an op list run in order on it, or a database record (`read_db`). Inline UV
+//! B-splines and surfaces accept `borrow_nurb` to preserve raw knots.
 //! Both sides produce the flat record documented in the ffi module (every op's status,
 //! `0` = `SM_SUCCESS`, else the `SmStatus`; `1007` for a Rust `InvalidInput`, `-1` for a
 //! Rust error upstream cannot produce, then its outputs), compared as `out`.
@@ -70,6 +70,9 @@ struct UvBspline {
     cpts: Vec<[f64; 3]>,
     p: usize,
     u: Vec<f64>,
+    /// Borrow the supplied NURB without constructor knot repair on both sides.
+    #[serde(default)]
+    borrow_nurb: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -324,7 +327,7 @@ fn cos_block(v: &mut Vec<f64>, c: &CosIn) -> Result<(), HarnessError> {
         UvIn::Bspline(bs) => {
             let n = bs.cpts.len().saturating_sub(1);
             let m = bs.u.len().saturating_sub(1);
-            v.extend([0.0, n as f64, bs.p as f64, m as f64]);
+            v.extend([0.0, b(bs.borrow_nurb), n as f64, bs.p as f64, m as f64]);
             for &[x, y, w] in &bs.cpts {
                 v.extend([x, y, NOZ, w]);
             }
@@ -561,7 +564,7 @@ fn build_uv(bs: &UvBspline) -> Result<Curve, HarnessError> {
         .collect();
     let cur =
         NurbCurve::new(pw, bs.p, bs.u.clone()).map_err(|e| harness(format!("uv curve: {e}")))?;
-    Ok(Curve::from(BSplineCurve::from_nurb(cur, 2, false)))
+    Ok(Curve::from(BSplineCurve::from_nurb(cur, 2, bs.borrow_nurb)))
 }
 
 fn build_surface(
@@ -1267,7 +1270,12 @@ fn gen_uv_curve(rng: &mut Rng, d: [f64; 4], outside: bool) -> UvIn {
             }
         })
         .collect();
-    UvIn::Bspline(UvBspline { cpts, p, u })
+    UvIn::Bspline(UvBspline {
+        cpts,
+        p,
+        u,
+        borrow_nurb: false,
+    })
 }
 
 fn range_of(c: &CosIn) -> (f64, f64) {

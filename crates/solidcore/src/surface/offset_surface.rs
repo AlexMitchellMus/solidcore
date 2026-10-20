@@ -1628,6 +1628,16 @@ impl OffsetSurface {
         rotate_n_move: &Axis2Placement,
         scale: Option<Vec3>,
     ) -> Result<()> {
+        self.transform_at_depth(k, rotate_n_move, scale, 0)
+    }
+
+    pub(crate) fn transform_at_depth(
+        &mut self,
+        k: &Kernel,
+        rotate_n_move: &Axis2Placement,
+        scale: Option<Vec3>,
+        depth: usize,
+    ) -> Result<()> {
         let identity_scale = Vec3::new(1.0, 1.0, 1.0);
         if rotate_n_move.is_identity(EFF_ZERO) && scale.is_none_or(|s| s.approx_eq(identity_scale))
         {
@@ -1643,10 +1653,11 @@ impl OffsetSurface {
             }
         }
         if let Some(e) = self.extended_surface.as_deref_mut() {
-            e.transform(k, rotate_n_move, scale)?;
+            e.transform_at_depth(k, rotate_n_move, scale, depth + 1)?;
         }
         if self.owns_surface {
-            self.surface.transform(k, rotate_n_move, scale)?;
+            self.surface
+                .transform_at_depth(k, rotate_n_move, scale, depth + 1)?;
         } else {
             // Can not transform if I do not own the surface
             return Err(SolidError::sm_err(OP_EDIT));

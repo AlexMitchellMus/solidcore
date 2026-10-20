@@ -643,7 +643,7 @@ fn lift_to_face(k: &Kernel, b: &Brep, f: FaceId, curve: &Curve) -> Result<Curve>
         .ok_or_else(|| SolidError::invalid_input(OP_EDGE_CURVE, "face without surface"))?;
     Ok(Curve::new(CurveKind::CrvOnSurf(Box::new(CrvOnSurf::new(
         k,
-        curve.clone(),
+        curve.clone_for_evaluation()?,
         surface.clone_for_evaluation()?,
         None,
         0,
@@ -726,6 +726,69 @@ pub fn edge_curve_on_classify(
 mod tests {
     use super::*;
     use crate::curve::line::Line;
+    use crate::geom::extent2d::Extent2d;
+    use crate::geom::vector2d::Vec2;
+    use crate::nurbs::b_spline_curve::BSplineCurve;
+    use crate::nurbs::crv_basic::Curve as NurbCurve;
+    use crate::nurbs::math::{CPoint, NOW, NOZ};
+    use crate::surface::plane::Plane;
+    use crate::topology::Face;
+
+    #[test]
+    fn lift_to_face_preserves_borrowed_close_uv_knots_and_derivatives() {
+        let k = Kernel::default();
+        let mut b = Brep::default();
+        let shell = b.add_shell().unwrap();
+        let domain = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
+        let z = 2.0;
+        let plane = Plane::new(
+            Point3::new(0.0, 0.0, z),
+            Vec3::X,
+            Vec3::Y,
+            Vec2::new(1.0, 1.0),
+            &domain,
+        );
+        let face = b
+            .add_face_record(Face {
+                surface: Some(Surface::from(plane)),
+                uv_domain: domain,
+                tolerance: 1e-6,
+                ..Face::new(shell)
+            })
+            .unwrap();
+
+        // SmBSplineCurve's constructor/Copy use SM_EFF_ZERO = 1e-12.
+        // sm_FixupKnotVector collapses gaps below max(scaled_zero(0),
+        // scaled_zero(1)) = 2e-12, not the surface's SM_EFF_ZERO_PARAM.
+        let delta = 1e-12;
+        let raw = NurbCurve::new(
+            [(0.1, 0.2), (0.35, 0.2), (0.5, 0.4), (0.7, 0.6), (0.9, 0.8)]
+                .into_iter()
+                .map(|(x, y)| CPoint::new(x, y, NOZ, NOW))
+                .collect(),
+            2,
+            vec![0.0, 0.0, 0.0, delta, 0.5, 1.0, 1.0, 1.0],
+        )
+        .unwrap();
+        let uv = Curve::from(BSplineCurve::from_nurb(raw, 2, true));
+        let sample = 0.75 * delta;
+        let direct = uv.evaluate(sample, 1, false, false).unwrap();
+        let repaired = uv.clone().evaluate(sample, 1, false, false).unwrap();
+        assert!((repaired[0] - direct[0]).length() > 0.01);
+        assert!((repaired[1] - direct[1]).length() > 1e10);
+
+        let lifted = lift_to_face(&k, &b, face, &uv).unwrap();
+        for t in [0.0, sample, delta, 0.25] {
+            let expected = uv.evaluate(t, 1, false, false).unwrap();
+            let actual = lifted.evaluate(t, 1, false, false).unwrap();
+            let point = Point3::new(expected[0].x, expected[0].y, z);
+            let tangent = Vec3::new(expected[1].x, expected[1].y, 0.0);
+            assert!((actual[0] - point).length() <= 1e-12);
+            assert!((actual[1] - tangent).length() <= 1e-12 * tangent.length().max(1.0));
+            let point_only = lifted.evaluate_point(t).unwrap();
+            assert!((point_only - point).length() <= 1e-12);
+        }
+    }
 
     #[test]
     fn evaluate_curve_rejects_null_nan_and_outside() {

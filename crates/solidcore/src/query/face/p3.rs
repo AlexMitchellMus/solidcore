@@ -1101,7 +1101,7 @@ pub fn find_and_classify_loop_bisector_into<O: LoopObject + PartialEq>(
             let uv_curve = Curve::from(uv_trim_line);
             let crv_on_surf = CrvOnSurf::new(
                 k,
-                uv_curve.clone(),
+                uv_curve.clone_for_evaluation()?,
                 surface.clone_for_evaluation()?,
                 Some(surf_uv_domain),
                 0,
@@ -1362,7 +1362,7 @@ pub fn sector_classify_curve_on(
         let surface = face_surface(b, f, OP_SECTOR)?;
         surf_curve = Curve::from(CrvOnSurf::new(
             k,
-            input.curve.clone(),
+            input.curve.clone_for_evaluation()?,
             surface.clone_for_evaluation()?,
             None,
             0,

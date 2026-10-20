@@ -2439,6 +2439,38 @@ Upstream behaviour worth knowing (all kept by the port unless noted):
   the NURB and leave the analytic domain stale.
 ## curve.crv_on_surf (SmCrvOnSurf)
 
+### Concrete Surface integration follow-up
+
+`CrvOnSurf` now retains the existing concrete `Surface` rather than a B-spline
+part. Native owning `Copy` branches still call the virtual geometry copy; shared
+UV curves, surfaces and temporary evaluation snapshots instead retain exact NURBS
+data, ownership/face chains and caches. Snapshots are taken at the original
+borrow, before any ordinary clone can repair close knots. The non-owning
+`OffsetSurface::copy` branch uses the same exact shared-base semantics. Native
+temporary owner clearing remains explicit and propagates through owned bases.
+
+Both UV-curve and surface children are checked against the existing 64-level
+geometry bound before construction, domain queries or copying. `empty` and
+`set_uv_curve` now return `Result`; a rejected replacement leaves geometry and
+caches unchanged. Transforms carry the actual enclosing depth through compound
+curves/surfaces to volume maps: only a terminal-map append consumes another level.
+At the boundary, transform absorption and identity still work, while a rejected
+append retains the earlier native approximation-cache edit. Direct depth,
+owner-chain, borrowed close-knot lift/approximation and transform-boundary
+regressions exercise these contracts.
+
+The native fixture transport builds real `SmOffsetSurface` objects, including
+borrowed raw surface and UV NURBS, and compares typed state plus numeric evaluation.
+Thirteen offset-backed fixtures passed bit-for-bit: signed planar/curved
+evaluation, derivatives and normals, supplied-knot approximation/reuse, owner
+flags 0–3 crossed with borrowed/owned offset bases, borrowed close UV knots, and
+failing transforms with post-error state. These comparisons do not certify
+arbitrary returned offset B-reps or live cross-object alias mutation. The broader
+analytic-kind dispatch work in #76 and the production executive/SSI bridge remain
+separate.
+
+### Historical original-port notes
+
 - **Partial, not blocked.** Every non-deferred difftest case is bit-identical
   (max_rel_err 0, `--perturb` SENSITIVE). The deferred cases reach: the
   `SmCurveClassification` of uncached breaks (`intersect.curve_class_p4/p8/p1`, behind
@@ -9194,10 +9226,11 @@ rejected: nothing runs on either side.
   `FlushCurve` of more than one point; the Rust side evaluates the offset rails, stops at
   `GetSelfIntersectionHandler` (`blend.fillet_solver_p1`) and is covered by unit tests. The 0/1-point paths
   (empty list `SM_ERR_NULL_POINTER`, boundary-touch flag, list cleared) are compared.
-- **Span tests over a plane are deferred.** `TestSpanAccuracy` / `ComputeNextPoint` map Hermite
-  UV spans through `SmCrvOnSurf`, whose Rust port holds a `BSplineSurface`; `SmPlane::Evaluate`
-  overrides the B-spline evaluation, so a plane is a dispatch gap (`curve.crv_on_surf`), not a
-  B-spline stand-in. B-spline surfaces run the full span test (mid-point solve included).
+- **Concrete span mapping.** The Surface integration follow-up removes the
+  B-spline-only `SmCrvOnSurf` gate from `TestSpanAccuracy` / `ComputeNextPoint`.
+  Hermite UV spans retain the actual surface and its analytic/offset evaluation
+  overrides instead of substituting a B-spline part. This does not complete the
+  separately deferred solver and executive paths below.
 - **Solver calls.** Everything behind `StepSolve`, `ComputePointValues`,
   `ComputeSurfaceValues` and `PointOnPlaneSolve` defers until `blend.fillet_solver_p1..p4`
   implement `FilletSolverOps`; the C++ side still runs these cases against a real

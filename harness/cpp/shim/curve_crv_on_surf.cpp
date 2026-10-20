@@ -269,6 +269,7 @@ void put_state(std::vector<double>& o, const SmCrvOnSurf* c)
 struct Built
 {
     SmCurve* uv = NULL; // NULL for the UV-line constructor (the object owns its line)
+    gw_CURVE* borrowed_uv_nurb = NULL;
     SmSurface* srf = NULL;
     SmBSplineSurface* base_srf = NULL;
     gw_SURFACE* borrowed_nurb = NULL;
@@ -276,16 +277,23 @@ struct Built
     ScCos* cos = NULL;
 };
 
-// Block: uv kind (0: n p m cpts knots, a 2D SmBSplineCurve; 1: x0 y0 x1 y1, the UV-line
-// constructor), is_offset, borrow_nurb, base surface, offset distance and ownership when
-// wrapped, has_domain [umin vmin umax vmax], owner, has_cache [need nb B].
+// Block: uv kind (0: borrow_uv_nurb n p m cpts knots, a 2D SmBSplineCurve;
+// 1: x0 y0 x1 y1, the UV-line constructor), is_offset, borrow_surface_nurb, base surface,
+// offset distance and ownership when wrapped, has_domain [umin vmin umax vmax], owner,
+// has_cache [need nb B].
 Built read_cos(Rd& rd, const SmContext& ctx)
 {
     Built b;
     int64_t kind = rd.idx();
     SmPoint2d p0, p1;
     if (kind == 0)
-        b.uv = new (ctx) SmBSplineCurve(read_nurb_curve(rd), 2, FALSE);
+    {
+        const bool borrow_uv_nurb = rd.flag();
+        gw_CURVE* uv_nurb = read_nurb_curve(rd);
+        if (borrow_uv_nurb)
+            b.borrowed_uv_nurb = uv_nurb;
+        b.uv = new (ctx) SmBSplineCurve(uv_nurb, 2, borrow_uv_nurb ? TRUE : FALSE);
+    }
     else
     {
         double x0 = rd.num();
@@ -334,6 +342,7 @@ Built read_cos(Rd& rd, const SmContext& ctx)
 
 // Frees the shim's parts the object does not delete itself, then the object. A wrapped
 // offset either owns its B-spline base or borrows it until the wrapper is gone.
+// Raw borrowed UV and surface NURBs outlive every referencing object and temporary copy.
 void free_cos(Built& b)
 {
     const SmCurve* cu = b.cos->GetUVCurve();
@@ -352,6 +361,8 @@ void free_cos(Built& b)
         delete b.base_srf;
     if (b.borrowed_nurb != NULL)
         smos_Free(b.borrowed_nurb);
+    if (b.borrowed_uv_nurb != NULL)
+        smos_Free(b.borrowed_uv_nurb);
 }
 
 // Deletes a copy made by the copy constructor, with the parts it does not delete itself.
