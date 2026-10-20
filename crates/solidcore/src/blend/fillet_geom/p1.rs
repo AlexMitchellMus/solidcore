@@ -1065,7 +1065,8 @@ pub struct FilletGeom {
 impl FilletGeom {
     /// `SmFilletGeom(pFilletSolver, eType)` (CO-PORTED from `blend.fillet_geom_p5`):
     /// no rails, curves or surface, unprocessed; with a solver, copies of its offset
-    /// surfaces.
+    /// surfaces. The solver is its `SmFilletSolver` base (the constructor reads only
+    /// `GetSurface(i)`), so any solver class passes its base.
     ///
     /// # Errors
     ///
@@ -1073,13 +1074,13 @@ impl FilletGeom {
     /// (`SmOffsetSurface::Copy`); any other failed copy leaves that slot `None`.
     pub fn new(
         k: &Kernel,
-        solver: Option<(FilletSolverId, &ConstantRadiusAssistedFs)>,
+        solver: Option<(FilletSolverId, &FilletSolver)>,
         geom_type: FilletGeomType,
     ) -> Result<Self> {
         let mut off_surfs = [None, None];
         for (slot, i) in off_surfs.iter_mut().zip(0..2usize) {
             if let Some((_, fs)) = solver {
-                *slot = match fs.solver.surface(i)? {
+                *slot = match fs.surface(i)? {
                     // SmOffsetSurface::Copy() returns an SmSurface*, not SmOffsetSurface*;
                     // its status is ignored, so a failed copy leaves NULL
                     Some(off_srf) => match offset_surface_copy(k, &off_srf.surface) {

@@ -37,26 +37,37 @@ use serde_json::Value;
 use solidcore::blend::fillet_custom_solver::{
     InitialValues, JacobianLoad, OffsetSurface, SurfaceId,
 };
-use solidcore::blend::fillet_solver::p1::{
-    FilletSolver, FilletSolverOps, FilletSurfaceGenerator, OffsetSurfaceSlot,
+use solidcore::blend::fillet_geom::p1::{
+    FilStatus, FilletBrep, FilletEdgeType, FilletEdgeuse, FilletGeom, FilletGeomId,
+    FilletGeomType, FilletVertex, FilletVertexType, FilletVertexuse,
 };
-use solidcore::blend::fillet_solver::p2::FilletGeomParts;
+use solidcore::blend::fillet_solver::p1::{
+    FilletExecutiveRef, FilletGeomRef, FilletSolver, FilletSolverOps, FilletSurfaceGenerator,
+    OffsetSurfaceSlot,
+};
 use solidcore::curve::curve::Curve;
+use solidcore::curve::ellipse::Ellipse;
+use solidcore::curve::line::Line;
+use solidcore::geom::axis2_placement::Axis2Placement;
 use solidcore::geom::extent1d::{Extent1d, ExtentNd};
 use solidcore::geom::extent2d::Extent2d;
 use solidcore::geom::matrix::Matrix;
+use solidcore::geom::tol::ZONE_TOL_3D;
 use solidcore::geom::vector2d::Point2;
 use solidcore::geom::vector3d::Vec3;
 use solidcore::intersect::surface_intersector::p1::{
     IntersectionPointType, SrfIndex, TsectPnt, MAX_USER_DOUBLES,
 };
 use solidcore::kernel::Kernel;
+use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use solidcore::nurbs::knots::Side;
 use solidcore::nurbs::math::NOW;
 use solidcore::surface::offset_surface::SS_UNKNOWN;
 use solidcore::surface::surface::p1::evaluate_1st_derivatives;
 use solidcore::surface::surface::Surface;
-use solidcore::topology::{Brep, EdgeuseId};
+use solidcore::topology::{
+    edge, Brep, Edgeuse, EdgeuseId, EdgeId, Vertexuse, VertexuseOwner, VertexId,
+};
 use solidcore::SolidError;
 use solidcore_ffi::units::blend_fillet_solver_p2::{self as ffi, Op};
 use solidcore_ffi::units::topology_edgeuse_p1 as ffi1;
@@ -103,6 +114,15 @@ struct Tsect {
     cparam: f64,
 }
 
+/// A filleted edge of a real analytic curve kind: an `SmLine` segment, or an `SmCircle`
+/// about the z axis through `span` degrees (`CreateWireEdgeFromCurve`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum AnalyticEdge {
+    Line { a: [f64; 3], b: [f64; 3] },
+    Circle { radius: f64, span: f64 },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum Inputs {
@@ -132,7 +152,9 @@ enum Inputs {
         rail: usize,
         other: usize,
     },
-    /// `which`: 0 cylinder, 1 cone, 2 torus; `fsg`: 0 linear, 1 circular.
+    /// `which`: 0 cylinder, 1 cone, 2 torus; `fsg`: 0 linear, 1 circular. The filleted
+    /// edge is `brep`'s, or `analytic` when given (then `brep` is ignored); `rails` types
+    /// the rail end vertices `SM_FV_RAIL_X_EDGEUSE`, processed, at its points.
     Geom {
         which: u8,
         cfg: Cfg,
@@ -142,6 +164,10 @@ enum Inputs {
         after: bool,
         factor: f64,
         brep: BrepIn,
+        #[serde(default)]
+        analytic: Option<AnalyticEdge>,
+        #[serde(default)]
+        rails: Option<[[f64; 3]; 4]>,
         eu: [i64; 2],
         tsects: Vec<Tsect>,
     },
@@ -219,6 +245,9 @@ fn brep_case(brep: &BrepIn) -> Result<Result<BrepCase, Output>, HarnessError> {
 impl Inputs {
     fn brep(&self) -> Option<&BrepIn> {
         match self {
+            Inputs::Geom {
+                analytic: Some(_), ..
+            } => None,
             Inputs::RailEu { brep, .. }
             | Inputs::Geom { brep, .. }
             | Inputs::Record { brep, .. } => Some(brep),
@@ -236,6 +265,9 @@ impl Inputs {
         }
     }
 }
+
+/// The edge uses of a wire edge (`CreateWireEdgeFromCurve`): the primary and its mate.
+const WIRE_EDGEUSES: usize = 2;
 
 /// The edge use counts of the case's export (`[n_eu]`).
 fn n_eu(c: &BrepCase) -> usize {
@@ -309,16 +341,42 @@ fn cpp_input(i: &Inputs, c: Option<&BrepCase>) -> Result<Vec<f64>, HarnessError>
             factor,
             eu,
             tsects,
+            analytic,
+            rails,
             ..
         } => {
-            let c = block()?;
             o.push(f64::from(*which));
             push_cfg(&mut o, cfg);
             push_surfs(&mut o, surfs)?;
             o.extend([f64::from(*fsg), b(*before), b(*after), *factor]);
-            o.extend_from_slice(&c.block);
-            o.push(sel(eu[0], n_eu(c)) as f64);
-            o.push(sel(eu[1], n_eu(c)) as f64);
+            match rails {
+                Some(r) => {
+                    o.push(1.0);
+                    o.extend(r.iter().flatten());
+                }
+                None => o.push(0.0),
+            }
+            let n_eus = match analytic {
+                Some(AnalyticEdge::Line { a, b }) => {
+                    o.push(1.0);
+                    o.extend(a);
+                    o.extend(b);
+                    WIRE_EDGEUSES
+                }
+                Some(AnalyticEdge::Circle { radius, span }) => {
+                    o.push(2.0);
+                    o.extend([*radius, *span]);
+                    WIRE_EDGEUSES
+                }
+                None => {
+                    let c = block()?;
+                    o.push(0.0);
+                    o.extend_from_slice(&c.block);
+                    n_eu(c)
+                }
+            };
+            o.push(sel(eu[0], n_eus) as f64);
+            o.push(sel(eu[1], n_eus) as f64);
             o.push(tsects.len() as f64);
             for t in tsects {
                 o.extend(t.uv0);
@@ -665,17 +723,151 @@ fn put_srf(o: &mut Vec<f64>, s: &Surface) {
     }
 }
 
-fn put_parts(o: &mut Vec<f64>, which: u8, p: &FilletGeomParts) {
-    put_srf(o, &p.surface);
-    put_crv(o, Some(&p.rails[0]));
-    put_crv(o, Some(&p.rails[1]));
+/// The shim's output after a `Calc*FilletGeom`: the fillet geometry `g`'s surface, its
+/// rails' curves (and, for the cone and torus, their intervals) and its centre line.
+fn put_stored(
+    o: &mut Vec<f64>,
+    which: u8,
+    fb: &FilletBrep,
+    g: FilletGeomId,
+) -> Result<(), SolidError> {
+    let geom = fb.geom(g)?;
+    let surface = geom
+        .fillet_surface()
+        .ok_or_else(|| SolidError::invalid_input("difftest", "no fillet surface"))?;
+    put_srf(o, surface);
+    let rails = [
+        geom.rail(0)
+            .ok_or_else(|| SolidError::invalid_input("difftest", "no rail"))?,
+        geom.rail(1)
+            .ok_or_else(|| SolidError::invalid_input("difftest", "no rail"))?,
+    ];
+    for rail in rails {
+        put_crv(o, edge::curve(fb.brep(), rail)?);
+    }
     if which != 0 {
-        for ivl in &p.rail_intervals {
-            let ivl = ivl.unwrap_or_else(Extent1d::new);
+        for rail in rails {
+            let ivl = edge::interval(fb.brep(), rail)?;
             o.extend([ivl.min(), ivl.max()]);
         }
     }
-    put_crv(o, p.center_line.as_ref());
+    put_crv(o, geom.center_line_curve().cloned().map(Curve::from).as_ref());
+    Ok(())
+}
+
+/// Two edge uses (primary `SM_OT_SAME` at `vs`, mate `SM_OT_OPPOSITE` at `ve`) on `e`
+/// with vertex uses, as `CreateWireEdgeFromCurve` / `SmFilletGeom::MakeRailEdge` link
+/// them.
+fn link_uses(
+    b: &mut Brep,
+    e: EdgeId,
+    vs: VertexId,
+    ve: VertexId,
+) -> Result<[(EdgeuseId, solidcore::topology::VertexuseId); 2], HarnessError> {
+    let h = |e: SolidError| harness(e.to_string());
+    let eu1 = b.add_edgeuse_record(Edgeuse::default()).map_err(h)?;
+    let eu2 = b.add_edgeuse_record(Edgeuse::default()).map_err(h)?;
+    let vu1 = b.add_vertexuse_record(Vertexuse::default()).map_err(h)?;
+    let vu2 = b.add_vertexuse_record(Vertexuse::default()).map_err(h)?;
+    for (eu, vu, v, o) in [
+        (eu1, vu1, vs, OrientType::Same),
+        (eu2, vu2, ve, OrientType::Opposite),
+    ] {
+        let r = b.edgeuse_mut(eu).map_err(h)?;
+        r.edge = Some(e);
+        r.orientation = o;
+        r.vertexuse = Some(vu);
+        let u = b.vertexuse_mut(vu).map_err(h)?;
+        u.vertex = Some(v);
+        u.owner = VertexuseOwner::Edgeuse(Some(eu));
+        b.vertex_mut(v).map_err(h)?.vertexuses.push(vu);
+    }
+    b.edge_mut(e).map_err(h)?.edgeuses = vec![eu1, eu2];
+    Ok([(eu1, vu1), (eu2, vu2)])
+}
+
+/// A wire edge of the analytic curve of `spec` (`CreateWireEdgeFromCurve` over its natural
+/// interval): start and end vertices at the curve ends (the start vertex alone for a
+/// closed curve), the edge and its two edge uses.
+fn analytic_brep(k: &Kernel, spec: &AnalyticEdge) -> Result<Brep, HarnessError> {
+    let h = |e: SolidError| harness(e.to_string());
+    let curve = match spec {
+        AnalyticEdge::Line { a, b } => {
+            Curve::from(Line::create_line_segment(3, Vec3::from_array(*a), Vec3::from_array(*b), None).map_err(h)?)
+        }
+        AnalyticEdge::Circle { radius, span } => Curve::from(
+            Ellipse::create_canonical_circle(
+                k,
+                &Axis2Placement::default(),
+                *radius,
+                Some(&Extent1d::from_min_max(0.0, *span)),
+                None,
+            )
+            .map_err(h)?,
+        ),
+    };
+    let ivl = curve.natural_interval();
+    let ps = curve.evaluate_point(ivl.min()).map_err(h)?;
+    let pe = curve.evaluate_point(ivl.max()).map_err(h)?;
+    let mut b = Brep::new();
+    let vs = b.add_vertex(ps).map_err(h)?;
+    let ve = if ps.distance(pe) < ZONE_TOL_3D {
+        vs
+    } else {
+        b.add_vertex(pe).map_err(h)?
+    };
+    let e = b.add_edge(vs, ve).map_err(h)?;
+    {
+        let edge = b.edge_mut(e).map_err(h)?;
+        edge.curve = Some(curve);
+        edge.interval = ivl;
+    }
+    link_uses(&mut b, e, vs, ve)?;
+    Ok(b)
+}
+
+/// The shim's pseudo B-rep: a fresh `SmFilletGeom` (type default; the copies of the
+/// solver's offset surfaces it makes are not read by the builders) with two rails made as
+/// `MakeRailEdge` does (a rail edge of fillet vertices of unknown type, unprocessed, each
+/// rail end with an edge use and a vertex use); `rails` types the rail ends
+/// `SM_FV_RAIL_X_EDGEUSE`, processed, at its points. The geometry is geometry 0.
+fn fillet_geom_model(
+    k: &Kernel,
+    rails: Option<&[[f64; 3]; 4]>,
+) -> Result<(FilletBrep, FilletGeomId), HarnessError> {
+    let h = |e: SolidError| harness(e.to_string());
+    let mut fb = FilletBrep::new();
+    let geom = FilletGeom::new(k, None, FilletGeomType::Default).map_err(h)?;
+    let g = fb.add_geom(geom);
+    for i in 0..2 {
+        let mut ends = [None, None];
+        for slot in &mut ends {
+            let v = fb.brep_mut().add_vertex(Vec3::UNDEF).map_err(h)?;
+            fb.insert_fillet_vertex(v, FilletVertex::new(k, None));
+            *slot = Some(v);
+        }
+        let [Some(vs), Some(ve)] = ends else {
+            return Err(harness("rail vertices"));
+        };
+        let e = fb.new_fillet_edge(vs, ve, None).map_err(h)?;
+        fb.fillet_edge_mut(e)
+            .map_err(h)?
+            .set_fillet_edge_type(FilletEdgeType::Rail);
+        for (eu, vu) in link_uses(fb.brep_mut(), e, vs, ve)? {
+            fb.insert_fillet_edgeuse(eu, FilletEdgeuse::default());
+            fb.insert_fillet_vertexuse(vu, FilletVertexuse::new());
+        }
+        fb.geom_mut(g).map_err(h)?.set_rail(i, Some(e));
+        if let Some(pts) = rails {
+            for (v, p) in [vs, ve].into_iter().zip(&pts[2 * i..2 * i + 2]) {
+                let fv = fb.fillet_vertex_mut(v).map_err(h)?;
+                fv.set_fillet_vertex_type(FilletVertexType::RailXEdgeuse);
+                fv.set_status(FilStatus::Processed);
+                fb.brep_mut().vertex_mut(v).map_err(h)?.point = Vec3::from_array(*p);
+            }
+        }
+    }
+    Ok((fb, g))
 }
 
 fn eu_id(i: i64) -> Option<EdgeuseId> {
@@ -870,11 +1062,20 @@ fn rust_run(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, Harn
             after,
             factor,
             brep,
+            analytic,
+            rails,
             eu,
             tsects,
         } => {
-            let Ok(c) = brep_case(brep)? else {
-                return Err(harness("B-rep failed on the Rust side only"));
+            let (target, n_eus) = match analytic {
+                Some(a) => (analytic_brep(&k, a)?, WIRE_EDGEUSES),
+                None => {
+                    let Ok(c) = brep_case(brep)? else {
+                        return Err(harness("B-rep failed on the Rust side only"));
+                    };
+                    let n = n_eu(&c);
+                    (c.brep, n)
+                }
             };
             o.push(0.0);
             let mut fs = solver_of(cfg, surfs)?;
@@ -886,7 +1087,7 @@ fn rust_run(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, Harn
             } else {
                 FilletSurfaceGenerator::circular_default()
             });
-            fs.base.edgeuses = [eu_id(sel(eu[0], n_eu(&c))), eu_id(sel(eu[1], n_eu(&c)))];
+            fs.base.edgeuses = [eu_id(sel(eu[0], n_eus)), eu_id(sel(eu[1], n_eus))];
             let pts: Vec<TsectPnt> = tsects
                 .iter()
                 .map(|t| {
@@ -897,15 +1098,21 @@ fn rust_run(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, Harn
                     p
                 })
                 .collect();
+            // a fresh `SmFilletGeom` of the solver with two rails in a fresh pseudo B-rep
+            let h = |e: SolidError| harness(e.to_string());
+            let (mut fb, g) = fillet_geom_model(&k, rails.as_ref())?;
+            let fg = Some(FilletGeomRef {
+                index: g.0 as usize,
+            });
             let r = match which {
-                0 => FilletSolver::cylinder_fillet_geom_parts(&mut fs, &k, &c.brep, &pts),
-                1 => FilletSolver::cone_fillet_geom_parts(&mut fs, &k, &c.brep, &pts),
-                _ => FilletSolver::torus_fillet_geom_parts(&mut fs, &k, &c.brep, &pts, None),
+                0 => FilletSolver::calc_cylinder_fillet_geom(&mut fs, &k, &target, &mut fb, &pts, fg),
+                1 => FilletSolver::calc_cone_fillet_geom(&mut fs, &k, &target, &mut fb, &pts, fg),
+                _ => FilletSolver::calc_torus_fillet_geom(&mut fs, &k, &target, &mut fb, &pts, fg),
             };
             match r {
-                Ok(parts) => {
+                Ok(()) => {
                     o.push(0.0);
-                    put_parts(o, *which, &parts);
+                    put_stored(o, *which, &fb, g).map_err(h)?;
                     Ok(())
                 }
                 Err(e) => Err(e),
@@ -947,8 +1154,12 @@ fn rust_run(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, Harn
                 },
             )?;
             fs.base.edgeuses = [eu_id(sel(*eu, n_eu(&c))), None];
+            // the executive is not modelled: the report to it is the stop
+            // (`SmFilletExecutive::NoteFilletError`, deferred)
+            fs.base.executive = Some(FilletExecutiveRef);
+            let (fb, _) = fillet_geom_model(&k, None)?;
             let pts = [TsectPnt::default()];
-            match fs.base.record_fillet_error(&c.brep, 5, &pts, "difftest") {
+            match fs.base.record_fillet_error(&c.brep, &fb, 5, &pts, "difftest") {
                 Ok(()) => {
                     o.push(-2.0);
                     Ok(())
@@ -1174,20 +1385,19 @@ fn gen_rail_rail(rng: &mut Rng) -> Inputs {
     let r = rng.uniform(0.2, 2.0);
     let mut surfs = [corner_surfs(r), corner_surfs(r)];
     surfs[1].base[1] = wall_x(rng.uniform(-3.0, 3.0));
-    let mut any_missing = false;
-    for s in &mut surfs {
-        for h in &mut s.has {
-            if rng.chance(0.3) {
-                *h = false;
-                any_missing = true;
-            }
-        }
-    }
-    if !any_missing && rng.chance(0.7) {
+    // a third of the cases miss surfaces (the `SM_ERR` exit); the others solve
+    if rng.chance(0.33) {
         let k = rng.below(2) as usize;
         let i = rng.below(2) as usize;
         if let Some(h) = surfs.get_mut(k).and_then(|s| s.has.get_mut(i)) {
             *h = false;
+        }
+        for s in &mut surfs {
+            for h in &mut s.has {
+                if rng.chance(0.2) {
+                    *h = false;
+                }
+            }
         }
     }
     Inputs::RailRail {
@@ -1239,6 +1449,13 @@ fn gen_straight(rng: &mut Rng, which: u8) -> Inputs {
     } else {
         line([xs - 0.5, 0.0, 0.0], [xe + 0.5, 0.0, 0.0])
     };
+    // a real `SmLine` edge (`IsLine` of the line kind) in a fifth of the cases
+    let analytic = rng
+        .chance(0.2)
+        .then(|| AnalyticEdge::Line {
+            a: [xs - 0.5, 0.0, 0.0],
+            b: [xe + 0.5, 0.0, 0.0],
+        });
     let mut c = gen_cfg(rng, 0, r);
     c.slope = slope;
     Inputs::Geom {
@@ -1258,6 +1475,64 @@ fn gen_straight(rng: &mut Rng, which: u8) -> Inputs {
             t0: 0.0,
             t1: 1.0,
         },
+        analytic,
+        rails: None,
+        eu: [rng.below(2) as i64, rng.below(2) as i64],
+        tsects: ts,
+    }
+}
+
+/// A cylinder or cone case whose rail points are degenerate: both on the floor, a hair
+/// apart (`|angle| < EFF_ZERO_SQRT`, or just above it), or the floor and a roof straight
+/// across the centre line (`|angle| > pi - EFF_ZERO_SQRT`, or just inside it), with a
+/// real `SmLine` or a B-spline edge.
+fn gen_degenerate(rng: &mut Rng) -> Inputs {
+    let r = rng.uniform(0.2, 2.0);
+    let (xs, xe) = (rng.uniform(-5.0, -1.0), rng.uniform(1.0, 5.0));
+    let opposed = rng.chance(0.5);
+    let gap = *rng.choose(&[0.0, 1e-12, 1e-8, 1e-6, 1e-4, 1e-2]).unwrap_or(&0.0);
+    let surfs = if opposed {
+        Surfs {
+            base: [floor(), patch(L, move |u, v| [u, v, 2.0 * r])],
+            has: [true, true],
+            off: [r, -r],
+            orient: [1.0, -1.0],
+        }
+    } else {
+        Surfs {
+            base: [floor(), floor()],
+            has: [true, true],
+            off: [r, r],
+            orient: [1.0, 1.0],
+        }
+    };
+    // the second surface's point is `gap` aside the first's
+    let ts = vec![
+        tsect([xs, r], [xs + gap, r], 0.0),
+        tsect([xe, r], [xe + gap, r], 1.0),
+    ];
+    let which = u8::from(rng.chance(0.5));
+    let analytic = rng
+        .chance(0.5)
+        .then(|| AnalyticEdge::Line {
+            a: [xs - 0.5, 0.0, 0.0],
+            b: [xe + 0.5, 0.0, 0.0],
+        });
+    Inputs::Geom {
+        which,
+        cfg: gen_cfg(rng, 0, r),
+        surfs,
+        fsg: 1,
+        before: rng.chance(0.3),
+        after: rng.chance(0.3),
+        factor: 0.5,
+        brep: BrepIn::Wire {
+            curve: line([xs - 0.5, 0.0, 0.0], [xe + 0.5, 0.0, 0.0]),
+            t0: 0.0,
+            t1: 1.0,
+        },
+        analytic,
+        rails: None,
         eu: [rng.below(2) as i64, rng.below(2) as i64],
         tsects: ts,
     }
@@ -1271,12 +1546,21 @@ fn gen_torus(rng: &mut Rng) -> Inputs {
     let rho = big - r;
     let quarters = 1 + rng.below(4) as usize;
     let span = quarters as f64 * std::f64::consts::FRAC_PI_2;
-    let phi = span
-        * if rng.chance(0.5) {
+    // the end point at the start's angle: the span wraps to 360 degrees (with an open
+    // edge, the seam of the torus moves); some cases have the arc centre on the axis (no
+    // unique nearest point on the edge circle) or a vanishing radius
+    let seam = rng.chance(0.1);
+    let on_axis = rng.chance(0.05);
+    let tiny = rng.chance(0.05);
+    let phi = if seam {
+        0.0
+    } else {
+        span * if rng.chance(0.5) {
             1.0
         } else {
             rng.uniform(0.3, 0.95)
-        };
+        }
+    };
     let slope = if rng.chance(0.1) { 0.2 * r } else { 0.0 };
     let surfs = Surfs {
         base: [floor(), wall_x(big)],
@@ -1284,44 +1568,87 @@ fn gen_torus(rng: &mut Rng) -> Inputs {
         off: [r, -r],
         orient: [1.0, -1.0],
     };
-    let ts = vec![
+    let mut ts = vec![
         tsect([rho, 0.0], [0.0, r], 0.0),
         tsect([rho * phi.cos(), rho * phi.sin()], [0.0, r], 1.0),
     ];
+    if on_axis {
+        if let Some(t) = ts.first_mut() {
+            t.uv0 = [0.0, 0.0];
+        }
+    }
     let curve = if rng.chance(0.1) {
         line([0.0, 0.0, 0.0], [big, 0.0, 0.0])
     } else {
         arc(big, quarters)
     };
+    // a real `SmCircle` (a full circle for four quarters: a closed edge) or `SmLine`
+    // edge in a third of the cases
+    let analytic = match rng.below(10) {
+        0 => Some(AnalyticEdge::Line {
+            a: [0.0, 0.0, 0.0],
+            b: [big, 0.0, 0.0],
+        }),
+        1 | 2 => Some(AnalyticEdge::Circle {
+            radius: big,
+            span: 90.0 * quarters as f64,
+        }),
+        _ => None,
+    };
+    // rail ends typed RAIL_X_EDGEUSE, processed, around the start of the arc: the
+    // before-the-edge-start check may set the extend-after flag
+    let rails = rng.chance(0.3).then(|| {
+        let mut p = [[0.0; 3]; 4];
+        for q in &mut p {
+            *q = [
+                jitter(rng, big, 1.0),
+                jitter(rng, 0.0, 1.0),
+                jitter(rng, 0.0, 0.5),
+            ];
+        }
+        p
+    });
     let mut c = gen_cfg(rng, 0, r);
     c.slope = slope;
+    if tiny {
+        c.radius = 1.0e-12;
+    }
+    // the rail end checks only run for an edge not extended after
+    let after = if rails.is_some() {
+        rng.chance(0.2)
+    } else {
+        rng.chance(0.85)
+    };
     Inputs::Geom {
         which: 2,
         cfg: c,
         surfs,
         fsg: u8::from(!rng.chance(0.1)),
         before: rng.chance(0.5),
-        after: rng.chance(0.85),
+        after,
         factor: 0.5,
         brep: BrepIn::Wire {
             curve,
             t0: 0.0,
             t1: 1.0,
         },
+        analytic,
+        rails,
         eu: if rng.chance(0.5) { [0, 1] } else { [1, 0] },
         tsects: ts,
     }
 }
 
 fn gen_case(rng: &mut Rng) -> Inputs {
-    match rng.below(20) {
+    match rng.below(24) {
         0..=3 => gen_plane(rng),
         4..=8 => gen_rail_eu(rng),
-        9 | 10 => gen_rail_rail(rng),
-        11..=13 => gen_straight(rng, 0),
-        14 | 15 => gen_straight(rng, 1),
-        16 | 17 => gen_torus(rng),
-        18 => Inputs::Corner {
+        9..=12 => gen_rail_rail(rng),
+        13..=15 => gen_straight(rng, 0),
+        16 | 17 => gen_straight(rng, 1),
+        18..=20 => gen_torus(rng),
+        21 => gen_degenerate(rng),
+        22 => Inputs::Corner {
             cfg: gen_cfg(rng, 2, 1.0),
             index: 2 + rng.below(50),
         },

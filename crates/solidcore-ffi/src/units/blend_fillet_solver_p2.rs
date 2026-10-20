@@ -18,7 +18,7 @@
 //!
 //! `found` is reported only on success: upstream sets it before its last `SER` (the
 //! user-double overflow), where callers do not read it.
-//! | `Geom`      | `CalcCylinderFilletGeom` / `CalcConeFilletGeom` / `CalcTorusFilletGeom` (`which` 0/1/2) | `which cfg surfs fsg before after factor block eu0 eu1 n` then `n` x `uv0[2] uv1[2] cparam` (`fsg` 0 linear, 1 circular) | `0 status`, on success `surface rail0 rail1 [ivl0[2] ivl1[2]] center` (intervals for the cone and torus) |
+//! | `Geom`      | `CalcCylinderFilletGeom` / `CalcConeFilletGeom` / `CalcTorusFilletGeom` (`which` 0/1/2) | `which cfg surfs fsg before after factor rails edge eu0 eu1 n` then `n` x `uv0[2] uv1[2] cparam` (`fsg` 0 linear, 1 circular; `rails` `0`, or `1 p[4][3]`: the rail end vertices typed `SM_FV_RAIL_X_EDGEUSE`, processed, at `p`; `edge` `0 block`, `1 a[3] b[3]` (an `SmLine` segment) or `2 radius span_deg` (an `SmCircle` about the z axis through `span_deg`)) | `0 status`, on success `surface rail0 rail1 [ivl0[2] ivl1[2]] center` (intervals for the cone and torus) |
 //! | `Misc`      | `GetFilletCorner` (`0 cfg index`), `RecordFilletError` (`1 cfg block eu0`) | | `null jacobian_size`; `0 -2` (skipped) |
 //!
 //! A curve is `1 t0 t1 P(t0) P(mid) P(t1)` or `-1`; a surface `1 u0 v0 u1 v1` and the
@@ -51,6 +51,11 @@ pub const MAX_TSECTS: usize = 16;
 pub const MAX_EXTRA: usize = 5;
 /// Largest `SmIntersectionPointType` value.
 const MAX_POINT_TYPE: usize = 7;
+/// Shortest line segment and smallest circle radius of a `Geom` edge (shorter ones make
+/// `CreateLineSegment` / `CreateCanonical` fail, a status the shim does not report).
+const MIN_EDGE: f64 = 1.0e-3;
+/// Largest circle radius of a `Geom` edge.
+const MAX_RADIUS: f64 = 1.0e3;
 
 /// The upstream routine run by the shim.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -180,15 +185,43 @@ fn validate(op: Op, path: &str, input: &[f64]) -> Result<bool, FfiError> {
             rd.flag()?;
             rd.flag()?;
             rd.finite()?;
-            let (_, counts) = brep(&mut rd, path)?;
-            let Some(counts) = counts else {
-                return Ok(false);
+            // the rail end vertices: 1 = typed RAIL_X_EDGEUSE, processed, at 4 points
+            if rd.index(1)? == 1 {
+                rd.finites(12)?;
+            }
+            // the filleted edge: a B-rep block, an SmLine segment or an SmCircle arc
+            let edge_kind = rd.index(2)?;
+            let n_edgeuses = match edge_kind {
+                0 => {
+                    let (_, counts) = brep(&mut rd, path)?;
+                    let Some(counts) = counts else {
+                        return Ok(false);
+                    };
+                    counts[6]
+                }
+                1 => {
+                    let ends = rd.finites(6)?;
+                    let (a, b) = ends.split_at(3);
+                    let d: f64 = a.iter().zip(b).map(|(x, y)| (x - y) * (x - y)).sum();
+                    if d.sqrt() <= MIN_EDGE {
+                        return Err(bad("geom: line segment shorter than MIN_EDGE"));
+                    }
+                    2
+                }
+                _ => {
+                    let r = rd.finite()?;
+                    let span = rd.finite()?;
+                    if !(MIN_EDGE..=MAX_RADIUS).contains(&r) || !(1.0..=360.0).contains(&span) {
+                        return Err(bad("geom: circle radius or span out of range"));
+                    }
+                    2
+                }
             };
-            rd.below(counts[6])?;
+            rd.below(n_edgeuses)?;
             if which == 2 {
-                rd.below(counts[6])?;
+                rd.below(n_edgeuses)?;
             } else {
-                rd.below_or_none(counts[6])?;
+                rd.below_or_none(n_edgeuses)?;
             }
             let n = rd.index(MAX_TSECTS)?;
             if n == 0 {

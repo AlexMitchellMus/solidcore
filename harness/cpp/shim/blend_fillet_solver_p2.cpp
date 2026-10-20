@@ -30,7 +30,9 @@
 
 #include "StdAfx.h"
 #include <SmBSplineCurve.h>
+#include <SmAxis2Placement.h>
 #include <SmBSplineSurface.h>
+#include <SmCircle.h>
 #include <SmContext.h>
 #include <SmExtent1d.h>
 #include <SmExtent2d.h>
@@ -413,8 +415,51 @@ void run_geom(Rd& rd, const char* path, const SmContext& ctx, std::vector<double
     else
         fsg = new (ctx) SmCircularCrossSectionFSG();
     fs->SetFilletSurfaceGenerator(fsg);
+    // rails: 0, or 1 and the four rail end points (typed RAIL_X_EDGEUSE, processed)
+    int64_t rail_mode = rd.idx();
+    SmPoint3d rail_pts[4];
+    if (rail_mode == 1)
+        for (int i = 0; i < 4; i++)
+            rail_pts[i] = rd.vec();
+    // the filleted edge: a B-rep block, an SmLine segment or an SmCircle arc
+    int64_t edge_kind = rd.idx();
     SmStatus bst = SM_SUCCESS;
-    SmBrep* brep = build(rd, path, bst);
+    SmBrep* brep = NULL;
+    if (edge_kind == 0)
+        brep = build(rd, path, bst);
+    else
+    {
+        brep = new (ctx) SmBrep();
+        SmBSplineCurve* curve = NULL;
+        if (edge_kind == 1)
+        {
+            SmPoint3d a = rd.vec();
+            SmPoint3d b = rd.vec();
+            SmLine* line = NULL;
+            bst = SmLine::CreateLineSegment(ctx, 3, a, b, line);
+            curve = line;
+        }
+        else
+        {
+            double radius = rd.num();
+            double span = rd.num();
+            SmAxis2Placement frame;
+            SmExtent1d ivl(0.0, span);
+            SmCircle* circle = NULL;
+            bst = SmCircle::CreateCanonical(ctx, frame, radius, circle, &ivl);
+            curve = circle;
+        }
+        if (bst == SM_SUCCESS)
+        {
+            SmEdge* edge = NULL;
+            bst = brep->CreateWireEdgeFromCurve(curve, curve->GetNaturalInterval(), edge);
+        }
+        if (bst != SM_SUCCESS)
+        {
+            delete brep;
+            brep = NULL;
+        }
+    }
     if (brep == NULL)
     {
         o.push_back(-1.0);
@@ -447,6 +492,19 @@ void run_geom(Rd& rd, const char* path, const SmContext& ctx, std::vector<double
     SmFilletEdge* rails[2] = {NULL, NULL};
     fg->MakeRailEdge(pb, 0, rails[0]);
     fg->MakeRailEdge(pb, 1, rails[1]);
+    if (rail_mode == 1)
+        for (int jj = 0; jj < 2; jj++)
+        {
+            SmFilletVertex* v0 = (SmFilletVertex*)rails[jj]->GetVertex();
+            SmFilletVertex* v1 = (SmFilletVertex*)rails[jj]->GetOtherVertex(v0);
+            SmFilletVertex* vs[2] = {v0, v1};
+            for (int e = 0; e < 2; e++)
+            {
+                vs[e]->SetFilletVertexType(SM_FV_RAIL_X_EDGEUSE);
+                vs[e]->SetStatus(SM_FIL_PROCESSED);
+                vs[e]->SetPoint(rail_pts[2 * jj + e]);
+            }
+        }
     SmStatus s = SM_SUCCESS;
     switch (which)
     {
