@@ -108,7 +108,7 @@ enum Inputs {
     /// the target faces of `update_split_face`.
     Corner {
         method: CornerMethod,
-        model: Model,
+        model: Box<Model>,
         corner: CornerIn,
         #[serde(default)]
         split: [usize; 2],
@@ -416,7 +416,7 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
     let blending = rng.chance(0.25);
     Inputs::Corner {
         method,
-        model,
+        model: Box::new(model),
         corner: CornerIn {
             kind,
             v_edge: if rng.chance(0.95) { 1 } else { -1 },

@@ -3291,6 +3291,7 @@
             [2, 0],
             [3, 0]
           ],
+          "arc_edges": [],
           "bevel": true,
           "blending": false,
           "chamfer": false,
@@ -3298,6 +3299,7 @@
           "edges": [4, 5],
           "ext": true,
           "kind": 7,
+          "line_edges": [],
           "orig_faces": [],
           "setback": 0.0,
           "solver": [
@@ -4178,6 +4180,7 @@
         "corner": {
           "adjusted": false,
           "all": null,
+          "arc_edges": [],
           "bevel": true,
           "blending": false,
           "chamfer": false,
@@ -4185,6 +4188,7 @@
           "edges": [4, 5, 2],
           "ext": true,
           "kind": 7,
+          "line_edges": [],
           "orig_faces": [],
           "setback": 0.0,
           "solver": [
@@ -4594,6 +4598,7 @@
             [2, 0],
             [3, 0]
           ],
+          "arc_edges": [],
           "bevel": false,
           "blending": true,
           "chamfer": false,
@@ -4601,6 +4606,7 @@
           "edges": [4, 5, 2],
           "ext": true,
           "kind": 7,
+          "line_edges": [],
           "orig_faces": [],
           "setback": 0.0,
           "solver": [
