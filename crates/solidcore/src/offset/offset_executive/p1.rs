@@ -44,9 +44,13 @@
 //! calls `topology::edgeuse::p3`; `RemoveExcessFaces` and `FillGapEdgeuses` keep it in
 //! front of their own unported continuations.
 //! No new input-driven recursion; existing topology walks are cycle-bounded.
+//! The lamina clean-up's `DeleteFaces` runs through merge p4's arena intersector over
+//! the offset B-rep alone (both upstream operands are that B-rep); it notifies under
+//! `DELETE_FACES_NAMESPACE` rather than the caller's offset keys.
 
 use std::collections::BTreeMap;
 
+use crate::boolean::merge::p4::KernelManifoldIntersector;
 use crate::curve::curve::{Curve, CurveKind};
 use crate::error::{ignore_status, ignored, EntityRef, Result, SolidError};
 use crate::geom::context::MarkType;
@@ -121,6 +125,11 @@ pub struct VertexOffset {
     /// Orientations of the trimming curves.
     pub curve_orientations: Vec<OrientType>,
 }
+
+/// The 27-bit object namespace under which the lamina clean-up's `DeleteFaces`
+/// (merge p4's arena adapter) records its notifications; distinct from the Boolean
+/// kernels' namespaces, which share no attribute store with an offset executive.
+const DELETE_FACES_NAMESPACE: u32 = 0x00f5_e700;
 
 /// Topological offset state. Original ids and result ids belong to separate B-reps.
 /// Geometry-creator parameters are an immutable scalar snapshot; this executive does
@@ -1107,22 +1116,21 @@ impl OffsetExecutive {
             }
         }
         if !delete_faces.is_empty() {
-            // Continuation cpp:3749–3759:
-            //   SmTopologyIntersector sTI(m_crContext, m_pOffsetBrep, m_pOffsetBrep,
-            //                             SM_EFF_ZERO, SM_EFF_ZERO);
-            //   sTI.DeleteFaces(sDelFaces);          // pOptKeepAsWires = NULL, status ignored
-            //   for each deleted face: sNewFaces.FindElement / RemoveAt
-            // then the survivors are related and mapped below. `DeleteFaces` itself is
-            // ported (`boolean::topology_intersector::p2::TopologyIntersector::
-            // delete_faces`); what is missing is an `IntersectorBrep` implementation
-            // over `topology::Brep` to run it on the offset B-rep. #243's
-            // `KernelManifoldIntersector` adapter provides one (COORD.md).
-            // UNPORTED(boolean.merge_p4): IntersectorBrep over topology::Brep
-            // (SmTopologyIntersector::DeleteFaces)
-            return Err(SolidError::unported(
-                "IntersectorBrep over topology::Brep (SmTopologyIntersector::DeleteFaces)",
-                "boolean.merge_p4",
-            ));
+            // cpp:3749-3759: SmTopologyIntersector sTI(m_crContext, m_pOffsetBrep,
+            // m_pOffsetBrep, SM_EFF_ZERO, SM_EFF_ZERO); sTI.DeleteFaces(sDelFaces)
+            // (pOptKeepAsWires = NULL, status ignored); then FindElement / RemoveAt
+            // on sNewFaces. The intersector over the one offset B-rep is merge p4's
+            // arena adapter; its notifications are keyed under
+            // `DELETE_FACES_NAMESPACE`, not `offset_key_of`.
+            ignore_status(KernelManifoldIntersector::delete_faces_in(
+                kernel,
+                brep,
+                &delete_faces,
+                &mut *notifications.records,
+                &mut *notifications.attributes,
+                DELETE_FACES_NAMESPACE,
+            ))?;
+            new_faces.retain(|face| !delete_faces.contains(face));
         }
         Ok(new_faces)
     }

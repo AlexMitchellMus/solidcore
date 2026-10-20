@@ -125,7 +125,8 @@ pub const MAX_CONTROL_POINTS: usize = 65_536;
 /// point of magnitude `1e157` or more gives no result within 25 s, on x, y and z
 /// alike (`1e154`, `1e155` and `1e156` return in about 30 ms each; `1e157`, `1e158`,
 /// `1e160`, `1e200`, `1e300` do not). The bound sits 1000x below the first slow
-/// value, where coordinate squares also still stay finite.
+/// value; each coordinate's own square also still stays finite there (a 3-term norm
+/// would not, so that is not the argument).
 pub const MAX_COORDINATE: f64 = 1e154;
 /// Native `NL_MAXDEG` (`NL_Nurbsdef.h`); larger degrees overrun basis work arrays.
 pub const MAX_DEGREE: usize = 17;

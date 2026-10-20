@@ -8671,7 +8671,7 @@ with owner-tagged `Unported` errors and documented continuations.
   within 25 s on every axis; `1e160`, `1e180`, `1e200`, `1e250`, `1e300` likewise; the sign
   of a zero distance does not matter. The FFI `points()` guard now refuses control point
   coordinates (and coordinate/weight) above `MAX_COORDINATE = 1e154`, 1000x below the
-  first slow value (their squares also still stay finite); the runner's Rust side runs the
+  first slow value (each coordinate's own square also still stays finite there; a 3-term norm would not); the runner's Rust side runs the
   same check. The input is kept in `crates/difftest/tests/fuzz_regressions/`. Two `differs` notes from the
   same run (`fuzz01001`, `fuzz01653`: a `map_twin` rectangle corner at `±1e-300`, native
   vertex `0` vs Rust `±1e-300`) are the native constructor's rounding of a coordinate
