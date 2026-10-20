@@ -2,9 +2,357 @@
   "abs_floors": [],
   "cases": [
     {
+      "max_rel_err": 0.0,
+      "name": "adv_torus_wind_u2_v1_swap0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#0",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_torus_wind_u1_v2_swap0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#1",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_torus_two_diagonals_swap0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#2",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_sphere_both_pole_vertices_band_swap0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#3",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_sphere_both_pole_vertices_cap_swap0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#4",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_sphere_three_spans_swap0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#5",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_sphere_five_spans_rev_swap0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#6",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_cylinder_eight_spans_swap0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#7",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_cylinder_three_same_dir_swap0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#8",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_cylinder_seven_spans_reversed_swap0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#9",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_cone_three_spans_swap0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#10",
+      "values_compared": 1
+    },
+    {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_natural_cone_swap0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#11",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_sphere_pole_vertex_only_start_swap0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#12",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_sphere_near_both_poles_swap0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#13",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_torus_band_diag_reversed_swap0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#14",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_cylinder_two_copies_mode4_swap0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#15",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_sphere_tiny_scale_three_swap0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#16",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_torus_wind_u2_v1_swap1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#17",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_torus_wind_u1_v2_swap1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#18",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_torus_two_diagonals_swap1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#19",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_sphere_both_pole_vertices_band_swap1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#20",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_sphere_both_pole_vertices_cap_swap1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#21",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_sphere_three_spans_swap1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#22",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_sphere_five_spans_rev_swap1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#23",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_cylinder_eight_spans_swap1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#24",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_cylinder_three_same_dir_swap1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#25",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_cylinder_seven_spans_reversed_swap1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#26",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_cone_three_spans_swap1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#27",
+      "values_compared": 1
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_natural_cone_swap1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#28",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_sphere_pole_vertex_only_start_swap1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#29",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_sphere_near_both_poles_swap1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#30",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_torus_band_diag_reversed_swap1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#31",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_cylinder_two_copies_mode4_swap1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#32",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_sphere_tiny_scale_three_swap1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#33",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_face_without_loops_sm_err_fresh",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#34",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_face_without_loops_explicit_reversed",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#35",
+      "values_compared": 1
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_natural_torus_reversed",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#36",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_natural_sphere_drop_last",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#37",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "adv_cylinder_rect_only",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#38",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_torus_diag_backwards",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#39",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "adv_torus_antidiag",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.face_p4/adversarial.json#40",
+      "values_compared": 1
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "closed_sphere_properties_swap0_loops0",
@@ -15,8 +363,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "closed_sphere_properties_swap0_loops1",
@@ -36,8 +384,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "closed_sphere_properties_swap1_loops0",
@@ -48,8 +396,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "closed_sphere_properties_swap1_loops1",
@@ -69,8 +417,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "natural_torus",
@@ -81,8 +429,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "tsurf_cyl_creation_loops_on_cone",
@@ -357,8 +705,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "cylinder_band_and_rect",
@@ -442,8 +790,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "plane_face_fresh_props",
@@ -454,8 +802,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "file_sphere_staged",
@@ -466,8 +814,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "file_torus_staged",
@@ -478,8 +826,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "file_cone_staged",
@@ -490,8 +838,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "file_plane_square_staged",
@@ -502,8 +850,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "file_box_with_large_fillet_staged",
@@ -522,8 +870,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "file_plane_square_fresh",
@@ -566,8 +914,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0004",
@@ -578,8 +926,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0005",
@@ -598,8 +946,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0007",
@@ -618,8 +966,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0009",
@@ -694,8 +1042,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0018",
@@ -715,8 +1063,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0020",
@@ -727,8 +1075,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0021",
@@ -755,8 +1103,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0024",
@@ -800,8 +1148,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0029",
@@ -820,8 +1168,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0031",
@@ -840,8 +1188,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0033",
@@ -868,8 +1216,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0036",
@@ -897,8 +1245,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0039",
@@ -909,8 +1257,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0040",
@@ -1010,8 +1358,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0052",
@@ -1070,8 +1418,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0059",
@@ -1082,8 +1430,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0060",
@@ -1102,8 +1450,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0062",
@@ -1114,8 +1462,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0063",
@@ -1302,8 +1650,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0086",
@@ -1525,8 +1873,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0113",
@@ -1601,8 +1949,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0122",
@@ -1630,8 +1978,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0125",
@@ -1707,8 +2055,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0134",
@@ -1727,8 +2075,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0136",
@@ -1780,8 +2128,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0142",
@@ -1816,8 +2164,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0146",
@@ -1902,8 +2250,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0156",
@@ -1914,8 +2262,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0157",
@@ -1990,8 +2338,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0166",
@@ -2026,8 +2374,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0170",
@@ -2087,8 +2435,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0177",
@@ -2123,8 +2471,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0181",
@@ -2143,8 +2491,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0183",
@@ -2179,8 +2527,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0187",
@@ -2199,8 +2547,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0189",
@@ -2235,8 +2583,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0193",
@@ -2279,8 +2627,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0198",
@@ -2331,8 +2679,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0204",
@@ -2359,8 +2707,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0207",
@@ -2371,8 +2719,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0208",
@@ -2391,8 +2739,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0210",
@@ -2477,8 +2825,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0220",
@@ -2489,8 +2837,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0221",
@@ -2501,8 +2849,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0222",
@@ -2529,8 +2877,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0225",
@@ -2541,8 +2889,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0226",
@@ -2561,8 +2909,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0228",
@@ -2605,8 +2953,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0233",
@@ -2641,8 +2989,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0237",
@@ -2661,8 +3009,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0239",
@@ -2754,8 +3102,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0250",
@@ -2798,8 +3146,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0255",
@@ -2834,8 +3182,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0259",
@@ -2878,8 +3226,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0264",
@@ -2914,8 +3262,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0268",
@@ -2974,8 +3322,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0275",
@@ -3083,8 +3431,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0288",
@@ -3095,8 +3443,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0289",
@@ -3107,8 +3455,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0290",
@@ -3119,8 +3467,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0291",
@@ -3195,8 +3543,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0300",
@@ -3207,8 +3555,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0301",
@@ -3219,8 +3567,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0302",
@@ -3231,8 +3579,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0303",
@@ -3251,8 +3599,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0305",
@@ -3287,8 +3635,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0309",
@@ -3315,8 +3663,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0312",
@@ -3343,8 +3691,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0315",
@@ -3371,8 +3719,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0318",
@@ -3391,8 +3739,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0320",
@@ -3403,8 +3751,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0321",
@@ -3431,8 +3779,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0324",
@@ -3451,8 +3799,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0326",
@@ -3512,8 +3860,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0333",
@@ -3565,8 +3913,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0339",
@@ -3650,8 +3998,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0349",
@@ -3670,8 +4018,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0351",
@@ -3747,8 +4095,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0360",
@@ -3759,8 +4107,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0361",
@@ -3885,8 +4233,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0376",
@@ -3930,8 +4278,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0381",
@@ -3958,8 +4306,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0384",
@@ -3986,8 +4334,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0387",
@@ -4054,8 +4402,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0395",
@@ -4066,8 +4414,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::GetLoopCrossings",
-        "unit": "intersect.curve_class_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0396",
@@ -4102,13 +4450,12 @@
     }
   ],
   "cases_both_errored": 27,
-  "cases_deferred": 100,
+  "cases_deferred": 105,
   "cases_failed": 0,
-  "cases_passed": 359,
-  "cases_total": 459,
+  "cases_passed": 395,
+  "cases_total": 500,
   "deferred_by_unit": {
-    "curve.crv_on_surf": 8,
-    "intersect.curve_class_p4": 92
+    "topology.face_p2": 105
   },
   "max_rel_err": 0.0,
   "pass": true,
