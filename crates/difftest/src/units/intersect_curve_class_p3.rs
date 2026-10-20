@@ -20,11 +20,11 @@
 //! `ConnectIntervals` (`intersect.curve_class_p2`), `GetPointClassByIndex`,
 //! `GetPointClassMateByIndex` or `AreCoincidentMaybe` (`intersect.curve_class_p7`: the whole of
 //! `MergePointClass`, `sm_ChangeEdgePointClassToNearVertex` and `CleanupAndValidate` of a
-//! non-empty classification), the zone tolerance of an edge, vertex or face classification
-//! (`topology.edge`, `topology.vertex`, `topology.face_p2`: an opaque handle cannot resolve to a
-//! B-rep) and the 2D tolerance mapping that needs a surface point solve. Generated scripts are
-//! filtered by the shim's run-time checks (scripts it rejects as undefined upstream are
-//! dropped).
+//! non-empty classification), `SmVertex::GetPoint` / `SetPoint` of a vertex classification
+//! (`topology.vertex`) and the 2D tolerance mapping that needs a surface point solve. The
+//! vertex, edge and face objects are B-rep records (see unit `intersect.curve_class_p1`,
+//! [`BareTopology`]), so their zone tolerances are compared. Generated scripts are filtered by
+//! the shim's run-time checks (scripts it rejects as undefined upstream are dropped).
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -52,9 +52,11 @@ use solidcore::nurbs::srf_basic::Surface as NurbSurface;
 use solidcore::surface::plane::Plane;
 use solidcore::surface::surface::Surface;
 use solidcore::surface::volume::Volume;
-use solidcore::SolidError;
+use solidcore::topology::Brep;
+use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::intersect_curve_class_p3::{self as ffi, kind, op};
 
+use super::intersect_curve_class_p1::BareTopology;
 use crate::case::{CaseContext, CaseSource};
 use crate::runner::default_cases;
 use crate::util::v3;
@@ -555,6 +557,8 @@ enum PoolObj {
 struct Pool {
     objs: Vec<PoolObj>,
     handles: Vec<H>,
+    /// The vertex, edge and face objects as B-rep records ([`BareTopology`]).
+    topo: BareTopology,
 }
 
 impl ClassGeometry<H> for Pool {
@@ -578,6 +582,18 @@ impl ClassGeometry<H> for Pool {
             Some(PoolObj::Point(p)) => Some(*p),
             _ => None,
         }
+    }
+    fn classification_vertex_point(&self, o: H) -> Option<Vec3> {
+        self.topo.vertex_point(o.0)
+    }
+    fn topology_zone_tol_3d(&self, o: H) -> Option<f64> {
+        self.topo.zone_tol_3d(o.0)
+    }
+    fn topology_entity(&self, o: H) -> Option<(&Brep, EntityRef)> {
+        self.topo.entity(o.0)
+    }
+    fn topology_handle(&self, e: EntityRef) -> Option<H> {
+        self.handles.get(self.topo.index_of(e)?).copied()
     }
 }
 
@@ -624,8 +640,27 @@ fn build_pool(objects: &[ObjIn]) -> Result<Pool, HarnessError> {
     let mut pool = Pool {
         objs: Vec::new(),
         handles: Vec::new(),
+        topo: BareTopology::default(),
     };
     for (i, o) in objects.iter().enumerate() {
+        // the curve of an edge object, the surface of a face object (earlier pool objects;
+        // the shim rejects any other)
+        let curve = match o {
+            ObjIn::Edge(Some(c)) => match pool.objs.get(*c) {
+                Some(PoolObj::Curve(x)) => Some((*c, x)),
+                _ => None,
+            },
+            _ => None,
+        };
+        let surface = match o {
+            ObjIn::Face(Some(sf)) => match pool.objs.get(*sf) {
+                Some(PoolObj::Surface(x)) => Some(x),
+                _ => None,
+            },
+            _ => None,
+        };
+        pool.topo
+            .push(class_kind_of(obj_kind(o)), curve, surface)?;
         let obj = match o {
             ObjIn::Curve(c) => PoolObj::Curve(build_curve(c)?),
             ObjIn::Plane { o, n } => {
