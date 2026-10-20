@@ -1780,6 +1780,7 @@ mod tests {
     /// true. The standalone helper keeps the status.
     #[test]
     fn nx1_degeneracy_status_selects_the_degenerate_corner() {
+        use crate::geom::extent1d::Extent1d;
         use crate::topology::{Edgeuse, EdgeuseOwner, Vertexuse, VertexuseOwner};
 
         let k = Kernel::default();
