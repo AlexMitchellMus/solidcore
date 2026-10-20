@@ -1083,3 +1083,19 @@ Primitive p1 remains 773/689/0/75 with 9 rejected and zero relative error; the
 single former p9 deferral now reaches p2 `MakeShellVertexTopology`. All 689
 perturbations are detected. Format checks, plain/native Clippy, 1479 kernel
 tests, wasm32 and all five primitive FFI tests pass.
+
+
+### PR #213 API back-edge refresh (2026-10-20, main e5f3e441)
+
+All thirteen obsolete p1 tags in the SM_API primitive module are removed. Plane
+and disc call the p1 port with caller Kernel and native no-face checks; solid
+new-Brep paths report the actual constructor dependency. Blend uses the
+existing B-rep. Planar boolean cleanup forwards the caller NotifyEnv to p5.
+The API differential gate remains 1981 cases / 1445 exact passes / 536 deferred
+(surface.sphere 1, topology.brep_p3 448, topology.brep_p8 87) / 0 failed. P1
+remains 773 / 689 pass / 75 deferred / 9 rejected; its former p2 construction
+deferral now reaches p3, so p3 accounts for six deferrals. All seven affected
+gates have zero failures. Workspace tests (1530 kernel tests), fmt, plain/native
+Clippy, wasm32 and five p1 native FFI tests pass. Successful primitive topology
+and post-intersection mutations remain uncertified. Full gate and actual-head
+CI evidence are recorded in the PR discussion.

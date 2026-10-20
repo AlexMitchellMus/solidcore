@@ -11001,3 +11001,21 @@ with maximum relative error 0.
   `sm_GetEllipseTrimIntervals` through `IntersectWithCone`, which has no such guard yet.
   Reproduced with main's unpatched `cone/p2.rs` too. Tracked in issue #276; the
   `surface.cone_p2` refusals that are now stricter than needed are issue #277.
+
+
+## PR #213 — API back-edge review integration (2026-10-20)
+
+Merged canonical main `e5f3e441`, retaining both appended findings and upstream
+issue sections. The API plane and disc call the p1 static constructors with the
+caller Kernel, native `1e-5` tolerance and no-face `SM_ERR` checks. Other new
+solid-B-rep helpers defer at upstream's first missing `SmBrep::SmBrep`
+(`topology.brep_p3`), with the available p1 constructor/methods documented at
+their call sites. All thirteen stale p1 tags are removed.
+
+`SmApiCreateBlendPrimitive` is different: pinned `SmApiPrimitives.cpp:1182`
+uses the caller's existing B-rep. It now constructs `PrimitiveCreation` with
+that B-rep's infinite region before the missing p2 blend operation; it is not
+retagged as a new-Brep constructor deferral. The planar-boolean cleanup now
+forwards the caller's existing notification environment into p5. Two Rust
+static-sheet regressions reach the actual p3 constructor blocker rather than
+the former p1 stub. Successful primitive topology remains uncertified.
