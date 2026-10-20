@@ -5190,6 +5190,33 @@ mod owner_zone_tol_tests {
         assert_eq!(base(&off), None);
     }
 
+    /// The offset paths #307 rewires through the exact snapshot helpers: an owned base
+    /// keeps the cached face tolerance in an evaluation copy, and a shared base (the same
+    /// object upstream) keeps its own face's tolerance in `OffsetSurface::copy`.
+    #[test]
+    fn offset_snapshots_keep_the_cache() {
+        let k = Kernel::default();
+        let base = |s: &Surface| match s.kind() {
+            SurfaceKind::OffsetSurface(o) => o.base_surface().owner_zone_tol_3d(),
+            _ => panic!("not an offset"),
+        };
+        let mut owned = Surface::from(OffsetSurface::new(&k, 1.0, plane(), true, 0).unwrap());
+        owned.set_owner(Some(face_ref(1)));
+        owned.set_owner_zone_tol_3d(Some(0.125));
+        let e = owned.clone_for_evaluation().unwrap();
+        assert_eq!(e.owner_zone_tol_3d(), Some(0.125));
+        assert_eq!(base(&e), Some(0.125));
+
+        let mut shared_base = plane();
+        shared_base.set_owner(Some(face_ref(2)));
+        shared_base.set_owner_zone_tol_3d(Some(0.75));
+        let shared = OffsetSurface::new(&k, 1.0, shared_base, false, 0).unwrap();
+        let c = shared.copy(&k).unwrap();
+        assert_eq!(c.base_surface().owner_zone_tol_3d(), Some(0.75));
+        let e = Surface::from(shared).clone_for_evaluation().unwrap();
+        assert_eq!(base(&e), Some(0.75));
+    }
+
     #[test]
     fn face_set_tolerance_updates_the_cache() {
         let mut s = plane();

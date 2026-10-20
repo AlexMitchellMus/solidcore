@@ -703,8 +703,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_disk.smb_0",
@@ -715,8 +715,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_disk.smb_1",
@@ -979,8 +979,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_plane_circ.smb_0",
@@ -991,8 +991,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_plane_circ.smb_1",
@@ -1115,8 +1115,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_plane_square.smb_0",
@@ -1127,8 +1127,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_plane_square.smb_1",
@@ -2856,13 +2856,13 @@
     "cpp-guard:ub-165": 3,
     "curve.crv_on_surf": 2,
     "curve.curve_p6": 2,
+    "intersect.curve_class_p2": 6,
     "query.brep": 2,
     "surface.sphere": 20,
     "surface.surface_p2": 4,
     "topology.brep_p3": 30,
     "topology.brep_p4": 1,
     "topology.brep_p9": 2,
-    "topology.face_p2": 6,
     "topology.face_p3": 1,
     "topology.face_p4": 3
   },
