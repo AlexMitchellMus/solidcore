@@ -770,7 +770,8 @@ fn corner_rust(op: CornerOp, model: &Model, ci: &CornerIn) -> Result<Output, Har
             .map_err(h)?;
         let mut l = solidcore::curve::line::Line::from_points(ends.start, ends.end, 3);
         let _ = l.make_nurb();
-        rm.fb.brep_mut().edge_mut(eid).map_err(h)?.curve = Some(solidcore::curve::curve::Curve::from(l));
+        rm.fb.brep_mut().edge_mut(eid).map_err(h)?.curve =
+            Some(solidcore::curve::curve::Curve::from(l));
     }
     for &[e, cx, cy, cz, r, d0, d1] in &ci.arc_edges {
         let eid = rm.edge(e as usize)?;
@@ -785,7 +786,8 @@ fn corner_rust(op: CornerOp, model: &Model, ci: &CornerIn) -> Result<Output, Har
             &solidcore::curve::ellipse::EllipseOptions::default(),
         )
         .map_err(h)?;
-        rm.fb.brep_mut().edge_mut(eid).map_err(h)?.curve = Some(solidcore::curve::curve::Curve::from(circle));
+        rm.fb.brep_mut().edge_mut(eid).map_err(h)?.curve =
+            Some(solidcore::curve::curve::Curve::from(circle));
     }
     let r = {
         let mut env = CornerEnv {
@@ -1320,7 +1322,11 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
                     tol,
                     tan,
                     tsects: Vec::new(),
-                    orig_faces: if rng.chance(0.85) { vec![[3, 0]] } else { Vec::new() },
+                    orig_faces: if rng.chance(0.85) {
+                        vec![[3, 0]]
+                    } else {
+                        Vec::new()
+                    },
                     line_edges: Vec::new(),
                     arc_edges: Vec::new(),
                 },
