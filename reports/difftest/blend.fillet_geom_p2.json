@@ -442,6 +442,14 @@
       "values_compared": 5
     },
     {
+      "max_rel_err": 0.0,
+      "name": "pr208_support_planes_start_without_directions",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_geom_p2/review_pr208.json#0 (upstream source/SMLib/src/SmFilletGeom.cpp)",
+      "values_compared": 60
+    },
+    {
       "deferred": {
         "symbol": "SmSurfaceIntersector::DoPointIntersection",
         "unit": "intersect.surface_intersector_p4"
@@ -3329,8 +3337,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 131,
   "cases_failed": 0,
-  "cases_passed": 219,
-  "cases_total": 350,
+  "cases_passed": 220,
+  "cases_total": 351,
   "deferred_by_unit": {
     "curve.crv_on_surf": 2,
     "intersect.surface_drop_lib_p3": 33,
