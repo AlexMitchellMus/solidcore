@@ -650,12 +650,7 @@ pub trait CurveOnClassifyObjects<O: ClassObject>: ClassGeometry<O> {
 /// snapshot `b` (which keeps the gap cache `GetVertexFaceGap` fills). `None` for a
 /// vertex without a use on a face (upstream dereferences the null vertex use; part 5
 /// reports the unresolved gap as invalid input).
-fn vertex_face_gap_length(
-    k: &Kernel,
-    b: &mut Brep,
-    v: VertexId,
-    f: FaceId,
-) -> Result<Option<f64>> {
+fn vertex_face_gap_length(k: &Kernel, b: &mut Brep, v: VertexId, f: FaceId) -> Result<Option<f64>> {
     let Some(vu) = crate::topology::vertex::vertexuse_of_face(b, v, Some(f))? else {
         return Ok(None);
     };
@@ -887,7 +882,12 @@ pub fn curve_on_classify<O: ClassObject>(
                 let snapshot = gap_snapshot.get_or_insert_with(|| b.clone());
                 vertices
                     .iter()
-                    .map(|&v| Ok((objects.vertex(v), vertex_face_gap_length(k, snapshot, v, f)?)))
+                    .map(|&v| {
+                        Ok((
+                            objects.vertex(v),
+                            vertex_face_gap_length(k, snapshot, v, f)?,
+                        ))
+                    })
                     .collect::<Result<Vec<_>>>()?
             } else {
                 Vec::new()

@@ -10434,7 +10434,8 @@ A face owner without cache still returns `Unported`. `surface.surface_cache_p1` 
 node face handle) is not covered. On main 862746f4 (`--green`, all units): `topology.face_p2` deferral label 3495 ->
 766, `surface.surface_cache_p2` 223 -> 0, total deferred 24839 -> 22724, +2039 pass over 15 units, +76 FAIL in
 `query.face_p3` (75) and `query.face_p1` (1), both below (exposed, not caused: each case read the face tolerance
-correctly; the next divergent step is elsewhere).
+correctly; the next divergent step is elsewhere). After both fixes below: 0 FAIL, +1751 pass over 15 units, total
+deferred 24839 -> 23088 (`query.face_p3` 75 and `query.face_p1` 289 now defer on unported callees).
 
 ### topology.trimming_tools: stale `TT_NOT_RUN` shim gate
 

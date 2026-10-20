@@ -30,14 +30,14 @@
 //! (`smsurf_GetSurfaceCache`, SmFace.cpp:12792) and hands it to `PointClassify`, which
 //! upstream finds again through `SmCacheMgr::GetObjectCache`: built for a face with
 //! loops, its face containment is done, so `PointClassify` classifies through the
-//! leaf node containing the point before the vertex and loop tests (query.face_p1
+//! leaf node containing the point before the vertex and loop tests (`query.face_p1`
 //! `gen0160`: C++ FACE from an inside leaf, the vertex test alone gives VERTEX). Its
 //! face walk is [`SolidError::Unported`] today (`SmFace handle of a surface's face`,
 //! `topology.face_p2`), so every face-owned surface defers there. The Rust point solvers
 //! take no cache (as in `topology::vertexuse` and `intersect::curve_class::p1`), so
 //! upstream's temporary switch-off of the cache's point test (SmFace.cpp:12801) and the
-//! cache check-out have nothing to act on. `EdgeCurveOnClassify` lifts a 2D curve to a curve on the
-//! face's surface only when an upward edge use of the face is found (upstream lifts it
+//! cache check-out have nothing to act on. `EdgeCurveOnClassify` lifts a 2D curve to a
+//! curve on the face's surface only when an upward edge use of the face is found (upstream lifts it
 //! first and ignores `SetAll`'s status); an `SmCrvOnSurf` over a surface other than a
 //! B-spline is a dispatch gap (`curve.crv_on_surf`). No recursion.
 
