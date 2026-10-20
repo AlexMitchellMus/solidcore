@@ -162,7 +162,7 @@ enum Inputs {
     Corner {
         method: CornerMethod,
         model: Box<Model>,
-        corner: CornerIn,
+        corner: Box<CornerIn>,
         /// `peek`: the setters to call first (`-1` not called) and the type codes to
         /// test with `IsKindOf`.
         #[serde(default)]
@@ -1379,7 +1379,7 @@ fn corner_case(i: &Inputs) -> Result<CornerCase<'_>, HarnessError> {
     Ok(CornerCase {
         method: *method,
         model: model.as_ref(),
-        corner,
+        corner: corner.as_ref(),
         peek,
         solvers,
         query: *query,
@@ -1969,7 +1969,7 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
     Inputs::Corner {
         method,
         model: Box::new(model),
-        corner: CornerIn {
+        corner: Box::new(CornerIn {
             kind,
             v_edge,
             v_sub,
@@ -1990,7 +1990,7 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
             },
             tol,
             tan,
-        },
+        }),
         peek,
         solvers,
         query,
