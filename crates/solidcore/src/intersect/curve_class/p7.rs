@@ -159,7 +159,7 @@ pub struct PartialCoincidence {
 
 /// A solution object naming nothing (the coincidence checks here pass no objects).
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct NoObject;
+pub(super) struct NoObject;
 
 impl SolutionObject for NoObject {
     fn kind(&self) -> ObjectKind {

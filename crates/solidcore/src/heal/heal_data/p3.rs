@@ -1126,7 +1126,7 @@ fn classification_has_dead_topology<O: LoopObject>(
 ) -> Result<bool> {
     match class {
         None => Ok(false),
-        Some(class) => class.has_dead_topology_point_object(Some(b)),
+        Some(class) => class.has_dead_topology_point_object(&NoGeometry, Some(b)),
     }
 }
 fn classified_edges<O: LoopObject>(class: Option<&CurveClassification<O>>) -> Result<Vec<EdgeId>> {
