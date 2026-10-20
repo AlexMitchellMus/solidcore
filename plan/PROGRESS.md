@@ -2,7 +2,7 @@
 
 Generated from `plan/modules.toml` and `reports/difftest/*.json` by `harness/plan/progress.py`; do not edit by hand.
 
-**222 / 261 units ported** (114 green, 108 partial), **321,181 / 387,903 upstream lines (82.8%)**. 38 claimed, 0 blocked, 1 todo.
+**223 / 261 units ported** (114 green, 109 partial), **322,066 / 387,903 upstream lines (83.0%)**. 38 claimed, 0 blocked, 0 todo.
 
 Legend: ✅ green (identical to C++) · 🟡 partial (passes; some cases wait on unported code) · 🔨 claimed · ▶️ ready (all dependencies done) · ⏳ claimable, dependencies still missing · ⛔ blocked.
 
@@ -14,7 +14,6 @@ _None right now; see the next section._
 
 Anything `todo` can be claimed. These need stubs for, or co-porting of, the listed dependencies (AGENTS.md section 4).
 
-- [ ] `audit.recursion` (0 lines) — missing: `blend.fillet_corner_p2`, `blend.fillet_corner_p3`, `offset.offset_executive_p2`, `primitive.api_primitives`
 
 ## In progress
 
@@ -45,7 +44,6 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 - [ ] 🔨 `blend.fillet_corner_p1` (1971 lines) — in progress: #266 @bluecmd (draft)
 - [ ] 🔨 `blend.fillet_solver_p2` (1939 lines) — in progress: #249 @froglemonade2 (draft)
 - [ ] 🔨 `blend.fillet_solver_p3` (1112 lines) — in progress: #236 @denelson1-dot (ready for review)
-- [ ] 🔨 `primitive.api_primitives` (885 lines) — in progress: #160 @bherbruck (ready for review)
 - [ ] 🔨 `blend.fillet_geom_p3` (1032 lines) — in progress: #242 @denelson1-dot (ready for review)
 - [ ] 🔨 `blend.fillet_geom_p4` (2074 lines) — in progress: #252 @bherbruck (ready for review)
 - [ ] 🔨 `blend.fillet_geom_p6` (1813 lines) — in progress: #247 @brett19 (ready for review)
@@ -53,9 +51,10 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 - [ ] 🔨 `offset.offset_executive_p2` (1846 lines) — in progress: #201 @altvnk (ready for review)
 - [ ] 🔨 `blend.fillet_corner_p3` (1697 lines) — in progress: #256 @bherbruck (ready for review)
 - [ ] 🔨 `blend.fillet_executive_p2` (1152 lines) — in progress: #267 @bluecmd (draft)
-- [ ] 🔨 `blend.fillet_geom_p2` (2077 lines) — in progress: #263 @bherbruck (draft)
+- [ ] 🔨 `blend.fillet_geom_p2` (2077 lines) — in progress: #263 @bherbruck (ready for review)
 - [ ] 🔨 `blend.fillet_geom_p5` (1952 lines) — in progress: #264 @froglemonade2 (draft)
 - [ ] 🔨 `blend.fillet_corner_p2` (1892 lines) — in progress: #268 @bluecmd (draft)
+- [ ] 🔨 `audit.recursion` (0 lines) — in progress: #273 @Karl-VonRichter (draft)
 
 ## By module
 
@@ -275,13 +274,13 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 - [ ] 🟡 `intersect.curve_class_p8` (1900 lines) — partial, 1127 cases
 - [ ] 🟡 `intersect.curve_class_p9` (1220 lines) — partial, 428 cases
 
-### primitive (1/5)
+### primitive (2/5)
 
 - [x] ✅ `primitive.api_curves` (649 lines) — green, 1629 cases
 - [ ] 🔨 `primitive.primitive_creation_p1` (2322 lines) — in progress: #213 @damgru (ready for review)
 - [ ] 🔨 `primitive.primitive_creation_p3` (1842 lines) — in progress: #233 @damgru (ready for review)
 - [ ] 🔨 `primitive.primitive_creation_p2` (2258 lines) — in progress: #250 @CamWight (ready for review)
-- [ ] 🔨 `primitive.api_primitives` (885 lines) — in progress: #160 @bherbruck (ready for review)
+- [ ] 🟡 `primitive.api_primitives` (885 lines) — partial, 1981 cases
 
 ### query (6/10)
 
@@ -357,10 +356,10 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 - [ ] 🔨 `blend.fillet_standard_solver_p2` (1989 lines) — in progress: #265 @froglemonade2 (draft)
 - [ ] 🔨 `blend.fillet_corner_p3` (1697 lines) — in progress: #256 @bherbruck (ready for review)
 - [ ] 🔨 `blend.fillet_executive_p2` (1152 lines) — in progress: #267 @bluecmd (draft)
-- [ ] 🔨 `blend.fillet_geom_p2` (2077 lines) — in progress: #263 @bherbruck (draft)
+- [ ] 🔨 `blend.fillet_geom_p2` (2077 lines) — in progress: #263 @bherbruck (ready for review)
 - [ ] 🔨 `blend.fillet_geom_p5` (1952 lines) — in progress: #264 @froglemonade2 (draft)
 - [ ] 🔨 `blend.fillet_corner_p2` (1892 lines) — in progress: #268 @bluecmd (draft)
 
 ### (crate-wide) (0/1)
 
-- [ ] ⏳ `audit.recursion` (0 lines) — waiting
+- [ ] 🔨 `audit.recursion` (0 lines) — in progress: #273 @Karl-VonRichter (draft)
