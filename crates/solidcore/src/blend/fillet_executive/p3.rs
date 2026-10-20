@@ -790,6 +790,9 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     fn solver_edgeuse(&self, solver: O, index: usize) -> Result<Option<O>>;
 
     /// `SmFilletSolver::GetFilletCorner(lIndex)`; waiting for `blend.fillet_solver_p2`.
+    /// A vertex without a corner (`SmFilletCorner::Create` returned `NULL`) yields
+    /// `None`; upstream returns its raw `m_vVertexCornerMap` edge-use array cast to a
+    /// corner (UB-209).
     fn solver_corner(&self, _solver: O, _index: usize) -> Result<Option<O>> {
         // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::GetFilletCorner
         Err(SolidError::unported(
