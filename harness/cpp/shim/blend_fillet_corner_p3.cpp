@@ -108,8 +108,8 @@ bool convex_safe(SmEdgeuse* p)
 
 // What Create would do before it calls anything: the walk around the start edge use's vertex
 // (upstream's loop, repeated), with its null dereferences. Returns -2 for a dereference, -3 when
-// the Rust side stops at a stub, 0 when Create can run.
-double precheck(Graph& g, const std::vector<SmEdgeuse*>& solver, size_t limit)
+// the Rust side stops at a stub, 0 when Create can run. `out_all` receives Create's pAllEUs.
+double precheck(Graph& g, const std::vector<SmEdgeuse*>& solver, size_t limit, std::vector<SmEdgeuse*>& out_all)
 {
     SmEdgeuse* start = solver[0];
     std::vector<SmEdgeuse*> all;
@@ -155,6 +155,7 @@ double precheck(Graph& g, const std::vector<SmEdgeuse*>& solver, size_t limit)
         all.push_back(s ? s : eu);
     }
     (void)open_end;
+    out_all = all;
     size_t total = all.size();
     size_t ns = solver.size();
     if (start->GetEdge() == nullptr)
@@ -220,7 +221,8 @@ void run_create(Rd& rd, const char* path, std::vector<double>& o)
         kinds.push_back(rd.idx());
     }
 
-    double pre = precheck(g, solverEUs, g.edgeuses.size());
+    std::vector<SmEdgeuse*> allEUs;
+    double pre = precheck(g, solverEUs, g.edgeuses.size(), allEUs);
     if (pre == 0.0 && ns >= 3)
     {
         // NxN without chamfer reaches sm_FindConcaveEdgeuses (a stub on the Rust side)
