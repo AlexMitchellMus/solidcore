@@ -255,9 +255,8 @@ const fn b_spline_net(s: &Surface) -> Option<&BSplineSurface> {
 
 /// `pSurface->DropCurve(crContext, crDomain, cr3dCurve, crInterval, dApproxTol,
 /// rdMaxDist, rdDeviation, rUVCurves)` with the defaults (`bKeepAllDropCurves =
-/// TRUE`, no fail record, `bCreatingUVTrimCurve = TRUE`): the UV curves. The
-/// `SmPlane` override is [`Plane::drop_curve`]; every other kind runs the general drop
-/// ([`Surface::drop_curve_base`]; only `SmPlane` overrides `DropCurve`).
+/// TRUE`, no fail record, `bCreatingUVTrimCurve = TRUE`): the UV curves
+/// ([`Surface::drop_curve`]; the `SmPlane` override or the general drop).
 fn surface_drop_curve(
     k: &Kernel,
     surface: &Surface,
@@ -267,31 +266,10 @@ fn surface_drop_curve(
     approx_tol: f64,
 ) -> Result<Vec<Curve>> {
     let approx_tol = approx_tol3d(k, approx_tol);
-    match surface.kind() {
-        SurfaceKind::Plane(p) => Ok(p
-            .drop_curve(
-                k,
-                domain,
-                curve,
-                interval,
-                approx_tol,
-                true,
-                true,
-                surface.owner(),
-            )?
-            .uv_curves),
-        SurfaceKind::BSpline(_)
-        | SurfaceKind::CurveBounded(_)
-        | SurfaceKind::SrfInVolume(_)
-        | SurfaceKind::SurfOfRevolution(_)
-        | SurfaceKind::Step(_)
-        | SurfaceKind::OffsetSurface(_) => {
-            // no failure record (`pOptDropCurveFail = NULL`)
-            let dropped = surface
-                .drop_curve_base::<NoObject>(k, domain, curve, interval, approx_tol, true, None)?;
-            Ok(dropped.uv_curves.into_iter().map(Curve::from).collect())
-        }
-    }
+    // no failure record (`pOptDropCurveFail = NULL`)
+    Ok(surface
+        .drop_curve::<NoObject>(k, domain, curve, interval, approx_tol, true, None, true)?
+        .uv_curves)
 }
 
 /// The surface as upstream's `GetNaturalUVDomain` leaves it: a plane without a NURB gets

@@ -234,38 +234,21 @@ fn drop_curve(
     approx_tol: f64,
 ) -> Result<DroppedCurves> {
     use crate::curve::curve::{Curve as AnyCurve, CurveKind};
-    use crate::surface::surface::SurfaceKind;
 
     let curve = AnyCurve::from(curve.clone());
-    let uv_curves = match srf.kind() {
-        SurfaceKind::Plane(p) => {
-            let out = p.drop_curve(
-                k,
-                domain,
-                &curve,
-                interval,
-                approx_tol,
-                true,
-                true,
-                srf.owner(),
-            )?;
-            // the plane drops to `SmBSplineCurve`s (a UV `SmLine` or B-spline)
-            out.uv_curves
-                .into_iter()
-                .map(|c| match c.kind() {
-                    CurveKind::BSpline(b) => Ok(b.clone()),
-                    CurveKind::Line(l) => Ok(l.base().clone()),
-                    _ => Err(invalid(OP_NONRAT, "plane drop curve is not a B-spline")),
-                })
-                .collect::<Result<Vec<_>>>()?
-        }
-        _ => {
-            srf.drop_curve_base::<crate::surface::surface::p4::NoObject>(
-                k, domain, &curve, interval, approx_tol, true, None,
-            )?
-            .uv_curves
-        }
-    };
+    let out = srf.drop_curve::<crate::surface::surface::p4::NoObject>(
+        k, domain, &curve, interval, approx_tol, true, None, true,
+    )?;
+    // the drop gives `SmBSplineCurve`s (for a plane a UV `SmLine` or B-spline)
+    let uv_curves = out
+        .uv_curves
+        .into_iter()
+        .map(|c| match c.kind() {
+            CurveKind::BSpline(b) => Ok(b.clone()),
+            CurveKind::Line(l) => Ok(l.base().clone()),
+            _ => Err(invalid(OP_NONRAT, "plane drop curve is not a B-spline")),
+        })
+        .collect::<Result<Vec<_>>>()?;
     Ok(DroppedCurves { uv_curves })
 }
 

@@ -9,6 +9,7 @@
 //!
 //! | Rust                                  | Upstream                                  |
 //! |---------------------------------------|-------------------------------------------|
+//! | [`Surface::drop_curve`] | `SmSurface::DropCurve` (the virtual call: plane override, else the base body) |
 //! | [`Surface::drop_curve_base`], [`DropCurveOut`] | `SmSurface::DropCurve` (the base body, called non-virtually) |
 //!
 //! Deviations:
@@ -22,7 +23,7 @@
 //!   `bCreatingUVTrimCurve` is not used upstream and is dropped.
 //! - **Virtual call.** This is the base body: the `SmPlane` override is
 //!   [`crate::surface::plane::Plane::drop_curve`], which calls this one for the curves
-//!   it does not handle itself. Callers dispatch on the surface kind.
+//!   it does not handle itself. [`Surface::drop_curve`] dispatches on the surface kind.
 //! - **Statuses.** Checked (`SER`) as upstream: the start evaluation, the global point
 //!   solve, `DropIsoCurve`, the span evaluations, `TestSpanAccuracy`, the span stack
 //!   and `sm_FlushCrv`. Ignored as upstream: both `SetProperties` calls,
@@ -84,6 +85,7 @@ use crate::kernel::Kernel;
 use crate::math::{max2, min2, EFF_ZERO, EFF_ZERO_PARAM};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_surface::SurfParamType;
+use crate::surface::plane::PlaneDropCurve;
 use crate::surface::surface::p2::{
     CreateUvTrimCurvePathType, DropCurveFailArgs, SurfaceKind, UNSURE,
 };
@@ -318,6 +320,63 @@ fn uv_curve_gap(
 }
 
 impl Surface {
+    /// `SmSurface::DropCurve(context, uv_domain, curve, interval, approx_tol_3d,
+    /// rdMaxDropToSurf, rdMaxApproxDev, rUVCurves, bKeepAllDropCurves,
+    /// pOptDropCurveFail, bCreatingUVTrimCurve)`, the virtual call dispatched on this
+    /// surface's kind: `SmPlane` overrides it ([`crate::surface::plane::Plane::drop_curve`],
+    /// run with this surface's [`Surface::owner`]; it ignores `record`, passing `NULL` on
+    /// to the general body), every other kind runs the base body
+    /// ([`Surface::drop_curve_base`]; `creating_uv_trim_curve` is unused there, as
+    /// upstream). The declaration's defaults are `keep_all_drop_curves = true`,
+    /// `record = None` and `creating_uv_trim_curve = true`.
+    ///
+    /// The UV curves are returned as [`Curve`]s: a plane's drop can give an `SmLine`
+    /// (upstream keeps the `SmLine` behind the `SmBSplineCurve*`), the base body's are
+    /// B-splines.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`crate::surface::plane::Plane::drop_curve`] and
+    /// [`Surface::drop_curve_base`].
+    pub fn drop_curve<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        curve: &Curve,
+        interval: &Extent1d,
+        approx_tol_3d: f64,
+        keep_all_drop_curves: bool,
+        record: Option<DropFailRecord<'_, O>>,
+        creating_uv_trim_curve: bool,
+    ) -> Result<PlaneDropCurve> {
+        if let SurfaceKind::Plane(p) = self.kind() {
+            return p.drop_curve(
+                k,
+                uv_domain,
+                curve,
+                interval,
+                approx_tol_3d,
+                keep_all_drop_curves,
+                creating_uv_trim_curve,
+                self.owner(),
+            );
+        }
+        let d = self.drop_curve_base::<O>(
+            k,
+            uv_domain,
+            curve,
+            interval,
+            approx_tol_3d,
+            keep_all_drop_curves,
+            record,
+        )?;
+        Ok(PlaneDropCurve {
+            max_drop_to_surf: d.max_drop_to_surf,
+            max_approx_dev: d.max_approx_dev,
+            uv_curves: d.uv_curves.into_iter().map(Curve::from).collect(),
+        })
+    }
+
     /// Drops `curve` over `interval` onto this surface within `uv_domain`
     /// (`SmSurface::DropCurve`, the base body): UV B-spline curves with about the
     /// curve's parameterisation, one per start point the curve start drops to (two for

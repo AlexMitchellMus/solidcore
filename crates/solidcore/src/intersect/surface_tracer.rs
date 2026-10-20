@@ -120,7 +120,7 @@ use crate::nurbs::b_spline_curve::{BSplineCurve, BSplineCurveForm, CanonicalData
 use crate::nurbs::b_spline_surface::SurfParamType;
 use crate::nurbs::knots::Side;
 use crate::surface::surface::p2::surface_cache;
-use crate::surface::surface::{Surface, SurfaceKind};
+use crate::surface::surface::Surface;
 use crate::surface::surface_cache::SurfaceCache;
 
 /// `SmSurfaceTracer_TYPE` (`SOLV_BASE_TYPE + 56`).
@@ -1641,36 +1641,10 @@ fn surface_drop_curve(
     interval: &Extent1d,
     approx_tol: f64,
 ) -> Result<(f64, f64, Vec<Curve>)> {
-    match surface.kind() {
-        SurfaceKind::Plane(p) => {
-            let r = p.drop_curve(
-                k,
-                uv_domain,
-                curve,
-                interval,
-                approx_tol,
-                true,
-                false,
-                surface.owner(),
-            )?;
-            Ok((r.max_drop_to_surf, r.max_approx_dev, r.uv_curves))
-        }
-        SurfaceKind::BSpline(_)
-        | SurfaceKind::CurveBounded(_)
-        | SurfaceKind::SurfOfRevolution(_)
-        | SurfaceKind::Step(_)
-        | SurfaceKind::OffsetSurface(_)
-        | SurfaceKind::SrfInVolume(_) => {
-            let r = surface.drop_curve_base::<crate::surface::surface::p4::NoObject>(
-                k, uv_domain, curve, interval, approx_tol, true, None,
-            )?;
-            Ok((
-                r.max_drop_to_surf,
-                r.max_approx_dev,
-                r.uv_curves.into_iter().map(Curve::from).collect(),
-            ))
-        }
-    }
+    let r = surface.drop_curve::<crate::surface::surface::p4::NoObject>(
+        k, uv_domain, curve, interval, approx_tol, true, None, false,
+    )?;
+    Ok((r.max_drop_to_surf, r.max_approx_dev, r.uv_curves))
 }
 
 /// `SmSurfaceTracer::FindBoundaryStartPoints`: for each of the four boundary iso

@@ -151,10 +151,9 @@ struct DropCurveOut {
 /// `SmSurface::DropCurve(ctx, domain, curve, interval, tol, rdMaxDropToSurf,
 /// rdMaxApproxDev, rUVCurves, bKeepAllDropCurves, pDropCurveFail)` (virtual, with the
 /// default `bCreatingUVTrimCurve = TRUE`): the UV curves the curve over `interval`
-/// drops to. A plane has its own override ([`crate::surface::plane::Plane::drop_curve`]),
-/// which does not use `pOptDropCurveFail` and passes `NULL` on to the general method;
-/// every other kind runs the general one (`intersect.surface_drop_lib_p3`).
-#[allow(clippy::too_many_arguments)]
+/// drops to ([`Surface::drop_curve`]: a plane has its own override, which does not use
+/// `pOptDropCurveFail` and passes `NULL` on to the general method; every other kind runs
+/// the general one, `intersect.surface_drop_lib_p3`).
 fn surface_drop_curve(
     k: &Kernel,
     surface: &Surface,
@@ -165,24 +164,7 @@ fn surface_drop_curve(
     keep_all_drop_curves: bool,
     record: Option<crate::intersect::surface_drop_lib::p1::DropFailRecord<'_, ObjectHandle>>,
 ) -> Result<DropCurveOut> {
-    if let SurfaceKind::Plane(p) = surface.kind() {
-        let d = p.drop_curve(
-            k,
-            domain,
-            curve,
-            interval,
-            approx_tol_3d,
-            keep_all_drop_curves,
-            true,
-            surface.owner(),
-        )?;
-        return Ok(DropCurveOut {
-            max_dist_to_surf: d.max_drop_to_surf,
-            max_approx_dev: d.max_approx_dev,
-            uv_curves: d.uv_curves,
-        });
-    }
-    let d = surface.drop_curve_base::<ObjectHandle>(
+    let d = surface.drop_curve::<ObjectHandle>(
         k,
         domain,
         curve,
@@ -190,11 +172,12 @@ fn surface_drop_curve(
         approx_tol_3d,
         keep_all_drop_curves,
         record,
+        true,
     )?;
     Ok(DropCurveOut {
         max_dist_to_surf: d.max_drop_to_surf,
         max_approx_dev: d.max_approx_dev,
-        uv_curves: d.uv_curves.into_iter().map(Curve::from).collect(),
+        uv_curves: d.uv_curves,
     })
 }
 

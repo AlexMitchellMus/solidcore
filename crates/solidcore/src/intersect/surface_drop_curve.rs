@@ -348,36 +348,17 @@ fn surface_drop_curve(
     keep_all: bool,
     creating_uv_trim_curve: bool,
 ) -> Result<(f64, f64, Vec<Curve>)> {
-    match surface.kind() {
-        SurfaceKind::Plane(p) => {
-            let r = p.drop_curve(
-                k,
-                uv_domain,
-                curve,
-                interval,
-                approx_tol,
-                keep_all,
-                creating_uv_trim_curve,
-                surface.owner(),
-            )?;
-            Ok((r.max_drop_to_surf, r.max_approx_dev, r.uv_curves))
-        }
-        SurfaceKind::BSpline(_)
-        | SurfaceKind::CurveBounded(_)
-        | SurfaceKind::SurfOfRevolution(_)
-        | SurfaceKind::Step(_)
-        | SurfaceKind::OffsetSurface(_)
-        | SurfaceKind::SrfInVolume(_) => {
-            let r = surface.drop_curve_base::<NoObject>(
-                k, uv_domain, curve, interval, approx_tol, keep_all, None,
-            )?;
-            Ok((
-                r.max_drop_to_surf,
-                r.max_approx_dev,
-                r.uv_curves.into_iter().map(Curve::from).collect(),
-            ))
-        }
-    }
+    let r = surface.drop_curve::<NoObject>(
+        k,
+        uv_domain,
+        curve,
+        interval,
+        approx_tol,
+        keep_all,
+        None,
+        creating_uv_trim_curve,
+    )?;
+    Ok((r.max_drop_to_surf, r.max_approx_dev, r.uv_curves))
 }
 
 /// `IsClosed(domain, param)` (default arguments); a failure answers `false`.

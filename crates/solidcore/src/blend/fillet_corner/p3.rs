@@ -995,42 +995,26 @@ impl FilletCorner {
         // override for a plane (with the surface's owner), the base body otherwise.
         let domain = surface.natural_uv_domain();
         let interval = curve1.natural_interval();
-        let drop_curve1 = Curve::from(curve1.clone());
-        let uv_curves: Vec<BSplineCurve> = match surface.kind() {
-            SurfaceKind::Plane(p) => p
-                .drop_curve(
-                    env.k,
-                    &domain,
-                    &drop_curve1,
-                    &interval,
-                    self.approx_tol_3d,
-                    true,
-                    true,
-                    surface.owner(),
-                )?
-                .uv_curves
-                .into_iter()
-                .map(|c| match c.kind() {
-                    // the plane drops to `SmBSplineCurve`s (a UV `SmLine` or B-spline)
-                    CurveKind::BSpline(b) => Ok(b.clone()),
-                    CurveKind::Line(l) => Ok(l.base().clone()),
-                    _ => Err(SolidError::sm_err(OP_3X2)),
-                })
-                .collect::<Result<Vec<_>>>()?,
-            _ => {
-                surface
-                    .drop_curve_base::<NoObject>(
-                        env.k,
-                        &domain,
-                        &drop_curve1,
-                        &interval,
-                        self.approx_tol_3d,
-                        true,
-                        None,
-                    )?
-                    .uv_curves
-            }
-        };
+        let uv_curves: Vec<BSplineCurve> = surface
+            .drop_curve::<NoObject>(
+                env.k,
+                &domain,
+                &curve1,
+                &interval,
+                self.approx_tol_3d,
+                true,
+                None,
+                true,
+            )?
+            .uv_curves
+            .into_iter()
+            .map(|c| match c.kind() {
+                // the drop gives `SmBSplineCurve`s (for a plane a UV `SmLine` or B-spline)
+                CurveKind::BSpline(b) => Ok(b.clone()),
+                CurveKind::Line(l) => Ok(l.base().clone()),
+                _ => Err(SolidError::sm_err(OP_3X2)),
+            })
+            .collect::<Result<Vec<_>>>()?;
         if uv_curves.len() != 1 {
             return Err(SolidError::sm_err(OP_3X2)); // Unknown problem
         }

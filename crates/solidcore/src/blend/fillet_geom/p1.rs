@@ -3439,7 +3439,7 @@ fn offset_surface_drop_curve(
     // (`bKeepAllDropCurves = TRUE`, no fail record) runs on the offset surface as a
     // surface; the port's drop takes a `Surface`, so it runs on a copy of the offset.
     let as_surface = Surface::from(surface.surface.copy(k)?);
-    let dropped = as_surface.drop_curve_base::<NoObject>(
+    let dropped = as_surface.drop_curve::<NoObject>(
         k,
         drop_domain,
         curve_3d,
@@ -3447,11 +3447,12 @@ fn offset_surface_drop_curve(
         dist_tol,
         true,
         None,
+        true,
     )?;
     Ok((
         dropped.max_drop_to_surf,
         dropped.max_approx_dev,
-        dropped.uv_curves.into_iter().map(Curve::from).collect(),
+        dropped.uv_curves,
     ))
 }
 
