@@ -734,7 +734,7 @@ fn offset_evaluate_simple(
     uv: Point2,
 ) -> Result<Vec<Vec<Vec3>>> {
     let off = OffsetSurface::new(k, offset, surface.clone_keeping_owner(), false, SS_UNKNOWN)?;
-    off.evaluate_simple(uv, 1, 1, simple_flags())
+    off.evaluate_simple(k, uv, 1, 1, simple_flags())
 }
 
 /// `EvaluateSimple(.., TRUE, TRUE, TRUE, ..)`: from the left, upper half.
@@ -761,7 +761,6 @@ fn copy_block(pv: &mut [[Vec3; 2]; 2], r: &[Vec<Vec3>]) {
 
 /// `SmODEIntegrator(eval).RungeKuttaODEIntegrate(dY, x1, x2, eps, h1, 0, .., pYScale)`.
 fn runge_kutta_ode_integrate(
-    k: &Kernel,
     eval: &OdeIsoCurveLength<'_>,
     y: &mut [f64],
     x1: f64,
@@ -782,7 +781,7 @@ fn runge_kutta_ode_integrate(
             scale: Some(y_scale),
         },
         |t, _, dy| {
-            eval.evaluate(k, t, &mut scratch)?;
+            eval.evaluate(t, &mut scratch)?;
             for (d, v) in dy.iter_mut().zip(scratch.iter().skip(1)) {
                 *d = *v;
             }
@@ -996,6 +995,7 @@ pub struct SeamCrvReview<O> {
 /// [`SolidError::InvalidInput`] for an empty classification; those of
 /// `SmCurveInterval::GetIvlBound_EdgeuseObj`.
 pub fn review_start_and_stop_on_seam_crv_classifies<O: ClassObject>(
+    k: &Kernel,
     geometry: &impl ClassGeometry<O>,
     classification: &mut CurveClassification<O>,
 ) -> Result<SeamCrvReview<O>> {
@@ -1006,8 +1006,8 @@ pub fn review_start_and_stop_on_seam_crv_classifies<O: ClassObject>(
         .ok_or_else(|| null("ReviewStartAndStopOnSeamCrvClassifies: empty classification"))?;
 
     // init output
-    let edge_first_side = classification.ivl_bound_edgeuse_obj(geometry, 0, true)?;
-    let edge_last_side = classification.ivl_bound_edgeuse_obj(geometry, last, false)?;
+    let edge_first_side = classification.ivl_bound_edgeuse_obj(k, geometry, 0, true)?;
+    let edge_last_side = classification.ivl_bound_edgeuse_obj(k, geometry, last, false)?;
     let mut out = SeamCrvReview {
         first_kept: true,
         last_kept: true,
@@ -1768,7 +1768,6 @@ impl OdeArea<'_> {
 
             // A failed inner integration is not a zero-area contribution.
             runge_kutta_ode_integrate(
-                k,
                 &eval,
                 &mut dy,
                 self.min_v,
@@ -2709,7 +2708,6 @@ mod tests {
 
     #[test]
     fn iso_curve_integrand_on_a_plane() {
-        let k = &Kernel::default();
         let p = Surface::from(Plane::new(
             Vec3::new(0.0, 0.0, 2.0),
             Vec3::X,
@@ -2721,7 +2719,7 @@ mod tests {
         let k = Kernel::default();
         let e = OdeIsoCurveLength::new(&k, &p, 0.5, Vec3::ZERO, 0.0, &lay);
         let mut d = vec![9.0; lay.num_components + 1];
-        e.evaluate(k, 0.25, &mut d).unwrap();
+        e.evaluate(0.25, &mut d).unwrap();
         assert_eq!(d[0], 0.0);
         assert_eq!(d[1], 1.0);
         assert_eq!(d[lay.area], 1.0);
@@ -2874,6 +2872,6 @@ mod tests {
     fn review_of_an_empty_classification_is_rejected() {
         let k = Kernel::default();
         let mut cc: CurveClassification<H> = CurveClassification::new(&k);
-        assert!(review_start_and_stop_on_seam_crv_classifies(&NoGeometry, &mut cc).is_err());
+        assert!(review_start_and_stop_on_seam_crv_classifies(&k, &NoGeometry, &mut cc).is_err());
     }
 }

@@ -471,7 +471,7 @@ pub fn evaluate_binormal_step_off_into(
 
     // set output
     out.binormal = normal.cross(tangent);
-    out.point = surface.evaluate_point(uv_found)?;
+    out.point = surface.evaluate_point(k, uv_found)?;
     out.face_normal = normal;
     out.uv = uv_found;
     Ok(())

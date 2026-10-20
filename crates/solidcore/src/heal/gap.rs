@@ -2762,7 +2762,6 @@ mod tests {
 
     #[test]
     fn vertex_edge_gap_on_a_wire() {
-        let k = &Kernel::default();
         let mut b = Brep::new();
         let v0 = b.add_vertex(Vec3::new(0.0, 0.0, 1e-3)).unwrap();
         let v1 = b.add_vertex(Vec3::new(1.0, 0.0, 0.0)).unwrap();

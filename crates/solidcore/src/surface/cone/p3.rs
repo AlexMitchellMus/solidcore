@@ -779,7 +779,7 @@ fn nurbs_uv_status_ignored(cone: &Cone, k: &Kernel, step_uv: Point2) -> Result<P
             let x = cone
                 .rev()
                 .polar
-                .convert_to_nurbs_parameter_or_written(circle, step_uv.x, 0.0)?;
+                .convert_to_nurbs_parameter_or_written(k, circle, step_uv.x, 0.0)?;
             Ok(Point2::new(x.unwrap_or(UNDEF_DOUBLE), UNDEF_DOUBLE))
         }
     }

@@ -375,7 +375,7 @@ impl ManifoldIntersector for KernelManifoldIntersector {
                     &mut self.intersector,
                     arena_pair::encode,
                     arena_pair::decode,
-                    |ti| ti.fix_gaps(&mut pair, &vertices),
+                    |ti| ti.fix_gaps(k, &mut pair, &vertices),
                 )
                 .and_then(|out| {
                     Ok(FixedGaps {

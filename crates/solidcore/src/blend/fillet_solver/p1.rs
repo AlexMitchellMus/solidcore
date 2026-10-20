@@ -987,12 +987,12 @@ impl FilletSolver {
         // Extend by a smaller amount if periodic.
         let periodic_extension_factor = 0.2;
         let linear_extension_factor = 50.0;
-        if bool_status(surface.is_periodic(domain, SurfParamType::U))? {
+        if bool_status(surface.is_periodic(k, domain, SurfParamType::U))? {
             size.x *= periodic_extension_factor;
         } else if CBI_LINEAR > 0 && surface.degree(SurfParamType::U) == 1 {
             size.x *= linear_extension_factor;
         }
-        if bool_status(surface.is_periodic(domain, SurfParamType::V))? {
+        if bool_status(surface.is_periodic(k, domain, SurfParamType::V))? {
             size.y *= periodic_extension_factor;
         } else if CBI_LINEAR > 0 && surface.degree(SurfParamType::V) == 1 {
             size.y *= linear_extension_factor;
@@ -1652,6 +1652,7 @@ pub trait FilletSolverOps {
     /// `SM_ERR` for the base.
     fn load_jacobian(
         &mut self,
+        _k: &Kernel,
         _num_equations: &mut usize,
         _num_parameters: &mut usize,
         _load: &mut JacobianLoad<'_>,
@@ -1746,16 +1747,20 @@ fn copy_offset_surface(k: &Kernel, s: Option<&OffsetSurfaceSlot>) -> Result<Opti
 /// `Evaluate1stDerivatives(uv, TRUE, TRUE, ..)` of an offset surface (the inherited
 /// `SmSurface` body over `SmOffsetSurface::Evaluate`); an extension of the base it
 /// makes is kept, as upstream's `const` evaluators do.
-fn offset_evaluate_1st(s: &mut OffsetSurface, uv: Point2) -> Result<(Point3, Vec3, Vec3)> {
+fn offset_evaluate_1st(
+    k: &Kernel,
+    s: &mut OffsetSurface,
+    uv: Point2,
+) -> Result<(Point3, Vec3, Vec3)> {
     s.surface
-        .with_evaluator(|e| evaluate_1st_derivatives(e, uv, Side::Left, Side::Left))
+        .with_evaluator(|e| evaluate_1st_derivatives(k, e, uv, Side::Left, Side::Left))
 }
 
 /// `EvaluateNormal(uv, TRUE, TRUE, ..)` of an offset surface
 /// (`SmOffsetSurface::EvaluateNormal`), keeping an extension it makes.
-fn offset_evaluate_normal(s: &mut OffsetSurface, uv: Point2) -> Result<Vec3> {
+fn offset_evaluate_normal(k: &Kernel, s: &mut OffsetSurface, uv: Point2) -> Result<Vec3> {
     s.surface
-        .evaluate_normal_extending(uv, Side::Left, Side::Left)
+        .evaluate_normal_extending(k, uv, Side::Left, Side::Left)
 }
 
 /// The solver's offset surface of `rail` (`GetSurface(rail)`), for evaluation.
@@ -1860,6 +1865,7 @@ impl<'a> FilletSphereSolveEnfo<'a> {
     /// them) or a missing first surface.
     pub fn evaluate(
         &mut self,
+        k: &Kernel,
         x: &[f64],
         f: &mut [f64],
         mut jacobian: Option<&mut Matrix>,
@@ -1886,6 +1892,7 @@ impl<'a> FilletSphereSolveEnfo<'a> {
         let found_answer = self
             .solver
             .load_jacobian(
+                k,
                 &mut num_equations,
                 &mut num_parameters,
                 &mut load,
@@ -1899,24 +1906,30 @@ impl<'a> FilletSphereSolveEnfo<'a> {
         // calc OffsetSurface0 current solution surface values
         let uv = Point2::new(x_at(x, 0)?, x_at(x, 1)?);
         let (sf, sduf, sdvf) =
-            offset_evaluate_1st(solver_surface_mut(self.solver.solver_mut(), 0)?, uv)?;
+            offset_evaluate_1st(k, solver_surface_mut(self.solver.solver_mut(), 0)?, uv)?;
 
         // update the plane to fit the current solution
         if self.plane_adjusts {
             let mut norm1 = sduf.cross(sdvf);
             if norm1.length_squared() < EFF_ZERO_SQ {
-                norm1 =
-                    offset_evaluate_normal(solver_surface_mut(self.solver.solver_mut(), 0)?, uv)?;
+                norm1 = offset_evaluate_normal(
+                    k,
+                    solver_surface_mut(self.solver.solver_mut(), 0)?,
+                    uv,
+                )?;
             }
             let norm1 = norm1.unitize()?;
 
             let uv2 = Point2::new(x_at(x, surf2_offset)?, x_at(x, surf2_offset + 1)?);
             let (sg, sdug, sdvg) =
-                offset_evaluate_1st(solver_surface_mut(self.solver.solver_mut(), 1)?, uv2)?;
+                offset_evaluate_1st(k, solver_surface_mut(self.solver.solver_mut(), 1)?, uv2)?;
             let mut norm2 = sdug.cross(sdvg);
             if norm2.length_squared() < EFF_ZERO_SQ {
-                norm2 =
-                    offset_evaluate_normal(solver_surface_mut(self.solver.solver_mut(), 1)?, uv2)?;
+                norm2 = offset_evaluate_normal(
+                    k,
+                    solver_surface_mut(self.solver.solver_mut(), 1)?,
+                    uv2,
+                )?;
             }
             let norm2 = norm2.unitize()?;
 
@@ -1992,6 +2005,7 @@ impl<'a> RailUvCurveIntersectEnfo<'a> {
     /// [`SolidError::InvalidInput`] for arrays too short.
     pub fn evaluate(
         &mut self,
+        k: &Kernel,
         x: &[f64],
         f: &mut [f64],
         mut jacobian: Option<&mut Matrix>,
@@ -2042,6 +2056,7 @@ impl<'a> RailUvCurveIntersectEnfo<'a> {
         let found_answer = self
             .solver
             .load_jacobian(
+                k,
                 &mut num_equations,
                 &mut num_parameters,
                 &mut load,
@@ -2100,6 +2115,7 @@ impl<'a> RailRailIntersectEnfo<'a> {
     /// arrays too short.
     pub fn evaluate(
         &mut self,
+        k: &Kernel,
         x: &[f64],
         f: &mut [f64],
         mut jacobian: Option<&mut Matrix>,
@@ -2128,6 +2144,7 @@ impl<'a> RailRailIntersectEnfo<'a> {
         let found1 = self
             .solver
             .load_jacobian(
+                k,
                 &mut num_equations,
                 &mut num_parameters,
                 &mut load,
@@ -2149,6 +2166,7 @@ impl<'a> RailRailIntersectEnfo<'a> {
         let found2 = self
             .other_solver
             .load_jacobian(
+                k,
                 &mut num_equations,
                 &mut num_parameters,
                 &mut load2,
@@ -2270,7 +2288,7 @@ impl<'a> FindClippedRadiusEfo<'a> {
     /// curve parameter, `None` when no good point was found. Both surfaces are
     /// evaluated through copies, so a base extension the evaluations make is not kept
     /// (upstream's `const` evaluators store it in the solver's offsets).
-    fn intersect_iso(&self) -> Result<Option<(Point2, f64)>> {
+    fn intersect_iso(&self, k: &Kernel) -> Result<Option<(Point2, f64)>> {
         let (i, o) = (self.surf_index, 1 - self.surf_index);
         let surface = Surface::from(
             self.solver
@@ -2292,6 +2310,7 @@ impl<'a> FindClippedRadiusEfo<'a> {
         let curve = Curve::from(iso);
         let interval = curve.natural_interval();
         let found = other.local_curve_intersect(
+            k,
             &self.other_domain,
             &curve,
             &interval,
@@ -2302,7 +2321,7 @@ impl<'a> FindClippedRadiusEfo<'a> {
         Ok(found.map(|c| (c.uv, c.t)))
     }
 
-    fn base_points(&self, uv: Point2, other_uv: Point2) -> Result<f64> {
+    fn base_points(&self, k: &Kernel, uv: Point2, other_uv: Point2) -> Result<f64> {
         let (i, o) = (self.surf_index, 1 - self.surf_index);
         let base = self
             .solver
@@ -2316,8 +2335,8 @@ impl<'a> FindClippedRadiusEfo<'a> {
             .ok_or_else(|| invalid("no other offset surface"))?
             .surface
             .base_surface();
-        let p = evaluate_point_out_of_bounds(base, uv)?;
-        let op = evaluate_point_out_of_bounds(other_base, other_uv)?;
+        let p = evaluate_point_out_of_bounds(k, base, uv)?;
+        let op = evaluate_point_out_of_bounds(k, other_base, other_uv)?;
         Ok(p.distance(op))
     }
 
@@ -2331,7 +2350,7 @@ impl<'a> FindClippedRadiusEfo<'a> {
     ///
     /// `SM_ERR` when the iso curve misses the other surface; those of the evaluations;
     /// [`SolidError::Unported`] (module notes).
-    pub fn evaluate(&mut self, radius: f64) -> Result<(f64, f64, bool)> {
+    pub fn evaluate(&mut self, k: &Kernel, radius: f64) -> Result<(f64, f64, bool)> {
         const OP_E: &str = "blend::fillet_solver::p1::FindClippedRadiusEfo::evaluate";
         let mut radius = radius;
         // init output
@@ -2340,7 +2359,7 @@ impl<'a> FindClippedRadiusEfo<'a> {
         self.last_found = false;
         let mut found = false;
         self.set_offsets(radius)?;
-        let Some((other_uv_found, t_found)) = self.intersect_iso()? else {
+        let Some((other_uv_found, t_found)) = self.intersect_iso(k)? else {
             return Err(SolidError::sm_err(OP_E));
         };
         self.other_uv = other_uv_found;
@@ -2352,7 +2371,7 @@ impl<'a> FindClippedRadiusEfo<'a> {
             self.uv.x = t_found;
             self.uv.y = self.iso_param;
         }
-        let distance = self.base_points(self.uv, self.other_uv)?;
+        let distance = self.base_points(k, self.uv, self.other_uv)?;
         let f_of_t = distance - self.target_distance;
         self.last_f_of_t = f_of_t;
         if f_of_t.abs() < EFF_ZERO {
@@ -2363,7 +2382,7 @@ impl<'a> FindClippedRadiusEfo<'a> {
         let step_size = ZONE_TOL_3D;
         radius += step_size;
         self.set_offsets(radius)?;
-        let Some((other_uv_found, t_found)) = self.intersect_iso()? else {
+        let Some((other_uv_found, t_found)) = self.intersect_iso(k)? else {
             return Err(SolidError::sm_err(OP_E));
         };
         let uv_found = if self.surf_param == SurfParamType::U {
@@ -2371,7 +2390,7 @@ impl<'a> FindClippedRadiusEfo<'a> {
         } else {
             Point2::new(t_found, self.iso_param)
         };
-        let distance1 = self.base_points(uv_found, other_uv_found)?;
+        let distance1 = self.base_points(k, uv_found, other_uv_found)?;
         let f_prime = (distance1 - self.target_distance - f_of_t) / step_size;
         self.last_f_prime = f_prime;
         Ok((f_of_t, f_prime, found))
@@ -2382,7 +2401,7 @@ impl<'a> FindClippedRadiusEfo<'a> {
 /// temporarily enabled (`SmTemporaryChangeValue` on `GetOutOfBoundsEnabled` of
 /// `SM_CAST_PTR(SmBSplineSurface, ..)`: B-splines, planes and surfaces of revolution;
 /// only the `SmBSplineSurface` member changes, not a revolution's generator).
-fn evaluate_point_out_of_bounds(base: &Surface, uv: Point2) -> Result<Point3> {
+fn evaluate_point_out_of_bounds(k: &Kernel, base: &Surface, uv: Point2) -> Result<Point3> {
     use crate::surface::surface::SurfaceKind;
     // the flag is set on the surface itself upstream: evaluate an exact copy
     let mut s = base.clone_for_evaluation()?;
@@ -2390,13 +2409,14 @@ fn evaluate_point_out_of_bounds(base: &Surface, uv: Point2) -> Result<Point3> {
         SurfaceKind::BSpline(b) => *b.out_of_bounds_enabled_mut() = true,
         SurfaceKind::Plane(p) => *p.out_of_bounds_enabled_mut() = true,
         SurfaceKind::SurfOfRevolution(r) => *r.base_mut().out_of_bounds_enabled_mut() = true,
+        SurfaceKind::Cone(c) => *c.base_mut().out_of_bounds_enabled_mut() = true,
         // an SmOffsetSurface is not an SmBSplineSurface either
         SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::SrfInVolume(_)
         | SurfaceKind::OffsetSurface(_) => {}
     }
-    s.evaluate_point(uv)
+    s.evaluate_point(k, uv)
 }
 
 // ---- ComputeSurfaceValues / ComputeUVVectors --------------------------------------------
@@ -2413,6 +2433,7 @@ impl FilletSolver {
     /// evaluations; `SM_ERR` for a zero normal; [`SolidError::InvalidInput`] for a
     /// missing surface.
     pub fn compute_surface_values(
+        k: &Kernel,
         ops: &mut dyn FilletSolverOps,
         uv_values: [Point2; 2],
         tsect: &mut TsectPnt,
@@ -2421,7 +2442,7 @@ impl FilletSolver {
         ops.setup_offset_values(&snapshot, None)?;
         for (srf, uv) in uv_values.iter().enumerate() {
             let s = solver_surface_mut(ops.solver_mut(), srf)?;
-            let (p, du, dv) = offset_evaluate_1st(s, *uv)?;
+            let (p, du, dv) = offset_evaluate_1st(k, s, *uv)?;
             let pv = tsect
                 .surface_pv
                 .get_mut(srf)
@@ -2434,7 +2455,7 @@ impl FilletSolver {
             pv[0][2] = Vec3::new(0.0, 0.0, 0.0);
             let mut norm = du.cross(dv);
             if norm.length_squared() < EFF_ZERO_SQ {
-                norm = offset_evaluate_normal(s, *uv)?;
+                norm = offset_evaluate_normal(k, s, *uv)?;
                 if norm.length_squared() < EFF_ZERO_SQ {
                     return Err(SolidError::sm_err(OP));
                 }
@@ -2586,6 +2607,7 @@ pub fn test_analytic_surface(k: &Kernel, surface: AnalyticTestSurface<'_>) -> Re
     if planar.is_planar {
         return Ok(true);
     }
+
     // UNPORTED(surface.cone_p2): SmCone::IsNurbSurfaceCone
     Err(SolidError::unported(
         "SmCone::IsNurbSurfaceCone",
@@ -3049,7 +3071,7 @@ pub fn compute_support_edge(
     )?;
     let first = solutions.get(0).ok_or_else(|| SolidError::sm_err(OP_C))?;
     let t = first.start.parameters[0];
-    let end_pnt = curve_3d.evaluate_point(t)?;
+    let end_pnt = curve_3d.evaluate_point(k, t)?;
 
     // Update end vertex
     let end_v = edge::other_vertex(pseudo, support_edge, Some(start_v))?
@@ -3133,6 +3155,7 @@ mod tests {
         other_dom: Extent2d,
         radius: f64,
     ) -> Evaluated {
+        let k = &Kernel::default();
         let kern = Kernel::default();
         let mut fs = FilletSolver::new(1e-6, 0.1, 0.01);
         for (k, base) in bases.into_iter().enumerate() {
@@ -3161,7 +3184,7 @@ mod tests {
             0.5,
         )
         .unwrap();
-        let r = e.evaluate(radius);
+        let r = e.evaluate(k, radius);
         let after = (e.last_f_of_t, e.last_f_prime, e.last_found, e.guess_t);
         (r, after)
     }

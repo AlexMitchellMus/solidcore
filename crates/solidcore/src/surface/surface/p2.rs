@@ -785,7 +785,7 @@ impl Surface {
                     .evaluate(uv, highest_u_deriv, highest_v_deriv, flags)
             }
             SurfaceKind::OffsetSurface(s) => {
-                s.evaluate(uv, highest_u_deriv, highest_v_deriv, flags)
+                s.evaluate(k, uv, highest_u_deriv, highest_v_deriv, flags)
             }
         }
     }
@@ -814,6 +814,7 @@ impl Surface {
     /// surface without base surface; a plane's guards; [`SolidError::Unported`].
     pub fn evaluate_ignoring_status(
         &self,
+        k: &Kernel,
         uv: Point2,
         highest_u_deriv: usize,
         highest_v_deriv: usize,
@@ -831,19 +832,33 @@ impl Surface {
             // pass the call along
             SurfaceKind::CurveBounded(s) => {
                 s.basis()
-                    .evaluate_ignoring_status(uv, highest_u_deriv, highest_v_deriv, flags)
+                    .evaluate_ignoring_status(k, uv, highest_u_deriv, highest_v_deriv, flags)
             }
             SurfaceKind::Step(s) => {
-                s.evaluate_ignoring_status(uv, highest_u_deriv, highest_v_deriv, flags)
+                s.evaluate_ignoring_status(k, uv, highest_u_deriv, highest_v_deriv, flags)
             }
             SurfaceKind::SrfInVolume(s) => {
-                crate::error::ignored(s.evaluate(uv, highest_u_deriv, highest_v_deriv, flags))
+                crate::error::ignored(s.evaluate(k, uv, highest_u_deriv, highest_v_deriv, flags))
             }
             SurfaceKind::Plane(_) => self
-                .evaluate(uv, highest_u_deriv, highest_v_deriv, flags)
+                .evaluate(k, uv, highest_u_deriv, highest_v_deriv, flags)
                 .map(Some),
             SurfaceKind::OffsetSurface(s) => {
-                crate::error::ignored(s.evaluate(uv, highest_u_deriv, highest_v_deriv, flags))
+                crate::error::ignored(s.evaluate(k, uv, highest_u_deriv, highest_v_deriv, flags))
+            }
+            // SmCone::Evaluate: its only failure is the inherited NURB evaluation, which
+            // leaves what that evaluation wrote (no STEP position correction follows)
+            SurfaceKind::Cone(c) => {
+                match self.evaluate(k, uv, highest_u_deriv, highest_v_deriv, flags) {
+                    Ok(d) => Ok(Some(d)),
+                    Err(e) if e.is_unported() => Err(e),
+                    Err(_) => c.rev().base().evaluate_ignoring_status(
+                        uv,
+                        highest_u_deriv,
+                        highest_v_deriv,
+                        flags,
+                    ),
+                }
             }
         }
     }
@@ -863,7 +878,7 @@ impl Surface {
             SurfaceKind::Plane(s) => Ok(s.evaluate_point(uv)),
             SurfaceKind::Cone(s) => s.evaluate_point(k, uv),
             SurfaceKind::SurfOfRevolution(s) => s.base().evaluate_point(uv),
-            SurfaceKind::OffsetSurface(s) => s.evaluate_point(uv),
+            SurfaceKind::OffsetSurface(s) => s.evaluate_point(k, uv),
         }
     }
 
@@ -943,7 +958,7 @@ impl Surface {
             SurfaceKind::Plane(s) => Ok(s.max_analytic_domain()),
             SurfaceKind::Cone(s) => s.max_analytic_domain(k),
             SurfaceKind::SurfOfRevolution(s) => s.max_analytic_domain(k),
-            SurfaceKind::OffsetSurface(s) => s.max_analytic_domain(),
+            SurfaceKind::OffsetSurface(s) => s.max_analytic_domain(k),
         }
     }
 
@@ -4797,8 +4812,8 @@ mod tests {
         let copy = off.clone_for_evaluation().unwrap();
         let uv = Point2::new(0.25, 0.5);
         assert_eq!(
-            copy.evaluate_point(uv).unwrap(),
-            off.evaluate_point(uv).unwrap()
+            copy.evaluate_point(&k, uv).unwrap(),
+            off.evaluate_point(&k, uv).unwrap()
         );
         // the deepest chain the constructor allows is copied or refused, never overflows
         let mut deep = Surface::from(Plane::from_normal(Vec3::ZERO, Vec3::Z));
@@ -5232,6 +5247,7 @@ mod kernel_dispatch_tests {
 
     #[test]
     fn analytic_evaluation_keeps_the_callers_context_and_class() {
+        let k = &Kernel::default();
         let mut kernel = Kernel::default();
         kernel.tolerances.zone_tol_3d = 0.002;
         for cylinder in [false, true] {
@@ -5257,9 +5273,9 @@ mod kernel_dispatch_tests {
             let uv = surface.natural_uv_domain().evaluate(0.25, 0.5);
             let expected = cone.evaluate_point(&kernel, uv).unwrap();
             assert_eq!(surface.evaluate_point(&kernel, uv).unwrap(), expected);
-            assert_eq!(surface.copy().unwrap().type_code(), surface.type_code());
+            assert_eq!(surface.copy(k).unwrap().type_code(), surface.type_code());
             assert!(matches!(
-                surface.copy().unwrap().kind(),
+                surface.copy(k).unwrap().kind(),
                 SurfaceKind::Cone(_)
             ));
             let mut lazy = SurfaceEval::with_uv(&kernel, Some(&surface), uv.x, uv.y);
@@ -5349,7 +5365,7 @@ mod kernel_dispatch_tests {
             .evaluate_step_point(&kernel, Point2::new(0.5, 0.5))
             .is_err());
         assert!(matches!(
-            surface.copy(),
+            surface.copy(&kernel),
             Err(SolidError::InvalidInput { .. })
         ));
         assert!(matches!(

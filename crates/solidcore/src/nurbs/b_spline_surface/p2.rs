@@ -362,8 +362,8 @@ impl BSplineSurface {
     ///
     /// Those of [`Plane::is_nurb_surface_plane`] and
     /// [`crate::surface::cone::Cone::is_nurb_surface_cone`]; [`SolidError::Unported`]:
-    /// a recognised cone cannot be held by a [`Surface`] yet, and the recognisers
-    /// after the cone (`SmSphere::IsNurbSurfaceSphere`, ...) are not ported.
+    /// the recognisers after the cone (`SmSphere::IsNurbSurfaceSphere`, ...) are not
+    /// ported.
     pub fn copy_and_add_analytics(&self, k: &Kernel) -> Result<Surface> {
         // (a surface that is not SmBSplineSurface_TYPE is copied as is: never here)
         // SmPlane
@@ -557,7 +557,10 @@ impl BSplineSurface {
         // Now find the non common point between the second largest and the gen curve
         let ends = |c: &SmCurve| -> Result<(Point3, Point3)> {
             let ivl = c.natural_interval();
-            Ok((c.evaluate_point(ivl.min())?, c.evaluate_point(ivl.max())?))
+            Ok((
+                c.evaluate_point(k, ivl.min())?,
+                c.evaluate_point(k, ivl.max())?,
+            ))
         };
         let gen_curve = arc(gen_curve_index)?;
         let (st1, end1) = ends(gen_curve)?;
@@ -1491,6 +1494,7 @@ mod tests {
     /// sphere, as upstream's aliased (dead) centre check lets them.
     #[test]
     fn sphere_from_arcs_about_two_centres() {
+        let k = &Kernel::default();
         let arcs = [
             arc3(
                 [5.0, 0.0, 0.0],
@@ -1511,7 +1515,7 @@ mod tests {
                 [10.0, 2.5, 4.330_127_018_922_193],
             ),
         ];
-        let r = BSplineSurface::create_sphere_from_arcs(&arcs, 1e-6).unwrap();
+        let r = BSplineSurface::create_sphere_from_arcs(k, &arcs, 1e-6).unwrap();
         assert_eq!(r.ccw_arcs, vec![0, 1, 2]);
     }
 

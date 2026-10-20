@@ -703,17 +703,18 @@ fn state(executive: &OffsetExecutive) -> Vec<f64> {
 
 // Build the shim's primary/mate pair explicitly, rather than assuming arena EU
 // ids are traversal ids. The closing edge is real scaffolding, not measured.
-fn add_wire(brep: &mut Brep, curve: Curve, interval: Extent1d) -> HResult<EdgeId> {
-    add_wire_with_vertices(brep, curve, interval, None)
+fn add_wire(k: &Kernel, brep: &mut Brep, curve: Curve, interval: Extent1d) -> HResult<EdgeId> {
+    add_wire_with_vertices(k, brep, curve, interval, None)
 }
 fn add_wire_with_vertices(
+    k: &Kernel,
     brep: &mut Brep,
     curve: Curve,
     interval: Extent1d,
     vertices: Option<[VertexId; 2]>,
 ) -> HResult<EdgeId> {
-    let start = curve.evaluate_point(interval.min()).map_err(setup)?;
-    let end = curve.evaluate_point(interval.max()).map_err(setup)?;
+    let start = curve.evaluate_point(k, interval.min()).map_err(setup)?;
+    let end = curve.evaluate_point(k, interval.max()).map_err(setup)?;
     let shell = brep
         .add_shell_record(Shell {
             faces: Vec::new(),
@@ -771,8 +772,8 @@ fn add_wire_with_vertices(
     }
     Ok(edge)
 }
-fn unit_wire(brep: &mut Brep, y: f64) -> HResult<EdgeId> {
-    add_wire(
+fn unit_wire(k: &Kernel, brep: &mut Brep, y: f64) -> HResult<EdgeId> {
+    add_wire(k, 
         brep,
         CurveIn::Line {
             start: [0.0, y, 0.0],
@@ -900,7 +901,7 @@ fn face_with_edges(
     }
     Ok((face, upward))
 }
-fn plane_face(brep: &mut Brep, z: f64) -> HResult<(FaceId, FaceuseId)> {
+fn plane_face(k: &Kernel, brep: &mut Brep, z: f64) -> HResult<(FaceId, FaceuseId)> {
     let corners = [[0.0, 0.0, z], [1.0, 0.0, z], [1.0, 1.0, z], [0.0, 1.0, z]];
     let vertices = corners
         .iter()
@@ -920,7 +921,7 @@ fn plane_face(brep: &mut Brep, z: f64) -> HResult<(FaceId, FaceuseId)> {
             domain: [0.0, 1.0],
         }
         .rust()?;
-        edges.push(add_wire_with_vertices(
+        edges.push(add_wire_with_vertices(k, 
             brep,
             curve,
             ivl([0.0, 1.0]),
@@ -929,8 +930,8 @@ fn plane_face(brep: &mut Brep, z: f64) -> HResult<(FaceId, FaceuseId)> {
     }
     face_with_edges(brep, plane(z), &edges)
 }
-fn loop_fixture(brep: &mut Brep, input: &EdgeIn) -> HResult<(EdgeId, EdgeId)> {
-    let edge = add_wire(brep, input.curve.rust()?, ivl(input.interval))?;
+fn loop_fixture(k: &Kernel, brep: &mut Brep, input: &EdgeIn) -> HResult<(EdgeId, EdgeId)> {
+    let edge = add_wire(k, brep, input.curve.rust()?, ivl(input.interval))?;
     let [a, b] = brep.edge(edge).map_err(setup)?.vertices;
     let start = brep.vertex(b).map_err(setup)?.point;
     let end = brep.vertex(a).map_err(setup)?.point;
@@ -955,24 +956,24 @@ fn loop_fixture(brep: &mut Brep, input: &EdgeIn) -> HResult<(EdgeId, EdgeId)> {
     }
     .map_err(setup)?;
     let interval = closing.natural_interval();
-    let support = add_wire_with_vertices(brep, Curve::from(closing), interval, Some([b, a]))?;
+    let support = add_wire_with_vertices(k, brep, Curve::from(closing), interval, Some([b, a]))?;
     face_with_edges(brep, plane(0.0), &[edge, support])?;
     Ok((edge, support))
 }
 
-fn rust_config(input: &Config) -> HResult<Output> {
+fn rust_config(k: &Kernel, input: &Config) -> HResult<Output> {
     let mut original = Brep::new();
     let mut offset = Brep::new();
     let mut face_owner = Brep::new();
     for i in 0..input.original_edges {
-        unit_wire(&mut original, i as f64)?;
+        unit_wire(k, &mut original, i as f64)?;
     }
     for i in 0..input.offset_edges {
-        unit_wire(&mut offset, i as f64)?;
+        unit_wire(k, &mut offset, i as f64)?;
     }
     let mut faces = Vec::new();
     for i in 0..input.face_count {
-        faces.push(plane_face(&mut face_owner, i as f64)?.0);
+        faces.push(plane_face(k, &mut face_owner, i as f64)?.0);
     }
     let originals = wire_uses(&original);
     let offsets = wire_uses(&offset);
@@ -1067,18 +1068,18 @@ fn measured_traversal(
     Ok((edges, uses))
 }
 
-fn rust_sync(input: &Synchronize) -> RResult<Output> {
+fn rust_sync(k: &Kernel, input: &Synchronize) -> RResult<Output> {
     let mut kernel = Kernel::default();
     let mut original = Brep::new();
-    let edge_a = unit_wire(&mut original, 0.0)?;
-    let edge_b = unit_wire(&mut original, 1.0)?;
+    let edge_a = unit_wire(k, &mut original, 0.0)?;
+    let edge_b = unit_wire(k, &mut original, 1.0)?;
     let a = primary(&original, edge_a)?;
     let b = primary(&original, edge_b)?;
     let mut offset = Brep::new();
     let mut supports = Vec::new();
     let mut fixtures = Vec::new();
     for edge in input.first.iter().chain(&input.second) {
-        let (edge, support) = loop_fixture(&mut offset, edge)?;
+        let (edge, support) = loop_fixture(k, &mut offset, edge)?;
         supports.push(support);
         fixtures.push(primary(&offset, edge)?);
     }
@@ -1140,9 +1141,9 @@ fn rust_sync(input: &Synchronize) -> RResult<Output> {
             .curve
             .as_ref()
             .ok_or_else(|| bad("missing measured curve"))?;
-        let length = curve.approximate_length(&edge.interval, 10, false)?.0;
-        let (start_status, start) = operation(curve.evaluate_point(edge.interval.min()))?;
-        let (end_status, end) = operation(curve.evaluate_point(edge.interval.max()))?;
+        let length = curve.approximate_length(k, &edge.interval, 10, false)?.0;
+        let (start_status, start) = operation(curve.evaluate_point(k, edge.interval.min()))?;
+        let (end_status, end) = operation(curve.evaluate_point(k, edge.interval.max()))?;
         let start = start.unwrap_or(Vec3::ZERO);
         let end = end.unwrap_or(Vec3::ZERO);
         output = output
@@ -1265,12 +1266,12 @@ fn rust_extend(input: &Extension) -> RResult<Output> {
                 (1.0 - u) * domain.min().x + u * domain.max().x,
                 (1.0 - v) * domain.min().y + v * domain.max().y,
             );
-            let (status, point) = operation(surface.evaluate_point(uv))?;
+            let (status, point) = operation(surface.evaluate_point(&kernel, uv))?;
             let point = point.unwrap_or(Vec3::ZERO);
             statuses.push(status);
             samples.extend([point.x, point.y, point.z]);
             let (status, normal) =
-                operation(surface.evaluate_normal(uv, Side::Right, Side::Right))?;
+                operation(surface.evaluate_normal(&kernel, uv, Side::Right, Side::Right))?;
             let normal = normal.unwrap_or(Vec3::ZERO);
             statuses.push(status);
             samples.extend([normal.x, normal.y, normal.z]);
@@ -1282,7 +1283,7 @@ fn rust_extend(input: &Extension) -> RResult<Output> {
     Ok(output)
 }
 
-fn rust_probe(branch: Probe, tolerance: f64) -> RResult<Output> {
+fn rust_probe(k: &Kernel, branch: Probe, tolerance: f64) -> RResult<Output> {
     let mut kernel = Kernel::default();
     let mut original = Brep::new();
     let mut executive = OffsetExecutive::new(OffsetOperation::SolidOffset, 0.25, tolerance);
@@ -1300,7 +1301,7 @@ fn rust_probe(branch: Probe, tolerance: f64) -> RResult<Output> {
         }
         Probe::SideWallNull => executive.build_side_wall_of_edgeuse(&kernel, None),
         Probe::SideWallUnmapped => {
-            let edge = unit_wire(&mut original, 0.0)?;
+            let edge = unit_wire(k, &mut original, 0.0)?;
             executive.build_side_wall_of_edgeuse(&kernel, Some(primary(&original, edge)?))
         }
         Probe::FillEmpty => {
@@ -1347,7 +1348,7 @@ fn rust_probe(branch: Probe, tolerance: f64) -> RResult<Output> {
         }
         Probe::FaceuseNull | Probe::FaceuseNoSurface => {
             let faceuse = if matches!(branch, Probe::FaceuseNoSurface) {
-                Some(plane_face(&mut original, 0.0)?.1)
+                Some(plane_face(k, &mut original, 0.0)?.1)
             } else {
                 None
             };
@@ -1359,7 +1360,7 @@ fn rust_probe(branch: Probe, tolerance: f64) -> RResult<Output> {
                 counts = [0, 0, 0, 1];
             }),
         Probe::MapPlane => {
-            let (face, faceuse) = plane_face(&mut original, 0.0)?;
+            let (face, faceuse) = plane_face(k, &mut original, 0.0)?;
             originals = wire_uses(&original);
             offsets.clone_from(&originals);
             // Native passes the original face itself as the offset face. The safe
@@ -1368,7 +1369,7 @@ fn rust_probe(branch: Probe, tolerance: f64) -> RResult<Output> {
             executive.map_edgeuses(&kernel, &original, faceuse, face)
         }
         Probe::EdgeusesUnmapped => {
-            plane_face(&mut original, 0.0)?;
+            plane_face(k, &mut original, 0.0)?;
             let edge = original
                 .edges()
                 .ids()
@@ -1440,11 +1441,12 @@ impl UnitDiff for Runner {
         decode(&input, &raw)
     }
     fn run_rust(&self, case: &Case) -> HResult<Output> {
+        let k = &Kernel::default();
         let result = match case.parse::<Inputs>()? {
-            Inputs::Config(input) => rust_config(&input).map_err(RunError::Harness),
-            Inputs::Synchronize(input) => rust_sync(&input),
+            Inputs::Config(input) => rust_config(k, &input).map_err(RunError::Harness),
+            Inputs::Synchronize(input) => rust_sync(k, &input),
             Inputs::Extend(input) => rust_extend(&input),
-            Inputs::Probe { branch, approx_tol } => rust_probe(branch, approx_tol),
+            Inputs::Probe { branch, approx_tol } => rust_probe(k, branch, approx_tol),
         };
         match result {
             Ok(output) => normalize_sync_ties(output),
@@ -1827,6 +1829,7 @@ mod tests {
 
     #[test]
     fn real_trimmed_line_sync_agrees_with_the_documented_native_record_layout() {
+        let k = &Kernel::default();
         let input = Inputs::Synchronize(Synchronize {
             first: vec![EdgeIn {
                 curve: CurveIn::Line {
@@ -1852,7 +1855,7 @@ mod tests {
             unreachable!()
         };
         let mut brep = Brep::new();
-        let (edge, support) = loop_fixture(&mut brep, &input.first[0]).unwrap();
+        let (edge, support) = loop_fixture(k, &mut brep, &input.first[0]).unwrap();
         assert_eq!(brep.vertices().len(), 2);
         assert_eq!(brep.edge(edge).unwrap().edgeuses.len(), 2);
         assert_eq!(
@@ -1866,6 +1869,7 @@ mod tests {
 
     #[test]
     fn zero_length_and_near_degenerate_fixtures_keep_their_actual_filter_branches() {
+        let k = &Kernel::default();
         let context = CaseContext {
             root: crate::case::repo_root(),
             seeds: 0,
@@ -1925,7 +1929,7 @@ mod tests {
             };
             let mut brep = Brep::new();
             for edge in input.first.iter().chain(&input.second) {
-                let (measured, support) = loop_fixture(&mut brep, edge).unwrap();
+                let (measured, support) = loop_fixture(k, &mut brep, edge).unwrap();
                 let measured = brep.edge(measured).unwrap();
                 let support = brep.edge(support).unwrap();
                 let closing = support.curve.as_ref().unwrap();
@@ -1935,17 +1939,17 @@ mod tests {
                 );
                 assert!(
                     closing
-                        .approximate_length(&support.interval, 10, false)
+                        .approximate_length(&Kernel::default(), &support.interval, 10, false)
                         .unwrap()
                         .0
                         > 0.0
                 );
                 assert_eq!(
-                    closing.evaluate_point(support.interval.min()).unwrap(),
+                    closing.evaluate_point(k, support.interval.min()).unwrap(),
                     brep.vertex(measured.vertices[1]).unwrap().point,
                 );
                 assert_eq!(
-                    closing.evaluate_point(support.interval.max()).unwrap(),
+                    closing.evaluate_point(k, support.interval.max()).unwrap(),
                     brep.vertex(measured.vertices[0]).unwrap().point,
                 );
             }
@@ -2434,6 +2438,7 @@ mod tests {
 
     #[test]
     fn actual_rust_tie_fixtures_use_the_same_narrow_snapshot_policy() {
+        let k = &Kernel::default();
         let context = CaseContext {
             root: crate::case::repo_root(),
             seeds: 0,
@@ -2450,7 +2455,7 @@ mod tests {
             let Inputs::Synchronize(input) = fixture.parse().unwrap() else {
                 unreachable!()
             };
-            let unnormalized = rust_sync(&input).ok().unwrap();
+            let unnormalized = rust_sync(k, &input).ok().unwrap();
             assert_eq!(actual, normalize_sync_ties(unnormalized).unwrap());
             // A native snapshot may emit the opposite hash order for these ties.
             let mut opposite = actual.clone();

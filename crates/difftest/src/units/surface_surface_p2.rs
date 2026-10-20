@@ -2750,7 +2750,7 @@ impl UnitDiff for Runner {
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
-let k = &Kernel::default();
+        let k = &Kernel::default();
         if let Some(value) = case.inputs.get("common_cone") {
             return super::surface_cone_p1::common_rust(value.clone(), case.inputs.get("common_db"), case.inputs.get("common_lazy").and_then(Value::as_bool).unwrap_or(false), case.inputs.get("common_subdomain").and_then(Value::as_bool).unwrap_or(false), case.inputs.get("common_queries").and_then(Value::as_bool).unwrap_or(false));
         }
@@ -2766,7 +2766,7 @@ mod tests {
     /// The generators reach the ops with successful outcomes on the Rust side.
     #[test]
     fn generated_cases_cover_ops() {
-let k = &Kernel::default();
+        let k = &Kernel::default();
         let mut tally: BTreeMap<(String, String), usize> = BTreeMap::new();
         for seed in 0..2000u64 {
             let mut rng = Rng::new(0x5eed_0000 + seed);

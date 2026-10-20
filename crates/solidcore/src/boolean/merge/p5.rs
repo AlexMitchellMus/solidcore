@@ -88,13 +88,13 @@ fn merge_edge(_brep: &mut Brep, _other: &Brep, _edge: EdgeId, _region: RegionId)
     ))
 }
 
-fn midpoint(b: &Brep, id: EdgeId) -> Result<Point3> {
+fn midpoint(k: &Kernel, b: &Brep, id: EdgeId) -> Result<Point3> {
     let edge = b.edge(id)?;
     let curve = edge
         .curve
         .as_ref()
         .ok_or_else(|| SolidError::null_pointer(OP))?;
-    curve.evaluate_point(edge.interval.evaluate(0.5))
+    curve.evaluate_point(k, edge.interval.evaluate(0.5))
 }
 
 fn removes_primary(operation: BooleanOperation) -> bool {
@@ -255,7 +255,7 @@ fn collect_wires_and_shell_vertices(
             let region = classify_region(
                 k,
                 other,
-                midpoint(brep, id)?,
+                midpoint(k, brep, id)?,
                 brep.edge(id)?.tolerance,
                 true,
                 true,
@@ -319,7 +319,7 @@ fn collect_wires_and_shell_vertices(
         let region = classify_region(
             k,
             brep,
-            midpoint(other, id)?,
+            midpoint(k, other, id)?,
             other.edge(id)?.tolerance,
             true,
             false,

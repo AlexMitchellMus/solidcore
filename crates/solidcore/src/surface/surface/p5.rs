@@ -1304,8 +1304,8 @@ impl Surface {
                 if sols.is_empty() {
                     if let Some(g2) = opt_xyz_guess2 {
                         sols = ignored(s.global_point_solve::<O>(
-                    kernel,
-                    None,
+                            kernel,
+                            None,
                             fallback_domain,
                             SolverOperation::Minimize,
                             g2,

@@ -780,7 +780,7 @@ impl Surface {
             SurfaceKind::CurveBounded(s) => s.evaluate_normal(k, uv, u_side, v_side),
             SurfaceKind::SrfInVolume(s) => s.evaluate_normal(k, uv, u_side, v_side),
             SurfaceKind::Plane(p) => Ok(p.evaluate_normal()),
-            SurfaceKind::OffsetSurface(s) => s.evaluate_normal(uv, u_side, v_side),
+            SurfaceKind::OffsetSurface(s) => s.evaluate_normal(k, uv, u_side, v_side),
         }
     }
 
@@ -1126,9 +1126,8 @@ impl Surface {
         let point_tree: Tree<O> = Tree::from_point(test_point, 0.0, false);
 
         // instance global Surface/Point solver
-        let mut gs = SpGlobalSolver::new(&point_tree, surface_tree, Some(self), *uv_domain);
+        let mut gs = SpGlobalSolver::new(k, &point_tree, surface_tree, Some(self), *uv_domain);
         gs.surface_cache = Some(&cache);
-        gs.kernel = Some(k);
 
         // init solver.dBestAnswerSoFarSq to properly handle SM_SR_SINGLE requests
         let best = point_solve_best_answer_sq(op, opt_target_distance)?;
@@ -2327,6 +2326,7 @@ impl<O: SolutionObject> SpGlobalSolver<'_, '_, O> {
     /// `SM_ERR_NULL_POINTER` without `surface_cache`; `InvalidInput` for a node that is
     /// not a patch node of that cache; those of the polar box build.
     pub fn may_contain_answers(&self, branch: &Branch) -> Result<bool> {
+        let k = self.kernel;
         // When point testing is on and node is known to be outside of Surface->Face
         let surface_node = self.base.branch_node(branch, 1)?;
         let cache = self.surface_cache.ok_or(SolidError::null_pointer(OP_MAY))?;
@@ -2363,7 +2363,7 @@ impl<O: SolutionObject> SpGlobalSolver<'_, '_, O> {
                     }
 
                     // when the polar boxes are disjoint
-                    if tmp_polar.are_disjoint(&cache.polar_box_unstored(surface_id)?) {
+                    if tmp_polar.are_disjoint(&cache.polar_box_unstored(k, surface_id)?) {
                         return Ok(false); // No answer
                     }
                 }

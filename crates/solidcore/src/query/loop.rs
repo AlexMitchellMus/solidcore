@@ -360,7 +360,7 @@ pub fn contains_uv_point(
         let last_trim = eu1::uv_trim_curve(b, last_eu)?
             .0
             .ok_or_else(|| null("ContainsUVPoint: edge use without UV trim curve"))?;
-        last_trim.evaluate_point(last_end_param)?
+        last_trim.evaluate_point(k, last_end_param)?
     };
     let mut last_end_quad_num = calc_quad_num(uv_pt, last_end_uv);
 
