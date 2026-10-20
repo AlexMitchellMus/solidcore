@@ -890,7 +890,8 @@ impl FilletCorner {
     /// not `SM_FV_ON_VERTEX` or starts the on-extended-edge edge, or one not in the
     /// corner; `SM_ERR_NULL_POINTER` for a missing on-edge / on-extended-edge edge, a
     /// non-B-spline curve or a missing original face; those of `JoinWith`;
-    /// [`SolidError::Unported`] (`SmSurface::DropCurve`).
+    /// [`SolidError::Unported`] (the drop onto a surface kind whose `DropCurve` needs
+    /// unported code, see [`Surface::drop_curve`]).
     pub fn create_corner_patch_3x2(&mut self, env: &mut CornerEnv<'_>) -> Result<()> {
         // check state - 4 edges
         if self.edges.len() != 4 {
@@ -995,7 +996,9 @@ impl FilletCorner {
         // override for a plane (with the surface's owner), the base body otherwise.
         let domain = surface.natural_uv_domain();
         let interval = curve1.natural_interval();
-        let uv_curves: Vec<BSplineCurve> = surface
+        // (the drop gives `SmBSplineCurve`s; for a plane a UV `SmLine` stays a line, as
+        // upstream keeps the `SmLine` object behind the pointer, `SetUVCurve` stores it)
+        let uv_curves: Vec<Curve> = surface
             .drop_curve::<NoObject>(
                 env.k,
                 &domain,
@@ -1006,15 +1009,7 @@ impl FilletCorner {
                 None,
                 true,
             )?
-            .uv_curves
-            .into_iter()
-            .map(|c| match c.kind() {
-                // the drop gives `SmBSplineCurve`s (for a plane a UV `SmLine` or B-spline)
-                CurveKind::BSpline(b) => Ok(b.clone()),
-                CurveKind::Line(l) => Ok(l.base().clone()),
-                _ => Err(SolidError::sm_err(OP_3X2)),
-            })
-            .collect::<Result<Vec<_>>>()?;
+            .uv_curves;
         if uv_curves.len() != 1 {
             return Err(SolidError::sm_err(OP_3X2)); // Unknown problem
         }
@@ -1026,7 +1021,7 @@ impl FilletCorner {
         let mate_eu =
             eu1::mate(env.pseudo.brep(), prim)?.ok_or_else(|| SolidError::null_pointer(OP_3X2))?;
         env.pseudo
-            .set_edgeuse_uv_curve(mate_eu, Some(Curve::from(new_ps_curve)), true, true)?;
+            .set_edgeuse_uv_curve(mate_eu, Some(new_ps_curve), true, true)?;
 
         // Create a 3-sided corner patch
         self.create_corner_patch_default(env)
