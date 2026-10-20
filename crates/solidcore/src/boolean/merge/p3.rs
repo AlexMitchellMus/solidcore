@@ -449,7 +449,7 @@ fn source_ref(e: EntityRef) -> crate::geom::object::ObjectRef {
 }
 
 /// `new SmBrep(source, pOptCopyBrepMap, pOptReverseMap, bCopyAttributes, bAddAnalytics)`
-/// (topology::brep::p3::copy_brep): the list operands carry no notification state, so
+/// (`topology::brep::p3::copy_brep`): the list operands carry no notification state, so
 /// the copy notifies through an arena-only store (`ArenaNotifyState`: default records,
 /// no attributes, no context), as the arena entry's component copies do.
 fn copy_brep(
@@ -474,7 +474,7 @@ fn copy_brep(
 }
 
 /// `SmBrep::MergeBrep(source, pOptCopyBrepMap, pOptReverseMap, bAddAnalytics)`
-/// (topology::brep::p3::merge_brep), notifying as [`copy_brep`].
+/// (`topology::brep::p3::merge_brep`), notifying as [`copy_brep`].
 fn combine_brep(
     k: &mut Kernel,
     target: &mut Brep,
