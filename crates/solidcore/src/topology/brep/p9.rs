@@ -2552,11 +2552,15 @@ mod tests {
             let vertex_ref = split_key(EntityRef::Vertex(vertex));
             let shell_ref = split_key(EntityRef::Shell(shell));
             let expected = [
+                (
+                    NotifyOperation::ChangeGeometry,
+                    split_key(EntityRef::Vertexuse(vu)),
+                ),
                 (NotifyOperation::ChangeGeometry, vertex_ref),
                 (NotifyOperation::AddToBrep, brep_ref(&b)),
                 (NotifyOperation::AddToBrep, brep_ref(&b)),
             ];
-            assert_eq!(events.len(), expected.len() * 2);
+            assert_eq!(events.len(), expected.len() * 2, "{events:?}");
             for (pair, (operation, caller)) in events.chunks_exact(2).zip(expected) {
                 assert_eq!((pair[0].callback, pair[1].callback), ("user", "system"));
                 for event in pair {
@@ -2564,8 +2568,10 @@ mod tests {
                     assert_eq!(event.data, pair[0].data);
                 }
             }
-            assert_eq!(events[2].data, [Some(vertex_ref), Some(brep_ref(&b)), None]);
-            assert_eq!(events[4].data, [Some(shell_ref), Some(brep_ref(&b)), None]);
+            assert_eq!(events[0].data, [None; 3]);
+            assert_eq!(events[2].data, [None; 3]);
+            assert_eq!(events[4].data, [Some(vertex_ref), Some(brep_ref(&b)), None]);
+            assert_eq!(events[6].data, [Some(shell_ref), Some(brep_ref(&b)), None]);
         }
 
         #[test]

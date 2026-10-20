@@ -1917,12 +1917,12 @@ mod tests {
                 b.edge_mut(edge).unwrap().edgeuses.push(eu);
             }
         }
-        for side in 0..2 {
+        for (side, &loopuse) in loopuses.iter().enumerate() {
             let uses = edges[..3]
                 .iter()
                 .map(|&edge| b.edge(edge).unwrap().edgeuses[side])
                 .collect::<Vec<_>>();
-            b.loopuse_mut(loopuses[side]).unwrap().start = LoopuseStart::Edgeuse(Some(uses[0]));
+            b.loopuse_mut(loopuse).unwrap().start = LoopuseStart::Edgeuse(Some(uses[0]));
             for index in 0..3 {
                 let (next, previous) = if side == 0 { (1, 2) } else { (2, 1) };
                 let eu = b.edgeuse_mut(uses[index]).unwrap();

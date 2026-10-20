@@ -146,7 +146,7 @@ pub struct SolidOffsetOptions {
 /// returned as the result: the same B-rep is never represented by two owned values.
 /// In particular a positive shell Boolean can consume the input before a late
 /// deferred cache/transform error; its actual operand slot controls this report.
-/// Currently the real manifold query defers before ownership can transfer.
+/// The real manifold query and strict radius guard run before offset construction.
 #[derive(Debug)]
 pub struct ShellOutcome {
     /// Native shell status and, on success, its owned B-rep.
@@ -1727,7 +1727,7 @@ mod tests {
     }
 
     #[test]
-    fn kernel_context_synchronization_splits_only_result_keys() {
+    fn kernel_context_synchronization_preserves_result_keys_on_post_split_error() {
         let mut original = source_brep();
         let old = wire_use(&mut original);
         let other = wire_use(&mut original);
@@ -1785,8 +1785,11 @@ mod tests {
         exec.set_offset_brep(result);
         exec.relate_edgeuses(old, part);
         exec.relate_edgeuses(other, whole);
-        let synchronized = exec
-            .synchronize_offset_edgeuses_with_kernel_context(
+        // This ownerless wire fixture splits, but has no cw/ccw neighbours for
+        // insert_breaks to append. Preserve the real partial edit and callbacks
+        // on the ensuing null-pointer status, not a fabricated synchronized list.
+        assert_status(
+            exec.synchronize_offset_edgeuses_with_kernel_context(
                 &mut kernel,
                 Some(old),
                 Some(other),
@@ -1796,12 +1799,9 @@ mod tests {
                     key_of: &result_key,
                 },
                 &result_curve,
-            )
-            .unwrap();
-        assert_eq!(synchronized.edgeuses, vec![Some(part)]);
-        assert_eq!(synchronized.other_edgeuses.len(), 1);
-        assert!(synchronized.gaps.is_empty());
-        assert_eq!(synchronized.other_gaps, vec![whole]);
+            ),
+            1006,
+        );
         assert_eq!(exec.offset_brep().unwrap().edges().len(), 3);
         assert_eq!(exec.offset_brep().unwrap().vertices().len(), 5);
         for (key, record) in source_records {
@@ -2199,7 +2199,7 @@ mod tests {
         let mut fixture = NotificationFixture::new(&source_brep());
         let mut record = Topology::new();
         record.set_user_index1(912);
-        fixture.records.insert(face_ref.key, record.clone());
+        fixture.records.insert(face_ref.key, record);
         let mut exec = executive();
         exec.insert_extended_surface(
             face_ref.key.0,

@@ -2411,12 +2411,7 @@ mod tests {
         // path reaches SM_ERR_INVALID_INPUT for |distance| < 2*tolerance instead
         // of deferring at the former topology back-edge. The operation adapter
         // represents this ordinary failure as the scalar status, not Output.error.
-        for distance in [
-            0.0,
-            1.9999999999999995e-6,
-            -1.9999999999999995e-6,
-            -0.0,
-        ] {
+        for distance in [0.0, 1.9999999999999995e-6, -1.9999999999999995e-6, -0.0] {
             let mut input = input(Operation::StaticShell);
             input.source = Some(Fixture::Empty);
             input.config.offset_distance = distance;
@@ -2427,27 +2422,27 @@ mod tests {
             assert_eq!(output.ints["status"], [1007]);
             assert_eq!(output.ints["ownership"], [0, 1, 0]);
             assert_eq!(output.ints["doing_boolean"], [0, 0]);
-            assert_eq!(output.ints["source.present"], [1]);
+            assert_eq!(output.ints["source.after.present"], [1]);
             let native = Runner.run_cpp(&test_case).unwrap();
             assert!(native.deferred.is_none());
             assert_eq!(native.ints["status"], output.ints["status"]);
             assert_eq!(native.ints["ownership"], output.ints["ownership"]);
             assert_eq!(native.ints["doing_boolean"], output.ints["doing_boolean"]);
-            assert_eq!(native.ints["source.present"], output.ints["source.present"]);
+            assert!(crate::compare::compare(&native, &output, Runner.abs_floors()).pass());
         }
         // The guard is strict: exactly 2*tolerance and the adjacent value above
         // it proceed into DoSolidOffset and its ShrinkGeometry back-edge.
-        for distance in [
-            2e-6,
-            2.0000000000000003e-6,
-            -2e-6,
-            -2.0000000000000003e-6,
-        ] {
+        for distance in [2e-6, 2.0000000000000003e-6, -2e-6, -2.0000000000000003e-6] {
             let mut input = input(Operation::StaticShell);
             input.source = Some(Fixture::Empty);
             input.config.offset_distance = distance;
             assert_eq!(
-                Runner.run_rust(&case(&input)).unwrap().deferred.unwrap().symbol,
+                Runner
+                    .run_rust(&case(&input))
+                    .unwrap()
+                    .deferred
+                    .unwrap()
+                    .symbol,
                 "SmBrep::ShrinkGeometry"
             );
         }
@@ -2658,6 +2653,19 @@ mod tests {
                 assert!(output.deferred.is_none());
                 assert!(output.error.is_none());
                 assert!(!output.values.is_empty());
+            } else if input.operation == Operation::StaticShell
+                && cfg.offset_distance.abs() < 2.0 * input.tolerance
+            {
+                // The real manifold query now reaches the native radius guard
+                // even for nonempty geometry; this is not a constructed result.
+                early += 1;
+                assert!(output.deferred.is_none());
+                assert!(output.error.is_none());
+                assert_eq!(output.ints["status"], [1007]);
+                assert_eq!(output.ints["ownership"], [0, 1, 0]);
+                assert_eq!(output.ints["result.present"], [0]);
+                let native = Runner.run_cpp(&case(&input)).unwrap();
+                assert!(crate::compare::compare(&native, &output, Runner.abs_floors()).pass());
             } else {
                 positive += 1;
                 assert!(

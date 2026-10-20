@@ -203,8 +203,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "static_shell_box_inset_duplicate_selected_face",
@@ -239,8 +239,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "static_shell_sheet_sidewalls",
@@ -311,8 +311,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Notify",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "extended_trimmed_line_wire",
@@ -334,16 +334,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "static_shell_wire_manifold_query_before_distance",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/offset.offset_executive_p2/native_paths.json#17 (upstream tests/SM_API_test/src/TestSmBrep.cpp:2679-2686 (static wire/zero reduction))",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
       "deferred": {
@@ -359,8 +355,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Notify",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "empty_extended_still_stitches",
@@ -991,21 +987,17 @@
       "values_compared": 34
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "shell_boundary_below_two_tol",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/offset.offset_executive_p2/tolerance_boundaries.json#0 (upstream tests/SM_API_test/src/TestSmBrep.cpp:2679-2686 (strict-boundary/static reduction))",
-      "values_compared": 0
+      "values_compared": 54
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "shell_boundary_exactly_two_tol",
@@ -1016,8 +1008,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "shell_boundary_above_two_tol",
@@ -1028,8 +1020,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "shell_boundary_negative_exactly_two_tol",
@@ -1099,21 +1091,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "tiny_tolerance_sheet_below_boundary",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/offset.offset_executive_p2/tolerance_boundaries.json#9 (upstream tests/SM_API_test/src/TestSmBrep.cpp:2679-2686 (tiny-tolerance/static reduction))",
-      "values_compared": 0
+      "values_compared": 54
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "tiny_tolerance_sheet_exact_boundary",
@@ -1124,8 +1112,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "tiny_tolerance_sheet_above_boundary",
@@ -1135,21 +1123,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "large_tolerance_wire_below_boundary",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/offset.offset_executive_p2/tolerance_boundaries.json#12 (upstream tests/SM_API_test/src/TestSmBrep.cpp:2679-2686 (large-tolerance/wire reduction))",
-      "values_compared": 0
+      "values_compared": 34
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::ShrinkGeometry",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "large_tolerance_wire_exact_boundary",
@@ -1160,8 +1144,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "large_tolerance_wire_above_boundary",
@@ -1184,8 +1168,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0000",
@@ -1212,8 +1196,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0003",
@@ -1292,8 +1276,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0011",
@@ -1323,16 +1307,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0014",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13762038679086224255",
-      "values_compared": 0
+      "values_compared": 54
     },
     {
       "deferred": {
@@ -1348,8 +1328,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0016",
@@ -1367,16 +1347,12 @@
       "values_compared": 54
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0018",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13762038679086224259",
-      "values_compared": 0
+      "values_compared": 54
     },
     {
       "max_rel_err": 0.0,
@@ -1408,8 +1384,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeShellVertexTopology",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0022",
@@ -1420,8 +1396,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeShellVertexTopology",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0023",
@@ -1512,8 +1488,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0032",
@@ -1560,8 +1536,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0037",
@@ -1572,8 +1548,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0038",
@@ -1596,8 +1572,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0040",
@@ -1624,8 +1600,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0043",
@@ -1636,8 +1612,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0044",
@@ -1704,8 +1680,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0050",
@@ -1736,8 +1712,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0053",
@@ -1748,8 +1724,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0054",
@@ -1760,8 +1736,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0055",
@@ -1799,16 +1775,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0059",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13762038679086224300",
-      "values_compared": 0
+      "values_compared": 54
     },
     {
       "max_rel_err": 0.0,
@@ -1868,8 +1840,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0066",
@@ -1932,8 +1904,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0073",
@@ -1996,8 +1968,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0080",
@@ -2007,16 +1979,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0081",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13762038679086224322",
-      "values_compared": 0
+      "values_compared": 54
     },
     {
       "max_rel_err": 0.0,
@@ -2028,8 +1996,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0083",
@@ -2051,21 +2019,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0085",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13762038679086224326",
-      "values_compared": 0
+      "values_compared": 54
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0086",
@@ -2328,8 +2292,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0112",
@@ -2391,16 +2355,12 @@
       "values_compared": 37
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0119",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13762038679086224360",
-      "values_compared": 0
+      "values_compared": 54
     },
     {
       "deferred": {
@@ -2436,8 +2396,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0123",
@@ -2540,8 +2500,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0134",
@@ -2579,16 +2539,12 @@
       "values_compared": 54
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0138",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13762038679086224379",
-      "values_compared": 0
+      "values_compared": 54
     },
     {
       "deferred": {
@@ -2868,8 +2824,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0166",
@@ -2920,8 +2876,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0171",
@@ -2944,8 +2900,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0173",
@@ -2964,8 +2920,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0175",
@@ -2988,8 +2944,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0177",
@@ -3080,8 +3036,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0185",
@@ -3128,8 +3084,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0189",
@@ -3192,8 +3148,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0195",
@@ -3236,8 +3192,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0200",
@@ -3332,8 +3288,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0210",
@@ -3376,8 +3332,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Notify",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "gen0214",
@@ -3428,8 +3384,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0219",
@@ -3439,16 +3395,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0220",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13762038679086224461",
-      "values_compared": 0
+      "values_compared": 54
     },
     {
       "deferred": {
@@ -3476,8 +3428,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeShellVertexTopology",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0223",
@@ -3488,8 +3440,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0224",
@@ -3524,8 +3476,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0227",
@@ -3564,8 +3516,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0231",
@@ -3576,8 +3528,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeShellVertexTopology",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0232",
@@ -3608,8 +3560,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+        "unit": "offset.offset_executive_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0235",
@@ -3656,17 +3608,16 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 176,
+  "cases_deferred": 164,
   "cases_failed": 0,
-  "cases_passed": 129,
+  "cases_passed": 141,
   "cases_rejected": 17,
   "cases_total": 322,
   "deferred_by_unit": {
-    "offset.offset_executive_p2": 67,
-    "query.brep": 3,
-    "topology.brep_p2": 65,
-    "topology.brep_p3": 32,
-    "topology.brep_p4": 9
+    "offset.offset_executive_p2": 100,
+    "query.brep": 7,
+    "topology.brep_p3": 47,
+    "topology.brep_p4": 10
   },
   "max_rel_err": 0.0,
   "pass": true,

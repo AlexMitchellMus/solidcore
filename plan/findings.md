@@ -9059,6 +9059,34 @@ continuations.
 
 ## offset.offset_executive_p2 (partial, PR #201, 2026-10-17)
 
+### Current merged-main evidence (2026-10-21; supersedes earlier snapshots)
+
+- Main through `1a146028` is merged without rebasing. The landed B-rep p2
+  manifold, notification, shell-vertex and surface-replacement calls are wired;
+  extension still explicitly defers before the unfinished trim-domain continuation.
+- Default native run: **322 cases, 141 compared passes, 164 deferred, 17 rejected,
+  zero failures**; maximum relative error zero and sensitivity **141/141**.
+  All 129 earlier compared records and all 17 constructor rejections are unchanged.
+  Twelve former deferrals now compare the strict shell-radius error, not successful
+  constructive geometry. Tolerances, generators, seeds and absolute floors are unchanged.
+- Current deferrals: executive FaceuseOffset geometry/SSI bridge 100; copy
+  constructor (`topology.brep_p3`) 32; `MakeWireEdgeVertex` (same unit) 15;
+  `CalculateBoundingBox` (`query.brep`) 7; `ShrinkGeometry` (`topology.brep_p4`) 10.
+  The production OffsetBrep bridge, automatic Boolean tolerances (#229), vertex
+  follow-up (#288) and complete returned-shape adapter remain separate work.
+- Newly reachable p7 glue now retains caller stores/context for incident-face
+  PreEdit and includes the real B-rep identity in edge/face notification payloads.
+  A regression asserts the complete user/system callback prefix on a real
+  triangular sheet, error-path record/attribute preservation and null-context
+  semantics. Restoring the original notification behavior makes that test fail.
+- The full local ARM64 differential gate ran all **235 units**: 113 green,
+  118 partial and the four previously documented architecture-dependent failures
+  (`geom.hash_table`, `heal.heal_data_p1/p2/p3`; see General). P1, Boolean p4,
+  B-rep p7/p9 and edge reports are byte-identical to their committed reports.
+  This is not an x86-64 full-gate pass; fresh canonical CI is still required.
+
+### Earlier scope and evidence history
+
 The prerequisite p1 PR #175 merged on 2026-10-18; its reviewed changes and current
 main through `fb58ea76`, including merged batch #269, are integrated here.
 All six owned static/member/API entrypoints have real native dispatch and Rust
