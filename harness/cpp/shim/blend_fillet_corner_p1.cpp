@@ -3,7 +3,7 @@
 // source/SMLib/src/SmFilletCorner.cpp (sm_TestG1Continuity, sm_GetFaceByTwoEdgeuses,
 // sm_CheckTangentialEdgeuse, sm_CheckFaceComplimentaryCornerConcavity,
 // sm_CreateSrfOfRevolution, sm_CreatePlanarSurface, sm_GetFilletRadius, sm_CheckSeamOut,
-// sm_SetSurfaceClosure).
+// sm_SetSurfaceClosure) and the static SmFilletNx1Corner::CheckNx1Degeneracy.
 //
 // Static functions cannot be linked against, so this translation unit compiles
 // SmFilletCorner.cpp itself, at global scope (as blend_fillet_geom_p1.cpp does with
@@ -62,6 +62,7 @@ enum : int32_t
     OP_FACE_BY_TWO = 6,
     OP_TANGENTIAL = 7,
     OP_CONCAVITY = 8,
+    OP_NX1_DEGENERACY = 9,
 };
 
 const double REFUSED = -2.0;
@@ -246,6 +247,29 @@ void run_topology(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
         o.push_back(flg(sm_CheckFaceComplimentaryCornerConcavity(v, eu1, eu2, ref, 0)));
         return;
     }
+    case OP_NX1_DEGENERACY:
+    {
+        // `v eu` -> `ret`: SmFilletNx1Corner::CheckNx1Degeneracy (its raw int return: the
+        // flag, or the status `SER` returns through it)
+        SmVertex* v = req(g.vertices, rd.idx());
+        SmEdgeuse* eu = req(g.edgeuses, rd.idx());
+        // every dereference before the evaluations: the clockwise neighbour, the radial's
+        // counter-clockwise neighbour (its mate when they coincide), their vertex uses and
+        // edges
+        SmEdgeuse* side1 = eu->GetCWEdgeuse();
+        SmEdgeuse* side2 = eu->GetRadial() ? eu->GetRadial()->GetCCWEdgeuse() : nullptr;
+        if (side1 != nullptr && side1 == side2)
+            side2 = side1->GetMate();
+        bool ok = side1 != nullptr && side2 != nullptr && side1->GetVertexuse() != nullptr &&
+                  side2->GetVertexuse() != nullptr && side1->GetEdge() != nullptr && side2->GetEdge() != nullptr;
+        if (!ok)
+        {
+            o.push_back(REFUSED);
+            return;
+        }
+        o.push_back((double)SmFilletNx1Corner::CheckNx1Degeneracy(v, eu));
+        return;
+    }
     default: o.push_back(REFUSED); return;
     }
 }
@@ -269,7 +293,8 @@ SC_EXPORT int32_t sc_blend_fillet_corner_p1_helper(int32_t op, const char* path,
     case OP_G1:
     case OP_FACE_BY_TWO:
     case OP_TANGENTIAL:
-    case OP_CONCAVITY: run_topology(op, rd, path, o); break;
+    case OP_CONCAVITY:
+    case OP_NX1_DEGENERACY: run_topology(op, rd, path, o); break;
     default: return SC_ERR_ARG;
     }
     return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len);

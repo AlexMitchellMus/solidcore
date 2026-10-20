@@ -9417,16 +9417,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "box1x1x2_eu0_m0_circ",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#0 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -9437,12 +9433,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "box1x1x2_eu0_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#2 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -9453,12 +9453,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "box1x1x2_eu0_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#4 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -9509,16 +9513,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "box1x1x2_eu17_m0_circ",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#11 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -9529,12 +9529,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "box1x1x2_eu17_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#13 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -9545,12 +9549,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "box1x1x2_eu17_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#15 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -9601,16 +9609,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "brick_eu0_m0_circ",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#22 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -9621,12 +9625,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "brick_eu0_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#24 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -9637,12 +9645,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "brick_eu0_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#26 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -9693,16 +9705,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "brick_eu17_m0_circ",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#33 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -9713,12 +9721,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "brick_eu17_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#35 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -9729,12 +9741,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "brick_eu17_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#37 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -9786,8 +9802,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "corner_box_eu0_m0_circ",
@@ -9809,12 +9825,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "corner_box_eu0_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#46 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -9825,12 +9845,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "corner_box_eu0_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#48 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -9882,8 +9906,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "corner_box_eu17_m0_circ",
@@ -9905,12 +9929,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "corner_box_eu17_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#57 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -9921,12 +9949,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "corner_box_eu17_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#59 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -9977,16 +10009,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "l_shaped_box_eu0_m0_circ",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#66 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -9997,12 +10025,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "l_shaped_box_eu0_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#68 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10013,12 +10045,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "l_shaped_box_eu0_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#70 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10069,16 +10105,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "l_shaped_box_eu17_m0_circ",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#77 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -10089,12 +10121,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "l_shaped_box_eu17_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#79 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10105,12 +10141,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "l_shaped_box_eu17_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#81 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10161,16 +10201,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "6_sided_corner_eu0_m0_circ",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#88 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -10181,12 +10217,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "6_sided_corner_eu0_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#90 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10197,12 +10237,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "6_sided_corner_eu0_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#92 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10253,16 +10297,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "6_sided_corner_eu17_m0_circ",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#99 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -10273,12 +10313,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "6_sided_corner_eu17_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#101 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10289,12 +10333,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "6_sided_corner_eu17_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#103 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10346,8 +10394,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "box_w_slot_eu0_m0_circ",
@@ -10398,8 +10446,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
       },
       "max_rel_err": 0.0,
       "name": "box_w_slot_eu0_m4_circ",
@@ -10418,8 +10466,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
       },
       "max_rel_err": 0.0,
       "name": "box_w_slot_eu0_m4_mixed",
@@ -10446,8 +10494,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
       },
       "max_rel_err": 0.0,
       "name": "box_w_slot_eu17_m0_circ",
@@ -10498,8 +10546,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
       },
       "max_rel_err": 0.0,
       "name": "box_w_slot_eu17_m4_circ",
@@ -10518,8 +10566,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
       },
       "max_rel_err": 0.0,
       "name": "box_w_slot_eu17_m4_mixed",
@@ -10546,8 +10594,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "nurb_box_eu0_m0_circ",
@@ -10569,12 +10617,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "nurb_box_eu0_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#134 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10585,12 +10637,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "nurb_box_eu0_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#136 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10642,8 +10698,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "nurb_box_eu17_m0_circ",
@@ -10665,12 +10721,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "nurb_box_eu17_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#145 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10681,12 +10741,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "nurb_box_eu17_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#147 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10738,8 +10802,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
       },
       "max_rel_err": 0.0,
       "name": "filleted_box_eu0_m0_circ",
@@ -10761,12 +10825,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "filleted_box_eu0_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#156 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10777,12 +10845,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "filleted_box_eu0_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#158 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10834,8 +10906,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
       },
       "max_rel_err": 0.0,
       "name": "filleted_box_eu17_m0_circ",
@@ -10857,12 +10929,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "filleted_box_eu17_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#167 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10873,12 +10949,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "filleted_box_eu17_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#169 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10929,16 +11009,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "box_on_box_eu0_m0_circ",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#176 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -10949,12 +11025,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "box_on_box_eu0_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#178 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10965,12 +11045,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "box_on_box_eu0_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#180 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11021,16 +11105,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "box_on_box_eu17_m0_circ",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#187 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -11041,12 +11121,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "box_on_box_eu17_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#189 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11057,12 +11141,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "box_on_box_eu17_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#191 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11113,16 +11201,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "cyl_on_box_eu0_m0_circ",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#198 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -11133,12 +11217,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "cyl_on_box_eu0_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#200 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11149,12 +11237,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "cyl_on_box_eu0_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#202 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11205,16 +11297,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "cyl_on_box_eu17_m0_circ",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#209 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -11225,12 +11313,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "cyl_on_box_eu17_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#211 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11241,12 +11333,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "cyl_on_box_eu17_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#213 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11297,16 +11393,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "open_shell_eu0_m0_circ",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#220 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -11317,12 +11409,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "open_shell_eu0_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#222 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11333,12 +11429,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "open_shell_eu0_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#224 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11389,28 +11489,20 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "open_shell_eu17_m0_circ",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#231 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "open_shell_eu17_m1_circ",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#232 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -11485,16 +11577,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "rollover_corner_eu0_m0_circ",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#242 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -11505,12 +11593,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "rollover_corner_eu0_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#244 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11521,12 +11613,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "rollover_corner_eu0_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#246 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11578,8 +11674,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "rollover_corner_eu17_m0_circ",
@@ -11601,12 +11697,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "rollover_corner_eu17_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#255 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11617,12 +11717,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "rollover_corner_eu17_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#257 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11674,8 +11778,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "test1_eu0_m0_circ",
@@ -11686,8 +11790,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "test1_eu0_m1_circ",
@@ -11778,8 +11882,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "test1_eu17_m1_circ",
@@ -11861,16 +11965,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "loft_brick_eu0_m0_circ",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#286 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -11881,12 +11981,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "loft_brick_eu0_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#288 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11897,12 +12001,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "loft_brick_eu0_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#290 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11953,16 +12061,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "loft_brick_eu17_m0_circ",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#297 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -11973,12 +12077,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "loft_brick_eu17_m2_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#299 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11989,12 +12097,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "loft_brick_eu17_m3_circ",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/blend.fillet_corner_p3/upstream_files.json#301 (upstream tests/SM_API_test/src/TestSmFillets.cpp:68)",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -12053,14 +12165,10 @@
       "values_compared": 259
     },
     {
-      "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0001",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549619",
       "values_compared": 0
     },
@@ -12109,12 +12217,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0006",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=10924742201818549624",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -12150,8 +12262,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0010",
@@ -12181,12 +12293,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0013",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=10924742201818549631",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -12213,16 +12329,12 @@
       "values_compared": 363
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0017",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549635",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -12234,8 +12346,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0019",
@@ -12253,16 +12365,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0021",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549639",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -12322,8 +12430,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0028",
@@ -12381,24 +12489,24 @@
       "values_compared": 421
     },
     {
-      "max_rel_err": 0.0,
-      "name": "gen0035",
-      "outcome": "pass",
-      "pass": true,
-      "source": "generated:seed=10924742201818549653",
-      "values_compared": 3
-    },
-    {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0036",
+      "name": "gen0035",
       "outcome": "deferred",
       "pass": false,
-      "source": "generated:seed=10924742201818549654",
+      "source": "generated:seed=10924742201818549653",
       "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0036",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=10924742201818549654",
+      "values_compared": 3
     },
     {
       "deferred": {
@@ -12841,21 +12949,17 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0046",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549664",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0047",
@@ -12865,12 +12969,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0048",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=10924742201818549666",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -12889,24 +12997,24 @@
       "values_compared": 3
     },
     {
-      "max_rel_err": 0.0,
-      "name": "gen0051",
-      "outcome": "pass",
-      "pass": true,
-      "source": "generated:seed=10924742201818549669",
-      "values_compared": 364
-    },
-    {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmFilletNx2Corner::AdjustConcaveCornerTopology",
+        "unit": "blend.fillet_corner_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0052",
+      "name": "gen0051",
       "outcome": "deferred",
       "pass": false,
-      "source": "generated:seed=10924742201818549670",
+      "source": "generated:seed=10924742201818549669",
       "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0052",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=10924742201818549670",
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -12917,16 +13025,12 @@
       "values_compared": 363
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0054",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549672",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -13013,24 +13117,24 @@
       "values_compared": 0
     },
     {
-      "max_rel_err": 0.0,
-      "name": "gen0064",
-      "outcome": "pass",
-      "pass": true,
-      "source": "generated:seed=10924742201818549682",
-      "values_compared": 348
-    },
-    {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmFilletNx2Corner::AdjustConcaveCornerTopology",
+        "unit": "blend.fillet_corner_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0065",
+      "name": "gen0064",
       "outcome": "deferred",
       "pass": false,
-      "source": "generated:seed=10924742201818549683",
+      "source": "generated:seed=10924742201818549682",
       "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0065",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=10924742201818549683",
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -13061,16 +13165,12 @@
       "values_compared": 363
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0069",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549687",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -13097,14 +13197,10 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0073",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549691",
       "values_compared": 0
     },
@@ -13157,12 +13253,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0079",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=10924742201818549697",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -13186,8 +13286,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0082",
@@ -13301,16 +13401,12 @@
       "values_compared": 347
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0091",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549709",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -13358,8 +13454,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0094",
@@ -13390,8 +13486,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0097",
@@ -13401,12 +13497,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0098",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=10924742201818549716",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -13417,12 +13517,16 @@
       "values_compared": 363
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0100",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=10924742201818549718",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -13557,16 +13661,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0115",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549733",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "deferred": {
@@ -13582,8 +13682,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0117",
@@ -13650,8 +13750,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
       },
       "max_rel_err": 0.0,
       "name": "gen0124",
@@ -13734,8 +13834,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
       },
       "max_rel_err": 0.0,
       "name": "gen0133",
@@ -13769,14 +13869,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0136",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549754",
       "values_compared": 0
     },
@@ -13798,8 +13894,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0139",
@@ -14268,8 +14364,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0148",
@@ -14291,21 +14387,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0150",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549768",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
       },
       "max_rel_err": 0.0,
       "name": "gen0151",
@@ -14360,8 +14452,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0157",
@@ -14491,12 +14583,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0171",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=10924742201818549789",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -14579,12 +14675,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0180",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=10924742201818549798",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -14612,8 +14712,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0183",
@@ -14623,24 +14723,24 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0184",
-      "outcome": "deferred",
-      "pass": false,
-      "source": "generated:seed=10924742201818549802",
-      "values_compared": 0
-    },
-    {
-      "max_rel_err": 0.0,
-      "name": "gen0185",
       "outcome": "pass",
       "pass": true,
-      "source": "generated:seed=10924742201818549803",
+      "source": "generated:seed=10924742201818549802",
       "values_compared": 3
+    },
+    {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0185",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=10924742201818549803",
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -14695,21 +14795,17 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0192",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549810",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0193",
@@ -14728,8 +14824,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0195",
@@ -14756,8 +14852,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0198",
@@ -14791,16 +14887,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0202",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549820",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -14812,8 +14904,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
       },
       "max_rel_err": 0.0,
       "name": "gen0204",
@@ -14840,8 +14932,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0207",
@@ -14852,8 +14944,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
       },
       "max_rel_err": 0.0,
       "name": "gen0208",
@@ -14876,8 +14968,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0210",
@@ -15006,14 +15098,10 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0218",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549836",
       "values_compared": 0
     },
@@ -15079,12 +15167,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0221",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=10924742201818549839",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -15095,12 +15187,16 @@
       "values_compared": 363
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0223",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=10924742201818549841",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "inputs": {
@@ -15142,8 +15238,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0226",
@@ -15170,8 +15266,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0229",
@@ -15194,8 +15290,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0231",
@@ -15233,24 +15329,24 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0235",
-      "outcome": "deferred",
-      "pass": false,
-      "source": "generated:seed=10924742201818549853",
-      "values_compared": 0
-    },
-    {
-      "max_rel_err": 0.0,
-      "name": "gen0236",
       "outcome": "pass",
       "pass": true,
-      "source": "generated:seed=10924742201818549854",
+      "source": "generated:seed=10924742201818549853",
       "values_compared": 3
+    },
+    {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0236",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=10924742201818549854",
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -15261,16 +15357,12 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0238",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549856",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "deferred": {
@@ -15285,16 +15377,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0240",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549858",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -15314,8 +15402,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0243",
@@ -15333,12 +15421,16 @@
       "values_compared": 368
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0245",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=10924742201818549863",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -15349,12 +15441,16 @@
       "values_compared": 301
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0247",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=10924742201818549865",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -15389,14 +15485,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0251",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549869",
       "values_compared": 0
     },
@@ -15413,16 +15505,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0253",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549871",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "deferred": {
@@ -15437,14 +15525,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0255",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549873",
       "values_compared": 0
     },
@@ -15822,24 +15906,24 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0257",
-      "outcome": "deferred",
-      "pass": false,
-      "source": "generated:seed=10924742201818549875",
-      "values_compared": 0
-    },
-    {
-      "max_rel_err": 0.0,
-      "name": "gen0258",
       "outcome": "pass",
       "pass": true,
-      "source": "generated:seed=10924742201818549876",
+      "source": "generated:seed=10924742201818549875",
       "values_compared": 3
+    },
+    {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0258",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=10924742201818549876",
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -15883,8 +15967,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0263",
@@ -15923,8 +16007,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0267",
@@ -15946,16 +16030,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0269",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549887",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -15982,16 +16062,12 @@
       "values_compared": 289
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0273",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549891",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -16031,8 +16107,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0278",
@@ -16078,28 +16154,20 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0283",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549901",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0284",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549902",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -16118,14 +16186,10 @@
       "values_compared": 361
     },
     {
-      "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0287",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549905",
       "values_compared": 0
     },
@@ -16259,8 +16323,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0303",
@@ -16278,16 +16342,12 @@
       "values_compared": 340
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0305",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549923",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -16568,8 +16628,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0311",
@@ -16659,24 +16719,24 @@
       "values_compared": 0
     },
     {
-      "max_rel_err": 0.0,
-      "name": "gen0320",
-      "outcome": "pass",
-      "pass": true,
-      "source": "generated:seed=10924742201818549938",
-      "values_compared": 3
-    },
-    {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0321",
+      "name": "gen0320",
       "outcome": "deferred",
       "pass": false,
-      "source": "generated:seed=10924742201818549939",
+      "source": "generated:seed=10924742201818549938",
       "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0321",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=10924742201818549939",
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -16703,12 +16763,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0325",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=10924742201818549943",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -16731,12 +16795,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0328",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=10924742201818549946",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -16803,22 +16871,22 @@
       "values_compared": 0
     },
     {
-      "max_rel_err": 0.0,
-      "name": "gen0336",
-      "outcome": "pass",
-      "pass": true,
-      "source": "generated:seed=10924742201818549954",
-      "values_compared": 3
-    },
-    {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0337",
+      "name": "gen0336",
       "outcome": "deferred",
       "pass": false,
+      "source": "generated:seed=10924742201818549954",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0337",
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549955",
       "values_compared": 0
     },
@@ -16839,28 +16907,20 @@
       "values_compared": 254
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0340",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549958",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0341",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549959",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -16871,28 +16931,20 @@
       "values_compared": 347
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0343",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549961",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0344",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549962",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -16928,8 +16980,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0349",
@@ -17028,8 +17080,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0355",
@@ -17040,8 +17092,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
       },
       "max_rel_err": 0.0,
       "name": "gen0356",
@@ -17072,8 +17124,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0359",
@@ -17104,8 +17156,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0362",
@@ -17115,12 +17167,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "sm_FindConcaveEdgeuses",
+        "unit": "blend.fillet_corner_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0363",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=10924742201818549981",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -17156,8 +17212,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
       },
       "max_rel_err": 0.0,
       "name": "gen0367",
@@ -17168,8 +17224,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0368",
@@ -17254,14 +17310,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0373",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818549991",
       "values_compared": 0
     },
@@ -17323,8 +17375,8 @@
     },
     {
       "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmBrep::MakeTopologyFromData",
+        "unit": "topology.brep_p10"
       },
       "max_rel_err": 0.0,
       "name": "gen0380",
@@ -17350,16 +17402,12 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0383",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818550001",
-      "values_compared": 0
+      "values_compared": 3
     },
     {
       "max_rel_err": 0.0,
@@ -17829,8 +17877,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletNx1Corner::CheckNx1Degeneracy",
-        "unit": "blend.fillet_corner_p1"
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
       },
       "max_rel_err": 0.0,
       "name": "gen0390",
@@ -18218,406 +18266,43 @@
       "values_compared": 0
     },
     {
-      "inputs": {
-        "case": "corner",
-        "corner": {
-          "adjusted": false,
-          "all": [
-            [0, 0],
-            [1, 0],
-            [2, 0],
-            [3, 0]
-          ],
-          "arc_edges": [],
-          "bevel": false,
-          "blending": true,
-          "chamfer": false,
-          "degenerate": false,
-          "edges": [4, 5, 2],
-          "ext": false,
-          "kind": 7,
-          "line_edges": [],
-          "orig_faces": [],
-          "setback": 0.0,
-          "solver": [
-            [1, 0],
-            [2, 0]
-          ],
-          "tan": 0.13762851318271724,
-          "tol": 0.0,
-          "tsects": [
-            {
-              "e": 0,
-              "s0": 1,
-              "s1": 0,
-              "t": 0.020497132013693076,
-              "uv0": [0.6007479937174476, 0.7896899503848125],
-              "uv1": [0.9899904943132193, 0.38113964921549637],
-              "which": 0
-            },
-            {
-              "e": 1,
-              "s0": 1,
-              "s1": 0,
-              "t": 0.024257444187281818,
-              "uv0": [0.16419345741309394, 0.47772786387751837],
-              "uv1": [0.9899904943132193, 0.38113964921549637],
-              "which": 0
-            }
-          ],
-          "v_edge": -1,
-          "v_sub": 0,
-          "verts": [0, 3, 4]
-        },
-        "model": {
-          "edges": [
-            {
-              "corner": -1,
-              "curve": {
-                "cpts": [
-                  [0.0, 0.0, 19880.691538879386, 1.0],
-                  [100000.0, 0.0, 19880.691538879386, 1.0]
-                ],
-                "dim": 3,
-                "p": 1,
-                "u": [0.0, 0.0, 1.0, 1.0]
-              },
-              "etype": 9,
-              "eus": [
-                {
-                  "geom": 0,
-                  "vu_uv": [0.0, 0.0]
-                },
-                {
-                  "geom": 0,
-                  "vu_uv": [0.0, 0.0]
-                }
-              ],
-              "fbe": [-1, -1],
-              "status": 0,
-              "ve": 1,
-              "vs": 0
-            },
-            {
-              "corner": -1,
-              "curve": {
-                "cpts": [
-                  [0.0, 0.0, 19880.691538879386, 1.0],
-                  [-100000.0, 0.0, 19880.691538879386, 1.0]
-                ],
-                "dim": 3,
-                "p": 1,
-                "u": [0.0, 0.0, 1.0, 1.0]
-              },
-              "etype": 9,
-              "eus": [
-                {
-                  "geom": 1,
-                  "vu_uv": [0.0, 0.0]
-                },
-                {
-                  "geom": 1,
-                  "vu_uv": [0.0, 0.0]
-                }
-              ],
-              "fbe": [-1, -1],
-              "status": 0,
-              "ve": 2,
-              "vs": 0
-            },
-            {
-              "corner": -1,
-              "curve": {
-                "cpts": [
-                  [0.0, 19880.691538879386, 0.0, 1.0],
-                  [100000.0, 19880.691538879386, 0.0, 1.0]
-                ],
-                "dim": 3,
-                "p": 1,
-                "u": [0.0, 0.0, 1.0, 1.0]
-              },
-              "etype": 9,
-              "eus": [
-                {
-                  "geom": 0,
-                  "vu_uv": [0.0, 0.0]
-                },
-                {
-                  "geom": 0,
-                  "vu_uv": [0.0, 0.0]
-                }
-              ],
-              "fbe": [-1, -1],
-              "status": 0,
-              "ve": 1,
-              "vs": 3
-            },
-            {
-              "corner": -1,
-              "curve": {
-                "cpts": [
-                  [0.0, -19880.691538879386, 0.0, 1.0],
-                  [-100000.0, -19880.691538879386, 0.0, 1.0]
-                ],
-                "dim": 3,
-                "p": 1,
-                "u": [0.0, 0.0, 1.0, 1.0]
-              },
-              "etype": 9,
-              "eus": [
-                {
-                  "geom": 1,
-                  "vu_uv": [0.0, 0.0]
-                },
-                {
-                  "geom": 1,
-                  "vu_uv": [0.0, 0.0]
-                }
-              ],
-              "fbe": [-1, -1],
-              "status": 0,
-              "ve": 2,
-              "vs": 4
-            },
-            {
-              "corner": -1,
-              "etype": 4,
-              "eus": [
-                {
-                  "geom": -1,
-                  "vu_uv": [0.0, 0.0]
-                },
-                {
-                  "geom": -1,
-                  "vu_uv": [0.0, 0.0]
-                }
-              ],
-              "fbe": [-1, -1],
-              "status": 0,
-              "ve": 3,
-              "vs": 0
-            },
-            {
-              "corner": -1,
-              "etype": 4,
-              "eus": [
-                {
-                  "geom": -1,
-                  "vu_uv": [0.0, 0.0]
-                },
-                {
-                  "geom": -1,
-                  "vu_uv": [0.0, 0.0]
-                }
-              ],
-              "fbe": [-1, -1],
-              "status": 0,
-              "ve": 4,
-              "vs": 3
-            }
-          ],
-          "faces": [
-            {
-              "net": [
-                [
-                  [0.0, 0.0, 0.0, 1.0],
-                  [0.0, 0.0, 100000.0, 1.0]
-                ],
-                [
-                  [100000.0, 0.0, 0.0, 1.0],
-                  [100000.0, 0.0, 100000.0, 1.0]
-                ]
-              ],
-              "p": 1,
-              "q": 1,
-              "u": [0.0, 0.0, 1.0, 1.0],
-              "v": [0.0, 0.0, 1.0, 1.0]
-            },
-            {
-              "net": [
-                [
-                  [0.0, 0.0, 0.0, 1.0],
-                  [0.0, 0.0, 100000.0, 1.0]
-                ],
-                [
-                  [0.0, 100000.0, 0.0, 1.0],
-                  [0.0, 100000.0, 100000.0, 1.0]
-                ]
-              ],
-              "p": 1,
-              "q": 1,
-              "u": [0.0, 0.0, 1.0, 1.0],
-              "v": [0.0, 0.0, 1.0, 1.0]
-            }
-          ],
-          "fillet_brep": [],
-          "geoms": [
-            {
-              "gtype": 0,
-              "other1": [],
-              "other2": [],
-              "rails": [0, 2],
-              "sides": [],
-              "status": 0
-            },
-            {
-              "gtype": 0,
-              "other1": [],
-              "other2": [],
-              "rails": [1, 3],
-              "sides": [],
-              "status": 0
-            }
-          ],
-          "targets": [
-            {
-              "cpts": [
-                [0.0, 0.0, 0.0, 1.0],
-                [0.0, 0.0, 100000.0, 1.0]
-              ],
-              "dim": 3,
-              "p": 1,
-              "u": [0.0, 0.0, 1.0, 1.0]
-            },
-            {
-              "cpts": [
-                [0.0, 0.0, 0.0, 1.0],
-                [100000.0, 0.0, 0.0, 1.0]
-              ],
-              "dim": 3,
-              "p": 1,
-              "u": [0.0, 0.0, 1.0, 1.0]
-            },
-            {
-              "cpts": [
-                [0.0, 0.0, 0.0, 1.0],
-                [-100000.0, 5.973918145416599, 0.0, 1.0]
-              ],
-              "dim": 3,
-              "p": 1,
-              "u": [0.0, 0.0, 1.0, 1.0]
-            },
-            {
-              "cpts": [
-                [0.0, 0.0, 0.0, 1.0],
-                [0.0, -100000.0, 0.0, 1.0]
-              ],
-              "dim": 3,
-              "p": 1,
-              "u": [0.0, 0.0, 1.0, 1.0]
-            }
-          ],
-          "vertices": [
-            {
-              "corner": -1,
-              "mates": [-1, -1],
-              "pc_class": 109,
-              "pc_face": -1,
-              "pc_index": 0,
-              "pc_kind": 2,
-              "pc_sub": 0,
-              "point": [0.0, 0.0, 19880.691538879386],
-              "status": 0,
-              "t_param": 0.0,
-              "uv": [0.0, 0.0],
-              "vtype": 9
-            },
-            {
-              "corner": -1,
-              "mates": [-1, -1],
-              "pc_class": 100,
-              "pc_face": -1,
-              "pc_index": -1,
-              "pc_kind": 0,
-              "pc_sub": 0,
-              "point": [100000.0, 0.0, 19880.691538879386],
-              "status": 0,
-              "t_param": 0.0,
-              "uv": [0.0, 0.0],
-              "vtype": 7
-            },
-            {
-              "corner": -1,
-              "mates": [-1, -1],
-              "pc_class": 100,
-              "pc_face": -1,
-              "pc_index": -1,
-              "pc_kind": 0,
-              "pc_sub": 0,
-              "point": [-100000.0, 0.0, 19880.691538879386],
-              "status": 0,
-              "t_param": 0.0,
-              "uv": [0.0, 0.0],
-              "vtype": 7
-            },
-            {
-              "corner": -1,
-              "mates": [-1, -1],
-              "pc_class": 100,
-              "pc_face": -1,
-              "pc_index": -1,
-              "pc_kind": 0,
-              "pc_sub": 0,
-              "point": [0.0, 19880.691538879386, 0.0],
-              "status": 0,
-              "t_param": 0.0,
-              "uv": [0.0, 0.0],
-              "vtype": 8
-            },
-            {
-              "corner": -1,
-              "mates": [-1, -1],
-              "pc_class": 100,
-              "pc_face": -1,
-              "pc_index": -1,
-              "pc_kind": 0,
-              "pc_sub": 0,
-              "point": [0.0, -19880.691538879386, 0.0],
-              "status": 0,
-              "t_param": 0.0,
-              "uv": [0.0, 0.0],
-              "vtype": 9
-            }
-          ]
-        },
-        "op": "adjust_topology"
+      "deferred": {
+        "symbol": "SmFilletNx2Corner::AdjustConcaveCornerTopology",
+        "unit": "blend.fillet_corner_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0398",
-      "outcome": "rejected",
+      "outcome": "deferred",
       "pass": false,
-      "rejected": "upstream would dereference null",
       "source": "generated:seed=10924742201818550016",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "sm_TestG1Continuity",
-        "unit": "blend.fillet_corner_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0399",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10924742201818550017",
       "values_compared": 0
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 320,
+  "cases_deferred": 332,
   "cases_failed": 0,
-  "cases_passed": 629,
-  "cases_rejected": 56,
+  "cases_passed": 618,
+  "cases_rejected": 55,
   "cases_total": 1005,
   "deferred_by_unit": {
-    "blend.fillet_corner_p1": 111,
-    "blend.fillet_corner_p2": 52,
+    "blend.fillet_corner_p1": 1,
+    "blend.fillet_corner_p2": 126,
     "blend.fillet_executive_p1": 6,
     "blend.fillet_geom_p5": 13,
     "blend.fillet_geom_p6": 33,
-    "intersect.surface_drop_lib_p3": 82,
-    "surface.cone_p1": 11,
-    "surface.surf_of_extrusion_p2": 12
+    "intersect.surface_drop_lib_p3": 80,
+    "surface.cone_p1": 18,
+    "surface.sphere": 8,
+    "surface.surf_of_extrusion_p2": 30,
+    "topology.brep_p10": 17
   },
   "max_rel_err": 0.0,
   "pass": true,

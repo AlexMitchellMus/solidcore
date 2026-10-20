@@ -293,6 +293,8 @@ fn srf_srf_intersection(
 }
 
 /// `SmFilletCorner::GetCornerType` (unit `blend.fillet_corner_p1`).
+/// Needs the executive corner store (`blend.fillet_executive_p2`, #267) to resolve the
+/// id; wired in a follow-up once it merges.
 fn corner_type(corner: FilletCornerId) -> Result<FilletCornerType> {
     // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::GetCornerType
     unported_on(
@@ -304,6 +306,8 @@ fn corner_type(corner: FilletCornerId) -> Result<FilletCornerType> {
 
 /// `SmFilletCorner::GetFilletedVertex` (unit `blend.fillet_corner_p1`): the target
 /// B-rep vertex the corner fillets.
+/// Needs the executive corner store (`blend.fillet_executive_p2`, #267) to resolve the
+/// id; wired in a follow-up once it merges.
 fn corner_filleted_vertex(corner: FilletCornerId) -> Result<Option<VertexId>> {
     // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::GetFilletedVertex
     unported_on(
@@ -314,6 +318,8 @@ fn corner_filleted_vertex(corner: FilletCornerId) -> Result<Option<VertexId>> {
 }
 
 /// `SmFilletCorner::GetExtendedSurface(pOriginalFace)` (unit `blend.fillet_corner_p1`).
+/// Needs the executive corner store (`blend.fillet_executive_p2`, #267) to resolve the
+/// id; wired in a follow-up once it merges.
 fn corner_extended_surface(corner: FilletCornerId, face: FaceId) -> Result<Option<Surface>> {
     // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::GetExtendedSurface
     unported_on(

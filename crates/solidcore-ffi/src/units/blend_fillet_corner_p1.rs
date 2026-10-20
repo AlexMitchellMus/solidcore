@@ -14,6 +14,7 @@
 //! | [`Op::FaceByTwo`]      | `sm_GetFaceByTwoEdgeuses`                 | block, `eu1 eu2 eu3`               | `0 face` |
 //! | [`Op::Tangential`]     | `sm_CheckTangentialEdgeuse`               | block, `eu tol`                    | `0 flag` |
 //! | [`Op::Concavity`]      | `sm_CheckFaceComplimentaryCornerConcavity`| block, `v eu1 eu2 ref`             | `0 flag` |
+//! | [`Op::Nx1Degeneracy`]  | `SmFilletNx1Corner::CheckNx1Degeneracy`   | block, `v eu`                      | `0 ret` (the raw `SmBoolean` return: the flag, or the status `SER` returns through it) |
 //!
 //! Curves and surfaces are unit `topology.edgeuse_p1`'s curve and surface blocks
 //! (`dim n p m cpts(x y z w) knots`; `1 O N` for an `SmPlane`, else the B-spline surface
@@ -32,9 +33,40 @@
 //! Inputs are validated before the call: the blocks, every index range, finite and
 //! bounded coordinates, a non-empty curve array with the major arc inside it (upstream
 //! indexes it unchecked) and closure codes `0..=4`.
+//!
+//! The `SmFilletCorner` methods ([`corner`], shim
+//! `harness/cpp/shim/blend_fillet_corner_p1_corner.inc` compiled inside
+//! `blend_fillet_geom_p1.cpp`, `sc_blend_fillet_corner_p1_corner`) run on a corner built on
+//! unit `blend.fillet_geom_p1`'s pseudo-B-rep model (layout in
+//! [`super::blend_fillet_geom_p1`]), as unit `blend.fillet_corner_p3`'s corner ops do. After
+//! the block: `kind v_edge v_sub` (the derived class `0..=10` in the order of
+//! `solidcore::blend::fillet_corner::p3::FilletCornerKind`; the filleted vertex as the
+//! start (`0`) / end (`1`) vertex of target wire edge `v_edge`, `-1` none), the solver and
+//! all edge uses (`has n (edge which)..`: target wire edge, `0` its primary edge use / `1`
+//! the mate; `has = 0` for NULL), the corner's fillet vertices (`n v..`) and fillet edges
+//! (`n e..`), the flags `bevel blending chamfer degenerate ext_patch adjusted`, then
+//! `setback approx tang`, then the op's own input:
+//!
+//! | [`CornerOp`]              | upstream                                  | input after the corner | output after `0` |
+//! |---------------------------|-------------------------------------------|------------------------|------------------|
+//! | [`CornerOp::Peek`]        | the data access methods, predicates and setters (`SetBevel`, `SetCalcAsConstRad`, `SetChamfer`, `AddFilletVertex` first) | `set_bevel set_const_rad set_chamfer add_vertex set_g1 set_status prefill nk kinds..` (`-1` = not called; chamfer only for the `NxN` kinds, `m_bG1Case` only for the closed Nx1 / Nx2 kinds; `prefill` starts the `GetFilletEdges` / `GetFilletVertices` arrays with the model's first edge / vertex) | `tol n edges.. n verts.. v_edge v_sub setback status type type_string_ok is_kind_of.. bevel blending degenerate ext_patch const_rad tangent` |
+//! | [`CornerOp::Solvers`]     | `GetTangentFilletSolver`, `GetFilletSolvers` | `ns (edge which approx tang).. q` (solvers registered for target edge uses; `q == ns` an unregistered solver) | `tangent n solvers..` (registration indices, `-1` NULL) |
+//! | [`CornerOp::ExtSurface`]  | `AddExtendedOriginalSurface`, `GetExtendedSurface` | `na (face s).. nq faces..` (a plane with natural domain `[0, s]²` per add) | per query `umax vmax` (`-1 -1` NULL) |
+//! | [`CornerOp::Reinit`]      | `ReInitializeCornerEdges`                 |                        | the model export |
+//! | [`CornerOp::Squeeze`]     | `SqueezeEdge`                             | `e`                    | `status` corner-members model export (as `blend.fillet_corner_p3`'s corner record) |
+//! | [`CornerOp::RailRail`]    | `SmFilletConcaveNxNCorner::TestRailRailInterpolationCurve` | `curve` (3D)  | `ret` (the raw `SmBoolean` return) |
+//!
+//! A record of `-2` is "refused" (upstream would dereference null, or free an object twice:
+//! a squeezed non-rail edge with both ends at the deleted vertex, or a squeezed closed edge
+//! whose surviving vertex is the deleted one), `-3` "not run" (the Rust
+//! port of the override is a stub: `GetTangentFilletSolver` of the closed Nx1 and Nx2
+//! corners, unit `blend.fillet_corner_p2`).
 
 use crate::{call_with_buffer, FfiError};
 
+use super::blend_fillet_geom_p1::{
+    curve as p1_curve, validate_block, Reader as P1Reader, MAX_LIST, MAX_MAGNITUDE,
+};
 use super::topology_edgeuse_p1::{self as eu1, bad, brep_block, curve_up_to, surface, Reader};
 
 /// The largest point count of [`Op::Planar`] (upstream handles 3 and 4; others fail).
@@ -67,11 +99,13 @@ pub enum Op {
     Tangential = 7,
     /// `sm_CheckFaceComplimentaryCornerConcavity`.
     Concavity = 8,
+    /// `SmFilletNx1Corner::CheckNx1Degeneracy`.
+    Nx1Degeneracy = 9,
 }
 
 impl Op {
     /// Every op, in code order.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Planar,
         Self::Revolution,
         Self::FilletRadius,
@@ -81,6 +115,7 @@ impl Op {
         Self::FaceByTwo,
         Self::Tangential,
         Self::Concavity,
+        Self::Nx1Degeneracy,
     ];
 
     /// The shim's op code.
@@ -89,7 +124,7 @@ impl Op {
         self as i32
     }
 
-    /// The op with shim code `code`, `None` outside `0..=8`.
+    /// The op with shim code `code`, `None` outside `0..=9`.
     #[must_use]
     pub fn from_code(code: i64) -> Option<Self> {
         Self::ALL
@@ -102,7 +137,7 @@ impl Op {
     pub fn is_brep(self) -> bool {
         matches!(
             self,
-            Self::G1 | Self::FaceByTwo | Self::Tangential | Self::Concavity
+            Self::G1 | Self::FaceByTwo | Self::Tangential | Self::Concavity | Self::Nx1Degeneracy
         )
     }
 }
@@ -112,6 +147,14 @@ mod sys {
         pub fn sc_blend_fillet_corner_p1_helper(
             op: i32,
             path: *const std::ffi::c_char,
+            input: *const f64,
+            n_in: i64,
+            out: *mut f64,
+            cap: i64,
+            out_len: *mut i64,
+        ) -> i32;
+        pub fn sc_blend_fillet_corner_p1_corner(
+            op: i32,
             input: *const f64,
             n_in: i64,
             out: *mut f64,
@@ -185,7 +228,7 @@ fn geom_args(op: Op, rd: &mut Reader<'_>) -> Result<(), FfiError> {
             surface(rd)?;
             rd.finites(4)?;
         }
-        Op::G1 | Op::FaceByTwo | Op::Tangential | Op::Concavity => {
+        Op::G1 | Op::FaceByTwo | Op::Tangential | Op::Concavity | Op::Nx1Degeneracy => {
             return Err(bad("not a geometry op"));
         }
     }
@@ -217,6 +260,10 @@ fn brep_args(op: Op, rd: &mut Reader<'_>, c: [usize; 10]) -> Result<(), FfiError
             rd.below(n_eu)?;
             rd.below(n_eu)?;
             rd.below_or_none(n_eu)?;
+        }
+        Op::Nx1Degeneracy => {
+            rd.below(n_v)?;
+            rd.below(n_eu)?;
         }
         Op::Planar | Op::Revolution | Op::FilletRadius | Op::SeamOut | Op::Closure => {
             return Err(bad("not a topology op"));
@@ -261,6 +308,174 @@ pub fn eval(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
     raw(op, path, input)
 }
 
+// ---- the SmFilletCorner methods on the pseudo-B-rep model ----------------------------------
+
+/// The corner-method op run by [`corner`] (layouts in the module docs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CornerOp {
+    /// The data access methods, predicates and setters.
+    Peek = 0,
+    /// `GetTangentFilletSolver` and `GetFilletSolvers`.
+    Solvers = 1,
+    /// `AddExtendedOriginalSurface` and `GetExtendedSurface`.
+    ExtSurface = 2,
+    /// `ReInitializeCornerEdges`.
+    Reinit = 3,
+    /// `SqueezeEdge`.
+    Squeeze = 4,
+    /// `SmFilletConcaveNxNCorner::TestRailRailInterpolationCurve`.
+    RailRail = 5,
+}
+
+impl CornerOp {
+    /// Every corner op, in code order.
+    pub const ALL: [Self; 6] = [
+        Self::Peek,
+        Self::Solvers,
+        Self::ExtSurface,
+        Self::Reinit,
+        Self::Squeeze,
+        Self::RailRail,
+    ];
+}
+
+/// The largest number of registered solvers, added surfaces, queries and type codes.
+pub const MAX_CORNER_LIST: usize = 16;
+
+/// `-2^63` and `2^63`: the type codes the shim casts to `int64_t` must lie in
+/// `[-2^63, 2^63)` (the cast of anything else is undefined).
+const INT64_MIN_F64: f64 = -9_223_372_036_854_775_808.0;
+const INT64_MAX_PLUS_ONE_F64: f64 = 9_223_372_036_854_775_808.0;
+
+/// An edge use list `has n (edge which)..` of target wire edges.
+fn corner_eu_list(rd: &mut P1Reader<'_>, nt: usize) -> Result<(), FfiError> {
+    rd.flag()?;
+    let n = rd.index(MAX_LIST)?;
+    for _ in 0..n {
+        rd.opt_index(nt)?
+            .ok_or_else(|| bad("edge use: target edge -1"))?;
+        rd.index(1)?;
+    }
+    Ok(())
+}
+
+/// Validates the input of [`corner`] (layout in the module docs).
+///
+/// # Errors
+///
+/// [`FfiError::InvalidArgument`] for an input upstream could not handle safely.
+pub fn validate_corner(op: CornerOp, input: &[f64]) -> Result<(), FfiError> {
+    let mut rd = P1Reader {
+        cursor: crate::reader::Cursor::new(input),
+        bound: MAX_MAGNITUDE,
+    };
+    let b = validate_block(&mut rd)?;
+    let kind = rd.index(10)?;
+    let v_edge = rd.opt_index(b.nt)?;
+    let v_sub = rd.index(1)?;
+    if v_edge.is_none() && v_sub != 0 {
+        return Err(bad("vertex sub without edge"));
+    }
+    corner_eu_list(&mut rd, b.nt)?;
+    corner_eu_list(&mut rd, b.nt)?;
+    let nv = rd.index(MAX_LIST)?;
+    for _ in 0..nv {
+        rd.opt_index(b.nv())?.ok_or_else(|| bad("vertex -1"))?;
+    }
+    let ne = rd.index(MAX_LIST)?;
+    for _ in 0..ne {
+        rd.opt_index(b.ne())?.ok_or_else(|| bad("edge -1"))?;
+    }
+    for _ in 0..6 {
+        rd.flag()?;
+    }
+    rd.finites(3)?;
+    match op {
+        CornerOp::Peek => {
+            // the setters: -1 (not called), 0 or 1
+            for _ in 0..3 {
+                rd.opt_index(2)?;
+            }
+            rd.opt_index(b.nv())?;
+            rd.opt_index(2)?; // m_bG1Case
+            rd.opt_index(13)?; // SetStatus (SmFilStatus)
+            rd.flag()?; // prefill
+            let nk = rd.index(MAX_CORNER_LIST)?;
+            for _ in 0..nk {
+                // the shim reads each type code as an `int64_t` (a plain cast): only
+                // representable values, any of them (unknown codes test `IsKindOf` too)
+                let code = rd.finite()?;
+                if !(INT64_MIN_F64..INT64_MAX_PLUS_ONE_F64).contains(&code) {
+                    return Err(bad("type code outside the int64 range"));
+                }
+            }
+        }
+        CornerOp::Solvers => {
+            let ns = rd.index(MAX_CORNER_LIST)?;
+            for _ in 0..ns {
+                rd.opt_index(b.nt)?
+                    .ok_or_else(|| bad("solver: target edge -1"))?;
+                rd.index(1)?;
+                rd.finites(2)?;
+            }
+            rd.index(ns)?;
+        }
+        CornerOp::ExtSurface => {
+            let na = rd.index(MAX_CORNER_LIST)?;
+            for _ in 0..na {
+                rd.opt_index(b.nf)?
+                    .ok_or_else(|| bad("extended surface: face -1"))?;
+                if rd.finite()? <= 0.0 {
+                    return Err(bad("extended surface: domain size must be positive"));
+                }
+            }
+            let nq = rd.index(MAX_CORNER_LIST)?;
+            for _ in 0..nq {
+                rd.opt_index(b.nf)?
+                    .ok_or_else(|| bad("extended surface query: face -1"))?;
+            }
+        }
+        CornerOp::Reinit => {}
+        CornerOp::Squeeze => {
+            rd.opt_index(b.ne())?
+                .ok_or_else(|| bad("squeeze: edge -1"))?;
+        }
+        CornerOp::RailRail => {
+            if kind != 10 {
+                return Err(bad(
+                    "rail-rail test: the corner must be a concave NxN corner",
+                ));
+            }
+            p1_curve(&mut rd, 3, "rail-rail curve")?;
+        }
+    }
+    rd.done()
+}
+
+/// Runs the corner-method op `op` (layout in the module docs).
+///
+/// # Errors
+///
+/// [`FfiError::InvalidArgument`] for an input upstream could not handle safely;
+/// [`FfiError::Status`] for a shim error.
+pub fn corner(op: CornerOp, input: &[f64]) -> Result<Vec<f64>, FfiError> {
+    validate_corner(op, input)?;
+    call_with_buffer(4096, |buf, len| {
+        // SAFETY: input is valid for input.len() reads (validated above); buf is valid
+        // for buf.len() writes; len is a valid pointer.
+        unsafe {
+            sys::sc_blend_fillet_corner_p1_corner(
+                op as i32,
+                input.as_ptr(),
+                input.len() as i64,
+                buf.as_mut_ptr(),
+                buf.len() as i64,
+                &raw mut *len,
+            )
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,8 +485,38 @@ mod tests {
         for op in Op::ALL {
             assert_eq!(Op::from_code(i64::from(op.code())), Some(op));
         }
-        assert_eq!(Op::from_code(9), None);
+        assert_eq!(Op::from_code(10), None);
         assert_eq!(Op::from_code(-1), None);
+    }
+
+    /// A `peek` input on an empty model and a bare corner, with the given type codes.
+    fn peek_input(kinds: &[f64]) -> Vec<f64> {
+        // the model block: no targets, faces, fillet B-rep edges, vertices, geometries, edges
+        let mut v = vec![0.0; 6];
+        // kind, no filleted vertex; no solver / all edge uses; no vertices / edges
+        v.extend([0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        // the flags, setback, tolerances
+        v.extend([0.0; 9]);
+        // peek: no setters, no added vertex, no G1 / status, no prefill, the type codes
+        v.extend([-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 0.0, kinds.len() as f64]);
+        v.extend_from_slice(kinds);
+        v
+    }
+
+    #[test]
+    fn peek_type_codes_must_be_int64_representable() {
+        // guard-only: nothing here reaches the shim
+        assert!(validate_corner(CornerOp::Peek, &peek_input(&[16036.0, 0.0, -7.5])).is_ok());
+        assert!(validate_corner(CornerOp::Peek, &peek_input(&[9.0e18])).is_ok());
+        assert!(
+            validate_corner(CornerOp::Peek, &peek_input(&[-9_223_372_036_854_775_808.0])).is_ok()
+        );
+        assert!(
+            validate_corner(CornerOp::Peek, &peek_input(&[9_223_372_036_854_775_808.0])).is_err()
+        );
+        assert!(validate_corner(CornerOp::Peek, &peek_input(&[1.0e19])).is_err());
+        assert!(validate_corner(CornerOp::Peek, &peek_input(&[-1.0e150])).is_err());
+        assert!(validate_corner(CornerOp::Peek, &peek_input(&[f64::INFINITY])).is_err());
     }
 
     #[test]

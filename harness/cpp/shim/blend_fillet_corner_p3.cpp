@@ -164,11 +164,27 @@ double precheck(Graph& g, const std::vector<SmEdgeuse*>& solver, size_t limit, s
     {
     case 1:
         if (start->GetEdge()->IsClosed())
-            return total == 1 ? P3_NOT_RUN : 0.0; // sm_TestG1Continuity
-        return P3_NOT_RUN;                        // CheckNx1Degeneracy
+            // sm_TestG1Continuity (blend.fillet_corner_p1): pCrv->Evaluate on the edge curve
+            return (total == 1 && start->GetEdge()->GetCurve() == nullptr) ? P3_NULL_DEREF : 0.0;
+        // CheckNx1Degeneracy (blend.fillet_corner_p1): the clockwise neighbour, the radial's
+        // counter-clockwise neighbour (its mate when they coincide), their vertex uses and
+        // edges
+        {
+            SmEdgeuse* side1 = start->GetCWEdgeuse();
+            SmEdgeuse* side2 = start->GetRadial() ? start->GetRadial()->GetCCWEdgeuse() : nullptr;
+            if (side1 != nullptr && side1 == side2)
+                side2 = side1->GetMate();
+            bool ok = side1 != nullptr && side2 != nullptr && side1->GetVertexuse() != nullptr &&
+                      side2->GetVertexuse() != nullptr && side1->GetEdge() != nullptr && side2->GetEdge() != nullptr;
+            return ok ? 0.0 : P3_NULL_DEREF;
+        }
     case 2:
         if (total == 2)
-            return P3_NOT_RUN; // sm_TestG1Continuity
+            // sm_TestG1Continuity (blend.fillet_corner_p1) on both filleted edges' curves
+            return (solver[0]->GetEdge() == nullptr || solver[0]->GetEdge()->GetCurve() == nullptr ||
+                    solver[1]->GetEdge() == nullptr || solver[1]->GetEdge()->GetCurve() == nullptr)
+                       ? P3_NULL_DEREF
+                       : 0.0;
         if (total == 3)
             return (convex_safe(solver[0]) && convex_safe(solver[1])) ? 0.0 : P3_NULL_DEREF;
         return 0.0;
