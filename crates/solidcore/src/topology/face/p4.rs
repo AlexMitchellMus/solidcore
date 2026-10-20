@@ -41,6 +41,16 @@
 //!   propagate). A range whose `sm_FaceClassifyUVLine` returns no interval reads
 //!   `sCC[0]` of an empty array upstream (`plan/upstream-issues.md` UB-180); the port
 //!   returns `InvalidInput`.
+//! - **Zone tolerances.** `GlobalLineIntersect` and `FindVertexSector` take an
+//!   `SmZoneTol3d` by value; the `f64` here is converted as that constructor does
+//!   ([`tol::zone_tol3d`]: `fabs`, [`tol::USE_DEFAULT`] -> the system zone tolerance).
+//! - **`FindVertexSector`'s interval** starts as the curve's natural interval and takes
+//!   the orientation's ends through `SetMinMax`, whose failure on a reversed pair is
+//!   ignored as upstream (the natural interval stays).
+//! - **`FindVertexSector` of a 2D curve** lifts it onto the face's surface as a
+//!   [`CrvOnSurf`], which needs a B-spline surface here (upstream's `SetAll` takes any
+//!   `SmSurface`); a `Plane` face is [`SolidError::InvalidInput`]. The shim always passes
+//!   the edge's 3D curve, so this branch is not compared.
 //! - **`FindVertexSector`** returns [`VertexSector`]. The out-of-scope `sSurfDomain` of
 //!   the 3D branch is reproduced: it is the natural UV domain only on the pass that first
 //!   fetches the poles, and an empty extent on later passes, as upstream (a block-local
@@ -286,15 +296,23 @@ fn faceuse_face(b: &Brep, fu: crate::topology::FaceuseId) -> Result<Option<FaceI
     Ok(b.faceuse(fu)?.face)
 }
 
-/// The shell of a face use, which upstream dereferences.
+/// `pFaceuse->GetShell()` of a face use upstream dereferences (`None` is the null face
+/// use).
 fn faceuse_shell(
     b: &Brep,
     fu: Option<crate::topology::FaceuseId>,
-) -> Result<crate::topology::ShellId> {
+) -> Result<Option<crate::topology::ShellId>> {
     let fu = fu.ok_or_else(|| null("IsConnectedTo: face without face use"))?;
-    b.faceuse(fu)?
-        .shell
-        .ok_or_else(|| null("IsConnectedTo: face use without shell"))
+    Ok(b.faceuse(fu)?.shell)
+}
+
+/// `pFaceuse->GetShell()->GetRegion()`: both dereferenced upstream.
+fn faceuse_region(
+    b: &Brep,
+    fu: Option<crate::topology::FaceuseId>,
+) -> Result<Option<crate::topology::RegionId>> {
+    let sh = faceuse_shell(b, fu)?.ok_or_else(|| null("IsConnectedTo: face use without shell"))?;
+    Ok(b.shell(sh)?.region)
 }
 
 /// `IsConnectedTo`: whether the face connects to `target`: itself, one of its face uses,
@@ -305,9 +323,10 @@ fn faceuse_shell(
 /// # Errors
 ///
 /// [`SolidError::NotFound`] for a dangling id; those of [`vertex::faces`] and
-/// [`edge::faces`]; [`SolidError::InvalidInput`] for a loop use without face use and,
-/// for a shell or region target, a face without both face uses, a face use without
-/// shell or (region) a shell's region missing.
+/// [`edge::faces`]; [`SolidError::InvalidInput`] where upstream dereferences null: a
+/// loop use without face use; for a shell target a missing face use it reaches (the
+/// second only when the first's shell is not the target); for a region target also a
+/// face use without shell.
 pub fn is_connected_to(b: &Brep, f: FaceId, target: Option<EntityRef>) -> Result<bool> {
     // no work - no Topo
     let Some(target) = target else {
@@ -338,16 +357,11 @@ pub fn is_connected_to(b: &Brep, f: FaceId, target: Option<EntityRef>) -> Result
         }
         EntityRef::Shell(s) => {
             let (fu1, fu2) = super::p2::faceuses(b, f)?;
-            Ok(faceuse_shell(b, fu1)? == s || faceuse_shell(b, fu2)? == s)
+            Ok(faceuse_shell(b, fu1)? == Some(s) || faceuse_shell(b, fu2)? == Some(s))
         }
         EntityRef::Region(r) => {
             let (fu1, fu2) = super::p2::faceuses(b, f)?;
-            let region1 = b.shell(faceuse_shell(b, fu1)?)?.region;
-            if region1 == Some(r) {
-                return Ok(true);
-            }
-            let region2 = b.shell(faceuse_shell(b, fu2)?)?.region;
-            Ok(region2 == Some(r))
+            Ok(faceuse_region(b, fu1)? == Some(r) || faceuse_region(b, fu2)? == Some(r))
         }
         // arrive here when cpConnectTgt is an unsupported type - return TRUE
         EntityRef::Brep(_) => Ok(true),
@@ -426,6 +440,10 @@ pub fn global_line_intersect<O: SolutionObject>(
     fire_ray: bool,
     src_zone_tol_3d: f64,
 ) -> Result<SolutionArray<O>> {
+    // the double becomes the `SmZoneTol3d` parameter: `fabs`, and `SM_USE_DEFAULT` -> the
+    // system zone tolerance
+    let src_zone_tol_3d = tol::zone_tol3d(k, src_zone_tol_3d);
+
     // First find the solutions with the underlying surface
     // Note: pass False as the bFireRay argument, otherwise it will return
     // only the first hit in the surface, and that might not be in this Face.
@@ -824,6 +842,9 @@ pub fn find_vertex_sector(
         validate_sector,
         uv_space_okay,
     } = args;
+    // the double becomes the `SmZoneTol3d` parameter: `fabs`, and `SM_USE_DEFAULT` -> the
+    // system zone tolerance
+    let zone_tol_3d = tol::zone_tol3d(k, zone_tol_3d);
 
     // work in 3d: when cr3DCurve's domain_dim == 2, use it as an SmCrvOnSurf object
     let lifted;
@@ -842,12 +863,14 @@ pub fn find_vertex_sector(
     // initialize output
     let mut out = VertexSector::default();
 
-    // get curve interval to be classified, determined by CurveOrientation
+    // get curve interval to be classified, determined by CurveOrientation (SetMinMax's
+    // status is ignored: a reversed pair leaves the natural interval)
     let natural = curve_3d.natural_interval();
-    let ivl = if orientation == OrientType::Same {
-        Extent1d::from_min_max(param_at_vertex, min_of(param_ivl_end, natural.max()))
+    let mut ivl = natural;
+    let _ = if orientation == OrientType::Same {
+        ivl.set_min_max(param_at_vertex, min_of(param_ivl_end, natural.max()))
     } else {
-        Extent1d::from_min_max(max_of(param_ivl_end, natural.min()), param_at_vertex)
+        ivl.set_min_max(max_of(param_ivl_end, natural.min()), param_at_vertex)
     };
 
     // get upward faceuse and face domain

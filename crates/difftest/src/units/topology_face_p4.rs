@@ -46,8 +46,8 @@ use solidcore::surface::volume::Volume;
 use solidcore::topology::edgeuse::p1 as eu1;
 use solidcore::topology::face::p4::{self as fp4, FindVertexSectorArgs, HasSeamProblemOptions};
 use solidcore::topology::{
-    ArenaId, Brep, EdgeId, EdgeuseId, FaceId, FaceuseId, LoopId, LoopuseId, RegionId, ShellId, VertexId,
-    VertexuseId,
+    ArenaId, Brep, EdgeId, EdgeuseId, FaceId, FaceuseId, LoopId, LoopuseId, RegionId, ShellId,
+    VertexId, VertexuseId,
 };
 use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::topology_face_p4::{self as ffi, Op};
@@ -188,7 +188,11 @@ fn brep_block(b: &BrepIn) -> Result<Vec<f64>, HarnessError> {
 fn op_args(op: &OpIn) -> (Op, Vec<f64>) {
     match op {
         OpIn::Brep => (Op::Brep, vec![]),
-        OpIn::List { kind, tgt_only, loop_ } => {
+        OpIn::List {
+            kind,
+            tgt_only,
+            loop_,
+        } => {
             let op = match kind {
                 ListKind::Edges => Op::Edges,
                 ListKind::Vertices => Op::Vertices,
@@ -199,7 +203,13 @@ fn op_args(op: &OpIn) -> (Op, Vec<f64>) {
             (op, vec![flag(*tgt_only), *loop_ as f64])
         }
         OpIn::Connected { kind, index } => (Op::Connected, vec![*kind as f64, *index as f64]),
-        OpIn::Line { p, v, ivl, fire, tol } => {
+        OpIn::Line {
+            p,
+            v,
+            ivl,
+            fire,
+            tol,
+        } => {
             let mut a: Vec<f64> = p.iter().chain(v.iter()).copied().collect();
             let [t0, t1] = ivl.unwrap_or([0.0, 0.0]);
             a.extend([
@@ -239,7 +249,10 @@ fn op_args(op: &OpIn) -> (Op, Vec<f64>) {
             outer,
             periodic_u,
             periodic_v,
-        } => (Op::Seam, vec![flag(*outer), *periodic_u as f64, *periodic_v as f64]),
+        } => (
+            Op::Seam,
+            vec![flag(*outer), *periodic_u as f64, *periodic_v as f64],
+        ),
     }
 }
 
@@ -265,7 +278,8 @@ fn export_of(brep: &BrepIn) -> Result<Rc<Vec<f64>>, HarnessError> {
         return Ok(e);
     }
     let e = Rc::new(
-        fixture::eval(fixture::Op::Export, &path, &block).map_err(|e| harness(format!("c++ export: {e}")))?,
+        fixture::eval(fixture::Op::Export, &path, &block)
+            .map_err(|e| harness(format!("c++ export: {e}")))?,
     );
     EXPORTS.with(|c| {
         let mut c = c.borrow_mut();
@@ -300,7 +314,11 @@ fn resolve(i: &Inputs) -> Result<Resolved, HarnessError> {
     r.face = shared::sel(i.face.max(0), n_f);
     match &mut r.op {
         OpIn::List { loop_, .. } => {
-            *loop_ = if *loop_ < 0 || n_l == 0 { -1 } else { shared::sel(*loop_, n_l) };
+            *loop_ = if *loop_ < 0 || n_l == 0 {
+                -1
+            } else {
+                shared::sel(*loop_, n_l)
+            };
         }
         OpIn::Connected { kind, index } => {
             if *kind >= 0 {
@@ -484,7 +502,8 @@ impl<'a> Objects<'a> {
     /// `pVertex->GetVertexuseOfFace(pFace)->GetVertexFaceGap()`: its `GetLength()`, or
     /// `0.0` without a gap.
     fn gap(&self, v: VertexId, f: FaceId) -> Result<Option<f64>, SolidError> {
-        let Some(vu) = solidcore::topology::vertex::vertexuse_of_face(self.brep, v, Some(f))? else {
+        let Some(vu) = solidcore::topology::vertex::vertexuse_of_face(self.brep, v, Some(f))?
+        else {
             return Ok(None);
         };
         let mut gaps = self.gaps.borrow_mut();
@@ -679,23 +698,36 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
     let loops_of = |l: i64| (l >= 0).then(|| vec![LoopId::from_index(l as u32)]);
     match &i.op {
         OpIn::Brep => o.push(flag(fp4::brep(&b, f).map_err(|e| fail(&e))?.is_some())),
-        OpIn::List { kind, tgt_only, loop_ } => {
+        OpIn::List {
+            kind,
+            tgt_only,
+            loop_,
+        } => {
             let tgts = loops_of(*loop_);
             let t = tgts.as_deref();
             match kind {
                 ListKind::Edges => put_list(&mut o, fp4::edges(&b, f, None, *tgt_only, t))?,
                 ListKind::Vertices => put_list(&mut o, fp4::vertices(&b, f, None, *tgt_only, t))?,
                 ListKind::Loopuses => put_list(&mut o, fp4::upward_loopuses(&b, f, *tgt_only, t))?,
-                ListKind::Vertexuses => put_list(&mut o, fp4::upward_vertexuses(&b, f, *tgt_only, t))?,
+                ListKind::Vertexuses => {
+                    put_list(&mut o, fp4::upward_vertexuses(&b, f, *tgt_only, t))?
+                }
                 ListKind::Edgeuses => put_list(&mut o, fp4::upward_edgeuses(&b, f, *tgt_only, t))?,
             }
         }
-        OpIn::Connected { kind, index } => match fp4::is_connected_to(&b, f, target(*kind, *index)) {
+        OpIn::Connected { kind, index } => match fp4::is_connected_to(&b, f, target(*kind, *index))
+        {
             Ok(c) => o.push(flag(c)),
             Err(SolidError::InvalidInput { .. }) => o.push(NULL_DEREF),
             Err(e) => return Err(fail(&e)),
         },
-        OpIn::Line { p, v, ivl, fire, tol } => {
+        OpIn::Line {
+            p,
+            v,
+            ivl,
+            fire,
+            tol,
+        } => {
             let face = b.face(f).map_err(|e| fail(&e))?;
             let Some(surface) = face.surface.as_ref() else {
                 o.push(NULL_DEREF);
@@ -752,7 +784,10 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
                 return Ok(o);
             }
             let edge_rec = b.edge(e).map_err(|e| fail(&e))?;
-            let curve = edge_rec.curve.clone().ok_or_else(|| harness("edge without curve"))?;
+            let curve = edge_rec
+                .curve
+                .clone()
+                .ok_or_else(|| harness("edge without curve"))?;
             let interval = edge_rec.interval;
             let primary = edge_rec.edgeuses.first().copied();
             let uv_curve = match primary {
@@ -787,7 +822,9 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
                     flag(s.possible_problem),
                     f64::from(s.problem as i32),
                 ]),
-                Err(SolidError::Upstream { code, .. }) => o.extend([f64::from(code), -1.0, 0.0, 0.0]),
+                Err(SolidError::Upstream { code, .. }) => {
+                    o.extend([f64::from(code), -1.0, 0.0, 0.0])
+                }
                 Err(e) => return Err(fail(&e)),
             }
         }
@@ -865,9 +902,14 @@ fn ops_for(s: i64, v: usize) -> Vec<OpIn> {
     }
     // lines through the face's neighbourhood: along the axes and a skew direction
     let c = (v % 5) as f64 - 2.0;
-    for (j, dir) in [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [0.3, -0.5, 0.8]]
-        .into_iter()
-        .enumerate()
+    for (j, dir) in [
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [0.3, -0.5, 0.8],
+    ]
+    .into_iter()
+    .enumerate()
     {
         ops.push(OpIn::Line {
             p: [c, -c * 0.5, c * 0.25],
@@ -961,10 +1003,51 @@ impl UnitDiff for Runner {
                             source: crate::CaseSource::Fixture {
                                 path: "built-in: systematic cases".to_string(),
                                 index: v.len(),
-                                upstream_ref: Some("tests/prog_test (the pt_TestFiles B-reps)".to_string()),
+                                upstream_ref: Some(
+                                    "tests/prog_test (the pt_TestFiles B-reps)".to_string(),
+                                ),
                             },
-                            inputs: serde_json::to_value(inputs).map_err(|e| harness(e.to_string()))?,
+                            inputs: serde_json::to_value(inputs)
+                                .map_err(|e| harness(e.to_string()))?,
                         });
+                    }
+                }
+            }
+        }
+        // GlobalLineIntersect's by-value SmZoneTol3d: negative and SM_USE_DEFAULT
+        // tolerances become fabs / the system zone tolerance (review of PR #239: a
+        // negative tolerance rejected every planar hit)
+        for file in FILES {
+            for s in 0..3i64 {
+                for p in [[0.2, 0.1, 1.0], [0.0, 0.0, 0.0]] {
+                    for dir in [[0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]] {
+                        for tol in [-1e-6, -1e-2, solidcore::geom::tol::USE_DEFAULT] {
+                            let inputs = Inputs {
+                                brep: BrepIn::File {
+                                    file: file.to_string(),
+                                    rebuild: false,
+                                },
+                                face: s,
+                                op: OpIn::Line {
+                                    p,
+                                    v: dir,
+                                    ivl: None,
+                                    fire: false,
+                                    tol: Some(tol),
+                                },
+                            };
+                            v.push(Case {
+                                unit: self.id().to_string(),
+                                name: format!("{file}_f{s}_tol{}", v.len()),
+                                source: crate::CaseSource::Fixture {
+                                    path: "built-in: zone tolerance cases".to_string(),
+                                    index: v.len(),
+                                    upstream_ref: None,
+                                },
+                                inputs: serde_json::to_value(inputs)
+                                    .map_err(|e| harness(e.to_string()))?,
+                            });
+                        }
                     }
                 }
             }

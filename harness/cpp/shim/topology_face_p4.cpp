@@ -226,15 +226,21 @@ void fp4_brep_op(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
             o.push_back((double)SC_ERR_ARG);
             return;
         }
-        // the shell / region / loop use branches dereference without checks
+        // the shell / region / loop use branches dereference without checks: the face
+        // uses (the second only past a first that does not match) and, for a region, their
+        // shells
         SmFaceuse *fu1 = nullptr, *fu2 = nullptr;
         f->GetFaceuses(fu1, fu2);
         if (t != nullptr)
         {
             SM_TYPE tt = t->GetType();
             bool bad = false;
-            if (tt == SmShell_TYPE || tt == SmRegion_TYPE)
-                bad = fu1 == nullptr || fu2 == nullptr || fu1->GetShell() == nullptr || fu2->GetShell() == nullptr;
+            if (tt == SmShell_TYPE)
+                bad = fu1 == nullptr || (fu1->GetShell() != (SmShell*)t && fu2 == nullptr);
+            if (tt == SmRegion_TYPE)
+                bad = fu1 == nullptr || fu1->GetShell() == nullptr
+                      || (fu1->GetShell()->GetRegion() != (SmRegion*)t
+                          && (fu2 == nullptr || fu2->GetShell() == nullptr));
             if (tt == SmLoopuse_TYPE)
                 bad = ((SmLoopuse*)t)->GetFaceuse() == nullptr;
             if (bad)
