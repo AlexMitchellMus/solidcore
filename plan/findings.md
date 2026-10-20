@@ -10538,3 +10538,14 @@ with maximum relative error 0.
   `sm_GetEllipseTrimIntervals` through `IntersectWithCone`, which has no such guard yet.
   Reproduced with main's unpatched `cone/p2.rs` too. Tracked in issue #276; the
   `surface.cone_p2` refusals that are now stricter than needed are issue #277.
+
+
+### 2026-10-20 audit #294: topology.topology_traverser
+
+Random traversal cases could choose entity kinds absent from their native fixture and pass by comparing the same missing-seed error. Select uniformly among operations whose required entity kinds exist, and give RemoveShell distinct source and target shells. Explicit null/missing-seed fixtures remain unchanged.
+
+On the 1,000-seed comparison, substantive cases increased from 1,478 to 1,678; all 1,893 case identities remain. The 118 fixed missing-seed error cases remain. Six default deferrals select different operations after resampling; no missing kernel paths were implemented. All eight operations are represented. Runtime increased from 35.67 s to 44.11 s on this Mac.
+
+Validation: native targeted parity and serial native regressions were rerun after incorporating upstream `bb137d7d`. Original optimized before/after evidence used upstream `7dd82727`; latest-base checks use difftest profile with opt-level 0. The pinned C++ reference remains `c9c5979`. Independent GPT-6 Astra review approved the code and named-case transition evidence. Linux full-suite CI remains required before merge.
+
+Local full-suite limitation: `difftest --green` aborts with exit 134 after `nlib.math`; the untouched `7dd82727` baseline binary independently aborts with exit 134 for the next unit, `topology.database_io`. The macOS crash report places the stack-protector abort in SmDatabaseIO::ReadType, consistent with the already-recorded UB-5 in plan/upstream-issues.md. The exact triggering case is not isolated here. This is not a full-suite pass.

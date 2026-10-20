@@ -7328,50 +7328,34 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetUpwardLoopuses",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "gen0001",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12051413912706926657",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GlobalLineIntersect",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "gen0002",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12051413912706926658",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetUpwardLoopuses",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "gen0003",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12051413912706926659",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GlobalLineIntersect",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "gen0004",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12051413912706926660",
       "values_compared": 0
     },
@@ -7384,7 +7368,6 @@
       "values_compared": 0
     },
     {
-      "both_errored": true,
       "max_rel_err": 0.0,
       "name": "gen0006",
       "outcome": "pass",
@@ -7433,31 +7416,22 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetUpwardLoopuses",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "gen0012",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12051413912706926668",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GlobalLineIntersect",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "gen0013",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12051413912706926669",
       "values_compared": 0
     },
     {
-      "both_errored": true,
       "max_rel_err": 0.0,
       "name": "gen0014",
       "outcome": "pass",
@@ -7474,13 +7448,13 @@
       "values_compared": 0
     }
   ],
-  "cases_both_errored": 120,
-  "cases_deferred": 20,
+  "cases_both_errored": 118,
+  "cases_deferred": 14,
   "cases_failed": 0,
-  "cases_passed": 889,
+  "cases_passed": 895,
   "cases_total": 909,
   "deferred_by_unit": {
-    "topology.face_p4": 20
+    "topology.face_p4": 14
   },
   "max_rel_err": 0.0,
   "pass": true,
