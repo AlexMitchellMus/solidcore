@@ -38,9 +38,9 @@ use solidcore::blend::fillet_solver::p1::{FilletSurfaceGenerator, OffsetSurfaceS
 use solidcore::blend::fillet_standard_solver::p1::{
     constant_radius_from_edgeuse, constant_radius_is_kind_of, BlendCurveCrossSectionFsg,
     BoundaryTrimmingType, CircularCrossSectionFsg, ConstantDistanceFs, ConstantRadiusFs,
-    CurveBasedFs, FilletLaw, FilletLawKind, FilletSolver, FilletSurfaceGeneratorType,
-    InitialSurface, LinearCrossSectionFsg, RailSurface, SurfaceSurfaceFs, VariableRadiusFs,
-    CONSTANT_RADIUS_FS_TYPE, CONSTANT_RADIUS_FS_TYPE_STRING,
+    CurveBasedFs, FilletLaw, FilletLawKind, FilletSolver, InitialSurface, LinearCrossSectionFsg,
+    RailSurface, SurfaceSurfaceFs, VariableRadiusFs, CONSTANT_RADIUS_FS_TYPE,
+    CONSTANT_RADIUS_FS_TYPE_STRING,
 };
 use solidcore::curve::curve::Curve;
 use solidcore::curve::hermite_curve::HermiteCurve;
