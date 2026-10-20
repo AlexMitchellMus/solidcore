@@ -481,7 +481,7 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
         point: &mut TsectPnt,
     ) -> Result<()> {
         // non-virtual in the base; it calls the virtual SetupOffsetValues, which
-        // SmConstantRadiusFS overrides (an explicit Unported override)
+        // SmConstantRadiusFS overrides (blend.fillet_standard_solver_p1)
         FilletSolver::compute_surface_values(self, uv_values, point)
     }
 
@@ -2231,18 +2231,18 @@ mod tests {
             }
         ));
 
-        // ComputeSurfaceValues reaches the SmConstantRadiusFS::SetupOffsetValues override
+        // ComputeSurfaceValues runs the SmConstantRadiusFS::SetupOffsetValues override
+        // (blend.fillet_standard_solver_p1): radius times orientation on both rails
+        s.solver.surfaces[1]
+            .as_mut()
+            .unwrap()
+            .surface
+            .set_offset_distance(0.0);
         let mut p = TsectPnt::new();
-        let e = s
-            .compute_surface_values(&k, [Point2::new(0.5, 0.5); 2], &mut p)
-            .unwrap_err();
-        assert!(matches!(
-            e,
-            SolidError::Unported {
-                unit: "blend.fillet_standard_solver_p1",
-                ..
-            }
-        ));
+        s.compute_surface_values(&k, [Point2::new(0.5, 0.5); 2], &mut p)
+            .unwrap();
+        assert_eq!(s.surface(0).unwrap().offset_distance(), 1.0);
+        assert_eq!(s.surface(1).unwrap().offset_distance(), -2.0);
     }
 
     #[test]
