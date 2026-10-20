@@ -26,7 +26,7 @@
 //! `Evaluate`s of `SmCurve::IsDegenerate` never fail). It rejects only a non-degenerate
 //! interval of length `L` with `L / 8000 <= 2 ulp(max |end|)`: there upstream's span
 //! subdivision (`(start + end) / 2`) cannot shrink a failing span to `L / 8000` and loops
-//! forever (plan/upstream-issues.md HANG-31; the port bounds that depth,
+//! forever (plan/upstream-issues.md HANG-38; the port bounds that depth,
 //! `MAX_SPAN_DEPTH`). It also rejects a B-spline surface whose first non-zero v knot span
 //! is below `SM_EFF_ZERO * (1 + max |v knot|)` when the UV domain overlaps the v range:
 //! building its surface cache crashes upstream (plan/upstream-issues.md UB-182).
@@ -136,14 +136,14 @@ pub fn encode(d: &Drop) -> Result<Vec<f64>, FfiError> {
     let [i0, i1] = d.interval;
     finite(i0)?;
     finite(i1)?;
-    // HANG-31: a non-degenerate interval whose span the subdivision can never shrink
+    // HANG-38: a non-degenerate interval whose span the subdivision can never shrink
     // below `length / 8000` (a float spacing inside it is at least that) hangs upstream.
     // Zero-length, inverted (`SmExtent1d` swaps) and out-of-range intervals are fine.
     let (lo, hi) = if i0 <= i1 { (i0, i1) } else { (i1, i0) };
     let len = hi - lo;
     let m = lo.abs().max(hi.abs());
     if len > 0.0 && len / 8000.0 <= 2.0 * (m.next_up() - m) {
-        return Err(bad("interval too short for the span subdivision (HANG-31)"));
+        return Err(bad("interval too short for the span subdivision (HANG-38)"));
     }
     v.push(i0);
     v.push(i1);
@@ -283,7 +283,7 @@ mod tests {
         ] {
             assert!(encode(&drop_with(ivl, tol)).is_ok(), "{ivl:?} {tol}");
         }
-        // rejected (HANG-31): a non-degenerate interval of at most 16000 ulps
+        // rejected (HANG-38): a non-degenerate interval of at most 16000 ulps
         let m = 1.0f64;
         let ulp = m.next_up() - m;
         assert!(encode(&drop_with([1.0, 1.0 + 100.0 * ulp], 1.0e-4)).is_err());
