@@ -97,14 +97,14 @@ pub(crate) struct CrvIn {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct BssIn {
     #[serde(default)]
-    oob: bool,
+    pub(crate) oob: bool,
     #[serde(default)]
-    form: u8,
-    net: Vec<Vec<[f64; 4]>>,
-    p: usize,
-    q: usize,
-    u: Vec<f64>,
-    v: Vec<f64>,
+    pub(crate) form: u8,
+    pub(crate) net: Vec<Vec<[f64; 4]>>,
+    pub(crate) p: usize,
+    pub(crate) q: usize,
+    pub(crate) u: Vec<f64>,
+    pub(crate) v: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -214,6 +214,9 @@ pub(crate) fn push_surface(v: &mut Vec<f64>, s: &SrfIn) -> Result<(), HarnessErr
                 .ok_or_else(|| harness("empty net row"))?;
             if b.net.iter().any(|r| r.len() != m + 1) {
                 return Err(harness("ragged net"));
+            }
+            if b.u.is_empty() || b.v.is_empty() {
+                return Err(harness("empty knot vector"));
             }
             v.extend([
                 0.0,
@@ -693,7 +696,7 @@ fn read_curve(rd: &mut Rd<'_>, uv: bool) -> Result<Option<SmCurve>, HarnessError
             return Err(harness("export: CrvOnSurf base is not a B-spline surface"));
         };
         let k = Kernel::default();
-        let cos = CrvOnSurf::new(&k, uv_curve, base.clone(), None, 0)
+        let cos = CrvOnSurf::new(&k, uv_curve, base.clone(), None, 1)
             .map_err(|e| harness(format!("export CrvOnSurf: {e}")))?;
         return Ok(Some(SmCurve::from(cos)));
     }
@@ -1196,17 +1199,23 @@ fn inexact_geometry(b: &Brep, types: &ImportTypes, op: &OpIn) -> Option<Output> 
     let st = if surface { surface_of(e) } else { -1 };
     if st >= 0 && !EXACT_SURFACES.contains(&st) {
         let (unit, symbol) = match st {
-            15012 | 15013 => ("surface.cone_p1", "SmCone (no SurfaceKind)"),
-            15014 => ("surface.sphere", "SmSphere"),
-            15015 => ("surface.torus", "SmTorus (no SurfaceKind)"),
+            // the DISPATCH GAP of `Surface::read_from_db` (issue #76) belongs to
+            // `surface.surface_p2`, not to the analytic surface units (all green)
+            15012 => ("surface.surface_p2", "SurfaceKind::Cone (SmCone dispatch)"),
+            15013 => ("surface.surface_p2", "SurfaceKind::Cone (SmCylinder dispatch)"),
+            15014 => ("surface.surface_p2", "SurfaceKind::Sphere (SmSphere dispatch)"),
+            15015 => ("surface.surface_p2", "SurfaceKind::Torus (SmTorus dispatch)"),
             15030 => ("surface.surf_of_extrusion_p2", "SurfaceKind::SurfOfExtrusion"),
-            _ => ("topology.brep_p7", "SmBrep::ReadFromFile"),
+            _ => ("topology.brep_p10", "SmBrep::MakeTopologyFromData"),
         };
         return Some(Output::deferred(unit, symbol));
     }
     for t in [curve_of(Some(e)), curve_of(other)] {
         if t >= 0 && !EXACT_CURVES.contains(&t) {
-            return Some(Output::deferred("topology.brep_p7", "SmBrep::ReadFromFile"));
+            return Some(Output::deferred(
+                "topology.brep_p10",
+                "SmBrep::MakeTopologyFromData",
+            ));
         }
     }
     None
@@ -1520,7 +1529,7 @@ pub(crate) fn bspline_of(c: &CrvIn) -> Result<BSplineCurve, HarnessError> {
     Ok(BSplineCurve::from_nurb(cur, c.dim, false))
 }
 
-fn surface_of(s: &SrfIn) -> Result<Surface, HarnessError> {
+pub(crate) fn surface_of(s: &SrfIn) -> Result<Surface, HarnessError> {
     match s {
         SrfIn::Plane { o, n } => Ok(Surface::from(Plane::from_normal(
             Vec3::from_array(*o),

@@ -40,24 +40,29 @@ use serde_json::Value;
 use solidcore::boolean::topology_intersector::p1::TopologyIntersector;
 use solidcore::boolean::topology_intersector::p3::{CurveOnSurfaces, IntersectorBrepP3};
 use solidcore::geom::extent1d::Extent1d;
+use solidcore::geom::extent3d::Extent3d;
 use solidcore::intersect::curve_class::p1::CurveClassification;
 use solidcore::intersect::curve_class::p4::ClassificationInit;
-use solidcore::intersect::point_class::{ClassGeometry, ClassObjectKind, PointClassType};
+use solidcore::intersect::point_class::{
+    ClassGeometry, ClassObjectKind, PointClassType, PointClassification,
+};
 use solidcore::kernel::Kernel;
+use solidcore::math::Point3;
 use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use solidcore::query::face::p1 as qf1;
 use solidcore::topology::edge as ed;
 use solidcore::topology::edgeuse::p1 as eu1;
 use solidcore::topology::loopuse as lu;
 use solidcore::topology::proto_topology::ProtoBrep;
 use solidcore::topology::{Brep, EdgeId, EdgeuseId, FaceuseId, LoopuseId, VertexId, VertexuseId};
-use solidcore::SolidError;
+use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::boolean_topology_intersector_p1 as ffi1;
 use solidcore_ffi::units::boolean_topology_intersector_p3::{self as ffi, Op};
 
 use super::boolean_topology_intersector_p1::{
-    brep_block, brep_h, build_failure, eid, flag, harness, hd, path_of, put_h, BrepIn,
-    Hin, Two, H, K_BREP, K_EDGE, K_EDGE_CURVE, K_FACE, K_FACE_SURFACE, K_NULL, K_VERTEX,
-    NULL_DEREF, TI_HANDLE,
+    brep_block, brep_h, build_failure, eid, fid, flag, harness, hd, path_of, put_h, BrepIn, Hin,
+    Two, H, K_BREP, K_EDGE, K_EDGE_CURVE, K_FACE, K_FACE_SURFACE, K_NULL, K_VERTEX, NULL_DEREF,
+    TI_HANDLE,
 };
 use super::topology_vertexuse::import;
 use crate::case::{CaseContext, CaseSource};
@@ -228,9 +233,8 @@ fn edge_interval_of(two: &Two, curve: Option<H>) -> Option<Extent1d> {
 
 fn resolve_class(c: &ClassIn, counts: &Counts, two: &Two) -> ClassR {
     let curve = counts.resolve(c.curve);
-    let (t0, t1) = edge_interval_of(two, curve).map_or((0.0, 1.0), |ivl| {
-        (ivl.evaluate(c.f0), ivl.evaluate(c.f1))
-    });
+    let (t0, t1) = edge_interval_of(two, curve)
+        .map_or((0.0, 1.0), |ivl| (ivl.evaluate(c.f0), ivl.evaluate(c.f1)));
     ClassR {
         curve,
         t0,
@@ -292,7 +296,9 @@ fn apply_vertex_use_order(
             have.sort();
             want.sort();
             if have != want {
-                return Err(harness("vertex use order: not a permutation of the imported uses"));
+                return Err(harness(
+                    "vertex use order: not a permutation of the imported uses",
+                ));
             }
             rec.vertexuses = order;
         }
@@ -317,8 +323,7 @@ fn prepare(i: &Inputs) -> Result<Prepared, Box<Result<Output, HarnessError>>> {
     let mut brep_b = brep_b;
     let uses = ffi::eval(Op::VertexUses, [&pa, &pb], &bl)
         .map_err(|e| Box::new(Err(harness(format!("c++ vertex uses: {e}")))))?;
-    apply_vertex_use_order(&uses, &mut brep_a, brep_b.as_mut())
-        .map_err(|e| Box::new(Err(e)))?;
+    apply_vertex_use_order(&uses, &mut brep_a, brep_b.as_mut()).map_err(|e| Box::new(Err(e)))?;
     let count3 = |b: &Brep| [b.vertices().len(), b.edges().len(), b.faces().len()];
     let counts = Counts([Some(count3(&brep_a)), brep_b.as_ref().map(count3)]);
     let two = Two::new(brep_a, brep_b);
@@ -377,7 +382,12 @@ fn put_class(v: &mut Vec<f64>, c: &ClassR) {
 
 fn encode(i: &Inputs, p: &Prepared) -> Result<Vec<f64>, HarnessError> {
     let mut v = blocks(i)?;
-    v.extend([i.approx, i.ang, flag(i.doing_fillets), flag(i.ignore_tangency)]);
+    v.extend([
+        i.approx,
+        i.ang,
+        flag(i.doing_fillets),
+        flag(i.ignore_tangency),
+    ]);
     v.push(p.relates.len() as f64);
     for &(a, b) in &p.relates {
         put_h(&mut v, a);
@@ -737,10 +747,12 @@ impl IntersectorBrepP3<H> for Two {
 
     fn loopuse_edgeuses(&self, loopuse: H) -> solidcore::Result<Vec<H>> {
         let b = self.brep_r(loopuse)?;
-        Ok(lu::edgeuses(b, LoopuseId::from_index(loopuse.i), None, None)?
-            .into_iter()
-            .map(|eu| hd(loopuse.b, K_EDGEUSE, eu.index()))
-            .collect())
+        Ok(
+            lu::edgeuses(b, LoopuseId::from_index(loopuse.i), None, None)?
+                .into_iter()
+                .map(|eu| hd(loopuse.b, K_EDGEUSE, eu.index()))
+                .collect(),
+        )
     }
 
     fn edgeuse_edge(&self, edgeuse: H) -> solidcore::Result<Option<H>> {
@@ -776,13 +788,26 @@ impl IntersectorBrepP3<H> for Two {
         let eu = EdgeuseId::from_index(classify_edgeuse.i);
         let s = if edge.b == classify_edgeuse.b {
             let b = self.brep_m(edge)?;
-            ed::find_radial_sector_between(k, b, eid(edge), None, eu, None, required_orientation, None)?
+            ed::find_radial_sector_between(
+                k,
+                b,
+                eid(edge),
+                None,
+                eu,
+                None,
+                required_orientation,
+                None,
+            )?
         } else {
             // the edge and the classified edge use in the two different B-reps
             let [a, o] = &mut self.breps;
             let (b, other) = if edge.b == 0 { (a, o) } else { (o, a) };
-            let b = b.as_mut().ok_or_else(|| invalid("handle names an absent B-rep"))?;
-            let other = other.as_mut().ok_or_else(|| invalid("handle names an absent B-rep"))?;
+            let b = b
+                .as_mut()
+                .ok_or_else(|| invalid("handle names an absent B-rep"))?;
+            let other = other
+                .as_mut()
+                .ok_or_else(|| invalid("handle names an absent B-rep"))?;
             ed::find_radial_sector_between(
                 k,
                 b,
@@ -796,8 +821,56 @@ impl IntersectorBrepP3<H> for Two {
         };
         Ok((
             s.radial_edgeuse.map(|eu| hd(edge.b, K_EDGEUSE, eu.index())),
-            s.coincident_faceuse.map(|fu| hd(edge.b, K_FACEUSE, fu.index())),
+            s.coincident_faceuse
+                .map(|fu| hd(edge.b, K_FACEUSE, fu.index())),
         ))
+    }
+
+    fn face_point_3d_classify(
+        &mut self,
+        k: &Kernel,
+        face: H,
+        point: Point3,
+        src_zone_tol_3d: f64,
+        do_boundary_intersections: bool,
+        pc: &mut PointClassification<H>,
+    ) -> solidcore::Result<()> {
+        if face.kind != K_FACE {
+            return Err(invalid("not a face"));
+        }
+        // the caller's classification in the face's B-rep handles (its other members are
+        // kept unless written, as upstream's out-param)
+        let mut pe = pc.map_objects(&mut |h: H| {
+            if h.b != face.b {
+                return Err(invalid("classification object of the other B-rep"));
+            }
+            self.topology_entity(h)
+                .map(|(_, e)| e)
+                .ok_or_else(|| invalid("classification object without a B-rep entity"))
+        })?;
+        let b = self.brep_m(face)?;
+        let r = qf1::point_3d_classify(
+            k,
+            b,
+            fid(face),
+            point,
+            src_zone_tol_3d,
+            do_boundary_intersections,
+            &mut pe,
+            qf1::Point3dClassifyOptions::default(),
+        );
+        // copied back whatever the status
+        *pc = pe.map_objects(&mut |e: EntityRef| {
+            Two::entity_h(face.b, e).ok_or_else(|| invalid("entity without a handle"))
+        })?;
+        r
+    }
+
+    fn face_bounding_box(&self, k: &Kernel, face: H) -> solidcore::Result<Extent3d> {
+        if face.kind != K_FACE {
+            return Err(invalid("not a face"));
+        }
+        qf1::calculate_bounding_box(k, self.brep_r(face)?, fid(face), false)
     }
 }
 
@@ -878,13 +951,21 @@ fn gen_class(rng: &mut Rng, b: i64, e: i64) -> ClassIn {
 }
 
 fn gen_inputs(rng: &mut Rng) -> Inputs {
-    let a_name = FILES.get(rng.below(FILES.len() as u64) as usize).copied().unwrap_or("disk.smb");
+    let a_name = FILES
+        .get(rng.below(FILES.len() as u64) as usize)
+        .copied()
+        .unwrap_or("disk.smb");
     let brep_a = file(a_name);
     // mostly the same file twice: every edge has a coincident partner
     let brep_b = if rng.chance(0.8) {
         file(a_name)
     } else {
-        file(FILES.get(rng.below(FILES.len() as u64) as usize).copied().unwrap_or("disk.smb"))
+        file(
+            FILES
+                .get(rng.below(FILES.len() as u64) as usize)
+                .copied()
+                .unwrap_or("disk.smb"),
+        )
     };
     let e = sel(rng);
     let e2 = if rng.chance(0.75) { e } else { sel(rng) };
@@ -892,10 +973,16 @@ fn gen_inputs(rng: &mut Rng) -> Inputs {
     for _ in 0..rng.below(3) {
         let pair = if rng.chance(0.5) {
             let v = sel(rng);
-            [h(0, K_VERTEX, v), h(1, K_VERTEX, if rng.chance(0.7) { v } else { sel(rng) })]
+            [
+                h(0, K_VERTEX, v),
+                h(1, K_VERTEX, if rng.chance(0.7) { v } else { sel(rng) }),
+            ]
         } else {
             let x = sel(rng);
-            [h(0, K_EDGE, x), h(1, K_EDGE, if rng.chance(0.7) { x } else { sel(rng) })]
+            [
+                h(0, K_EDGE, x),
+                h(1, K_EDGE, if rng.chance(0.7) { x } else { sel(rng) }),
+            ]
         };
         relates.push(pair);
     }
@@ -905,8 +992,16 @@ fn gen_inputs(rng: &mut Rng) -> Inputs {
             let with_surfaces = rng.chance(0.2);
             let f = sel(rng);
             MergeIn::CurveOnSurfaces {
-                s1: if with_surfaces { h(0, K_FACE_SURFACE, f) } else { NULL_H },
-                s2: if with_surfaces { h(1, K_FACE_SURFACE, f) } else { NULL_H },
+                s1: if with_surfaces {
+                    h(0, K_FACE_SURFACE, f)
+                } else {
+                    NULL_H
+                },
+                s2: if with_surfaces {
+                    h(1, K_FACE_SURFACE, f)
+                } else {
+                    NULL_H
+                },
                 tol: tol(rng),
                 curve: h(0, K_EDGE_CURVE, e),
                 edge1: h(0, K_EDGE, e),
@@ -922,7 +1017,11 @@ fn gen_inputs(rng: &mut Rng) -> Inputs {
             let f = sel(rng);
             MergeIn::CoincidentSurfaces {
                 s1: h(0, K_FACE_SURFACE, f),
-                s2: h(1, K_FACE_SURFACE, if rng.chance(0.7) { f } else { sel(rng) }),
+                s2: h(
+                    1,
+                    K_FACE_SURFACE,
+                    if rng.chance(0.7) { f } else { sel(rng) },
+                ),
             }
         }
     };
@@ -988,7 +1087,10 @@ fn edge_cases() -> Vec<(String, Value)> {
     add("square_conflicting_edge_relation", edge_conflict);
     add(
         "network_coincident_edge",
-        base((BrepIn::Network, Some(BrepIn::Network)), on_edges(2, 2, 1e-6)),
+        base(
+            (BrepIn::Network, Some(BrepIn::Network)),
+            on_edges(2, 2, 1e-6),
+        ),
     );
     add(
         "disk_null_curve_refused",

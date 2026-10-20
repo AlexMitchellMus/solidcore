@@ -816,7 +816,7 @@ fn script(
                             c.curves += 1;
                         }
                     }
-                    rd.index(6)?; // SmTsectCurveType: SM_TC_UNKNOWN .. SM_TC_REGION_BOUNDARY
+                    rd.index(6)?; // SmTsectCurveType: 0..=6
                     rd.finite()?;
                 }
             }

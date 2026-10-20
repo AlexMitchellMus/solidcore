@@ -41,12 +41,15 @@
 //!   [`SolidError::InvalidInput`] propagate instead. Statuses upstream ignores
 //!   (`RemoveRelationship` in the stale-mate and edge-repair steps) are ignored through
 //!   `ignore_soft`.
+//! - **Face queries** (`SmFace::Point3DClassify`, `SmFace::CalculateBoundingBox`, unit
+//!   `query.face_p1`) go through [`IntersectorBrepP3`], whose implementation calls
+//!   `query::face::p1` on the B-rep behind the handle. `dCurveTolerance` reaches the
+//!   point classifications as `SmZoneTol3d` (`zone_tol3d`), as upstream's implicit
+//!   conversion does.
 //! - **Callees not ported yet** are private stubs returning [`SolidError::Unported`],
-//!   each tagged `UNPORTED(<unit>)`: `SmFace::Point3DClassify` and
-//!   `SmFace::CalculateBoundingBox` (`query.face_p1`), `SmFace::GetUpwardLoopuses`
-//!   (`topology.face_p4`), `SmBrep::DeleteEdge` (`topology.brep_p4`), and the stub of
-//!   [`p1`](super::p1) for `SmFace::GetEdges` (`topology.face_p4`). The code after a
-//!   stub is ported in full.
+//!   each tagged `UNPORTED(<unit>)`: `SmFace::GetUpwardLoopuses` (`topology.face_p4`),
+//!   `SmBrep::DeleteEdge` (`topology.brep_p4`), and the stub of [`p1`](super::p1) for
+//!   `SmFace::GetEdges` (`topology.face_p4`). The code after a stub is ported in full.
 //! - **Undefined behaviour upstream** (a null or deleted object dereferenced, a
 //!   classification object of the wrong kind used as an edge or vertex, an index past
 //!   a list) is [`SolidError::InvalidInput`].
@@ -65,6 +68,7 @@ use crate::geom::extent1d::Extent1d;
 use crate::geom::extent3d::Extent3d;
 use crate::geom::global_solver::SolverOperation;
 use crate::geom::solution_array::SolutionObject;
+use crate::geom::tol::zone_tol3d;
 use crate::intersect::curve_class::p1::CurveClassification;
 use crate::intersect::curve_class::p4::ClassificationInit;
 use crate::intersect::point_class::{
@@ -81,7 +85,7 @@ use super::p1::{
     add_unique, contains, dangling, face_edges, ignore_soft, set_edge_class, IntersectorBrep,
     TopologyIntersector,
 };
-use super::p2::SqueezeVertices;
+use super::p2::{IntersectorBrepP2, SqueezeVertices};
 
 const OP_CLASSES: &str = "boolean::topology_intersector::p3::merge_curve_classes";
 const OP_ON_SURFACES: &str = "boolean::topology_intersector::p3::merge_curve_on_surfaces";
@@ -94,7 +98,7 @@ pub const MAX_COINCIDENT_SURFACE_PASSES: usize = 1 << 16;
 // ---- what part 3 needs from the B-reps beyond part 1 -----------------------------------
 
 /// The B-rep walks of this part, on top of [`IntersectorBrep`].
-pub trait IntersectorBrepP3<O>: IntersectorBrep<O> {
+pub trait IntersectorBrepP3<O>: IntersectorBrepP2<O> {
     /// `SmSurface::GetFace` (`surface::surface::p1`, `Surface::face`): the face that
     /// owns a surface, `None` for none.
     ///
@@ -153,33 +157,35 @@ pub trait IntersectorBrepP3<O>: IntersectorBrep<O> {
         classify_edgeuse: O,
         required_orientation: OrientType,
     ) -> Result<(Option<O>, Option<O>)>;
+    /// `SmFace::Point3DClassify(rPnt, sSrcZoneTol3d, bDoBoundaryIntersections,
+    /// rPointClass)` with the remaining arguments at their defaults (unit
+    /// `query.face_p1`: `query::face::p1::point_3d_classify` on the B-rep behind the
+    /// handle). Mutable: the classification may build missing UV trim curves.
+    ///
+    /// # Errors
+    ///
+    /// Those of `point_3d_classify`; [`SolidError::InvalidInput`] for a handle that is
+    /// not a face of a known B-rep.
+    fn face_point_3d_classify(
+        &mut self,
+        k: &Kernel,
+        face: O,
+        point: Point3,
+        src_zone_tol_3d: f64,
+        do_boundary_intersections: bool,
+        pc: &mut PointClassification<O>,
+    ) -> Result<()>;
+    /// `SmFace::CalculateBoundingBox(rBox)` (`bTight = FALSE`; unit `query.face_p1`:
+    /// `query::face::p1::calculate_bounding_box`).
+    ///
+    /// # Errors
+    ///
+    /// Those of `calculate_bounding_box`; [`SolidError::InvalidInput`] for a handle
+    /// that is not a face of a known B-rep.
+    fn face_bounding_box(&self, k: &Kernel, face: O) -> Result<Extent3d>;
 }
 
 // ---- unported callees -----------------------------------------------------------------------
-
-/// `SmFace::Point3DClassify(rPnt, dTol, bDoBoundaryCheck, rPointClass)`.
-fn face_point_3d_classify<O>(
-    _face: O,
-    _point: Point3,
-    _tol: f64,
-    _do_boundary_check: bool,
-    _pc: &mut PointClassification<O>,
-) -> Result<()> {
-    // UNPORTED(query.face_p1): SmFace::Point3DClassify
-    Err(SolidError::unported(
-        "SmFace::Point3DClassify",
-        "query.face_p1",
-    ))
-}
-
-/// `SmFace::CalculateBoundingBox(rBox)`.
-fn face_bounding_box<O>(_face: O) -> Result<Extent3d> {
-    // UNPORTED(query.face_p1): SmFace::CalculateBoundingBox
-    Err(SolidError::unported(
-        "SmFace::CalculateBoundingBox",
-        "query.face_p1",
-    ))
-}
 
 /// `SmFace::GetUpwardLoopuses(rLoopuses)`.
 fn face_upward_loopuses<O>(_face: O) -> Result<Vec<O>> {
@@ -440,7 +446,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
     /// or an unknown handle.
     pub fn merge_curve_classes(
         &mut self,
-        k: &Kernel,
+        k: &mut Kernel,
         brep: &mut impl IntersectorBrepP3<O>,
         crv_class1: &mut CurveClassification<O>,
         crv_class2: &mut CurveClassification<O>,
@@ -625,6 +631,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                 // vertices have old mates - squeeze old and new mates
                 if self.brep.is_some() && self.other.is_some() {
                     squeeze_ok = succeeded(self.check_for_squeeze_vertices_into(
+                        k,
                         brep,
                         v1,
                         v2,
@@ -671,6 +678,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                 // when both Brep and OtherBrep are present (the usual case)
                 if self.brep.is_some() && self.other.is_some() {
                     squeeze_ok = succeeded(self.check_for_squeeze_vertices_into(
+                        k,
                         brep,
                         v1,
                         v2,
@@ -825,7 +833,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
     /// which the mated edge's mate is replaced by the new pair.
     fn repair_edge_relation(
         &mut self,
-        k: &Kernel,
+        k: &mut Kernel,
         brep: &mut impl IntersectorBrepP3<O>,
         e1: O,
         e2: O,
@@ -926,7 +934,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
     /// used, or `doing_fillets` without classification handles.
     pub fn merge_curve_on_surfaces(
         &mut self,
-        k: &Kernel,
+        k: &mut Kernel,
         brep: &mut impl IntersectorBrepP3<O>,
         input: &CurveOnSurfaces<O>,
     ) -> Result<CurveOnSurfacesMerge<O>> {
@@ -966,12 +974,14 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
             let pnt = curve_of(brep, Some(input.curve))?.evaluate_point(natural.min())?;
 
             // classify point against both faces (in/out trimmed face region)
-            let mut point_class1 = PointClassification::new(input.curve_tolerance);
-            let mut point_class2 = PointClassification::new(input.curve_tolerance);
+            // (dCurveTolerance converts to SmZoneTol3d at both)
+            let curve_zone_tol = zone_tol3d(k, input.curve_tolerance);
+            let mut point_class1 = PointClassification::new(curve_zone_tol);
+            let mut point_class2 = PointClassification::new(curve_zone_tol);
             let tf = this_face.ok_or(dangling("no face"))?;
             let of = other_face.ok_or(dangling("no other face"))?;
-            face_point_3d_classify(tf, pnt, input.curve_tolerance, true, &mut point_class1)?;
-            face_point_3d_classify(of, pnt, input.curve_tolerance, true, &mut point_class2)?;
+            brep.face_point_3d_classify(k, tf, pnt, curve_zone_tol, true, &mut point_class1)?;
+            brep.face_point_3d_classify(k, of, pnt, curve_zone_tol, true, &mut point_class2)?;
 
             // when point was classified on both faces
             if point_class1.point_class() != PointClassType::Unknown
@@ -1141,7 +1151,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
     #[allow(clippy::too_many_arguments)] // one upstream block over its locals
     fn merge_partial_coincidence(
         &mut self,
-        k: &Kernel,
+        k: &mut Kernel,
         brep: &mut impl IntersectorBrepP3<O>,
         input: &CurveOnSurfaces<O>,
         new_curve: O,
@@ -1273,7 +1283,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
     /// [`SolidError::InvalidInput`] for an unknown handle or a surface without face.
     pub fn merge_coincident_surfaces(
         &mut self,
-        k: &Kernel,
+        k: &mut Kernel,
         brep: &mut impl IntersectorBrepP3<O>,
         b_surface: O,
         o_surface: O,
@@ -1293,8 +1303,8 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         let both_planes = is_plane(brep, b_surface)? && is_plane(brep, o_surface)?;
 
         // get surface bounding boxes
-        let mut this_face_box = face_bounding_box(b_face)?;
-        let other_face_box = face_bounding_box(o_face)?;
+        let mut this_face_box = brep.face_bounding_box(k, b_face)?;
+        let other_face_box = brep.face_bounding_box(k, o_face)?;
         this_face_box.expand_absolute(self.this_approx_tol_3d);
 
         // no work - bounding boxes don't intersect
@@ -1393,8 +1403,8 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                         .ok_or(SolidError::null_pointer(OP_COINCIDENT))?;
 
                     // get face->edges
-                    let edges_o = face_edges(o_face_match)?;
-                    let edges_b = face_edges(b_face_match)?;
+                    let edges_o = face_edges(o_face_match, None, false, None)?;
+                    let edges_b = face_edges(b_face_match, None, false, None)?;
 
                     // when edge counts are the same - note if any edges don't have a match
                     if edges_o.len() == edges_b.len() {
@@ -1434,7 +1444,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
     #[allow(clippy::too_many_arguments)] // one upstream loop over its locals
     fn merge_face_edges(
         &mut self,
-        k: &Kernel,
+        k: &mut Kernel,
         brep: &mut impl IntersectorBrepP3<O>,
         side: Side,
         b_surface: O,
@@ -1458,7 +1468,12 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
             Side::Other => o,
         };
 
-        let mut edges = face_edges(this_face_of(b_face, o_face).ok_or(dangling("no face"))?)?;
+        let mut edges = face_edges(
+            this_face_of(b_face, o_face).ok_or(dangling("no face"))?,
+            None,
+            false,
+            None,
+        )?;
         let num_edges = edges.len();
         for ii in 0..num_edges {
             // skip edges already mated to the other side
@@ -1549,7 +1564,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
 
                 // if there is a face - note if its edge count has changed
                 if let Some(f) = this_face_of(b_face, o_face) {
-                    edges = face_edges(f)?;
+                    edges = face_edges(f, None, false, None)?;
                     if edges.len() != edges_count {
                         topology_changed = true;
                     }
@@ -1642,7 +1657,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                             Side::Brep => edges.len(),
                             Side::Other => edges_count,
                         };
-                        edges = face_edges(f)?;
+                        edges = face_edges(f, None, false, None)?;
                         if edges.len() != num_brep_edges {
                             topology_changed = true;
                         }
