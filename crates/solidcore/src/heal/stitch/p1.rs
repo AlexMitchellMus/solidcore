@@ -56,8 +56,10 @@
 //!   as they were: `SmVector3d`'s default `SM_UNDEF_DOUBLE` (defined; the 3D evaluation
 //!   writes them only after its last status), [`Point3::UNDEF`] / [`Vec3::UNDEF`] here.
 //! - `SmBrep::GlueVertices`, `RemoveFaces` (with the B-rep's own editing flag) and
-//!   `StitchAndOrient` call `topology.brep_p5`, which defers at its own barriers.
-//! - The calls into `GlueEdgesGeneral` (`topology.brep_p7`), `SqueezeEdge`
+//!   `StitchAndOrient` call `topology.brep_p5`, which defers at its own barriers;
+//!   `GlueEdgesGeneral` calls `topology.brep_p7` with a call-local notification
+//!   environment (it defers at `SmBrep::Notify`, `topology.brep_p2`, first).
+//! - The calls into `SqueezeEdge`
 //!   (`topology.brep_p3`), `Notify`
 //!   (`topology.brep_p2`), `CalculateBoundingBox` (`query.brep`), `SmFace::GetBrep`,
 //!   `GetVertices`, `GetEdges` (`topology.face_p4`) and `SmMerge::MergeAddedFace`
@@ -1115,6 +1117,7 @@ impl<'c> Stitch<'c> {
                         }
                     }
                     glue_edges_general(
+                        k,
                         b,
                         keep,
                         orientation,
@@ -1803,6 +1806,7 @@ impl<'c> Stitch<'c> {
                     // glue pE/pTestE edge pair - keep pE
                     let old_tol = edge::tolerance(b, test_e)?;
                     match glue_edges_general(
+                        k,
                         b,
                         e,
                         orientation,
@@ -1995,8 +1999,11 @@ fn stitch_and_orient(
 }
 
 /// `SmBrep::GlueEdgesGeneral(keep, orientation, dist, bDoRegionNesting, delete,
-/// pInsideFaceuses)` (unit `topology.brep_p7`; header default `pInsideFaceuses = NULL`).
+/// pInsideFaceuses)` (unit `topology.brep_p7`; header default `pInsideFaceuses = NULL`):
+/// [`crate::topology::brep::p7::glue_edges_general`], with its notifications on
+/// records local to the call (as [`make_vertex_split_edge`]).
 pub(crate) fn glue_edges_general(
+    k: &mut Kernel,
     b: &mut Brep,
     keep: EdgeId,
     orientation: OrientType,
@@ -2005,20 +2012,26 @@ pub(crate) fn glue_edges_general(
     delete: EdgeId,
     inside_faceuses: Option<&[crate::topology::FaceuseId]>,
 ) -> Result<()> {
-    let _ = (
+    let mut records: BTreeMap<ObjectKey, Topology> = BTreeMap::new();
+    let mut attributes = AttributeStore::default();
+    let key_of = local_key_of;
+    let mut env = edge::NotifyEnv {
+        records: &mut records,
+        attributes: &mut attributes,
+        context: None,
+        key_of: &key_of,
+    };
+    crate::topology::brep::p7::glue_edges_general(
+        k,
         b,
-        keep,
+        Some(keep),
         orientation,
         dist,
         do_region_nesting,
-        delete,
+        Some(delete),
         inside_faceuses,
-    );
-    // UNPORTED(topology.brep_p7): SmBrep::GlueEdgesGeneral
-    Err(SolidError::unported(
-        "SmBrep::GlueEdgesGeneral",
-        "topology.brep_p7",
-    ))
+        &mut env,
+    )
 }
 
 /// `SmBrep::SqueezeEdge(edge, keep)` (unit `topology.brep_p3`).
@@ -2043,15 +2056,7 @@ pub(crate) fn make_vertex_split_edge(
 ) -> Result<(Option<EdgeId>, Option<EdgeId>, Option<VertexId>)> {
     let mut records: BTreeMap<ObjectKey, Topology> = BTreeMap::new();
     let mut attributes = AttributeStore::default();
-    let key_of = |entity: EntityRef| match entity {
-        EntityRef::Edge(id) => arena_identity(CacheObject::Edge(id)),
-        EntityRef::Face(id) => arena_identity(CacheObject::Face(id)),
-        EntityRef::Vertex(id) => arena_identity(CacheObject::Vertex(id)),
-        EntityRef::Edgeuse(id) => local_identity(crate::topology::edgeuse::p1::TYPE, id.index()),
-        EntityRef::Vertexuse(id) => local_identity(vertexuse::TYPE, id.index()),
-        EntityRef::Loopuse(id) => local_identity(crate::topology::loopuse::TYPE, id.index()),
-        _ => local_identity(crate::topology::topology::TYPE, 0),
-    };
+    let key_of = local_key_of;
     // The kernel's context is the split's own `k`; no separate object context.
     let mut env = edge::NotifyEnv {
         records: &mut records,
@@ -2068,6 +2073,20 @@ pub(crate) fn make_vertex_split_edge(
     }
     let [e1, e2] = out.edges.ok_or_else(|| ner("split without edges"))?;
     Ok((Some(e1), Some(e2), out.vertex))
+}
+
+/// The identities a call-local notification environment records under: the arena
+/// identities for edges, faces and vertices, [`local_identity`] for the uses.
+fn local_key_of(entity: EntityRef) -> ObjectRef {
+    match entity {
+        EntityRef::Edge(id) => arena_identity(CacheObject::Edge(id)),
+        EntityRef::Face(id) => arena_identity(CacheObject::Face(id)),
+        EntityRef::Vertex(id) => arena_identity(CacheObject::Vertex(id)),
+        EntityRef::Edgeuse(id) => local_identity(crate::topology::edgeuse::p1::TYPE, id.index()),
+        EntityRef::Vertexuse(id) => local_identity(vertexuse::TYPE, id.index()),
+        EntityRef::Loopuse(id) => local_identity(crate::topology::loopuse::TYPE, id.index()),
+        _ => local_identity(crate::topology::topology::TYPE, 0),
+    }
 }
 
 /// A call-local identity: the type code above the index, outside the arena identities'
@@ -2357,5 +2376,48 @@ mod tests {
         assert!(!s.ignore_problems && !s.fast_edge_compare && !s.squeeze_small_edges);
         assert!(!s.remove_laminar_slivers);
         assert!((s.stitch_tol_3d() - 0.01).abs() < 1e-15);
+    }
+
+    #[test]
+    fn glue_edges_general_reaches_brep_p7() {
+        use crate::geom::extent1d::Extent1d;
+        use crate::topology::{Edge, Vertex};
+        // Two distinct edges between the same vertices: the wrapper now runs the part 7
+        // routine, which stops at its first B-rep notify (topology.brep_p2), no longer at
+        // a GlueEdgesGeneral stub of its own; the same edge twice is a no-op upstream.
+        let mut k = Kernel::default();
+        let mut b = Brep::new();
+        let mut vertex = |point| {
+            b.add_vertex_record(Vertex {
+                point,
+                ..Vertex::default()
+            })
+            .unwrap()
+        };
+        let (a, c) = (vertex(Vec3::ZERO), vertex(Vec3::X));
+        let mut edge = || {
+            b.add_edge_record(Edge {
+                vertices: [a, c],
+                edgeuses: Vec::new(),
+                interval: Extent1d::from_raw(0.0, 1.0),
+                tolerance: 0.0,
+                curve: None,
+            })
+            .unwrap()
+        };
+        let (e0, e1) = (edge(), edge());
+        let err = glue_edges_general(&mut k, &mut b, e0, OrientType::Same, 0.0, false, e1, None)
+            .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                SolidError::Unported {
+                    unit: "topology.brep_p2",
+                    ..
+                }
+            ),
+            "{err}"
+        );
+        glue_edges_general(&mut k, &mut b, e0, OrientType::Same, 0.0, false, e0, None).unwrap();
     }
 }
