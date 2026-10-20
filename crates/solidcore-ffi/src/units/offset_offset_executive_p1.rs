@@ -121,9 +121,11 @@ pub const MAX_ITEMS: usize = 4096;
 /// Maximum number of homogeneous control points in one fixture.
 pub const MAX_CONTROL_POINTS: usize = 65_536;
 /// Largest control point coordinate magnitude (also after dividing by the weight).
-/// Native `CreateExtendedSurface` on a B-spline surface with a `1e160` control point
-/// gives no result within 25 s (HANG-16's class; `1e155` returns in 40 ms), so
-/// coordinates are bounded where their squares still stay finite.
+/// HANG-37: native `CreateExtendedSurface` on a B-spline surface with one control
+/// point of magnitude `1e157` or more gives no result within 25 s, on x, y and z
+/// alike (`1e154`, `1e155` and `1e156` return in about 30 ms each; `1e157`, `1e158`,
+/// `1e160`, `1e200`, `1e300` do not). The bound sits 1000x below the first slow
+/// value, where coordinate squares also still stay finite.
 pub const MAX_COORDINATE: f64 = 1e154;
 /// Native `NL_MAXDEG` (`NL_Nurbsdef.h`); larger degrees overrun basis work arrays.
 pub const MAX_DEGREE: usize = 17;
