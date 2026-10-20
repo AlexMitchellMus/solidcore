@@ -2,6 +2,1106 @@
   "abs_floors": [],
   "cases": [
     {
+      "max_rel_err": 0.0,
+      "name": "strut_check",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#0 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 58
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "strut_edge0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#1 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "strut_edge1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#2 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "strut_edge2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#3 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "strut_edge3",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#4 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "strut_edge3_keep0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#5 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "strut_edge3_noedit",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#6 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 58
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "strut_vertex0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#7 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "strut_vertex3",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#8 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "strut_shrink",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#9 (upstream source/SMLib/src/SmBrep.cpp:32218)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::LockBoundingBox",
+        "unit": "query.brep"
+      },
+      "max_rel_err": 0.0,
+      "name": "strut_stitch",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#10 (upstream source/SMLib/src/SmBrep.cpp:26555)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::LockBoundingBox",
+        "unit": "query.brep"
+      },
+      "max_rel_err": 0.0,
+      "name": "strut_stitch_face0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#11 (upstream source/SMLib/src/SmBrep.cpp:26555)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "strut_destroy",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#12 (upstream source/SMLib/src/SmBrep.cpp:695)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "bridge_check",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#13 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 109
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "bridge_edge0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#14 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "bridge_edge1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#15 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "bridge_edge2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#16 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "bridge_edge3",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#17 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "bridge_edge4",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#18 (upstream source/SMLib/src/SmBrep.cpp:5911)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "bridge_edge5",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#19 (upstream source/SMLib/src/SmBrep.cpp:5911)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "bridge_edge6",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#20 (upstream source/SMLib/src/SmBrep.cpp:5911)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "bridge_edge7",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#21 (upstream source/SMLib/src/SmBrep.cpp:5911)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "bridge_edge8",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#22 (upstream source/SMLib/src/SmBrep.cpp:5911)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "bridge_edge4_keep0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#23 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "bridge_vertex4",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#24 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "bridge_shrink",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#25 (upstream source/SMLib/src/SmBrep.cpp:32218)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "bridge_destroy",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#26 (upstream source/SMLib/src/SmBrep.cpp:695)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "holes_check",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#27 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 131
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "holes_edge0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#28 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "holes_edge4",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#29 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "holes_edge5",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#30 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "holes_edge6",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#31 (upstream source/SMLib/src/SmBrep.cpp:6476)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "holes_edge7",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#32 (upstream source/SMLib/src/SmBrep.cpp:6476)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "holes_edge8",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#33 (upstream source/SMLib/src/SmBrep.cpp:6476)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "holes_edge9",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#34 (upstream source/SMLib/src/SmBrep.cpp:6476)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "holes_edge10",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#35 (upstream source/SMLib/src/SmBrep.cpp:6476)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "holes_edge6_keep0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#36 (upstream source/SMLib/src/SmBrep.cpp:6476)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "holes_vertex6",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#37 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "holes_destroy",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#38 (upstream source/SMLib/src/SmBrep.cpp:695)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "island_check",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#39 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 162
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#40 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#41 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#42 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge3",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#43 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge4",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#44 (upstream source/SMLib/src/SmBrep.cpp:5911)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge5",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#45 (upstream source/SMLib/src/SmBrep.cpp:5911)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge6",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#46 (upstream source/SMLib/src/SmBrep.cpp:5911)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge7",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#47 (upstream source/SMLib/src/SmBrep.cpp:5911)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge8",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#48 (upstream source/SMLib/src/SmBrep.cpp:5911)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge9",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#49 (upstream source/SMLib/src/SmBrep.cpp:5911)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge4_keep0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#50 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge5_keep0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#51 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge6_keep0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#52 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge7_keep0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#53 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge8_keep0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#54 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge9_keep0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#55 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge4_keep1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#56 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge5_keep1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#57 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge6_keep1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#58 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge7_keep1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#59 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge8_keep1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#60 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge9_keep1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#61 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge4_keep2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#62 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge5_keep2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#63 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge6_keep2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#64 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge7_keep2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#65 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge8_keep2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#66 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_edge9_keep2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#67 (upstream source/SMLib/src/SmBrep.cpp:6037)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_vertex4",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#68 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_shrink",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#69 (upstream source/SMLib/src/SmBrep.cpp:32218)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::LockBoundingBox",
+        "unit": "query.brep"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_stitch_faces",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#70 (upstream source/SMLib/src/SmBrep.cpp:26555)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "island_destroy",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#71 (upstream source/SMLib/src/SmBrep.cpp:695)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "wirepath_check",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#72 (upstream source/SMLib/src/SmBrep.cpp:5752)",
+      "values_compared": 105
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_edge0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#73 (upstream source/SMLib/src/SmBrep.cpp:6827)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_edge1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#74 (upstream source/SMLib/src/SmBrep.cpp:6827)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_edge2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#75 (upstream source/SMLib/src/SmBrep.cpp:6827)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_edge3",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#76 (upstream source/SMLib/src/SmBrep.cpp:6827)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_edge4",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#77 (upstream source/SMLib/src/SmBrep.cpp:6827)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_edge5",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#78 (upstream source/SMLib/src/SmBrep.cpp:6827)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_edge6",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#79 (upstream source/SMLib/src/SmBrep.cpp:6827)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_vertex0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#80 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_vertex1",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#81 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_vertex2",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#82 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_vertex3",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#83 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_vertex4",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#84 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_vertex5",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#85 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_vertex6",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#86 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_vertex7",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#87 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_vertex8",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#88 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_vertex9",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#89 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "wirepath_vertex4_noedit",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#90 (upstream source/SMLib/src/SmBrep.cpp:7871)",
+      "values_compared": 105
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetUpwardLoopuses",
+        "unit": "topology.face_p4"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_shrink",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#91 (upstream source/SMLib/src/SmBrep.cpp:32218)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::LockBoundingBox",
+        "unit": "query.brep"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_stitch",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#92 (upstream source/SMLib/src/SmBrep.cpp:26555)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "wirepath_destroy",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p4/coverage.json#93 (upstream source/SMLib/src/SmBrep.cpp:695)",
+      "values_compared": 0
+    },
+    {
       "deferred": {
         "symbol": "SmBrep::Notify",
         "unit": "topology.brep_p2"
@@ -139,7 +1239,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427435054534747288",
-      "values_compared": 1
+      "values_compared": 119
     },
     {
       "max_rel_err": 0.0,
@@ -147,7 +1247,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427435054534747289",
-      "values_compared": 1
+      "values_compared": 52
     },
     {
       "deferred": {
@@ -427,7 +1527,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427435054534747314",
-      "values_compared": 1
+      "values_compared": 54
     },
     {
       "max_rel_err": 0.0,
@@ -435,7 +1535,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427435054534747315",
-      "values_compared": 1
+      "values_compared": 32
     },
     {
       "deferred": {
@@ -535,7 +1635,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427435054534747324",
-      "values_compared": 1
+      "values_compared": 54
     },
     {
       "deferred": {
@@ -851,7 +1951,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427435054534747353",
-      "values_compared": 1
+      "values_compared": 21
     },
     {
       "deferred": {
@@ -1359,7 +2459,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427435054534747398",
-      "values_compared": 1
+      "values_compared": 16
     },
     {
       "deferred": {
@@ -1427,7 +2527,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427435054534747404",
-      "values_compared": 1
+      "values_compared": 21
     },
     {
       "deferred": {
@@ -1543,7 +2643,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427435054534747414",
-      "values_compared": 1
+      "values_compared": 269
     },
     {
       "deferred": {
@@ -1631,7 +2731,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427435054534747422",
-      "values_compared": 1
+      "values_compared": 54
     },
     {
       "deferred": {
@@ -1675,7 +2775,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427435054534747426",
-      "values_compared": 1
+      "values_compared": 54
     },
     {
       "deferred": {
@@ -1783,14 +2883,14 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 125,
+  "cases_deferred": 212,
   "cases_failed": 0,
-  "cases_passed": 35,
-  "cases_total": 160,
+  "cases_passed": 42,
+  "cases_total": 254,
   "deferred_by_unit": {
-    "query.brep": 8,
-    "topology.brep_p2": 92,
-    "topology.face_p4": 25
+    "query.brep": 12,
+    "topology.brep_p2": 171,
+    "topology.face_p4": 29
   },
   "max_rel_err": 0.0,
   "pass": true,
