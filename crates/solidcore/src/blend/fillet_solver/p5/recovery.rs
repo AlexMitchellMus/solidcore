@@ -203,6 +203,8 @@ pub(super) trait RecoveryOps {
         vertex: VertexId,
         geom: FilletGeomId,
     ) -> Result<()> {
+        // ProcessRollOver visits this solver's own geometries, so c.solver
+        // is the solver identified by geom.fillet_solver().
         let solver_id = required(c.fillets.geom(geom)?.fillet_solver())?;
         c.fillets.calc_rail_int_edgeuse_with_solver(
             c.k,
