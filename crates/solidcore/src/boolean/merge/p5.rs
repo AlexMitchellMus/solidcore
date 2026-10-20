@@ -170,12 +170,13 @@ pub fn process_wires_and_shell_vertices(
 ) -> Result<()> {
     let keep_vertices = collect_wires_and_shell_vertices(
         k,
-        k,
+        None,
         brep,
         other,
         brep_marks,
         other_marks,
         relations,
+        copy,
         operation,
         brep_mark,
         other_mark,
@@ -215,12 +216,13 @@ pub fn process_wires_and_shell_vertices_with_kernels(
 ) -> Result<()> {
     let keep_vertices = collect_wires_and_shell_vertices(
         primary_kernel,
-        other_kernel.as_deref().unwrap_or(primary_kernel),
+        other_kernel.as_deref(),
         brep,
         other,
         brep_marks,
         other_marks,
         relations,
+        copy,
         operation,
         brep_mark,
         other_mark,
@@ -242,13 +244,14 @@ pub fn process_wires_and_shell_vertices_with_kernels(
 }
 
 fn collect_wires_and_shell_vertices(
-    k: &Kernel,
-    other_k: &Kernel,
+    k: &mut Kernel,
+    other_k: Option<&Kernel>,
     brep: &mut Brep,
     other: &mut Brep,
     brep_marks: &mut Marks,
     other_marks: &mut Marks,
     relations: &Relations,
+    copy: &mut VertexCopy<'_>,
     operation: BooleanOperation,
     brep_mark: MarkType,
     other_mark: MarkType,
@@ -312,7 +315,7 @@ fn collect_wires_and_shell_vertices(
 
     for id in other.edges().ids() {
         let is_wire = vertexuse::edge_is_wire(other, id)?;
-        let marked = other_marks.is_marked(other_k, Entity::Edge(id), other_mark);
+        let marked = other_marks.is_marked(other_k.unwrap_or(&*k), Entity::Edge(id), other_mark);
         if is_wire && marked {
             match operation {
                 BooleanOperation::Union
@@ -343,7 +346,7 @@ fn collect_wires_and_shell_vertices(
         )?;
         let Some(region) = region else { continue };
         collect_wire_edges(
-            other_k,
+            other_k.unwrap_or(&*k),
             other,
             other_marks,
             Some(id),
@@ -377,7 +380,7 @@ fn collect_wires_and_shell_vertices(
 
     let mut keep_vertices = Vec::new();
     for v in other.vertices().ids() {
-        if other_marks.is_marked(other_k, Entity::Vertex(v), other_mark)
+        if other_marks.is_marked(other_k.unwrap_or(&*k), Entity::Vertex(v), other_mark)
             || !vertex::is_shell_vertex(other, v)?
         {
             continue;
