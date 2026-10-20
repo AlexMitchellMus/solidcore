@@ -85,6 +85,7 @@
 //! - **Not ported.** `Dump` and the `SM_DEBUG_CODE` drawing blocks; `SM_ASSERT`s.
 
 use crate::blend::fillet_custom_solver::{offset_evaluate_1st, ConstantRadiusAssistedFs};
+use crate::blend::fillet_solver::p1::OffsetSurfaceSlot;
 use crate::curve::crv_on_surf::CrvOnSurf;
 use crate::curve::curve::p3::PointSolveOptions;
 use crate::curve::curve::Curve;
@@ -526,14 +527,33 @@ pub trait FilletSolverOps {
 impl FilletSolverOps for ConstantRadiusAssistedFs {
     type FilletGeom = ();
 
-    // Merge of PR #192 (blend.fillet_solver_p1) with main (#179): the offset surfaces and
-    // m_dSavedOffsets now live in the SmFilletSolver base, which ports both routines.
     fn set_surfaces_to_zero_offset(&mut self) -> Result<()> {
-        self.solver.set_surfaces_to_zero_offset()
+        for (slot, saved) in self
+            .solver
+            .surfaces
+            .iter_mut()
+            .zip(self.saved_offsets.iter_mut())
+        {
+            if let Some(OffsetSurfaceSlot { surface: s, .. }) = slot {
+                *saved = s.offset_distance();
+                s.set_offset_distance(0.0);
+            }
+        }
+        Ok(())
     }
 
     fn reload_surface_offsets(&mut self) -> Result<()> {
-        self.solver.reload_surface_offsets()
+        for (slot, saved) in self
+            .solver
+            .surfaces
+            .iter_mut()
+            .zip(self.saved_offsets.iter())
+        {
+            if let Some(OffsetSurfaceSlot { surface: s, .. }) = slot {
+                s.set_offset_distance(*saved);
+            }
+        }
+        Ok(())
     }
 
     fn rail_surface_evaluate_1st_derivatives(
@@ -1873,7 +1893,14 @@ mod tests {
         assert!(fi
             .test_span_accuracy(&mut s, &Kernel::default(), p, z, None)
             .is_err());
-        assert_eq!(s.surface(0).unwrap().offset_distance(), 1.0);
+        assert_eq!(
+            s.solver.surfaces[0]
+                .as_ref()
+                .unwrap()
+                .surface
+                .offset_distance(),
+            1.0
+        );
     }
 
     #[test]
@@ -1901,9 +1928,23 @@ mod tests {
         assert!(r.found_good_point);
         assert!(r.deviation_found.is_none());
         // offsets restored
-        assert_eq!(s.surface(0).unwrap().offset_distance(), 1.0);
-        assert_eq!(s.surface(1).unwrap().offset_distance(), -2.0);
-        assert_eq!(s.solver.saved_offsets, [1.0, -2.0]);
+        assert_eq!(
+            s.solver.surfaces[0]
+                .as_ref()
+                .unwrap()
+                .surface
+                .offset_distance(),
+            1.0
+        );
+        assert_eq!(
+            s.solver.surfaces[1]
+                .as_ref()
+                .unwrap()
+                .surface
+                .offset_distance(),
+            -2.0
+        );
+        assert_eq!(s.saved_offsets, [1.0, -2.0]);
     }
 
     #[test]
