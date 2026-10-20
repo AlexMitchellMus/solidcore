@@ -49,9 +49,14 @@
 //! - Every B-rep entry point validates its inputs as upstream (and the pyramid makes its
 //!   base edges), then returns [`SolidError::Unported`]: `SmPrimitiveCreation` (units
 //!   `primitive.primitive_creation_p1..p3`) and the `SmBrep` construction it fills
-//!   (`topology.brep_p3`, `topology.brep_p5`, `topology.brep_p8`) are not ported yet.
-//!   The error names the call that builds the solid. `SmBrep::GetInfiniteRegion` is
-//!   ported (`Brep::infinite_region`) but is only reached once the B-rep exists.
+//!   (`topology.brep_p5`, `topology.brep_p8`) are not ported yet. The error names the
+//!   call that builds the solid.
+//! - **The new B-rep.** `new SmBrep()` is [`Brep::new_with_infinite_region`]: the
+//!   topology part of `topology.brep_p3`'s constructor (its infinite void region). These
+//!   entry points take no kernel (`SmApiCreate*` take no context), so the rest of
+//!   `SmBrep()` (the context's zone tolerance and size settings, and the
+//!   `SM_NO_CONSTRUCTION` notification) is not applied, the same deviation as
+//!   `blend::fillet_geom::p1::FilletBrep::new`'s.
 //! - `SmApiCreateOffsetProfile`, `SmApiCreateSkinPrimitive` and
 //!   `SmApiCreateSkinFromFaces`, also in this file, belong to other units.
 //! - No recursion.
@@ -190,7 +195,9 @@ pub fn create_box(origin: Point3, length: f64, width: f64, height: f64) -> Resul
     }
     let frame = xy_frame(origin);
     let _ = frame;
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
+    // `new SmBrep()`: the B-rep and its infinite void region (module Deviations)
+    let new_brep = Brep::new_with_infinite_region()?;
+    let _ = new_brep.infinite_region();
     // UNPORTED(primitive.primitive_creation_p1): SmPrimitiveCreation::SmPrimitiveCreation
     // UNPORTED(primitive.primitive_creation_p1): SmPrimitiveCreation::CreateBox
     Err(SolidError::unported(
@@ -363,7 +370,9 @@ pub fn create_pyramid(base_center: Point3, length: f64, height: f64) -> Result<B
     let apex = base_center + Vec3::new(0.0, 0.0, height);
     let tol = 1.0e-5;
 
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
+    // `new SmBrep()`: the B-rep and its infinite void region (module Deviations)
+    let new_brep = Brep::new_with_infinite_region()?;
+    let _ = new_brep.infinite_region();
 
     // Square base face: c0 -> c1 -> c2 -> c3.
     let mut base_loop: Vec<Curve> = Vec::new();
@@ -419,7 +428,9 @@ pub fn create_cylindrical_box(
     }
     let frame = xy_frame(origin);
     let _ = frame;
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
+    // `new SmBrep()`: the B-rep and its infinite void region (module Deviations)
+    let new_brep = Brep::new_with_infinite_region()?;
+    let _ = new_brep.infinite_region();
     // UNPORTED(primitive.primitive_creation_p1): SmPrimitiveCreation::SmPrimitiveCreation
     // UNPORTED(primitive.primitive_creation_p1): SmPrimitiveCreation::CreateCylindricalBox
     Err(SolidError::unported(
@@ -439,7 +450,9 @@ fn partial_sphere(
 ) -> Result<Brep> {
     let frame = xy_frame(origin);
     let _ = (frame, radius, start_angle_deg, end_angle_deg);
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
+    // `new SmBrep()`: the B-rep and its infinite void region (module Deviations)
+    let new_brep = Brep::new_with_infinite_region()?;
+    let _ = new_brep.infinite_region();
     // UNPORTED(primitive.primitive_creation_p1): SmPrimitiveCreation::SmPrimitiveCreation
     // UNPORTED(primitive.primitive_creation_p2): SmPrimitiveCreation::CreateSphere
     Err(SolidError::unported(
@@ -477,7 +490,9 @@ pub fn create_sphere_no_pole(center: Point3, radius: f64) -> Result<Brep> {
         return Err(SolidError::invalid_input(OP_SPHERE_NO_POLE, "zero radius"));
     }
     let _ = center;
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
+    // `new SmBrep()`: the B-rep and its infinite void region (module Deviations)
+    let new_brep = Brep::new_with_infinite_region()?;
+    let _ = new_brep.infinite_region();
     // UNPORTED(primitive.primitive_creation_p1): SmPrimitiveCreation::CreateSphereNoPole
     Err(SolidError::unported(
         "SmPrimitiveCreation::CreateSphereNoPole",
@@ -505,7 +520,9 @@ fn partial_cone(
         start_angle_deg,
         end_angle_deg,
     );
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
+    // `new SmBrep()`: the B-rep and its infinite void region (module Deviations)
+    let new_brep = Brep::new_with_infinite_region()?;
+    let _ = new_brep.infinite_region();
     // UNPORTED(primitive.primitive_creation_p1): SmPrimitiveCreation::SmPrimitiveCreation
     // UNPORTED(primitive.primitive_creation_p2): SmPrimitiveCreation::CreateCone
     Err(SolidError::unported(
@@ -568,7 +585,9 @@ pub struct ConeEllipticEnds {
 /// [`SolidError::Unported`] (`SmPrimitiveCreation::CreateConeEllipticEnds`).
 pub fn create_cone_elliptic_ends(params: &ConeEllipticEnds) -> Result<Brep> {
     let _ = params;
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
+    // `new SmBrep()`: the B-rep and its infinite void region (module Deviations)
+    let new_brep = Brep::new_with_infinite_region()?;
+    let _ = new_brep.infinite_region();
     // UNPORTED(primitive.primitive_creation_p1): SmPrimitiveCreation::CreateConeEllipticEnds
     Err(SolidError::unported(
         "SmPrimitiveCreation::CreateConeEllipticEnds",
@@ -618,7 +637,9 @@ fn partial_torus(
         start_angle_deg,
         end_angle_deg,
     );
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
+    // `new SmBrep()`: the B-rep and its infinite void region (module Deviations)
+    let new_brep = Brep::new_with_infinite_region()?;
+    let _ = new_brep.infinite_region();
     // UNPORTED(primitive.primitive_creation_p1): SmPrimitiveCreation::SmPrimitiveCreation
     // UNPORTED(primitive.primitive_creation_p2): SmPrimitiveCreation::CreateTorus
     Err(SolidError::unported(
@@ -687,7 +708,9 @@ pub fn create_swung_primitive(
     scale: f64,
 ) -> Result<Brep> {
     let _ = (xy_curves, xz_curves, scale);
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
+    // `new SmBrep()`: the B-rep and its infinite void region (module Deviations)
+    let new_brep = Brep::new_with_infinite_region()?;
+    let _ = new_brep.infinite_region();
     // UNPORTED(primitive.primitive_creation_p1): SmPrimitiveCreation::SmPrimitiveCreation
     // UNPORTED(primitive.primitive_creation_p3): SmPrimitiveCreation::CreateSwungPrimitive
     Err(SolidError::unported(
