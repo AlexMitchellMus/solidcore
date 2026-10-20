@@ -67,6 +67,11 @@
 //!   and to the pole search of `GetSingularities` / `IsSingularity`; the surface calls
 //!   without such an argument (`IsClosed`, `IsPeriodic`, the line intersection) still
 //!   return [`SolidError::Unported`] for a face-owned surface.
+//! - **Seam curves.** Upstream's seam classifications own their seam curves. Here
+//!   the U seam and its UV curve are the caller's temporaries 0 and 1, the V seam's 2
+//!   and 3, and [`SeamCheck`] returns the curves (`seam_u`, `seam_v`). The copies
+//!   `SetProps_Stage2` keeps in the face properties hold the handles only: a later
+//!   caller that resolves their curves needs the curves of the `SeamCheck`.
 //! - **`HasSeamProblem` and `SetProps_Stage2`** call each other upstream. Without stage 2
 //!   face properties the port runs [`FaceProps::set_props_stage2_with`] with this
 //!   function (and the caller's classification objects) as its seam call, passing the
@@ -1191,10 +1196,11 @@ pub fn find_vertex_sector(
 
 // ---- seam check ------------------------------------------------------------------------
 
-/// Index of the seam curve's temporary handle ([`ClassObject::temporary`]).
-const SEAM_CURVE_TEMP: usize = 0;
-/// Index of the seam curve's UV curve's temporary handle.
-const SEAM_UV_CURVE_TEMP: usize = 1;
+/// Indices of the U seam curve's and its UV curve's temporary handles
+/// ([`ClassObject::temporary`]).
+const SEAM_U_TEMPS: (usize, usize) = (0, 1);
+/// Indices of the V seam curve's and its UV curve's temporary handles.
+const SEAM_V_TEMPS: (usize, usize) = (2, 3);
 
 /// The caller's classification objects with the seam curve `HasSeamProblem` builds
 /// (and its UV curve) as temporary curves.
@@ -1313,6 +1319,20 @@ pub struct SeamCheck<O> {
     pub class_v: CurveClassification<O>,
     /// `reCrossedSeam`, `reMissingSeam`, `reNearMissSeam`.
     pub problem: SeamProblem,
+    /// The curves `class_u`'s temporaries 0 and 1 name (upstream's classification owns
+    /// its seam curve); `None` when the U seam was not classified here.
+    pub seam_u: Option<SeamCurves>,
+    /// The curves `class_v`'s temporaries 2 and 3 name.
+    pub seam_v: Option<SeamCurves>,
+}
+
+/// A seam curve [`has_seam_problem`] classified, and its UV curve.
+#[derive(Debug, Clone)]
+pub struct SeamCurves {
+    /// The seam curve on the surface (`m_cpCurve`).
+    pub curve: Curve,
+    /// Its UV curve (`m_cpUVCurve1`).
+    pub uv_curve: Curve,
 }
 
 /// `SmCurveClassification::GetLoopCrossings(loops, props, &counts,
@@ -1389,7 +1409,7 @@ fn classify_seam<O: LoopObject, M: CurveOnClassifyObjects<O>>(
     outer_loop_only: bool,
     loops: &[LoopId],
     props: &mut FaceProps<O>,
-) -> Result<(CurveClassification<O>, bool, bool, bool)> {
+) -> Result<(CurveClassification<O>, bool, bool, bool, SeamCurves)> {
     // Build SeamConst curve
     let seam = surface
         .create_seam_curve(k, dir, periodic)?
@@ -1402,7 +1422,12 @@ fn classify_seam<O: LoopObject, M: CurveOnClassifyObjects<O>>(
             null("HasSeamProblem: classification handles cannot name the seam curve")
         })
     };
-    let (seam_h, seam_uv_h) = (temp(SEAM_CURVE_TEMP)?, temp(SEAM_UV_CURVE_TEMP)?);
+    let (ci, ui) = if dir == SurfParamType::V {
+        SEAM_V_TEMPS
+    } else {
+        SEAM_U_TEMPS
+    };
+    let (seam_h, seam_uv_h) = (temp(ci)?, temp(ui)?);
     let objects = WithSeam {
         inner: objects,
         seam: Some((seam_h, &seam)),
@@ -1439,7 +1464,11 @@ fn classify_seam<O: LoopObject, M: CurveOnClassifyObjects<O>>(
     let crossed = class.is_crossed_by_edge()?; // only count seam crossings by an Edge
     let missing = class.is_crossing_face(Some(objects.face(f))); // segments in Face but not on an Edge
     let near_miss = class.has_near_misses(k, &objects, false)?;
-    Ok((class, crossed, missing, near_miss))
+    let curves = SeamCurves {
+        curve: seam,
+        uv_curve: seam_uv,
+    };
+    Ok((class, crossed, missing, near_miss, curves))
 }
 
 /// `HasSeamProblem`: whether the seams of the face's periodic surface are badly
@@ -1488,6 +1517,8 @@ pub fn has_seam_problem<O: LoopObject, M: CurveOnClassifyObjects<O>>(
             missing: SurfParamType::Unknown,
             near_miss: SurfParamType::Unknown,
         },
+        seam_u: None,
+        seam_v: None,
     };
 
     // no work - no surface - return Okay
@@ -1603,7 +1634,7 @@ pub fn has_seam_problem<O: LoopObject, M: CurveOnClassifyObjects<O>>(
 
     // periodic in U
     if periodic_u {
-        let (class, crossed, missing, near_miss) = classify_seam(
+        let (class, crossed, missing, near_miss, curves) = classify_seam(
             k,
             b,
             f,
@@ -1617,12 +1648,13 @@ pub fn has_seam_problem<O: LoopObject, M: CurveOnClassifyObjects<O>>(
             props,
         )?;
         out.class_u = class;
+        out.seam_u = Some(curves);
         (crossed_u, missing_u, near_miss_u) = (crossed, missing, near_miss);
     }
 
     // periodic in V
     if periodic_v {
-        let (class, crossed, missing, near_miss) = classify_seam(
+        let (class, crossed, missing, near_miss, curves) = classify_seam(
             k,
             b,
             f,
@@ -1636,6 +1668,7 @@ pub fn has_seam_problem<O: LoopObject, M: CurveOnClassifyObjects<O>>(
             props,
         )?;
         out.class_v = class;
+        out.seam_v = Some(curves);
         (crossed_v, missing_v, near_miss_v) = (crossed, missing, near_miss);
     }
 

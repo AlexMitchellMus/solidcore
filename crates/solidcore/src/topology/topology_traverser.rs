@@ -479,11 +479,10 @@ impl crate::geom::solution_array::SolutionObject for RaySurface {
 }
 
 /// `pTargetFace->GlobalLineIntersect(GetUVDomain(), origin, direction, NULL, FALSE,
-/// GetTolerance(), sols)`: the line parameter of each solution. The face
-/// classification runs on a copy of the B-rep (its lazy cache updates are dropped).
+/// GetTolerance(), sols)`: the line parameter of each solution.
 fn line_parameters(
     k: &Kernel,
-    b: &Brep,
+    b: &mut Brep,
     f: FaceId,
     origin: Vec3,
     direction: Vec3,
@@ -496,18 +495,8 @@ fn line_parameters(
             .ok_or_else(|| SolidError::invalid_input(OP, "ray target face without surface"))?
             .natural_uv_domain(),
     );
-    let mut scratch = b.clone();
     let solutions = crate::topology::face::p4::global_line_intersect(
-        k,
-        &mut scratch,
-        f,
-        surface,
-        &uv_domain,
-        origin,
-        direction,
-        None,
-        false,
-        tol,
+        k, b, f, surface, &uv_domain, origin, direction, None, false, tol,
     )?;
     Ok(solutions
         .as_slice()
@@ -520,10 +509,16 @@ fn line_parameters(
 /// Errors propagate from face sampling and the ray/face intersections (whose other
 /// failures skip the face, as upstream).
 /// An empty or inconclusive set returns the upstream `SM_ERR`.
+///
+/// The rays run on one copy of `b`, so the lazy cache updates of the face
+/// classifications carry over from ray to ray as upstream's do, and are dropped at the
+/// end (`b` is the caller's shared B-rep).
 pub fn is_inner_shell(k: &mut Kernel, b: &Brep, faceuses: &[FaceuseId]) -> Result<bool> {
     if faceuses.is_empty() {
         return Err(SolidError::sm_err(OP));
     }
+    let mut scratch = b.clone();
+    let b = &mut scratch;
     let mut samples = 3;
     if faceuses.len() < 6 {
         samples *= 2;
@@ -536,7 +531,7 @@ pub fn is_inner_shell(k: &mut Kernel, b: &Brep, faceuses: &[FaceuseId]) -> Resul
     for &source in faceuses {
         let source = b.faceuse(source)?;
         let f = required(source.face)?;
-        let mut points = face::points_in_face(k, b, f, samples)?.pv;
+        let mut points = face::points_in_face(k, &*b, f, samples)?.pv;
         if source.orientation == OrientType::Opposite {
             for pair in points.chunks_exact_mut(2) {
                 if let Some(normal) = pair.get_mut(1) {
