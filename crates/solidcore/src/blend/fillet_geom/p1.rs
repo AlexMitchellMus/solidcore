@@ -435,9 +435,8 @@ impl FilletVertexType {
 }
 
 /// How a fillet surface is trimmed (`SmBoundaryTrimmingType`); discriminants are the
-/// upstream values. PR #168 (`blend.fillet_standard_solver_p1`) co-ports the same enum,
-/// identically, at `blend::fillet_standard_solver::p1::BoundaryTrimmingType`; whichever
-/// lands second re-exports the other's.
+/// upstream values. `blend.fillet_standard_solver_p1` (PR #168) re-exports it at
+/// `blend::fillet_standard_solver::p1::BoundaryTrimmingType`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum BoundaryTrimmingType {
     /// `SM_BT_NONE`.
@@ -1077,10 +1076,10 @@ impl FilletGeom {
         let mut off_surfs = [None, None];
         for (slot, i) in off_surfs.iter_mut().zip(0..2usize) {
             if let Some((_, fs)) = solver {
-                *slot = match fs.solver.surfaces.get(i).and_then(Option::as_ref) {
+                *slot = match fs.solver.surface(i)?.map(|slot| &slot.surface) {
                     // SmOffsetSurface::Copy() returns an SmSurface*, not SmOffsetSurface*;
                     // its status is ignored, so a failed copy leaves NULL
-                    Some(off_srf) => match offset_surface_copy(k, &off_srf.surface) {
+                    Some(off_srf) => match offset_surface_copy(k, off_srf) {
                         Ok(new_surf) => Some(new_surf),
                         Err(e) if e.is_unported() => return Err(e),
                         Err(_) => None,
@@ -3310,11 +3309,11 @@ fn drop_rail_onto_offset_surface(
 ) -> Result<()> {
     let solver = adjust_solver.ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?;
     // SmFilletSolver::GetSurface(k); NER(pOffsetSurf)
-    let offset_surf = solver
+    let offset_surf = &mut solver
         .solver
         .surface_mut(rail_index)?
-        .ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?;
-    let offset_surf = &mut offset_surf.surface;
+        .ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?
+        .surface;
     let orig_offset_dist = offset_surf.offset_distance();
     offset_surf.set_offset_distance(0.0);
 
