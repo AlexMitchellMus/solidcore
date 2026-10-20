@@ -403,8 +403,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "MergeObjects topology handles",
+        "unit": "harness:merge-objects"
       },
       "max_rel_err": 0.0,
       "name": "merge_plane10_line",
@@ -14768,7 +14768,7 @@
   "cases_passed": 1437,
   "cases_total": 1709,
   "deferred_by_unit": {
-    "intersect.curve_class_p2": 1,
+    "harness:merge-objects": 1,
     "intersect.surface_drop_lib_p3": 85,
     "query.brep": 93,
     "surface.surface_cache_p1": 20,
