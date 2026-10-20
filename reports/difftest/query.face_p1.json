@@ -9230,16 +9230,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0105",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439153",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -9630,14 +9626,10 @@
       "values_compared": 9
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0145",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439193",
       "values_compared": 0
     },
@@ -9802,16 +9794,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0162",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439210",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -9878,16 +9866,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0169",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439217",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -10606,16 +10590,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0243",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439291",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -10734,16 +10714,12 @@
       "values_compared": 9
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0257",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439305",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -10862,16 +10838,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0268",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439316",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -11118,16 +11090,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0294",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439342",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -11710,16 +11678,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0349",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439397",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -12291,8 +12255,8 @@
     },
     {
       "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0408",
@@ -13738,16 +13702,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0550",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439598",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -13918,16 +13878,12 @@
       "values_compared": 9
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0568",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439616",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -14110,16 +14066,12 @@
       "values_compared": 9
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0587",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439635",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -14347,8 +14299,8 @@
     },
     {
       "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0610",
@@ -14378,16 +14330,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0613",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439661",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -14810,16 +14758,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0655",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439703",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -14870,16 +14814,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0661",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439709",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -14906,16 +14846,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0664",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439712",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -15186,16 +15122,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0692",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439740",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -15518,14 +15450,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0722",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439770",
       "values_compared": 0
     },
@@ -15650,28 +15578,20 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0735",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439783",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0736",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439784",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -16054,16 +15974,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0776",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439824",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -16706,16 +16622,12 @@
       "values_compared": 9
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0839",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439887",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -18218,14 +18130,10 @@
       "values_compared": 9
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0987",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399440035",
       "values_compared": 0
     },
@@ -19526,16 +19434,12 @@
       "values_compared": 9
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen1113",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399440161",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -19574,16 +19478,12 @@
       "values_compared": 9
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen1118",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399440166",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -19975,8 +19875,8 @@
     },
     {
       "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1157",
@@ -20010,16 +19910,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen1161",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399440209",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -20030,16 +19926,12 @@
       "values_compared": 9
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen1163",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399440211",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -20054,16 +19946,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen1165",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399440213",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -20411,19 +20299,18 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 654,
+  "cases_deferred": 626,
   "cases_failed": 0,
-  "cases_passed": 1570,
+  "cases_passed": 1598,
   "cases_total": 2224,
   "deferred_by_unit": {
     "curve.crv_on_surf": 19,
-    "harness:analytic-geometry-export": 31,
     "intersect.surface_drop_lib_p3": 36,
     "surface.cone_p1": 41,
     "surface.sphere": 12,
     "surface.surf_of_extrusion_p2": 59,
     "surface.surface_cache_p2": 57,
-    "topology.face_p2": 397,
+    "topology.face_p2": 400,
     "topology.face_p3": 2
   },
   "max_rel_err": 0.0,
