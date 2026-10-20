@@ -3,7 +3,7 @@
 Last updated: 2026-10-20, PR #250 review fixes (`primitive.primitive_creation_p2` partial: 129 bit-identical passes, 169 deferred, 13 guarded rejections). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 Last updated: 2026-10-19, PR #233 second review (`primitive.primitive_creation_p3` partial: 284 bit-identical passes, 8 deferred, 1 UB-78 rejection). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
-Latest port: `primitive.primitive_creation_p2` ([PR #250](https://github.com/tangency-labs/solidcore/pull/250)) implements all twelve owned functions through `PrimitiveCreationAccess`, stacked on #233. Native comparisons certify the entry checks and the state they leave; construction tails await the B-rep units. Building the harness found UB-212, HANG-35 and WR-191. See the final validation entry below.
+Latest port: `primitive.primitive_creation_p2` ([PR #250](https://github.com/tangency-labs/solidcore/pull/250)) implements all twelve owned functions through `PrimitiveCreationAccess`, stacked on #233. Native comparisons certify the entry checks and the state they leave; construction tails await the B-rep units. Building the harness found UB-213, HANG-35 and WR-191. See the final validation entry below.
 
 Previous port: `primitive.primitive_creation_p3` ([PR #233](https://github.com/tangency-labs/solidcore/pull/233)) implements all eight owned functions through `PrimitiveAccess`/`SweepAccess`. Native comparisons certify the ruled-surface helper and early/empty entry paths; successful construction and topology tails await dependencies and a concrete adapter.
 
@@ -1146,7 +1146,7 @@ through `PrimitiveCreationAccess` (extends p3's `PrimitiveAccess`); final
 differential gate 283 cases, 127 exact passes (entry checks and the state they
 leave), 150 construction deferrals (`topology.brep_p3` 56, `topology.brep_p8` 75,
 `topology.brep_p2` 19), 6 guarded rejections. Building the harness found three
-upstream issues with isolated native probes: UB-212 (`SweepEdgeHigh` uses a curve
+upstream issues with isolated native probes: UB-213 (`SweepEdgeHigh` uses a curve
 that `MakeFaceWithCurves` freed), HANG-35 (small closed shells take minutes to place
 in their region) and WR-191 (a failed `ManifoldBoolean` leaves boolean mode on).
 The FFI guards reject the first two and the shim clears the third before each case.
