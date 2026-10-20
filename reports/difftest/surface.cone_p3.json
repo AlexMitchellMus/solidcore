@@ -1766,6 +1766,173 @@
       "values_compared": 82
     },
     {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "rejected_ub154_fuzz00656",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#0 (upstream source/SMLib/src/SmCone.cpp:5399-5405, 5463-5477; SmGeomUtility.cpp:694-695 (issue #276, UB-154: reversed trim domain of the first cone: both seams evaluate to the same point, zero length))",
+      "values_compared": 0
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "rejected_ub154_fuzz09540",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#1 (upstream source/SMLib/src/SmCone.cpp:5399-5405, 5463-5477; SmGeomUtility.cpp:694-695 (issue #276, UB-154: reversed trim domain of the second cone: zero-length seams))",
+      "values_compared": 0
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "rejected_ub154_fuzz09540_global",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#2 (upstream source/SMLib/src/SmCone.cpp:5399-5405, 5463-5477; SmGeomUtility.cpp:694-695 (issue #276, UB-154: same through GlobalSurfaceIntersect))",
+      "values_compared": 0
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "rejected_ub154_zero_height_other",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#3 (upstream source/SMLib/src/SmCone.cpp:5399-5405, 5463-5477; SmGeomUtility.cpp:694-695 (issue #276, UB-154: zero-height trim domain of the second cone))",
+      "values_compared": 0
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "rejected_ub154_short_seam_cone",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#4 (upstream source/SMLib/src/SmCone.cpp:5399-5405, 5463-5477; SmGeomUtility.cpp:694-695 (issue #276, UB-154: first cone's seam 7e-13 * 1.414 < 1e-12))",
+      "values_compared": 0
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "rejected_ub154_short_seam_other",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#5 (upstream source/SMLib/src/SmCone.cpp:5399-5405, 5463-5477; SmGeomUtility.cpp:694-695 (issue #276, UB-154: second cone's seam 7e-13 * 1.414 < 1e-12))",
+      "values_compared": 0
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "rejected_ub154_short_seam_other_global",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#6 (upstream source/SMLib/src/SmCone.cpp:5399-5405, 5463-5477; SmGeomUtility.cpp:694-695 (issue #276, UB-154: same through GlobalSurfaceIntersect))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ub154_seam_just_long_cone",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#7 (upstream source/SMLib/src/SmCone.cpp:5399-5405; SmGeomUtility.cpp:694-701 (issue #276, UB-154 neighbour: first cone's seam 8e-13 * 1.414 >= 1e-12))",
+      "values_compared": 381
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ub154_seam_just_long_other",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#8 (upstream source/SMLib/src/SmCone.cpp:5399-5405; SmGeomUtility.cpp:694-701 (issue #276, UB-154 neighbour: second cone's seam 8e-13 * 1.414 >= 1e-12))",
+      "values_compared": 381
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ub154_seam_just_long_other_global",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#9 (upstream source/SMLib/src/SmCone.cpp:5399-5405; SmGeomUtility.cpp:694-701 (issue #276, UB-154 neighbour: same through GlobalSurfaceIntersect))",
+      "values_compared": 381
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ub154_seam_tiny_other",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#10 (upstream source/SMLib/src/SmCone.cpp:5399-5405; SmGeomUtility.cpp:694-701 (issue #276, UB-154 neighbour: second cone's seam 1e-9 of its height))",
+      "values_compared": 381
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ub154_fuzz09540_short_trim",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#11 (upstream source/SMLib/src/SmCone.cpp:5399-5405; SmGeomUtility.cpp:694-701 (issue #276, UB-154 neighbour: fuzz09540 with a defined trim domain, v0 = 0.999))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ub154_seam_near_parallel_1p1e6",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#12 (upstream source/SMLib/src/SmCone.cpp:5399-5405; SmGeomUtility.cpp:694-701 (issue #276, UB-154 neighbour: cylinder axes 1.1e-06 rad apart: seams 5.5e-07 rad from one ellipse plane))",
+      "values_compared": 307
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ub154_seam_near_parallel_1p1e6_short",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#13 (upstream source/SMLib/src/SmCone.cpp:5399-5405; SmGeomUtility.cpp:694-701 (issue #276, UB-154 neighbour: same, second cone's seam 8e-13 * 1.414 long))",
+      "values_compared": 307
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ub154_seam_near_parallel_1e5",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#14 (upstream source/SMLib/src/SmCone.cpp:5399-5405; SmGeomUtility.cpp:694-701 (issue #276, UB-154 neighbour: cylinder axes 1e-05 rad apart: seams 5e-06 rad from one ellipse plane))",
+      "values_compared": 307
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ub154_seam_near_parallel_1e5_short",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#15 (upstream source/SMLib/src/SmCone.cpp:5399-5405; SmGeomUtility.cpp:694-701 (issue #276, UB-154 neighbour: same, second cone's seam 8e-13 * 1.414 long))",
+      "values_compared": 193
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ub154_plane_near_parallel_1e7_op1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#16 (upstream source/SMLib/src/SmCone.cpp:5399-5405; SmGeomUtility.cpp:694-701 (issue #276, UB-154 neighbour: plane 1e-07 rad from the cylinder axis: seams 1e-07 rad from the ellipse plane))",
+      "values_compared": 99
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ub154_plane_near_parallel_1e7_op2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#17 (upstream source/SMLib/src/SmCone.cpp:5399-5405; SmGeomUtility.cpp:694-701 (issue #276, UB-154 neighbour: plane 1e-07 rad from the cylinder axis: seams 1e-07 rad from the ellipse plane))",
+      "values_compared": 99
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ub154_plane_near_parallel_3e8_op1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#18 (upstream source/SMLib/src/SmCone.cpp:5399-5405; SmGeomUtility.cpp:694-701 (issue #276, UB-154 neighbour: plane 3e-08 rad from the cylinder axis: seams 3e-08 rad from the ellipse plane))",
+      "values_compared": 79
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ub154_plane_near_parallel_3e8_op2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.cone_p3/ub154.json#19 (upstream source/SMLib/src/SmCone.cpp:5399-5405; SmGeomUtility.cpp:694-701 (issue #276, UB-154 neighbour: plane 3e-08 rad from the cylinder axis: seams 3e-08 rad from the ellipse plane))",
+      "values_compared": 79
+    },
+    {
       "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
@@ -11470,11 +11637,11 @@
       "values_compared": 79
     }
   ],
-  "cases_both_errored": 8,
+  "cases_both_errored": 15,
   "cases_deferred": 35,
   "cases_failed": 0,
-  "cases_passed": 1380,
-  "cases_total": 1415,
+  "cases_passed": 1400,
+  "cases_total": 1435,
   "deferred_by_unit": {
     "surface.surface_p2": 35
   },
