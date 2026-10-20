@@ -579,8 +579,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Notify",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "adv_spine_doubled_p_manifold3_closure",
@@ -2135,8 +2135,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "project_t0_Defeature_inset_cube",
@@ -2147,8 +2147,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "project_t1_Defeature_inset_cube",
@@ -2159,8 +2159,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "project_t2_Defeature_inset_cube",
@@ -2171,8 +2171,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "project_t0_Defeature_brep1",
@@ -2183,8 +2183,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "project_tols_inset_cube",
@@ -2611,8 +2611,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "healer10_always_Defeature_inset_cube",
@@ -2622,16 +2622,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "manifold_unsure_Defeature_inset_cube",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p10/edge_cases.json#94 (upstream source/SMLib/src/SmBrep.cpp)",
-      "values_compared": 0
+      "values_compared": 1413
     },
     {
       "max_rel_err": 0.0,
@@ -2683,8 +2679,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "healer10_always_Boolean_BoltMBox1",
@@ -2694,16 +2690,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "manifold_unsure_Boolean_BoltMBox1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p10/edge_cases.json#102 (upstream source/SMLib/src/SmBrep.cpp)",
-      "values_compared": 0
+      "values_compared": 5013
     },
     {
       "max_rel_err": 0.0,
@@ -2755,8 +2747,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "healer10_always_Boolean_BoltMBox2",
@@ -2766,16 +2758,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "manifold_unsure_Boolean_BoltMBox2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p10/edge_cases.json#110 (upstream source/SMLib/src/SmBrep.cpp)",
-      "values_compared": 0
+      "values_compared": 897
     },
     {
       "max_rel_err": 0.0,
@@ -3687,8 +3675,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Notify",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "closure_noinf_spine_doubled",
@@ -3699,8 +3687,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Notify",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "closure_inf_spine_doubled",
@@ -4167,8 +4155,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Notify",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "review_spine_doubled_m1_closure_False",
@@ -4179,8 +4167,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::Notify",
-        "unit": "topology.brep_p2"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "review_spine_doubled_m1_closure_True",
@@ -4827,8 +4815,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Boolean_BoltMBox2",
@@ -4887,8 +4875,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Boolean_extrudeHoles2",
@@ -5023,8 +5011,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Defeature_brep1",
@@ -5155,8 +5143,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Defeature_inset_cube",
@@ -5183,8 +5171,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Defeature_inset_cube_1x1fillet",
@@ -5211,8 +5199,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Defeature_inset_cube_1x2fillet",
@@ -5239,8 +5227,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Defeature_inset_cube_1x3fillet",
@@ -5267,8 +5255,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Defeature_inset_cube_3x1fillet",
@@ -5391,8 +5379,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Fillet_6_sided_corner",
@@ -5711,8 +5699,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Fillet_box1x1x2",
@@ -5899,8 +5887,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Fillet_box_on_box",
@@ -6023,8 +6011,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Fillet_brick",
@@ -7335,8 +7323,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Fillet_l_shaped_box",
@@ -7619,8 +7607,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Fillet_nurb_plane_w_notch2",
@@ -7775,8 +7763,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Fillet_shell_fillet",
@@ -8059,8 +8047,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Fillet_test7",
@@ -8119,8 +8107,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Fillet_test9",
@@ -8979,8 +8967,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Shell_problemShell3",
@@ -9463,8 +9451,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Solids_box",
@@ -9715,8 +9703,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Solids_mouse_1",
@@ -9967,8 +9955,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Solids_offset_bracket_box",
@@ -9995,8 +9983,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_Solids_plane",
@@ -10343,8 +10331,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_disk",
@@ -10403,8 +10391,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_plane_circ",
@@ -10431,8 +10419,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_plane_square",
@@ -10703,8 +10691,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0002",
@@ -10759,8 +10747,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0008",
@@ -10871,8 +10859,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0020",
@@ -10903,8 +10891,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0023",
@@ -10914,21 +10902,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0024",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13374710602729021169",
-      "values_compared": 0
+      "values_compared": 201
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0025",
@@ -10939,8 +10923,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0026",
@@ -11035,8 +11019,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0036",
@@ -11047,8 +11031,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0037",
@@ -11103,8 +11087,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0042",
@@ -11215,8 +11199,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0055",
@@ -11275,8 +11259,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0061",
@@ -11315,8 +11299,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0065",
@@ -11443,8 +11427,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0079",
@@ -11478,16 +11462,12 @@
       "values_compared": 897
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0083",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13374710602729021228",
-      "values_compared": 0
+      "values_compared": 297
     },
     {
       "max_rel_err": 0.0,
@@ -11535,8 +11515,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0089",
@@ -11570,21 +11550,17 @@
       "values_compared": 1186
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0093",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13374710602729021238",
-      "values_compared": 0
+      "values_compared": 691
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0094",
@@ -11595,8 +11571,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0095",
@@ -11638,16 +11614,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0099",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13374710602729021244",
-      "values_compared": 0
+      "values_compared": 365
     },
     {
       "max_rel_err": 0.0,
@@ -11775,8 +11747,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0115",
@@ -11787,8 +11759,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0116",
@@ -11799,8 +11771,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0117",
@@ -11871,8 +11843,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0124",
@@ -11967,8 +11939,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0135",
@@ -11978,16 +11950,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0136",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13374710602729021281",
-      "values_compared": 0
+      "values_compared": 4294
     },
     {
       "deferred": {
@@ -12043,8 +12011,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0143",
@@ -12235,8 +12203,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0165",
@@ -12342,16 +12310,12 @@
       "values_compared": 691
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0177",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13374710602729021322",
-      "values_compared": 0
+      "values_compared": 566
     },
     {
       "max_rel_err": 0.0,
@@ -12407,8 +12371,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0183",
@@ -12646,16 +12610,12 @@
       "values_compared": 1619
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0208",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13374710602729021353",
-      "values_compared": 0
+      "values_compared": 897
     },
     {
       "max_rel_err": 0.0,
@@ -12771,8 +12731,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0222",
@@ -12879,8 +12839,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0234",
@@ -12903,8 +12863,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0236",
@@ -13066,16 +13026,12 @@
       "values_compared": 604
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0255",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13374710602729021400",
-      "values_compared": 0
+      "values_compared": 16358
     },
     {
       "max_rel_err": 0.0,
@@ -13239,8 +13195,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0275",
@@ -13259,8 +13215,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0277",
@@ -13271,8 +13227,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0278",
@@ -13383,8 +13339,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0290",
@@ -13450,21 +13406,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::IsManifoldSolid",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0296",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13374710602729021441",
-      "values_compared": 0
+      "values_compared": 1551
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0297",
@@ -13495,17 +13447,18 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 565,
+  "cases_deferred": 553,
   "cases_failed": 0,
-  "cases_passed": 839,
+  "cases_passed": 851,
   "cases_total": 1404,
   "deferred_by_unit": {
+    "geom.tol": 5,
+    "query.brep": 5,
     "surface.cone_p1": 41,
     "surface.sphere": 328,
     "surface.surf_of_extrusion_p2": 10,
     "surface.surface_p2": 96,
-    "topology.brep_p2": 77,
-    "topology.face_p2": 5,
+    "topology.face_p2": 60,
     "topology.face_p4": 8
   },
   "max_rel_err": 0.0,

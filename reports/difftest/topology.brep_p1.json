@@ -956,12 +956,16 @@
       "values_compared": 2
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "face_plane_lists_6",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/constructed.json#90 (upstream TestFiles/pt_TestFiles/constructed (SmBrep::ReadFromFile))",
-      "values_compared": 2
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -1141,8 +1145,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "face_plane_find_sector_global",
@@ -1205,8 +1209,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "face_plane_parallel_proj",
@@ -1272,12 +1276,16 @@
       "values_compared": 2
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "face_bspline_lists_6",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/constructed.json#127 (upstream TestFiles/pt_TestFiles/constructed (SmBrep::ReadFromFile))",
-      "values_compared": 2
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -1456,12 +1464,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "face_bspline_find_sector_global",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/constructed.json#149 (upstream TestFiles/pt_TestFiles/constructed (SmBrep::ReadFromFile))",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -1517,8 +1529,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "face_bspline_parallel_proj",
@@ -1584,12 +1596,16 @@
       "values_compared": 2
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "face_bspline_sub_lists_6",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/constructed.json#164 (upstream TestFiles/pt_TestFiles/constructed (SmBrep::ReadFromFile))",
-      "values_compared": 2
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -1768,12 +1784,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "face_bspline_sub_find_sector_global",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/constructed.json#186 (upstream TestFiles/pt_TestFiles/constructed (SmBrep::ReadFromFile))",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -1829,8 +1849,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "face_bspline_sub_parallel_proj",
@@ -2247,6 +2267,343 @@
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/constructed.json#237 (upstream TestFiles/pt_TestFiles/constructed (SmBrep::ReadFromFile))",
       "values_compared": 17
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_open_bicubic_corner_blend_0123",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#238 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_open_bicubic_corner_blend_3210",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#239 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_open_bicubic_corner_blend_0123_no_tangency",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#240 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_open_quad_cubic_corner_blend_0123",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#241 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_open_quad_cubic_corner_blend_3210",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#242 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_open_quad_cubic_corner_blend_0123_no_tangency",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#243 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_open_bicubic_sub_corner_blend_0123",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#244 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_open_bicubic_sub_corner_blend_3210",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#245 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_open_bicubic_sub_corner_blend_0123_no_tangency",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#246 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_u_closed_cyl_corner_blend_0123",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#247 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "deferred": {
+        "symbol": "SmBSplineSurface::CreateCornerBlend",
+        "unit": "nurbs.b_spline_surface_n_lib_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "cos_u_closed_cyl_corner_blend_3210",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#248 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_u_closed_cyl_corner_blend_0123_no_tangency",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#249 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_u_closed_cyl_r3_corner_blend_0123",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#250 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "deferred": {
+        "symbol": "SmBSplineSurface::CreateCornerBlend",
+        "unit": "nurbs.b_spline_surface_n_lib_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "cos_u_closed_cyl_r3_corner_blend_3210",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#251 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_u_closed_cyl_r3_corner_blend_0123_no_tangency",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#252 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_v_closed_cyl_corner_blend_0123",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#253 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "deferred": {
+        "symbol": "SmBSplineSurface::CreateCornerBlend",
+        "unit": "nurbs.b_spline_surface_n_lib_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "cos_v_closed_cyl_corner_blend_3210",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#254 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_v_closed_cyl_corner_blend_0123_no_tangency",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#255 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_v_closed_cyl_r3_corner_blend_0123",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#256 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "deferred": {
+        "symbol": "SmBSplineSurface::CreateCornerBlend",
+        "unit": "nurbs.b_spline_surface_n_lib_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "cos_v_closed_cyl_r3_corner_blend_3210",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#257 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_v_closed_cyl_r3_corner_blend_0123_no_tangency",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#258 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_u_closed_c0_corner_blend_0123",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#259 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_u_closed_c0_corner_blend_3210",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#260 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_u_closed_c0_corner_blend_0123_no_tangency",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#261 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_v_closed_c0_corner_blend_0123",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#262 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_v_closed_c0_corner_blend_3210",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#263 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_v_closed_c0_corner_blend_0123_no_tangency",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#264 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_u_closed_cyl_sub_corner_blend_0123",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#265 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "deferred": {
+        "symbol": "SmBSplineSurface::CreateCornerBlend",
+        "unit": "nurbs.b_spline_surface_n_lib_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "cos_u_closed_cyl_sub_corner_blend_3210",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#266 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cos_u_closed_cyl_sub_corner_blend_0123_no_tangency",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#267 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend) -> SmBSplineSurfaceNLib.cpp:2922 (sm_CreateNonRationalCurve: SmCrvOnSurf edge curves, NER))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "two_breps_ruled_line_line_dir1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#268 (upstream source/SMLib/src/SmBrep.cpp:2810 (static SmBrep::CreateEdgeEdgeBlend, edge uses of two B-reps, ruled))",
+      "values_compared": 34
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "two_breps_ruled_line_line_dir2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#269 (upstream source/SMLib/src/SmBrep.cpp:2810 (static SmBrep::CreateEdgeEdgeBlend, edge uses of two B-reps, ruled))",
+      "values_compared": 34
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "two_breps_ruled_line_line_dir0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#270 (upstream source/SMLib/src/SmBrep.cpp:2810 (static SmBrep::CreateEdgeEdgeBlend, edge uses of two B-reps, ruled))",
+      "values_compared": 34
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "two_breps_ruled_line_line_mate_dir1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#271 (upstream source/SMLib/src/SmBrep.cpp:2810 (static SmBrep::CreateEdgeEdgeBlend, edge uses of two B-reps, ruled))",
+      "values_compared": 34
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "two_breps_ruled_line_cubic_dir0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#272 (upstream source/SMLib/src/SmBrep.cpp:2810 (static SmBrep::CreateEdgeEdgeBlend, edge uses of two B-reps, ruled))",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_blend_ang0_one_edgeuse",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#273 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend, tangency tolerance 0: HANG-39 only past the early returns))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "corner_blend_ang0_no_tangency_null_check",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#274 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend, tangency tolerance 0: HANG-39 only past the early returns))",
+      "values_compared": 2
+    },
+    {
+      "inputs": {
+        "ang": 0.0,
+        "brep": {
+          "file": "plane_circ.smb",
+          "kind": "file",
+          "rebuild": true
+        },
+        "eus": [0, 1, 2],
+        "op": "corner_blend",
+        "tangent": null,
+        "tol": 0.0001
+      },
+      "max_rel_err": 0.0,
+      "name": "corner_blend_ang0_reaches_cross_tangents",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "HANG-39: a tangency tolerance below 1e-20 where upstream reaches the cross-tangent approximation (tens of seconds or more): nothing runs on either side",
+      "source": "fixture:fixtures/topology.brep_p1/constructed.json#275 (upstream source/SMLib/src/SmBrep.cpp:2488 (SmBrep::CreateCornerBlend, tangency tolerance 0: HANG-39 only past the early returns))",
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3178,28 +3535,40 @@
       "values_compared": 2
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "Mouse_redistribute_0_1_7",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#108 (upstream TestFiles/pt_TestFiles/Mouse.smb (SmBrep::ReadFromFile))",
-      "values_compared": 2
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "Mouse_redistribute_1_1_0",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#109 (upstream TestFiles/pt_TestFiles/Mouse.smb (SmBrep::ReadFromFile))",
-      "values_compared": 2
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "Mouse_redistribute_2_1_1",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#110 (upstream TestFiles/pt_TestFiles/Mouse.smb (SmBrep::ReadFromFile))",
-      "values_compared": 2
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3367,8 +3736,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfOfExtrusion face surface exported as its B-spline part",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "Mouse_edge_edge_blend_1_0_1_0",
@@ -3379,8 +3748,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfOfExtrusion face surface exported as its B-spline part",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "Mouse_edge_edge_blend_2_0_2_0",
@@ -3391,8 +3760,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfOfExtrusion face surface exported as its B-spline part",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "Mouse_edge_edge_blend_3_1_2_1",
@@ -3471,8 +3840,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "Mouse_heal",
@@ -4291,20 +4660,28 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "Endcap_find_sector_0",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#235 (upstream TestFiles/pt_TestFiles/Endcap.smb (SmBrep::ReadFromFile))",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "Endcap_find_sector_1",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#236 (upstream TestFiles/pt_TestFiles/Endcap.smb (SmBrep::ReadFromFile))",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4603,8 +4980,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_parallel_proj_0",
@@ -4615,8 +4992,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_parallel_proj_1",
@@ -4627,8 +5004,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_parallel_proj_2",
@@ -4639,8 +5016,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_parallel_proj_3",
@@ -4651,8 +5028,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_parallel_proj_cubic",
@@ -4663,8 +5040,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_heal",
@@ -5476,8 +5853,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_find_sector_0",
@@ -5488,8 +5865,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_find_sector_1",
@@ -5499,20 +5876,28 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_find_sector_2",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#376 (upstream TestFiles/pt_TestFiles/box_with_large_fillet.smb (SmBrep::ReadFromFile))",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_find_sector_3",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#377 (upstream TestFiles/pt_TestFiles/box_with_large_fillet.smb (SmBrep::ReadFromFile))",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -5747,28 +6132,40 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_edge_edge_blend_1_0_1_0",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#406 (upstream TestFiles/pt_TestFiles/box_with_large_fillet.smb (SmBrep::ReadFromFile))",
-      "values_compared": 74
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_edge_edge_blend_2_0_2_0",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#407 (upstream TestFiles/pt_TestFiles/box_with_large_fillet.smb (SmBrep::ReadFromFile))",
-      "values_compared": 74
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_edge_edge_blend_3_1_2_1",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#408 (upstream TestFiles/pt_TestFiles/box_with_large_fillet.smb (SmBrep::ReadFromFile))",
-      "values_compared": 74
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -5840,8 +6237,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_heal",
@@ -6796,12 +7193,16 @@
       "values_compared": 2
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "cone_redistribute_0_1_7",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#525 (upstream TestFiles/pt_TestFiles/cone.smb (SmBrep::ReadFromFile))",
-      "values_compared": 2
+      "values_compared": 0
     },
     {
       "both_errored": true,
@@ -6813,12 +7214,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "cone_redistribute_2_1_1",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#527 (upstream TestFiles/pt_TestFiles/cone.smb (SmBrep::ReadFromFile))",
-      "values_compared": 2
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -6982,8 +7387,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone / SmCylinder face surface exported as its B-spline part",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "cone_edge_edge_blend_1_0_1_0",
@@ -6994,8 +7399,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone / SmCylinder face surface exported as its B-spline part",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "cone_edge_edge_blend_2_0_2_0",
@@ -7006,8 +7411,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone / SmCylinder face surface exported as its B-spline part",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "cone_edge_edge_blend_3_1_2_1",
@@ -7086,8 +7491,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "cone_heal",
@@ -7157,12 +7562,16 @@
       "values_compared": 2
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "disk_lists_6",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#562 (upstream TestFiles/pt_TestFiles/disk.smb (SmBrep::ReadFromFile))",
-      "values_compared": 2
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -7895,8 +8304,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "disk_find_sector_0",
@@ -7907,8 +8316,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "disk_find_sector_1",
@@ -7926,12 +8335,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "disk_find_sector_3",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#655 (upstream TestFiles/pt_TestFiles/disk.smb (SmBrep::ReadFromFile))",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -7942,12 +8355,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "disk_find_sector_5",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#657 (upstream TestFiles/pt_TestFiles/disk.smb (SmBrep::ReadFromFile))",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -8177,28 +8594,40 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "disk_edge_edge_blend_1_0_1_0",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#684 (upstream TestFiles/pt_TestFiles/disk.smb (SmBrep::ReadFromFile))",
-      "values_compared": 2600
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "disk_edge_edge_blend_2_0_2_0",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#685 (upstream TestFiles/pt_TestFiles/disk.smb (SmBrep::ReadFromFile))",
-      "values_compared": 1
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "disk_edge_edge_blend_3_1_2_1",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#686 (upstream TestFiles/pt_TestFiles/disk.smb (SmBrep::ReadFromFile))",
-      "values_compared": 2600
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -8210,8 +8639,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "disk_parallel_proj_0",
@@ -8222,8 +8651,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "disk_parallel_proj_1",
@@ -8234,8 +8663,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "disk_parallel_proj_2",
@@ -8246,8 +8675,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "disk_parallel_proj_3",
@@ -8258,8 +8687,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "disk_parallel_proj_cubic",
@@ -8270,8 +8699,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "disk_heal",
@@ -8337,12 +8766,16 @@
       "values_compared": 2
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "ellips_ts2_lists_6",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#701 (upstream TestFiles/pt_TestFiles/ellips_ts2.smb (SmBrep::ReadFromFile))",
-      "values_compared": 9
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -9074,20 +9507,28 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "ellips_ts2_find_sector_0",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#791 (upstream TestFiles/pt_TestFiles/ellips_ts2.smb (SmBrep::ReadFromFile))",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "ellips_ts2_find_sector_1",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#792 (upstream TestFiles/pt_TestFiles/ellips_ts2.smb (SmBrep::ReadFromFile))",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -9337,28 +9778,40 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "ellips_ts2_edge_edge_blend_1_0_1_0",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#823 (upstream TestFiles/pt_TestFiles/ellips_ts2.smb (SmBrep::ReadFromFile))",
-      "values_compared": 3026
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "ellips_ts2_edge_edge_blend_2_0_2_0",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#824 (upstream TestFiles/pt_TestFiles/ellips_ts2.smb (SmBrep::ReadFromFile))",
-      "values_compared": 1951
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "ellips_ts2_edge_edge_blend_3_1_2_1",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#825 (upstream TestFiles/pt_TestFiles/ellips_ts2.smb (SmBrep::ReadFromFile))",
-      "values_compared": 3901
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -9370,8 +9823,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "ellips_ts2_parallel_proj_0",
@@ -9382,8 +9835,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "ellips_ts2_parallel_proj_1",
@@ -9394,8 +9847,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "ellips_ts2_parallel_proj_2",
@@ -9406,8 +9859,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "ellips_ts2_parallel_proj_3",
@@ -9418,8 +9871,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "ellips_ts2_parallel_proj_cubic",
@@ -9430,8 +9883,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "ellips_ts2_heal",
@@ -10247,8 +10700,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ_find_sector_0",
@@ -10259,8 +10712,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ_find_sector_1",
@@ -10278,12 +10731,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "plane_circ_find_sector_3",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#933 (upstream TestFiles/pt_TestFiles/plane_circ.smb (SmBrep::ReadFromFile))",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10294,12 +10751,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "plane_circ_find_sector_5",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#935 (upstream TestFiles/pt_TestFiles/plane_circ.smb (SmBrep::ReadFromFile))",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10521,28 +10982,40 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "plane_circ_edge_edge_blend_1_0_1_0",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#962 (upstream TestFiles/pt_TestFiles/plane_circ.smb (SmBrep::ReadFromFile))",
-      "values_compared": 1
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "plane_circ_edge_edge_blend_2_0_2_0",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#963 (upstream TestFiles/pt_TestFiles/plane_circ.smb (SmBrep::ReadFromFile))",
-      "values_compared": 1
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "plane_circ_edge_edge_blend_3_1_2_1",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#964 (upstream TestFiles/pt_TestFiles/plane_circ.smb (SmBrep::ReadFromFile))",
-      "values_compared": 1
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -10554,8 +11027,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ_parallel_proj_0",
@@ -10566,8 +11039,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ_parallel_proj_1",
@@ -10578,8 +11051,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ_parallel_proj_2",
@@ -10590,8 +11063,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ_parallel_proj_3",
@@ -10602,8 +11075,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ_parallel_proj_cubic",
@@ -10614,8 +11087,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ_heal",
@@ -10681,12 +11154,16 @@
       "values_compared": 2
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "plane_square_lists_6",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#979 (upstream TestFiles/pt_TestFiles/plane_square.smb (SmBrep::ReadFromFile))",
-      "values_compared": 2
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11419,8 +11896,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "plane_square_find_sector_0",
@@ -11431,8 +11908,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "plane_square_find_sector_1",
@@ -11450,12 +11927,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "plane_square_find_sector_3",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1072 (upstream TestFiles/pt_TestFiles/plane_square.smb (SmBrep::ReadFromFile))",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11466,12 +11947,16 @@
       "values_compared": 3
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "plane_square_find_sector_5",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1074 (upstream TestFiles/pt_TestFiles/plane_square.smb (SmBrep::ReadFromFile))",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11693,28 +12178,40 @@
       "values_compared": 1
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "plane_square_edge_edge_blend_1_0_1_0",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1101 (upstream TestFiles/pt_TestFiles/plane_square.smb (SmBrep::ReadFromFile))",
-      "values_compared": 1
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "plane_square_edge_edge_blend_2_0_2_0",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1102 (upstream TestFiles/pt_TestFiles/plane_square.smb (SmBrep::ReadFromFile))",
-      "values_compared": 74
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "plane_square_edge_edge_blend_3_1_2_1",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1103 (upstream TestFiles/pt_TestFiles/plane_square.smb (SmBrep::ReadFromFile))",
-      "values_compared": 74
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -11726,8 +12223,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "plane_square_parallel_proj_0",
@@ -11738,8 +12235,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "plane_square_parallel_proj_1",
@@ -11750,8 +12247,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "plane_square_parallel_proj_2",
@@ -11762,8 +12259,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "plane_square_parallel_proj_3",
@@ -11774,8 +12271,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace handle of a surface's face",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "plane_square_parallel_proj_cubic",
@@ -11786,8 +12283,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "plane_square_heal",
@@ -12919,8 +13416,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere face surface exported as its B-spline part",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "sphere_edge_edge_blend_1_0_1_0",
@@ -12931,8 +13428,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere face surface exported as its B-spline part",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "sphere_edge_edge_blend_2_0_2_0",
@@ -12943,8 +13440,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere face surface exported as its B-spline part",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "sphere_edge_edge_blend_3_1_2_1",
@@ -13023,8 +13520,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "sphere_heal",
@@ -14167,8 +14664,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfOfExtrusion face surface exported as its B-spline part",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_extrude_edge_edge_blend_1_0_1_0",
@@ -14179,8 +14676,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfOfExtrusion face surface exported as its B-spline part",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_extrude_edge_edge_blend_2_0_2_0",
@@ -14191,8 +14688,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfOfExtrusion face surface exported as its B-spline part",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_extrude_edge_edge_blend_3_1_2_1",
@@ -14271,8 +14768,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_extrude_heal",
@@ -15419,8 +15916,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_edge_edge_blend_1_0_1_0",
@@ -15431,8 +15928,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_edge_edge_blend_2_0_2_0",
@@ -15443,8 +15940,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_edge_edge_blend_3_1_2_1",
@@ -15523,8 +16020,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_heal",
@@ -16667,8 +17164,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere face surface exported as its B-spline part",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_edge_edge_blend_1_0_1_0",
@@ -16679,8 +17176,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere face surface exported as its B-spline part",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_edge_edge_blend_2_0_2_0",
@@ -16691,8 +17188,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere face surface exported as its B-spline part",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_edge_edge_blend_3_1_2_1",
@@ -16771,8 +17268,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_heal",
@@ -17735,28 +18232,40 @@
       "values_compared": 2
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "torus_redistribute_0_1_7",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1776 (upstream TestFiles/pt_TestFiles/torus.smb (SmBrep::ReadFromFile))",
-      "values_compared": 2
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "torus_redistribute_1_1_0",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1777 (upstream TestFiles/pt_TestFiles/torus.smb (SmBrep::ReadFromFile))",
-      "values_compared": 2
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "torus_redistribute_2_1_1",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1778 (upstream TestFiles/pt_TestFiles/torus.smb (SmBrep::ReadFromFile))",
-      "values_compared": 2
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -17920,8 +18429,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "torus_edge_edge_blend_1_0_1_0",
@@ -17932,8 +18441,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "torus_edge_edge_blend_2_0_2_0",
@@ -17944,8 +18453,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "torus_edge_edge_blend_3_1_2_1",
@@ -18024,8 +18533,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "torus_heal",
@@ -18988,28 +19497,40 @@
       "values_compared": 2
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "toruswvy_redistribute_0_1_7",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1915 (upstream TestFiles/pt_TestFiles/toruswvy.smb (SmBrep::ReadFromFile))",
-      "values_compared": 2
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "toruswvy_redistribute_1_1_0",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1916 (upstream TestFiles/pt_TestFiles/toruswvy.smb (SmBrep::ReadFromFile))",
-      "values_compared": 2
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "toruswvy_redistribute_2_1_1",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1917 (upstream TestFiles/pt_TestFiles/toruswvy.smb (SmBrep::ReadFromFile))",
-      "values_compared": 2
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -19173,8 +19694,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_edge_edge_blend_1_0_1_0",
@@ -19185,8 +19706,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_edge_edge_blend_2_0_2_0",
@@ -19197,8 +19718,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_edge_edge_blend_3_1_2_1",
@@ -19277,8 +19798,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_heal",
@@ -20229,12 +20750,16 @@
       "values_compared": 2
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "vase_rev_redistribute_0_1_7",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#2054 (upstream TestFiles/pt_TestFiles/vase_rev.smb (SmBrep::ReadFromFile))",
-      "values_compared": 2
+      "values_compared": 0
     },
     {
       "both_errored": true,
@@ -20416,8 +20941,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_edge_edge_blend_1_0_1_0",
@@ -20428,8 +20953,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_edge_edge_blend_2_0_2_0",
@@ -20440,8 +20965,8 @@
     },
     {
       "deferred": {
-        "symbol": "face surface of a kind the shared export flattens to a B-spline",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_edge_edge_blend_3_1_2_1",
@@ -20520,8 +21045,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SetTolerance",
-        "unit": "topology.brep_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_heal",
@@ -22699,18 +23224,19 @@
     }
   ],
   "cases_both_errored": 45,
-  "cases_deferred": 418,
+  "cases_deferred": 470,
   "cases_failed": 0,
-  "cases_passed": 2156,
-  "cases_rejected": 15,
-  "cases_total": 2589,
+  "cases_passed": 2141,
+  "cases_rejected": 16,
+  "cases_total": 2627,
   "deferred_by_unit": {
     "curve.crv_on_surf": 4,
-    "harness:analytic-geometry-export": 244,
+    "geom.tol": 37,
+    "harness:analytic-geometry-export": 217,
     "intersect.surface_drop_lib_p3": 10,
+    "nurbs.b_spline_surface_n_lib_p2": 5,
     "query.brep": 71,
-    "topology.brep_p2": 15,
-    "topology.face_p2": 37,
+    "topology.face_p2": 89,
     "topology.face_p3": 21,
     "topology.face_p4": 16
   },
