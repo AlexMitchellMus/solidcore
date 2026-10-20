@@ -29,16 +29,17 @@ use solidcore::blend::fillet_executive::p3::{
 };
 use solidcore::blend::fillet_solver::p1::FilletSurfaceGenerator;
 use solidcore::blend::fillet_standard_solver::p1::{
-    constant_radius_from_edgeuse, FilletLaw, FilletSolverType, FilletSurfaceGeneratorType,
+    constant_radius_from_edgeuse, FilletLaw, FilletLawKind, FilletSolverType,
+    FilletSurfaceGeneratorType,
 };
 use solidcore::boolean::topology_intersector::p1::TopologyIntersector;
+use solidcore::error::SM_ERR_NULL_POINTER;
 use solidcore::geom::extent1d::Extent1d;
 use solidcore::geom::solution_array::{ObjectKind, SolutionObject};
 use solidcore::intersect::point_class::{ClassObject, ClassObjectKind};
 use solidcore::kernel::Kernel;
 use solidcore::math::Point3;
 use solidcore::topology::{edge, Brep, EdgeId, EdgeuseId};
-use solidcore::error::SM_ERR_NULL_POINTER;
 use solidcore::{Result as SolidResult, SolidError};
 use solidcore_ffi::units::blend_fillet_executive_p2::{self as ffi, Op};
 use solidcore_ffi::units::heal_stitch_p2 as stitch_ffi;
@@ -191,7 +192,14 @@ fn record(i: &Inputs) -> (Op, Vec<f64>) {
             for law in laws {
                 v.extend(law);
             }
-            v.extend([*approx, *ang, *tan, *xsect, f64::from(*continuity), *thumbweight]);
+            v.extend([
+                *approx,
+                *ang,
+                *tan,
+                *xsect,
+                f64::from(*continuity),
+                *thumbweight,
+            ]);
             Op::SetParams
         }
         Inputs::Exec { sub, solvers, bx } => {
@@ -493,10 +501,17 @@ impl ExecutiveAccess<Handle> for Access {
     fn edge_vertices(&self, _: Handle) -> SolidResult<(Option<Handle>, Option<Handle>)> {
         missing()
     }
-    fn variable_radius_solver(&self, _: Handle) -> SolidResult<Option<&solidcore::blend::fillet_standard_solver::p1::VariableRadiusFs>> {
+    fn variable_radius_solver(
+        &self,
+        _: Handle,
+    ) -> SolidResult<Option<&solidcore::blend::fillet_standard_solver::p1::VariableRadiusFs>> {
         missing()
     }
-    fn variable_radius_solver_mut(&mut self, _: Handle) -> SolidResult<Option<&mut solidcore::blend::fillet_standard_solver::p1::VariableRadiusFs>> {
+    fn variable_radius_solver_mut(
+        &mut self,
+        _: Handle,
+    ) -> SolidResult<Option<&mut solidcore::blend::fillet_standard_solver::p1::VariableRadiusFs>>
+    {
         missing()
     }
     fn solver_edgeuse(&self, _: Handle, _: usize) -> SolidResult<Option<Handle>> {
@@ -504,7 +519,8 @@ impl ExecutiveAccess<Handle> for Access {
     }
     fn corner_setback_distance(&self, _: Handle) -> SolidResult<f64> {
         missing()
-    }    fn new_brep(&mut self, _: &Kernel) -> SolidResult<Handle> {
+    }
+    fn new_brep(&mut self, _: &Kernel) -> SolidResult<Handle> {
         let handle = Handle::Brep(self.breps.len());
         self.breps.push(Brep::new());
         Ok(handle)
@@ -625,12 +641,12 @@ fn map_of(map: Option<[f64; 2]>) -> Option<Extent1d> {
 
 fn law_linear(start: f64, end: f64, map: Option<[f64; 2]>) -> Output {
     let law = FilletLaw::linear(start, end, map_of(map).as_ref());
-    let (s, e) = match law.kind {
-        solidcore::blend::fillet_standard_solver::p1::FilletLawKind::Linear {
-            start_radius,
-            end_radius,
-        } => (start_radius, end_radius),
-        _ => return Output::err("not a linear law"),
+    let FilletLawKind::Linear {
+        start_radius: s,
+        end_radius: e,
+    } = law.kind
+    else {
+        return Output::err("not a linear law");
     };
     values_output(vec![
         0.0,
@@ -666,7 +682,7 @@ fn law_elliptic(
             return Output::unported(&e).unwrap_or_else(|| Output::err("law_without_curve"));
         }
     };
-    let solidcore::blend::fillet_standard_solver::p1::FilletLawKind::BSpline {
+    let FilletLawKind::BSpline {
         law_curve,
         extended_law,
     } = &law.kind
@@ -704,8 +720,14 @@ fn box_access(bx: &BoxIn) -> Result<Result<Access, Output>, HarnessError> {
         ))));
     };
     let (b, types) = super::topology_brep_p1::import(&ex, graph_at)?;
-    if types.face_surface_types.iter().any(|&t| t >= 0 && t != BOX_SURFACE)
-        || types.edge_curve_types.iter().any(|&t| t >= 0 && t != BOX_CURVE)
+    if types
+        .face_surface_types
+        .iter()
+        .any(|&t| t >= 0 && t != BOX_SURFACE)
+        || types
+            .edge_curve_types
+            .iter()
+            .any(|&t| t >= 0 && t != BOX_CURVE)
     {
         return Err(harness("box geometry is not planes and lines"));
     }
@@ -961,7 +983,9 @@ fn temp_radius(variable: bool, start: f64, end: f64, bx: &BoxIn) -> Result<Outpu
         Err(e) => Ok(error_output(&e)),
         // Reached once executive p1 lands: the side edge use and the change are not
         // modelled yet, so this is a harness error rather than a pass.
-        Ok(()) => Err(harness("temp_radius past SetFilletParameters is not modelled")),
+        Ok(()) => Err(harness(
+            "temp_radius past SetFilletParameters is not modelled",
+        )),
     }
 }
 
@@ -1056,7 +1080,11 @@ impl UnitDiff for Runner {
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
         let map = gen_map(rng);
         let start = gen_radius(rng);
-        let end = if rng.chance(0.2) { start } else { gen_radius(rng) };
+        let end = if rng.chance(0.2) {
+            start
+        } else {
+            gen_radius(rng)
+        };
         Some(if rng.chance(0.3) {
             json!({"op": "law_linear", "start": start, "end": end, "map": map})
         } else {

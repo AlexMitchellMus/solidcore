@@ -349,10 +349,17 @@ impl ExecutiveAccess<Handle> for Access {
     fn edge_vertices(&self, _: Handle) -> SolidResult<(Option<Handle>, Option<Handle>)> {
         missing()
     }
-    fn variable_radius_solver(&self, _: Handle) -> SolidResult<Option<&solidcore::blend::fillet_standard_solver::p1::VariableRadiusFs>> {
+    fn variable_radius_solver(
+        &self,
+        _: Handle,
+    ) -> SolidResult<Option<&solidcore::blend::fillet_standard_solver::p1::VariableRadiusFs>> {
         missing()
     }
-    fn variable_radius_solver_mut(&mut self, _: Handle) -> SolidResult<Option<&mut solidcore::blend::fillet_standard_solver::p1::VariableRadiusFs>> {
+    fn variable_radius_solver_mut(
+        &mut self,
+        _: Handle,
+    ) -> SolidResult<Option<&mut solidcore::blend::fillet_standard_solver::p1::VariableRadiusFs>>
+    {
         missing()
     }
     fn solver_edgeuse(&self, _: Handle, _: usize) -> SolidResult<Option<Handle>> {
@@ -361,7 +368,11 @@ impl ExecutiveAccess<Handle> for Access {
     fn corner_setback_distance(&self, _: Handle) -> SolidResult<f64> {
         missing()
     }
-    fn new_surface_generator(&mut self, _: &mut Kernel, _: solidcore::blend::fillet_solver::p1::FilletSurfaceGenerator) -> SolidResult<Handle> {
+    fn new_surface_generator(
+        &mut self,
+        _: &mut Kernel,
+        _: solidcore::blend::fillet_solver::p1::FilletSurfaceGenerator,
+    ) -> SolidResult<Handle> {
         missing()
     }
     fn new_constant_radius_solver(

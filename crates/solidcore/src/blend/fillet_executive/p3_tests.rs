@@ -575,10 +575,16 @@ impl ExecutiveAccess<Handle> for Access {
     fn edge_vertices(&self, _: Handle) -> Result<(Option<Handle>, Option<Handle>)> {
         absent()
     }
-    fn variable_radius_solver(&self, _: Handle) -> Result<Option<&crate::blend::fillet_standard_solver::p1::VariableRadiusFs>> {
+    fn variable_radius_solver(
+        &self,
+        _: Handle,
+    ) -> Result<Option<&crate::blend::fillet_standard_solver::p1::VariableRadiusFs>> {
         absent()
     }
-    fn variable_radius_solver_mut(&mut self, _: Handle) -> Result<Option<&mut crate::blend::fillet_standard_solver::p1::VariableRadiusFs>> {
+    fn variable_radius_solver_mut(
+        &mut self,
+        _: Handle,
+    ) -> Result<Option<&mut crate::blend::fillet_standard_solver::p1::VariableRadiusFs>> {
         absent()
     }
     fn solver_edgeuse(&self, _: Handle, _: usize) -> Result<Option<Handle>> {
@@ -587,7 +593,11 @@ impl ExecutiveAccess<Handle> for Access {
     fn corner_setback_distance(&self, _: Handle) -> Result<f64> {
         absent()
     }
-    fn new_surface_generator(&mut self, _: &mut Kernel, _: FilletSurfaceGenerator) -> Result<Handle> {
+    fn new_surface_generator(
+        &mut self,
+        _: &mut Kernel,
+        _: FilletSurfaceGenerator,
+    ) -> Result<Handle> {
         absent()
     }
     fn new_constant_radius_solver(

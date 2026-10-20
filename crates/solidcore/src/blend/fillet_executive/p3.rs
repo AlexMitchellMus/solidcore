@@ -826,8 +826,11 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     /// dTolPercentRadius, bMirror, bComplement)` / `SmBlendCurveCrossSectionFSG(
     /// dBlendScale, lContinuity)` in the executive context: store `generator` (the
     /// `blend.fillet_solver_p1` record) and return its handle.
-    fn new_surface_generator(&mut self, k: &mut Kernel, generator: FilletSurfaceGenerator)
-        -> Result<O>;
+    fn new_surface_generator(
+        &mut self,
+        k: &mut Kernel,
+        generator: FilletSurfaceGenerator,
+    ) -> Result<O>;
 
     /// `new SmConstantRadiusFS(ctx, dApproxTol, dAngTolRad, dTanTolRad, dRadius, pEU)`:
     /// delegate to `fillet_standard_solver::p1::constant_radius_from_edgeuse` on the

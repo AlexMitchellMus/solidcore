@@ -58,11 +58,10 @@ use crate::blend::fillet_executive::p3::{
 };
 use crate::blend::fillet_solver::p1::FilletSurfaceGenerator;
 use crate::blend::fillet_standard_solver::p1::{
-    BoundaryTrimmingType, FilletLaw, FilletLawKind, FilletSolverType,
-    FilletSurfaceGeneratorType,
+    BoundaryTrimmingType, FilletLaw, FilletLawKind, FilletSolverType, FilletSurfaceGeneratorType,
 };
-use crate::curve::curve::Curve;
 use crate::curve::curve::p8::CurveIntersectOptions;
+use crate::curve::curve::Curve;
 use crate::error::{ignored, Result, SolidError, SM_ERR, SM_ERR_INVALID_INPUT};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::solution_array::SolutionObject;
@@ -369,7 +368,10 @@ fn fillet_solver_of_edge<O>(executive: &FilletExecutive<O>, edge: O) -> Result<O
 
 /// `SmFilletExecutive::CreateSmoothEdgeSequence(rSmoothSequence)` (unit
 /// `blend.fillet_executive_p1`).
-fn create_smooth_edge_sequence<O>(executive: &mut FilletExecutive<O>, sequence: &[O]) -> Result<()> {
+fn create_smooth_edge_sequence<O>(
+    executive: &mut FilletExecutive<O>,
+    sequence: &[O],
+) -> Result<()> {
     let _ = (executive, sequence);
     // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::CreateSmoothEdgeSequence
     Err(SolidError::unported(
@@ -420,6 +422,10 @@ pub struct FilletParameters<'a, O> {
     /// `dThumbweight` (header default 1.0).
     pub thumbweight: f64,
 }
+
+/// `SetFilletParameters`' factor from an edge's tolerance to its solver's
+/// approximation tolerance (`TOL_FACTOR`, "works well in practice").
+const TOL_FACTOR: f64 = 4.0;
 
 /// Whether one list entry serves all `n` edges (`TRUE`), one serves each (`FALSE`),
 /// or neither (`UNSURE`, here `None`).
@@ -517,9 +523,18 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
 
         // We will use these values throughout, if Single is requested.
         let first = |what| invalid(what);
-        let mut radius_type = *params.radius_types.first().ok_or_else(|| first("no radius type"))?;
-        let mut xsect_type = *params.xsect_types.first().ok_or_else(|| first("no cross-section type"))?;
-        let mut radius = *params.radius_values.first().ok_or_else(|| first("no radius"))?;
+        let mut radius_type = *params
+            .radius_types
+            .first()
+            .ok_or_else(|| first("no radius type"))?;
+        let mut xsect_type = *params
+            .xsect_types
+            .first()
+            .ok_or_else(|| first("no cross-section type"))?;
+        let mut radius = *params
+            .radius_values
+            .first()
+            .ok_or_else(|| first("no radius"))?;
         let mut generator: Option<O> = None;
 
         let generator_spec = |kind: FilletSurfaceGeneratorType, circular_tol: f64| match kind {
@@ -582,7 +597,6 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             }
 
             // Note, this works well in practice.  [B332]
-            const TOL_FACTOR: f64 = 4.0;
             let approx_tol = TOL_FACTOR * access.edge_tolerance(edge)?;
 
             let spec = match radius_type {
@@ -604,27 +618,25 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                     let laws = params
                         .var_rad_laws
                         .ok_or_else(|| null("null variable-radius law list"))?;
-                    match laws.get(ii).copied().flatten() {
-                        Some(law) => Some(SolverSpec::VariableRadius {
-                            approx_tol,
-                            ang_tol_rad,
-                            tan_tol_rad,
-                            radius,
-                            edgeuse: eu,
-                            law,
-                            reverse: false,
-                        }),
-                        _ => {
-                            note_edge_error(
-                                self,
-                                edge,
-                                FIL_FAILURE,
-                                FILERR_INVALID_INPUT,
-                                &format!("Edge[ {ii:2} ]: no variable-radius law specified\n"),
-                            )?;
-                            return Err(status(SM_ERR_INVALID_INPUT));
-                        }
-                    }
+                    let Some(law) = laws.get(ii).copied().flatten() else {
+                        note_edge_error(
+                            self,
+                            edge,
+                            FIL_FAILURE,
+                            FILERR_INVALID_INPUT,
+                            &format!("Edge[ {ii:2} ]: no variable-radius law specified\n"),
+                        )?;
+                        return Err(status(SM_ERR_INVALID_INPUT));
+                    };
+                    Some(SolverSpec::VariableRadius {
+                        approx_tol,
+                        ang_tol_rad,
+                        tan_tol_rad,
+                        radius,
+                        edgeuse: eu,
+                        law,
+                        reverse: false,
+                    })
                 }
                 // Not set up for these yet (they fall through to SM_FS_UNKNOWN).
                 FilletSolverType::SurfSurf
@@ -877,7 +889,9 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
 
                 // set every non-rail fillet edge's fillet B-rep edge
                 for eu in access.geom_side_edgeuses(geom)? {
-                    let fe = access.edgeuse_edge(eu)?.ok_or_else(|| null("null side edge"))?;
+                    let fe = access
+                        .edgeuse_edge(eu)?
+                        .ok_or_else(|| null("null side edge"))?;
                     if access.fillet_edge_original_face(fe)?.is_none() {
                         continue;
                     }
@@ -1139,6 +1153,14 @@ impl Default for SurfaceFilletOptions {
     }
 }
 
+/// Entry `i` of an intersection's UV curve list (`SM_ERR_NULL_POINTER` for a null
+/// curve, which upstream dereferences).
+fn uv(list: &[Option<Curve>], i: usize) -> Result<&Curve> {
+    list.get(i)
+        .and_then(Option::as_ref)
+        .ok_or_else(|| null("null intersection UV curve"))
+}
+
 /// `SmFilletExecutive::SurfaceSurfaceFillet`: fillets two surfaces with signed radii
 /// (the fillet centre lies on the intersection of the two offset surfaces). Each
 /// intersection curve of the offsets seeds one surface/surface fillet solver, rolled
@@ -1167,8 +1189,20 @@ where
     A: ExecutiveAccess<O> + ?Sized,
 {
     // Create temporary offset surfaces
-    let off1 = Surface::from(OffsetSurface::new(k, fillet_radius1, sur1.clone(), false, SS_UNKNOWN)?);
-    let off2 = Surface::from(OffsetSurface::new(k, fillet_radius2, sur2.clone(), false, SS_UNKNOWN)?);
+    let off1 = Surface::from(OffsetSurface::new(
+        k,
+        fillet_radius1,
+        sur1.clone(),
+        false,
+        SS_UNKNOWN,
+    )?);
+    let off2 = Surface::from(OffsetSurface::new(
+        k,
+        fillet_radius2,
+        sur2.clone(),
+        false,
+        SS_UNKNOWN,
+    )?);
 
     // Intersect the offset surfaces. We will use only the two uv curves.
     let use_surface_edges = [true, true];
@@ -1188,12 +1222,6 @@ where
     // no work - no intersection
     if uv_curves1.is_empty() {
         return Ok(None);
-    }
-
-    fn uv(list: &[Option<Curve>], i: usize) -> Result<&Curve> {
-        list.get(i)
-            .and_then(Option::as_ref)
-            .ok_or_else(|| null("null intersection UV curve"))
     }
 
     // When more than one intersection curve was found, check for self-intersections:
@@ -1384,7 +1412,9 @@ impl<O: ClassObject + SolutionObject + Ord> TemporaryRadiusChange<O> {
         let eu = access
             .solver_edgeuse(self.fs, self.rail_idx)?
             .ok_or_else(|| null("no rail edge use"))?;
-        let e = access.edgeuse_edge(eu)?.ok_or_else(|| null("edge use without edge"))?;
+        let e = access
+            .edgeuse_edge(eu)?
+            .ok_or_else(|| null("edge use without edge"))?;
         let (edge_v1, edge_v2) = access.edge_vertices(e)?;
 
         let side_edge = access
@@ -1392,7 +1422,10 @@ impl<O: ClassObject + SolutionObject + Ord> TemporaryRadiusChange<O> {
             .ok_or_else(|| null("side edge use without edge"))?;
         let (side_v1, side_v2) = access.edge_vertices(side_edge)?;
 
-        if edge_v1 != edge_v2 {
+        if edge_v1 == edge_v2 {
+            // Shouldn't matter: the fillet is closed.
+            at_start = 1;
+        } else {
             // non-closed edge
             if edge_v1 == side_v1 || edge_v1 == side_v2 {
                 at_start = 1;
@@ -1400,9 +1433,6 @@ impl<O: ClassObject + SolutionObject + Ord> TemporaryRadiusChange<O> {
             if edge_v2 == side_v1 || edge_v2 == side_v2 {
                 at_start = 0;
             }
-        } else {
-            // Shouldn't matter: the fillet is closed.
-            at_start = 1;
         }
 
         if law_orientation {
