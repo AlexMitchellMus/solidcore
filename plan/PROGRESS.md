@@ -30,7 +30,7 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 - [ ] 🔨 `primitive.primitive_creation_p3` (1842 lines) — in progress: #233 @damgru (ready for review)
 - [ ] 🔨 `blend.fillet_executive_p3` (1608 lines) — in progress: #244 @bluecmd (ready for review)
 - [ ] 🔨 `boolean.merge_p2` (1967 lines) — in progress: #229 @Pluto-XI (ready for review)
-- [ ] 🔨 `blend.fillet_executive_p1` (2063 lines) — in progress: #260 @H1D (ready for review)
+- [ ] 🔨 `blend.fillet_executive_p1` (2063 lines) — in progress: #260 @H1D (draft)
 - [ ] 🔨 `primitive.primitive_creation_p2` (2258 lines) — in progress: #250 @CamWight (ready for review)
 - [ ] 🔨 `blend.fillet_corner_p1` (1971 lines) — in progress: #266 @bluecmd (draft)
 - [ ] 🔨 `blend.fillet_solver_p2` (1939 lines) — in progress: #249 @froglemonade2 (draft)
@@ -334,7 +334,7 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 - [ ] 🟡 `blend.fillet_standard_solver_p1` (2336 lines) — partial, 3839 cases
 - [ ] 🔨 `blend.fillet_solver_p4` (1404 lines) — in progress: #212 @blackveilprecision (ready for review)
 - [ ] 🔨 `blend.fillet_executive_p3` (1608 lines) — in progress: #244 @bluecmd (ready for review)
-- [ ] 🔨 `blend.fillet_executive_p1` (2063 lines) — in progress: #260 @H1D (ready for review)
+- [ ] 🔨 `blend.fillet_executive_p1` (2063 lines) — in progress: #260 @H1D (draft)
 - [ ] 🔨 `blend.fillet_corner_p1` (1971 lines) — in progress: #266 @bluecmd (draft)
 - [ ] 🔨 `blend.fillet_solver_p2` (1939 lines) — in progress: #249 @froglemonade2 (draft)
 - [ ] 🔨 `blend.fillet_solver_p3` (1112 lines) — in progress: #236 @denelson1-dot (ready for review)
