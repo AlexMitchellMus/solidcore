@@ -219,7 +219,7 @@ pub(super) fn inexact_geometry(s: &Setup) -> Option<Output> {
     let surface_type = eu1::face(b, s.eu)
         .ok()
         .flatten()
-        .and_then(|f| s.types.face_surface_types.get(f.index() as usize).copied())
+        .and_then(|f| s.types.inexact_surface(f.index() as usize))
         .unwrap_or(-1);
     let curve_type = eu1::edge(b, s.eu)
         .ok()

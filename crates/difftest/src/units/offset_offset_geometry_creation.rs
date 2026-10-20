@@ -39,9 +39,11 @@
 //!
 //! **Hang guards (`-6`, the script stops; the case defers).** The shim does not run two
 //! ops the Rust side defers at anyway, as they can take minutes or not return (the
-//! fuzz allows 20 s a side): a non-local `FaceuseOffset` of a face imported as its
-//! B-spline part (deferred under `harness:analytic-geometry-export`; HANG-26, the offset
-//! self-intersection of an `SmSurfOfRevolution`), and an `EdgeuseOffset` with
+//! fuzz allows 20 s a side): a non-local `FaceuseOffset` of a face that is neither a
+//! plane nor a plain B-spline surface (an `SmSurfOfRevolution` face, imported exactly,
+//! defers under `upstream:HANG-26`, its offset self-intersection; the other analytic
+//! kinds, imported as their B-spline part, under `harness:analytic-geometry-export`),
+//! and an `EdgeuseOffset` with
 //! `|offset distance| > 1e6` (deferred under `upstream:HANG-27`, the rail's
 //! `SmCrvOnSurf::ApproximateCurve`). The generator's distances (0.001 to 100) never
 //! reach the second bound; the first stops no compared case (the Rust defers there).
@@ -89,7 +91,9 @@ use solidcore::offset::offset_geometry_creation::{
 };
 use solidcore::query::edge::ClosestPoint;
 use solidcore::surface::plane::Plane;
-use solidcore::surface::surface::p2::{DropCurveFail, SurfaceKind, TsectCurveType, SPHERE_TYPE};
+use solidcore::surface::surface::p2::{
+    DropCurveFail, SurfaceKind, TsectCurveType, SPHERE_TYPE, SURF_OF_REVOLUTION_TYPE,
+};
 use solidcore::surface::surface::Surface;
 use solidcore::surface::volume::Volume;
 use solidcore::topology::edge as ed;
@@ -132,6 +136,10 @@ const ANALYTIC_EXPORT: &str = "harness:analytic-geometry-export";
 /// shim's HANG-27 bound (`plan/upstream-issues.md`): upstream's rail approximation does
 /// not return in time there, so neither side runs the op.
 const HANG_27: &str = "upstream:HANG-27";
+/// The deferral label of a non-local `FaceuseOffset` of an `SmSurfOfRevolution` face:
+/// upstream's offset self-intersection takes 20 s to minutes there (HANG-26,
+/// `plan/upstream-issues.md`), so the shim stops the script and neither side runs it.
+const HANG_26: &str = "upstream:HANG-26";
 /// The shim's `MAX_EDGEUSE_OFFSET_DISTANCE` (HANG-27): a bound chosen for the fuzz
 /// time budget (20 s a side; 10 s measured at 1e6), not the termination boundary
 /// (~1e250).
@@ -710,6 +718,17 @@ impl Two {
             .and_then(|b| self.exact.get(b))
             .and_then(|v| v.get(usize::try_from(face.i).ok()?))
             .copied()
+    }
+
+    /// Whether `face`'s surface is an `SmSurfOfRevolution` itself (see `types`).
+    fn face_is_revolution(&self, face: H) -> bool {
+        usize::try_from(face.b)
+            .ok()
+            .and_then(|b| self.types.get(b))
+            .and_then(|v| v.get(usize::try_from(face.i).ok()?))
+            .copied()
+            .flatten()
+            == Some(SURF_OF_REVOLUTION_TYPE)
     }
 
     /// Whether `face`'s surface is an `SmSphere` (see `types`).
@@ -2325,6 +2344,15 @@ fn run_rust_script(i: &Inputs, p: Prepared) -> Result<Vec<f64>, Fail> {
                             continue;
                         }
                     }
+                }
+                if !is_local && two.face_is_revolution(face) {
+                    // HANG-26: upstream's self-intersection of the offset of an
+                    // SmSurfOfRevolution takes 20 s to minutes, so the shim does not run
+                    // it (the surface itself is imported exactly)
+                    return Err(Fail::Solid(SolidError::Unported {
+                        upstream: "SmSurfOfRevolution FaceuseOffset (offset self-intersection, HANG-26)",
+                        unit: HANG_26,
+                    }));
                 }
                 if !is_local
                     && !two
