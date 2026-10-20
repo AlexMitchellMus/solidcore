@@ -679,7 +679,7 @@ fn push_rail_edge(
     } else {
         main && rng.chance(0.05)
     };
-    let side = if cliff_rail && ctx.side_geom { 1 } else { 0 };
+    let side = i64::from(cliff_rail && ctx.side_geom);
     edges.push(EdgeIn {
         vs: base,
         ve,
@@ -756,7 +756,9 @@ fn gen_trim(rng: &mut Rng) -> Option<Inputs> {
         for (side, crv) in rails.iter().enumerate() {
             for _ in 0..rng.below(3) {
                 push_rail_edge(rng, &ctx, crv, false, &mut vertices, &mut edges)?;
-                other[side].push(edges.len() - 1);
+                if let Some(list) = other.get_mut(side) {
+                    list.push(edges.len() - 1);
+                }
             }
         }
     }
@@ -858,7 +860,7 @@ fn gen_split(rng: &mut Rng) -> Option<Inputs> {
         .collect();
     if rng.chance(0.4) {
         let geom = i.model.geoms.first_mut()?;
-        for _ in 0..1 + rng.below(2) {
+        for _ in 0..=rng.below(2) {
             geom.sides
                 .push([rng.below(ne as u64) as usize, rng.below(2) as usize]);
         }
