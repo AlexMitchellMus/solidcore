@@ -439,7 +439,7 @@ pub trait SweepAccess {
             },
         )?;
         hcr.set_hcr_for_silhouettes(silhouettes);
-        crate::error::ignore_status(hcr.compute_global_visibility(self.kernel(brep)?))?;
+        crate::error::ignore_status(hcr.compute_global_visibility(self.kernel_mut(brep)?))?;
         Ok(SweepScene {
             brep: self.retain_hcr(brep, hcr)?,
         })
@@ -737,14 +737,14 @@ mod tests {
         let model = Brep::new();
         for (first, second, original, copy) in [
             (
-                crate::EntityRef::Vertex(VertexId::from_index(1)),
-                crate::EntityRef::Vertex(VertexId::from_index(2)),
+                EntityRef::Vertex(VertexId::from_index(1)),
+                EntityRef::Vertex(VertexId::from_index(2)),
                 SweepEntity::Vertex(owner, VertexId::from_index(1)),
                 SweepEntity::Vertex(owner, VertexId::from_index(2)),
             ),
             (
-                crate::EntityRef::Edge(EdgeId::from_index(1)),
-                crate::EntityRef::Edge(EdgeId::from_index(2)),
+                EntityRef::Edge(EdgeId::from_index(1)),
+                EntityRef::Edge(EdgeId::from_index(2)),
                 SweepEntity::Edge(owner, EdgeId::from_index(1)),
                 SweepEntity::Edge(owner, EdgeId::from_index(2)),
             ),
@@ -786,8 +786,8 @@ mod tests {
             .select_topology_to_keep(
                 &Kernel::default(),
                 &Brep::new(),
-                crate::EntityRef::Edge(first),
-                crate::EntityRef::Edge(second),
+                EntityRef::Edge(first),
+                EntityRef::Edge(second),
                 3.5,
             )
             .is_err());

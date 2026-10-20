@@ -11,6 +11,8 @@ Last updated: 2026-10-17, PR #213 (`primitive.primitive_creation_p1` partial: 66
 
 Last updated: 2026-10-19, PR #213 review (`primitive.primitive_creation_p1` partial: 689 exact passes, 75 dependency deferrals, 9 rejected native fixtures). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
+Last updated: 2026-10-20, PR #213 review (`primitive.primitive_creation_p1` partial: 689 exact passes, 75 dependency deferrals, 9 rejected native fixtures). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
+
 Last updated: 2026-10-20, PR #222 third review (`sweep.topology_sweep` partial: 554 passes, max_rel_err=0, 14 deferred, 0 rejected). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
 Latest port: `sweep.topology_sweep` ([PR #222](https://github.com/tangency-labs/solidcore/pull/222)) implements the complete sweep orchestration through an explicit `SweepAccess` service boundary. The 568-case gate compares maps, stitch-callback decisions and f64 distances, successful helper frames, options and edge-profile tags; topology creation and whole-B-rep/HCR/merge/stitch paths await dependencies and are not claimed as differential coverage. Safety regression tests cover failed traversal progress, temporary ownership, context restoration and consuming union across repetitions. Review integration wires available B-rep/shell queries, copying, face construction and binormal evaluation, calls the newly available part 9/5 constructors and edits, HCR, lamina queries and part 2 stitching with the sweep callback, and converts face/edge/vertex tolerances through the owning kernel. All 14 deferrals now reach `MakeShellVertexTopology` in `topology.brep_p2`. A concrete production access adapter remains integration work, tracked in [issue #255](https://github.com/tangency-labs/solidcore/issues/255); see `plan/findings.md`.
@@ -1144,3 +1146,19 @@ and maximum relative error zero. P3 sensitivity detects 284/284 comparisons.
 The 300-mutation harness run executes 78 cases, rejects 163 and classifies 59
 as malformed: zero differences, crashes, panics or timeouts. These results do
 not certify the deferred construction or production-adapter paths.
+
+### PR #213 review refresh (2026-10-20)
+
+Merged canonical main `95b823ed`, retaining both sides of the findings conflict.
+`StitchAndOrient`, `Transform` (no scale, scale tolerances enabled), and
+`RemoveTopologicalEdgesAndVertices` (no keep lists) now call `topology.brep_p5`.
+The constructors and planar boolean pass the caller's `NotifyEnv` through to
+current p7 face construction, including the caller's face identity keys.
+The two intersector stubs remain because `topology::Brep` has no
+`IntersectorBrep` adapter for the generic partial p2 implementation. Their
+post-intersection topology mutations remain uncertified.
+
+Primitive p1 remains 773/689/0/75 with 9 rejected and zero relative error; the
+single former p9 deferral now reaches p2 `MakeShellVertexTopology`. All 689
+perturbations are detected. Format checks, plain/native Clippy, 1479 kernel
+tests, wasm32 and all five primitive FFI tests pass.

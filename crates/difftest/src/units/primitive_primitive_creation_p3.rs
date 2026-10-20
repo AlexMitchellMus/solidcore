@@ -593,13 +593,16 @@ mod tests {
                 model.b.set_editing_enabled(editing);
                 model.k.context.set_doing_boolean(doing_boolean);
                 let result = model.stitch_linear_caps(BrepId::from_index(0), &mut sweep, 0.125);
-                assert!(matches!(
-                    result,
-                    Err(SolidError::Unported {
-                        upstream: "SmBrep::Notify",
-                        unit: "topology.brep_p2",
-                    })
-                ));
+                assert!(
+                    matches!(
+                        result,
+                        Err(SolidError::Unported {
+                            upstream: "SmBrep::CalculateBoundingBox",
+                            unit: "query.brep",
+                        })
+                    ),
+                    "stitch result: {result:?}"
+                );
                 assert_eq!(model.b.editing_enabled(), editing);
                 assert_eq!(model.k.context.doing_boolean(), doing_boolean);
             }

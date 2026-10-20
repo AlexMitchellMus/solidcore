@@ -427,8 +427,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreateFaceFromSurface",
-        "unit": "topology.brep_p8"
+        "symbol": "SmBrep::MakeShellVertexTopology",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "primitive_3",
@@ -6539,8 +6539,9 @@
   "cases_total": 773,
   "deferred_by_unit": {
     "boolean.topology_intersector_p2": 10,
+    "topology.brep_p2": 1,
     "topology.brep_p3": 5,
-    "topology.brep_p8": 60
+    "topology.brep_p8": 59
   },
   "max_rel_err": 0.0,
   "pass": true,

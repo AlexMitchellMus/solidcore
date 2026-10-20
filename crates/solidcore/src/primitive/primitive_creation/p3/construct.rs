@@ -279,9 +279,10 @@ impl PrimitiveCreation {
         let surface = a.with_primitive_brep(brep, |kernel, model| {
             crate::topology::brep::p1::create_edge_edge_blend(
                 kernel,
-                model,
                 flag,
+                model,
                 first,
+                None, // Both edge uses belong to this primitive's B-rep.
                 second,
                 options.curves_direction,
                 Some(&mut derivatives),
