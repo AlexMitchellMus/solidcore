@@ -303,15 +303,26 @@ void p7_copy(SmBrep* b, Graph& g, Rd& rd, std::vector<double>& o)
 }
 
 // The self-intersection curves of a merge: 3D curve and the UV curves on both sheets.
+// Upstream does not own them (both classifications are built with bIsCurveOwned FALSE,
+// SetCurve defaults to FALSE): freed after the B-rep, which is declared after them.
 struct SelfCurves
 {
     SmTArray<SmCurve*> c3;
     SmTArray<SmBSplineCurve*> u1, u2;
+    ~SelfCurves()
+    {
+        for (ULONG i = 0; i < c3.GetSize(); i++)
+            delete c3[i];
+        for (ULONG i = 0; i < u1.GetSize(); i++)
+            delete u1[i];
+        for (ULONG i = 0; i < u2.GetSize(); i++)
+            delete u2[i];
+    }
 };
 
 // `face tol`, then (read before the B-rep block) `ncurves (curve3d curveuv1 curveuv2)*`:
 // MergeSelfIntersectionCurves on the face's surface. Output `status nedges counts` (`-2`
-// for a face without surface). The curves are not freed: the merge may keep them.
+// for a face without surface).
 void p7_merge_self(SmBrep* b, Graph& g, Rd& rd, const SelfCurves& cs, std::vector<double>& o)
 {
     int64_t fi = rd.idx();

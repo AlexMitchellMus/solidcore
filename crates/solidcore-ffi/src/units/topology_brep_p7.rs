@@ -418,3 +418,51 @@ fn raw(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
         }
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A degree-1 line curve block of dimension `dim`.
+    fn line(dim: f64) -> Vec<f64> {
+        let z = if dim == 2.0 { NOZ } else { 0.0 };
+        let mut v = vec![dim, 1.0, 1.0, 3.0];
+        v.extend([0.0, 0.0, z, NOW, 1.0, 1.0, z, NOW]);
+        v.extend([0.0, 0.0, 1.0, 1.0]);
+        v
+    }
+
+    fn merge_self_args(curves: &[(f64, f64, f64)]) -> Vec<f64> {
+        let mut v = vec![0.0, 1.0e-5, curves.len() as f64];
+        for &(c3, u1, u2) in curves {
+            v.extend(line(c3));
+            v.extend(line(u1));
+            v.extend(line(u2));
+        }
+        v
+    }
+
+    #[test]
+    fn merge_self_curves_measures_the_arguments() {
+        assert_eq!(merge_self_curves(&merge_self_args(&[])), Ok(3));
+        let one = merge_self_args(&[(3.0, 2.0, 2.0)]);
+        assert_eq!(merge_self_curves(&one), Ok(one.len()));
+        // a 2D 3D curve is what upstream's SmCurve* accepts
+        let flat = merge_self_args(&[(2.0, 2.0, 2.0), (3.0, 2.0, 2.0)]);
+        assert_eq!(merge_self_curves(&flat), Ok(flat.len()));
+        // the B-rep block follows the arguments
+        let mut with_block = one.clone();
+        with_block.extend([7.0, 8.0]);
+        assert_eq!(merge_self_curves(&with_block), Ok(one.len()));
+        assert_eq!(n_args(Op::MergeSelf, &with_block), Ok(one.len()));
+    }
+
+    #[test]
+    fn merge_self_curves_rejects_3d_uv_curves_and_too_many_curves() {
+        assert!(merge_self_curves(&merge_self_args(&[(3.0, 3.0, 2.0)])).is_err());
+        assert!(merge_self_curves(&merge_self_args(&[(3.0, 2.0, 3.0)])).is_err());
+        assert!(merge_self_curves(&[0.0, 1.0e-5, (MAX_CURVES + 1) as f64]).is_err());
+        // truncated: the count promises a curve that is not there
+        assert!(merge_self_curves(&[0.0, 1.0e-5, 1.0]).is_err());
+    }
+}

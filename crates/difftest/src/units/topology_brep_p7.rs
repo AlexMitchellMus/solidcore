@@ -39,7 +39,13 @@
 //! of `MakeFace`, the glue no-ops and `MergeSelfIntersectionCurves` without curves.
 //! Every `MergeSelfIntersectionCurves` with curves defers at the classification
 //! constructor's `ReSet` (`intersect.curve_class_p2`, wired in `intersect.curve_class_p4`
-//! by PR #137) for now.
+//! by PR #137) for now, and after #137 at `SmSurface::DropCurve`
+//! (`intersect.surface_drop_lib_p3`): they compare only once both land. In C++ the 22
+//! built-in ones (11 shapes at two tolerances, same outcomes) take these paths: along a
+//! side (same, reversed, opposite, adjacent) glues one edge (8); along a side then
+//! crossing, and outside, are no-ops (4); inside, two curves and from a corner return
+//! `SM_ERR` after a partial imprint (6); crossing and partly along a side return `SM_ERR`
+//! with the B-rep unchanged (4).
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
