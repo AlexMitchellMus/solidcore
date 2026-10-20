@@ -26,7 +26,8 @@
 //! `boolean_lists_with_notifications`; the arena-only entry passes an arena-only
 //! notification store (default topology records, no attributes), because the arena
 //! carries no attribute records, so upstream's attribute propagation has nothing to act
-//! on.
+//! on. The copy is `CopyFaces` with `bUseMerge = TRUE`, whose merge branch uses neither
+//! environment (see [`boolean_lists_with_notifications`]).
 //! Skip relations reuse `geom::tol::Relation` and its documented sorted-handle
 //! query order, rather than upstream's address-dependent hash order.
 
@@ -593,12 +594,17 @@ pub fn boolean_lists(
 }
 
 /// [`boolean_lists`] with caller-owned topology records, attributes and identity
-/// routing for the component-copy notifications. Without them (the arena-only entry)
-/// the copy notifies through an arena-only store (`ArenaNotifyState`, a default record
-/// per object of both B-reps): the arena carries no attribute records. The store serves
-/// the events of the copy's makers (`make_face_with_curves`' `ADD_TO_BREP` and the
-/// records of the objects they make); the per-face `SM_NO_COPY` event does not use it,
-/// `topology.brep_p7`'s `CopyFaces` sends that through its own face notification.
+/// routing for the component copy's notification environment. Without them (the
+/// arena-only entry) the copy gets an arena-only store (`ArenaNotifyState`, a default
+/// record per object of both B-reps, no attributes): the arena carries no attribute
+/// records.
+///
+/// The component copy is `CopyFaces` with `bUseMerge = TRUE` (`SmMerge.cpp:1738`), so
+/// `topology.brep_p7`'s `copy_faces` takes its merge branch (`SmBrep.cpp:2021`; here
+/// `merge_copy_faces`, `UNPORTED(boolean.merge_p2)` `SmMerge::SmMerge`), which uses no
+/// notification environment in either case. Only `CopyFaces`' other branch
+/// (`SmBrep.cpp:2125-2190`: `MakeFaceWithCurves` and each face's `SM_NO_COPY`) would
+/// read it; this function never takes that branch.
 pub fn boolean_lists_with_notifications(
     k: &mut Kernel,
     breps1: &[Brep],
@@ -694,11 +700,13 @@ pub fn boolean_lists_with_notifications(
                                 crate::topology::brep_cache::CacheObject::Face(face),
                             )
                         };
-                        // Defaults: pOptNewFaces=NULL, bUseMerge=TRUE,
-                        // pOptMergeObject=NULL. Returned outputs are not inspected,
-                        // and the status is ignored (SmMerge.cpp:5029 / 5044).
+                        // SER(pBrep3->CopyFaces(sFacesToCopy, pBrep4)) (SmMerge.cpp:1738):
+                        // defaults pOptNewFaces=NULL, bUseMerge=TRUE, pOptMergeObject=NULL;
+                        // the status propagates, the returned outputs are not inspected.
+                        // With bUseMerge CopyFaces takes its merge branch, which uses no
+                        // notification environment (the env is the signature's).
                         if let Some(notify) = notifications.as_deref_mut() {
-                            ignored(bp7::copy_faces(
+                            bp7::copy_faces(
                                 k,
                                 &mut result,
                                 &connected,
@@ -706,16 +714,16 @@ pub fn boolean_lists_with_notifications(
                                 true,
                                 &face_ref,
                                 notify,
-                            ))?;
+                            )?;
                         } else {
-                            // the arena entry carries no attribute records: the copy's
-                            // makers notify through an arena-only store (a default record
-                            // per object of both B-reps; the shells, vertices and vertex
-                            // uses they make register their own; empty attributes)
+                            // the arena entry carries no attribute records: an arena-only
+                            // store (a default record per object of both B-reps, empty
+                            // attributes) for CopyFaces' environment parameter, which its
+                            // merge branch does not use
                             let mut state =
                                 crate::topology::brep::p2::ArenaNotifyState::new(&result);
                             state.seed(&component);
-                            ignored(bp7::copy_faces(
+                            bp7::copy_faces(
                                 k,
                                 &mut result,
                                 &connected,
@@ -723,7 +731,7 @@ pub fn boolean_lists_with_notifications(
                                 true,
                                 &face_ref,
                                 &mut state.env(None),
-                            ))?;
+                            )?;
                         }
                         ignored(stitch_and_orient(
                             k,
