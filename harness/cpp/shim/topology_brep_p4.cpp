@@ -34,7 +34,6 @@
 #include "sc_topology_fixture.h"
 
 #include <algorithm>
-#include <cstdlib>
 #include <utility>
 
 namespace {
@@ -334,10 +333,11 @@ SC_EXPORT int32_t sc_topology_brep_p4_eval(int32_t op, const char* path, const d
             shell_owner = damaged_shell->*TopPeek::list_owner();
             damaged_shell->*TopPeek::list_owner() = nullptr;
         }
-        bool ub = (damage == 1 && edge_op && ub_surfaceless_edge(g, target)) ||
+        // (with editing disabled both ops stop at the first line with `SM_ERR`)
+        bool ub = (damage == 1 && edge_op && editing && ub_surfaceless_edge(g, target)) ||
                   (damage == 2 && (edge_op || vertex_op) &&
                    ub_regionless_shell(op, path, in, editing, target, damage_index));
-        if (ub && !getenv("SC_P4_NO_GUARD"))
+        if (ub)
         {
             repair_shell(g);
             o.push_back(ST_NULL_DEREF_GUARD);
