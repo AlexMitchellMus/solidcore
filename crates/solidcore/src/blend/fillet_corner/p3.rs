@@ -19,7 +19,7 @@
 //! | [`FilletCorner::create_corner_patch`]              | `CreateCornerPatch` (virtual: `SmFilletCorner`, `SmFillet3x2MixedConvexityCorner`, `SmFilletNx1Corner`, `SmFilletNx2Corner`) |
 //! | [`FilletCorner::adjust_topology`]                  | `AdjustTopology` (virtual; `SmFilletNx2Corner::AdjustTopology` here) |
 //! | [`FilletCorner::adjust_tangent_corner`]            | `AdjustTangentCorner` (virtual; `SmFilletNx2Corner::AdjustTangentCorner` here) |
-//! | [`FilletExecutiveData`]                            | the `SmFilletExecutive` members read here (`m_vEdgeuseSolverMap`, `GetFilletSolverOfEdgeuse`; CO-PORTED from `blend.fillet_executive_p1`) |
+//! | [`FilletExecutiveData`]                            | the `SmFilletExecutive` members the corner code reads and writes (`m_vEdgeuseSolverMap`, `GetFilletSolverOfEdgeuse`; `m_vExtendedSurfacesMap` for unit `blend.fillet_corner_p1`; CO-PORTED from `blend.fillet_executive_p1`) |
 //!
 //! Deviations:
 //! - **Object model.** The class hierarchy is one [`FilletCorner`] record with a
@@ -1722,9 +1722,17 @@ fn test_g1_continuity(
     Ok(p1::test_g1_continuity(b, Some(vertex), Some(edge1), Some(edge2), ang_tol_deg)?.0)
 }
 
-/// `SmFilletNx1Corner::CheckNx1Degeneracy` (unit `blend.fillet_corner_p1`).
+/// `SmFilletNx1Corner::CheckNx1Degeneracy` as `Create` tests it
+/// (`if (CheckNx1Degeneracy(...))`): the routine returns an `SmBoolean`, and on an
+/// evaluation failure its `SER` returns the status through it, which is nonzero, so such
+/// a failure selects the degenerate corner. An unported callee and a null dereference
+/// stay errors.
 fn check_nx1_degeneracy(k: &Kernel, b: &mut Brep, vertex: VertexId, eu: EdgeuseId) -> Result<bool> {
-    p1::check_nx1_degeneracy(k, b, vertex, eu)
+    match p1::check_nx1_degeneracy(k, b, vertex, eu) {
+        Ok(flag) => Ok(flag),
+        Err(SolidError::Upstream { .. }) => Ok(true),
+        Err(e) => Err(e),
+    }
 }
 
 /// `sm_FindConcaveEdgeuses` (unit `blend.fillet_corner_p2`).
@@ -1763,6 +1771,59 @@ mod tests {
         assert_eq!(c.set_back_dist, 0.0);
         let c = FilletCorner::new(FilletCornerKind::NByOne, None, None, None, 1e-3, 0.1);
         assert!(!c.degenerate);
+    }
+
+    /// A vertex with a filleted edge use whose side edge uses exist (clockwise
+    /// neighbour, radial's counter-clockwise neighbour) but bound no face: the Nx1
+    /// degeneracy test's binormal evaluation returns a status (`SmEdgeuse::EvaluateBinormal`
+    /// on a non-loop edge use), which `Create`'s `if (CheckNx1Degeneracy(...))` reads as
+    /// true. The standalone helper keeps the status.
+    #[test]
+    fn nx1_degeneracy_status_selects_the_degenerate_corner() {
+        use crate::topology::{Edgeuse, EdgeuseOwner, Vertexuse, VertexuseOwner};
+
+        let k = Kernel::default();
+        let mut b = Brep::new();
+        let v = b.add_vertex(Point3::new(0.0, 0.0, 0.0)).unwrap();
+        let w = b.add_vertex(Point3::new(1.0, 0.0, 0.0)).unwrap();
+        let e_fil = b.add_edge(v, w).unwrap();
+        let e_side = b.add_edge(v, w).unwrap();
+        for e in [e_fil, e_side] {
+            b.edge_mut(e).unwrap().interval = Extent1d::from_min_max(0.0, 1.0);
+        }
+        let add_eu = |b: &mut Brep, e: EdgeId, orientation: OrientType, at: VertexId| {
+            let eu = b
+                .add_edgeuse_record(Edgeuse {
+                    edge: Some(e),
+                    owner: EdgeuseOwner::Unknown,
+                    orientation,
+                    ..Edgeuse::default()
+                })
+                .unwrap();
+            let vu = b
+                .add_vertexuse_record(Vertexuse {
+                    vertex: Some(at),
+                    owner: VertexuseOwner::Edgeuse(Some(eu)),
+                    ..Vertexuse::default()
+                })
+                .unwrap();
+            b.edgeuse_mut(eu).unwrap().vertexuse = Some(vu);
+            b.edge_mut(e).unwrap().edgeuses.push(eu);
+            b.vertex_mut(at).unwrap().vertexuses.push(vu);
+            eu
+        };
+        let fil = add_eu(&mut b, e_fil, OrientType::Same, v);
+        let fil_radial = add_eu(&mut b, e_fil, OrientType::Opposite, w);
+        let side1 = add_eu(&mut b, e_side, OrientType::Same, v);
+        let _side1_mate = add_eu(&mut b, e_side, OrientType::Opposite, w);
+        // the clockwise neighbour of the filleted edge use and the counter-clockwise
+        // neighbour of its radial coincide: the 2x1 case, the second side is its mate
+        b.edgeuse_mut(fil).unwrap().cw = Some(side1);
+        b.edgeuse_mut(fil_radial).unwrap().ccw = Some(side1);
+
+        let raw = p1::check_nx1_degeneracy(&k, &mut b, v, fil);
+        assert!(matches!(raw, Err(SolidError::Upstream { .. })), "{raw:?}");
+        assert!(check_nx1_degeneracy(&k, &mut b, v, fil).unwrap());
     }
 
     #[test]

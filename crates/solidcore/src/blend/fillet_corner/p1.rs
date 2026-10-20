@@ -883,16 +883,19 @@ impl FilletCorner {
             let eu = eu1::vertexuse_edgeuse(pseudo.brep(), vu)?.ok_or_else(null)?;
             let fe = eu1::edge(pseudo.brep(), eu)?.ok_or_else(null)?;
             if pseudo.fillet_edge(fe)?.edge_type == FilletEdgeType::Rail {
-                // pDeleteFV->Remove(pVU); pSurvivingFV->PostInsert(pVU) (the edge record's
-                // vertex ends, derived from the vertex uses upstream, follow)
+                // pDeleteFV->Remove(pVU); pSurvivingFV->PostInsert(pVU); the edge record's
+                // vertex end this vertex use stands for (the ends are derived from the
+                // vertex uses upstream) follows: the primary edge use's vertex is the start
+                // end when the primary is oriented SM_OT_SAME, else the end
                 let b = pseudo.brep_mut();
                 b.vertex_mut(delete)?.vertexuses.retain(|&x| x != vu);
                 b.vertexuse_mut(vu)?.vertex = Some(surviving);
                 b.vertex_mut(surviving)?.vertexuses.push(vu);
-                for end in &mut b.edge_mut(fe)?.vertices {
-                    if *end == delete {
-                        *end = surviving;
-                    }
+                let prim = eu1::primary_edgeuse(b, fe)?.ok_or_else(null)?;
+                let same = eu1::orientation(b, prim)? == OrientType::Same;
+                let slot = usize::from((eu == prim) != same);
+                if let Some(end) = b.edge_mut(fe)?.vertices.get_mut(slot) {
+                    *end = surviving;
                 }
             } else {
                 let found = self
@@ -1021,6 +1024,73 @@ pub fn check_nx1_degeneracy(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `SqueezeEdge` moves one rail vertex use at a time: a closed rail at the vertex to
+    /// delete keeps its other end there when the loop stops with `SM_ERR` at a non-rail
+    /// edge that is not the corner's (reviewer's scenario: rail use, missing edge, rail
+    /// use).
+    #[test]
+    fn squeeze_moves_one_end_of_a_closed_rail_per_vertex_use() {
+        use crate::blend::fillet_geom::p1::{FilletEdge, FilletVertex};
+        use crate::topology::{Edgeuse, EdgeuseOwner, Vertexuse, VertexuseOwner};
+
+        let k = Kernel::default();
+        let mut fb = FilletBrep::new();
+        let b = fb.brep_mut();
+        let d = b.add_vertex(Point3::new(0.0, 0.0, 0.0)).unwrap();
+        let kv = b.add_vertex(Point3::new(1.0, 0.0, 0.0)).unwrap();
+        let rail = b.add_edge(d, d).unwrap();
+        let squeezed = b.add_edge(d, kv).unwrap();
+        let add_eu = |b: &mut Brep, e: EdgeId, orientation: OrientType, at: VertexId| {
+            let eu = b
+                .add_edgeuse_record(Edgeuse {
+                    edge: Some(e),
+                    owner: EdgeuseOwner::Unknown,
+                    orientation,
+                    ..Edgeuse::default()
+                })
+                .unwrap();
+            let vu = b
+                .add_vertexuse_record(Vertexuse {
+                    vertex: Some(at),
+                    owner: VertexuseOwner::Edgeuse(Some(eu)),
+                    ..Vertexuse::default()
+                })
+                .unwrap();
+            b.edgeuse_mut(eu).unwrap().vertexuse = Some(vu);
+            b.edge_mut(e).unwrap().edgeuses.push(eu);
+            b.vertex_mut(at).unwrap().vertexuses.push(vu);
+            vu
+        };
+        // the deleted vertex's uses in order: the rail's first use, the squeezed (non-rail,
+        // not the corner's) edge's use, the rail's second use
+        let r0_vu = add_eu(b, rail, OrientType::Same, d);
+        let _s0_vu = add_eu(b, squeezed, OrientType::Same, d);
+        let r1_vu = add_eu(b, rail, OrientType::Opposite, d);
+        let _s1_vu = add_eu(b, squeezed, OrientType::Opposite, kv);
+        let mut fv = FilletVertex::new(&k, None);
+        fv.set_status(FilStatus::ToBeDeleted);
+        fb.insert_fillet_vertex(d, fv);
+        fb.insert_fillet_vertex(kv, FilletVertex::new(&k, None));
+        let mut fe = FilletEdge::with_corner(None);
+        fe.set_fillet_edge_type(FilletEdgeType::Rail);
+        fb.insert_fillet_edge(rail, fe);
+        fb.insert_fillet_edge(squeezed, FilletEdge::with_corner(None));
+        fb.add_edge(rail);
+        fb.add_edge(squeezed);
+
+        let mut c = FilletCorner::new(FilletCornerKind::NByTwo, None, None, None, 1e-3, 0.1);
+        c.vertices = vec![d, kv];
+        // the corner's edge list lacks the squeezed edge: SM_ERR at its vertex use
+        let r = c.squeeze_edge(&mut fb, squeezed);
+        assert!(matches!(r, Err(SolidError::Upstream { .. })), "{r:?}");
+        let b = fb.brep();
+        assert_eq!(b.edge(rail).unwrap().vertices, [kv, d]);
+        assert_eq!(b.vertexuse(r0_vu).unwrap().vertex, Some(kv));
+        assert_eq!(b.vertexuse(r1_vu).unwrap().vertex, Some(d));
+        assert_eq!(b.vertex(d).unwrap().vertexuses.len(), 2);
+        assert_eq!(b.vertex(kv).unwrap().vertexuses.len(), 2);
+    }
     use crate::error::SM_ERR;
 
     #[test]

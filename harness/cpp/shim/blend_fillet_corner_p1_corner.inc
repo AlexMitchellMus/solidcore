@@ -174,6 +174,8 @@ void c1_peek(C1Corner& C, Rd& rd, std::vector<double>& o)
 {
     SmFilletCorner* c = C.c;
     int64_t setBevel = rd.idx(), setConst = rd.idx(), setChamfer = rd.idx(), addVertex = rd.idx();
+    int64_t setG1 = rd.idx(), setStatus = rd.idx();
+    bool prefill = rd.flag();
     int64_t nk = rd.idx();
     std::vector<int64_t> kinds;
     for (int64_t i = 0; i < nk && !rd.bad; ++i)
@@ -196,14 +198,25 @@ void c1_peek(C1Corner& C, Rd& rd, std::vector<double>& o)
         }
         c->AddFilletVertex(v);
     }
+    // m_bG1Case is a public member of the two derived classes that have it
+    if (setG1 >= 0 && C.kind == 2)
+        ((SmFilletNx1ClosedCorner*)c)->m_bG1Case = setG1 != 0 ? TRUE : FALSE;
+    if (setG1 >= 0 && C.kind == 7)
+        ((SmFilletNx2Corner*)c)->m_bG1Case = setG1 != 0 ? TRUE : FALSE;
+    if (setStatus >= 0)
+        c->SetStatus((SmFilStatus)setStatus);
     o.push_back(0.0);
     o.push_back(c->GetThisApproxTol3d());
     SmTArray<SmFilletEdge*> E;
+    if (prefill && C.M.edge(0) != NULL)
+        E.Add(C.M.edge(0));
     c->GetFilletEdges(E);
     o.push_back((double)E.GetSize());
     for (ULONG i = 0; i < E.GetSize(); ++i)
         o.push_back(C.M.edge_index(E[i]));
     SmTArray<SmFilletVertex*> V;
+    if (prefill && C.M.vertex(0) != NULL)
+        V.Add(C.M.vertex(0));
     c->GetFilletVertices(V);
     o.push_back((double)V.GetSize());
     for (ULONG i = 0; i < V.GetSize(); ++i)
@@ -396,46 +409,52 @@ void c1_squeeze(C1Corner& C, Rd& rd, std::vector<double>& o)
     if (del->GetStatus() != SM_FV_TO_BE_DELETED)
         std::swap(surviving, del);
     bool runs = del->GetStatus() == SM_FV_TO_BE_DELETED;
-    // a closed edge: the surviving vertex is the deleted one (its moved vertex uses
-    // dangle)
-    if (runs && surviving == del)
-    {
-        o.push_back(C1_REFUSE);
-        return;
-    }
     if (runs)
     {
-        // a non-rail edge with both ends at the deleted vertex is deleted at its first
-        // vertex use and read again at its second (use after free); the vertex uses must
-        // have an edge use and an edge
+        // Upstream's loop over the deleted vertex's vertex uses, in order (UB-212): a
+        // rail's vertex use moves; a non-rail edge missing from m_vEdges returns SM_ERR
+        // before anything else is freed; a present non-rail edge is deleted with its
+        // vertex uses, so a later vertex use of the same (closed) edge is read after the
+        // free. After the loop the vertex is deleted when it is in m_vVertices, and a
+        // closed squeezed edge then leaves the vertex uses moved to the "surviving"
+        // (deleted) vertex dangling. Only the paths that reach a free are refused.
+        SmTArray<SmFilletEdge*>& E = c->*P3CornerPeek::edges();
+        SmTArray<SmFilletVertex*>& V = c->*P3CornerPeek::verts();
         SmTArray<SmVertexuse*> vus;
         del->GetVertexuses(vus);
+        std::vector<SmFilletEdge*> edgeOf;
         for (ULONG i = 0; i < vus.GetSize(); ++i)
         {
             SmEdgeuse* eu = vus[i]->GetEdgeuse();
-            SmFilletEdge* e = eu ? (SmFilletEdge*)eu->GetEdge() : NULL;
-            if (e == NULL)
-            {
-                o.push_back(C1_REFUSE);
-                return;
-            }
-            if (e->GetFilletEdgeType() != SM_FE_RAIL && e->GetVertex() == e->GetOtherVertex(e->GetVertex()))
-            {
-                o.push_back(C1_REFUSE);
-                return;
-            }
+            edgeOf.push_back(eu ? (SmFilletEdge*)eu->GetEdge() : NULL);
         }
-        // whether the vertex itself gets deleted (the edges are unlinked from the pseudo
-        // B-rep by their destructors, so the Model's edge list follows by itself)
-        SmTArray<SmFilletEdge*>& E = c->*P3CornerPeek::edges();
-        SmTArray<SmFilletVertex*>& V = c->*P3CornerPeek::verts();
-        ULONG idx = 0;
-        bool deletes = V.FindElement(del, idx) ? true : false;
-        for (ULONG i = 0; i < vus.GetSize() && deletes; ++i)
+        bool deletes = true; // the loop completes and `delete pDeleteFV` is reached
+        std::vector<SmFilletEdge*> freed;
+        for (size_t i = 0; i < edgeOf.size(); ++i)
         {
-            SmFilletEdge* e = (SmFilletEdge*)vus[i]->GetEdgeuse()->GetEdge();
-            if (e->GetFilletEdgeType() != SM_FE_RAIL && !E.FindElement(e, idx))
-                deletes = false;
+            SmFilletEdge* e = edgeOf[i];
+            if (e == NULL || index_of(freed, e) >= 0)
+            {
+                o.push_back(C1_REFUSE); // a null dereference, or a vertex use already freed
+                return;
+            }
+            if (e->GetFilletEdgeType() == SM_FE_RAIL)
+                continue;
+            ULONG idx = 0;
+            if (!E.FindElement(e, idx))
+            {
+                deletes = false; // SM_ERR
+                break;
+            }
+            freed.push_back(e);
+        }
+        ULONG vidx = 0;
+        if (deletes && !V.FindElement(del, vidx))
+            deletes = false; // SM_ERR
+        if (deletes && surviving == del)
+        {
+            o.push_back(C1_REFUSE);
+            return;
         }
         if (deletes)
         {

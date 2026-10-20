@@ -276,6 +276,16 @@ struct PeekIn {
     add_vertex: i64,
     #[serde(default)]
     kinds: Vec<f64>,
+    /// `m_bG1Case` of the closed Nx1 / Nx2 corner (`-1` untouched).
+    #[serde(default = "minus_one")]
+    set_g1: i64,
+    /// `SetStatus` with an `SmFilStatus` code (`-1` not called).
+    #[serde(default = "minus_one")]
+    set_status: i64,
+    /// `GetFilletEdges` / `GetFilletVertices` append to arrays holding the model's
+    /// first edge / vertex.
+    #[serde(default)]
+    prefill: bool,
 }
 
 fn minus_one() -> i64 {
@@ -1408,6 +1418,9 @@ fn corner_input(c: &CornerCase<'_>) -> Result<Vec<f64>, HarnessError> {
                 p.set_const_rad as f64,
                 p.set_chamfer as f64,
                 p.add_vertex as f64,
+                p.set_g1 as f64,
+                p.set_status as f64,
+                flag(p.prefill),
                 p.kinds.len() as f64,
             ]);
             o.extend(p.kinds.iter().copied());
@@ -1580,12 +1593,24 @@ fn corner_rust(i: &Inputs) -> Result<Output, HarnessError> {
             if let Ok(v) = usize::try_from(p.add_vertex) {
                 fc.add_fillet_vertex(rm.vertex(v)?);
             }
+            if p.set_g1 >= 0 && (ci.kind == 2 || ci.kind == 7) {
+                fc.g1_case = p.set_g1 != 0;
+            }
+            if let Some(st) = FilStatus::from_code(p.set_status) {
+                fc.status = st;
+            }
             let mut rec = vec![fc.this_approx_tol_3d()];
             let mut edges = Vec::new();
+            if p.prefill {
+                edges.extend(rm.edge(0).ok());
+            }
             fc.fillet_edges(&mut edges);
             rec.push(edges.len() as f64);
             rec.extend(edges.iter().map(|&e| rm.edge_index(Some(e))));
             let mut verts = Vec::new();
+            if p.prefill {
+                verts.extend(rm.vertex(0).ok());
+            }
             fc.fillet_vertices(&mut verts);
             rec.push(verts.len() as f64);
             rec.extend(verts.iter().map(|&v| rm.vertex_index(Some(v))));
@@ -1691,8 +1716,11 @@ fn corner_rust(i: &Inputs) -> Result<Output, HarnessError> {
         }
         CornerMethod::Squeeze => {
             let e = rm.edge(c.squeeze)?;
-            // the shim's refusal: a non-rail edge with both ends at the deleted vertex is
-            // freed at its first vertex use and read again at its second
+            // the shim's refusals (UB-212), following upstream's loop in order: a vertex
+            // use whose edge was freed by an earlier iteration (a closed non-rail edge), and
+            // a closed squeezed edge whose "surviving" vertex is the one deleted at the end;
+            // an edge or vertex missing from the corner's lists stops the loop first with
+            // SM_ERR, which both sides compare
             {
                 let b = rm.fb.brep();
                 let surviving = edge::vertex(b, e).map_err(h)?;
@@ -1703,10 +1731,8 @@ fn corner_rust(i: &Inputs) -> Result<Output, HarnessError> {
                         std::mem::swap(&mut surviving, &mut del);
                     }
                     if status(del) == Some(FilStatus::ToBeDeleted) {
-                        // a closed edge: the surviving vertex is the deleted one
-                        if surviving == del {
-                            return Ok(Output::err("refused"));
-                        }
+                        let mut deletes = true;
+                        let mut freed: Vec<EdgeId> = Vec::new();
                         for vu in solidcore::topology::vertex::vertexuses(b, del).map_err(h)? {
                             let fe = eu1::vertexuse_edgeuse(b, vu)
                                 .map_err(h)?
@@ -1714,14 +1740,27 @@ fn corner_rust(i: &Inputs) -> Result<Output, HarnessError> {
                             let Some(fe) = fe else {
                                 return Ok(Output::err("refused"));
                             };
+                            if freed.contains(&fe) {
+                                return Ok(Output::err("refused"));
+                            }
                             let rail = rm
                                 .fb
                                 .fillet_edge(fe)
                                 .is_ok_and(|r| r.edge_type == FilletEdgeType::Rail);
-                            let ends = b.edge(fe).map_err(h)?.vertices;
-                            if !rail && ends[0] == ends[1] {
-                                return Ok(Output::err("refused"));
+                            if rail {
+                                continue;
                             }
+                            if !fc.edges.contains(&fe) {
+                                deletes = false;
+                                break;
+                            }
+                            freed.push(fe);
+                        }
+                        if deletes && !fc.vertices.contains(&del) {
+                            deletes = false;
+                        }
+                        if deletes && surviving == del {
+                            return Ok(Output::err("refused"));
                         }
                     }
                 }
@@ -1878,6 +1917,17 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
                     .unwrap_or(&0.0)
             })
             .collect(),
+        set_g1: if kind == 2 || kind == 7 {
+            rng.range_i64(-1, 1)
+        } else {
+            -1
+        },
+        set_status: if rng.chance(0.5) {
+            rng.range_i64(0, 12)
+        } else {
+            -1
+        },
+        prefill: rng.chance(0.4),
     };
     let solvers: Vec<SolverRegIn> = if nt > 0 {
         (0..rng.below(4))

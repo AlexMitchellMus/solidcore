@@ -49,7 +49,7 @@
 //!
 //! | [`CornerOp`]              | upstream                                  | input after the corner | output after `0` |
 //! |---------------------------|-------------------------------------------|------------------------|------------------|
-//! | [`CornerOp::Peek`]        | the data access methods, predicates and setters (`SetBevel`, `SetCalcAsConstRad`, `SetChamfer`, `AddFilletVertex` first) | `set_bevel set_const_rad set_chamfer add_vertex nk kinds..` (`-1` = not called; chamfer only for the `NxN` kinds) | `tol n edges.. n verts.. v_edge v_sub setback status type type_string_ok is_kind_of.. bevel blending degenerate ext_patch const_rad tangent` |
+//! | [`CornerOp::Peek`]        | the data access methods, predicates and setters (`SetBevel`, `SetCalcAsConstRad`, `SetChamfer`, `AddFilletVertex` first) | `set_bevel set_const_rad set_chamfer add_vertex set_g1 set_status prefill nk kinds..` (`-1` = not called; chamfer only for the `NxN` kinds, `m_bG1Case` only for the closed Nx1 / Nx2 kinds; `prefill` starts the `GetFilletEdges` / `GetFilletVertices` arrays with the model's first edge / vertex) | `tol n edges.. n verts.. v_edge v_sub setback status type type_string_ok is_kind_of.. bevel blending degenerate ext_patch const_rad tangent` |
 //! | [`CornerOp::Solvers`]     | `GetTangentFilletSolver`, `GetFilletSolvers` | `ns (edge which approx tang).. q` (solvers registered for target edge uses; `q == ns` an unregistered solver) | `tangent n solvers..` (registration indices, `-1` NULL) |
 //! | [`CornerOp::ExtSurface`]  | `AddExtendedOriginalSurface`, `GetExtendedSurface` | `na (face s).. nq faces..` (a plane with natural domain `[0, s]²` per add) | per query `umax vmax` (`-1 -1` NULL) |
 //! | [`CornerOp::Reinit`]      | `ReInitializeCornerEdges`                 |                        | the model export |
@@ -342,6 +342,11 @@ impl CornerOp {
 /// The largest number of registered solvers, added surfaces, queries and type codes.
 pub const MAX_CORNER_LIST: usize = 16;
 
+/// `-2^63` and `2^63`: the type codes the shim casts to `int64_t` must lie in
+/// `[-2^63, 2^63)` (the cast of anything else is undefined).
+const INT64_MIN_F64: f64 = -9_223_372_036_854_775_808.0;
+const INT64_MAX_PLUS_ONE_F64: f64 = 9_223_372_036_854_775_808.0;
+
 /// An edge use list `has n (edge which)..` of target wire edges.
 fn corner_eu_list(rd: &mut P1Reader<'_>, nt: usize) -> Result<(), FfiError> {
     rd.flag()?;
@@ -392,9 +397,17 @@ pub fn validate_corner(op: CornerOp, input: &[f64]) -> Result<(), FfiError> {
                 rd.opt_index(2)?;
             }
             rd.opt_index(b.nv())?;
+            rd.opt_index(2)?; // m_bG1Case
+            rd.opt_index(13)?; // SetStatus (SmFilStatus)
+            rd.flag()?; // prefill
             let nk = rd.index(MAX_CORNER_LIST)?;
             for _ in 0..nk {
-                rd.finite()?;
+                // the shim reads each type code as an `int64_t` (a plain cast): only
+                // representable values, any of them (unknown codes test `IsKindOf` too)
+                let code = rd.finite()?;
+                if !(INT64_MIN_F64..INT64_MAX_PLUS_ONE_F64).contains(&code) {
+                    return Err(bad("type code outside the int64 range"));
+                }
             }
         }
         CornerOp::Solvers => {
@@ -474,6 +487,36 @@ mod tests {
         }
         assert_eq!(Op::from_code(10), None);
         assert_eq!(Op::from_code(-1), None);
+    }
+
+    /// A `peek` input on an empty model and a bare corner, with the given type codes.
+    fn peek_input(kinds: &[f64]) -> Vec<f64> {
+        // the model block: no targets, faces, fillet B-rep edges, vertices, geometries, edges
+        let mut v = vec![0.0; 6];
+        // kind, no filleted vertex; no solver / all edge uses; no vertices / edges
+        v.extend([0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        // the flags, setback, tolerances
+        v.extend([0.0; 9]);
+        // peek: no setters, no added vertex, no G1 / status, no prefill, the type codes
+        v.extend([-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 0.0, kinds.len() as f64]);
+        v.extend_from_slice(kinds);
+        v
+    }
+
+    #[test]
+    fn peek_type_codes_must_be_int64_representable() {
+        // guard-only: nothing here reaches the shim
+        assert!(validate_corner(CornerOp::Peek, &peek_input(&[16036.0, 0.0, -7.5])).is_ok());
+        assert!(validate_corner(CornerOp::Peek, &peek_input(&[9.0e18])).is_ok());
+        assert!(
+            validate_corner(CornerOp::Peek, &peek_input(&[-9_223_372_036_854_775_808.0])).is_ok()
+        );
+        assert!(
+            validate_corner(CornerOp::Peek, &peek_input(&[9_223_372_036_854_775_808.0])).is_err()
+        );
+        assert!(validate_corner(CornerOp::Peek, &peek_input(&[1.0e19])).is_err());
+        assert!(validate_corner(CornerOp::Peek, &peek_input(&[-1.0e150])).is_err());
+        assert!(validate_corner(CornerOp::Peek, &peek_input(&[f64::INFINITY])).is_err());
     }
 
     #[test]
