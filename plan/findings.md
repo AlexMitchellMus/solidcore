@@ -10734,6 +10734,18 @@ to CookieCutter/Imprinting bits. Imprinting without create-new is not expressibl
 Generated cases remain shell-vertex only, without repeated leaves or multi-operator
 trees; fixed fixtures exercise the existing repeated-leaf/error and real-box paths.
 
+Update (PR #287, #243 follow-up): the isolated nonmanifold wrapper's boundary
+named above has moved. `DependencyMerge::manifold_boolean` now runs merge_p4's
+`ManifoldBoolean` on an adopted engine (`DependencyMerge::with_engine`), and without
+one defers to `boolean.merge_p2`'s `SmMerge::SmMerge`; the runner's pool driver is
+retagged the same way. The 40 nonmanifold deferrals therefore moved from
+`boolean.merge_p4` to `boolean.merge_p2`; none of those newly compares. New fixture family 6
+(`fixtures/boolean.merge_p3/engine-ner.json`, 33 cases) runs the adopted-engine path
+against a context-only native `SmMerge` with the same explicit members. With at most
+one operand it covers only `ManifoldBoolean`'s NER checks, the restored manifold flag
+and the lamina mode the engine received, not geometry. The historical audit table
+above records the boundary at the time of #245.
+
 ## boolean.merge_p4 — current coverage and kernel adapter (PR #243)
 
 **No non-null case compares yet; Boolean success paths compared: zero.**
