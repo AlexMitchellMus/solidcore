@@ -85,9 +85,7 @@ enum SurfaceIn {
     },
     /// An `SmCurveBoundedSurface` (implicit outer, no boundary curves) over a plane or
     /// B-spline basis.
-    CurveBounded {
-        basis: Box<SurfaceIn>,
-    },
+    CurveBounded { basis: Box<SurfaceIn> },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -401,12 +399,10 @@ fn rust_surface(s: &SurfaceIn) -> Result<Surface, Fail> {
                 .map_err(|e| harness(format!("surface: {e}")))?;
             Ok(Surface::from(BSplineSurface::from_nurb(sur, false)))
         }
-        SurfaceIn::CurveBounded { basis } => Ok(Surface::from(CurveBoundedSurface::new(
-            rust_surface(basis)?,
-            Vec::new(),
-            Vec::new(),
-            true,
-        ).map_err(|e| HarnessError::new(e.to_string()))?)),
+        SurfaceIn::CurveBounded { basis } => Ok(Surface::from(
+            CurveBoundedSurface::new(rust_surface(basis)?, Vec::new(), Vec::new(), true)
+                .map_err(|e| HarnessError::new(e.to_string()))?,
+        )),
     }
 }
 
@@ -432,7 +428,10 @@ fn rust_curve(c: &CurveIn) -> Result<Curve, Fail> {
                 .len()
                 .checked_sub(1)
                 .ok_or_else(|| harness("empty B-spline"))?;
-            let m = knots.len().checked_sub(1).ok_or_else(|| harness("no knots"))?;
+            let m = knots
+                .len()
+                .checked_sub(1)
+                .ok_or_else(|| harness("no knots"))?;
             BSplineCurve::from_data(u64::from(*dim), n, m, *p, &pw, knots)
                 .map(Curve::from)
                 .map_err(|e| Fail::Harness(harness(format!("B-spline: {e}"))))
@@ -492,7 +491,12 @@ fn put_uv(o: &mut Vec<f64>, v: Vec2) {
 
 fn put_point(o: &mut Vec<f64>, t: &TsectPnt) {
     o.push(f64::from(t.point_type.code()));
-    o.extend(t.uv_param_type.iter().flatten().map(|pt| f64::from(pt.code())));
+    o.extend(
+        t.uv_param_type
+            .iter()
+            .flatten()
+            .map(|pt| f64::from(pt.code())),
+    );
     for uv in t.uv_curve_pv.iter().flatten() {
         put_uv(o, *uv);
     }
@@ -632,7 +636,13 @@ fn run_op(
                 Some(j) => Some(pt_of(si, *j)?),
                 None => None,
             };
-            let r = si.compute_point_values(&Kernel::default(), [p2(uvs[0]), p2(uvs[1])], &mut p, prev_p.as_ref(), *step);
+            let r = si.compute_point_values(
+                &Kernel::default(),
+                [p2(uvs[0]), p2(uvs[1])],
+                &mut p,
+                prev_p.as_ref(),
+                *step,
+            );
             st(o, r)?;
             put_point(o, &p);
             set_pt(si, *i, p)?;
@@ -682,9 +692,7 @@ fn run_op(
         }
         OpIn::Law(l) => {
             let mut p = pt_of(si, l.i)?;
-            let curve = curves
-                .get(l.curve)
-                .ok_or_else(|| harness("curve index"))?;
+            let curve = curves.get(l.curve).ok_or_else(|| harness("curve index"))?;
             let opts = LawPointOptions {
                 law: &(),
                 law_orient: l.orient,
@@ -888,7 +896,9 @@ fn gen_plane(rng: &mut Rng, s: f64, near: Option<([f64; 3], f64)>) -> SurfaceIn 
 fn clamped_knots(rng: &mut Rng, n: usize, p: usize, lo: f64, hi: f64) -> Vec<f64> {
     let interior = n - p - 1;
     let mut inner: Vec<f64> = (0..interior)
-        .map(|i| lo + (hi - lo) * (i as f64 + 1.0 + rng.uniform(-0.3, 0.3)) / (interior as f64 + 1.0))
+        .map(|i| {
+            lo + (hi - lo) * (i as f64 + 1.0 + rng.uniform(-0.3, 0.3)) / (interior as f64 + 1.0)
+        })
         .collect();
     inner.sort_by(f64::total_cmp);
     let mut k = vec![lo; p + 1];
@@ -1097,21 +1107,21 @@ fn gen_curve(rng: &mut Rng, s: f64) -> CurveIn {
             b: [a[0] + s * d[0], a[1] + s * d[1], a[2] + s * d[2]],
         }
     } else {
-            let p = 1 + rng.below(3) as usize;
-            let n = p + 1 + rng.below(3) as usize;
-            let cpts = (0..n)
-                .map(|i| {
-                    let q = rng.point3(-s, s);
-                    [Some(q[0] + i as f64 * s), Some(q[1]), Some(q[2]), None]
-                })
-                .collect();
-            let knots = clamped_knots(rng, n, p, 0.0, 1.0);
-            CurveIn::BSpline {
-                dim: 3,
-                p,
-                cpts,
-                knots,
-            }
+        let p = 1 + rng.below(3) as usize;
+        let n = p + 1 + rng.below(3) as usize;
+        let cpts = (0..n)
+            .map(|i| {
+                let q = rng.point3(-s, s);
+                [Some(q[0] + i as f64 * s), Some(q[1]), Some(q[2]), None]
+            })
+            .collect();
+        let knots = clamped_knots(rng, n, p, 0.0, 1.0);
+        CurveIn::BSpline {
+            dim: 3,
+            p,
+            cpts,
+            knots,
+        }
     }
 }
 
@@ -1334,8 +1344,16 @@ fn gen_bpt_case(rng: &mut Rng) -> Inputs {
     };
     let na = natural(&a);
     let nb = natural(&b);
-    let dom1 = if rng.chance(0.85) { na } else { gen_domain(rng, na) };
-    let dom2 = if rng.chance(0.85) { nb } else { gen_domain(rng, nb) };
+    let dom1 = if rng.chance(0.85) {
+        na
+    } else {
+        gen_domain(rng, na)
+    };
+    let dom2 = if rng.chance(0.85) {
+        nb
+    } else {
+        gen_domain(rng, nb)
+    };
     let mut ops = Vec::new();
     let nbpt = 1 + rng.below(2) as usize;
     for _ in 0..nbpt {
@@ -1348,8 +1366,16 @@ fn gen_bpt_case(rng: &mut Rng) -> Inputs {
         ops.push(OpIn::Bpt {
             tol,
             bbox: [bmin, if empty_box { bmin } else { bmax }],
-            dom1: if rng.chance(0.85) { dom1 } else { gen_domain(rng, na) },
-            dom2: if rng.chance(0.85) { dom2 } else { gen_domain(rng, nb) },
+            dom1: if rng.chance(0.85) {
+                dom1
+            } else {
+                gen_domain(rng, na)
+            },
+            dom2: if rng.chance(0.85) {
+                dom2
+            } else {
+                gen_domain(rng, nb)
+            },
         });
     }
     let doms = [na, nb];
@@ -1458,9 +1484,24 @@ fn blank_point(param: f64) -> Vec<f64> {
 }
 
 fn edge_cases() -> Vec<(String, Value)> {
-    let xy = plane_json([0.0, -0.5, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0, 1.0]);
-    let xz = plane_json([0.0, 0.0, -0.5], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 1.0]);
-    let xy2 = plane_json([0.0, -0.5, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0, 1.0]);
+    let xy = plane_json(
+        [0.0, -0.5, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0, 1.0],
+    );
+    let xz = plane_json(
+        [0.0, 0.0, -0.5],
+        [1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, 1.0, 1.0],
+    );
+    let xy2 = plane_json(
+        [0.0, -0.5, 1.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0, 1.0],
+    );
     let d = [0.0, 0.0, 1.0, 1.0];
     let pts: Vec<Vec<f64>> = (0..6).map(|i| blank_point(0.2 * f64::from(i))).collect();
     let prog = |a: &Value, bb: &Value, ops: Value| {
@@ -1468,9 +1509,7 @@ fn edge_cases() -> Vec<(String, Value)> {
                "curves": [{"kind": "segment", "a": [0.0, 0.0, 0.0], "b": [1.0, 0.0, 0.0]}],
                "points": pts, "ops": ops})
     };
-    let cpv = |u: f64, i: usize, prev: Option<usize>| {
-        json!({"op": "cpv", "uvs": [[u, 0.5], [u, 0.5]], "i": i, "prev": prev, "step": null})
-    };
+    let cpv = |u: f64, i: usize, prev: Option<usize>| json!({"op": "cpv", "uvs": [[u, 0.5], [u, 0.5]], "i": i, "prev": prev, "step": null});
     let mut v = Vec::new();
     // an exact trace along x, flushed into a curve
     let mut trace = Vec::new();
@@ -1482,7 +1521,10 @@ fn edge_cases() -> Vec<(String, Value)> {
     trace.push(json!({"op": "unique", "p": [0.0, 0.0, 0.0], "tol": 1e-3}));
     trace.push(json!({"op": "unique", "p": [0.5, 0.0, 0.0], "tol": 1e-3}));
     trace.push(json!({"op": "state"}));
-    v.push(("edge_trace_flush".into(), prog(&xy, &xz, Value::Array(trace))));
+    v.push((
+        "edge_trace_flush".into(),
+        prog(&xy, &xz, Value::Array(trace)),
+    ));
     // start points on the natural boundaries (direction flips), classification
     v.push((
         "edge_boundary_starts".into(),
@@ -1538,14 +1580,25 @@ fn edge_cases() -> Vec<(String, Value)> {
     ];
     let bump = |x0: f64, rows: &[[f64; 4]], mirror: bool| {
         let hs: Vec<Vec<f64>> = rows.iter().map(|r| r.to_vec()).collect();
-        serde_json::to_value(bump_bspline(1.0, x0, 2, &hs, mirror, [(0.0, 1.0), (0.0, 1.0)]))
-            .unwrap_or(Value::Null)
+        serde_json::to_value(bump_bspline(
+            1.0,
+            x0,
+            2,
+            &hs,
+            mirror,
+            [(0.0, 1.0), (0.0, 1.0)],
+        ))
+        .unwrap_or(Value::Null)
     };
     let mut rev = h;
     rev.reverse();
     let bpt = json!([{"op": "bpt", "tol": 1e-3, "bbox": [[-1.0, -1.0, -1.0], [3.0, 2.0, 1.0]],
                       "dom1": d, "dom2": d}, {"op": "state"}]);
-    for (name, x0) in [("edge_bpt_shared", 2.0), ("edge_bpt_disjoint", 2.5), ("edge_bpt_overlap", 1.8)] {
+    for (name, x0) in [
+        ("edge_bpt_shared", 2.0),
+        ("edge_bpt_disjoint", 2.5),
+        ("edge_bpt_overlap", 1.8),
+    ] {
         v.push((
             name.into(),
             json!({"a": bump(0.0, &h, false), "b": bump(x0, &rev, true), "dom1": d, "dom2": d,

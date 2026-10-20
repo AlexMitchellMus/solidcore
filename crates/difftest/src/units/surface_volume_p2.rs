@@ -296,14 +296,18 @@ fn push_vol(o: &mut Vec<f64>, v: &Vol) -> Result<(), HarnessError> {
         match m.kind {
             1 => push_tf(o, &m.t.ok_or_else(|| harness("transform map without t"))?),
             2 => {
-                let t = m.tw.as_ref().ok_or_else(|| harness("twist map without tw"))?;
+                let t =
+                    m.tw.as_ref()
+                        .ok_or_else(|| harness("twist map without tw"))?;
                 o.extend(t.o);
                 o.extend(t.axis);
                 o.extend(t.mid);
                 o.extend([t.period, t.min]);
             }
             3 => {
-                let r = m.bs.as_ref().ok_or_else(|| harness("B-spline map without bs"))?;
+                let r =
+                    m.bs.as_ref()
+                        .ok_or_else(|| harness("B-spline map without bs"))?;
                 o.extend(r.hi.map(|x| x as f64));
                 o.extend(r.deg.map(|x| x as f64));
                 for k in &r.knots {
@@ -314,7 +318,9 @@ fn push_vol(o: &mut Vec<f64>, v: &Vol) -> Result<(), HarnessError> {
                 }
             }
             5 | 7 => {
-                let u = m.ub.as_ref().ok_or_else(|| harness("(un)bend map without ub"))?;
+                let u =
+                    m.ub.as_ref()
+                        .ok_or_else(|| harness("(un)bend map without ub"))?;
                 o.extend(u.c);
                 o.extend(u.axis);
                 o.extend(u.mid);
@@ -597,28 +603,36 @@ fn build_map(m: &MapIn) -> Result<Volume, HarnessError> {
     Ok(match m.kind {
         1 => Volume::oriented(
             VolumeKind::Transform(transform_of(
-                m.t.as_ref().ok_or_else(|| harness("transform map without t"))?,
+                m.t.as_ref()
+                    .ok_or_else(|| harness("transform map without t"))?,
             )),
             orient,
         ),
         2 => {
-            let t = m.tw.as_ref().ok_or_else(|| harness("twist map without tw"))?;
+            let t =
+                m.tw.as_ref()
+                    .ok_or_else(|| harness("twist map without tw"))?;
             TwistVolume::create(v3(t.o), v3(t.axis), v3(t.mid), t.period, t.min)
         }
         3 => Volume::oriented(
             VolumeKind::BSpline(bspline(
-                m.bs.as_ref().ok_or_else(|| harness("B-spline map without bs"))?,
+                m.bs.as_ref()
+                    .ok_or_else(|| harness("B-spline map without bs"))?,
             )?),
             orient,
         ),
         4 => Volume::oriented(VolumeKind::Unbend(UnbendVolume::new()), orient),
         5 => {
-            let u = m.ub.as_ref().ok_or_else(|| harness("unbend map without ub"))?;
+            let u =
+                m.ub.as_ref()
+                    .ok_or_else(|| harness("unbend map without ub"))?;
             UnbendVolume::create(v3(u.c), v3(u.axis), v3(u.mid), u.d, u.tol)
         }
         6 => Volume::oriented(VolumeKind::Bend(BendVolume::new()), orient),
         7 => {
-            let u = m.ub.as_ref().ok_or_else(|| harness("bend map without ub"))?;
+            let u =
+                m.ub.as_ref()
+                    .ok_or_else(|| harness("bend map without ub"))?;
             BendVolume::create(v3(u.c), v3(u.axis), v3(u.mid), u.d, u.tol)
         }
         _ => Volume::oriented(VolumeKind::Base, orient),
@@ -694,7 +708,11 @@ fn cont(c: ContinuityType) -> f64 {
 fn put_disc(o: &mut Vec<f64>, d: &Discontinuities3d) {
     o.extend([b(d.has_discontinuities), cont(d.min_continuity)]);
     for dir in [&d.u, &d.v, &d.w] {
-        o.extend([b(dir.unaligned), cont(dir.min_cont), dir.params.len() as f64]);
+        o.extend([
+            b(dir.unaligned),
+            cont(dir.min_cont),
+            dir.params.len() as f64,
+        ]);
     }
 }
 
@@ -896,7 +914,10 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             ..
         } => {
             let d = dom.as_ref().map(pbox);
-            let r = tri!(o, v.inv_map_point(&k, v3(*p), guess.map(v3), d.as_ref(), *comp));
+            let r = tri!(
+                o,
+                v.inv_map_point(&k, v3(*p), guess.map(v3), d.as_ref(), *comp)
+            );
             put_inv(&mut o, r.success, &r.points, &r.gaps);
         }
         Inputs::Global { p, dom, comp, .. } => {
@@ -957,14 +978,19 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         }
         Inputs::InvEvalSimple { p, guess, dom, .. } => {
             let d = dom.as_ref().map(ext);
-            let (ok, pts, gaps) =
-                tri!(o, v.inv_evaluate_point_simple(v3(*p), guess.map(v3), d.as_ref()));
+            let (ok, pts, gaps) = tri!(
+                o,
+                v.inv_evaluate_point_simple(v3(*p), guess.map(v3), d.as_ref())
+            );
             put_inv(&mut o, ok, &pts, &gaps);
         }
         Inputs::GlobalSimple { p, dom, .. } => {
             let d = dom.as_ref().map(ext);
             let mut sols = SolutionArray::new();
-            let found = tri!(o, v.global_point_solve_simple(v3(*p), &mut sols, d.as_ref(), Me));
+            let found = tri!(
+                o,
+                v.global_point_solve_simple(v3(*p), &mut sols, d.as_ref(), Me)
+            );
             put_solutions(&mut o, found, &sols);
         }
         Inputs::LocalSimple { p, g, dom, .. } => {
@@ -1032,7 +1058,12 @@ fn gen_transform(rng: &mut Rng) -> Tf {
             let sgn = if rng.chance(0.5) { -1.0 } else { 1.0 };
             [coord(rng, 5.0), u.map(|c| c * sgn), v, w]
         }
-        _ => [coord(rng, 5.0), coord(rng, 2.0), coord(rng, 2.0), coord(rng, 2.0)],
+        _ => [
+            coord(rng, 5.0),
+            coord(rng, 2.0),
+            coord(rng, 2.0),
+            coord(rng, 2.0),
+        ],
     }
 }
 
@@ -1257,10 +1288,7 @@ fn head_domain(vol: &Vol) -> Option<[[f64; 2]; 3]> {
     let mut d = [[0.0; 2]; 3];
     for (k, slot) in d.iter_mut().enumerate() {
         let knots = r.knots.get(k)?;
-        *slot = [
-            *knots.get(*r.deg.get(k)?)?,
-            *knots.get(*r.hi.get(k)? + 1)?,
-        ];
+        *slot = [*knots.get(*r.deg.get(k)?)?, *knots.get(*r.hi.get(k)? + 1)?];
     }
     Some(d)
 }

@@ -175,9 +175,23 @@ fn push3(v: &mut Vec<f64>, p: [f64; 3]) {
 fn base_block(v: &mut Vec<f64>, c: &BaseIn) -> Result<(), HarnessError> {
     match c {
         BaseIn::Bspline(bs) => {
-            let n = bs.cpts.len().checked_sub(1).ok_or_else(|| harness("no points"))?;
-            let m = bs.u.len().checked_sub(1).ok_or_else(|| harness("no knots"))?;
-            v.extend([0.0, bs.dim as f64, b(bs.oob), n as f64, bs.p as f64, m as f64]);
+            let n = bs
+                .cpts
+                .len()
+                .checked_sub(1)
+                .ok_or_else(|| harness("no points"))?;
+            let m =
+                bs.u.len()
+                    .checked_sub(1)
+                    .ok_or_else(|| harness("no knots"))?;
+            v.extend([
+                0.0,
+                bs.dim as f64,
+                b(bs.oob),
+                n as f64,
+                bs.p as f64,
+                m as f64,
+            ]);
             for p in &bs.cpts {
                 v.extend(p);
             }
@@ -230,8 +244,14 @@ fn op_of(op: &OpIn) -> Op {
 
 /// The curve blocks of a curve op.
 fn curve_blocks(v: &mut Vec<f64>, i: &Inputs) -> Result<(), HarnessError> {
-    let base = i.base.as_ref().ok_or_else(|| harness("curve op without base"))?;
-    let spec = i.spec.as_ref().ok_or_else(|| harness("curve op without spec"))?;
+    let base = i
+        .base
+        .as_ref()
+        .ok_or_else(|| harness("curve op without base"))?;
+    let spec = i
+        .spec
+        .as_ref()
+        .ok_or_else(|| harness("curve op without spec"))?;
     base_block(v, base)?;
     spec_block(v, spec);
     match &i.outer {
@@ -264,7 +284,12 @@ fn cpp_input(i: &Inputs) -> Result<(Op, Vec<f64>), HarnessError> {
     curve_blocks(&mut v, i)?;
     match &i.op {
         OpIn::State | OpIn::ReadDb { .. } => {}
-        OpIn::Eval { t, n, left, nonzero } => {
+        OpIn::Eval {
+            t,
+            n,
+            left,
+            nonzero,
+        } => {
             v.extend([*t, *n as f64, b(*left), b(*nonzero)]);
         }
         OpIn::EvalPoint { t } => v.push(*t),
@@ -324,8 +349,15 @@ fn v3(p: [f64; 3]) -> Vec3 {
 fn build_base(c: &BaseIn) -> Result<Curve, HarnessError> {
     match c {
         BaseIn::Bspline(bs) => {
-            let n = bs.cpts.len().checked_sub(1).ok_or_else(|| harness("no points"))?;
-            let m = bs.u.len().checked_sub(1).ok_or_else(|| harness("no knots"))?;
+            let n = bs
+                .cpts
+                .len()
+                .checked_sub(1)
+                .ok_or_else(|| harness("no points"))?;
+            let m =
+                bs.u.len()
+                    .checked_sub(1)
+                    .ok_or_else(|| harness("no knots"))?;
             let mut cur =
                 allocate_nurb_curve(n, bs.p, m).map_err(|e| harness(format!("curve: {e}")))?;
             for (d, s) in cur.cpts_mut().iter_mut().zip(&bs.cpts) {
@@ -370,7 +402,8 @@ fn build_offset(base: Curve, s: &SpecIn) -> solidcore::Result<Curve> {
 fn build(i: &Inputs) -> Result<(Curve, Curve), HarnessError> {
     let base = build_base(i.base.as_ref().ok_or_else(|| harness("no base"))?)?;
     let spec = i.spec.as_ref().ok_or_else(|| harness("no spec"))?;
-    let built = |base: Curve, spec: &SpecIn| build_offset(base, spec).map_err(|e| harness(e.to_string()));
+    let built =
+        |base: Curve, spec: &SpecIn| build_offset(base, spec).map_err(|e| harness(e.to_string()));
     let inner = built(base.clone(), spec)?;
     Ok(match &i.outer {
         None => (base, inner),
@@ -450,10 +483,11 @@ fn rust_op(i: &Inputs, o: &mut Vec<f64>) -> Result<(), SolidError> {
         probes: ts,
     } = &i.op
     {
-        let data = db_bytes(text.as_ref(), bytes.as_ref()).map_err(|_| SolidError::InvalidInput {
-            operation: "difftest",
-            reason: "bad read_db input",
-        })?;
+        let data =
+            db_bytes(text.as_ref(), bytes.as_ref()).map_err(|_| SolidError::InvalidInput {
+                operation: "difftest",
+                reason: "bad read_db input",
+            })?;
         let mut db = DatabaseReader::new();
         db.open_for_read(
             data,
@@ -463,7 +497,11 @@ fn rust_op(i: &Inputs, o: &mut Vec<f64>) -> Result<(), SolidError> {
                 FileType::Ascii
             },
         );
-        let c = Curve::from(OffsetCurve::read_from_db(&Kernel::default(), &mut db, *version)?);
+        let c = Curve::from(OffsetCurve::read_from_db(
+            &Kernel::default(),
+            &mut db,
+            *version,
+        )?);
         o.push(0.0);
         state(o, &c)?;
         return probes(o, &c, ts);
@@ -514,8 +552,13 @@ fn rust_op(i: &Inputs, o: &mut Vec<f64>) -> Result<(), SolidError> {
             o.push(all.len() as f64);
             o.extend(all.iter().map(|&x| f64::from(x as i32)));
         }
-        OpIn::Reverse { a, b: bb, probes: ts } => {
-            let ivl = c.reverse_parameterization(&Kernel::default(), &Extent1d::from_min_max(*a, *bb))?;
+        OpIn::Reverse {
+            a,
+            b: bb,
+            probes: ts,
+        } => {
+            let ivl =
+                c.reverse_parameterization(&Kernel::default(), &Extent1d::from_min_max(*a, *bb))?;
             o.extend([0.0, ivl.min(), ivl.max()]);
             state(o, &c)?;
             probes(o, &c, ts)?;

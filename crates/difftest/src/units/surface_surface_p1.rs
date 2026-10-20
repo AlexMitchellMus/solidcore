@@ -32,8 +32,8 @@ use solidcore::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
 use solidcore::nurbs::knots::Side;
 use solidcore::surface::surface::p1::{
     base_is_degenerate_curve, base_is_degenerate_point, crossed_seam_or_pole,
-    evaluate_normal_section, find_uv_curve_ivl_in_domain, make_surface_cache,
-    make_trim_srf_cache, FindSingularParamWithGivenTangentDir, StepSurface,
+    evaluate_normal_section, find_uv_curve_ivl_in_domain, make_surface_cache, make_trim_srf_cache,
+    FindSingularParamWithGivenTangentDir, StepSurface,
 };
 use solidcore::surface::surface::p2::IsoCurveLengthIntegrand;
 use solidcore::surface::surface::Surface;
@@ -45,7 +45,9 @@ use super::surface_surface_cache_p1::{
     curve_of, dom_of, flag, gen_knots, gen_sub_dom, gvec, harness, push3, push_box, push_crv,
     push_dom, status, v3, CrvIn,
 };
-use super::surface_surface_cache_p3::{gen_surf, push_surf, surf_domain, surf_size, surface_in, SurfIn};
+use super::surface_surface_cache_p3::{
+    gen_surf, push_surf, surf_domain, surf_size, surface_in, SurfIn,
+};
 use super::surface_surface_p2::Handle;
 use crate::case::CaseContext;
 use crate::runner::default_cases;
@@ -481,19 +483,27 @@ fn rust_op(i: &Inputs) -> Result<Run, HarnessError> {
             };
             let mut o = Vec::new();
             let r = (|| -> Result<(), SolidError> {
-                sub(&mut o, s.evaluate_1st_derivatives(uv, *ul, *vl), |o, (p, du, dv)| {
-                    push3(o, p);
-                    push3(o, du);
-                    push3(o, dv);
-                })?;
+                sub(
+                    &mut o,
+                    s.evaluate_1st_derivatives(uv, *ul, *vl),
+                    |o, (p, du, dv)| {
+                        push3(o, p);
+                        push3(o, du);
+                        push3(o, dv);
+                    },
+                )?;
                 sub(&mut o, s.evaluate_2nd_derivatives(uv, *ul, *vl), |o, d| {
                     for v in d {
                         push3(o, v);
                     }
                 })?;
-                sub(&mut o, s.evaluate_step(uv, 2, 2, fl), |o, m| push_upper(o, &m))?;
+                sub(&mut o, s.evaluate_step(uv, 2, 2, fl), |o, m| {
+                    push_upper(o, &m)
+                })?;
                 sub(&mut o, s.evaluate_step_point(uv), push3)?;
-                sub(&mut o, s.evaluate_simple(uv, 2, 2, fl), |o, m| push_upper(o, &m))
+                sub(&mut o, s.evaluate_simple(uv, 2, 2, fl), |o, m| {
+                    push_upper(o, &m)
+                })
             })();
             r.map(|()| o)
         }
@@ -541,7 +551,10 @@ fn rust_op(i: &Inputs) -> Result<Run, HarnessError> {
         }
         OpIn::InDomain { dom, uv, tol } => {
             let s = run()?;
-            flags(s.is_in_domain(&k, &dom_of(*dom), p2(*uv), *tol).map(|b| vec![b]))
+            flags(
+                s.is_in_domain(&k, &dom_of(*dom), p2(*uv), *tol)
+                    .map(|b| vec![b]),
+            )
         }
         OpIn::Misc { other_wrap, other } => {
             let a = run()?;
@@ -598,9 +611,13 @@ fn rust_op(i: &Inputs) -> Result<Run, HarnessError> {
         OpIn::ParamDir { uv, vec } => {
             let s = run()?;
             let mut o = Vec::new();
-            sub(&mut o, s.compute_param_direction(p2(*uv), v3(*vec)), |o, d| {
-                o.extend([d.x, d.y]);
-            })
+            sub(
+                &mut o,
+                s.compute_param_direction(p2(*uv), v3(*vec)),
+                |o, d| {
+                    o.extend([d.x, d.y]);
+                },
+            )
             .map(|()| o)
         }
         OpIn::DirDerivs { uv, dir, h, ul, vl } => {
@@ -609,13 +626,7 @@ fn rust_op(i: &Inputs) -> Result<Run, HarnessError> {
             }
             let s = run()?;
             let mut o = Vec::new();
-            let r = s.evaluate_directional_derivs(
-                p2(*uv),
-                Vec2::new(dir[0], dir[1]),
-                *h,
-                *ul,
-                *vl,
-            );
+            let r = s.evaluate_directional_derivs(p2(*uv), Vec2::new(dir[0], dir[1]), *h, *ul, *vl);
             let n = *h + 1;
             sub(&mut o, r, |o, d| {
                 for v in d.into_iter().take(n) {
@@ -629,12 +640,20 @@ fn rust_op(i: &Inputs) -> Result<Run, HarnessError> {
             let d = dom_of(*dom);
             let mut o = vec![0.0];
             (|| -> Result<(), SolidError> {
-                sub(&mut o, s.convert_domain_from_step_to_nurbs(&k, &d), |o, x| {
-                    push_dom(o, &x);
-                })?;
-                sub(&mut o, s.convert_domain_from_nurbs_to_step(&k, &d), |o, x| {
-                    push_dom(o, &x);
-                })
+                sub(
+                    &mut o,
+                    s.convert_domain_from_step_to_nurbs(&k, &d),
+                    |o, x| {
+                        push_dom(o, &x);
+                    },
+                )?;
+                sub(
+                    &mut o,
+                    s.convert_domain_from_nurbs_to_step(&k, &d),
+                    |o, x| {
+                        push_dom(o, &x);
+                    },
+                )
             })()
             .map(|()| o)
         }
@@ -664,9 +683,16 @@ fn rust_op(i: &Inputs) -> Result<Run, HarnessError> {
             );
             sub(&mut o, r, |o, x| o.extend([x.min(), x.max()])).map(|()| o)
         }
-        OpIn::Sing { uv, dir, v, tol, s: t } => {
+        OpIn::Sing {
+            uv,
+            dir,
+            v,
+            tol,
+            s: t,
+        } => {
             let s = run()?;
-            let f = FindSingularParamWithGivenTangentDir::new(&s, p2(*uv), v3(*dir), dir_of(*v), *tol);
+            let f =
+                FindSingularParamWithGivenTangentDir::new(&s, p2(*uv), v3(*dir), dir_of(*v), *tol);
             let mut o = Vec::new();
             sub(&mut o, f.evaluate(*t), |o, (a, b, found)| {
                 o.extend([a, b, flag(found)]);
@@ -677,19 +703,29 @@ fn rust_op(i: &Inputs) -> Result<Run, HarnessError> {
             let s = run()?;
             Ok(vec![
                 0.0,
-                flag(crossed_seam_or_pole(&s, p2(*prev), p2(*curr), &dom_of(*dom))),
+                flag(crossed_seam_or_pole(
+                    &s,
+                    p2(*prev),
+                    p2(*curr),
+                    &dom_of(*dom),
+                )),
             ])
         }
         OpIn::IsoLen { u, t } => {
             let s = run()?;
             let mut o = Vec::new();
-            sub(&mut o, IsoCurveLengthIntegrand::new(&s, *u).evaluate(*t), |o, v| {
-                o.push(v);
-            })
+            sub(
+                &mut o,
+                IsoCurveLengthIntegrand::new(&s, *u).evaluate(*t),
+                |o, v| {
+                    o.push(v);
+                },
+            )
             .map(|()| o)
         }
         OpIn::Step { v, ivl } => {
-            let s = StepSurface::new(surface_in(&i.surf)?, true).map_err(|e| HarnessError::new(e.to_string()))?;
+            let s = StepSurface::new(surface_in(&i.surf)?, true)
+                .map_err(|e| HarnessError::new(e.to_string()))?;
             let mut o = vec![0.0];
             push_dom(&mut o, &s.natural_uv_domain());
             match s.domain_with_continuity() {
@@ -697,25 +733,37 @@ fn rust_op(i: &Inputs) -> Result<Run, HarnessError> {
                 Err(e) => return Ok(Err(e)),
             }
             let iv = ivl.map(|[a, b]| Extent1d::from_raw(a, b));
-            sub(&mut o, s.knots(dir_of(*v), iv.as_ref()), |o, (knots, mults)| {
-                o.push(knots.len() as f64);
-                o.extend(&knots);
-                o.extend(mults.iter().map(|m| *m as f64));
-            })
+            sub(
+                &mut o,
+                s.knots(dir_of(*v), iv.as_ref()),
+                |o, (knots, mults)| {
+                    o.push(knots.len() as f64);
+                    o.extend(&knots);
+                    o.extend(mults.iter().map(|m| *m as f64));
+                },
+            )
             .map(|()| o)
         }
         OpIn::Cache { trim } => {
             let s = run()?;
             let mut o = Vec::new();
             if *trim {
-                sub(&mut o, make_trim_srf_cache(&k, &s, Some(SURFACE_HANDLE)), |o, c| {
-                    top_box(o, c.base());
-                })
+                sub(
+                    &mut o,
+                    make_trim_srf_cache(&k, &s, Some(SURFACE_HANDLE)),
+                    |o, c| {
+                        top_box(o, c.base());
+                    },
+                )
                 .map(|()| o)
             } else {
-                sub(&mut o, make_surface_cache(&k, &s, Some(SURFACE_HANDLE)), |o, c| {
-                    top_box(o, &c);
-                })
+                sub(
+                    &mut o,
+                    make_surface_cache(&k, &s, Some(SURFACE_HANDLE)),
+                    |o, c| {
+                        top_box(o, &c);
+                    },
+                )
                 .map(|()| o)
             }
         }
@@ -728,7 +776,8 @@ fn rust_op(i: &Inputs) -> Result<Run, HarnessError> {
         } => {
             let s = run()?;
             let mut o = Vec::new();
-            let r = s.calculate_bounding_box(&k, &dom_of(*dom), [*normal, *pseudo, *polar], *expand);
+            let r =
+                s.calculate_bounding_box(&k, &dom_of(*dom), [*normal, *pseudo, *polar], *expand);
             sub(&mut o, r, |o, b| {
                 if let Some(n) = b.normal_box.filter(|_| *normal) {
                     push_box(o, &n);
@@ -870,7 +919,11 @@ fn gen_case(rng: &mut Rng) -> Result<Inputs, HarnessError> {
             vl: rng.chance(0.5),
         },
         6..=7 => OpIn::Periodic {
-            dom: if rng.chance(0.5) { d } else { gen_sub_dom(rng, d) },
+            dom: if rng.chance(0.5) {
+                d
+            } else {
+                gen_sub_dom(rng, d)
+            },
             v: rng.chance(0.5),
         },
         8..=9 => OpIn::DegenPoint {
@@ -891,18 +944,34 @@ fn gen_case(rng: &mut Rng) -> Result<Inputs, HarnessError> {
             ang: rng.uniform(0.01, 30.0),
         },
         14..=15 => {
-            let dom = if rng.chance(0.5) { d } else { gen_sub_dom(rng, d) };
+            let dom = if rng.chance(0.5) {
+                d
+            } else {
+                gen_sub_dom(rng, d)
+            };
             OpIn::OnBoundary {
                 dom,
-                uv: if outside_ok { gen_uv_near(rng, dom) } else { gen_uv(rng, dom) },
+                uv: if outside_ok {
+                    gen_uv_near(rng, dom)
+                } else {
+                    gen_uv(rng, dom)
+                },
                 tol: rng.chance(0.6).then(|| gen_tol(rng, size)),
             }
         }
         16..=17 => {
-            let dom = if rng.chance(0.5) { d } else { gen_sub_dom(rng, d) };
+            let dom = if rng.chance(0.5) {
+                d
+            } else {
+                gen_sub_dom(rng, d)
+            };
             OpIn::InDomain {
                 dom,
-                uv: if outside_ok { gen_uv_near(rng, d) } else { gen_uv(rng, d) },
+                uv: if outside_ok {
+                    gen_uv_near(rng, d)
+                } else {
+                    gen_uv(rng, d)
+                },
                 tol: rng.chance(0.6).then(|| gen_tol(rng, size)),
             }
         }
@@ -924,7 +993,13 @@ fn gen_case(rng: &mut Rng) -> Result<Inputs, HarnessError> {
         },
         22..=23 => OpIn::NSect {
             e: (0..9)
-                .map(|k| if k == 0 || rng.chance(0.85) { gvec(rng, 2.0) } else { [0.0; 3] })
+                .map(|k| {
+                    if k == 0 || rng.chance(0.85) {
+                        gvec(rng, 2.0)
+                    } else {
+                        [0.0; 3]
+                    }
+                })
                 .collect(),
             dir: gvec(rng, 1.0),
         },
@@ -961,7 +1036,11 @@ fn gen_case(rng: &mut Rng) -> Result<Inputs, HarnessError> {
                 curve,
                 ivl: [lo, hi],
                 param: lo + (hi - lo) * rng.unit(),
-                dom: if rng.chance(0.5) { d } else { gen_sub_dom(rng, d) },
+                dom: if rng.chance(0.5) {
+                    d
+                } else {
+                    gen_sub_dom(rng, d)
+                },
             }
         }
         34..=35 => {
@@ -978,7 +1057,11 @@ fn gen_case(rng: &mut Rng) -> Result<Inputs, HarnessError> {
         36..=37 => OpIn::Seam {
             prev: gen_uv(rng, d),
             curr: gen_uv(rng, d),
-            dom: if rng.chance(0.5) { d } else { gen_sub_dom(rng, d) },
+            dom: if rng.chance(0.5) {
+                d
+            } else {
+                gen_sub_dom(rng, d)
+            },
         },
         38..=39 => {
             let [u, t] = gen_uv(rng, d);
@@ -991,7 +1074,8 @@ fn gen_case(rng: &mut Rng) -> Result<Inputs, HarnessError> {
                 v,
                 ivl: rng.chance(0.5).then(|| {
                     // sometimes just inside a domain end (ContainsValue has no tolerance)
-                    let near = |rng: &mut Rng, x: f64| x + (b - a) * 10f64.powf(rng.uniform(-14.0, -11.0));
+                    let near =
+                        |rng: &mut Rng, x: f64| x + (b - a) * 10f64.powf(rng.uniform(-14.0, -11.0));
                     match rng.below(5) {
                         0 => [near(rng, a), a + (b - a) * rng.uniform(0.2, 0.8)],
                         1 => [a + (b - a) * rng.uniform(0.2, 0.8), b - (near(rng, a) - a)],
@@ -1010,7 +1094,11 @@ fn gen_case(rng: &mut Rng) -> Result<Inputs, HarnessError> {
             let pseudo = rng.chance(0.5);
             let polar = polar_ok && rng.chance(0.6);
             OpIn::BBox {
-                dom: if rng.chance(0.5) { d } else { gen_sub_dom(rng, d) },
+                dom: if rng.chance(0.5) {
+                    d
+                } else {
+                    gen_sub_dom(rng, d)
+                },
                 normal: (!pseudo && !polar) || rng.chance(0.5),
                 pseudo,
                 expand: rng.chance(0.5),

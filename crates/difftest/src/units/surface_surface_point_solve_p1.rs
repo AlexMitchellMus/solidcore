@@ -31,8 +31,8 @@ use solidcore::geom::global_solver::{SolutionRequested, SolverOperation};
 use solidcore::geom::vector2d::Point2;
 use solidcore::geom::vector3d::Point3;
 use solidcore::kernel::Kernel;
-use solidcore::nurbs::math::NOW;
 use solidcore::nurbs::b_spline_surface::SurfParamType;
+use solidcore::nurbs::math::NOW;
 use solidcore::surface::surface::p1::StepSurface;
 use solidcore::surface::surface::p2::SurfaceEval;
 use solidcore::surface::surface::Surface;
@@ -43,10 +43,12 @@ use solidcore::SolidError;
 use solidcore_ffi::units::surface_surface_point_solve_p1::{self as ffi, Op, MAX_HIT_STEPS};
 
 use super::surface_surface_cache_p1::{
-    default_form, dom_of, flag, gen_knots, gen_sub_dom, gvec, harness, push3, push_dom, srf, status, v3,
-    BssIn, InlineSrf, SrfIn,
+    default_form, dom_of, flag, gen_knots, gen_sub_dom, gvec, harness, push3, push_dom, srf,
+    status, v3, BssIn, InlineSrf, SrfIn,
 };
-use super::surface_surface_cache_p3::{gen_surf, push_surf, surf_domain, surf_size, surface_in, SurfIn};
+use super::surface_surface_cache_p3::{
+    gen_surf, push_surf, surf_domain, surf_size, surface_in, SurfIn,
+};
 use crate::case::{CaseContext, CaseSource};
 use crate::runner::default_cases;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
@@ -265,7 +267,10 @@ pub(crate) fn solver_op(code: u8) -> Result<SolverOperation, HarnessError> {
 }
 
 /// `status has_bspl tight loose test dir` of the problem data.
-fn push_base(o: &mut Vec<f64>, b: &solidcore::surface::surface_point_solve::SurfacePointSolver<'_>) {
+fn push_base(
+    o: &mut Vec<f64>,
+    b: &solidcore::surface::surface_point_solve::SurfacePointSolver<'_>,
+) {
     o.push(0.0);
     o.push(flag(b.b_spline().is_some()));
     o.push(b.tight_tol());
@@ -395,7 +400,8 @@ fn rust_op(i: &Inputs) -> Result<solidcore::Result<Vec<f64>>, HarnessError> {
                 let Some((nu, nv, pts, rational)) = net_of(&g) else {
                     return Err(SolidError::sm_err("difftest: no control net"));
                 };
-                let (d, u, v) = triangles_dist(g.base.test_point(), &pts, rational, *a, *j, nu, nv)?;
+                let (d, u, v) =
+                    triangles_dist(g.base.test_point(), &pts, rational, *a, *j, nu, nv)?;
                 o.extend([0.0, d, u, v]);
             }
             OpIn::Well { i: a, j } => {
@@ -403,7 +409,8 @@ fn rust_op(i: &Inputs) -> Result<solidcore::Result<Vec<f64>>, HarnessError> {
                 let Some((nu, nv, pts, rational)) = net_of(&g) else {
                     return Err(SolidError::sm_err("difftest: no control net"));
                 };
-                let b = well_behaved_control_net(g.base.test_point(), &pts, rational, *a, *j, nu, nv)?;
+                let b =
+                    well_behaved_control_net(g.base.test_point(), &pts, rational, *a, *j, nu, nv)?;
                 o.extend([0.0, flag(b)]);
             }
             OpIn::Stepper { uv, tight, uv2 } => {
@@ -439,7 +446,11 @@ fn rust_op(i: &Inputs) -> Result<solidcore::Result<Vec<f64>>, HarnessError> {
                 o.push(0.0);
                 for h in steps {
                     s.set_uv(p2(h.uv));
-                    let which = if h.v { SurfParamType::V } else { SurfParamType::U };
+                    let which = if h.v {
+                        SurfParamType::V
+                    } else {
+                        SurfParamType::U
+                    };
                     s.hit_bound(which, h.tob);
                     o.push(f64::from(s.bound_hits_u()));
                     o.push(f64::from(s.bound_hits_v()));
@@ -463,7 +474,11 @@ fn rust_op(i: &Inputs) -> Result<solidcore::Result<Vec<f64>>, HarnessError> {
                 param,
             } => {
                 let mut s = stepper(*uv, tol)?;
-                let which = if *v { SurfParamType::V } else { SurfParamType::U };
+                let which = if *v {
+                    SurfParamType::V
+                } else {
+                    SurfParamType::U
+                };
                 let b = s.drop_to_iso_curve(&k, which, *crease, *param)?;
                 o.push(0.0);
                 o.push(flag(b));
@@ -592,7 +607,9 @@ pub(crate) fn gen_closed(rng: &mut Rng) -> InlineSrf {
             net,
             p: 2,
             q,
-            u: vec![0.0, 0.0, 0.0, 0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1.0, 1.0, 1.0],
+            u: vec![
+                0.0, 0.0, 0.0, 0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1.0, 1.0, 1.0,
+            ],
             v: v_knots,
         }
     } else {
@@ -624,7 +641,11 @@ pub(crate) fn gen_closed(rng: &mut Rng) -> InlineSrf {
 
 /// A bilinear (2 x 2) surface, sometimes twisted.
 pub(crate) fn gen_bilinear(rng: &mut Rng) -> InlineSrf {
-    let tw = if rng.chance(0.5) { 0.0 } else { rng.uniform(-1.0, 1.0) };
+    let tw = if rng.chance(0.5) {
+        0.0
+    } else {
+        rng.uniform(-1.0, 1.0)
+    };
     let net = vec![
         vec![[0.0, 0.0, 0.0, NOW], [0.0, 1.0, 0.0, NOW]],
         vec![[1.0, 0.0, 0.0, NOW], [1.0, 1.0, tw, NOW]],
@@ -700,7 +721,13 @@ pub(crate) fn net_counts(s: &SurfIn) -> Result<(usize, usize), HarnessError> {
     }
 }
 
-fn gen_op(rng: &mut Rng, s: &SurfIn, d: [f64; 4], sd: [f64; 4], size: f64) -> Result<OpIn, HarnessError> {
+fn gen_op(
+    rng: &mut Rng,
+    s: &SurfIn,
+    d: [f64; 4],
+    sd: [f64; 4],
+    size: f64,
+) -> Result<OpIn, HarnessError> {
     let (nu, nv) = net_counts(s)?;
     let idx = |rng: &mut Rng, n: usize, edge: bool| -> usize {
         if edge && rng.chance(0.5) {
@@ -741,8 +768,12 @@ fn gen_op(rng: &mut Rng, s: &SurfIn, d: [f64; 4], sd: [f64; 4], size: f64) -> Re
             iu: idx(rng, nu, true),
             iv: idx(rng, nv, true),
         },
-        15..=17 => OpIn::Stride { uv: gen_uv(rng, sd) },
-        18 => OpIn::SeamsUv { uv: gen_uv(rng, sd) },
+        15..=17 => OpIn::Stride {
+            uv: gen_uv(rng, sd),
+        },
+        18 => OpIn::SeamsUv {
+            uv: gen_uv(rng, sd),
+        },
         19..=21 => OpIn::SeamsCpts {
             iu: idx(rng, nu, true),
             iv: idx(rng, nv, true),
@@ -780,7 +811,11 @@ fn gen_op(rng: &mut Rng, s: &SurfIn, d: [f64; 4], sd: [f64; 4], size: f64) -> Re
             }
         }
         36..=37 => {
-            let bdom = if rng.chance(0.5) { sd } else { gen_sub_dom(rng, sd) };
+            let bdom = if rng.chance(0.5) {
+                sd
+            } else {
+                gen_sub_dom(rng, sd)
+            };
             OpIn::CheckBounds {
                 curr: gen_uv(rng, d),
                 next: gen_uv_any(rng, bdom),
@@ -805,7 +840,11 @@ fn gen_case(rng: &mut Rng) -> Result<Inputs, HarnessError> {
     let wrap = rng.chance(0.15);
     let d = surf_domain(&surf)?;
     let size = surf_size(&surf)?;
-    let sd = if rng.chance(0.5) { d } else { gen_sub_dom(rng, d) };
+    let sd = if rng.chance(0.5) {
+        d
+    } else {
+        gen_sub_dom(rng, d)
+    };
     let solver = *rng.choose(&SOLVERS).unwrap_or(&3);
     let s = surface_in(&surf)?;
     let test = if solver == 10 {
@@ -849,18 +888,54 @@ pub(crate) const SURFACE_SMS_POINTS: [[f64; 3]; 15] = [
     [-1.0616429349692744, -20.167126109553802, 20.020823739437560],
     [-1.1583434957685239, -19.953438722680168, 20.005921768970701],
     [-4.5941574701649142, -9.6528635542995485, 19.290949275641431],
-    [-0.83908714000092477, -20.645564191951244, 20.054070584952139],
-    [-0.22169184902399575, -21.752883811327614, 20.077084827504891],
-    [0.097876793468328019, -21.633397717952313, 18.978461556867217],
+    [
+        -0.83908714000092477,
+        -20.645564191951244,
+        20.054070584952139,
+    ],
+    [
+        -0.22169184902399575,
+        -21.752883811327614,
+        20.077084827504891,
+    ],
+    [
+        0.097876793468328019,
+        -21.633397717952313,
+        18.978461556867217,
+    ],
     [-0.25257593806641893, -20.10880763638518, 19.018298541213202],
-    [-0.32629818190650922, -19.760345509317247, 19.026748453308592],
-    [-0.66892154856885222, -17.879224383359258, 19.072647185802911],
-    [-0.83758573462226327, -20.648619822796935, 20.054270506974774],
+    [
+        -0.32629818190650922,
+        -19.760345509317247,
+        19.026748453308592,
+    ],
+    [
+        -0.66892154856885222,
+        -17.879224383359258,
+        19.072647185802911,
+    ],
+    [
+        -0.83758573462226327,
+        -20.648619822796935,
+        20.054270506974774,
+    ],
     [-0.22211826515506564, -21.75240325273451, 20.077401022086111],
-    [0.097878601273081345, -21.633405764037899, 18.978461275445223],
-    [-0.25280760311075551, -20.107797610675622, 19.018327728721825],
+    [
+        0.097878601273081345,
+        -21.633405764037899,
+        18.978461275445223,
+    ],
+    [
+        -0.25280760311075551,
+        -20.107797610675622,
+        19.018327728721825,
+    ],
     [-0.32651463102618838, -19.7592999915767, 19.026773809915298],
-    [-0.40219453853645376, -19.384417128948424, 19.035877125510886],
+    [
+        -0.40219453853645376,
+        -19.384417128948424,
+        19.035877125510886,
+    ],
 ];
 
 fn upstream_cases(ctx: &CaseContext, id: &str) -> Result<Vec<Case>, HarnessError> {

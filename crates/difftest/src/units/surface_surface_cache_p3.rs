@@ -234,7 +234,10 @@ fn push_start(o: &mut Vec<f64>, t: &StartIn) -> Result<(), HarnessError> {
     o.push(f64::from(t.class));
     o.extend([flag(t.chsat), flag(t.angsat), flag(t.surf)]);
     if t.aux == 3 {
-        let b = t.bez.as_ref().ok_or_else(|| harness("aux 3 needs a Bezier"))?;
+        let b = t
+            .bez
+            .as_ref()
+            .ok_or_else(|| harness("aux 3 needs a Bezier"))?;
         push_srf(o, &srf(b)?)?;
         for b in t.basis {
             o.extend(b);
@@ -304,12 +307,10 @@ pub(crate) fn surface_in(s: &SurfIn) -> Result<Surface, HarnessError> {
             Vec2::new(p.scale[0], p.scale[1]),
             &dom_of(p.dom),
         )),
-        SurfIn::CurveBounded(b) => Surface::from(CurveBoundedSurface::new(
-            Surface::from(bss_of(b)?),
-            Vec::new(),
-            Vec::new(),
-            true,
-        ).map_err(|e| HarnessError::new(e.to_string()))?),
+        SurfIn::CurveBounded(b) => Surface::from(
+            CurveBoundedSurface::new(Surface::from(bss_of(b)?), Vec::new(), Vec::new(), true)
+                .map_err(|e| HarnessError::new(e.to_string()))?,
+        ),
     })
 }
 
@@ -385,7 +386,10 @@ fn start_cache(i: &Inputs, t: &StartIn) -> Result<SurfaceCache<i64>, HarnessErro
         ..BezierAux2d::default()
     };
     if aux_type == AuxDataType::BezierSurface {
-        let b = t.bez.as_ref().ok_or_else(|| harness("aux 3 needs a Bezier"))?;
+        let b = t
+            .bez
+            .as_ref()
+            .ok_or_else(|| harness("aux 3 needs a Bezier"))?;
         let mut pb = PseudoBox::new();
         pb.set_basis(v3(t.basis[0]), v3(t.basis[1]), v3(t.basis[2]))
             .map_err(|e| harness(format!("basis: {e}")))?;
@@ -436,7 +440,10 @@ fn idx(n: Option<NodeId>) -> f64 {
     n.map_or(-1.0, |n| n.0 as f64)
 }
 
-fn push_nurb(o: &mut Vec<f64>, s: &solidcore::nurbs::srf_basic::Surface) -> Result<(), HarnessError> {
+fn push_nurb(
+    o: &mut Vec<f64>,
+    s: &solidcore::nurbs::srf_basic::Surface,
+) -> Result<(), HarnessError> {
     let (n, m, r, ss) = s.array_sizes();
     let (p, q) = s.degrees();
     o.extend([n, m, p, q, r, ss].map(|x| x as f64));
@@ -808,7 +815,11 @@ fn gen_start(rng: &mut Rng, surf: &SurfIn, aux6: bool) -> Result<StartIn, Harnes
     let size = surf_size(surf)?;
     // a B-spline cache (an SmPlane is an SmBSplineSurface)
     let bspline = matches!(surf, SurfIn::Bspline(_) | SurfIn::Plane(_));
-    let dom = if rng.chance(0.3) { sd } else { gen_sub_dom(rng, sd) };
+    let dom = if rng.chance(0.3) {
+        sd
+    } else {
+        gen_sub_dom(rng, sd)
+    };
     let (p, q) = if bspline {
         (1 + rng.below(3) as usize, 1 + rng.below(3) as usize)
     } else {
@@ -820,7 +831,14 @@ fn gen_start(rng: &mut Rng, surf: &SurfIn, aux6: bool) -> Result<StartIn, Harnes
         rng.uniform(0.0, size),
         rng.uniform(0.0, size),
     ];
-    let bbox = [lo[0], lo[1], lo[2], lo[0] + ext[0], lo[1] + ext[1], lo[2] + ext[2]];
+    let bbox = [
+        lo[0],
+        lo[1],
+        lo[2],
+        lo[0] + ext[0],
+        lo[1] + ext[1],
+        lo[2] + ext[2],
+    ];
     let cont = |rng: &mut Rng| -> u8 { rng.below(14) as u8 };
     Ok(StartIn {
         aux: if aux6 { 6 } else { 3 },

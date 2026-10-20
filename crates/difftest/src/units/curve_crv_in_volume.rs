@@ -23,18 +23,18 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use solidcore::curve::crv_in_volume::{continuity_from_code, CrvInVolume};
-use solidcore::geom::transform::Transform;
-use solidcore::nurbs::math::{NOW, NOZ};
-use solidcore::surface::volume::{Volume, VolumeKind};
 use solidcore::curve::curve::p2::{Curve, CurveKind};
 use solidcore::curve::hermite_curve::HermiteCurve;
 use solidcore::geom::axis2_placement::Axis2Placement;
 use solidcore::geom::extent1d::Extent1d;
+use solidcore::geom::transform::Transform;
 use solidcore::geom::vector3d::Vec3;
 use solidcore::kernel::Kernel;
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::nurbs::b_spline_curve_n_lib::TrimMode;
+use solidcore::nurbs::math::{NOW, NOZ};
 use solidcore::nurbs::nurbs_crv::allocate_nurb_curve;
+use solidcore::surface::volume::{Volume, VolumeKind};
 use solidcore::topology::database_io::{DatabaseReader, FileType, InputStream};
 use solidcore::SolidError;
 use solidcore_ffi::units::curve_crv_in_volume::{self as ffi, Op};
@@ -228,7 +228,10 @@ fn cpp_input(i: &Inputs) -> Result<(Op, Vec<f64>), HarnessError> {
     let op = op_of(&i.op);
     let mut v = Vec::new();
     if !op.is_static() {
-        let c = i.civ.as_ref().ok_or_else(|| harness("object op without civ"))?;
+        let c = i
+            .civ
+            .as_ref()
+            .ok_or_else(|| harness("object op without civ"))?;
         civ_block(&mut v, c);
     }
     match &i.op {
@@ -313,7 +316,10 @@ fn build_curve(c: &CurveIn) -> Result<Curve, HarnessError> {
                 .len()
                 .checked_sub(1)
                 .ok_or_else(|| harness("no points"))?;
-            let m = bs.u.len().checked_sub(1).ok_or_else(|| harness("no knots"))?;
+            let m =
+                bs.u.len()
+                    .checked_sub(1)
+                    .ok_or_else(|| harness("no knots"))?;
             let mut cur =
                 allocate_nurb_curve(n, bs.p, m).map_err(|e| harness(format!("curve: {e}")))?;
             for (d, s) in cur.cpts_mut().iter_mut().zip(&bs.cpts) {
@@ -344,7 +350,8 @@ fn build(c: &CivIn) -> Result<CrvInVolume, HarnessError> {
         Volume::new(VolumeKind::Transform(Transform::IDENTITY)),
         c.copy,
         c.owner,
-    ).map_err(|e| HarnessError::new(e.to_string()))?;
+    )
+    .map_err(|e| HarnessError::new(e.to_string()))?;
     if let Some(k) = &c.cache {
         let conts = k
             .conts
@@ -470,7 +477,10 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         put_state(&mut o, &c);
         return Ok(to_output(&o));
     }
-    let civ_in = i.civ.as_ref().ok_or_else(|| harness("object op without civ"))?;
+    let civ_in = i
+        .civ
+        .as_ref()
+        .ok_or_else(|| harness("object op without civ"))?;
     let mut civ = build(civ_in)?;
     let k = Kernel::default();
     match &i.op {
@@ -569,7 +579,8 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             put_state(&mut o, &civ);
         }
         OpIn::Reverse { a, b: bb } => {
-            let r = civ.reverse_parameterization(&Kernel::default(), &Extent1d::from_min_max(*a, *bb));
+            let r =
+                civ.reverse_parameterization(&Kernel::default(), &Extent1d::from_min_max(*a, *bb));
             o.push(match st_of(&r) {
                 Ok(s) => s,
                 Err(d) => return Ok(*d),
@@ -840,7 +851,11 @@ fn gen_case(rng: &mut Rng) -> Inputs {
         }
         12 | 13 => OpIn::Nnk,
         14 | 15 => OpIn::Conts {
-            angle: if rng.chance(0.5) { 0.5 } else { rng.uniform(0.0, 10.0) },
+            angle: if rng.chance(0.5) {
+                0.5
+            } else {
+                rng.uniform(0.0, 10.0)
+            },
         },
         16 | 17 => OpIn::Equal {
             other: match rng.below(20) {

@@ -460,7 +460,10 @@ fn build_volume(v: &Vol) -> Result<Volume, HarnessError> {
             }
             k => return Err(harness(format!("bad map kind {k}"))),
         };
-        next = Some(Volume::with_maps(kind, m.orient.map(transform_of), next).map_err(|e| HarnessError::new(e.to_string()))?);
+        next = Some(
+            Volume::with_maps(kind, m.orient.map(transform_of), next)
+                .map_err(|e| HarnessError::new(e.to_string()))?,
+        );
     }
     next.ok_or_else(|| harness("volume without maps"))
 }
@@ -895,7 +898,12 @@ fn gen_surface(rng: &mut Rng) -> (SurfIn, [f64; 4]) {
             s.u.last().copied().unwrap_or(1.0),
             s.v.last().copied().unwrap_or(1.0),
         ];
-        (SurfIn::Bspline { bss: gen_bss(rng, s) }, dom)
+        (
+            SurfIn::Bspline {
+                bss: gen_bss(rng, s),
+            },
+            dom,
+        )
     }
 }
 
@@ -917,7 +925,12 @@ fn gen_transform(rng: &mut Rng) -> [[f64; 3]; 4] {
             let x = coord(rng, 2.0);
             [coord(rng, 5.0), x, x, coord(rng, 2.0)]
         }
-        _ => [coord(rng, 5.0), coord(rng, 2.0), coord(rng, 2.0), coord(rng, 2.0)],
+        _ => [
+            coord(rng, 5.0),
+            coord(rng, 2.0),
+            coord(rng, 2.0),
+            coord(rng, 2.0),
+        ],
     }
 }
 
@@ -1028,7 +1041,11 @@ fn gen_orders(rng: &mut Rng) -> (usize, usize, bool) {
                 (0, n, rng.chance(0.5))
             }
         }
-        _ => (1 + rng.below(3) as usize, 1 + rng.below(3) as usize, rng.chance(0.5)),
+        _ => (
+            1 + rng.below(3) as usize,
+            1 + rng.below(3) as usize,
+            rng.chance(0.5),
+        ),
     }
 }
 
@@ -1113,7 +1130,11 @@ fn gen_case(rng: &mut Rng) -> Inputs {
         },
         44..=49 => {
             let v_dir = rng.chance(0.5);
-            let (a, e) = if v_dir { (dom[1], dom[3]) } else { (dom[0], dom[2]) };
+            let (a, e) = if v_dir {
+                (dom[1], dom[3])
+            } else {
+                (dom[0], dom[2])
+            };
             let ivl = rng.chance(0.5).then(|| {
                 let x = a + (e - a) * rng.uniform(-0.2, 1.2);
                 let y = a + (e - a) * rng.uniform(-0.2, 1.2);
@@ -1148,7 +1169,11 @@ fn gen_case(rng: &mut Rng) -> Inputs {
         }
         71..=76 => {
             let v_dir = rng.chance(0.5);
-            let (a, e) = if v_dir { (dom[1], dom[3]) } else { (dom[0], dom[2]) };
+            let (a, e) = if v_dir {
+                (dom[1], dom[3])
+            } else {
+                (dom[0], dom[2])
+            };
             OpIn::Split {
                 v_dir,
                 t: a + (e - a) * rng.uniform(0.05, 0.95),
@@ -1279,7 +1304,10 @@ fn inline_cases() -> Result<Vec<Case>, HarnessError> {
                 ffi::validate(o, &input).map_err(|e| harness(format!("inline case: {e}")))?;
                 out.push(Case {
                     unit: "surface.srf_in_volume".to_string(),
-                    name: format!("inline_{name}_{}_{op_name}", if in_param { "param" } else { "in" }),
+                    name: format!(
+                        "inline_{name}_{}_{op_name}",
+                        if in_param { "param" } else { "in" }
+                    ),
                     source: CaseSource::Inline,
                     inputs: serde_json::to_value(inputs)
                         .map_err(|e| harness(format!("inline case: {e}")))?,

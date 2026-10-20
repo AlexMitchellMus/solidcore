@@ -264,12 +264,10 @@ fn rust_surface(s: &SurfaceIn) -> Result<Surface, HarnessError> {
                 .map_err(|e| harness(format!("surface: {e}")))?;
             Ok(Surface::from(BSplineSurface::from_nurb(sur, false)))
         }
-        SurfaceIn::CurveBounded { basis } => Ok(Surface::from(CurveBoundedSurface::new(
-            rust_surface(basis)?,
-            Vec::new(),
-            Vec::new(),
-            true,
-        ).map_err(|e| HarnessError::new(e.to_string()))?)),
+        SurfaceIn::CurveBounded { basis } => Ok(Surface::from(
+            CurveBoundedSurface::new(rust_surface(basis)?, Vec::new(), Vec::new(), true)
+                .map_err(|e| HarnessError::new(e.to_string()))?,
+        )),
     }
 }
 
@@ -299,7 +297,9 @@ fn rust_cache(surface: Surface, t: &[NodeIn], handle: H) -> Result<SurfaceCache<
             ..BezierAux2d::default()
         };
         let slot = if aux_type == AuxDataType::BezierSurface {
-            let (basis, ivls) = n.pseudo.ok_or_else(|| harness("patch without pseudo box"))?;
+            let (basis, ivls) = n
+                .pseudo
+                .ok_or_else(|| harness("patch without pseudo box"))?;
             let mut pseudo_box = PseudoBox::new();
             pseudo_box
                 .set_basis(v3(basis[0]), v3(basis[1]), v3(basis[2]))
@@ -850,7 +850,10 @@ fn gen_scene(rng: &mut Rng, scene: Scene, s: f64) -> (SurfaceIn, Option<SurfaceI
             if rng.chance(0.3) {
                 // B's v axis reversed (its edge at v = s)
                 let bo2 = add(bo, mul(s, y));
-                (plane_at(o, x, y, s), Some(plane_at(bo2, bx, mul(-1.0, y), s)))
+                (
+                    plane_at(o, x, y, s),
+                    Some(plane_at(bo2, bx, mul(-1.0, y), s)),
+                )
             } else {
                 (plane_at(o, x, y, s), Some(plane_at(bo, bx, y, s)))
             }
@@ -1005,20 +1008,35 @@ fn edge_cases() -> Vec<(String, Value)> {
     let configs: Vec<(&str, SurfaceIn)> = vec![
         ("apart", plane_at([0.0, 0.0, 5.0], x, y, 1.0)),
         // touching at A's corner (1,1,0), leaving it
-        ("corner_touch_out", plane_at([1.0, 1.0, 0.0], norm([1.0, 1.0, 0.0]), z, 1.0)),
+        (
+            "corner_touch_out",
+            plane_at([1.0, 1.0, 0.0], norm([1.0, 1.0, 0.0]), z, 1.0),
+        ),
         // B's corner sector folds back over A
-        ("corner_touch_back", plane_at([1.0, 1.0, 0.0], [-1.0, 0.0, 0.0], z, 1.0)),
+        (
+            "corner_touch_back",
+            plane_at([1.0, 1.0, 0.0], [-1.0, 0.0, 0.0], z, 1.0),
+        ),
         // corner to corner, coplanar
         ("corner_coplanar", plane_at([1.0, 1.0, 0.0], x, y, 1.0)),
         ("edge_coplanar", plane_at([1.0, 0.0, 0.0], x, y, 1.0)),
         ("edge_fold_up", plane_at([1.0, 0.0, 0.0], z, y, 1.0)),
-        ("edge_fold_45", plane_at([1.0, 0.0, 0.0], norm([1.0, 0.0, 1.0]), y, 1.0)),
+        (
+            "edge_fold_45",
+            plane_at([1.0, 0.0, 0.0], norm([1.0, 0.0, 1.0]), y, 1.0),
+        ),
         ("parallel_gap", plane_at([0.0, 0.0, 0.5], x, y, 1.0)),
         ("coincident", plane_at(o, x, y, 1.0)),
         ("coincident_swapped", plane_at(o, y, x, 1.0)),
-        ("near_parallel_2deg", plane_at([0.0, 0.0, 0.01], x, norm([0.0, 1.0, 0.035]), 1.0)),
+        (
+            "near_parallel_2deg",
+            plane_at([0.0, 0.0, 0.01], x, norm([0.0, 1.0, 0.035]), 1.0),
+        ),
         ("crossing", plane_at([0.5, 0.0, -0.5], y, z, 1.0)),
-        ("crossing_tiny", plane_at([0.5e-3, 0.0, -0.5e-3], y, z, 1e-3)),
+        (
+            "crossing_tiny",
+            plane_at([0.5e-3, 0.0, -0.5e-3], y, z, 1e-3),
+        ),
     ];
     let mut out = Vec::new();
     for (name, b) in configs {

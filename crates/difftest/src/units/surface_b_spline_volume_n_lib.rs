@@ -267,23 +267,26 @@ fn build(v: &VolIn) -> Result<Volume, HarnessError> {
     }
     let mut next: Option<Volume> = None;
     for t in v.next.iter().rev() {
-        next = Some(Volume::with_maps(
-            VolumeKind::Transform(transform_of(*t)),
-            None,
-            next,
-        ).map_err(|e| HarnessError::new(e.to_string()))?);
+        next = Some(
+            Volume::with_maps(VolumeKind::Transform(transform_of(*t)), None, next)
+                .map_err(|e| HarnessError::new(e.to_string()))?,
+        );
     }
-    Ok(Volume::with_maps(
+    Volume::with_maps(
         VolumeKind::BSpline(BSplineVolume::new(rec)),
         v.orient.map(transform_of),
         next,
-    ).map_err(|e| HarnessError::new(e.to_string()))?)
+    )
+    .map_err(|e| HarnessError::new(e.to_string()))
 }
 
 fn build_curve(k: &Kernel, c: &CurveIn) -> Result<Curve, HarnessError> {
     match c {
         CurveIn::Bspline { p, cpts, knots } => {
-            let n = cpts.len().checked_sub(1).ok_or_else(|| harness("no points"))?;
+            let n = cpts
+                .len()
+                .checked_sub(1)
+                .ok_or_else(|| harness("no points"))?;
             let mut cur = allocate_nurb_curve(n, *p, n + p + 1)
                 .map_err(|e| harness(format!("curve: {e}")))?;
             for (d, s) in cur.cpts_mut().iter_mut().zip(cpts) {
@@ -446,7 +449,12 @@ fn gen_transform(rng: &mut Rng) -> Tf {
             let s = rng.uniform(0.1, 4.0);
             [coord(rng, 5.0), [s, 0.0, 0.0], [0.0, s, 0.0], [0.0, 0.0, s]]
         }
-        _ => [coord(rng, 5.0), coord(rng, 2.0), coord(rng, 2.0), coord(rng, 2.0)],
+        _ => [
+            coord(rng, 5.0),
+            coord(rng, 2.0),
+            coord(rng, 2.0),
+            coord(rng, 2.0),
+        ],
     }
 }
 
@@ -460,7 +468,9 @@ fn gen_knots(rng: &mut Rng, count: usize, deg: usize, lo: f64, span: f64) -> Vec
     }
     let mut k: Vec<f64> = Vec::with_capacity(count);
     let clamp = rng.chance(0.6) && count >= 2 * (deg + 1);
-    let mut vals: Vec<f64> = (0..count).map(|_| lo + span * rng.uniform(0.0, 1.0)).collect();
+    let mut vals: Vec<f64> = (0..count)
+        .map(|_| lo + span * rng.uniform(0.0, 1.0))
+        .collect();
     if rng.chance(0.3) {
         // uniform values
         vals = (0..count)
@@ -598,11 +608,7 @@ fn gen_point(rng: &mut Rng, v: &VolIn) -> [f64; 3] {
             p = ends.map(|(a, z)| if rng.chance(0.5) { a } else { z });
         }
         _ => {
-            let span = ends
-                .iter()
-                .map(|(a, z)| z - a)
-                .fold(1.0, f64::max)
-                .min(1e6);
+            let span = ends.iter().map(|(a, z)| z - a).fold(1.0, f64::max).min(1e6);
             p = ends.map(|(a, _)| a + span * rng.uniform(-3.0, 4.0));
         }
     }
@@ -657,7 +663,9 @@ fn gen_curve(rng: &mut Rng, v: &VolIn) -> CurveIn {
                 (a, a + rng.uniform(0.5, 20.0))
             };
             let mut knots = vec![a; p + 1];
-            let mut inner: Vec<f64> = (0..n - p).map(|_| a + (z - a) * rng.uniform(0.05, 0.95)).collect();
+            let mut inner: Vec<f64> = (0..n - p)
+                .map(|_| a + (z - a) * rng.uniform(0.05, 0.95))
+                .collect();
             inner.sort_by(f64::total_cmp);
             knots.extend(inner);
             knots.extend(vec![z; p + 1]);
@@ -666,10 +674,7 @@ fn gen_curve(rng: &mut Rng, v: &VolIn) -> CurveIn {
         2 => {
             let c = gen_point(rng, v);
             let (x, y) = unit_axes(rng);
-            let r = [
-                size * rng.uniform(0.01, 1.2),
-                size * rng.uniform(0.01, 1.2),
-            ];
+            let r = [size * rng.uniform(0.01, 1.2), size * rng.uniform(0.01, 1.2)];
             let d0 = rng.uniform(0.0, 360.0);
             let d1 = d0 + rng.uniform(5.0, 360.0);
             CurveIn::Ellipse {
@@ -782,7 +787,13 @@ mod tests {
             *seen.entry(key).or_default() += 1;
         }
         eprintln!("{seen:?}");
-        for k in ["Conts 0", "Conts 1001", "HasDisc 0", "CurveIn 0", "CurveIn 1"] {
+        for k in [
+            "Conts 0",
+            "Conts 1001",
+            "HasDisc 0",
+            "CurveIn 0",
+            "CurveIn 1",
+        ] {
             assert!(seen.contains_key(k), "{k} never seen: {seen:?}");
         }
     }
