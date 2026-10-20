@@ -74,9 +74,9 @@
 //!   are stubs (`plan/findings.md`, "`blend.fillet_solver_p1`: pseudo-B-rep
 //!   mutations"); every one is after an unported fillet geometry call.
 //! - **Virtual overrides of unported units.** A derived solver's override owned by a
-//!   unit that is not ported (the `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS`
-//!   overrides of the custom solvers) returns [`SolidError::Unported`]; the
-//!   [`FilletSolverOps`] methods are fallible for that reason.
+//!   unit that is not ported returns [`SolidError::Unported`]; the [`FilletSolverOps`]
+//!   methods are fallible for that reason. The custom solvers' inherited
+//!   `SmConstantRadiusFS` overrides delegate to `ConstantRadiusAssistedFs`.
 //! - **Analytic surfaces.** `sm_TestAnalyticSurface` takes an [`AnalyticTestSurface`]:
 //!   a [`Surface`], a [`Cone`] (cone or cylinder), a [`Sphere`] or a [`Torus`], since
 //!   no [`Surface`] kind holds the last three yet.
