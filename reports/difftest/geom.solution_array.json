@@ -10,50 +10,34 @@
       "values_compared": 65
     },
     {
-      "deferred": {
-        "symbol": "SmCurve::EvaluatePoint",
-        "unit": "curve.curve_p2"
-      },
       "max_rel_err": 0.0,
       "name": "my_test_solution_point_by_index",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/geom.solution_array/cases.json#1 (upstream tests/prog_test/src/smCurveTest.cpp:893 (my_test_solution))",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmCurve::EvaluatePoint",
-        "unit": "curve.curve_p2"
-      },
       "max_rel_err": 0.0,
       "name": "my_test_solution_point_by_object",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/geom.solution_array/cases.json#2 (upstream tests/prog_test/src/smCurveTest.cpp:893 (my_test_solution))",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmCurve::GetNaturalInterval",
-        "unit": "curve.curve_p2"
-      },
       "max_rel_err": 0.0,
       "name": "my_test_solution_parameter_interval",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/geom.solution_array/cases.json#3 (upstream tests/prog_test/src/smCurveTest.cpp:893 (my_test_solution))",
-      "values_compared": 0
+      "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmCurve::GetNaturalInterval",
-        "unit": "curve.curve_p2"
-      },
       "max_rel_err": 0.0,
       "name": "my_test_solution_is_equal",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/geom.solution_array/cases.json#4 (upstream tests/prog_test/src/smCurveTest.cpp:893 (my_test_solution))",
       "values_compared": 0
     },
@@ -266,16 +250,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmCurve::EvaluatePoint",
-        "unit": "curve.curve_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0021",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412569",
-      "values_compared": 0
+      "values_compared": 71
     },
     {
       "max_rel_err": 0.0,
@@ -294,28 +274,20 @@
       "values_compared": 88
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetSurface",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0024",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412572",
-      "values_compared": 0
+      "values_compared": 71
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::EvaluatePoint",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0025",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412573",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -374,16 +346,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmVertex::GetPoint",
-        "unit": "topology.vertex"
-      },
       "max_rel_err": 0.0,
       "name": "gen0033",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412581",
-      "values_compared": 0
+      "values_compared": 201
     },
     {
       "max_rel_err": 0.0,
@@ -418,16 +386,12 @@
       "values_compared": 836
     },
     {
-      "deferred": {
-        "symbol": "SmCurve::GetNaturalInterval",
-        "unit": "curve.curve_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0038",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412586",
-      "values_compared": 0
+      "values_compared": 880
     },
     {
       "max_rel_err": 0.0,
@@ -470,16 +434,12 @@
       "values_compared": 65
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetUVDomain",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0044",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412592",
-      "values_compared": 0
+      "values_compared": 88
     },
     {
       "max_rel_err": 0.0,
@@ -522,16 +482,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
-      },
       "max_rel_err": 0.0,
       "name": "gen0050",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412598",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -566,16 +522,12 @@
       "values_compared": 176
     },
     {
-      "deferred": {
-        "symbol": "SmCurve::EvaluatePoint",
-        "unit": "curve.curve_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0055",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412603",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -794,16 +746,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmCurve::GetNaturalInterval",
-        "unit": "curve.curve_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0083",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412631",
-      "values_compared": 0
+      "values_compared": 67
     },
     {
       "max_rel_err": 0.0,
@@ -942,16 +890,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetUVDomain",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0101",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412649",
-      "values_compared": 0
+      "values_compared": 528
     },
     {
       "max_rel_err": 0.0,
@@ -994,16 +938,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetSurface",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0107",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412655",
-      "values_compared": 0
+      "values_compared": 72
     },
     {
       "max_rel_err": 0.0,
@@ -1014,16 +954,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetUVDomain",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0109",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412657",
-      "values_compared": 0
+      "values_compared": 330
     },
     {
       "max_rel_err": 0.0,
@@ -1058,16 +994,12 @@
       "values_compared": 924
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetUVDomain",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0114",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412662",
-      "values_compared": 0
+      "values_compared": 220
     },
     {
       "max_rel_err": 0.0,
@@ -1230,16 +1162,12 @@
       "values_compared": 308
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetUVDomain",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0135",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412683",
-      "values_compared": 0
+      "values_compared": 2
     },
     {
       "max_rel_err": 0.0,
@@ -1258,16 +1186,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SmEdge::GetInterval",
-        "unit": "topology.edge"
-      },
       "max_rel_err": 0.0,
       "name": "gen0138",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412686",
-      "values_compared": 0
+      "values_compared": 198
     },
     {
       "max_rel_err": 0.0,
@@ -1670,16 +1594,12 @@
       "values_compared": 198
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::GetNaturalUVDomain",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0189",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412737",
-      "values_compared": 0
+      "values_compared": 1474
     },
     {
       "max_rel_err": 0.0,
@@ -1826,16 +1746,12 @@
       "values_compared": 88
     },
     {
-      "deferred": {
-        "symbol": "SmEdge::GetInterval",
-        "unit": "topology.edge"
-      },
       "max_rel_err": 0.0,
       "name": "gen0208",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412756",
-      "values_compared": 0
+      "values_compared": 506
     },
     {
       "max_rel_err": 0.0,
@@ -2486,16 +2402,12 @@
       "values_compared": 396
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetUVDomain",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0290",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412838",
-      "values_compared": 0
+      "values_compared": 528
     },
     {
       "max_rel_err": 0.0,
@@ -2594,16 +2506,12 @@
       "values_compared": 330
     },
     {
-      "deferred": {
-        "symbol": "SmCurve::GetNaturalInterval",
-        "unit": "curve.curve_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0303",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412851",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -2630,16 +2538,12 @@
       "values_compared": 65
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetSurface",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0307",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412855",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -2690,16 +2594,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmVertex::GetPoint",
-        "unit": "topology.vertex"
-      },
       "max_rel_err": 0.0,
       "name": "gen0314",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412862",
-      "values_compared": 0
+      "values_compared": 12
     },
     {
       "max_rel_err": 0.0,
@@ -3014,16 +2914,12 @@
       "values_compared": 154
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetSurface",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0354",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412902",
-      "values_compared": 0
+      "values_compared": 71
     },
     {
       "max_rel_err": 0.0,
@@ -3162,28 +3058,20 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::GetNaturalUVDomain",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0372",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412920",
-      "values_compared": 0
+      "values_compared": 418
     },
     {
-      "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
-      },
       "max_rel_err": 0.0,
       "name": "gen0373",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412921",
-      "values_compared": 0
+      "values_compared": 71
     },
     {
       "max_rel_err": 0.0,
@@ -3362,28 +3250,20 @@
       "values_compared": 66
     },
     {
-      "deferred": {
-        "symbol": "SmCurve::GetNaturalInterval",
-        "unit": "curve.curve_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0396",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412944",
-      "values_compared": 0
+      "values_compared": 66
     },
     {
-      "deferred": {
-        "symbol": "SmEdge::GetInterval",
-        "unit": "topology.edge"
-      },
       "max_rel_err": 0.0,
       "name": "gen0397",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412945",
-      "values_compared": 0
+      "values_compared": 65
     },
     {
       "max_rel_err": 0.0,
@@ -3554,16 +3434,12 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::GetNaturalUVDomain",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0419",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412967",
-      "values_compared": 0
+      "values_compared": 440
     },
     {
       "max_rel_err": 0.0,
@@ -3646,16 +3522,12 @@
       "values_compared": 154
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::EvaluatePoint",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0430",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078412978",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -4194,16 +4066,12 @@
       "values_compared": 660
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::GetNaturalUVDomain",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0498",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413046",
-      "values_compared": 0
+      "values_compared": 308
     },
     {
       "max_rel_err": 0.0,
@@ -4294,16 +4162,12 @@
       "values_compared": 418
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::EvaluatePoint",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0510",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413058",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -4314,16 +4178,12 @@
       "values_compared": 1122
     },
     {
-      "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
-      },
       "max_rel_err": 0.0,
       "name": "gen0512",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413060",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -4462,16 +4322,12 @@
       "values_compared": 418
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::GetNaturalUVDomain",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0530",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413078",
-      "values_compared": 0
+      "values_compared": 770
     },
     {
       "max_rel_err": 0.0,
@@ -4586,16 +4442,12 @@
       "values_compared": 66
     },
     {
-      "deferred": {
-        "symbol": "SmCurve::GetNaturalInterval",
-        "unit": "curve.curve_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0545",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413093",
-      "values_compared": 0
+      "values_compared": 286
     },
     {
       "max_rel_err": 0.0,
@@ -4966,16 +4818,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmEdge::GetInterval",
-        "unit": "topology.edge"
-      },
       "max_rel_err": 0.0,
       "name": "gen0592",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413140",
-      "values_compared": 0
+      "values_compared": 352
     },
     {
       "max_rel_err": 0.0,
@@ -5042,28 +4890,20 @@
       "values_compared": 71
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetUVDomain",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0601",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413149",
-      "values_compared": 0
+      "values_compared": 154
     },
     {
-      "deferred": {
-        "symbol": "SmEdge::GetInterval",
-        "unit": "topology.edge"
-      },
       "max_rel_err": 0.0,
       "name": "gen0602",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413150",
-      "values_compared": 0
+      "values_compared": 506
     },
     {
       "max_rel_err": 0.0,
@@ -5154,16 +4994,12 @@
       "values_compared": 176
     },
     {
-      "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
-      },
       "max_rel_err": 0.0,
       "name": "gen0614",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413162",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -5190,16 +5026,12 @@
       "values_compared": 110
     },
     {
-      "deferred": {
-        "symbol": "SmCurve::EvaluatePoint",
-        "unit": "curve.curve_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0618",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413166",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -5234,16 +5066,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmVertex::GetPoint",
-        "unit": "topology.vertex"
-      },
       "max_rel_err": 0.0,
       "name": "gen0623",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413171",
-      "values_compared": 0
+      "values_compared": 72
     },
     {
       "max_rel_err": 0.0,
@@ -5598,16 +5426,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SmCurve::GetNaturalInterval",
-        "unit": "curve.curve_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0668",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413216",
-      "values_compared": 0
+      "values_compared": 396
     },
     {
       "max_rel_err": 0.0,
@@ -5634,16 +5458,12 @@
       "values_compared": 484
     },
     {
-      "deferred": {
-        "symbol": "SmEdge::GetInterval",
-        "unit": "topology.edge"
-      },
       "max_rel_err": 0.0,
       "name": "gen0672",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413220",
-      "values_compared": 0
+      "values_compared": 352
     },
     {
       "max_rel_err": 0.0,
@@ -5742,16 +5562,12 @@
       "values_compared": 374
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetUVDomain",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0685",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413233",
-      "values_compared": 0
+      "values_compared": 418
     },
     {
       "max_rel_err": 0.0,
@@ -5834,40 +5650,28 @@
       "values_compared": 66
     },
     {
-      "deferred": {
-        "symbol": "SmEdge::GetInterval",
-        "unit": "topology.edge"
-      },
       "max_rel_err": 0.0,
       "name": "gen0696",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413244",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmVertex::GetPoint",
-        "unit": "topology.vertex"
-      },
       "max_rel_err": 0.0,
       "name": "gen0697",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413245",
-      "values_compared": 0
+      "values_compared": 72
     },
     {
-      "deferred": {
-        "symbol": "SmEdge::GetInterval",
-        "unit": "topology.edge"
-      },
       "max_rel_err": 0.0,
       "name": "gen0698",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413246",
-      "values_compared": 0
+      "values_compared": 330
     },
     {
       "max_rel_err": 0.0,
@@ -6038,16 +5842,12 @@
       "values_compared": 176
     },
     {
-      "deferred": {
-        "symbol": "SmVertex::GetPoint",
-        "unit": "topology.vertex"
-      },
       "max_rel_err": 0.0,
       "name": "gen0720",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413268",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -6074,16 +5874,12 @@
       "values_compared": 572
     },
     {
-      "deferred": {
-        "symbol": "SmCurve::EvaluatePoint",
-        "unit": "curve.curve_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0724",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413272",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -6150,14 +5946,10 @@
       "values_compared": 65
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetUVDomain",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0733",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413281",
       "values_compared": 0
     },
@@ -6482,16 +6274,12 @@
       "values_compared": 65
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::GetNaturalUVDomain",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0774",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413322",
-      "values_compared": 0
+      "values_compared": 136
     },
     {
       "max_rel_err": 0.0,
@@ -6518,16 +6306,12 @@
       "values_compared": 726
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetUVDomain",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0778",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413326",
-      "values_compared": 0
+      "values_compared": 682
     },
     {
       "max_rel_err": 0.0,
@@ -6554,28 +6338,20 @@
       "values_compared": 88
     },
     {
-      "deferred": {
-        "symbol": "SmCurve::GetNaturalInterval",
-        "unit": "curve.curve_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0782",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413330",
-      "values_compared": 0
+      "values_compared": 198
     },
     {
-      "deferred": {
-        "symbol": "SmCurve::GetNaturalInterval",
-        "unit": "curve.curve_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0783",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11592689069078413331",
-      "values_compared": 0
+      "values_compared": 1166
     },
     {
       "max_rel_err": 0.0,
@@ -6707,21 +6483,15 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 56,
+  "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 754,
+  "cases_passed": 810,
   "cases_total": 810,
-  "deferred_by_unit": {
-    "curve.curve_p2": 16,
-    "surface.surface_p2": 9,
-    "topology.edge": 12,
-    "topology.face_p2": 14,
-    "topology.vertex": 5
-  },
+  "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,
   "rel_tol": 1e-9,
   "seeds": 16,
-  "status": "partial",
+  "status": "green",
   "unit": "geom.solution_array"
 }

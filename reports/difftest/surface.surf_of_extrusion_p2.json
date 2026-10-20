@@ -475,8 +475,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "global_cone_tilted",
@@ -487,8 +487,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "global_cylinder_class",
@@ -515,8 +515,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "global_extrusion_skew",
@@ -543,8 +543,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "global_plane_oblique",
@@ -555,8 +555,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "global_bspline",
@@ -1523,8 +1523,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0010",
@@ -1735,8 +1735,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0035",
@@ -2055,8 +2055,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0072",
@@ -2151,8 +2151,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0083",
@@ -2211,8 +2211,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0090",
@@ -2271,8 +2271,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0097",
@@ -2627,8 +2627,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0139",
@@ -2723,8 +2723,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0150",
@@ -2779,8 +2779,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0156",
@@ -2835,8 +2835,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0162",
@@ -2863,8 +2863,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0165",
@@ -3019,8 +3019,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0184",
@@ -3055,8 +3055,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0188",
@@ -3067,8 +3067,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0189",
@@ -3147,8 +3147,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0197",
@@ -3499,8 +3499,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0239",
@@ -3547,8 +3547,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0244",
@@ -3575,8 +3575,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0247",
@@ -3743,8 +3743,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0267",
@@ -3943,8 +3943,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0291",
@@ -4123,8 +4123,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0312",
@@ -4355,8 +4355,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0339",
@@ -4475,8 +4475,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0353",
@@ -4495,8 +4495,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0355",
@@ -4647,8 +4647,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0373",
@@ -4755,8 +4755,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0385",
@@ -4791,8 +4791,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0389",
@@ -4843,8 +4843,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0395",
@@ -4871,8 +4871,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0398",
@@ -4899,8 +4899,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0401",
@@ -4919,8 +4919,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0403",
@@ -5007,8 +5007,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0413",
@@ -5263,8 +5263,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0443",
@@ -5311,8 +5311,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0448",
@@ -5447,8 +5447,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0463",
@@ -5483,8 +5483,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0467",
@@ -5611,8 +5611,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0481",
@@ -5783,8 +5783,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0501",
@@ -5863,8 +5863,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0510",
@@ -6087,8 +6087,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0537",
@@ -6147,8 +6147,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0544",
@@ -6319,8 +6319,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0565",
@@ -6455,8 +6455,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0581",
@@ -6499,8 +6499,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0586",
@@ -6695,8 +6695,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0609",
@@ -6843,8 +6843,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0626",
@@ -6907,8 +6907,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0633",
@@ -6991,8 +6991,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0642",
@@ -7087,8 +7087,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0652",
@@ -7099,8 +7099,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0653",
@@ -7131,8 +7131,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0656",
@@ -7543,8 +7543,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0706",
@@ -7739,8 +7739,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0730",
@@ -7759,8 +7759,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0732",
@@ -7791,8 +7791,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0735",
@@ -7859,8 +7859,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0743",
@@ -8015,8 +8015,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0761",
@@ -8219,8 +8219,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0784",
@@ -8439,8 +8439,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0810",
@@ -8563,8 +8563,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0824",
@@ -8995,8 +8995,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0874",
@@ -9015,8 +9015,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0876",
@@ -9083,8 +9083,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0883",
@@ -9127,8 +9127,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0888",
@@ -9331,8 +9331,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0911",
@@ -9423,8 +9423,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0922",
@@ -9483,8 +9483,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0929",
@@ -9551,8 +9551,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0937",
@@ -9827,8 +9827,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0969",
@@ -9839,8 +9839,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0970",
@@ -9891,8 +9891,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0976",
@@ -9963,8 +9963,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0984",
@@ -9999,8 +9999,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0988",
@@ -10131,8 +10131,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1004",
@@ -10187,8 +10187,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1010",
@@ -10219,8 +10219,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1013",
@@ -10247,8 +10247,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1016",
@@ -10267,8 +10267,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1018",
@@ -10507,8 +10507,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1047",
@@ -10583,8 +10583,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1055",
@@ -10775,8 +10775,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1077",
@@ -10807,8 +10807,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1080",
@@ -11043,8 +11043,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1107",
@@ -11143,8 +11143,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1119",
@@ -11155,8 +11155,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1120",
@@ -11279,8 +11279,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1133",
@@ -11351,8 +11351,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1140",
@@ -11423,8 +11423,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1148",
@@ -11523,8 +11523,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1159",
@@ -11559,8 +11559,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1163",
@@ -11723,8 +11723,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1181",
@@ -11771,8 +11771,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "unit": "intersect.adv_surface_intersector"
+        "symbol": "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1186",
@@ -11892,8 +11892,8 @@
   "cases_passed": 1148,
   "cases_total": 1373,
   "deferred_by_unit": {
-    "intersect.adv_surface_intersector": 97,
-    "intersect.curve_class_p8": 128
+    "intersect.curve_class_p8": 128,
+    "surface.surface_p2": 97
   },
   "max_rel_err": 0.0,
   "pass": true,

@@ -9830,8 +9830,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
+        "symbol": "SurfaceKind::SurfOfExtrusion (SmSurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "corner_box_eu0_m1_circ",
@@ -9934,8 +9934,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
+        "symbol": "SurfaceKind::SurfOfExtrusion (SmSurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "corner_box_eu17_m1_circ",
@@ -10638,8 +10638,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
+        "symbol": "SurfaceKind::SurfOfExtrusion (SmSurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "nurb_box_eu0_m1_circ",
@@ -10742,8 +10742,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
+        "symbol": "SurfaceKind::SurfOfExtrusion (SmSurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "nurb_box_eu17_m1_circ",
@@ -10846,8 +10846,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "filleted_box_eu0_m1_circ",
@@ -10950,8 +10950,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "filleted_box_eu17_m1_circ",
@@ -11750,8 +11750,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
+        "symbol": "SurfaceKind::SurfOfExtrusion (SmSurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "rollover_corner_eu17_m1_circ",
@@ -12306,8 +12306,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0007",
@@ -13142,8 +13142,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0056",
@@ -13426,8 +13426,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
+        "symbol": "SurfaceKind::SurfOfExtrusion (SmSurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0085",
@@ -13590,8 +13590,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
+        "symbol": "SurfaceKind::SurfOfExtrusion (SmSurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0096",
@@ -14592,8 +14592,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
+        "symbol": "SurfaceKind::SurfOfExtrusion (SmSurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0158",
@@ -14732,8 +14732,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
+        "symbol": "SurfaceKind::SurfOfExtrusion (SmSurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0173",
@@ -14828,8 +14828,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0182",
@@ -15120,8 +15120,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0211",
@@ -15518,8 +15518,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
+        "symbol": "SurfaceKind::SurfOfExtrusion (SmSurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0239",
@@ -15618,8 +15618,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0249",
@@ -15630,8 +15630,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0250",
@@ -16451,8 +16451,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0296",
@@ -16844,8 +16844,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0313",
@@ -17060,8 +17060,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
+        "symbol": "SurfaceKind::SurfOfExtrusion (SmSurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0335",
@@ -17288,8 +17288,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
+        "symbol": "SurfaceKind::SurfOfExtrusion (SmSurfOfExtrusion)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0354",
@@ -17587,8 +17587,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::Cone (SmCone)",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0379",
@@ -18531,8 +18531,7 @@
     "blend.fillet_geom_p5": 13,
     "blend.fillet_geom_p6": 33,
     "intersect.surface_drop_lib_p3": 78,
-    "surface.cone_p1": 11,
-    "surface.surf_of_extrusion_p2": 12
+    "surface.surface_p2": 23
   },
   "max_rel_err": 0.0,
   "pass": true,

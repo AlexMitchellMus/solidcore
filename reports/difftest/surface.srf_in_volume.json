@@ -2146,16 +2146,12 @@
       "values_compared": 105
     },
     {
-      "deferred": {
-        "symbol": "SmVolume::Mirror",
-        "unit": "surface.srf_in_volume"
-      },
       "max_rel_err": 0.0,
       "name": "gen0268",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11218638831660611498",
-      "values_compared": 0
+      "values_compared": 121
     },
     {
       "max_rel_err": 0.0,
@@ -5930,16 +5926,12 @@
       "values_compared": 4
     },
     {
-      "deferred": {
-        "symbol": "SmVolume::Mirror",
-        "unit": "surface.srf_in_volume"
-      },
       "max_rel_err": 0.0,
       "name": "gen0739",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11218638831660611969",
-      "values_compared": 0
+      "values_compared": 138
     },
     {
       "max_rel_err": 0.0,
@@ -11598,16 +11590,12 @@
       "values_compared": 108
     },
     {
-      "deferred": {
-        "symbol": "SmVolume::Mirror",
-        "unit": "surface.srf_in_volume"
-      },
       "max_rel_err": 0.0,
       "name": "gen1447",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11218638831660612677",
-      "values_compared": 0
+      "values_compared": 125
     },
     {
       "max_rel_err": 0.0,
@@ -13674,16 +13662,12 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmVolume::Mirror",
-        "unit": "surface.srf_in_volume"
-      },
       "max_rel_err": 0.0,
       "name": "gen1706",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11218638831660612936",
-      "values_compared": 0
+      "values_compared": 54
     },
     {
       "max_rel_err": 0.0,
@@ -14814,16 +14798,12 @@
       "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmVolume::Mirror",
-        "unit": "surface.srf_in_volume"
-      },
       "max_rel_err": 0.0,
       "name": "gen1848",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11218638831660613078",
-      "values_compared": 0
+      "values_compared": 207
     },
     {
       "max_rel_err": 0.0,
@@ -16324,15 +16304,495 @@
       "pass": true,
       "source": "inline",
       "values_compared": 165
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 143
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 114
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 124
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_3",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 127
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_4",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 201
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_5",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 161
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_6",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 104
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_7",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 181
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_8",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 124
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_9",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 232
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_10",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 86
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_11",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 160
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_12",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 104
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_13",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 322
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_14",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 177
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_15",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 118
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_16",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 271
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_17",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_18",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 119
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_19",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 178
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_20",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 127
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_21",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 147
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_22",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 194
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_23",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 175
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_24",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 144
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_25",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 142
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_26",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 201
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_27",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 135
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_28",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 134
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_29",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 276
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_30",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 192
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_31",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 125
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_32",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 124
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_33",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 150
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_34",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 158
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_35",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 164
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_36",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 157
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_37",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 145
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_38",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_39",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 178
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_40",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 148
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_41",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 78
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_42",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 140
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_43",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 169
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_44",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 232
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_45",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 177
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_46",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 134
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_47",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 105
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_48",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_49",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 149
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_50",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 273
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_51",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 160
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_52",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 160
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_53",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 182
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_54",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 177
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_55",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 208
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_56",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 91
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_57",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 146
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_58",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 105
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "mirror_59",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 200
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 9,
+  "cases_deferred": 4,
   "cases_failed": 0,
-  "cases_passed": 2027,
-  "cases_total": 2036,
+  "cases_passed": 2092,
+  "cases_total": 2096,
   "deferred_by_unit": {
-    "surface.srf_in_volume": 9
+    "surface.srf_in_volume": 4
   },
   "max_rel_err": 0.0,
   "pass": true,
