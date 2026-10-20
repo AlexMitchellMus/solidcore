@@ -286,6 +286,356 @@
       "values_compared": 0
     },
     {
+      "inputs": {
+        "data": [0, 1.0, 5.0, 3, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+        "expected_rejection": true,
+        "op": 8
+      },
+      "max_rel_err": 0.0,
+      "name": "ub50_taper_two_identical_lines",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "guarded native crash or hang (fixtures README)",
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/guarded.json#6",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "data": [0, 1.0, 5.0, 3, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+        "expected_rejection": true,
+        "op": 8
+      },
+      "max_rel_err": 0.0,
+      "name": "ub50_taper_line_and_its_reverse",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "guarded native crash or hang (fixtures README)",
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/guarded.json#7",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "data": [0, 1.0, 5.0, 3, 0, 0, 1, 0, 1, 0, 0, 0, 1.0, 0, 180, 1, 0, 0, 0, 1.0, 0, 180],
+        "expected_rejection": true,
+        "op": 8
+      },
+      "max_rel_err": 0.0,
+      "name": "ub50_taper_two_identical_arcs",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "guarded native crash or hang (fixtures README)",
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/guarded.json#8",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "data": [0, 1.0, 5.0, 3, 0, 0, -1, 0, 0, 0, 0, 0, 0.00003, 0, 0, 0, 0.00003, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+        "expected_rejection": true,
+        "op": 8
+      },
+      "max_rel_err": 0.0,
+      "name": "ub50_taper_line_back_through_the_last_mid",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "guarded native crash or hang (fixtures README)",
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/guarded.json#9",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "data": [0, 1.0, 5.0, 3, 0, 0, -1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0],
+        "expected_rejection": true,
+        "op": 8
+      },
+      "max_rel_err": 0.0,
+      "name": "ub50_taper_second_pass_line_and_reverse_apart_down",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "guarded native crash or hang (fixtures README)",
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/guarded.json#10",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "data": [0, 1.0, 5.0, 3, 0, 0, 1, 0, 0, 0.00003, 0, 0, 0, 0, 0, 0, 0.00003, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0, 0],
+        "expected_rejection": true,
+        "op": 8
+      },
+      "max_rel_err": 0.0,
+      "name": "ub50_taper_second_pass_short_link_up",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "guarded native crash or hang (fixtures README)",
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/guarded.json#11",
+      "values_compared": 0
+    },
+    {
+      "inputs": {
+        "data": [1.0, 100.0, -24.89625914511591, 3.0, 0.0, 0.0, -1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.000049999999999999996, 0.0, 0.0, 0.0, 0.000049999999999999996, 0.0, 0.0, 100.0, 0.0, 0.0, 0.0, 100.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        "expected_rejection": true,
+        "op": 8
+      },
+      "max_rel_err": 0.0,
+      "name": "ub50_taper_end_cap_offsets_of_a_loop_enclosing_nothing",
+      "outcome": "rejected",
+      "pass": false,
+      "rejected": "guarded native crash or hang (fixtures README)",
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/guarded.json#12",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "square_repeated_side_normal_up",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#0",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "square_repeated_side_normal_down",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#1",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "square_repeated_side_normal_computed",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#2",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "square_reversed_side_normal_up",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#3",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "square_reversed_side_normal_down",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#4",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "square_reversed_side_normal_computed",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#5",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "square_repeated_top_normal_up",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#6",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "square_repeated_top_normal_down",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#7",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "square_repeated_top_normal_computed",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#8",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "square_repeated_first_normal_up",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#9",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "square_repeated_first_normal_down",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#10",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "square_repeated_first_normal_computed",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#11",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "square_repeated_last_normal_up",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#12",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "square_repeated_last_normal_down",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#13",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "square_repeated_last_normal_computed",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#14",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "line_back_2_5e-5_off_the_last_mid_start_cap",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#15",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "two_halves_of_a_circle",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#16",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "line_and_reverse_chained_apart_normal_computed",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#17",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "second_pass_short_link_normal_computed_start_cap",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#18",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "line_and_reverse_joined_reversed_normal_computed_start_cap",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#19",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "half_circle_and_its_chord",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/primitive.primitive_creation_p2/review_duplicate_curves.json#20",
+      "values_compared": 0
+    },
+    {
       "deferred": {
         "symbol": "SmBrep::CreateFacesFromSurface",
         "unit": "topology.brep_p8"
@@ -715,8 +1065,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
+        "unit": "topology.brep_p8"
       },
       "max_rel_err": 0.0,
       "name": "gen0041",
@@ -1426,16 +1776,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::SmBrep",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0112",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11582637188108233866",
-      "values_compared": 0
+      "values_compared": 10
     },
     {
       "deferred": {
@@ -1506,16 +1852,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::SmBrep",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0119",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=11582637188108233873",
-      "values_compared": 0
+      "values_compared": 10
     },
     {
       "max_rel_err": 0.0,
@@ -1655,8 +1997,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::Notify",
+        "unit": "topology.brep_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0134",
@@ -2499,8 +2841,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::CreatePlanarFacesWith3DCurves",
+        "unit": "topology.brep_p8"
       },
       "max_rel_err": 0.0,
       "name": "gen0216",
@@ -2687,8 +3029,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::CreateFaceFromSurface",
+        "unit": "topology.brep_p8"
       },
       "max_rel_err": 0.0,
       "name": "gen0235",
@@ -2903,15 +3245,15 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 150,
+  "cases_deferred": 169,
   "cases_failed": 0,
-  "cases_passed": 127,
-  "cases_rejected": 6,
-  "cases_total": 283,
+  "cases_passed": 129,
+  "cases_rejected": 13,
+  "cases_total": 311,
   "deferred_by_unit": {
-    "topology.brep_p2": 19,
-    "topology.brep_p3": 56,
-    "topology.brep_p8": 75
+    "topology.brep_p2": 20,
+    "topology.brep_p3": 71,
+    "topology.brep_p8": 78
   },
   "max_rel_err": 0.0,
   "pass": true,

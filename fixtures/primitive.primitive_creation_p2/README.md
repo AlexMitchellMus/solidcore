@@ -55,19 +55,31 @@ a curve shorter than `2e-5` (UB-112); a planar path without path curves; skin pr
 counts past the curves. A curve record that cannot be built natively is rejected, not
 compared.
 
-Two guards come from isolated native probes (one process per input, 20-25 s limit):
+Three guards come from isolated native probes (one process per input, 20-25 s limit):
 
 | Guard | Upstream issue | Rejected |
 | --- | --- | --- |
+| A taper whose chaining deletes a curve | UB-50: `FixChainCurvesList` (`2 * SM_ZONE_TOL_3D`, deleting duplicates) deletes a curve whose ends and mid point match the chain built so far, then reads it again (segfault) | the wrapper repeats the chaining on the curves' end and mid points, and with a supplied normal also the reversed second pass: two identical lines or arcs, a line and its reverse, a line from a chain's end back to its start through its last link's mid point (a repeat of no curve). The end cap at the offset end (caps 2 and 3) chains the trimmed offset curves through a copy of their list, so one deleted there is freed again at cleanup (`double free or corruption`); with that cap the wrapper refuses a closed chain narrower than `2 * SM_ZONE_TOL_3D` (vector area against length), the shape of every probe that crashed |
 | A swept profile edge shorter than the zone tolerance (`1e-5`) | UB-212: `SweepEdgeHigh` uses the edge's curve after `MakeFaceWithCurves` freed it (segfault) | partial cones (turn below `359.99999`) that build a profile line below `1e-5`, mirroring the cone's own early failures; partial tori whose minor circle is below `1e-5` |
 | A closed shell from half the zone tolerance to `1.5e-4` across | HANG-35: the ray fire that places the shell in its region takes minutes | spheres, tori and cones of that size at any turn (analytic faces from `359.99999`, stitched sweeps below) |
 
 Early failures stay compared: a cone without height or turn, a zero side, a radius
-within the scaled zero (not built), zero radii. Partial spheres are not guarded: their
+within the scaled zero (not built), zero radii, and the duplicate-looking tapers the
+chaining keeps (`review_duplicate_curves.json`, each run natively without a crash): a
+square with a repeated or reversed side under each normal and both caps, two halves
+of a circle, a half circle and its chord, a line and its reverse chained apart (an open
+chain), and, with the start cap only, the line back `2.5e-5` off the last mid point and the
+narrow closed chain of the second pass. The second
+pass is checked whenever a normal is supplied, although upstream only takes it when
+the curves wind against that normal; the narrow-chain refusal is wider than the
+crashes (a line back from `1` along the same span runs); and the offsets' chaining
+before the caps (`SmPrimitiveCreation.cpp:3884`) is not checked. Partial spheres are not guarded: their
 axis line sweeps to no face and their arc's face fails the degenerate-surface test
 first, so no probe crashed. Every rejected case that reaches the native sweep defers in
 Rust today (`topology.brep_p8`), so the guards remove no compared value. The generator
-draws again when the wrapper refuses an input (as `curve.curve_p1`). Tapers (UB-112),
+draws again when the wrapper refuses an input (as `curve.curve_p1`); its tapers are
+a square, a square with a side repeated either way, a line with its repeat alone and
+the line back past a short first link, under a computed, up or down normal. Tapers (UB-112),
 skins and planar paths (seconds to minutes natively below that, HANG-35) stay at
 scale `1e-3` or more. `guarded.json` keeps the crashing and hanging generated cases as
 expected rejections.

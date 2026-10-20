@@ -308,14 +308,30 @@ fn entry(i: &Inputs) -> Result<Vec<f64>> {
     let mut model = EmptyModel::new(d[0] != 0.)?;
     let mut primitive = PrimitiveCreation::new(Some(RegionId::from_index(0)), 0, false);
     let result = match i.op {
-        1 => primitive.create_partial_cone(&mut model, b, d[1], d[2], d[3], d[4], d[5], &frame(&d[6..15])),
+        1 => primitive.create_partial_cone(
+            &mut model,
+            b,
+            d[1],
+            d[2],
+            d[3],
+            d[4],
+            d[5],
+            &frame(&d[6..15]),
+        ),
         2 => primitive.create_partial_sphere(&mut model, b, d[1], d[2], d[3], &frame(&d[4..13])),
-        3 => primitive.create_partial_torus(&mut model, b, d[1], d[2], d[3], d[4], &frame(&d[5..14])),
+        3 => {
+            primitive.create_partial_torus(&mut model, b, d[1], d[2], d[3], d[4], &frame(&d[5..14]))
+        }
         4 => {
             let profile_count = d[4] as usize;
-            let counts: Vec<usize> = d[5..5 + profile_count].iter().map(|c| *c as usize).collect();
-            let mut input: Vec<Option<Curve>> =
-                curves(&d[5 + profile_count..])?.into_iter().map(Some).collect();
+            let counts: Vec<usize> = d[5..5 + profile_count]
+                .iter()
+                .map(|c| *c as usize)
+                .collect();
+            let mut input: Vec<Option<Curve>> = curves(&d[5 + profile_count..])?
+                .into_iter()
+                .map(Some)
+                .collect();
             let mut transferred = Vec::new();
             let result = primitive.create_skin_primitive(
                 &mut model,
@@ -331,29 +347,55 @@ fn entry(i: &Inputs) -> Result<Vec<f64>> {
                 &mut transferred,
             );
             // the native report has one flag per input curve
-            extra.extend((0..input.len()).map(|j| {
-                f64::from(transferred.get(j).copied().unwrap_or(false))
-            }));
+            extra.extend(
+                (0..input.len()).map(|j| f64::from(transferred.get(j).copied().unwrap_or(false))),
+            );
             result
         }
         5 | 6 => {
             let path = curve(&d[7..14])?;
             if i.op == 5 {
                 primitive.create_curve_sweep_from_edges(
-                    &mut model, b, &[], &path, None, None, d[1], options(&d[2..7]), &mut starts,
-                    &mut sides, &mut ends,
+                    &mut model,
+                    b,
+                    &[],
+                    &path,
+                    None,
+                    None,
+                    d[1],
+                    options(&d[2..7]),
+                    &mut starts,
+                    &mut sides,
+                    &mut ends,
                 )
             } else {
                 primitive.create_curve_sweep_from_faces(
-                    &mut model, b, &[], &path, None, None, d[1], options(&d[2..7]), &mut starts,
-                    &mut sides, &mut ends,
+                    &mut model,
+                    b,
+                    &[],
+                    &path,
+                    None,
+                    None,
+                    d[1],
+                    options(&d[2..7]),
+                    &mut starts,
+                    &mut sides,
+                    &mut ends,
                 )
             }
         }
         7 => {
             let path = curve(&d[5..12])?;
             primitive.create_pipe_sweep(
-                &mut model, b, d[1], &path, d[2], d[3] != 0., d[4] != 0., &mut starts, &mut sides,
+                &mut model,
+                b,
+                d[1],
+                &path,
+                d[2],
+                d[3] != 0.,
+                d[4] != 0.,
+                &mut starts,
+                &mut sides,
                 &mut ends,
             )
         }
@@ -421,10 +463,19 @@ fn generated(rng: &mut Rng) -> (i32, Vec<f64>) {
     }
     // a turn near its boundaries: zero, the effective zero, a part turn, a full turn
     let start = [0., -45., 30.][rng.below(3) as usize];
-    let turn = [0., 1e-13, 2e-12, 90., 360., 360. * (1. + 1e-13), 360. * (1. + 1e-11), 359.]
-        [rng.below(8) as usize];
+    let turn = [
+        0.,
+        1e-13,
+        2e-12,
+        90.,
+        360.,
+        360. * (1. + 1e-13),
+        360. * (1. + 1e-11),
+        359.,
+    ][rng.below(8) as usize];
     let size = |rng: &mut Rng| {
-        [0., 1e-13, 5e-12, 1e-6, 1., 2.][rng.below(6) as usize] * if rng.below(2) == 0 { scale } else { 1. }
+        [0., 1e-13, 5e-12, 1e-6, 1., 2.][rng.below(6) as usize]
+            * if rng.below(2) == 0 { scale } else { 1. }
     };
     match rng.below(7) {
         0 => {
@@ -449,7 +500,12 @@ fn generated(rng: &mut Rng) -> (i32, Vec<f64>) {
             // more (smaller skins take seconds to minutes natively, HANG-35)
             let side = scale.max(1e-3);
             let profiles = rng.below(3) as usize;
-            let mut d = vec![edit, 0., 1. + rng.below(3) as f64, f64::from(rng.below(2) != 0)];
+            let mut d = vec![
+                edit,
+                0.,
+                1. + rng.below(3) as f64,
+                f64::from(rng.below(2) != 0),
+            ];
             d.push(profiles as f64);
             d.extend(std::iter::repeat_n(1., profiles));
             for p in 0..profiles {
@@ -465,14 +521,66 @@ fn generated(rng: &mut Rng) -> (i32, Vec<f64>) {
         }
         5 => (
             7,
-            vec![edit, size(rng), 0., f64::from(rng.below(2) != 0), f64::from(rng.below(2) != 0), 0., 0., 0., 0., 0., 0., scale],
+            vec![
+                edit,
+                size(rng),
+                0.,
+                f64::from(rng.below(2) != 0),
+                f64::from(rng.below(2) != 0),
+                0.,
+                0.,
+                0.,
+                0.,
+                0.,
+                0.,
+                scale,
+            ],
         ),
         _ => {
             // a square taper (sides of at least 1e-3, UB-112) or a planar path
             if rng.below(2) == 0 {
                 let side = scale.max(1e-3);
-                let mut d = vec![edit, scale, rng.uniform(-30., 30.), rng.below(4) as f64, 0., 0., 0., rng.below(3) as f64];
-                for [x0, y0, x1, y1] in [[0., 0., 1., 0.], [1., 0., 1., 1.], [1., 1., 0., 1.], [0., 1., 0., 0.]] {
+                let normal = [0., 1., -1.][rng.below(3) as usize];
+                let mut d = vec![
+                    edit,
+                    scale,
+                    rng.uniform(-30., 30.),
+                    rng.below(4) as f64,
+                    0.,
+                    0.,
+                    normal,
+                    rng.below(3) as f64,
+                ];
+                let mut lines = vec![
+                    [0., 0., 1., 0.],
+                    [1., 0., 1., 1.],
+                    [1., 1., 0., 1.],
+                    [0., 1., 0., 0.],
+                ];
+                let pick = |rng: &mut Rng, [x0, y0, x1, y1]: [f64; 4]| {
+                    if rng.below(2) == 0 {
+                        [x0, y0, x1, y1]
+                    } else {
+                        [x1, y1, x0, y0]
+                    }
+                };
+                // UB-50's chaining: a repeated side, either way (kept), a line with its
+                // repeat alone (refused), a line back past a short first link (refused
+                // for 3e-5, kept for 5e-5)
+                match rng.below(4) {
+                    0 => {
+                        let side = lines[rng.below(4) as usize];
+                        let repeat = pick(rng, side);
+                        lines.push(repeat);
+                    }
+                    1 => lines = vec![[0., 0., 1., 0.], pick(rng, [0., 0., 1., 0.])],
+                    2 => {
+                        let short = [3e-5, 5e-5][rng.below(2) as usize] / side;
+                        lines = vec![[0., 0., short, 0.], [short, 0., 1., 0.], [1., 0., 0., 0.]];
+                    }
+                    _ => {}
+                }
+                for [x0, y0, x1, y1] in lines {
                     d.extend([0., x0 * side, y0 * side, 0., x1 * side, y1 * side, 0.]);
                 }
                 (8, d)
@@ -523,7 +631,9 @@ impl UnitDiff for Runner {
         ffi::validate(i.op, &i.data).map_err(|e| HarnessError::new(e.to_string()))?;
         match entry(&i) {
             Ok(values) => Ok(Output::new().values("record", values)),
-            Err(e) => Output::unported(&e).map_or_else(|| Err(HarnessError::new(e.to_string())), Ok),
+            Err(e) => {
+                Output::unported(&e).map_or_else(|| Err(HarnessError::new(e.to_string())), Ok)
+            }
         }
     }
     fn generate(&self, rng: &mut Rng) -> Option<Value> {

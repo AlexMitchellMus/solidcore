@@ -47,6 +47,62 @@
     "op": 3,
     "data": [0.0, 1e-05, 1e-05, 0.0, 360.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
    }
+  },
+  {
+   "name": "ub50_taper_two_identical_lines",
+   "inputs": {
+    "expected_rejection": true,
+    "op": 8,
+    "data": [0, 1.0, 5.0, 3, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0]
+   }
+  },
+  {
+   "name": "ub50_taper_line_and_its_reverse",
+   "inputs": {
+    "expected_rejection": true,
+    "op": 8,
+    "data": [0, 1.0, 5.0, 3, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0]
+   }
+  },
+  {
+   "name": "ub50_taper_two_identical_arcs",
+   "inputs": {
+    "expected_rejection": true,
+    "op": 8,
+    "data": [0, 1.0, 5.0, 3, 0, 0, 1, 0, 1, 0, 0, 0, 1.0, 0, 180, 1, 0, 0, 0, 1.0, 0, 180]
+   }
+  },
+  {
+   "name": "ub50_taper_line_back_through_the_last_mid",
+   "inputs": {
+    "expected_rejection": true,
+    "op": 8,
+    "data": [0, 1.0, 5.0, 3, 0, 0, -1, 0, 0, 0, 0, 0, 3e-05, 0, 0, 0, 3e-05, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0]
+   }
+  },
+  {
+   "name": "ub50_taper_second_pass_line_and_reverse_apart_down",
+   "inputs": {
+    "expected_rejection": true,
+    "op": 8,
+    "data": [0, 1.0, 5.0, 3, 0, 0, -1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0]
+   }
+  },
+  {
+   "name": "ub50_taper_second_pass_short_link_up",
+   "inputs": {
+    "expected_rejection": true,
+    "op": 8,
+    "data": [0, 1.0, 5.0, 3, 0, 0, 1, 0, 0, 3e-05, 0, 0, 0, 0, 0, 0, 3e-05, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0, 0]
+   }
+  },
+  {
+   "name": "ub50_taper_end_cap_offsets_of_a_loop_enclosing_nothing",
+   "inputs": {
+    "expected_rejection": true,
+    "op": 8,
+    "data": [1.0, 100.0, -24.89625914511591, 3.0, 0.0, 0.0, -1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 4.9999999999999996e-05, 0.0, 0.0, 0.0, 4.9999999999999996e-05, 0.0, 0.0, 100.0, 0.0, 0.0, 0.0, 100.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+   }
   }
  ]
 }
