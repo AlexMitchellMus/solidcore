@@ -339,6 +339,23 @@ impl ExecutiveAccess<Handle> for Access {
     ) -> SolidResult<StitchAttempt> {
         missing()
     }
+    fn make_face_brep(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> SolidResult<()> {
+        missing()
+    }
+    fn insert_geom_topology(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> SolidResult<()> {
+        missing()
+    }
     fn make_corner_topology(
         &mut self,
         _: &mut Kernel,

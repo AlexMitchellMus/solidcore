@@ -537,20 +537,19 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         ))
     }
 
-    /// `SmFilletGeom::MakeFaceBrep`; waiting for `blend.fillet_geom_p4`.
+    /// `SmFilletGeom::MakeFaceBrep(m_pFilletBrep)`: delegate to the already ported
+    /// `blend::fillet_geom::p4::FilletBrep::make_face_brep` (fillet geom p4) on the
+    /// fillet geometry `geom` resolves to, with the executive's solver table, the
+    /// fillet B-rep `brep` resolves to (the face is built there) and that B-rep's notify
+    /// environment. Its status is returned unchanged; the caller ignores a failure as
+    /// upstream does (`SmFilletExecutive.cpp:2519`).
     fn make_face_brep(
         &mut self,
-        _k: &mut Kernel,
-        _geom: O,
-        _brep: O,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_geom_p4): SmFilletGeom::MakeFaceBrep
-        Err(SolidError::unported(
-            "SmFilletGeom::MakeFaceBrep",
-            "blend.fillet_geom_p4",
-        ))
-    }
+        k: &mut Kernel,
+        geom: O,
+        brep: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
 
     /// `SmBrep::StitchFaces`; waiting for `topology.brep_p4`.
     fn stitch_faces(
@@ -590,19 +589,17 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         executive.set_fillet_brep_edge_map(k, self)
     }
 
-    /// `SmFilletGeom::InsertIntersectionTopology`; waiting for `blend.fillet_geom_p4`.
+    /// `SmFilletGeom::InsertIntersectionTopology()`: delegate to the already ported
+    /// `blend::fillet_geom::p4::FilletBrep::insert_intersection_topology` (fillet geom
+    /// p4) on the fillet geometry `geom` resolves to, with the executive's solver table,
+    /// the target B-rep (`executive.target`) and the fillet B-rep
+    /// (`executive.fillet`). Its status propagates (`SER`, `SmFilletExecutive.cpp:3113`).
     fn insert_geom_topology(
         &mut self,
-        _k: &mut Kernel,
-        _geom: O,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_geom_p4): SmFilletGeom::InsertIntersectionTopology
-        Err(SolidError::unported(
-            "SmFilletGeom::InsertIntersectionTopology",
-            "blend.fillet_geom_p4",
-        ))
-    }
+        k: &mut Kernel,
+        geom: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
 
     /// `SmFilletCorner::InsertIntersectionTopology`; waiting for `blend.fillet_corner_p1`.
     fn insert_corner_topology(
