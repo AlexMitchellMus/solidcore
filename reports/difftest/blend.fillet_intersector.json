@@ -771,8 +771,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0018",
@@ -1395,8 +1395,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0083",
@@ -1599,8 +1599,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0105",
@@ -1767,8 +1767,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0123",
@@ -1835,8 +1835,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0131",
@@ -2311,8 +2311,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0182",
@@ -3067,8 +3067,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0264",
@@ -3223,8 +3223,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0281",
@@ -3523,8 +3523,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0313",
@@ -3719,8 +3719,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0334",
@@ -4703,8 +4703,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0440",
@@ -4943,8 +4943,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0468",
@@ -5539,8 +5539,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0534",
@@ -5639,8 +5639,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0545",
@@ -5731,8 +5731,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0556",
@@ -6411,8 +6411,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0631",
@@ -6655,8 +6655,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0657",
@@ -6931,8 +6931,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0686",
@@ -6991,8 +6991,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0692",
@@ -7219,8 +7219,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0715",
@@ -7351,8 +7351,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0728",
@@ -7383,8 +7383,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0731",
@@ -7575,8 +7575,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0752",
@@ -7651,8 +7651,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0760",
@@ -7707,8 +7707,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0766",
@@ -8111,8 +8111,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0811",
@@ -8251,8 +8251,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0827",
@@ -8923,8 +8923,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0899",
@@ -9579,8 +9579,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0972",
@@ -9835,8 +9835,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1001",
@@ -9931,8 +9931,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1011",
@@ -9963,8 +9963,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1014",
@@ -10091,8 +10091,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1028",
@@ -11059,8 +11059,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1134",
@@ -11071,8 +11071,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1135",
@@ -11347,8 +11347,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1164",
@@ -11475,8 +11475,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::PointOnPlaneSolve",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmConstantRadiusAssistedFS::PointOnPlaneSolve",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1177",
@@ -11808,9 +11808,9 @@
   "cases_passed": 908,
   "cases_total": 1286,
   "deferred_by_unit": {
-    "blend.fillet_solver_p2": 37,
     "blend.fillet_solver_p3": 120,
     "blend.fillet_solver_p4": 59,
+    "blend.fillet_standard_solver_p2": 37,
     "curve.crv_on_surf": 162
   },
   "max_rel_err": 0.0,
