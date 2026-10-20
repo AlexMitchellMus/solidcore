@@ -808,8 +808,9 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         ))
     }
 
-    /// `SmFilletCorner::GetTangentFilletSolver(pFS)`; waiting for
-    /// `blend.fillet_corner_p1`.
+    /// `SmFilletCorner::GetTangentFilletSolver(pFS)` (virtual); waiting for
+    /// `blend.fillet_corner_p1` (the base, `SmFillet1x1Corner`, `SmFillet2x2Corner`) and
+    /// `blend.fillet_corner_p2` (`SmFilletNx1ClosedCorner`, `SmFilletNx2Corner`).
     fn corner_tangent_solver(&self, _corner: O, _solver: O) -> Result<Option<O>> {
         // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::GetTangentFilletSolver
         Err(SolidError::unported(

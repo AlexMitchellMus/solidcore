@@ -28,9 +28,10 @@
 //!   `FilletSurfaceGenerator` record.
 //! - **Fillet laws** build on the `FilletLaw` co-ported by `blend.fillet_standard_solver_p1`
 //!   (PR #168), with the edge map, arc length and extended law curve of
-//!   `blend.fillet_executive_p1` (PR #260, commit 38c5677c, a declared dependency). An elliptical B-spline law whose interpolation fails keeps a null law
-//!   curve upstream (`SE` only logs), which every later use dereferences; the port
-//!   returns that interpolation error instead (UB-207 in `plan/upstream-issues.md`).
+//!   `blend.fillet_executive_p1` (PR #260, commit 38c5677c, a declared dependency). Upstream
+//!   only logs (`SE`) a failed interpolation of the elliptical B-spline law and keeps a
+//!   null law curve; the port returns the interpolation error instead. No input is known
+//!   to make that interpolation fail (its parameters are the distinct `i / 100`).
 //! - **RAII.** `SmTemporaryRadiusChange`'s destructor is
 //!   [`TemporaryRadiusChange::revert`]; [`with_temporary_radius_change`] runs it after
 //!   the body, also on errors. `SmTemporaryChangeValue` on the context's doing-Boolean
@@ -43,9 +44,14 @@
 //!   (UB-206); `SurfaceSurfaceFillet` dereferences a null UV curve. The port returns
 //!   `SM_ERR_NULL_POINTER` there.
 //! - **Bounds.** `CollectTangentEdgeSequence` follows tangent solver chains through
-//!   the corners; a chain that cycles without returning to its first solver never
-//!   ends upstream (HANG-36). Each walk is bounded by the solver count plus one step,
-//!   past which the port returns [`SolidError::InvalidInput`].
+//!   the corners until a null tangent solver or the first solver. Upstream's corners pair
+//!   their solvers symmetrically, so every chain ends there; as a defence against
+//!   adapter input that breaks that pairing, each walk is bounded by the solver count
+//!   plus one step, past which the port returns [`SolidError::InvalidInput`].
+//! - **Law evaluation status.** `SmTemporaryRadiusChange::SetUp` ignores the status of
+//!   `SmFilletLaw::Evaluate` and reads its first value, uninitialised after a failure;
+//!   the port propagates the error (today only `Unported`, as `Evaluate` belongs to
+//!   `blend.fillet_executive_p1`).
 //! - The upstream debug drawing (`SM_GFX_CODE`) is omitted.
 //! - Calls into units that are not ported return [`SolidError::Unported`]: the
 //!   executive constructor, `NoteError`, `NoteFilletError`,
@@ -138,7 +144,8 @@ impl FilletLaw {
     ///
     /// # Errors
     ///
-    /// Those of the interpolation (upstream keeps a law with a null curve; UB-207).
+    /// Those of the interpolation (upstream keeps a law with a null curve; no input is
+    /// known to make it fail).
     #[allow(clippy::too_many_arguments)] // upstream's constructor
     pub fn bspline_elliptical(
         start_radius: f64,
@@ -966,8 +973,8 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
     ///
     /// `SM_ERR_NULL_POINTER` for a null list entry, a solver without corner, or no
     /// solver for the law sequence's first edge; [`SolidError::InvalidInput`] when a
-    /// tangent chain is longer than the solver list (HANG-36); those of the adapter
-    /// calls.
+    /// tangent chain is longer than the solver list (a defensive bound: adapters
+    /// pairing tangent solvers asymmetrically); those of the adapter calls.
     pub fn collect_tangent_edge_sequence<A>(
         &self,
         access: &A,

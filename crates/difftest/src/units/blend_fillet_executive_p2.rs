@@ -11,8 +11,8 @@
 //! one float array (`out`): the status, then the switches, solver count and error code
 //! (`SetFilletParameters`) or the sequence and list lengths. `-2` in the status slot
 //! (upstream would dereference null) is a guard: an error on both sides. An elliptical
-//! law whose interpolation fails has a null curve upstream and an error here: also an
-//! error on both sides (UB-207).
+//! law whose interpolation failed (no such input is known) would have a null curve
+//! upstream and an error here: also an error on both sides.
 //!
 //! Whatever reaches `AddFilletSurfaceGenerator`, `LoadFilletSolver`, `NoteError` or
 //! `CreateFilletCorners` defers to `blend.fillet_executive_p1`, so `SmTemporaryRadiusChange`

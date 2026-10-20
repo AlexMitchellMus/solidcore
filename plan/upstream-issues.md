@@ -3126,23 +3126,11 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** crash/UB (null dereference).
 - **Rust port:** `SM_ERR_NULL_POINTER` at the same points; the difftest compares both as guard errors.
 
-#### UB-207. The elliptical `SmBSplineFilletLaw` constructor keeps a null law curve when the interpolation fails
-- **Location:** `source/SMLib/src/SmFilletExecutive.cpp:5594-5666` (`SmBSplineFilletLaw(crContext, dStartRadius, dEndRadius, dOuterRadius, dAngleSpan, ...)`): `SE(SmBSplineCurve::InterpolatePoints(...))` only logs, and `m_pLawCurve = pLawCurve` stores `NULL`.
-- **What happens:** every later use dereferences the law curve without a check: `Evaluate` (`:6025-6031`, `pLawCurve->GetNaturalInterval()`), `IsLinearLaw` (`SmFilletExecutive.h:886`) and `SmTemporaryRadiusChange::SetUp` (`:5097`); the destructor only asserts (`:5962`).
-- **Trigger:** samples the degree-2 chord-length interpolation rejects, e.g. coincident sample points from a zero angle span with equal radii.
-- **How found:** read during porting (`blend.fillet_executive_p2`, PR #267).
-- **Confirmed:** no.
-- **Severity:** crash/UB (null dereference on first use).
-- **Rust port:** `FilletLaw::bspline_elliptical` returns the interpolation error; the difftest compares a law without a curve (C++) and that error as an error on both sides.
+#### UB-207. RETIRED 2026-10-20 (was: the elliptical `SmBSplineFilletLaw` keeps a null law curve after a failed interpolation)
+- **Reason:** no triggering input exists. The pre-review of PR #267 probed zero span with equal radii, zero radii, span pi and span 1000, among others, and both sides built the full degree-2 curve every time; the interpolation parameters are the distinct `i / 100`. The port still returns an interpolation error where upstream would keep a null curve.
 
-#### HANG-36. `SmFilletExecutive::CollectTangentEdgeSequence` never returns on a tangent chain that cycles without its first solver
-- **Location:** `source/SMLib/src/SmFilletExecutive.cpp:4633` (backward walk `while ( pPrevFS != NULL && pPrevFS != pFS )`) and `:4672` (forward walk `while ( pNextFS != NULL && pNextFS != pFS )`).
-- **What happens:** each walk stops only at a null tangent solver or back at the first solver `pFS`. A chain whose tangent links enter a loop that does not contain `pFS` (corners whose `GetTangentFilletSolver` pairs are not mutually consistent) walks the loop forever, appending to the sequence.
-- **Trigger:** three or more solvers where corner tangency links solver A to B, B to C and C back to B.
-- **How found:** read during porting (`blend.fillet_executive_p2`, PR #267).
-- **Confirmed:** no (needs inconsistent corner tangency, not reached by the box fixtures).
-- **Severity:** hang (unbounded memory growth).
-- **Rust port:** each walk is bounded by the solver count plus one step and returns `SolidError::InvalidInput` past it.
+#### HANG-36. RETIRED 2026-10-20 (was: `CollectTangentEdgeSequence` never returns on a tangent cycle without its first solver)
+- **Reason:** the trigger can't occur. The four `GetTangentFilletSolver` overrides (`SmFilletCorner.cpp:4448`, `:4573`, `:5141`, `:6869`) pair a corner's two solvers symmetrically, or return the solver itself for a closed edge, so every walk ends at NULL or back at `pFS`. A foreign corner makes `GetOtherFilletCorner` (`SmFilletSolver.cpp:235`) return NULL, but the walk only ever passes a corner the solver owns, so that NULL is not reached either. The port keeps its walk bound as a defence against adapter input.
 
 #### WR-208. `SmFilletExecutive` leaks the edge-use arrays `LoadFilletSolver` puts in `m_vVertexCornerMap` for vertices that get no corner
 - **Location:** `source/SMLib/src/SmFilletExecutive.cpp:1803-1808` (`LoadFilletSolver`: `new SmTArray<SmEdgeuse*>` per newly filleted vertex, stored in `m_vVertexCornerMap`); `:1844-1870` (`CreateFilletCorners` hands the array to `SmFilletCorner::Create` and replaces the map entry with the corner, which deletes it in `~SmFilletCorner`); the destructor (`~SmFilletExecutive`) never frees map values.
