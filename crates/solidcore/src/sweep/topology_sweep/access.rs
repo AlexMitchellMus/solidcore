@@ -452,13 +452,10 @@ pub trait SweepAccess {
     fn wire_edges(&mut self, brep: BrepId) -> Result<Vec<EdgeId>> {
         crate::topology::brep::p1::wire_edges(self.brep(brep)?, None)
     }
-    // UNPORTED(topology.brep_p2): SmBrep::GetShellVertices
-    deferred!(
-        /// `SmBrep::GetShellVertices`.
-        fn shell_vertices(brep: BrepId) -> Vec<VertexId>;,
-        "topology.brep_p2",
-        "SmBrep::GetShellVertices"
-    );
+    /// `SmBrep::GetShellVertices` in the owning B-rep's vertex-list order.
+    fn shell_vertices(&mut self, brep: BrepId) -> Result<Vec<VertexId>> {
+        crate::topology::brep::p2::shell_vertices(self.brep(brep)?, None)
+    }
     /// `SmBrep::CopyEdges`, using the destination's context.
     fn copy_edges(
         &mut self,
