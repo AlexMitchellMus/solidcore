@@ -7746,6 +7746,23 @@ PR #203 (on main's #146). Part 2 of `SmTopologyIntersector.cpp`: `RegisterExisti
   `BrepCurveSolve` (`SmBrep::CalculateBoundingBox`, `query.brep`). The shim refuses a
   vertex whose edges lack a curve or vertices (or, for the B-rep vertex, a primary edge
   use) and the FFI requires both B-reps.
+- **Time-budget guard on `IntersectInsertRelate` (op 47): |approx| <= 0.1.** A defined
+  input, not undefined behaviour and not a hang: with a large approximation tolerance
+  the full upstream intersection finishes, but slowly (fuzz drew `approx = -1e300` on
+  `Mouse.smb` x `vase_rev.smb`: 39 s, over its 20 s limit). C++-side wall time of the
+  op-47 fixtures (the port defers op 47), both signs:
+
+  | fixture (generated case) | 1 | 10 | 1e3 | 1e6 |
+  |---|---|---|---|---|
+  | `Mouse.smb` x `vase_rev.smb` (gen0314) | 0.5 s | 5.1 / 9.8 s | 28.8 / 27.0 s | 20.1 / 20.5 s |
+  | `torus.smb` x `ellips_ts2.smb` (gen0111) | 0.4 s | 1.2 / 1.3 s | 1.8 / 1.9 s | 1.8 s |
+  | `box_with_large_fillet.smb` x `torus.smb` (iir) | 0.2 s | 0.4 s | 0.2 / 0.9 s | 0.2 / 0.9 s |
+  | `surf_extrude.smb` x `box_with_large_fillet.smb` (gen0101) | 0.1 s | 0.2 / 0.1 s | 0.1 s | 0.1 s |
+  | gen0070, gen0105, gen0143 | < 0.1 s | < 0.1 s | < 0.1 s | < 0.1 s |
+
+  |1| is the largest measured magnitude under 2 s on all of them; the guard sits 10x
+  below it. Generated tolerances are at most 1e-2, so no earlier case changes. No HANG
+  id: every run terminated.
 - Upstream issues: UB-184 (`RegisterExistingSSI` failure leaves the table's lists out of
   step), UB-175 [PSIRT] (`~SmProtoTopologyManager` use-after-free), HANG-25 (zero
   tolerance), WR-170 (copies of registered curves and a failed manager leak).

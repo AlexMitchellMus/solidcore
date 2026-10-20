@@ -1023,7 +1023,7 @@ fn close_loop_cases() -> Vec<(String, Option<Value>)> {
         };
         let mut ops = Vec::new();
         let mut first = None;
-        for _ in 0..1 + rng.below(5) {
+        for _ in 0..=rng.below(5) {
             let a = vtx(&mut rng, 0);
             let b = if rng.chance(0.7) {
                 [1, a[1], a[2]]

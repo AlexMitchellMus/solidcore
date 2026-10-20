@@ -37,8 +37,10 @@
 //! handle-taking op may follow an op that may change topology; 45 and 46 need the
 //! manager (45 both intersector
 //! B-reps, 47 the maps of constructor 0), 47 both B-reps, a nonzero approximation
-//! tolerance (HANG-25) and B-rep blocks below [`HANG_COORD`] (HANG-16's class: the
-//! full upstream intersection does not finish otherwise) and it must be the last op.
+//! tolerance (HANG-25) of magnitude at most [`IIR_MAX_APPROX`] (a time-budget guard, not
+//! UB: larger ones finish but take seconds to minutes) and B-rep blocks below
+//! [`HANG_COORD`] (HANG-16's class: the full upstream intersection does not finish
+//! otherwise) and it must be the last op.
 //! The shim checks what depends on the B-reps' and the manager's state (mates that
 //! are not vertices where upstream dereferences them, edges of a vertex without
 //! curve, faces without surface, 46 without the maps reaching `Relate`'s insert, 52's
@@ -61,6 +63,15 @@ use crate::FfiError;
 /// The magnitude from which `IntersectInsertRelate`'s full intersection does not finish.
 pub const HANG_COORD: f64 = 1.0e154;
 
+/// The largest approximation-tolerance magnitude `IntersectInsertRelate` (47) is run
+/// with: a **time-budget guard** on a defined input, not undefined behaviour. With a
+/// larger tolerance the full upstream intersection still finishes but slows down
+/// sharply (the C++ side of `Mouse.smb` x `vase_rev.smb`: 0.5 s at |1|, 5-10 s at |10|,
+/// 27-29 s at |1e3|, 20 s at |1e6|; `torus.smb` x `ellips_ts2.smb` 1.2-1.9 s from |10|;
+/// see `plan/findings.md`). The bound is 10x below the largest measured magnitude
+/// that stays under 2 s on every op-47 fixture (|1|). Generated tolerances are at most
+/// 1e-2.
+pub const IIR_MAX_APPROX: f64 = 0.1;
 /// Most intervals in one classification.
 pub const MAX_INTERVALS: usize = 16;
 
@@ -249,6 +260,12 @@ impl ExtraOps for Part2 {
                 if st.approx == 0.0 || st.block_max_abs >= HANG_COORD {
                     return Err(bad(
                         "IntersectInsertRelate needs a nonzero tolerance and coordinates below 1e154",
+                    ));
+                }
+                // time budget, not UB: a large tolerance finishes, but slowly
+                if st.approx.is_nan() || st.approx.abs() > IIR_MAX_APPROX {
+                    return Err(bad(
+                        "IntersectInsertRelate's time budget needs |tolerance| <= 0.1",
                     ));
                 }
                 st.closed = true;

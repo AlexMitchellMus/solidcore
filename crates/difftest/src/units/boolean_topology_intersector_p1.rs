@@ -1942,6 +1942,10 @@ fn resolve(ops: &[OpIn], c: &Counts, two: &Two, start: Start) -> Result<Vec<ROp>
         if matches!(op, OpIn::Iir) && (approx == 0.0 || start.block_max_abs >= ffi2::HANG_COORD) {
             return Err(fail("intersect_insert_relate_hang"));
         }
+        // and its time-budget guard (a large tolerance finishes, but slowly)
+        if matches!(op, OpIn::Iir) && (approx.is_nan() || approx.abs() > ffi2::IIR_MAX_APPROX) {
+            return Err(fail("intersect_insert_relate_time_budget"));
+        }
         if let OpIn::SetTols { approx: a, .. } = op {
             approx = *a;
         }
