@@ -297,8 +297,8 @@ fn copy_faceuse_links(
     Ok(())
 }
 
-/// `SmFace::Notify(operation, data1, data2, data3)` of face `f` (unit
-/// `topology.face_p3`).
+/// `SmFace::Notify(operation, data1, data2, data3)` of face `f`
+/// ([`crate::topology::face::p3::notify`], with no trim cache: none is kept for `b`).
 fn face_notify(
     b: &mut Brep,
     f: FaceId,
@@ -306,9 +306,13 @@ fn face_notify(
     operation: NotifyOperation,
     data: [Option<NotifyArg>; 3],
 ) -> Result<()> {
-    let _ = (b, f, env, operation, data);
-    // UNPORTED(topology.face_p3): SmFace::Notify
-    Err(SolidError::unported("SmFace::Notify", "topology.face_p3"))
+    let data = data.map(|d| {
+        d.map(|d| match d {
+            NotifyArg::Entity(e) => (env.key_of)(e),
+            NotifyArg::Object(r) => r,
+        })
+    });
+    crate::topology::face::p3::notify(b, f, env, None, operation, data)
 }
 
 /// `SmFace::GetVertices` (unit `topology.face_p4`).
@@ -321,19 +325,15 @@ fn face_vertices(b: &Brep, f: FaceId) -> Result<Vec<VertexId>> {
     ))
 }
 
-/// `SmBrep::MakeShellVertex(pRegion, crPoint, rpNewShell, rpNewVertex)` (unit
-/// `topology.brep_p9`).
+/// `SmBrep::MakeShellVertex(pRegion, crPoint, rpNewShell, rpNewVertex)`
+/// ([`super::p9::make_shell_vertex`]), notifying through `env`.
 fn make_shell_vertex(
     b: &mut Brep,
     region: Option<RegionId>,
     point: Point3,
+    env: &mut NotifyEnv<'_>,
 ) -> Result<(ShellId, VertexId)> {
-    let _ = (b, region, point);
-    // UNPORTED(topology.brep_p9): SmBrep::MakeShellVertex
-    Err(SolidError::unported(
-        "SmBrep::MakeShellVertex",
-        "topology.brep_p9",
-    ))
+    super::p9::make_shell_vertex(b, region, point, env)
 }
 
 /// `SmBrep::DeleteEdge(pEdge, pOptSurfaceToKeep)` (unit `topology.brep_p4`;
@@ -487,6 +487,21 @@ fn destroy_face(b: &mut Brep, env: &mut NotifyEnv<'_>, f: FaceId) -> Result<()> 
 
 // ---- construction -----------------------------------------------------------------------------
 
+/// The constructor's infinite region (`SmBrep()`): a void region, made `b`'s
+/// infinite region and put into its region list. Returns the region.
+///
+/// # Errors
+///
+/// Those of the B-rep's region list (a corrupt list).
+pub(crate) fn add_infinite_region(b: &mut Brep) -> Result<RegionId> {
+    // Create infinite region and put into brep's region list
+    let r = b.add_region_record(Region::default())?;
+    b.set_infinite_region(Some(r));
+    region_set_is_void(b, r, TRUE)?;
+    b.pre_insert_region(r)?;
+    Ok(r)
+}
+
 /// `SmBrep(dThisModelSizeEstimate, dThisLargeSmallSizeRatio, pOptContextForStack)`: a
 /// new B-rep with the given size estimate and large/small ratio (upstream defaults
 /// [`tol::USE_DEFAULT`]), the context's zone tolerance, editing disabled, and an
@@ -509,11 +524,7 @@ pub fn new_brep(
     b.set_this_large_small_size_ratio(k, large_small_size_ratio);
     b.tolerance = tol::context_zone_tol_3d(k, Some(&k.context), SmallTopoType::NormalSize);
 
-    // Create infinite region and put into brep's region list
-    let r = b.add_region_record(Region::default())?;
-    b.set_infinite_region(Some(r));
-    region_set_is_void(&mut b, r, TRUE)?;
-    b.pre_insert_region(r)?;
+    add_infinite_region(&mut b)?;
 
     // report construction at SmObject::Notify level - skip other levels
     let this = p2::brep_ref(&b);
@@ -888,9 +899,9 @@ pub fn api_brep_copy(
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`] for a non-empty list: `SmBrep::MakeShellVertex` is unit
-/// `topology.brep_p9`; [`SolidError::NotFound`] for a dangling id; `InvalidInput` for a
-/// caller key in the kernel's reserved range.
+/// Those of `SmBrep::MakeShellVertex` ([`super::p9::make_shell_vertex`]);
+/// [`SolidError::NotFound`] for a dangling id; `InvalidInput` for a caller key in the
+/// kernel's reserved range.
 pub fn copy_vertices(
     k: &mut Kernel,
     src: &Brep,
@@ -919,7 +930,7 @@ fn copy_vertices_in(
         let inf = dest.infinite_region();
 
         // make new ShellVertex
-        let (_, new_v) = make_shell_vertex(dest, inf, coords)?;
+        let (_, new_v) = make_shell_vertex(dest, inf, coords, env)?;
 
         // inform the public - propogate attributes and report copy
         let this = source_key(EntityRef::Vertex(v));
@@ -1700,9 +1711,10 @@ impl Default for DeleteFaceOptions {
 ///
 /// `SM_ERR` when editing is disabled, the face is not in the B-rep, or the topology is
 /// inconsistent; `SM_ERR_NULL_POINTER` for a missing face use, shell, edge use mate,
-/// vertex use or vertex (`NER`); [`SolidError::Unported`] for every face in the
-/// B-rep: `SmFace::Notify` (`topology.face_p3`), then `SmFace::GetVertices`
-/// (`topology.face_p4`), `DeleteEdge`/`DeleteVertex` (`topology.brep_p4`);
+/// vertex use or vertex (`NER`); those of `SmFace::Notify`
+/// ([`crate::topology::face::p3::notify`]); [`SolidError::Unported`] for every face in
+/// the B-rep: `SmFace::GetVertices` (`topology.face_p4`), `DeleteEdge`/`DeleteVertex`
+/// (`topology.brep_p4`);
 /// `InvalidInput` for a caller key in the kernel's reserved range.
 pub fn delete_face(
     k: &mut Kernel,
@@ -2459,7 +2471,7 @@ fn make_wire_edge_vertex_in(
 ///
 /// `SM_ERR` when `survivor` is not a vertex of `e`, `e` is closed, or a wire edge's
 /// other vertex has fewer than two edges (or that edge fewer than two uses);
-/// [`SolidError::Unported`]: `SmFace::Notify` (`topology.face_p3`) for an edge in a
+/// those of `SmFace::Notify` ([`crate::topology::face::p3::notify`]) for an edge in a
 /// face; `InvalidInput` for a corrupt shell list, a caller key in the kernel's reserved
 /// range or an exhausted identity domain.
 pub fn squeeze_edge(
@@ -2743,8 +2755,8 @@ const fn as_bspline_surface(s: &Surface) -> Option<&BSplineSurface> {
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`] from [`p2::replace_surface`] (`topology.face_p3`) for any
-/// face with an analytic surface; those of the curve lift / approximation;
+/// those of [`p2::replace_surface`] (its `SmFace::Notify` and `CreateUVTrimCurves`,
+/// `topology::face::p3`) for any face with an analytic surface; those of the curve lift / approximation;
 /// `SM_ERR_NULL_POINTER` when a curve could not be made a B-spline or an offset's base
 /// is not a B-spline kind (`NER`); those of the offset's bounding box and extension;
 /// `InvalidInput` for a caller key in the kernel's reserved range or an exhausted

@@ -39,9 +39,9 @@ use solidcore::SolidError;
 use solidcore_ffi::units::blend_fillet_geom_p4::{self as ffi, Op};
 
 use super::blend_fillet_geom_p1::{
-    analytic_surface, dump_bcurve, gen_curve, gen_cylinder, gen_model, gen_surface,
-    push_model, push_srf, scale_of, status, surface_of, AnalyticSrf, Crv, EdgeIn, EuIn,
-    GeomIn, Model, RustModel, Srf, VertexIn,
+    analytic_surface, dump_bcurve, gen_curve, gen_cylinder, gen_model, gen_surface, push_model,
+    push_srf, scale_of, status, surface_of, AnalyticSrf, Crv, EdgeIn, EuIn, GeomIn, Model,
+    RustModel, Srf, VertexIn,
 };
 use crate::case::CaseContext;
 use crate::runner::default_cases;
@@ -378,7 +378,15 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
                 }
             };
             o.push(0.0);
-            let r = create_uv_curve(&k, &rm.fb, rm.vertex(*sv)?, rm.vertex(*ev)?, *two, &surface, *tol);
+            let r = create_uv_curve(
+                &k,
+                &rm.fb,
+                rm.vertex(*sv)?,
+                rm.vertex(*ev)?,
+                *two,
+                &surface,
+                *tol,
+            );
             o.push(status_of!(r));
             let curves = r.unwrap_or_default();
             dump_bcurve(&mut o, curves.curve_3d.as_ref());
@@ -398,10 +406,9 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
             let vid = rm.vertex(*v)?;
             let target = rm.target.clone();
             let r = match &i.query {
-                Query::RailIntExtended { .. } => {
-                    rm.fb
-                        .calc_rail_int_extended_edgeuse(&k, vid, &solvers, &target)
-                }
+                Query::RailIntExtended { .. } => rm
+                    .fb
+                    .calc_rail_int_extended_edgeuse(&k, vid, &solvers, &target),
                 Query::Int2Fillets { .. } => {
                     rm.fb.calc_fillet_int_2_fillets(&k, vid, &solvers, &target)
                 }
@@ -422,8 +429,14 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
             let key_of = |e: solidcore::EntityRef| {
                 use solidcore::EntityRef as E;
                 let (type_code, key) = match e {
-                    E::Face(f) => (solidcore::topology::face::p2::TYPE, 1 + u64::from(f.index())),
-                    E::Edge(x) => (solidcore::topology::edge::TYPE, 1 << 40 | u64::from(x.index())),
+                    E::Face(f) => (
+                        solidcore::topology::face::p2::TYPE,
+                        1 + u64::from(f.index()),
+                    ),
+                    E::Edge(x) => (
+                        solidcore::topology::edge::TYPE,
+                        1 << 40 | u64::from(x.index()),
+                    ),
                     E::Edgeuse(x) => (16005, 2 << 40 | u64::from(x.index())),
                     _ => (0, 3 << 40),
                 };

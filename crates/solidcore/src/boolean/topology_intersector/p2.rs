@@ -58,7 +58,7 @@
 //!   copy is a new handle), so there is nothing to reset.
 //! - **Callees not ported yet** are private stubs returning [`SolidError::Unported`],
 //!   each tagged `UNPORTED(<unit>)`: `SmBrep::GetFaces` (`topology.brep_p1`),
-//!   `SmBrep::DeleteFace` (`topology.brep_p3`), `SmBrep::DeleteEdge` /
+//!   `SmBrep::DeleteEdge` /
 //!   `DeleteVertex` (`topology.brep_p4`), `SmBrep::CombineCoincidentVertices`
 //!   (`topology.brep_p5`), `SmFace::Point3DClassify` (`query.face_p1`), and the
 //!   stubs of [`p1`](super::p1) for `SmFace::GetEdges` / `GetVertices` / `GetBrep`
@@ -188,24 +188,6 @@ impl<O: Ord + Copy> Mates<O> for MapMates<O> {
 fn brep_faces<O>(_brep: O, _opt_attribute_id: Option<u64>) -> Result<Vec<O>> {
     // UNPORTED(topology.brep_p1): SmBrep::GetFaces
     Err(SolidError::unported("SmBrep::GetFaces", "topology.brep_p1"))
-}
-
-/// `SmBrep::DeleteFace(pFace, bDeleteEdgesVertices, bDoRegionNesting,
-/// pOptDeletedEdgesVertices, pOptRegionToKeep)`: the deleted edges and vertices when
-/// they are asked for.
-fn brep_delete_face<O>(
-    _brep: O,
-    _face: O,
-    _delete_edges_vertices: bool,
-    _do_region_nesting: bool,
-    _want_deleted_edges_vertices: bool,
-    _opt_region_to_keep: Option<O>,
-) -> Result<Option<Vec<O>>> {
-    // UNPORTED(topology.brep_p3): SmBrep::DeleteFace
-    Err(SolidError::unported(
-        "SmBrep::DeleteFace",
-        "topology.brep_p3",
-    ))
 }
 
 /// `SmBrep::DeleteEdge(pEdge, pOptSurfaceToKeep)`.
@@ -575,10 +557,11 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
     ///
     /// Those of `SmBrep::DeleteFace` / `DeleteEdge` / `DeleteVertex`;
     /// [`SolidError::Unported`] for `SmFace::GetEdges` / `GetVertices` / `GetBrep`
-    /// (`topology.face_p4`) and the deletions (`topology.brep_p3`, `_p4`);
+    /// (`topology.face_p4`) and the edge and vertex deletions (`topology.brep_p4`);
     /// [`SolidError::InvalidInput`] for an unknown handle or an object without B-rep.
     pub fn delete_faces(
         &mut self,
+        k: &mut Kernel,
         brep: &mut impl IntersectorBrep<O>,
         faces: &[O],
         opt_keep_as_wires: Option<&[O]>,
@@ -610,8 +593,8 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
 
             // delete TargetFace from its Brep (FALSE = don't delete dangling edges and
             // vertices, we do that below in accordance with pOptKeepAsWires; the rest
-            // are DeleteFace's defaults)
-            brep_delete_face(b, f, false, true, false, None)?;
+            // are DeleteFace's defaults: IntersectorBrep::brep_delete_face)
+            brep.brep_delete_face(k, b, f)?;
         }
 
         if face_brep_h.is_none() {

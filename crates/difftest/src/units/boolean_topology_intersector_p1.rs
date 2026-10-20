@@ -3538,7 +3538,7 @@ fn run_part2_op(
             let keep: Option<Vec<H>> = keep
                 .as_ref()
                 .map(|l| l.iter().filter_map(|&h| triple_to_h(h)).collect());
-            status(ti.delete_faces(two, &fs, keep.as_deref()), o)?;
+            status(ti.delete_faces(k, two, &fs, keep.as_deref()), o)?;
         }
         OpIn::FixGaps { verts } => {
             o.push(44.0);
