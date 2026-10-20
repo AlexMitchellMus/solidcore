@@ -436,6 +436,8 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
             tan: rng.uniform(1e-4, 0.2),
             tsects,
             orig_faces,
+            line_edges: Vec::new(),
+            arc_edges: Vec::new(),
         },
         split,
     }
