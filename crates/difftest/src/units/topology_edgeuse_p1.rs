@@ -1302,6 +1302,12 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
 const EXACT_SURFACES: [i64; 2] = [15002, 15011];
 const EXACT_CURVES: [i64; 2] = [14033, 14010];
 
+/// The deferral label of cases whose geometry the shared B-rep export holds only as a
+/// B-spline part (an analytic face surface or edge curve the import cannot rebuild
+/// exactly): a harness limitation, not an unported unit (`topology.brep_p1`'s
+/// convention).
+const HARNESS_ANALYTIC_EXPORT: &str = "harness:analytic-geometry-export";
+
 /// The deferral of a case that evaluates a face surface or edge curve the import holds
 /// only as its B-spline part (an analytic `SmBSplineSurface` / `SmBSplineCurve`
 /// subclass): the gap calculations and the 3D-drop branch of `GetStartPointUVLoopGap`.
@@ -1365,15 +1371,18 @@ fn inexact_geometry(b: &Brep, types: &ImportTypes, op: &OpIn) -> Option<Output> 
                 "surface.surf_of_extrusion_p2",
                 "SurfaceKind::SurfOfExtrusion",
             ),
-            _ => ("topology.brep_p10", "SmBrep::MakeTopologyFromData"),
+            _ => (
+                HARNESS_ANALYTIC_EXPORT,
+                "face surface of an analytic kind exported as its B-spline part",
+            ),
         };
         return Some(Output::deferred(unit, symbol));
     }
     for t in [curve_of(Some(e)), curve_of(other)] {
         if t >= 0 && !EXACT_CURVES.contains(&t) {
             return Some(Output::deferred(
-                "topology.brep_p10",
-                "SmBrep::MakeTopologyFromData",
+                HARNESS_ANALYTIC_EXPORT,
+                "edge curve of an analytic kind exported as its B-spline part",
             ));
         }
     }

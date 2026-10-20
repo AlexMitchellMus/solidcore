@@ -415,6 +415,12 @@ fn topo(i: &Inputs) -> Result<Result<Topo, Output>, HarnessError> {
 const EXACT_SURFACES: [i64; 2] = [15002, 15011];
 const EXACT_CURVES: [i64; 3] = [14033, 14010, 14048];
 
+/// The deferral label of cases whose geometry the shared B-rep export holds only as a
+/// B-spline part (an analytic face surface or edge curve the import cannot rebuild
+/// exactly): a harness limitation, not an unported unit (`topology.brep_p1`'s
+/// convention).
+const HARNESS_ANALYTIC_EXPORT: &str = "harness:analytic-geometry-export";
+
 /// The deferral of a case that evaluates geometry the import holds only as its B-spline
 /// part: the labels of `topology.edgeuse_p2`'s `inexact_geometry`.
 pub(super) fn inexact(t: &Topo, edges: &[EdgeId], eus: &[EdgeuseId]) -> Option<Output> {
@@ -450,7 +456,10 @@ pub(super) fn inexact(t: &Topo, edges: &[EdgeId], eus: &[EdgeuseId]) -> Option<O
                         "surface.surf_of_extrusion_p2",
                         "SurfaceKind::SurfOfExtrusion",
                     ),
-                    _ => ("topology.brep_p10", "SmBrep::MakeTopologyFromData"),
+                    _ => (
+                        HARNESS_ANALYTIC_EXPORT,
+                        "face surface of an analytic kind exported as its B-spline part",
+                    ),
                 };
                 return Some(Output::deferred(unit, symbol));
             }
@@ -468,8 +477,8 @@ pub(super) fn inexact(t: &Topo, edges: &[EdgeId], eus: &[EdgeuseId]) -> Option<O
             .unwrap_or(-1);
         if ct >= 0 && !EXACT_CURVES.contains(&ct) {
             return Some(Output::deferred(
-                "topology.brep_p10",
-                "SmBrep::MakeTopologyFromData",
+                HARNESS_ANALYTIC_EXPORT,
+                "edge curve of an analytic kind exported as its B-spline part",
             ));
         }
     }
