@@ -153,8 +153,9 @@ struct Two
 const double ST_OK = 0.0;
 // The op the Rust side defers at without running anything comparable, so the script
 // stops here (the runner mirrors each predicate): a non-local FaceuseOffset of a face
-// whose surface the export brings in as its B-spline part (an SmSurfOfRevolution's
-// offset self-intersection takes 20 s to minutes, HANG-26), and an EdgeuseOffset with
+// that is neither an SmPlane nor a plain SmBSplineSurface (an SmSurfOfRevolution's
+// offset self-intersection takes 20 s to minutes, HANG-26; the other kinds arrive as
+// their B-spline part), and an EdgeuseOffset with
 // |offset distance| above MAX_EDGEUSE_OFFSET_DISTANCE (HANG-27).
 const double ST_NOT_RUN = -6.0;
 // HANG-27: SmCrvOnSurf::ApproximateCurve of an EdgeuseOffset rail grows with the
@@ -555,7 +556,9 @@ void run_script(Rd& rd, Two& t, std::vector<double>& o)
                 long ty = fu->GetFace()->GetSurface()->GetType();
                 if (ty != SmPlane_TYPE && ty != SmBSplineSurface_TYPE)
                 {
-                    o.push_back(ST_NOT_RUN); // the Rust defers here (analytic export)
+                    // the Rust defers here: HANG-26 for an SmSurfOfRevolution (imported
+                    // exactly), the analytic export for the kinds imported as B-splines
+                    o.push_back(ST_NOT_RUN);
                     return;
                 }
             }
