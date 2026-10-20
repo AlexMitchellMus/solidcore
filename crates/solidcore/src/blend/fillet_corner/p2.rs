@@ -35,10 +35,10 @@
 //!   ([`FilletExecutiveData`]) and the B-rep being filleted (for `sm_TestG1Continuity`)
 //!   explicitly; `SM_ASSERT_ERR` (a debug assertion) is not reproduced, the `NULL` it
 //!   returns is `None`.
-//! - **Unported callees.** `SmFilletEdge::MakeFilletEdge` (`blend.fillet_geom_p5`) and
-//!   `SmFilletCorner::AddExtendedOriginalSurface` (`blend.fillet_corner_p1`) return
-//!   [`SolidError::Unported`]; the code after them is ported, so wiring them is the only
-//!   change needed.
+//! - **Unported callees.** `SmFilletEdge::MakeFilletEdge` (`blend.fillet_geom_p5`)
+//!   returns [`SolidError::Unported`]; the code after it is ported (including
+//!   `AddExtendedOriginalSurface`, unit `blend.fillet_corner_p1`, on the executive's map
+//!   in [`CornerEnv`]), so wiring it is the only change needed.
 //!
 //! Every loop runs over a given list once; there is no recursion.
 
@@ -55,7 +55,6 @@ use crate::error::{EntityRef, Result, SolidError};
 use crate::geom::geom_utility::p2::ContinuityType;
 use crate::kernel::Kernel;
 use crate::math::{rad_to_deg, Point3};
-use crate::surface::surface::Surface;
 use crate::topology::edgeuse::p1 as eu1;
 use crate::topology::{edge, Brep, EdgeId, EdgeuseId, FaceId, VertexId};
 
@@ -341,7 +340,7 @@ impl FilletCorner {
 
         // Copy pNewSurface, when possible as an analytic surface.
         let new_analytic_surface = new_surface.copy_and_add_analytics(env.k)?;
-        add_extended_original_surface(side_face_id, new_analytic_surface)?;
+        self.add_extended_original_surface(env.exec, side_face_id, new_analytic_surface);
 
         let new_edge1 = make_fillet_edge(env, new_vert_l, new_vert_s)?;
         let fe1 = env.pseudo.fillet_edge_mut(new_edge1)?;
@@ -449,15 +448,6 @@ fn make_fillet_edge(_env: &mut CornerEnv<'_>, _start: VertexId, _end: VertexId) 
     Err(SolidError::unported(
         "SmFilletEdge::MakeFilletEdge",
         "blend.fillet_geom_p5",
-    ))
-}
-
-/// `SmFilletCorner::AddExtendedOriginalSurface` (unit `blend.fillet_corner_p1`).
-fn add_extended_original_surface(_face: FaceId, _surface: Surface) -> Result<()> {
-    // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::AddExtendedOriginalSurface
-    Err(SolidError::unported(
-        "SmFilletCorner::AddExtendedOriginalSurface",
-        "blend.fillet_corner_p1",
     ))
 }
 
