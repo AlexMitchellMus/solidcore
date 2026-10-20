@@ -1301,9 +1301,10 @@ mod tests {
         let b = KernelManifoldIntersector::new(0x03ff_ffff).unwrap();
         assert!(KernelManifoldIntersector::new(0x0400_0000).is_err());
         // the largest namespace's keys stay below the kernel's reserved range
-        assert!(!crate::geom::context::is_reserved_key(
-            b.object_key(true, MergeEntity::Vertex(VertexId::from_index(u32::MAX)))
-        ));
+        assert!(!crate::geom::context::is_reserved_key(b.object_key(
+            true,
+            MergeEntity::Vertex(VertexId::from_index(u32::MAX))
+        )));
         let mut keys = BTreeSet::new();
         for adapter in [&a, &b] {
             for other in [false, true] {

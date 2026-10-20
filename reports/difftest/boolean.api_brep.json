@@ -407,8 +407,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "lists_op0",
@@ -419,8 +419,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "lists_op1",
@@ -431,8 +431,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "lists_op2",
@@ -443,8 +443,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "lists_op3",
@@ -455,8 +455,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "lists_op4",
@@ -579,8 +579,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0007",
@@ -887,8 +887,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0038",
@@ -1551,8 +1551,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0106",
@@ -1731,8 +1731,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0126",
@@ -1787,8 +1787,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0131",
@@ -1827,8 +1827,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0135",
@@ -1891,8 +1891,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0142",
@@ -1939,8 +1939,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0147",
@@ -2151,8 +2151,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0169",
@@ -2299,8 +2299,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0185",
@@ -2435,8 +2435,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0199",
@@ -2467,8 +2467,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0202",
@@ -2547,8 +2547,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0211",
@@ -2583,8 +2583,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0215",
@@ -2707,8 +2707,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0226",
@@ -2803,8 +2803,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::SmBrep(copy)",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::StitchFaces",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0236",
@@ -2850,7 +2850,7 @@
   "deferred_by_unit": {
     "boolean.merge_p2": 114,
     "primitive.primitive_creation_p1": 1,
-    "topology.brep_p3": 21
+    "topology.brep_p4": 21
   },
   "max_rel_err": 0.0,
   "pass": true,
