@@ -7832,7 +7832,8 @@ adapter and by `boolean.merge_p4`'s `ArenaPair` on the B-rep behind the handle. 
 intersector's one call (the edge-face box check, `bTight = FALSE`) takes the port's
 non-tight branch, which is complete; the tight branch (`query.face_p3`) is never requested.
 Case diff against main: 830 cases (with #272's regression fixtures since the merge of main
-bb137d7d; 827 before), 693 pass, 0 fail, 137 deferred on both sides; the 7 now
+bb137d7d; 827 before), 713 pass, 0 fail, 117 deferred on both sides (693 / 137 before #149
+wired `topology.brep_p2`'s stubs, merged at e5f3e441); the 7 now
 run their face box and defer deeper, 6 at `SmFace::GetUpwardLoopuses` (`topology.face_p4`)
 and 1 at `SmBrep::CalculateBoundingBox` (`query.brep`); no new compared values yet, so the
 box itself is exercised but not compared until those stubs are wired. Perturb 690/690,
