@@ -470,10 +470,11 @@ impl<O: LoopObject> HealData<O> {
 
 // The context callback, not a mutation's nominal inputs/outputs, owns these lists
 // (`SmTrackTopologyChanges`, then `UpdateTargetLists(GetRmList(), GetAddList(), ..)`).
-// The edits run without a notification environment, so part 5 notifies through
-// `topology.brep_p2`'s arena state: every event names its object by
-// `loopuse::notify_ref`, which `entity_of_notify_key` inverts. A key it did not issue
-// is an error, never a guessed identity.
+// The edits run without a notification environment, so part 5 names `b`'s objects by
+// their kernel identities (its plain entry points' `plain_edit`:
+// `topology::brep::p3::topology_ref` with `b`'s serial in the kernel context's domain),
+// which `topology::brep::p3::topology_entity` inverts with that serial. A key it did not
+// issue is an error, never a guessed identity.
 fn capture_changes<T>(
     k: &mut Kernel,
     b: &mut Brep,
@@ -503,9 +504,11 @@ fn capture_changes<T>(
     if let Some(error) = failure {
         return Err(error);
     }
+    let serial = b.notify_serial();
     let decode = |key| {
-        loopuse::entity_of_notify_key(key)
-            .ok_or_else(|| invalid("tracked object without an arena identity"))
+        serial
+            .and_then(|s| crate::topology::brep::p3::topology_entity(s, key))
+            .ok_or_else(|| invalid("tracked object without a kernel identity of this B-rep"))
     };
     let removed = lists
         .rm_list

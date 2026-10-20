@@ -491,12 +491,17 @@ fn destroy_face(b: &mut Brep, env: &mut NotifyEnv<'_>, f: FaceId) -> Result<()> 
 /// new B-rep with the given size estimate and large/small ratio (upstream defaults
 /// [`tol::USE_DEFAULT`]), the context's zone tolerance, editing disabled, and an
 /// infinite void region as its only region; the construction is reported to the
-/// context's callbacks (`SmObject::Notify`) under [`Brep::key`].
+/// context's callbacks (`SmObject::Notify`) under the new B-rep's own kernel identity
+/// (the caller holds no key for it yet: [`topology_ref`] with the serial the kernel
+/// context issues it, [`notify_serial`], so two new B-reps never share it, and a later
+/// [`with_kernel_callbacks`] edit names it the same). [`Brep::key`] stays the caller's.
 ///
 /// # Errors
 ///
-/// Those of the B-rep's region list (a corrupt list); the construction notification's
-/// status is not checked, as upstream.
+/// Those of the B-rep's region list (a corrupt list); `InvalidInput` while the kernel
+/// context's callbacks are lent (a construction inside a lent edit) or for an
+/// exhausted identity domain; the construction notification's status is not checked,
+/// as upstream.
 pub fn new_brep(
     k: &mut Kernel,
     model_size_estimate: f64,
@@ -516,7 +521,11 @@ pub fn new_brep(
     b.pre_insert_region(r)?;
 
     // report construction at SmObject::Notify level - skip other levels
-    let this = p2::brep_ref(&b);
+    let serial = notify_serial(&mut k.context, &mut b)?;
+    let this = ObjectRef {
+        key: topology_ref(serial, brep_entity()).key,
+        ..p2::brep_ref(&b)
+    };
     object::notify(
         Some(&mut k.context),
         NotifyOperation::Construction,
@@ -534,8 +543,11 @@ pub fn new_brep(
 /// ([`merge_brep`]; `add_analytics`, upstream default `TRUE`, recognises analytic
 /// surfaces). `copy_map` gets copy to source, `reverse_map` source to copy.
 /// `copy_attributes` (default `TRUE`) is unused upstream. `env` notifies the copy's
-/// objects under `env.key_of`, `source_key` is the identity of `src`'s (the two
-/// B-reps' ids overlap).
+/// objects under `env.key_of`, the copy itself included: its [`Brep::key`] is
+/// `env.key_of(EntityRef::Brep(_))`'s, set before anything is notified (the caller's
+/// identity for the new object, as upstream's is its own address); `source_key` is
+/// the identity of `src`'s objects (the two B-reps' ids overlap), and `src` keeps its
+/// own [`Brep::key`].
 ///
 /// # Errors
 ///
@@ -555,6 +567,7 @@ pub fn copy_brep(
 ) -> Result<Brep> {
     let _ = copy_attributes;
     let mut b = Brep::new();
+    b.set_key((env.key_of)(brep_entity()).key);
     b.set_editing_enabled(src.editing_enabled());
     b.set_validate_only(src.validate_only());
 
@@ -728,21 +741,62 @@ const RESERVED_KEY: SolidError = SolidError::InvalidInput {
     reason: "a topology key of the caller is in the kernel's reserved key range",
 };
 
-/// Every key `key_of` gives `b`'s objects, and the B-rep's own ([`p2::brep_ref`]), is a
-/// caller key (below [`crate::geom::context::KERNEL_KEY_BASE`]) or the object's own
-/// kernel identity in `context`'s domain ([`topology_ref`] with `b`'s serial there, as
-/// [`with_kernel_callbacks`] names them). So no topology object shares a key with a
-/// curve, nor with another B-rep's kernel-named objects.
+/// The objects of each kind an edit of `b` may still allocate: the next `window` ids
+/// (arenas only append, so new objects take exactly these).
+fn prospective_entities(b: &Brep, window: usize) -> Vec<EntityRef> {
+    let next = |len: usize| (len..len.saturating_add(window)).map_while(|i| u32::try_from(i).ok());
+    let mut all = Vec::new();
+    all.extend(next(b.regions().len()).map(|i| EntityRef::Region(RegionId::from_index(i))));
+    all.extend(next(b.shells().len()).map(|i| EntityRef::Shell(ShellId::from_index(i))));
+    all.extend(next(b.faceuses().len()).map(|i| EntityRef::Faceuse(FaceuseId::from_index(i))));
+    all.extend(next(b.faces().len()).map(|i| EntityRef::Face(FaceId::from_index(i))));
+    all.extend(next(b.loopuses().len()).map(|i| EntityRef::Loopuse(LoopuseId::from_index(i))));
+    all.extend(
+        next(b.loops().len()).map(|i| EntityRef::Loop(crate::topology::LoopId::from_index(i))),
+    );
+    all.extend(next(b.edgeuses().len()).map(|i| EntityRef::Edgeuse(EdgeuseId::from_index(i))));
+    all.extend(next(b.edges().len()).map(|i| EntityRef::Edge(EdgeId::from_index(i))));
+    all.extend(
+        next(b.vertexuses().len()).map(|i| EntityRef::Vertexuse(VertexuseId::from_index(i))),
+    );
+    all.extend(next(b.vertices().len()).map(|i| EntityRef::Vertex(VertexId::from_index(i))));
+    all
+}
+
+/// The number of objects of one kind any edit here allocates at most: the B-rep's own
+/// count (`DeleteFace` splits at most that many shells), three per object of a B-rep it
+/// reads (`CopyVertices` makes a shell, vertex use and vertex per vertex; copies and
+/// merges one per object) and a few for the wire makers.
+fn allocation_window(b: &Brep, source: Option<&Brep>) -> usize {
+    let n = entities(b).len();
+    let m = source.map_or(0, |s| entities(s).len());
+    n.saturating_add(m.saturating_mul(3)).saturating_add(16)
+}
+
+/// Every key `key_of` gives `b`'s objects, those an edit may allocate
+/// ([`prospective_entities`], `window` of each kind) and the B-rep's own
+/// ([`p2::brep_ref`]) is a caller key (below [`crate::geom::context::KERNEL_KEY_BASE`]) or
+/// the object's own kernel identity in `context`'s domain ([`topology_ref`] with `b`'s
+/// serial there, as [`with_kernel_callbacks`] names them). So no topology object, old or
+/// new, shares a key with a curve, nor with another B-rep's kernel-named objects.
 ///
 /// # Errors
 ///
 /// `InvalidInput` for any other key in the reserved range.
-fn check_keys(context: &Context, b: &Brep, key_of: &dyn Fn(EntityRef) -> ObjectRef) -> Result<()> {
+fn check_keys(
+    context: &Context,
+    b: &Brep,
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+    window: usize,
+) -> Result<()> {
     let serial = context.issued_brep_serial(b.notify_identity());
     let own = |e: EntityRef, key: ObjectKey| {
         !is_reserved_key(key) || serial.is_some_and(|s| topology_entity(s, key) == Some(e))
     };
     let all_own = entities(b).into_iter().all(|e| own(e, key_of(e).key))
+        && prospective_entities(b, window)
+            .into_iter()
+            .all(|e| own(e, key_of(e).key))
         && own(brep_entity(), p2::brep_ref(b).key);
     if all_own {
         Ok(())
@@ -753,8 +807,8 @@ fn check_keys(context: &Context, b: &Brep, key_of: &dyn Fn(EntityRef) -> ObjectR
 
 /// Runs the edit `edit` of `b` under the caller's identities: `env.key_of` for `b`'s
 /// objects and `source` for those of a B-rep it reads (copies or merges from), the
-/// B-reps by their [`Brep::key`]. Refuses a key in the kernel's reserved range first
-/// ([`check_keys`]), then gives every object of both a default `SmTopology` record
+/// B-reps by their [`Brep::key`]. Refuses a key in the kernel's reserved range first,
+/// for the objects the edit may create too ([`check_keys`]), then gives every object of both a default `SmTopology` record
 /// unless the caller keeps one ([`seed_records`]), as every upstream object carries
 /// one; records the caller keeps are used as they are.
 ///
@@ -770,9 +824,11 @@ fn with_caller_identities<R>(
 ) -> Result<R> {
     {
         let context = env.context.as_deref().unwrap_or(&k.context);
-        check_keys(context, b, env.key_of)?;
+        let window = allocation_window(b, source.map(|(src, _)| src));
+        check_keys(context, b, env.key_of, window)?;
         if let Some((src, key_of)) = source {
-            check_keys(context, src, key_of)?;
+            // (a source is read, never added to)
+            check_keys(context, src, key_of, 0)?;
         }
     }
     seed_records(env.records, b, env.key_of);
@@ -4070,6 +4126,167 @@ mod tests {
         b.remove_region_from_list(r1).unwrap();
         assert_eq!(b.region_list_head(), None);
         assert!(p1::regions(&b, None).unwrap().is_empty());
+    }
+
+    /// Review of 255d52b7, 1: an object an edit creates cannot take a reserved key
+    /// either. The caller names every existing object ordinarily, but would give the new
+    /// wire edge a curve's key: the edit is refused before anything changes.
+    #[test]
+    fn new_objects_cannot_take_a_reserved_key() {
+        use crate::curve::line::Line;
+        let (mut ctx, seen) = recording_context();
+        let mut k = Kernel::default();
+        let (mut b, [a, _, c], _) = test_support::wire_chain(true);
+        b.set_editing_enabled(true);
+        let next = EntityRef::Edge(EdgeId::from_index(u32::try_from(b.edges().len()).unwrap()));
+        let key_of = move |e: EntityRef| {
+            if e == next {
+                ObjectRef {
+                    type_code: edge::TYPE,
+                    key: ObjectKey(crate::geom::context::GEOMETRY_KEY_BASE | 1),
+                }
+            } else {
+                dest_key(e)
+            }
+        };
+        let (pa, pc) = (b.vertex(a).unwrap().point, b.vertex(c).unwrap().point);
+        let curve = Curve::from(Line::from_points(pa, pc, 3));
+        let ivl = curve.natural_interval();
+        let edges = b.edges().len();
+        let mut records = BTreeMap::new();
+        let mut attributes = crate::geom::attribute::AttributeStore::default();
+        let mut env = NotifyEnv {
+            records: &mut records,
+            attributes: &mut attributes,
+            context: Some(&mut ctx),
+            key_of: &key_of,
+        };
+        let r = make_wire_edge(
+            &mut k,
+            &mut b,
+            &mut env,
+            None,
+            a,
+            c,
+            curve,
+            &ivl,
+            OrientType::Same,
+        );
+        assert_eq!(r, Err(RESERVED_KEY));
+        assert_eq!(b.edges().len(), edges);
+        assert!(records.is_empty() && seen.lock().unwrap().is_empty());
+    }
+
+    /// Review of 255d52b7, 2: each copy is its own object, named by the caller's
+    /// destination mapper (`env.key_of` of the B-rep itself) before anything is
+    /// notified, so two live copies in one store keep their own attributes.
+    #[test]
+    fn copies_take_their_own_caller_identity() {
+        use crate::geom::attribute::{Attribute, Behavior};
+        let mut k = Kernel::default();
+        let (mut src1, _, _) = test_support::wire_chain(true);
+        let (mut src2, _, _) = test_support::wire_chain(true);
+        src1.set_key(ObjectKey(100));
+        src2.set_key(ObjectKey(200));
+        let mut records = BTreeMap::new();
+        let mut attributes = crate::geom::attribute::AttributeStore::default();
+        for (key, value) in [(src1.key(), 73), (src2.key(), 91)] {
+            let h = attributes
+                .insert(Attribute::long(42, value, Behavior::Copy))
+                .unwrap();
+            attributes.add_attribute(key, h).unwrap();
+        }
+        let (dk1, dk2) = (
+            |e: EntityRef| caller_key(e, 3 << 40),
+            |e: EntityRef| caller_key(e, 4 << 40),
+        );
+        let (sk1, sk2) = (
+            |e: EntityRef| caller_key(e, 5 << 40),
+            |e: EntityRef| caller_key(e, 6 << 40),
+        );
+        let mut env = NotifyEnv {
+            records: &mut records,
+            attributes: &mut attributes,
+            context: None,
+            key_of: &dk1,
+        };
+        let copy1 = copy_brep(&mut k, &mut env, &src1, &sk1, None, None, true, false).unwrap();
+        env.key_of = &dk2;
+        let copy2 = copy_brep(&mut k, &mut env, &src2, &sk2, None, None, true, false).unwrap();
+        assert_eq!(copy1.key(), dk1(brep_entity()).key);
+        assert_eq!(copy2.key(), dk2(brep_entity()).key);
+        let value = |key: ObjectKey| {
+            let h = env.attributes.find_attribute(key, 42).unwrap();
+            env.attributes.get(h).unwrap().long_value()
+        };
+        assert_eq!(
+            (value(copy1.key()), value(copy2.key())),
+            (Some(73), Some(91))
+        );
+        assert_eq!((src1.key(), src2.key()), (ObjectKey(100), ObjectKey(200)));
+    }
+
+    /// Review of 255d52b7, 2: two new B-reps report their construction under two
+    /// identities (the caller holds no key for them yet), and a later kernel-named edit
+    /// names the B-rep as its construction did.
+    #[test]
+    fn new_breps_construct_under_their_own_identities() {
+        let mut k = Kernel::default();
+        let seen = Seen::default();
+        k.context
+            .set_user_notify_callback(Some(Box::new(Rec(std::sync::Arc::clone(&seen)))));
+        let mut b1 = new_brep(&mut k, tol::USE_DEFAULT, tol::USE_DEFAULT).unwrap();
+        let b2 = new_brep(&mut k, tol::USE_DEFAULT, tol::USE_DEFAULT).unwrap();
+        let keys: Vec<ObjectKey> = seen.lock().unwrap().iter().map(|r| r.key).collect();
+        // (each construction names its B-rep as caller and as data1)
+        assert_eq!(keys.len(), 4);
+        assert_ne!(keys[0], keys[2]);
+        assert_eq!((b1.key(), b2.key()), (ObjectKey(0), ObjectKey(0)));
+        let named = with_kernel_callbacks(&mut k, &mut b1, |_, b, _| Ok(p2::brep_ref(b).key));
+        assert_eq!(named.unwrap(), keys[0]);
+    }
+
+    /// Review of 255d52b7, 3: a plain `topology.brep_p5` edit runs under the kernel's
+    /// identities, so the same edit of two live B-reps, through one callback, never
+    /// names two objects with one key; and one nested in a lent edit is refused before
+    /// anything changes.
+    #[test]
+    fn plain_p5_edits_of_two_breps_never_share_a_key() {
+        use crate::topology::brep::p5;
+        let mut k = Kernel::default();
+        let seen = Seen::default();
+        k.context
+            .set_user_notify_callback(Some(Box::new(Rec(std::sync::Arc::clone(&seen)))));
+        let mut keys = Vec::new();
+        for label in [100, 200] {
+            let (mut b, [_, v, _], [_, e1]) = test_support::wire_chain(true);
+            b.set_key(ObjectKey(label));
+            b.set_editing_enabled(true);
+            let first = seen.lock().unwrap().len();
+            p5::delete_topological_vertex(&mut k, &mut b, true, Some(v), Some(e1)).unwrap();
+            let all = seen.lock().unwrap();
+            let topology: Vec<ObjectKey> = all
+                .get(first..)
+                .unwrap()
+                .iter()
+                .map(|r| r.key)
+                .filter(|x| x.0 < crate::geom::context::GEOMETRY_KEY_BASE)
+                .collect();
+            assert!(!topology.is_empty());
+            keys.push(topology);
+        }
+        assert!(keys[1].iter().all(|x| !keys[0].contains(x)), "{keys:?}");
+        // nested: refused, the B-rep unchanged
+        let (mut b, _, _) = test_support::wire_chain(true);
+        b.set_editing_enabled(true);
+        let before: Vec<Point3> = b.vertices().iter().map(|(_, v)| v.point).collect();
+        let r = with_kernel_callbacks(&mut k, &mut b, |k, b, _| {
+            let placement = crate::geom::axis2_placement::Axis2Placement::default();
+            p5::transform(k, b, &placement, Some(Vec3::new(2.0, 1.0, 1.0)), false)
+        });
+        assert!(matches!(r, Err(SolidError::InvalidInput { .. })), "{r:?}");
+        let after: Vec<Point3> = b.vertices().iter().map(|(_, v)| v.point).collect();
+        assert_eq!(before, after);
     }
 }
 
