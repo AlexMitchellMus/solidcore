@@ -414,6 +414,9 @@ impl UnitDiff for Runner {
     }
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
+        if rng.chance(0.4) {
+            return serde_json::to_value(gen_faces(rng)).ok();
+        }
         let brep = shared::gen_brep(rng);
         let op = match &brep {
             BrepIn::Network | BrepIn::Wire { .. } => 1 + rng.below(2),
@@ -998,4 +1001,209 @@ fn seeded_records(b: &Brep) -> BTreeMap<ObjectKey, Topology> {
     all.into_iter()
         .map(|e| (key_of(e).key, Topology::default()))
         .collect()
+}
+
+// ---- op 3 generator ---------------------------------------------------------------------
+
+fn plane_in(o: [f64; 3], n: [f64; 3]) -> SrfIn {
+    SrfIn::Plane { o, n }
+}
+
+/// A closed path through network points (`[from, to]` steps).
+fn cycle(points: &[usize]) -> Vec<Vec<usize>> {
+    let mut path = Vec::new();
+    for (k, &a) in points.iter().enumerate() {
+        path.push(vec![a, points[(k + 1) % points.len()]]);
+    }
+    path
+}
+
+fn net_of(points: Vec<[f64; 3]>, edges: &[(usize, usize)]) -> NetIn {
+    NetIn {
+        points,
+        edges: edges
+            .iter()
+            .map(|&(a, b)| NetEdge { a, b, curve: None })
+            .collect(),
+    }
+}
+
+fn plain_face(surface: SrfIn, cycles: &[&[usize]]) -> FaceIn {
+    FaceIn {
+        surface: Some(surface),
+        region: -1,
+        calc_trims: false,
+        verify: false,
+        opposite: false,
+        loops: cycles.iter().map(|c| c.len() as i64).collect(),
+        path: cycles.iter().flat_map(|c| cycle(c)).collect(),
+        edgeuses: Vec::new(),
+        loop_points: Vec::new(),
+        vertices: Vec::new(),
+        uv_curves: None,
+    }
+}
+
+/// Random face-construction sequences on wire networks: squares (with a hole or a
+/// loop vertex), shared edges, open boxes, flat and saddle B-spline patches, at
+/// random scales and offsets, with random flags and orientations.
+fn gen_faces(rng: &mut Rng) -> Inputs {
+    let s = 10f64.powf(rng.uniform(-4.0, 3.0));
+    let (x, y, z) = (
+        rng.uniform(-2.0, 2.0) * s,
+        rng.uniform(-2.0, 2.0) * s,
+        rng.uniform(-2.0, 2.0) * s,
+    );
+    let at = |u: f64, v: f64, w: f64| [x + u * s, y + v * s, z + w * s];
+    let up = plane_in([x, y, z], [0.0, 0.0, 1.0]);
+    let sq_edges = [(0, 1), (1, 2), (2, 3), (3, 0)];
+    let square = vec![
+        at(0.0, 0.0, 0.0),
+        at(1.0, 0.0, 0.0),
+        at(1.0, 1.0, 0.0),
+        at(0.0, 1.0, 0.0),
+    ];
+    let (net, mut faces) = match rng.below(6) {
+        0 => {
+            let mut points = square;
+            let mut f = plain_face(up, &[&[0, 1, 2, 3]]);
+            if rng.chance(0.4) {
+                points.push(at(rng.uniform(0.1, 0.9), rng.uniform(0.1, 0.9), 0.0));
+                f.loop_points = vec![4];
+            }
+            (net_of(points, &sq_edges), vec![f])
+        }
+        1 => {
+            let mut points = square;
+            points.extend([
+                at(0.25, 0.25, 0.0),
+                at(0.75, 0.25, 0.0),
+                at(0.75, 0.75, 0.0),
+                at(0.25, 0.75, 0.0),
+            ]);
+            let mut edges = sq_edges.to_vec();
+            edges.extend([(4, 5), (5, 6), (6, 7), (7, 4)]);
+            (
+                net_of(points, &edges),
+                vec![plain_face(up, &[&[0, 1, 2, 3], &[4, 7, 6, 5]])],
+            )
+        }
+        2 => {
+            let mut points = square;
+            points.extend([at(2.0, 0.0, 0.0), at(2.0, 1.0, 0.0)]);
+            let mut edges = sq_edges.to_vec();
+            edges.extend([(1, 4), (4, 5), (5, 2)]);
+            (
+                net_of(points, &edges),
+                vec![
+                    plain_face(up.clone(), &[&[0, 1, 2, 3]]),
+                    plain_face(up, &[&[1, 4, 5, 2]]),
+                ],
+            )
+        }
+        3 => {
+            let points = vec![
+                at(0.0, 0.0, 0.0),
+                at(1.0, 0.0, 0.0),
+                at(1.0, 1.0, 0.0),
+                at(0.0, 1.0, 0.0),
+                at(0.0, 0.0, 1.0),
+                at(1.0, 0.0, 1.0),
+                at(1.0, 1.0, 1.0),
+                at(0.0, 1.0, 1.0),
+            ];
+            let edges = [
+                (0, 1),
+                (1, 2),
+                (2, 3),
+                (3, 0),
+                (4, 5),
+                (5, 6),
+                (6, 7),
+                (7, 4),
+                (0, 4),
+                (1, 5),
+                (2, 6),
+                (3, 7),
+            ];
+            let sides: [([f64; 3], [f64; 3], [usize; 4]); 5] = [
+                (at(0.0, 0.0, 0.0), [0.0, 0.0, -1.0], [0, 3, 2, 1]),
+                (at(0.0, 0.0, 0.0), [0.0, -1.0, 0.0], [0, 1, 5, 4]),
+                (at(1.0, 0.0, 0.0), [1.0, 0.0, 0.0], [1, 2, 6, 5]),
+                (at(0.0, 1.0, 0.0), [0.0, 1.0, 0.0], [3, 7, 6, 2]),
+                (at(0.0, 0.0, 0.0), [-1.0, 0.0, 0.0], [0, 4, 7, 3]),
+            ];
+            let k = 1 + rng.below(5) as usize;
+            let faces = sides
+                .iter()
+                .take(k)
+                .map(|(o, n, c)| plain_face(plane_in(*o, *n), &[c]))
+                .collect();
+            (net_of(points, &edges), faces)
+        }
+        _ => {
+            // a bilinear patch through the corners (flat or a saddle)
+            let h = if rng.chance(0.5) {
+                0.0
+            } else {
+                rng.uniform(-1.0, 1.0)
+            };
+            let corners = [
+                at(0.0, 0.0, 0.0),
+                at(1.0, 0.0, 0.0),
+                at(1.0, 1.0, h),
+                at(0.0, 1.0, 0.0),
+            ];
+            let w = |p: [f64; 3]| [p[0], p[1], p[2], solidcore::nurbs::math::NOW];
+            let patch = SrfIn::Bspline(shared::BssIn {
+                oob: false,
+                form: 0,
+                net: vec![
+                    vec![w(corners[0]), w(corners[3])],
+                    vec![w(corners[1]), w(corners[2])],
+                ],
+                p: 1,
+                q: 1,
+                u: vec![0.0, 0.0, 1.0, 1.0],
+                v: vec![0.0, 0.0, 1.0, 1.0],
+            });
+            (
+                net_of(corners.to_vec(), &sq_edges),
+                vec![plain_face(patch, &[&[0, 1, 2, 3]])],
+            )
+        }
+    };
+    for f in &mut faces {
+        f.calc_trims = rng.chance(0.3);
+        f.verify = rng.chance(0.3);
+        if rng.chance(0.2) {
+            f.region = 0;
+        }
+        if rng.chance(0.25) {
+            // the other side: reversed loops on the opposite orientation
+            f.opposite = true;
+            let mut at_step = 0usize;
+            for &n in &f.loops {
+                let end = (at_step + n as usize).min(f.path.len());
+                if let Some(chunk) = f.path.get_mut(at_step..end) {
+                    chunk.reverse();
+                    for step in chunk {
+                        step.reverse();
+                    }
+                }
+                at_step = end;
+            }
+        }
+    }
+    Inputs {
+        brep: None,
+        net: Some(net),
+        faces,
+        op: 3,
+        seed: 0,
+        edges: Vec::new(),
+        repeat: 1,
+        lock_mask: 0,
+        flags: 0,
+    }
 }

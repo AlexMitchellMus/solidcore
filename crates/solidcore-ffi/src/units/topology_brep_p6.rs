@@ -1,11 +1,14 @@
 //! Checked native `SmBrep::{CopyEdges, MakeFaceTopology, TestClosureSplitRegion}`.
-//! Uses the topology.vertexuse fixture block and the traverser's raw input export.
+//! Uses the topology.vertexuse fixture block and the traverser's raw input export;
+//! [`make_faces`] appends its `MakeFaceTopology` calls to the block and returns the
+//! post-operation graph.
 
 use super::topology_topology_traverser::{self as graph, Fixture};
 use super::topology_vertexuse::counts;
 use crate::{call_with_buffer, FfiError};
 
-/// One request. `op`: closure=0, copy=1, edgeless face=2. Flag bits are
+/// One request. `op`: closure=0, copy=1, edgeless face=2 (face construction on real
+/// loops is [`make_faces`], the shim's op 3). Flag bits are
 /// infinite-region testing / calculate trims (1), optional copy list (2), null
 /// surface (4), opposite orientation (8), and radial verification (16).
 #[derive(Debug, Clone)]
@@ -294,6 +297,70 @@ mod tests {
                 "{request:?}"
             );
         }
+    }
+
+    #[test]
+    fn make_faces_rejects_bad_specs_and_builds_a_square() {
+        // a kind-5 square: four shell vertices and four line edges
+        let mut block = vec![5.0, 4.0];
+        for p in [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]] {
+            block.extend(p);
+        }
+        block.push(4.0);
+        for (a, b) in [(0.0, 1.0), (1.0, 2.0), (2.0, 3.0), (3.0, 0.0)] {
+            block.extend([a, b, 0.0]);
+        }
+        block.extend([0.0, 0.0]);
+        let plane = vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+        let edgeless = FaceSpec {
+            surface: Some(plane.clone()),
+            region: -1,
+            ..FaceSpec::default()
+        };
+        for bad in [
+            FaceSpec {
+                region: 99,
+                ..edgeless.clone()
+            },
+            FaceSpec {
+                flags: 8,
+                ..edgeless.clone()
+            },
+            FaceSpec {
+                edgeuses: vec![-1],
+                ..edgeless.clone()
+            },
+            FaceSpec {
+                vertices: vec![99],
+                ..edgeless.clone()
+            },
+            FaceSpec {
+                loops: vec![-1],
+                ..edgeless.clone()
+            },
+            FaceSpec {
+                surface: Some(vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+                ..edgeless.clone()
+            },
+            FaceSpec {
+                uv_curves: Some(vec![Some(vec![2.0])]),
+                ..edgeless.clone()
+            },
+        ] {
+            assert!(
+                matches!(
+                    make_faces("", &block, &[bad.clone()]),
+                    Err(FfiError::InvalidArgument(_))
+                ),
+                "{bad:?}"
+            );
+        }
+        let out = make_faces("", &block, &[edgeless]).unwrap();
+        // one call, SM_SUCCESS, a face and its new shell, no region
+        assert_eq!(out.get(..2), Some(&[1.0, 0.0][..]));
+        assert!(out.get(2).is_some_and(|f| *f >= 0.0));
+        assert!(out.get(3).is_some_and(|s| *s >= 0.0));
+        assert_eq!(out.get(4), Some(&-1.0));
     }
 
     #[test]

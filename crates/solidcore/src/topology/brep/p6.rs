@@ -5,18 +5,35 @@
 //! | Rust | Upstream |
 //! |------|----------|
 //! | [`copy_edges`] | `SmBrep::CopyEdges` |
-//! | [`make_face_topology`] | `SmBrep::MakeFaceTopology` |
+//! | [`make_face_topology`], [`FaceTopologyOptions`], [`FaceTopology`] | `SmBrep::MakeFaceTopology` |
+//! | [`make_face_topology_attempt`], [`FaceTopologyAttempt`] | same, retaining native status and partial outputs |
+//! | `connect_edge_loops`, `find_sector`, `assign_uv_curves` (private) | its mark-locked edge-loop block, radial-sector recovery and `cpOptUVCurves` block |
 //! | [`test_closure_split_region`] | `SmBrep::TestClosureSplitRegion(SmFaceuse*)` |
 //! | [`test_closure_split_region_attempt`] | same, retaining native status and partial outputs |
 //!
 //! Deviations: pointers become arena ids; optional outputs become return values.
-//! Edits preserve the upstream mutations preceding an error. Missing callees stop
-//! at their first call: face construction at `SetTolerance` (`face_p3`), and a closed-shell split at
+//! Edits preserve the upstream mutations preceding an error. A closed-shell split stops at
 //! `CalculateBoundingBox` (`query.brep`) after its two `SmBrep::Notify` calls
 //! ([`crate::topology::brep::p2::notify`] with the caller's [`NotifyEnv`], statuses
 //! ignored; the new region gets its default `SmTopology` record when it is made, as
-//! `new SmRegion`). The dependent remainder of each algorithm is deferred, rather than
-//! approximating construction, attributes, radial sectors, trims or ray casting.
+//! `new SmRegion`), rather than approximating the infinite-region ray casting and the
+//! classification of the remaining faces, wires and shells.
+//! `MakeFaceTopology`: the caller's [`Marks`] hold the objects' mark values (the
+//! `SmNewMarkAndLock` block claims and releases a new mark, also on error). New objects
+//! get their `SmTopology` record in the [`NotifyEnv`] under its identity, which also
+//! names the face as its surface's owner. `SmSurface::SetOwner`'s `SM_NO_CHANGE_OWNER`
+//! is sent to the kernel's context under [`FaceTopologyOptions::surface_key`] (a caller
+//! without surface identities passes `None`: not notified, and no surface argument in
+//! the final `SM_NO_ADD_TO_BREP`). `new SmFace` joins the B-rep's face list at
+//! allocation (part 1's `add_face_record`); upstream's later `PostInsert` is checked to
+//! leave it last. A deleted shell (`delete pShell`, after `SM_NO_DESTRUCTION`) is reset
+//! to `SmShell()` in its arena, off every list. The face's loops and its shell's faces
+//! skeleton lists are kept as part 10 builds them. `cpOptUVCurves` is copied: upstream
+//! edits the caller's curves in place and hands accepted ones to the edge uses. A
+//! pointer upstream dereferences without a check (an input edge use without edge, mate,
+//! shell or vertex, loop counts past the edge uses, loop vertices merged into the NULL
+//! keeper shell of a face without edge loops) is [`SolidError::InvalidInput`]. A failed
+//! radial-sector recovery completes the face and returns `SM_ERR`, as upstream.
 //! The shell implementation comes from PR #154. Surface owner identities are
 //! supplied by the caller, independently of arena indices. A null trimmed copy
 //! returns a null-pointer error instead of the upstream dereference. There is no recursion;
@@ -261,6 +278,15 @@ fn delete_shell(brep: &mut Brep, env: &mut NotifyEnv<'_>, shell: ShellId) -> Res
     ))?;
     *brep.shell_mut(shell)? = Shell::default();
     Ok(())
+}
+
+// `SER(pRegion->Remove(pShell))`: `SmOwningTopology::Remove`'s SM_ERR (the shell is
+// not on the region's list, `InvalidInput` in the shell port) is the native status.
+fn region_remove(brep: &mut Brep, region: RegionId, shell: ShellId) -> Result<()> {
+    shell::region_remove_shell(brep, region, shell).map_err(|error| match error {
+        SolidError::InvalidInput { .. } => SolidError::sm_err(OP),
+        other => other,
+    })
 }
 
 // `pV->PostInsert(pVU)`.
@@ -634,7 +660,7 @@ fn build_face(
 
                 // remove VertexShell from its Region->Shell list
                 let reg = deref(eu::shell_region(brep, vertex_shell)?)?;
-                shell::region_remove_shell(brep, reg, vertex_shell)?;
+                region_remove(brep, reg, vertex_shell)?;
 
                 // delete the shell
                 delete_shell(brep, env, vertex_shell)?;
@@ -768,7 +794,7 @@ fn connect_edge_loops(
 
                         // remove shell from its Region->Shell list
                         let reg = deref(eu::shell_region(brep, del_shell)?)?;
-                        shell::region_remove_shell(brep, reg, del_shell)?;
+                        region_remove(brep, reg, del_shell)?;
 
                         // delete the shell
                         delete_shell(brep, env, del_shell)?;
@@ -1370,5 +1396,121 @@ mod tests {
         ));
         assert_eq!(b.faces().len(), 0);
         assert_eq!(b.loopuses().len(), 0);
+    }
+
+    fn z_plane() -> Surface {
+        Surface::from(Plane::from_normal(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+        ))
+    }
+
+    #[test]
+    fn edgeless_face_gets_a_new_shell_and_its_primary_faceuse() {
+        for orientation in [OrientType::Same, OrientType::Opposite] {
+            let mut k = Kernel::default();
+            let mut b = Brep::new_with_infinite_region().unwrap();
+            let region = b.infinite_region().unwrap();
+            let mut state = crate::topology::brep::p2::ArenaNotifyState::new(&b);
+            let before = k.context.current_mark(MarkType::Mark);
+            let made = make_face_topology(
+                &mut k,
+                &mut b,
+                &mut Marks::default(),
+                &mut state.env(None),
+                Some(z_plane()),
+                orientation,
+                &FaceTopologyOptions::default(),
+            )
+            .unwrap();
+            let shell = made.shell.unwrap();
+            assert_eq!(made.region, None);
+            assert_eq!(b.region(region).unwrap().shells, vec![shell]);
+            let face = b.face(made.face).unwrap();
+            let primary = face.faceuse.unwrap();
+            assert_eq!(b.faceuse(primary).unwrap().orientation, OrientType::Same);
+            let ShellMembers::Faceuses(members) = &b.shell(shell).unwrap().members else {
+                panic!("face-use shell expected");
+            };
+            assert_eq!(members.len(), 2);
+            assert_eq!(b.faceuse(members[0]).unwrap().orientation, orientation);
+            assert!(face.loops.is_empty());
+            assert_eq!(face.tolerance, b.tolerance());
+            // the mark lock claimed (and released) a new mark
+            assert!(k.context.current_mark(MarkType::Mark) > before);
+            assert!(!k.context.is_mark_locked(MarkType::Mark));
+        }
+    }
+
+    #[test]
+    fn a_shell_vertex_becomes_a_vertex_loop_and_its_shell_is_deleted() {
+        let mut k = Kernel::default();
+        let mut b = Brep::new_with_infinite_region().unwrap();
+        let region = b.infinite_region().unwrap();
+        let mut state = crate::topology::brep::p2::ArenaNotifyState::new(&b);
+        let (old_shell, v) = crate::topology::brep::p9::make_shell_vertex(
+            &mut b,
+            None,
+            Vec3::new(0.5, 0.5, 0.0),
+            &mut state.env(None),
+        )
+        .unwrap();
+        state.seed(&b);
+        let made = make_face_topology(
+            &mut k,
+            &mut b,
+            &mut Marks::default(),
+            &mut state.env(None),
+            Some(z_plane()),
+            OrientType::Same,
+            &FaceTopologyOptions {
+                loop_vertices: &[v],
+                ..FaceTopologyOptions::default()
+            },
+        )
+        .unwrap();
+        let shell = made.shell.unwrap();
+        assert_eq!(b.region(region).unwrap().shells, vec![shell]);
+        assert_eq!(b.shell(old_shell).unwrap(), &Shell::default());
+        let uses = &b.vertex(v).unwrap().vertexuses;
+        assert_eq!(uses.len(), 2);
+        let face = b.face(made.face).unwrap();
+        assert_eq!(face.loops.len(), 1);
+        for &vu in uses {
+            let VertexuseOwner::Loopuse(Some(lu)) = b.vertexuse(vu).unwrap().owner else {
+                panic!("loop vertex use expected");
+            };
+            assert_eq!(
+                b.loopuse(lu).unwrap().start,
+                LoopuseStart::Vertexuse(Some(vu))
+            );
+            assert_eq!(b.loopuse(lu).unwrap().orientation, OrientType::Same);
+        }
+    }
+
+    #[test]
+    fn a_null_surface_or_region_fails_before_allocation() {
+        let mut b = Brep::new();
+        let mut state = crate::topology::brep::p2::ArenaNotifyState::new(&b);
+        let r = make_face_topology_attempt(
+            &mut Kernel::default(),
+            &mut b,
+            &mut Marks::default(),
+            &mut state.env(None),
+            Some(z_plane()),
+            OrientType::Same,
+            &FaceTopologyOptions::default(),
+        )
+        .unwrap();
+        assert!(matches!(
+            r.status,
+            Err(SolidError::Upstream {
+                code: crate::error::SM_ERR_NULL_POINTER,
+                ..
+            })
+        ));
+        assert_eq!(r.face, None);
+        assert_eq!(b.faces().len(), 0);
+        assert_eq!(b.shells().len(), 0);
     }
 }

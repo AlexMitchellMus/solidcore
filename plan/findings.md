@@ -6950,8 +6950,9 @@ with the runner-only profile override. No platform prerequisites enter this PR.
   it upstream (primary face use, face list and shell insertion, loops, edge uses, radial
   sectors, trims, ~500 lines of `SmBrep::MakeFaceTopology`) is that unit's own unported
   remainder, so calling the ported `topology::face::p3::set_tolerance` there would only
-  move the stop into code `topology.face_p3` does not own. It is wired when
-  `topology.brep_p6` ports the remainder.
+  move the stop into code `topology.face_p3` does not own. **Wired** (the
+  `MakeFaceTopology` remainder PR, 2026-10-21): `topology.brep_p6` now ports the whole
+  function and calls `topology::face::p3::set_tolerance(GetTolerance(), TRUE, TRUE)`.
   Also `topology.edgeuse_p3` `face_surface_cache` (merge with main, #117):
   `EvaluateBinormal`'s `smsurf_GetSurfaceCache` builds the face surface's trimmed cache,
   whose constructor calls `CreateUVTrimCurves` (`SmTrimSrfCache.cpp:209`); that is the
@@ -11296,3 +11297,55 @@ mechanical:
   `allow_removal_of_ends = false` or the runner's record after the squeeze op.
 
 `SmCurveInterval::GetMinUV` / `GetMaxUV` are wired (no case reaches them yet).
+
+## topology.brep_p6: the `MakeFaceTopology` remainder (2026-10-21, no disagreements)
+
+- **What was ported.** `SmBrep.cpp:14141-14828` in full. That covers the face and face
+  uses, loops and loop uses, the mark-locked edge-loop block (keeper shell, `RemoveShell`
+  plus region `Remove` plus `delete` of the other loops' shells, wire edge-use reuse,
+  new edge-use/vertex-use pairs, `sUsedEdges` / `bVerifyRadialSectors` radial-sector
+  recovery with a temporary UV trim curve, `AddOrientedEUPair`, CW/CCW links), loop
+  vertices (shell-vertex reuse and shell deletion, `TransferChildrenTo` of a vertex's
+  shell), `cpOptUVCurves` and `CreateUVTrimCurves`, `TestClosureSplitRegion` and the
+  final `SM_NO_ADD_TO_BREP`. The former `UNPORTED(topology.face_p3): SmFace::SetTolerance`
+  stop was not a missing `face_p3` call but this unported remainder. It is gone.
+  Every callee is in a green or partial unit.
+- **API.** `make_face_topology` / `make_face_topology_attempt` take `&mut Kernel` (the mark
+  lock), the caller's `Marks` and a `NotifyEnv`. `topology.brep_p7`'s `make_face` gained a
+  `NotifyEnv` argument. `make_face`, `make_face_with_curves`, `copy_faces`,
+  `trimming_tools::trim_surface_with_model_space_curves` and
+  `FilletBrep::make_face_brep` now take `&mut Kernel`. Their library callers already
+  held one; only tests and runners changed.
+- **Coverage (op 3).** `fixtures/topology.brep_p6/make_face.json` (89 cases, see its
+  README) plus generated cases build kind-5 wire networks. Kind 5 is a new shared
+  fixture block: `MakeShellVertex` points joined by `MakeEdgeTopology` line edges. The
+  cases run sequences of `MakeFaceTopology` calls and compare every call's status and
+  outputs, the context mark counters and locks, and the whole post-operation graph:
+  surfaces, UV trim and edge curves sampled, tolerances, every link. They pass with 0
+  failures, including holes, loop vertices, shared edges, open boxes of 1 to 5 faces,
+  a non-manifold book, B-spline patches and tiny, huge or off-plane inputs.
+- **Deferred.** Every `bCalculateTrims` case defers at `SmFace::GetUpwardLoopuses`
+  (`topology.face_p4`, inside `face_p3`'s `CreateUVTrimCurves`), or at `SmCrvOnSurf` over a
+  plane (`curve.crv_on_surf`) for given UV curves. Every radial-sector recovery defers at
+  `SmSurface::DropCurve` (`intersect.surface_drop_lib_p3`, inside `CreateUVTrimCurve`).
+  A face that closes a shell (the sixth cube face, zero-length loops) defers at
+  `SmBrep::CalculateBoundingBox` (`query.brep`) in `TestClosureSplitRegion`.
+- **Not compared: edge marks.** `TransferChildrenTo`'s nested `GetWireEdges` (inside
+  `RemoveShell` and the loop-vertex shell merge) marks the C++ edges. `topology.shell`
+  keeps those marks in a per-call record (its documented deviation), so the edges'
+  mark flags after the operation differ (seen on holes and wire loop vertices). The
+  export therefore carries no edge marks. The context's mark counters and locks, which
+  count every claim, are compared.
+- **C++ guard.** The shim refuses (`-2`, rejected) a call whose input edge use has no
+  edge, mate, shell or vertex, whose loop counts exceed the edge uses, or whose
+  non-shell loop vertices would be merged into the NULL keeper shell of a face without
+  edge loops. Upstream dereferences those. The port returns `InvalidInput` there.
+- **Downstream.** `topology.brep_p7` 316 cases: 238 pass, 78 deferred, 0 failed (was 237
+  and 79). Its face paths now get past `MakeFaceTopology`, and 18 of them reach
+  `SmFace::GetTolerance` through a face-owned surface (`topology.face_p2` dispatch
+  stubs in `surface`). With PR #72 merged locally, `topology.brep_p8` runs 339 cases: 305
+  pass, 34 deferred (33 `face_p4` `GetUpwardEdgeuses`, 1 `query.brep`), 0 failed. 264 of
+  its 298 deferrals now pass. `primitive.api_primitives` runs 1981 cases: 1484 pass, 497
+  deferred, 0 failed (1445 and 536 without #72). Its 87 `brep_p8` deferrals become 39
+  passes, 43 `topology.brep_p4` `DeleteEdge` deferrals and 5 `cpp-guard:ub-119`
+  deferrals.

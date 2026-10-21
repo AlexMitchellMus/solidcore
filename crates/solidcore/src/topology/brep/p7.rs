@@ -1845,8 +1845,8 @@ mod tests {
             run(&mut b, input, Some(r)),
             Err(SolidError::InvalidInput { .. })
         ));
-        // a NULL region is the infinite region: a degenerate curve only reaches
-        // unported topology
+        // a NULL region is the infinite region: a degenerate curve only leaves no
+        // edges, so MakeFace makes an edgeless face
         b.set_infinite_region_record(Some(r));
         let input = FaceCurvesInput {
             loops: vec![1],
@@ -1854,9 +1854,10 @@ mod tests {
             orientations: vec![OrientType::Same],
             ..Default::default()
         };
-        assert!(run(&mut b, input.clone(), None).unwrap_err().is_unported());
-        // a degenerate curve only: the face topology is unported
-        assert!(run(&mut b, input, Some(r)).unwrap_err().is_unported());
+        let first = run(&mut b, input.clone(), None).unwrap();
+        let second = run(&mut b, input, Some(r)).unwrap();
+        assert_eq!(first.face, Some(FaceId::from_index(0)));
+        assert_eq!(second.face, Some(FaceId::from_index(1)));
         // more loop entries than curves
         let input = FaceCurvesInput {
             loops: vec![3],
