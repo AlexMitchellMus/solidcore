@@ -1275,11 +1275,14 @@ mod tests {
                 ..
             })
         ));
+        // SmMerge's constructor and copy environment are boolean.merge_p2's (#229):
+        // ProcessWiresAndShellVertices now runs and stops at the other B-rep's
+        // SmBrep::Point3DClassify (query.brep), as the C++ path calls it next
         assert!(matches!(
             pool.process_wires(&mut k, &MarkLock::unbound()),
             Err(SolidError::Unported {
-                unit: "boolean.merge_p2",
-                ..
+                unit: "query.brep",
+                upstream: "SmBrep::Point3DClassify",
             })
         ));
         assert!(matches!(
