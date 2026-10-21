@@ -106,9 +106,9 @@ fn orient_brep(
 impl ExecutiveAccess<Handle> for Access {
     // This empty-B-rep fixture has no face handles or intersector world. These
     // required adapters reject nonexistent objects; they are not UNPORTED calls
-    // to the now-ported face p3, topology intersector p2, stitch p2, fillet geom p4,
-    // fillet corner p3 or fillet solver p1 implementations. `set_brep_tolerance` runs
-    // the brep p2 port for real.
+    // to the now-ported face p3, topology intersector p2, stitch p2, fillet geom p4
+    // and p6, fillet corner p3 or fillet solver p1 implementations.
+    // `set_brep_tolerance` runs the brep p2 port for real.
     fn notify_face(
         &mut self,
         _: &mut Kernel,
@@ -205,6 +205,17 @@ impl ExecutiveAccess<Handle> for Access {
         &mut self,
         _: &mut Kernel,
         _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> SolidResult<()> {
+        missing()
+    }
+    fn trim_original_surfaces(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut Vec<Handle>,
+        _: &mut Vec<Handle>,
+        _: &[ContextMark],
         _: &mut FilletExecutive<Handle>,
     ) -> SolidResult<()> {
         missing()
