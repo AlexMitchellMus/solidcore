@@ -19,6 +19,7 @@ pub mod plan;
 pub mod report;
 pub mod rng;
 pub mod runner;
+pub mod solidcraft;
 pub mod ssi;
 pub mod util;
 
