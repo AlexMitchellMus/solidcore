@@ -28,8 +28,10 @@ install() {
 }
 
 if command -v gh >/dev/null; then
-  ids=$(gh run list -R "$repo" --workflow ci.yml --branch main --event push \
-          --status completed --limit 30 --json databaseId -q '.[].databaseId' 2>/dev/null || true)
+  # Newest unexpired artifacts first; only ones uploaded by a run on main.
+  ids=$(gh api "repos/$repo/actions/artifacts?name=difftest-reports&per_page=20" \
+          -q '.artifacts[] | select(.expired | not) | select(.workflow_run.head_branch == "main")
+              | .workflow_run.id' 2>/dev/null | head -n 5 || true)
   for id in $ids; do
     if gh run download "$id" -R "$repo" -n difftest-reports -D "$tmp/run" >/dev/null 2>&1 \
         && install "$tmp/run" "CI run $id"; then
@@ -37,7 +39,7 @@ if command -v gh >/dev/null; then
     fi
     rm -rf "$tmp/run"
   done
-  echo "fetch-reports: no difftest-reports artifact on main's recent CI runs" >&2
+  echo "fetch-reports: no difftest-reports artifact from main's CI" >&2
 fi
 
 # Fallback: the set committed before reports moved to CI artifacts.
