@@ -116,7 +116,12 @@ struct HarnessSolver {
 }
 
 /// `GetSurface(i)->Evaluate1stDerivatives(uv, TRUE, TRUE, ..)` (on a copy, as the port).
-fn offset_1st(fs: &FilletSolver, i: usize, uv: Point2) -> solidcore::Result<(Vec3, Vec3, Vec3)> {
+fn offset_1st(
+    k: &Kernel,
+    fs: &FilletSolver,
+    i: usize,
+    uv: Point2,
+) -> solidcore::Result<(Vec3, Vec3, Vec3)> {
     let mut s = fs
         .surfaces
         .get(i)
@@ -125,7 +130,7 @@ fn offset_1st(fs: &FilletSolver, i: usize, uv: Point2) -> solidcore::Result<(Vec
         .surface
         .clone();
     s.surface
-        .with_evaluator(|e| evaluate_1st_derivatives(e, uv, Side::Left, Side::Left))
+        .with_evaluator(|e| evaluate_1st_derivatives(k, e, uv, Side::Left, Side::Left))
 }
 
 fn set_j(j: &mut Matrix, r: usize, c: usize, v: f64) {
@@ -199,6 +204,7 @@ impl FilletSolverOps for HarnessSolver {
 
     fn load_jacobian(
         &mut self,
+        k: &Kernel,
         ne: &mut usize,
         np: &mut usize,
         load: &mut JacobianLoad<'_>,
@@ -212,8 +218,8 @@ impl FilletSolverOps for HarnessSolver {
             return Err(SolidError::sm_err(OP));
         }
         let at = |i: usize| x.get(i).copied().ok_or(SolidError::sm_err(OP));
-        let (p, pu, pv) = offset_1st(&self.base, 0, Point2::new(at(o1)?, at(o1 + 1)?))?;
-        let (q, qu, qv) = offset_1st(&self.base, 1, Point2::new(at(*np)?, at(*np + 1)?))?;
+        let (p, pu, pv) = offset_1st(k, &self.base, 0, Point2::new(at(o1)?, at(o1 + 1)?))?;
+        let (q, qu, qv) = offset_1st(k, &self.base, 1, Point2::new(at(*np)?, at(*np + 1)?))?;
         let d = p - q;
         let rows = [d.x, d.y, d.z];
         for (r, v) in rows.iter().enumerate() {

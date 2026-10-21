@@ -417,7 +417,7 @@ impl FilletSolver {
 
                 // NewtonRaphson iteration for the radius whose boundary crossing has
                 // rail points the proper distance apart
-                match ls.solve_it(&mut efo, radius, 1.0e-12) {
+                match ls.solve_it(&mut ClippedRadiusFn { k, efo: &mut efo }, radius, 1.0e-12) {
                     Ok(o) => {
                         out.found_good_point = o.found;
                         radius_found = o.t;
@@ -442,7 +442,7 @@ impl FilletSolver {
                         .solver()
                         .surface(si)?
                         .ok_or_else(|| invalid("no offset surface"))?;
-                    let srf_pt = surface.surface.surface.evaluate_point(get2(&uv, si))?;
+                    let srf_pt = surface.surface.surface.evaluate_point(k, get2(&uv, si))?;
                     // UNPORTED(blend.fillet_standard_solver_p1): SmVariableRadiusFS::GetOriginalCurve (justified: findings.md "blend.fillet_solver_p3 (`SmFilletSolver.cpp` part 3")
                     return unported_on(
                         (srf_pt, &*next),
@@ -465,6 +465,7 @@ impl FilletSolver {
                         .clone(),
                 );
                 let found = other.local_curve_intersect(
+                    k,
                     &get2(&uv_domains, oi),
                     &iso_curve,
                     &iso_curve.natural_interval(),
@@ -498,11 +499,11 @@ impl FilletSolver {
 
                         // the iso curve points at the (now zero-offset) surface
                         let iso_curve = iso_curve_of(ops.solver(), si, surf_param, iso_param)?;
-                        let plane_orig = iso_curve.evaluate_point(t_found)?;
+                        let plane_orig = iso_curve.evaluate_point(k, t_found)?;
 
                         // get railcurve point surface normals
-                        let normal1 = offset_normal(ops.solver(), 0, uv[0])?;
-                        let normal2 = offset_normal(ops.solver(), 1, uv[1])?;
+                        let normal1 = offset_normal(k, ops.solver(), 0, uv[0])?;
+                        let normal2 = offset_normal(k, ops.solver(), 1, uv[1])?;
                         let plane_normal = normal1.cross(normal2).unitize()?;
 
                         // find two railcurve points on plane at radius distance from
@@ -607,7 +608,10 @@ impl FilletSolver {
         let plane_orig = current.crv_pos() + *step * plane_abc;
         let plane_d = -plane_orig.dot(plane_abc);
         let approx_tol_3d = ops.solver().this_approx_tol_3d();
-        let mut eval_fun = FilletSphereSolveEnfo::new(plane_abc, plane_d, ops);
+        let mut eval_fun = SphereSolveFn {
+            k,
+            enfo: FilletSphereSolveEnfo::new(plane_abc, plane_d, ops),
+        };
 
         // NewtonRaphson solver
         let mut ls = LocalSolveNd::new(&mut eval_fun, Some(&intervals), Some(&periodicities));
@@ -620,7 +624,7 @@ impl FilletSolver {
 
         // Try it again and allow the plane to adjust as convergence happens
         if !solution.found {
-            ls.evaluator().set_plane_adjusts(true);
+            ls.evaluator().enfo.set_plane_adjusts(true);
             solution = ls.solve_it(&guess_t, approx_tol_3d)?;
         }
 
@@ -676,20 +680,27 @@ fn iso_curve_of(
 }
 
 /// `GetSurface(rail)->EvaluateNormal(uv, TRUE, TRUE, ..)` on a copy.
-fn offset_normal(solver: &FilletSolver, rail: usize, uv: Point2) -> Result<Vec3> {
+fn offset_normal(k: &Kernel, solver: &FilletSolver, rail: usize, uv: Point2) -> Result<Vec3> {
     let mut s = solver
         .surface(rail)?
         .ok_or_else(|| invalid("no offset surface"))?
         .surface
         .clone();
     s.surface
-        .evaluate_normal_extending(uv, Side::Left, Side::Left)
+        .evaluate_normal_extending(k, uv, Side::Left, Side::Left)
 }
 
-impl EvalFunction for FindClippedRadiusEfo<'_> {
+/// `SmFindClippedRadiusEFO` as `SmLocalSolve1D` evaluates it, with the kernel its
+/// evaluations take (the solver's function interface passes none).
+struct ClippedRadiusFn<'e, 'a> {
+    k: &'e Kernel,
+    efo: &'e mut FindClippedRadiusEfo<'a>,
+}
+
+impl EvalFunction for ClippedRadiusFn<'_, '_> {
     /// `SmFindClippedRadiusEFO::Evaluate` ([`FindClippedRadiusEfo::evaluate`]).
     fn evaluate(&mut self, t: f64, out: &mut FunctionValue, _signal_errors: bool) -> Result<()> {
-        let (f, f_prime, found) = FindClippedRadiusEfo::evaluate(self, t)?;
+        let (f, f_prime, found) = self.efo.evaluate(self.k, t)?;
         out.f = f;
         out.f_prime = f_prime;
         out.found_answer = found;
@@ -697,7 +708,14 @@ impl EvalFunction for FindClippedRadiusEfo<'_> {
     }
 }
 
-impl EvalNFunctions for FilletSphereSolveEnfo<'_> {
+/// `SmFilletSphereSolveENFO` as `SmLocalSolveND` evaluates it, with the kernel its
+/// evaluations take (the solver's function interface passes none).
+struct SphereSolveFn<'e, 'a> {
+    k: &'e Kernel,
+    enfo: FilletSphereSolveEnfo<'a>,
+}
+
+impl EvalNFunctions for SphereSolveFn<'_, '_> {
     /// `SmFilletSphereSolveENFO::Evaluate` ([`FilletSphereSolveEnfo::evaluate`]).
     fn evaluate(
         &mut self,
@@ -705,7 +723,7 @@ impl EvalNFunctions for FilletSphereSolveEnfo<'_> {
         f: &mut [f64],
         jacobian: Option<&mut Matrix>,
     ) -> Result<bool> {
-        FilletSphereSolveEnfo::evaluate(self, x, f, jacobian)
+        self.enfo.evaluate(self.k, x, f, jacobian)
     }
 }
 
@@ -811,10 +829,10 @@ impl FilletSolver {
                 let curve2 = class_curve(geometry, &cc2)?;
                 let tol = self.this_approx_tol_3d();
                 let mut too_small = false;
-                if curve1.approximate_length(&ivl1, 5, false)?.0 < tol {
+                if curve1.approximate_length(k, &ivl1, 5, false)?.0 < tol {
                     too_small = true;
                 }
-                if curve2.approximate_length(&ivl2, 5, false)?.0 < tol {
+                if curve2.approximate_length(k, &ivl2, 5, false)?.0 < tol {
                     too_small = true;
                 }
                 if !too_small {
@@ -1010,10 +1028,10 @@ pub fn refine_rail_curve_classification(
         // the RailCurve local end points (statuses ignored)
         let rail_curve =
             edge::curve(fillets.brep(), rail)?.ok_or_else(|| invalid("rail without a curve"))?;
-        if let Some(p) = ignored(rail_curve.evaluate_point(ivl.min()))? {
+        if let Some(p) = ignored(rail_curve.evaluate_point(k, ivl.min()))? {
             pnt_min = p;
         }
-        if let Some(p) = ignored(rail_curve.evaluate_point(ivl.max()))? {
+        if let Some(p) = ignored(rail_curve.evaluate_point(k, ivl.max()))? {
             pnt_max = p;
         }
 
@@ -1050,10 +1068,10 @@ pub fn refine_rail_curve_classification(
         )?;
 
         // Evaluate the params so we can check if the points are within tolerance
-        if let Some(p) = ignored(edge_curve.evaluate_point(eu_param_min))? {
+        if let Some(p) = ignored(edge_curve.evaluate_point(k, eu_param_min))? {
             pnt_min = p;
         }
-        if let Some(p) = ignored(edge_curve.evaluate_point(eu_param_max))? {
+        if let Some(p) = ignored(edge_curve.evaluate_point(k, eu_param_max))? {
             pnt_max = p;
         }
 
@@ -1166,7 +1184,7 @@ pub fn calc_rail_x_edge(
         .fillet_vertexuse(vu)?
         .tsect_pnt()
         .uv_pos(srf(rail_index));
-    let pnt = face_surface(target, face)?.evaluate_point(uv)?;
+    let pnt = face_surface(target, face)?.evaluate_point(k, uv)?;
     fillets.fillet_vertex_mut(vertex)?.set_original_uv(uv);
     fillets.set_vertex_point(vertex, pnt)?;
     fillets
@@ -1186,7 +1204,7 @@ pub fn calc_rail_x_edge(
             .fillet_vertexuse(vu)?
             .tsect_pnt()
             .uv_pos(srf(1 - rail_index));
-        let pnt1 = face_surface(target, face1)?.evaluate_point(uv1)?;
+        let pnt1 = face_surface(target, face1)?.evaluate_point(k, uv1)?;
         fillets.fillet_vertex_mut(mate)?.set_original_uv(uv1);
         fillets.set_vertex_point(mate, pnt1)?;
         fillets
@@ -1312,7 +1330,7 @@ impl FilletSolver {
                 if dist < min_dist {
                     min_dist = dist;
                     start_eu = Some(e_use);
-                    let pnts = side_curve.evaluate(t, 1, true, true)?;
+                    let pnts = side_curve.evaluate(k, t, 1, true, true)?;
                     dir = *pnts.get(1).ok_or_else(|| invalid("missing derivative"))?;
                 }
             }
@@ -1320,7 +1338,7 @@ impl FilletSolver {
 
         // Is the rail running the same direction as the loop
         let orig_ivl = edge::interval(fillets.brep(), rail)?;
-        let pnts = orig_curve.evaluate(orig_ivl.min(), 1, true, true)?;
+        let pnts = orig_curve.evaluate(k, orig_ivl.min(), 1, true, true)?;
         let tangent0 = *pnts.get(1).ok_or_else(|| invalid("missing derivative"))?;
         let orient = if tangent0.dot(dir) > 0.0 {
             OrientType::Same
@@ -1577,6 +1595,7 @@ mod tests {
         }
         fn load_jacobian(
             &mut self,
+            k: &Kernel,
             ne: &mut usize,
             np: &mut usize,
             load: &mut JacobianLoad<'_>,
@@ -1587,7 +1606,7 @@ mod tests {
             let eval = |i: usize, uv: Point2| {
                 let mut s = self.base.surfaces[i].as_ref().unwrap().surface.clone();
                 s.surface
-                    .with_evaluator(|e| evaluate_1st_derivatives(e, uv, Side::Left, Side::Left))
+                    .with_evaluator(|e| evaluate_1st_derivatives(k, e, uv, Side::Left, Side::Left))
             };
             let o1 = load.surf1_offset;
             let (p, pu, pv) = eval(0, Point2::new(x[o1], x[o1 + 1]))?;
