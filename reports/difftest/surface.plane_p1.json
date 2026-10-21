@@ -11807,8 +11807,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmPlane::CreateIsoParametricCurve",
+        "unit": "surface.surface_cache_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0246",
@@ -22168,8 +22168,8 @@
   "cases_passed": 2575,
   "cases_total": 2705,
   "deferred_by_unit": {
-    "intersect.surface_drop_curve": 1,
-    "intersect.surface_drop_lib_p3": 129
+    "intersect.surface_drop_lib_p3": 129,
+    "surface.surface_cache_p1": 1
   },
   "max_rel_err": 0.0,
   "pass": true,
