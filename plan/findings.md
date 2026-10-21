@@ -10446,6 +10446,20 @@ seeds: 2893 pass, 0 failed, 112 deferred (max_rel_err 3.8e-16).
   method (as in PR #249) implemented for `ConstantRadiusAssistedFs`, `EiffelTowerFs`
   and `SecantConstantRadiusFs`. `GuessPointOnPlaneSolve` runs on the solver itself
   (`&mut`), so its extensions stay on the solver's offsets.
+- **Executive adapter stubs (kept, justified).** `blend.fillet_executive_p3`'s
+  `ExecutiveAccess` (`fillet_executive/p3.rs`) names this unit at four places: the
+  `SmConstantDistanceFS`, `SmVariableRadiusFS` and `SmSurfaceSurfaceFS` constructors in the
+  default `new_fillet_solver`, and the `SmSurfaceSurfaceFS::CalcFilletGeom` dispatch note on
+  `calc_fillet_geom`. The trait does not own the solvers: a handle `O` names an object in the
+  adapter's own arena, and the only constructor the trait delegates is
+  `new_constant_radius_solver` (`constant_radius_from_edgeuse` on the adapter's B-rep).
+  The three constructors need the same arena slot, B-rep access and solver enum, which exist
+  in neither the library nor the two runners' adapters (`blend_fillet_executive_p2.rs` keeps
+  constant-radius solvers only; `blend_fillet_executive_p3.rs` keeps none). The library
+  half is ported here: `ConstantDistanceFs::from_edgeuse`, `VariableRadiusFs::from_edgeuse`,
+  `SurfaceSurfaceFs::new` and `SurfaceSurfaceFs::calc_fillet_geom`; an adapter that stores
+  these solvers calls them. Wiring needs a solver arena in the executive adapters, which
+  is the work of `blend.fillet_executive_p2` / `_p3`'s follow-up, not of this unit.
 - Fixtures `fx_*` in `fixtures/blend.fillet_standard_solver_p2/cases.json` keep the inputs.
 
 ## blend.fillet_geom_p4 (`SmFilletGeom.cpp` part 4: `sm_CreateUVCurve`, the fillet-surface intersection vertex calculators, `GetRailIndexOfVertex`, `MakeFaceBrep`, `InsertIntersectionTopology`, `CalcBlendingGeom`; PR #252, 2026-10-19; partial)
