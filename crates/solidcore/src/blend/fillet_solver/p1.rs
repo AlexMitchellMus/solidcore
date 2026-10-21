@@ -77,10 +77,11 @@
 //!   typed [`crate::blend::fillet_geom::p1::FilletBrep`] and [`RailOwnership`]; they
 //!   perform those mutations and use the real surface/surface intersection port.
 //!   Only edge construction remains unavailable in `split_rail`.
-//! - **Virtual overrides of unported units.** A derived solver's override owned by a
-//!   unit that is not ported (the `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS`
-//!   overrides of the custom solvers) returns [`SolidError::Unported`]; the
-//!   [`FilletSolverOps`] methods are fallible for that reason.
+//! - **Virtual overrides of unported units.** A derived solver's unavailable override
+//!   returns [`SolidError::Unported`]; the [`FilletSolverOps`] methods are fallible
+//!   for that reason. The custom solvers delegate their available constant-radius
+//!   overrides to `blend.fillet_standard_solver_p1`; the assisted solver's
+//!   `IsKindOf` and `LoadInitialValues` still require its unported p2 unit.
 //! - **Analytic surfaces.** `sm_TestAnalyticSurface` takes an [`AnalyticTestSurface`]:
 //!   a [`Surface`], a [`Cone`] (cone or cylinder), a [`Sphere`] or a [`Torus`], since
 //!   no [`Surface`] kind holds the last three yet.
@@ -328,8 +329,9 @@ impl FilletSurfaceGenerator {
     /// # Errors
     ///
     /// `SM_ERR` for [`FilletSurfaceGenerator::Base`]; those of
-    /// `SmEiffelTowerCrossSectionFSG::CreateSurface`; [`SolidError::Unported`] for the
-    /// linear, circular and blend-curve generators.
+    /// `SmEiffelTowerCrossSectionFSG::CreateSurface` and
+    /// `SmLinearCrossSectionFSG::CreateSurface`; [`SolidError::Unported`] for the
+    /// circular and blend-curve generators.
     pub fn create_surface(
         &self,
         k: &Kernel,
@@ -344,11 +346,8 @@ impl FilletSurfaceGenerator {
                 crate::blend::fillet_custom_solver::EiffelTowerCrossSectionFsg::new()
                     .create_surface(k, approx_tol_3d, rail1, rail2, points)
             }
-            // UNPORTED(blend.fillet_standard_solver_p1): SmLinearCrossSectionFSG::CreateSurface
-            Self::Linear => Err(SolidError::unported(
-                "SmLinearCrossSectionFSG::CreateSurface",
-                "blend.fillet_standard_solver_p1",
-            )),
+            Self::Linear => crate::blend::fillet_standard_solver::p1::LinearCrossSectionFsg
+                .create_surface(rail1, rail2),
             // UNPORTED(blend.fillet_standard_solver_p2): SmCircularCrossSectionFSG::CreateSurface
             Self::Circular { .. } => Err(SolidError::unported(
                 "SmCircularCrossSectionFSG::CreateSurface",
@@ -2383,7 +2382,6 @@ impl<'a> FindClippedRadiusEfo<'a> {
 /// `SM_CAST_PTR(SmBSplineSurface, ..)`: B-splines, planes and surfaces of revolution;
 /// only the `SmBSplineSurface` member changes, not a revolution's generator).
 fn evaluate_point_out_of_bounds(base: &Surface, uv: Point2) -> Result<Point3> {
-    use crate::surface::surface::SurfaceKind;
     // the flag is set on the surface itself upstream: evaluate an exact copy
     let mut s = base.clone_for_evaluation()?;
     match s.kind_mut() {
@@ -2605,7 +2603,7 @@ pub fn test_analytic_surface(k: &Kernel, surface: AnalyticTestSurface<'_>) -> Re
         },
         AnalyticTestSurface::Cone(c) => c.rev().base(),
         AnalyticTestSurface::Sphere(s) => s.base().base(),
-        AnalyticTestSurface::Torus(t) => t.base.base(),
+        AnalyticTestSurface::Torus(t) => t.base().base(),
     };
     match Cone::is_nurb_surface_cone(k, bss, 1.0) {
         Ok(None) => Ok(false),

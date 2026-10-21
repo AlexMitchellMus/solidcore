@@ -12,10 +12,12 @@
 //! op values only on success), reported as the values `rec`. A case whose Rust side reaches an
 //! unported unit is deferred as a whole.
 //!
-//! Deferred cases: everything past the solver calls that are not ported
-//! (`SmFilletSolver::StepSolve` in `ComputeNextPoint` from a crossing point,
-//! `ComputeSurfaceValues` in `ComputePointValuesDelta`, `ComputePointValues`,
-//! `PointOnPlaneSolve` in `EvaluateLawPoint`) and the span test past its angle check on a plane
+//! The constant-radius `SetupOffsetValues` dispatch runs the ported standard solver,
+//! so `ComputePointValuesDelta` can compare both mutated surface records.
+//! Deferred cases reach unavailable solver calls (`SmFilletSolver::StepSolve` in
+//! `ComputeNextPoint` from a crossing point, `ComputePointValues` in solver p4,
+//! `PointOnPlaneSolve` in `EvaluateLawPoint`)
+//! or the span test past its angle check on a plane
 //! (`SmCrvOnSurf` over an `SmPlane`, a dispatch gap of `curve.crv_on_surf`). `FlushCurve` of two
 //! or more points is not run: in C++ it dereferences the solver's unset executive and the
 //! fillet geometry's `NULL` rails (the Rust side evaluates the offset rails, then stops at
@@ -593,6 +595,15 @@ fn run_op(
                 &mut pa,
                 &mut pb,
             );
+            // Native reference arguments retain both complete and partial writes.
+            *fi.base
+                .base
+                .point_mut(id(*a))
+                .map_err(|e| Fail::Harness(harness(e.to_string())))? = pa;
+            *fi.base
+                .base
+                .point_mut(id(*b))
+                .map_err(|e| Fail::Harness(harness(e.to_string())))? = pb;
             st(o, r)?;
         }
         OpIn::Values { uv, a, prev } => {
@@ -613,6 +624,10 @@ fn run_op(
                 None => None,
             };
             let r = fi.compute_point_values(solver, k, uv.map(p2), &mut pa, pp.as_ref(), None);
+            *fi.base
+                .base
+                .point_mut(id(*a))
+                .map_err(|e| Fail::Harness(harness(e.to_string())))? = pa;
             st(o, r)?;
         }
         OpIn::Law {

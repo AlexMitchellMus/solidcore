@@ -480,8 +480,8 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
         uv_values: [Point2; 2],
         point: &mut TsectPnt,
     ) -> Result<()> {
-        // non-virtual in the base; it calls the virtual SetupOffsetValues, which
-        // SmConstantRadiusFS overrides (an explicit Unported override)
+        // Non-virtual in the base; its virtual SetupOffsetValues dispatches to
+        // the ported SmConstantRadiusFS override in fillet_standard_solver_p1.
         FilletSolver::compute_surface_values(self, uv_values, point)
     }
 
@@ -2231,18 +2231,16 @@ mod tests {
             }
         ));
 
-        // ComputeSurfaceValues reaches the SmConstantRadiusFS::SetupOffsetValues override
+        // ComputeSurfaceValues now runs the constant-radius virtual override,
+        // evaluating both oriented offsets and their normals into the point.
         let mut p = TsectPnt::new();
-        let e = s
-            .compute_surface_values(&k, [Point2::new(0.5, 0.5); 2], &mut p)
-            .unwrap_err();
-        assert!(matches!(
-            e,
-            SolidError::Unported {
-                unit: "blend.fillet_standard_solver_p1",
-                ..
-            }
-        ));
+        s.compute_surface_values(&k, [Point2::new(0.5, 0.5); 2], &mut p)
+            .expect("ported constant-radius surface values");
+        assert_eq!(p.srf_pos(SrfIndex::First), Vec3::new(0.5, 0.5, 1.0));
+        assert_eq!(p.srf_pos(SrfIndex::Second), Vec3::new(0.5, -2.0, 0.5));
+        assert_eq!(p.srf_norm(SrfIndex::First), Vec3::new(0.0, 0.0, 1.0));
+        assert_eq!(p.srf_norm(SrfIndex::Second), Vec3::new(0.0, 1.0, 0.0));
+        assert_eq!(p.crv_pos(), p.srf_pos(SrfIndex::First));
     }
 
     #[test]
