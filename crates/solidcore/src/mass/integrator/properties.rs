@@ -355,38 +355,24 @@ fn brep_box(_b: &Brep) -> Result<Extent3d> {
         "query.brep",
     ))
 }
-fn face_box(_b: &Brep, _f: FaceId) -> Result<Extent3d> {
-    // UNPORTED(query.face_p1): SmFace::CalculateBoundingBox
-    Err(SolidError::unported(
-        "SmFace::CalculateBoundingBox",
-        "query.face_p1",
-    ))
+fn face_box(k: &Kernel, b: &Brep, f: FaceId) -> Result<Extent3d> {
+    crate::query::face::p1::calculate_bounding_box(k, b, f, false)
 }
-fn faces(_b: &Brep) -> Result<Vec<FaceId>> {
-    // UNPORTED(topology.brep_p1): SmBrep::GetFaces
-    Err(SolidError::unported("SmBrep::GetFaces", "topology.brep_p1"))
+fn faces(b: &Brep) -> Result<Vec<FaceId>> {
+    crate::topology::brep::p1::faces(b, None)
 }
-fn edges(_b: &Brep) -> Result<Vec<EdgeId>> {
-    // UNPORTED(topology.brep_p1): SmBrep::GetEdges
-    Err(SolidError::unported("SmBrep::GetEdges", "topology.brep_p1"))
+fn edges(b: &Brep) -> Result<Vec<EdgeId>> {
+    crate::topology::brep::p1::edges(b, None)
 }
-fn vertices(_b: &Brep) -> Result<Vec<VertexId>> {
-    // UNPORTED(topology.brep_p1): SmBrep::GetVertices
-    Err(SolidError::unported(
-        "SmBrep::GetVertices",
-        "topology.brep_p1",
-    ))
+fn vertices(b: &Brep) -> Result<Vec<VertexId>> {
+    crate::topology::brep::p1::vertices(b, None)
 }
 /// `SmRegion::IsVoid` as a C truth value (`UNSURE`, 2, counts as void).
 fn region_void(b: &Brep, r: RegionId) -> Result<bool> {
     Ok(b.region(r)?.is_void() != 0)
 }
-fn manifold_solid(_b: &Brep) -> Result<bool> {
-    // UNPORTED(topology.brep_p2): SmBrep::IsManifoldSolid
-    Err(SolidError::unported(
-        "SmBrep::IsManifoldSolid",
-        "topology.brep_p2",
-    ))
+fn manifold_solid(b: &Brep) -> Result<bool> {
+    crate::topology::brep::p2::is_manifold_solid(b)
 }
 fn add(total: &mut PreciseProperties, delta: &PreciseProperties, density: f64) {
     total.area += delta.area;
@@ -557,7 +543,7 @@ fn area_estimate(bbox: &Extent3d) -> f64 {
 }
 /// `SmApiFaceComputeArea`: clamps accuracy and integrates only area.
 pub fn face_area(k: &Kernel, b: &Brep, f: FaceId, accuracy: f64) -> Result<f64> {
-    let bbox = face_box(b, f)?;
+    let bbox = face_box(k, b, f)?;
     Ok(face_properties(
         k,
         b,
@@ -574,7 +560,7 @@ pub fn face_area(k: &Kernel, b: &Brep, f: FaceId, accuracy: f64) -> Result<f64> 
 }
 /// `SmApiFaceComputeCentroid`: one area/first-moment integration.
 pub fn face_centroid(k: &Kernel, b: &Brep, f: FaceId, accuracy: f64) -> Result<(f64, Point3)> {
-    let bbox = face_box(b, f)?;
+    let bbox = face_box(k, b, f)?;
     let origin = bbox.mid();
     let p = face_properties(
         k,

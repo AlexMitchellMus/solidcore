@@ -22,7 +22,7 @@
 //! | [`transfer_children`] | `SmShell::TransferChildrenTo` |
 //! | [`move_faceuse`] | `SmOwningTopology::Remove` + `PostInsert` of a face use (typed list) |
 //! | [`shell_is_degenerate`], [`region_is_degenerate`] | `IsDegenerate` (native default tolerance) |
-//! | `shell_bounds_for_degeneracy`, `region_bounds_for_degeneracy` | minimum default-tight `CalculateBoundingBox` branches (`query.face_p1`) |
+//! | `shell_bounds_for_degeneracy`, `region_bounds_for_degeneracy` | default-tight `CalculateBoundingBox` (`query::face::p1`), status kept beside the partial box |
 //! | [`faceuse_sibling_links`] | typed `SmTopology::GetNext` / `GetLast` for face uses |
 //! | `topology::edge::{vertices, edgeuses, is_wire}`, `topology::vertex::edges` | `SmEdge::GetVertices`, `GetEdgeuses`, `IsWire`, `SmVertex::GetEdges` (callees, no filters) |
 //! | [`Region::get_shells`], [`Region::is_void`], [`Region::set_is_void`] | `GetShells`, `IsVoid`, `SetIsVoid` |
@@ -40,9 +40,9 @@
 //! Face-use sibling links survive a cleared owner head, as in native self-transfer.
 //! `SmOwningTopology::Remove` / `PostInsert` of a face use are CO-PORTED on the
 //! typed face-use list (`move_faceuse`; unit `topology.proto_topology_p1` works on
-//! object-key records). `SmBrep::GetEdges` without a filter (unit `topology.brep_p1`)
-//! is CO-PORTED as `brep_get_edges`: the B-rep's edge arena in insertion order
-//! (`m_pEdgeListHead`).
+//! object-key records). `SmBrep::GetEdges` (unit `topology.brep_p1`) is its owner's
+//! port `topology::brep::p1::edges` (the `m_pEdgeListHead` list order), which replaced
+//! the earlier co-port.
 //! `TransferChildrenTo` ignores the status of `Remove`/`PostInsert` (`SE(...)`) and goes on;
 //! here a face use whose owner is not the source (or a `Remove` that cannot find it)
 //! returns `InvalidInput` instead. That state needs an inconsistent graph (a face use
@@ -474,7 +474,8 @@ pub fn wire_edges(kernel: &mut Kernel, brep: &Brep, id: ShellId) -> Result<Vec<E
     }
     // GetBrep is required even when the edge list happens to be empty.
     let owner = shell_brep(brep, id)?.ok_or(invalid_members())?;
-    for edge in brep_get_edges(owner) {
+    // SmBrep::GetEdges (unit topology.brep_p1, which replaced the co-port)
+    for edge in crate::topology::brep::p1::edges(owner, None)? {
         if crate::topology::edge::is_wire(owner, edge)? {
             let primary = crate::topology::edgeuse::p1::primary_edgeuse(owner, edge)?
                 .ok_or(invalid_members())?;
@@ -484,15 +485,6 @@ pub fn wire_edges(kernel: &mut Kernel, brep: &Brep, id: ShellId) -> Result<Vec<E
         }
     }
     Ok(output)
-}
-
-/// CO-PORT of `SmBrep::GetEdges` without a filter (unit `topology.brep_p1`): the
-/// B-rep's edges in `m_pEdgeListHead` order. The shared arena model keeps edges in
-/// that insertion order, so this equals the edge arena, provided the importer
-/// registered `GetEdges` first (every C++ fixture walk feeding this unit does).
-/// Replace with the owner's port when `topology.brep_p1` lands.
-pub(crate) fn brep_get_edges(brep: &Brep) -> Vec<EdgeId> {
-    brep.edges().ids().collect()
 }
 
 /// `pRegion->Remove(pShell)` (`SmOwningTopology::Remove`, inline in
@@ -678,7 +670,7 @@ fn clear_shell_members(brep: &mut Brep, id: ShellId) -> Result<()> {
     Ok(())
 }
 
-fn shell_list_size(brep: &Brep, id: ShellId) -> Result<usize> {
+pub(crate) fn shell_list_size(brep: &Brep, id: ShellId) -> Result<usize> {
     match &brep.shell(id)?.members {
         ShellMembers::Empty => Ok(0),
         ShellMembers::Faceuses(members) => Ok(members.len()),
@@ -743,11 +735,9 @@ pub fn shell_is_degenerate(
     if brep.shell(id)?.is_vertex_shell() {
         return Ok(true);
     }
-    let attempt = shell_bounds_for_degeneracy(kernel, brep, id)?;
+    let bounds = shell_bounds_for_degeneracy(kernel, brep, id)?;
     // Native IsDegenerate deliberately ignores CalculateBoundingBox's status.
-    Ok(attempt
-        .bounds
-        .is_point_sized(tolerance.unwrap_or(crate::math::EFF_ZERO)))
+    Ok(bounds.is_point_sized(tolerance.unwrap_or(crate::math::EFF_ZERO)))
 }
 
 /// Whether a region fits within `tolerance` (`SmRegion::IsDegenerate`).
@@ -762,143 +752,57 @@ pub fn region_is_degenerate(
     id: RegionId,
     tolerance: Option<f64>,
 ) -> Result<bool> {
-    let attempt = region_bounds_for_degeneracy(kernel, brep, id)?;
-    Ok(attempt
-        .bounds
-        .is_point_sized(tolerance.unwrap_or(crate::math::EFF_ZERO)))
+    let bounds = region_bounds_for_degeneracy(kernel, brep, id)?;
+    Ok(bounds.is_point_sized(tolerance.unwrap_or(crate::math::EFF_ZERO)))
 }
 
-// Outer failures mean a missing dependency or an unsafe native graph access;
-// status is a real native return status, which the IsDegenerate callers ignore.
-struct BoundsAttempt {
-    bounds: crate::geom::extent3d::Extent3d,
-    status: Result<()>,
-}
-
-// CO-PORTED minimum default-tight=false branches from query.face_p1. Keeping the
-// status beside its box preserves partial writes and Native SER before Union.
+// SmRegion/SmShell::CalculateBoundingBox (unit query.face_p1) with the default
+// bTight = FALSE. The IsDegenerate callers ignore a native failure status and read
+// the partial union of the children before the failing one; missing dependencies
+// and unsafe native graph accesses still propagate.
 fn region_bounds_for_degeneracy(
     kernel: &mut Kernel,
     brep: &Brep,
     id: RegionId,
-) -> Result<BoundsAttempt> {
+) -> Result<crate::geom::extent3d::Extent3d> {
     let mut bounds = crate::geom::extent3d::Extent3d::new();
-    let shells = &brep.region(id)?.shells;
-    if shells.is_empty() {
-        return Ok(BoundsAttempt {
-            bounds,
-            status: Err(SolidError::sm_err("topology::shell::region_bounds")),
-        });
-    }
-    for &shell in shells {
-        let child = shell_bounds_for_degeneracy(kernel, brep, shell)?;
-        if let Err(error) = child.status {
-            return Ok(BoundsAttempt {
-                bounds,
-                status: Err(error),
-            });
-        }
-        bounds = bounds.union(&child.bounds);
-    }
-    Ok(BoundsAttempt {
-        bounds,
-        status: Ok(()),
-    })
+    let status = crate::query::face::p1::calculate_region_bounding_box_into(
+        kernel,
+        brep,
+        id,
+        false,
+        &mut bounds,
+    );
+    native_bounds(bounds, status)
 }
 
 fn shell_bounds_for_degeneracy(
     kernel: &mut Kernel,
     brep: &Brep,
     id: ShellId,
-) -> Result<BoundsAttempt> {
+) -> Result<crate::geom::extent3d::Extent3d> {
     let mut bounds = crate::geom::extent3d::Extent3d::new();
-    let shell = brep.shell(id)?;
-    match shell.shell_type.code() {
-        16006 => {
-            let vertex = shell.vertex(brep)?.ok_or(invalid_members())?;
-            bounds.add_point(brep.vertex(vertex)?.point);
-        }
-        16005 => {
-            for edge in wire_edges(kernel, brep, id)? {
-                let child = edge_bounds_for_shell(kernel, brep, edge, false)?;
-                if let Err(error) = child.status {
-                    return Ok(BoundsAttempt {
-                        bounds,
-                        status: Err(error),
-                    });
-                }
-                bounds = bounds.union(&child.bounds);
-            }
-        }
-        16022 => {
-            for faceuse in shell.get_faceuses()? {
-                let face = brep.faceuse(faceuse)?.face.ok_or(invalid_members())?;
-                let child = face_bounds_for_shell(kernel, brep, face, false)?;
-                if let Err(error) = child.status {
-                    return Ok(BoundsAttempt {
-                        bounds,
-                        status: Err(error),
-                    });
-                }
-                bounds = bounds.union(&child.bounds);
-            }
-        }
-        _ => {}
-    }
-    Ok(BoundsAttempt {
-        bounds,
-        status: Ok(()),
-    })
+    let status = crate::query::face::p1::calculate_shell_bounding_box_into(
+        kernel,
+        brep,
+        id,
+        false,
+        &mut bounds,
+    );
+    native_bounds(bounds, status)
 }
 
-fn edge_bounds_for_shell(
-    kernel: &mut Kernel,
-    brep: &Brep,
-    id: EdgeId,
-    tight: bool,
-) -> Result<BoundsAttempt> {
-    use crate::geom::extent3d::Extent3d;
-    use crate::nurbs::b_spline_curve::BoundingBoxRequest;
-    brep.edge(id)?;
-    let request = BoundingBoxRequest {
-        normal: true,
-        pseudo: false,
-        polar: false,
-    };
-    match crate::query::edge::calculate_bounding_box(kernel, brep, id, request, tight) {
-        Ok(boxes) => Ok(BoundsAttempt {
-            bounds: boxes.normal.ok_or_else(|| {
-                SolidError::invalid_input(
-                    "topology::shell::edge_bounds_for_shell",
-                    "requested 3D bounding box missing",
-                )
-            })?,
-            status: Ok(()),
-        }),
-        // Native SER returns before unioning this edge's box. IsDegenerate
-        // ignores that status and reads only the preceding successful aggregate.
-        Err(error @ (SolidError::Upstream { .. } | SolidError::Nlib { .. })) => Ok(BoundsAttempt {
-            bounds: Extent3d::new(),
-            status: Err(error),
-        }),
-        // Missing dependencies and safety errors must not become ordinary
-        // native status results or disappear into an initialized extent.
+fn native_bounds(
+    bounds: crate::geom::extent3d::Extent3d,
+    status: Result<()>,
+) -> Result<crate::geom::extent3d::Extent3d> {
+    match status {
+        // Native SER returns the box unioned so far.
+        Ok(()) | Err(SolidError::Upstream { .. } | SolidError::Nlib { .. }) => Ok(bounds),
+        // Missing dependencies and safety errors must not become ordinary native
+        // status results or disappear into an initialized extent.
         Err(error) => Err(error),
     }
-}
-
-fn face_bounds_for_shell(
-    _kernel: &Kernel,
-    brep: &Brep,
-    id: crate::topology::FaceId,
-    _tight: bool,
-) -> Result<BoundsAttempt> {
-    brep.face(id)?;
-    // UNPORTED(query.face_p1): SmFace::CalculateBoundingBox
-    Err(SolidError::unported(
-        "SmFace::CalculateBoundingBox",
-        "query.face_p1",
-    ))
 }
 
 /// Outputs of a shell ray query, including writes made before an error.
@@ -977,13 +881,16 @@ pub trait ShellRayWorld<O>: crate::intersect::topology_solver::p1::TopologyObjec
         Shape::new(&[], faces, &[], &[])
     }
 
-    /// Classify the incoming line segment at its known intersection.
+    /// Classify the incoming line segment at its known intersection
+    /// (`pBrep->LocalCurveSector`). The world over the B-rep cache (`query.brep`)
+    /// overrides this with [`crate::topology::brep::p2::local_curve_sector`], which needs
+    /// the B-rep and an entity classification this generic default does not have.
     fn shell_ray_sector(&self, _request: ShellRaySector<'_, O>) -> ShellRaySectorAttempt {
-        // UNPORTED(topology.brep_p2): SmBrep::LocalCurveSector
+        // UNPORTED(query.brep): ShellRayWorld over the B-rep cache (SmBrep::LocalCurveSector)
         ShellRaySectorAttempt {
             status: Err(SolidError::unported(
-                "SmBrep::LocalCurveSector",
-                "topology.brep_p2",
+                "SmShell::RayFire world over the B-rep cache (SmBrep::LocalCurveSector)",
+                "query.brep",
             )),
             region_update: None,
         }

@@ -175,12 +175,16 @@ impl UnitDiff for Runner {
         let before = MARKS.map(|mt| k.context.current_mark(mt));
         let mut body = Vec::new();
         let mut status = 0;
+        // harness env: the runner holds no attribute state (default region records,
+        // empty store; see RegionNotifyState)
+        let mut notify_state = solidcore::topology::brep::p2::RegionNotifyState::new(&b);
         for _ in 0..request.repeat {
             let result = match request.op {
                 0 => p6::test_closure_split_region_attempt(
                     &mut k,
                     &mut b,
                     &mut marks,
+                    &mut notify_state.env(),
                     i.flags & 1 != 0,
                     FaceuseId::from_index(request.seed as u32),
                 )
@@ -201,7 +205,7 @@ impl UnitDiff for Runner {
                         .iter()
                         .map(|e| EdgeId::from_index(*e as u32))
                         .collect();
-                    p6::copy_edges(&k, &b, &edges, &mut destination).map(|copied| {
+                    p6::copy_edges(&mut k, &b, &edges, &mut destination).map(|copied| {
                         body = if i.flags & 2 != 0 {
                             vec![copied.len() as i64]
                         } else {

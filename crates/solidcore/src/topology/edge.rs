@@ -67,7 +67,10 @@
 //! - **Notification.** [`notify`] runs the edge's part, the edge uses' and vertex uses'
 //!   `Notify` and `SmTopology::Notify` with a [`NotifyEnv`] (the caller's topology
 //!   records, attribute store, context and the identity of each entity).
-//!   `SmBrep::Notify` (unit `topology.brep_p2`) returns [`SolidError::Unported`].
+//!   `SmBrep::Notify` is [`crate::topology::brep::p2::notify`] without B-rep
+//!   cache (the caller-held `SM_OC_BREP` cache is not threaded through
+//!   [`NotifyEnv`]; no Rust caller can build one yet); in `Notify(SM_NO_CHANGE_GEOMETRY)` the B-rep's
+//!   `data3` (`this->GetCurve()`) is the old curve's identity, as in `SetCurve`.
 //!   The constructor's and destructor's notifications and the destructor's context
 //!   `DoingBoolean` toggling are not modelled; the record owns its curve, which is
 //!   dropped with it.
@@ -80,8 +83,8 @@
 //!   anchor edge use (as upstream; the edge use count is that list's length); an edge
 //!   use already on a list is [`SolidError::InvalidInput`] (upstream relinks it and
 //!   corrupts its old list). A missing anchor is upstream's ignored `SM_ERR`.
-//!   `InsertManifoldEdgeEnd`'s `SmVertex::PostInsert` sets the vertex uses' vertex (the
-//!   port's vertices keep no vertex use list).
+//!   `InsertManifoldEdgeEnd` appends both newly connected vertex uses to the target
+//!   vertex's owning list and sets their owner, in native `PostInsert` order.
 //! - **Gaps.** `GetMaxGap3d` and friends return copies of the cached gaps
 //!   ([`EdgeGap`]) instead of pointers; `SmGap`'s comparison operators (unit
 //!   `heal.gap`) compare `m_dGap3d`, as here.
@@ -94,7 +97,7 @@
 //!   port returns the error. [`SolidError::Unported`] always propagates.
 //! - **Recursion.** `sm_CoverOtherCoincidentFace` recurses once (its second call has
 //!   `bRefineDomains` set); no other recursion.
-//! - **Unported callees** return [`SolidError::Unported`]: `SmBrep::Notify` (`topology.brep_p2`), `SmBrep::GetInfiniteRegion`
+//! - **Unported callees** return [`SolidError::Unported`]: `SmBrep::GetInfiniteRegion`
 //!   (`topology.brep_p1`) and `SmFace::CalculateUVDomainFromUVTrimCurves`
 //!   (`topology.face_p1`). `SmSurface::CoverOtherCoincidentSurface` is wired to
 //!   `surface.surface_p5` (and its `CoverCoincidentSurface` to `surface.surface_p3`); the
@@ -122,6 +125,7 @@ use crate::nurbs::knots::Side;
 use crate::query::edge::{radial_sector_of_curve_classify, CurveSectorClass, RadialSectorClass};
 use crate::surface::surface::p2::PLANE_TYPE;
 use crate::surface::surface::Surface;
+use crate::topology::brep::p2::{self as brep_p2, NotifyArg as BrepNotifyArg};
 use crate::topology::edgeuse::p1 as eu1;
 use crate::topology::edgeuse::p2 as eu2;
 use crate::topology::edgeuse::p3 as eu3;
@@ -201,21 +205,29 @@ fn get_or_create_uv_trim_curve(k: &Kernel, b: &mut Brep, eu: EdgeuseId) -> Resul
     eu3::get_or_create_uv_trim_curve(k, b, eu, false, false, true).map(|_| ())
 }
 
-/// `SmBrep::Notify` (unit `topology.brep_p2`).
-fn brep_notify(operation: NotifyOperation) -> Result<()> {
-    let _ = operation;
-    // UNPORTED(topology.brep_p2): SmBrep::Notify
-    Err(SolidError::unported("SmBrep::Notify", "topology.brep_p2"))
+/// `pBrep->Notify(operation, data1, pBrep, data3)` (unit `topology.brep_p2`).
+fn brep_notify(
+    b: &Brep,
+    env: &mut NotifyEnv<'_>,
+    operation: NotifyOperation,
+    data1: Option<BrepNotifyArg>,
+    data3: Option<ObjectRef>,
+) -> Result<()> {
+    let brep = BrepNotifyArg::Object(brep_p2::brep_ref(b));
+    // the caller-held SM_OC_BREP cache is not threaded through `NotifyEnv` (no Rust
+    // caller can build one yet: `make_brep_cache` needs `query.brep`)
+    brep_p2::notify(
+        b,
+        env,
+        None,
+        operation,
+        [data1, Some(brep), data3.map(BrepNotifyArg::Object)],
+    )
 }
 
 /// `SmBrep::GetInfiniteRegion` (unit `topology.brep_p1`).
-fn infinite_region(b: &Brep) -> Result<Option<RegionId>> {
-    let _ = b;
-    // UNPORTED(topology.brep_p1): SmBrep::GetInfiniteRegion
-    Err(SolidError::unported(
-        "SmBrep::GetInfiniteRegion",
-        "topology.brep_p1",
-    ))
+fn infinite_region(b: &Brep) -> Option<RegionId> {
+    b.infinite_region()
 }
 
 /// `SmVertex::SetTolerance(tol)` (default arguments; unit `topology.vertex`).
@@ -1019,7 +1031,9 @@ pub fn insert_manifold_edge_end(
     };
 
     // Insert new start vertexuses into TgtVertex
+    b.vertex_mut(v)?.vertexuses.push(vu_top);
     b.vertexuse_mut(vu_top)?.vertex = Some(v);
+    b.vertex_mut(v)?.vertexuses.push(vu_bot);
     b.vertexuse_mut(vu_bot)?.vertex = Some(v);
 
     match old {
@@ -2179,7 +2193,7 @@ impl core::fmt::Debug for NotifyEnv<'_> {
 ///
 /// [`SolidError::InvalidInput`] where upstream dereferences null (a missing vertex use
 /// or mate, and those of the edge use notification); [`SolidError::Unported`] from
-/// `SmBrep::Notify`; those of the notification handlers.
+/// `SmBrep::Notify`'s unported callees; those of the notification handlers.
 pub fn notify(
     b: &mut Brep,
     e: EdgeId,
@@ -2195,8 +2209,10 @@ pub fn notify(
             None => brep(b, e)?.is_some(),
         };
         if has_brep {
-            brep_notify(N::RmFromBrep)?;
-            brep_notify(N::AddToBrep)?;
+            // this->GetCurve() is still the old geometry (data3)
+            let obj = |d: Option<ObjectRef>| d.map(BrepNotifyArg::Object);
+            brep_notify(b, env, N::RmFromBrep, obj(d3), d3)?;
+            brep_notify(b, env, N::AddToBrep, obj(d1), d3)?;
         }
     }
     if matches!(
@@ -2280,7 +2296,7 @@ impl Default for SetCurveOptions {
 ///
 /// # Errors
 ///
-/// Those of [`notify`]; [`SolidError::Unported`] from `SmBrep::Notify`.
+/// Those of [`notify`] and of `SmBrep::Notify` ([`crate::topology::brep::p2::notify`]).
 pub fn set_curve(
     b: &mut Brep,
     e: EdgeId,
@@ -2307,7 +2323,8 @@ pub fn set_curve(
         )?;
         if has_brep {
             // side effect: remove from spatial cache.
-            brep_notify(NotifyOperation::RmFromBrep)?;
+            let this = Some(BrepNotifyArg::Entity(EntityRef::Edge(e)));
+            brep_notify(b, env, NotifyOperation::RmFromBrep, this, old_ref)?;
         }
     }
 
@@ -2341,7 +2358,8 @@ pub fn set_curve(
 
     // side effect: Add to spatial cache.
     if options.call_notify && has_brep {
-        brep_notify(NotifyOperation::AddToBrep)?;
+        let this = Some(BrepNotifyArg::Entity(EntityRef::Edge(e)));
+        brep_notify(b, env, NotifyOperation::AddToBrep, this, new_ref)?;
     }
     Ok(returned)
 }
@@ -2385,7 +2403,7 @@ pub fn blend_edgeuse(k: &Kernel, b: &mut Brep, e: EdgeId) -> Result<Option<Edgeu
         let shell = eu1::shell(b, eu0_r)?.ok_or_else(|| null("GetBlendEdgeuse: no shell"))?;
         let shell_b = eu1::shell_brep(b, shell)?
             .ok_or_else(|| null("GetBlendEdgeuse: shell without B-rep"))?;
-        let infinite = infinite_region(shell_b)?;
+        let infinite = infinite_region(shell_b);
 
         // get edgeuse for interior region
         if eu1::shell_region(b, shell)? == infinite {
@@ -2490,6 +2508,47 @@ mod tests {
     use crate::nurbs::crv_basic::Curve as NlCurve;
     use crate::nurbs::math::{CPoint, NOW};
     use crate::topology::{EdgeuseOwner, Region, Shell, Vertex, Vertexuse, VertexuseOwner};
+
+    #[test]
+    fn insert_manifold_end_appends_the_new_vertexuses_in_native_order() {
+        let mut b = Brep::new();
+        let v = b.add_vertex(Point3::ZERO).unwrap();
+        let target = b
+            .add_vertexuse_record(Vertexuse {
+                vertex: Some(v),
+                owner: VertexuseOwner::Loopuse(None),
+                ..Vertexuse::default()
+            })
+            .unwrap();
+        b.vertex_mut(v).unwrap().vertexuses.push(target);
+        let edge = b.add_edge(v, v).unwrap();
+        let mut uses = Vec::new();
+        for _ in 0..4 {
+            let vu = b.add_vertexuse_record(Vertexuse::default()).unwrap();
+            let eu = b
+                .add_edgeuse_record(crate::topology::Edgeuse {
+                    edge: Some(edge),
+                    vertexuse: Some(vu),
+                    ..crate::topology::Edgeuse::default()
+                })
+                .unwrap();
+            b.vertexuse_mut(vu).unwrap().owner = VertexuseOwner::Edgeuse(Some(eu));
+            b.edge_mut(edge).unwrap().edgeuses.push(eu);
+            uses.push(vu);
+        }
+        insert_manifold_edge_end(&mut b, edge, Some(target), true).unwrap();
+        assert_eq!(
+            b.vertex(v).unwrap().vertexuses,
+            vec![target, uses[0], uses[2]]
+        );
+        assert_eq!(b.vertexuse(uses[0]).unwrap().vertex, Some(v));
+        assert_eq!(b.vertexuse(uses[2]).unwrap().vertex, Some(v));
+        insert_manifold_edge_end(&mut b, edge, Some(target), false).unwrap();
+        assert_eq!(
+            b.vertex(v).unwrap().vertexuses,
+            vec![target, uses[0], uses[2], uses[3], uses[1]]
+        );
+    }
 
     /// A wire edge from (0,0,0) to (1,0,0) on a line B-spline: two shell edge uses and
     /// their vertex uses.
