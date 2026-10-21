@@ -1941,11 +1941,12 @@ mod tests {
     #[test]
     fn negative_extension_distance_stops() {
         // upstream doubles a negative distance towards -inf forever (HANG-16)
-        let r = plane_surface().create_extended_surface(-5.0, ContinuityType::G1R);
+        let k = &Kernel::default();
+        let r = plane_surface().create_extended_surface(k, -5.0, ContinuityType::G1R);
         assert!(matches!(r, Err(SolidError::NotConverged { .. })), "{r:?}");
         // a positive distance is unaffected
         assert!(plane_surface()
-            .create_extended_surface(0.5, ContinuityType::G1R)
+            .create_extended_surface(k, 0.5, ContinuityType::G1R)
             .is_ok());
     }
 }
