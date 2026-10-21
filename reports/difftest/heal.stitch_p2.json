@@ -4120,8 +4120,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::FindAndSetInfiniteRegion",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::FindInfiniteRegion",
+        "unit": "topology.brep_p9"
       },
       "max_rel_err": 0.0,
       "name": "box_solid",
@@ -4196,8 +4196,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::FindAndSetInfiniteRegion",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::FindInfiniteRegion",
+        "unit": "topology.brep_p9"
       },
       "max_rel_err": 0.0,
       "name": "box_do_0",
@@ -4208,8 +4208,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::FindAndSetInfiniteRegion",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::FindInfiniteRegion",
+        "unit": "topology.brep_p9"
       },
       "max_rel_err": 0.0,
       "name": "box_do_1e-06",
@@ -4220,8 +4220,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::FindAndSetInfiniteRegion",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::FindInfiniteRegion",
+        "unit": "topology.brep_p9"
       },
       "max_rel_err": 0.0,
       "name": "box_do_0.001",
@@ -4232,8 +4232,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::FindAndSetInfiniteRegion",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::FindInfiniteRegion",
+        "unit": "topology.brep_p9"
       },
       "max_rel_err": 0.0,
       "name": "box_do_0.1",
@@ -4452,8 +4452,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::FindAndSetInfiniteRegion",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::FindInfiniteRegion",
+        "unit": "topology.brep_p9"
       },
       "max_rel_err": 0.0,
       "name": "box_small_solid",
@@ -4528,8 +4528,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::FindAndSetInfiniteRegion",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::FindInfiniteRegion",
+        "unit": "topology.brep_p9"
       },
       "max_rel_err": 0.0,
       "name": "box_small_do_0",
@@ -4540,8 +4540,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::FindAndSetInfiniteRegion",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::FindInfiniteRegion",
+        "unit": "topology.brep_p9"
       },
       "max_rel_err": 0.0,
       "name": "box_small_do_1e-06",
@@ -4552,8 +4552,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::FindAndSetInfiniteRegion",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::FindInfiniteRegion",
+        "unit": "topology.brep_p9"
       },
       "max_rel_err": 0.0,
       "name": "box_small_do_0.001",
@@ -4564,8 +4564,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::FindAndSetInfiniteRegion",
-        "unit": "topology.brep_p5"
+        "symbol": "SmBrep::FindInfiniteRegion",
+        "unit": "topology.brep_p9"
       },
       "max_rel_err": 0.0,
       "name": "box_small_do_0.1",
@@ -5231,7 +5231,7 @@
   "deferred_by_unit": {
     "intersect.curve_class_p2": 11,
     "topology.brep_p1": 172,
-    "topology.brep_p5": 10
+    "topology.brep_p9": 10
   },
   "max_rel_err": 0.0,
   "pass": true,
