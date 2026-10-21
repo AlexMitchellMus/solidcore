@@ -9505,7 +9505,11 @@ rejected: nothing runs on either side.
   `DoLawIntersection` (`intersect.surface_intersector_p4`) run on a `FilletIntersector`'s base
   still call the basic intersector's versions. Before a solver unit traces a fillet through
   those drivers, `intersect::surface_intersector` needs a hook trait the fillet intersector
-  implements.
+  implements. *Update (`blend.fillet_solver_p4`, PR #212):* `DoPointIntersection` (with
+  `TraceCurve` and `TestPoint`) now runs through
+  `intersect::surface_intersector::p4::IntersectorVirtuals`;
+  `FilletIntersector::do_point_intersection` dispatches to the overrides
+  (`FilletDispatch`). `DoLawIntersection` still has the gap.
 - **Surface aliasing.** Every upstream caller (`SmFilletSolver.cpp:2037`,
   `SmFilletStandardSolver.cpp:2273`/`:4721`, `SmFilletGeom.cpp:11627`) builds the intersector
   over the solver's own `SmOffsetSurface`s, and `TestSpanAccuracy` / `ComputeNextPoint` rely on
@@ -9513,6 +9517,10 @@ rejected: nothing runs on either side.
   so zeroing the solver's offsets does not reach it; the shim and runner also build both sides
   over the base surfaces, so the offset-surface configuration is not compared. Solver porters
   must pass the surfaces deliberately (or add a solver-backed surface accessor).
+  *Update (`blend.fillet_solver_p4`, PR #212):* `CalcFilletGeom` traces copies of the
+  solver's offset surfaces and keeps their distances in step with the solver's
+  (`OffsetSurface::set_offset_distance` takes `&self`, the distance is a `Cell`): on entry
+  to `DoPointIntersection` and after every solver call the intersector makes.
 - **FlushCrv guard kept.** The FFI still rejects `sm_FlushCrv` inputs whose polygon does not
   have `3 (knots - 1) + 1` points or whose knots are not strictly increasing:
   `CreateCanonical` then indexes NLIB arrays from the polygon size and the expanded knot
@@ -10753,3 +10761,119 @@ with maximum relative error 0.
   `sm_GetEllipseTrimIntervals` through `IntersectWithCone`, which has no such guard yet.
   Reproduced with main's unpatched `cone/p2.rs` too. Tracked in issue #276; the
   `surface.cone_p2` refusals that are now stricter than needed are issue #277.
+
+## blend.fillet_solver_p4 (harness)
+
+- **ND-3 (`sdStaticStep`) in the difftest.** The function static of `ComputePointValues` lives
+  in libSMLib and is not linkable (local symbol), and earlier units of a `--green` run
+  (`blend.fillet_intersector`) may already have latched it. The shim's probe
+  (`sc_blend_fillet_solver_p4_static_step`) calls the library's `ComputePointValues` once on a
+  fixed finite-difference crossing point (cubic sheet `(u, v, u^3)` against the plane
+  `y = 0.25`, zero offsets; this latches the static with `1e-5` if nothing has) and replays the
+  finite-difference block with `1e-3` and with `1e-5` through the public `StepSolve`; exactly one
+  replay reproduces the library's curve tangent bit for bit. The runner probes before every
+  case that can step (finite-difference solver, incoming `SM_IP_TANGENT_POINT`, or a previous
+  point) and seeds `Kernel::fillet_point_step`. Run order (C++ or Rust first) does not matter:
+  either the case or the probe latches the static before the probe reads it.
+- **Surfaces of revolution, not the SmCylinder/SmCone/SmSphere/SmTorus classes.** The Rust
+  port has only `SurfaceKind::SurfOfRevolution`; `SmSphere` overrides `EvaluateNormal` (used by
+  `ComputeSurfaceValues`' degenerate-normal fallback) and has no Rust counterpart yet. The point
+  cases therefore build cylinder, cone (also with its apex on the axis), sphere and torus shapes
+  as real `SmSurfOfRevolution`s from line / circle generators, as unit
+  `surface.surf_of_revolution_p1` does; poles and apexes are covered through them.
+- **CalcFilletGeom without the executive pipeline.** The only safe standalone paths are the
+  ones before the first rail: a non-B-spline edge curve (`SM_ERR_NULL_POINTER` at :1504) and a
+  bare `SmFilletGeom` without rails (`NER(pThisRail)`, or `SM_ERR` from a failed
+  `sm_FindFilletTsectPnt` at a G1/split knot first). `SetExtensionFlags` is overridden on both
+  sides (the base dereferences the unset executive). An empty `m_vFilletGeoms` with a B-spline
+  curve and a `NULL` `m_pEdgeuses[0]` are undefined behaviour upstream and rejected by the FFI.
+  Full pipeline cases (executive, corners, pseudo-B-rep import) are left until p2/p3 land:
+  every such case would defer (`topology.edgeuse_p3` is wired since the rebuild on main).
+
+- Native fixture parsing is inside the exception boundary, including its small
+  vector allocations. The standalone regression in
+  `harness/cpp/tests/blend_fillet_solver_p5_alloc.cpp` forces the first allocation
+  to throw: before this fix the exception escaped; afterwards the shim returns
+  `SC_ERR_EXCEPTION` (-1000). This test is linked separately so its allocator
+  override is never part of the FFI library.
+
+
+### PR #208 follow-up: complete caller continuation and native containment
+
+The original prefix-only port was incomplete, despite passing its limited gate.
+The caller bodies now continue through their final return. The following mapping
+was checked against the active pinned upstream source (debug drawing excluded):
+
+| Upstream `SmFilletSolver.cpp` | Rust continuation |
+|---|---|
+| 5714–5752 | geometry-list snapshot; new classification installed before fallible `CurveOnClassify` |
+| 5765–5810 | original reverse interval walk; start/end `ConnectIntervals` direction; descending interior-short list |
+| 5811–5822 | full refinement arguments; warning-only status with retained mutations; process each geometry |
+| 7161–7254 | blend skip, ordered rail NERs, corner restriction, rail 0 then rail 1 full recovery |
+| 7256–7327 | convexity, analytic test, lifetime of original rail/UV/surface copies |
+| 7329–7450 | segment state, saved offsets, side search, adjacent face, tangent offset orientation/type |
+| 7452–7504 | parameter comparison at exactly 1e-3, index increments, no-side early returns |
+| 7506–7622 | last segment; cliff rail vs tangent geometry splits; mates; base faces; saved offset copy/output even on ignored error |
+| 7624–7744 | rail intersections; recomputation after a previous split; cliff support construction and side geometry |
+| 7747–7802 | ordered AddUnique of adjusted corners; mate classifications; solver non-convergence |
+| 7805–7867 | delete surface; global solve; derivative direction; rebuild; support edges; trim; restore tangent offsets |
+| 7869–7899 | update current geometry/rail handles and split flags; final return |
+
+`p5/recovery.rs` also supplies typed adapters for p1's `sm_SplitRail` and
+`sm_ComputeSupportEdge`. Their full bodies retain the continuation after
+`MakeFilletEdge` and `sm_SrfSrfIntersection`. Curve installation reuses the real
+pseudo-rail notification reset, updates `Curve::owner` with caller-resolved object
+keys, and routes owner-change notifications through `RolloverOwnership`. Curve
+and surface solution handles retain their real natural domains, reusing p1's
+`CliffHandle` rather than an opaque `NoObject`. The offset copy takes the caller's
+Kernel; the support intersection preserves explicit null optional arguments and
+`bOptSkipTwoPntsIntersection=FALSE`. New
+solver-local geometry handles are distinct from arena ids. The segment loop has
+a checked progress budget of `8 + 4 * total_intervals * (target_edgeuses + 1)`;
+a non-progressing corner callee returns `InvalidInput` instead of looping forever.
+
+Fourteen new kernel regressions cover full-rollover call order and early failure,
+tiny end intervals with explicit `bAllowRemovalOfEnds=TRUE`, interior-short
+ordering, refinement argument transfer and
+warning-only mutations, two-segment tangent rebuild/offset restoration, retained
+partial output before failed rebuild, ignored Copy status with usable output,
+cliff support ordering, stalled corner traversal, empty classes, typed split
+backlinks/endpoints/curve ownership notifications, support-intersection failure, and the complete successful support-curve
+intersection/trim/installation path.
+These tests script unavailable callees to exercise the real caller; they do not
+establish Rust-versus-C++ repair parity. The native gate remains 86 cases:
+78 passed / 0 failed / 6 deferred / 2 rejected, with the same dependency boundaries.
+
+The pre-fix native audit found 5184 bytes leaked for a simple process fixture and
+21872 bytes for the nonempty TestRollOver fixture. Fixture vertices/rails now have
+explicit RAII owners; rail curves receive their actual native owner; TestRollOver
+is not seeded with classifications it would overwrite and leak. The standalone
+ASan/LSan regression calls the in-process implementation directly, so process exit
+cannot hide leaked allocations. It checks process, empty/nonempty TestRollOver and
+the native rectangular target, with real destruction and zero reported leaks.
+The upstream libraries are the normal reference build; the shim and standalone
+regression are instrumented, not all SMLib source files.
+
+The pre-fix calloc sweep produced 9 SIGSEGV and 15 SIGABRT in 200 probes, including
+`CreateRectangle` cleanup and the allocating `SmBrep` destructor. A catch around the
+fixture cannot intercept either. Both exported rollover functions now run all
+native construction, evaluation and destruction in a Unix child with bounded IPC
+and a 30-second stalled-read timeout. Parent bookkeeping uses bounded stack arrays;
+no SMLib objects are made in the caller. Child signals, aborts, exceptions and failed
+protocols become `SC_ERR_EXCEPTION`, not parity statuses or rejected fixtures. The
+parent reaps its own worker and kills only that worker on failed/stalled IPC. On a
+non-Unix platform the fixture fails closed. This changes harness isolation only;
+no upstream algorithm or kernel tolerance is modified.
+
+Reproduce the committed native regressions (reference libraries must exist):
+
+```sh
+SOLIDCORE_CPP_DIR=/path/to/bin/cpp python3 harness/cpp/tests/run_blend_fillet_solver_p5_safety.py
+SOLIDCORE_CPP_DIR=/path/to/bin/cpp python3 harness/cpp/tests/run_blend_fillet_solver_p5_safety.py --asan
+```
+
+The sweep runs 1200 combinations of `new`/`calloc` allocation failure across both
+exports: zero host crashes; 843 successful calls and 357 contained native errors.
+Explicit native SIGSEGV and SIGABRT are contained as well. Rust FFI regressions
+cover raw-parser truncation, empty/short output buffers and repeated concurrent
+workers. Native operation failures remain distinct from fixture rejection.

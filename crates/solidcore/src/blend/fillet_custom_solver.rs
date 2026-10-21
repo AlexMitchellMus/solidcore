@@ -17,7 +17,8 @@
 //! | [`SecantConstantRadiusFs::load_initial_values`]   | `SmSecantConstantRadiusFS::LoadInitialValues`     |
 //! | [`SecantConstantRadiusFs::load_jacobian`]         | `SmSecantConstantRadiusFS::LoadJacobian`          |
 //! | [`ConstantRadiusAssistedFs`] (CO-PORTED)          | `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` over the `SmFilletSolver` base ([`FilletSolver`]) |
-//! | `impl FilletSolverOps` for both solvers            | their `LoadJacobian` / `LoadInitialValues` overrides; the inherited `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` overrides (`GetJacobianSize`, `SetupOffsetValues`, `OffsetRadiiCanChange`, `GetType`, `IsKindOf`) return [`SolidError::Unported`] (units `blend.fillet_standard_solver_p1` / `_p2`) |
+//! | `impl FilletSolverOps` for both solvers            | their `LoadJacobian` / `LoadInitialValues` overrides; the inherited `SmConstantRadiusFS` overrides `SetupOffsetValues`, `OffsetRadiiCanChange` and `GetJacobianSize` (those of `ConstantRadiusAssistedFs`, unit `blend.fillet_standard_solver_p1`); the inherited `GetType`, `IsKindOf` return [`SolidError::Unported`] (units `blend.fillet_standard_solver_p1` / `_p2`) |
+//! | `impl FilletSolverOps for ConstantRadiusAssistedFs` | the `SmConstantRadiusFS` overrides `SetupOffsetValues`, `OffsetRadiiCanChange`, `GetJacobianSize` (the inherent methods of unit `blend.fillet_standard_solver_p1`) |
 //! | [`OffsetSurface`], [`SurfaceId`]                  | an `SmOffsetSurface*` rail surface (unit `surface.offset_surface`) and the identity of its base pointer |
 //! | [`JacobianLoad`], [`InitialValues`]               | the in/out arguments of `LoadJacobian`, `LoadInitialValues` |
 //!
@@ -167,7 +168,7 @@ impl OffsetSurface {
 
     /// `GetOffsetDistance`.
     #[must_use]
-    pub const fn offset_distance(&self) -> f64 {
+    pub fn offset_distance(&self) -> f64 {
         self.surface.offset_distance()
     }
 
@@ -1590,38 +1591,30 @@ macro_rules! fillet_solver_ops {
                 &mut self.base.solver
             }
 
-            /// `SmConstantRadiusFS::GetJacobianSize` (unit
-            /// `blend.fillet_standard_solver_p1`, not ported).
+            /// `SmConstantRadiusFS::GetJacobianSize` (inherited through
+            /// `SmConstantRadiusAssistedFS`).
             fn jacobian_size(&self) -> Result<usize> {
-                // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusFS::GetJacobianSize
-                Err(SolidError::unported(
-                    "SmConstantRadiusFS::GetJacobianSize",
-                    "blend.fillet_standard_solver_p1",
-                ))
+                <ConstantRadiusAssistedFs as FilletSolverOps>::jacobian_size(&self.base)
             }
 
-            /// `SmConstantRadiusFS::SetupOffsetValues` (unit
-            /// `blend.fillet_standard_solver_p1`, not ported).
+            /// `SmConstantRadiusFS::SetupOffsetValues` (inherited through
+            /// `SmConstantRadiusAssistedFS`).
             fn setup_offset_values(
                 &mut self,
-                _tsect: &TsectPnt,
-                _offset_dist: Option<&mut f64>,
+                tsect: &TsectPnt,
+                offset_dist: Option<&mut f64>,
             ) -> Result<()> {
-                // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusFS::SetupOffsetValues
-                Err(SolidError::unported(
-                    "SmConstantRadiusFS::SetupOffsetValues",
-                    "blend.fillet_standard_solver_p1",
-                ))
+                <ConstantRadiusAssistedFs as FilletSolverOps>::setup_offset_values(
+                    &mut self.base,
+                    tsect,
+                    offset_dist,
+                )
             }
 
-            /// `SmConstantRadiusFS::OffsetRadiiCanChange` (unit
-            /// `blend.fillet_standard_solver_p1`, not ported).
+            /// `SmConstantRadiusFS::OffsetRadiiCanChange` (inherited through
+            /// `SmConstantRadiusAssistedFS`): `FALSE`.
             fn offset_radii_can_change(&self) -> Result<bool> {
-                // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusFS::OffsetRadiiCanChange
-                Err(SolidError::unported(
-                    "SmConstantRadiusFS::OffsetRadiiCanChange",
-                    "blend.fillet_standard_solver_p1",
-                ))
+                <ConstantRadiusAssistedFs as FilletSolverOps>::offset_radii_can_change(&self.base)
             }
 
             /// `SmConstantRadiusAssistedFS::GetType` (`SM_COMMON`, unit
@@ -1686,6 +1679,47 @@ macro_rules! fillet_solver_ops {
 
 fillet_solver_ops!(EiffelTowerFs);
 fillet_solver_ops!(SecantConstantRadiusFs);
+
+/// The `SmConstantRadiusFS` virtuals the fillet solver base calls: the inherent
+/// `SetupOffsetValues`, `OffsetRadiiCanChange` and `GetJacobianSize` of unit
+/// `blend.fillet_standard_solver_p1` (`blend::fillet_standard_solver::p1`). Its
+/// `LoadJacobian` there takes the rail and surfaces explicitly, not a
+/// [`JacobianLoad`]; this trait's `load_jacobian` keeps the base version (only the
+/// unported `StepSolve` would reach it).
+impl FilletSolverOps for ConstantRadiusAssistedFs {
+    fn solver(&self) -> &FilletSolver {
+        &self.solver
+    }
+
+    fn solver_mut(&mut self) -> &mut FilletSolver {
+        &mut self.solver
+    }
+
+    /// `SmConstantRadiusFS::GetJacobianSize`: 4.
+    fn jacobian_size(&self) -> Result<usize> {
+        Ok(Self::jacobian_size(self))
+    }
+
+    /// `SmConstantRadiusFS::SetupOffsetValues(rTsectPnt, pOffsetDist)`: the radius of
+    /// surface 0 (`pOffsetDist`), and each offset surface's distance set to its radius
+    /// times its orientation.
+    fn setup_offset_values(
+        &mut self,
+        tsect: &TsectPnt,
+        offset_dist: Option<&mut f64>,
+    ) -> Result<()> {
+        let d = Self::setup_offset_values(self, tsect)?;
+        if let Some(o) = offset_dist {
+            *o = d;
+        }
+        Ok(())
+    }
+
+    /// `SmConstantRadiusFS::OffsetRadiiCanChange`: `FALSE`.
+    fn offset_radii_can_change(&self) -> Result<bool> {
+        Ok(Self::offset_radii_can_change(self))
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -1826,6 +1860,55 @@ mod tests {
         assert_eq!(fs.base.surface(0).expect("rail 0").offset_distance(), 2.0);
         assert_eq!(fs.base.surface(1).expect("rail 1").offset_distance(), 1.0);
         let _ = NurbCircleParam::Quadratic;
+    }
+
+    /// Both subclasses inherit `SmConstantRadiusFS::SetupOffsetValues`,
+    /// `OffsetRadiiCanChange` and `GetJacobianSize`.
+    #[test]
+    fn subclasses_inherit_the_constant_radius_virtuals() {
+        let k = Kernel::default();
+        let o = Vec3::new(0.0, 0.0, 0.0);
+        let (x, y, z) = (
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+        );
+        let base = || {
+            ConstantRadiusAssistedFs::from_parts(
+                1e-6,
+                0.5,
+                0.03,
+                [2.0, 1.0],
+                [
+                    Some(rail(&k, 0.0, plane(o, x, y), 0)),
+                    Some(rail(&k, 0.0, plane(o, y, z), 1)),
+                ],
+                [1.0, -1.0],
+                [None, None],
+            )
+        };
+        let check = |ops: &mut dyn FilletSolverOps| {
+            let mut d = 0.0;
+            ops.setup_offset_values(&TsectPnt::new(), Some(&mut d))
+                .expect("setup");
+            assert_eq!(d, 2.0);
+            let off = |i| {
+                ops.solver()
+                    .surface(i)
+                    .unwrap()
+                    .unwrap()
+                    .surface
+                    .offset_distance()
+            };
+            assert_eq!(off(0), 2.0);
+            assert_eq!(off(1), -1.0);
+            assert!(!ops.offset_radii_can_change().unwrap());
+            assert!(ops.can_make_analytic().unwrap());
+            assert_eq!(ops.jacobian_size().unwrap(), 4);
+        };
+        check(&mut base());
+        check(&mut EiffelTowerFs::new(base(), 0.3));
+        check(&mut SecantConstantRadiusFs::new(base(), 0.2));
     }
 
     #[test]

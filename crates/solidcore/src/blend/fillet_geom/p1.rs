@@ -1616,7 +1616,7 @@ impl FilletBrep {
 
     /// `SmVertex::SetPoint`: `Notify(SM_NO_CHANGE_GEOMETRY)` resets the cached gaps of
     /// every vertex use of the vertex, then the point is stored.
-    fn set_vertex_point(&mut self, v: VertexId, point: Point3) -> Result<()> {
+    pub(crate) fn set_vertex_point(&mut self, v: VertexId, point: Point3) -> Result<()> {
         for vu in self.brep.vertex(v)?.vertexuses.clone() {
             let vu = self.brep.vertexuse_mut(vu)?;
             vu.vertex_edge_gap.reset();
@@ -3300,7 +3300,7 @@ fn b_spline_net_mut(surface: &mut Surface) -> Option<&mut BSplineSurface> {
 /// notification clears each edge use's UV trim curve and drop-curve record and resets
 /// its cached edge/face gap (its mate's too) and the cached gaps of the edge's vertex
 /// uses; then the curve replaces the old one.
-fn set_rail_curve(brep: &mut Brep, rail: EdgeId, curve: Curve) -> Result<()> {
+pub(crate) fn set_rail_curve(brep: &mut Brep, rail: EdgeId, curve: Curve) -> Result<()> {
     for eu in edge_unit::edgeuses(brep, rail, None, None)? {
         let mate_eu = mate(brep, eu)?;
         let rec = brep.edgeuse_mut(eu)?;

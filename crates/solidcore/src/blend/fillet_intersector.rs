@@ -19,11 +19,12 @@
 //! | [`find_guess_mid_tsect_pnt`]                            | `sm_FindGuessMidTsectPnt` (static)              |
 //! | [`FilletIntersector::flush_curve`]                      | `FlushCurve`                                    |
 //! | [`FilletIntersector::evaluate_law_point`]               | `EvaluateLawPoint`                              |
+//! | [`FilletIntersector::do_point_intersection`], [`FilletDispatch`] | `DoPointIntersection` (inherited) on `*this`: the `SmSurfaceIntersector` virtuals it reaches dispatched to the overrides |
 //! | [`FilletIntersector::curr_fillet_geom`], [`FilletIntersector::curr_fillet_touch_boundary`], [`FilletIntersector::is_curr_fillet_touch_boundary`], [`FilletIntersector::self_intersect`] | `GetCurrFilletGeom`, `GetCurrFilletTouchBoundary`, `IsCurrFilletTouchBoundary`, `GetSelfIntersect` |
 //! | [`FilletIntersector::set_self_intersect`]               | `SetSelfIntersect`                              |
 //! | [`FilletIntersector::is_kind_of`], [`TYPE`]             | `IsKindOf`, `SmFilletIntersector_TYPE`          |
 //! | [`FilletSolverOps`], [`StepSolve`] (CO-PORTED interface) | the `SmFilletSolver` virtuals and members these methods call |
-//! | `FilletSolverOps for ConstantRadiusAssistedFs` (CO-PORTED) | `SmFilletSolver::SetSurfacesToZeroOffset`, `ReloadSurfaceOffsets` |
+//! | `FilletSolverOps for ConstantRadiusAssistedFs` (CO-PORTED) | `SmFilletSolver::SetSurfacesToZeroOffset`, `ReloadSurfaceOffsets`; `ComputePointValues` delegates to [`FilletSolver::compute_point_values`] (unit `blend.fillet_solver_p4`), `ComputeSurfaceValues` and `ComputeUVVectors` to those of unit `blend.fillet_solver_p1` |
 //! | [`FilStatus`] (CO-PORTED)                               | `SmFilStatus`                                   |
 //! | [`HandlingAlgorithmType`] (CO-PORTED)                   | `SmHandlingAlgorithmType`                       |
 //!
@@ -41,22 +42,29 @@
 //!   uninitialised upstream, starts at `0`). The fillet geometry pointer
 //!   (`SmFilletGeom*`, unit `blend.fillet_geom_p1`) is the solver's handle type
 //!   [`FilletSolverOps::FilletGeom`]; `m_pCurrFilletGeom` is an `Option` of it.
-//! - **Virtual overrides (DISPATCH GAP).** `ComputeNextPoint`, `FlushCurve`,
-//!   `ComputePointValues` and `TestSpanAccuracy` are inherent methods here, not
-//!   overrides: the base intersector's drivers (`TraceCurve`, `DoPointIntersection`,
-//!   `DoLawIntersection`, `intersect.surface_intersector_p4`) run on a
-//!   [`FilletIntersector`]'s `base` still call the basic intersector's versions. The
-//!   solver units (`blend.fillet_solver_p1..p4`) that drive a fillet trace need a hook
-//!   trait in `intersect::surface_intersector` (recorded in `plan/findings.md`).
+//! - **Virtual overrides.** `ComputeNextPoint`, `FlushCurve`, `ComputePointValues`
+//!   and `TestSpanAccuracy` are inherent methods here. `DoPointIntersection` reaches
+//!   them through [`FilletIntersector::do_point_intersection`] (below, "Virtual
+//!   dispatch"); the other base drivers (`DoLawIntersection`, a `TraceCurve` run on a
+//!   [`FilletIntersector`]'s `base` directly) still call the basic intersector's
+//!   versions (DISPATCH GAP, recorded in `plan/findings.md`).
 //! - **Surfaces.** Upstream every caller builds `SmFilletIntersector` over the
 //!   solver's own `SmOffsetSurface`s, so `SetSurfacesToZeroOffset` changes the
 //!   intersector's `m_cpSurface` too (the span tests and `ComputeNextPoint` rely on
 //!   it). Here the intersector borrows its two [`Surface`]s; zeroing the solver's
-//!   offsets does not change them. A solver must therefore hand the intersector the
-//!   surfaces it means to be evaluated (or a solver-backed surface accessor must be
-//!   added); the difftest builds both sides over plain base surfaces, so the
+//!   offsets does not change them by itself. A solver must therefore keep the
+//!   surfaces it hands the intersector in step (`blend::fillet_solver::p4` traces
+//!   copies of its offset surfaces and sets their distances, a `Cell` of
+//!   [`OffsetSurface`](crate::surface::offset_surface::OffsetSurface), after every
+//!   solver call); the difftest builds both sides over plain base surfaces, so the
 //!   offset-surface configuration is not compared here.
 //! - **Context.** `m_cpContext = rFilletSolver.GetContext()` is dropped (no contexts).
+//! - **Virtual dispatch.** The inherited `DoPointIntersection` (with `TraceCurve`,
+//!   `TestPoint` and `sm_UpdateTsectPoint`) is the base driver of
+//!   `intersect::surface_intersector::p4` run on a [`FilletDispatch`] (the
+//!   intersector and its solver), whose
+//!   [`IntersectorVirtuals`] implementation calls this class's `ComputePointValues`,
+//!   `ComputeNextPoint` and `FlushCurve` where upstream makes those virtual calls.
 //! - **Points.** As in the base intersector (`intersect.surface_intersector_p1..p4`),
 //!   the points of `ComputeNextPoint` and `TestSpanAccuracy` are arena ids
 //!   ([`TsectId`]); `ComputePointValues`, `ComputePointValuesDelta` take the points by
@@ -85,7 +93,7 @@
 //! - **Not ported.** `Dump` and the `SM_DEBUG_CODE` drawing blocks; `SM_ASSERT`s.
 
 use crate::blend::fillet_custom_solver::{offset_evaluate_1st, ConstantRadiusAssistedFs};
-use crate::blend::fillet_solver::p1::OffsetSurfaceSlot;
+use crate::blend::fillet_solver::p1::{FilletSolver, OffsetSurfaceSlot};
 use crate::curve::crv_on_surf::CrvOnSurf;
 use crate::curve::curve::p3::PointSolveOptions;
 use crate::curve::curve::Curve;
@@ -100,10 +108,13 @@ use crate::geom::vector2d::{Point2, Vec2};
 use crate::geom::vector3d::{sqrt, Point3, Vec3};
 use crate::intersect::adv_surface_intersector::AdvSurfaceIntersector;
 use crate::intersect::surface_intersector::p1::{
-    IntersectionPointType, SpanAccuracy, SrfIndex, TsectId, TsectPnt,
+    IntersectionPointType, SpanAccuracy, SrfIndex, SurfaceIntersector, TsectId, TsectPnt,
 };
 use crate::intersect::surface_intersector::p2::TsectCurves;
 use crate::intersect::surface_intersector::p3::NextPoint;
+use crate::intersect::surface_intersector::p4::{
+    do_point_intersection_with, IntersectionCurve, IntersectorVirtuals, PointIntersectionOptions,
+};
 use crate::kernel::Kernel;
 use crate::math::{max2, max4, min2, EFF_ZERO, EFF_ZERO_SQ};
 use crate::nurbs::b_spline_curve::{BSplineCurve, BSplineCurveForm, CanonicalData, KnotType};
@@ -203,28 +214,24 @@ pub trait FilletSolverOps {
 
     /// `ComputePointValues(aUVValues, crUVDomain1, crUVDomain2, dCurveTraceDirection,
     /// rTsectPnt, pOptPreviousPnt)`: the point, derivatives and type of the
-    /// intersection point at the rail UV points.
+    /// intersection point at the rail UV points. A non-virtual `SmFilletSolver`
+    /// member (unit `blend.fillet_solver_p4`), so there is no default: a solver over the
+    /// `SmFilletSolver` base implements it with [`FilletSolver::compute_point_values`].
     ///
     /// # Errors
     ///
-    /// The solver's failure; [`SolidError::Unported`] until ported.
+    /// The solver's failure.
     #[allow(clippy::too_many_arguments)]
     fn compute_point_values(
         &mut self,
-        _k: &Kernel,
-        _uv_values: [Point2; 2],
-        _uv_domain1: &Extent2d,
-        _uv_domain2: &Extent2d,
-        _curve_trace_direction: f64,
-        _point: &mut TsectPnt,
-        _previous: Option<&TsectPnt>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_solver_p4): SmFilletSolver::ComputePointValues
-        Err(SolidError::unported(
-            "SmFilletSolver::ComputePointValues",
-            "blend.fillet_solver_p4",
-        ))
-    }
+        k: &Kernel,
+        uv_values: [Point2; 2],
+        uv_domain1: &Extent2d,
+        uv_domain2: &Extent2d,
+        curve_trace_direction: f64,
+        point: &mut TsectPnt,
+        previous: Option<&TsectPnt>,
+    ) -> Result<()>;
 
     /// `ComputeSurfaceValues(aUVValues, rTsectPnt)`: the surface and curve point and
     /// derivative values at the rail UV points.
@@ -521,11 +528,51 @@ pub trait FilletSolverOps {
     }
 }
 
-/// The co-ported constant-radius solver data: `SetSurfacesToZeroOffset` and
+/// The co-ported constant-radius solver data: `ComputePointValues` is the
+/// `SmFilletSolver` base's ([`FilletSolver::compute_point_values`], over the solver's
+/// `SmConstantRadiusFS` virtuals); `ComputeSurfaceValues` and `ComputeUVVectors` are
+/// the base's ([`FilletSolver::compute_surface_values`],
+/// [`compute_uv_vectors`](crate::blend::fillet_solver::p1::compute_uv_vectors));
+/// `SetSurfacesToZeroOffset` and
 /// `ReloadSurfaceOffsets` are ported (CO-PORTED from unit `blend.fillet_solver_p1`);
 /// the solver has no fillet geometries yet (handle `()`).
 impl FilletSolverOps for ConstantRadiusAssistedFs {
     type FilletGeom = ();
+
+    fn compute_point_values(
+        &mut self,
+        k: &Kernel,
+        uv_values: [Point2; 2],
+        uv_domain1: &Extent2d,
+        uv_domain2: &Extent2d,
+        curve_trace_direction: f64,
+        point: &mut TsectPnt,
+        previous: Option<&TsectPnt>,
+    ) -> Result<()> {
+        FilletSolver::compute_point_values(
+            self,
+            k,
+            uv_values,
+            uv_domain1,
+            uv_domain2,
+            curve_trace_direction,
+            point,
+            previous,
+        )
+    }
+
+    fn compute_surface_values(
+        &mut self,
+        _k: &Kernel,
+        uv_values: [Point2; 2],
+        point: &mut TsectPnt,
+    ) -> Result<()> {
+        FilletSolver::compute_surface_values(self, uv_values, point)
+    }
+
+    fn compute_uv_vectors(&mut self, _k: &Kernel, point: &mut TsectPnt) -> Result<()> {
+        crate::blend::fillet_solver::p1::compute_uv_vectors(point)
+    }
 
     fn set_surfaces_to_zero_offset(&mut self) -> Result<()> {
         for (slot, saved) in self
@@ -1758,6 +1805,94 @@ impl<'s, 't, O: SolutionObject + 't, G: Clone> FilletIntersector<'s, 't, O, G> {
         let curve_param = tmp_pnt.user_doubles.first().copied().unwrap_or(0.0);
         Ok((curve_param, uvs))
     }
+
+    /// `DoPointIntersection` (the `SmSurfaceIntersector` method, not overridden) run
+    /// on this intersector: [`SurfaceIntersector::do_point_intersection`] with its
+    /// virtual calls dispatched to this class's overrides ([`FilletDispatch`]):
+    /// `ComputePointValues` and `ComputeNextPoint` step through `solver`, and
+    /// `FlushCurve` stores the traced curves in the current (else the solver's last)
+    /// fillet geometry, appending only the curve type and deviation (the returned
+    /// curves are therefore `None`, and the singular-point retry, which needs exactly
+    /// one 3D curve, never runs).
+    ///
+    /// # Errors
+    ///
+    /// As [`SurfaceIntersector::do_point_intersection`], with the errors of the
+    /// overrides.
+    pub fn do_point_intersection<S: FilletSolverOps<FilletGeom = G>>(
+        &mut self,
+        solver: &mut S,
+        k: &Kernel,
+        points: &[TsectId],
+        opts: &PointIntersectionOptions,
+    ) -> Result<IntersectionCurve> {
+        do_point_intersection_with(
+            &mut FilletDispatch {
+                intersector: self,
+                solver,
+            },
+            k,
+            points,
+            opts,
+        )
+    }
+}
+
+/// `SmFilletIntersector` seen through its `SmSurfaceIntersector` virtuals: the fillet
+/// intersector and the solver its overrides take as an argument. The base drivers
+/// (`DoPointIntersection`, `TraceCurve`, `TestPoint`) run on it as upstream runs them
+/// on `*this`.
+#[derive(Debug)]
+pub struct FilletDispatch<'a, 's, 't, O, G, S> {
+    /// The fillet intersector.
+    pub intersector: &'a mut FilletIntersector<'s, 't, O, G>,
+    /// `m_rFilletSolver`.
+    pub solver: &'a mut S,
+}
+
+impl<'s, 't, O, G, S> IntersectorVirtuals<'s> for FilletDispatch<'_, 's, 't, O, G, S>
+where
+    O: SolutionObject + 't,
+    G: Clone,
+    S: FilletSolverOps<FilletGeom = G>,
+{
+    fn intersector(&self) -> &SurfaceIntersector<'s> {
+        &self.intersector.base.base
+    }
+
+    fn intersector_mut(&mut self) -> &mut SurfaceIntersector<'s> {
+        &mut self.intersector.base.base
+    }
+
+    /// [`FilletIntersector::compute_point_values`].
+    fn compute_point_values(
+        &mut self,
+        k: &Kernel,
+        uv_values: [Point2; 2],
+        point: &mut TsectPnt,
+        previous: Option<&TsectPnt>,
+        step_size: Option<f64>,
+    ) -> Result<()> {
+        self.intersector
+            .compute_point_values(self.solver, k, uv_values, point, previous, step_size)
+    }
+
+    /// [`FilletIntersector::compute_next_point`].
+    fn compute_next_point(
+        &mut self,
+        k: &Kernel,
+        prev: TsectId,
+        step_size: f64,
+        next: TsectId,
+    ) -> Result<NextPoint> {
+        self.intersector
+            .compute_next_point(self.solver, k, prev, step_size, next)
+    }
+
+    /// [`FilletIntersector::flush_curve`].
+    fn flush_curve(&mut self, k: &Kernel, out: &mut TsectCurves) -> Result<()> {
+        self.intersector.flush_curve(self.solver, k, out)
+    }
 }
 
 /// The 3D Hermite rail span of a UV span on its surface: the end points and
@@ -2181,5 +2316,115 @@ mod tests {
         flush_crv(3, &poly, &[0.0, 1.0, 2.0], &mut out).unwrap();
         assert_eq!(out.len(), 1);
         assert!(flush_crv(3, &poly, &[0.0, 1.0], &mut out).is_err());
+    }
+
+    /// A solver whose `ComputePointValues` puts the point at `(u0, 0, 0)` on both
+    /// surfaces as a crossing heading along `+x` (or fails with `fail`), counting the
+    /// calls; its other methods are the trait defaults.
+    #[derive(Default)]
+    struct CountingSolver {
+        calls: usize,
+        fail: Option<SolidError>,
+    }
+
+    impl FilletSolverOps for CountingSolver {
+        type FilletGeom = ();
+
+        fn compute_point_values(
+            &mut self,
+            _k: &Kernel,
+            uv_values: [Point2; 2],
+            _uv_domain1: &Extent2d,
+            _uv_domain2: &Extent2d,
+            _curve_trace_direction: f64,
+            point: &mut TsectPnt,
+            _previous: Option<&TsectPnt>,
+        ) -> Result<()> {
+            self.calls += 1;
+            if let Some(e) = &self.fail {
+                return Err(e.clone());
+            }
+            let x = uv_values[0].x;
+            point.point_type = IntersectionPointType::Crossing;
+            for (s, uv) in SRFS.into_iter().zip(uv_values) {
+                *point.uv_pos_mut(s) = uv;
+                *point.uv_deriv_mut(s) = Vec2::new(1.0, 0.0);
+                *point.srf_pos_mut(s) = Vec3::new(x, 0.0, 0.0);
+            }
+            *point.crv_pos_mut() = Vec3::new(x, 0.0, 0.0);
+            *point.crv_deriv_mut() = Vec3::new(1.0, 0.0, 0.0);
+            Ok(())
+        }
+
+        fn rail_surface_evaluate_1st_derivatives(
+            &mut self,
+            _rail: usize,
+            _uv: Point2,
+        ) -> Result<(Point3, Vec3, Vec3)> {
+            Ok((Vec3::ZERO, Vec3::ZERO, Vec3::ZERO))
+        }
+    }
+
+    #[test]
+    fn point_intersection_dispatches_to_the_overrides() {
+        let (a, b) = surfaces();
+        let d = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
+        let k = Kernel::default();
+        let opts = PointIntersectionOptions::default();
+        let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, ()> =
+            FilletIntersector::new(&a, &d, &b, &d, None).unwrap();
+
+        // no points: SM_ERR before any evaluation
+        let mut s = CountingSolver::default();
+        assert!(matches!(
+            fi.do_point_intersection(&mut s, &k, &[], &opts),
+            Err(SolidError::Upstream { .. })
+        ));
+        assert_eq!(s.calls, 0);
+
+        // ComputePointValues is the override: the solver evaluates the point, and
+        // TraceCurve's ComputeNextPoint is the override too (StepSolve, unported)
+        let p = fi
+            .base
+            .base
+            .alloc_point(pnt([0.5, 0.5], [0.5, 0.5], [0.0, 0.0, 0.0], 0.0));
+        let r = fi.do_point_intersection(&mut s, &k, &[p], &opts);
+        assert!(
+            matches!(
+                r,
+                Err(SolidError::Unported {
+                    upstream: "SmFilletSolver::StepSolve",
+                    ..
+                })
+            ),
+            "{r:?}"
+        );
+        assert_eq!(s.calls, 1);
+        let q = fi.base.base.point(p).unwrap();
+        assert_eq!(q.curve_parameter, 0.0);
+        assert_eq!(q.crv_deriv(), Vec3::new(1.0, 0.0, 0.0));
+        assert_eq!(fi.base.base.curve_points().len(), 1);
+
+        // a failing override is SM_ERR; an unported one propagates
+        let mut s = CountingSolver {
+            fail: Some(SolidError::sm_err("test")),
+            ..CountingSolver::default()
+        };
+        let p = fi
+            .base
+            .base
+            .alloc_point(pnt([0.5, 0.5], [0.5, 0.5], [0.0, 0.0, 0.0], 0.0));
+        assert!(matches!(
+            fi.do_point_intersection(&mut s, &k, &[p], &opts),
+            Err(SolidError::Upstream { .. })
+        ));
+        assert_eq!(s.calls, 1);
+        let mut s = CountingSolver {
+            fail: Some(SolidError::unported("X", "y")),
+            ..CountingSolver::default()
+        };
+        assert!(fi
+            .do_point_intersection(&mut s, &k, &[p], &opts)
+            .is_err_and(|e| e.is_unported()));
     }
 }
