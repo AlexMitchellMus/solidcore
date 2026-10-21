@@ -322,6 +322,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** crash/UB.
 - **Rust port:** Uses a `Vec`. The harness limits sizes.
 
+#### UB-204. `SmMatrix(rows, cols)` leaves its inline storage uninitialised, and `SmLocalSolveNd` solves with it when an evaluator fails
+- **Location:** `SmMatrix.h:39` (constructor, "leaves mat values uninitialized"; inline storage `m_adMat[36]` at `:30`), `SmLocalSolveNd.cpp:115` (`SmMatrix sJacobian(lNumFun, lNumFun)`, used by `SolveIt` whatever the evaluator did), `SmCurve.cpp:16680` (and `:18834`): `SmCCIntersectENFO::Evaluate` (def. `:16589`) calls `SmCCTangentIntENFO::StaticEvaluate` and ignores its status.
+- **What happens:** When the curves are within 0.1 of each other and an evaluator fails before it writes `F` and the Jacobian (here: a tangent of length below `SM_EFF_ZERO`), `SolveIt` still solves `J * step = -F` with the matrix it never filled. In a 6x6-or-smaller system that is the stale stack slot of an earlier solve, so the step, and the solution it leads to, depends on what ran before.
+- **Trigger:** `SM_SO_3D_SIGNED_DIRECTED_MINIMIZE` (9), tolerance 0.5, two near-identical cubic Hermite curves whose end tangent `d2` is zero, the first interval `[0.9424, 1.0934]` (a Newton step clamped to `t = 1`).
+- **How found:** generated difftest case `gen21507` (`curve.curve_p9`, `--seeds 30000`), traced with gdb: zeroing the four Jacobian doubles at the second solve makes C++ and Rust agree bit for bit.
+- **Confirmed:** yes (that case).
+- **Severity:** crash/UB (an uninitialised read; the result is nondeterministic across call histories).
+- **Rust port:** `Matrix::new` zeroes its storage, so the system is singular, the solve reports `BadJacobian` and the previous solution is kept: deterministic, and the safe reading. The curve_p9 generator does not hand this shape to the C++ reference (`reads_uninitialised_jacobian`). See `plan/findings.md`, "curve.curve_p9: zero-end-tangent Hermite pair, loose tolerance".
+
 #### UB-240. `N_InitRealMatrix` leaves the matrix type indeterminate
 - **Location:** `source/SMLib/src/NL_Math.cpp:3617` `N_InitRealMatrix` (sets `n`, `m`, `RM` and `bw`, not `mtp`); read by `N_RealMatrixIsNULL` (`:4707`, through `N_GetRealMatrixData`), which every `N_CheckMemRealMatrix` starts with.
 - **What happens:** A matrix initialised to NULL has an indeterminate `NL_MATRIXTYPE`, and the null test loads it. The value does not decide the result (only `n`, `m`, `RM` and `bw` do), but loading an indeterminate enum is undefined behaviour.
@@ -1767,6 +1776,33 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** UB (indeterminate reads).
 - **Rust port:** `FilletGeom::new` starts them as `0.0` and `false`.
 
+#### UB-213. `SmFilletEdge::CalcCrossSection` lifts `*pUVCurve1` when `sm_CreateUVCurve` succeeds without any curve
+- **Location:** `source/SMLib/src/SmFilletGeom.cpp:5759-5768` (`SmFilletEdge::CalcCrossSection`): `SER(sm_CreateUVCurve(.., p3DCurve, pUVCurve1, pUVCurve2))`, then `if (p3DCurve == NULL) { SER(pSurface1->LiftCurve(.., *pUVCurve1, pUVCurve1->GetNaturalInterval(), ..)); NER(p3DCurve); }`.
+- **What happens:** `NER(p3DCurve)` comes after the lift and nothing checks `pUVCurve1` before it. When `sm_CreateUVCurve` returns `SM_SUCCESS` with neither a 3D curve nor a UV curve (both out-pointers stay `NULL`), `*pUVCurve1` and `pUVCurve1->GetNaturalInterval()` dereference a null pointer.
+- **Trigger:** a fillet edge for which `sm_CreateUVCurve` (`:4212`) returns `SM_SUCCESS` with `rp3DCurve` and `rpUVCurve1` both `NULL`, i.e. a success exit that builds no curve.
+- **How found:** line-by-line comparison while porting `blend.fillet_geom_p5` (PR #264); the shim guards the call.
+- **Confirmed:** no (source inspection; the difftest shim refuses the input rather than running it, and no generated input has been seen to reach it).
+- **Severity:** UB (null dereference).
+- **Rust port:** `FilletBrep::calc_cross_section` returns `SM_ERR_NULL_POINTER` at the lift (`blend/fillet_geom/p5.rs`, the `UB-213` comment). The `blend.fillet_geom_p5` shim runs the same `sm_CreateUVCurve` call first (`p5_cross_runs`) and refuses (`SC_ERR_ARG`) an input where it succeeds with no curve, so no run reaches the dereference.
+
+#### UB-214. `SmFilletEdge::CalcFilletIntSideFace` calls `pCorner->IsExtendedSurfacePatch()` before its `pCorner` test
+- **Location:** `source/SMLib/src/SmFilletGeom.cpp:6219` (the call) and `:6223` (`(pCorner) ? pCorner->GetExtendedSurface(pFace) : NULL`), `SmFilletEdge::CalcFilletIntSideFace`; the else branch (`:6234`) also calls `pCorner->GetFilletedVertex()` unchecked.
+- **What happens:** the conditional that tests `pCorner` four lines after the dereference shows the author expected a null corner, but `pCorner->IsExtendedSurfacePatch()` (`SmFilletCorner.h:206`, an inline read of `m_bExtendedSurfacePatch`) already ran on it: a null `pCorner` reads a member through a null `this`.
+- **Trigger:** `CalcFilletIntSideFace` on a fillet edge with no 3D curve whose primary edge use has a fillet geometry, with a `NULL` corner argument (the function's default; `SmFilletVertex::CalcFilletIntSideFace` callers pass the vertex's corner, which is not `NULL` in a real run).
+- **How found:** line-by-line comparison while porting `blend.fillet_geom_p5` (PR #264); the shim's guard `p5_side_runs` models it.
+- **Confirmed:** no (source inspection; the difftest shim refuses the input).
+- **Severity:** UB (null dereference).
+- **Rust port:** `FilletBrep::calc_fillet_int_side_face` returns `SM_ERR_NULL_POINTER` for the missing corner (`blend/fillet_geom/p5.rs`, the `UB-214` comment); the shim refuses (`SC_ERR_ARG`) the inputs that reach it.
+
+#### UB-238. `SmFilletGeom::MakeRailEdgeuse` leaves a deleted vertex use linked in the fillet vertex when `NER(pBaseEU)` fails
+- **Location:** `source/SMLib/src/SmFilletGeom.cpp:10042-10052` (the allocation and `pFilletVertex->PostInsert(pNewVU)`), `:10076-10077` (`SmEdgeuse *pBaseEU = pFilletSolver->GetEdgeuse(lRailIndex); NER(pBaseEU);`), `:10089-10090` (`pBaseEU1->GetFace()`), `SmFilletGeom::MakeRailEdgeuse`.
+- **What happens:** the new edge use and vertex use are created under `SmObjDelete sClean3` / `sClean2`, and the vertex use is inserted into `pFilletVertex`'s use list (`SER(pFilletVertex->PostInsert(pNewVU))`) before the base edge use is looked up. When the solver has no edge use for `lRailIndex`, `NER(pBaseEU)` returns and the clean-up deletes the vertex use while it is still linked; a vertex use's destructor does not unlink it, so `~SmFilletVertex` deletes the same object a second time (double free). When `GetEdgeuse(lRailIndex)` is set but `GetEdgeuse(1-lRailIndex)` is not, `pBaseEU1->GetFace()` dereferences a null pointer.
+- **Trigger:** `MakeRailEdgeuse` with a non-null fillet solver and fillet vertex whose solver lacks one of its two base edge uses (a solver the executive has not set up).
+- **How found:** line-by-line reading of `MakeRailEdgeuse` while adding its op to the `blend.fillet_geom_p5` shim (PR #264); `~SmFilletVertex` (`:1333-1342`) deletes every vertex use in its list and `~SmFilletVertexuse` (`SmFilletGeom.h:180`) / `~SmVertexuse` (`SmVertexuse.h:149`) do not unlink the use from the vertex.
+- **Confirmed:** no (source inspection; the shim refuses the input rather than running it).
+- **Severity:** UB (double free, null dereference).
+- **Rust port:** `FilletBrep::make_rail_edgeuse` checks `NER(pFilletSolver)` and `NER(pFilletVertex)` and then defers at the edge-use constructor (`UNPORTED(topology.brep_p3)`); the shim refuses (`SC_ERR_ARG`) a solver without both base edge uses once those two checks pass, so the harness only compares the two defined early exits.
+
 #### UB-162. `sm_RedistributeSeamUVTrimCurves` reads a fourth edge use that need not exist
 - **Location:** `source/SMLib/src/SmBrep.cpp:12097`-`12105` (`sm_RedistributeSeamUVTrimCurves`): `SM_PTR_ARRAY(sNewEdgeuses, SmEdgeuse, 16)`, `pNewE->GetEdgeuses(sNewEdgeuses); SM_ASSERT(sNewEdgeuses.GetSize() == 4)`, then `sNewEdgeuses[0]` and `sNewEdgeuses[3]`.
 - **What happens:** The assertion is a no-op in release builds. For a seam edge with fewer than four edge uses the function reads slot 3 of the 16-slot stack array, an uninitialised pointer, and calls `GetCWEdgeuse()` on it.
@@ -2080,7 +2116,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **How found:** out-of-contract native extension probes during `offset.offset_executive_p1`, followed by maintainer review of the real callers.
 - **Confirmed:** yes for eight-second timeouts in the initial out-of-contract native probes (four fixed inputs and 104 generated inputs, Linux x86_64 / GNU g++ 16.2.1). Infinite execution and the exact stuck instruction were not experimentally established; the divergent loop condition was confirmed by source inspection.
 - **Severity:** hang on a direct negative extension request; not an offset-unit parity blocker.
-- **Rust port:** The offset executive's safe FFI and native adapter reject negative internal extension magnitudes before constructing native geometry. Zero, signed zero and positive magnitudes remain covered. This guard does not reject signed public inset operations or readonly constructor/getter probes. See `plan/findings.md`.
+- **Rust port:** The offset executive's safe FFI and native adapter reject negative internal extension magnitudes before constructing native geometry. Zero, signed zero and positive magnitudes remain covered. This guard does not reject signed public inset operations or readonly constructor/getter probes. See `plan/findings.md`. The Rust library itself (`BSplineSurface::create_extended_surface_dir`, also reached by `OffsetExecutive::get_create_extended_surface` with a negative distance) now bounds the doubling loop by `MAX_EXTEND_DOUBLINGS` (1101; a positive distance needs at most one more doubling than it had halvings) and returns `NotConverged`; before that the port looped as upstream does (Rust reached `dExtDist = -inf`, where every G1R extension of a plane still succeeds; fuzz `offset.offset_executive_p1` `/offset_distance = -1.0` / `-1e300`, 2026-10-21).
 
 #### HANG-17. `ST_surxsdr` (surface extension by distance) explores an exponential split for surfaces with short iso-curves
 - **Location:** `source/SMLib/src/NL_SrfAdv.cpp:696`-`960`, `ST_surxsdr` (the recursive body of `N_SrfExtendByDist`), reached through `SmBSplineSurface::CreateExtendedSurface(SM_SP_BOTH, 5 * offset, SM_CT_G1R)` from `SmOffsetExecutive::GetCreateExtendedSurface` (`SmOffsetExecutive.cpp`).
@@ -3398,6 +3434,17 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes (no result within 25 s, reproduced on 15 inputs across three axes; infinite execution not proven).
 - **Severity:** hang on out-of-range geometry; not a parity blocker (no fixture or generated case reaches it).
 - **Rust port:** the `offset.offset_executive_p1` FFI refuses control point coordinates (and coordinate/weight) above `MAX_COORDINATE = 1e154` in its `points()` guard, 1000x below the first slow value; the difftest runner's Rust side runs the same check, and the input is kept as a regression in `crates/difftest/tests/fuzz_regressions/`.
+
+### Primitive construction
+
+#### WR-209. `SmApiCreateBox` reports success for incomplete box topology
+- **Location:** `source/SMLib/src/SmPrimitiveCreation.cpp:294-344` (`CreateBox`) and `source/SM_API/src/SmApiPrimitives.cpp:306-324` (`SmApiCreateBox`).
+- **What happens:** `CreateBox` ignores all six `CreateFaceFromSurface` statuses. The API can return `SM_SUCCESS` with a non-null B-rep that lacks the expected six faces, twelve edges and eight vertices; callers cannot rely on that success status to select box faces.
+- **Trigger:** Positive box dimensions `[1e-6, 1e-6, 1e-6]` at `[0, 0, 0]`, or `[1e-3, 1e-3, 1e-3]` at `[1e6, 1e6, 1e6]`, under the reference context's construction tolerances. Applying B-rep tolerance `1e-9` afterwards does not repair the failed construction.
+- **How found:** adversarial review of `offset.offset_executive_p2` (PR #201), then fixed native fixtures `review_box_tiny_*` and `review_box_translated_*` in `fixtures/offset.offset_executive_p2/review_box_construction.json`.
+- **Confirmed:** yes, Linux ARM64 C++ reference build at `c9c5979`; eight source/foreign and null/indexed-selector fixtures reject incomplete construction, while two ordinary-size controls construct the expected topology and reach the real API selection error.
+- **Severity:** wrong result / hidden construction failure.
+- **Rust port:** No box-construction parity is claimed by the input scaffold. The native fixture adapter checks actual topology counts immediately after construction and records an explicit constructor rejection, before selector resolution or offset/shell execution. It does not substitute a successful Rust shape or impose a size cutoff.
 
 ### Numerical integration
 
