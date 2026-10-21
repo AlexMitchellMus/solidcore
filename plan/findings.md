@@ -11484,6 +11484,17 @@ reference to it). The NURBS evaluation rewrite (#298) is loop-based. No new curv
 surface or volume variant or wrapper constructor was added. No new bound was
 needed; fmt, workspace clippy, 1556 solidcore tests and the wasm check pass.
 
+Re-audit through main `ca3bbd2b` (2026-10-21): the merge brought two new ports,
+#229 `boolean.merge_p2` and #239 `topology.face_p4`, plus follow-ups (28 changed
+kernel files). Neither new file has an intra-file call cycle, and their same-name
+calls forward to other modules (`topology::brep::p2`, `query::face::p3`, `loopuse`,
+the classification adapter's `inner`). The one self-call, `face_p4::has_seam_problem`
+-> `FaceProps::set_props_stage2_with` -> `has_seam_problem`, is depth 1: the stage is
+set to `Stage2A` before the callback, and the nested call passes those props, so
+it skips the re-run. No new curve, surface or volume variant or wrapper
+constructor. No new bound needed; fmt, workspace clippy, 1562 solidcore tests and
+the wasm check pass.
+
 The green audit status applies to this merged snapshot. Direct audit dependencies
 `blend.fillet_corner_p2` and `offset.offset_executive_p2` remain unported;
 their implementations, other open port PRs and future geometry variants need a
