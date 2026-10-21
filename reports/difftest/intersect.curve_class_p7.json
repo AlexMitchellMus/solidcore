@@ -71,7 +71,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -331,7 +331,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -379,7 +379,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -1031,7 +1031,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -1271,7 +1271,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -1903,7 +1903,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -2211,7 +2211,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -2535,7 +2535,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -3839,7 +3839,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -4275,7 +4275,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -5463,7 +5463,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -5739,7 +5739,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -5879,7 +5879,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -7275,7 +7275,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -7315,7 +7315,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -8471,7 +8471,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -8991,7 +8991,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -9223,7 +9223,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -9251,7 +9251,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -10407,7 +10407,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -10567,7 +10567,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -10743,7 +10743,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -10883,7 +10883,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -11015,7 +11015,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -11035,7 +11035,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -11219,7 +11219,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -11231,7 +11231,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -12059,7 +12059,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
@@ -13019,7 +13019,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
+        "symbol": "SmEdge::GetInterval",
         "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
