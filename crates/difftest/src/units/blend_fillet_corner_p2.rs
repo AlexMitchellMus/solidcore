@@ -61,10 +61,10 @@ use solidcore_ffi::units::blend_fillet_corner_p2 as ffi;
 use solidcore_ffi::units::blend_fillet_corner_p3::Op as CornerOp;
 use solidcore_ffi::units::topology_edgeuse_p1 as ffi1;
 
+use super::blend_fillet_corner_p1 as p1;
 use super::blend_fillet_corner_p3::{
     corner_cpp_op, corner_rust_with, gen_nx2_model, CornerIn, EuSel,
 };
-use super::blend_fillet_corner_p1 as p1;
 use super::blend_fillet_geom_p1::Model;
 
 use super::blend_fillet_corner_p1::{
@@ -282,7 +282,9 @@ fn is_tangent_case(v: &Value) -> bool {
     v.get("op").and_then(Value::as_str) == Some("corner")
         && v.get("method").and_then(Value::as_str) == Some("solvers")
         && matches!(
-            v.get("corner").and_then(|c| c.get("kind")).and_then(Value::as_u64),
+            v.get("corner")
+                .and_then(|c| c.get("kind"))
+                .and_then(Value::as_u64),
             Some(2 | 7)
         )
         && v.get("solvers")

@@ -5121,14 +5121,340 @@
       "pass": true,
       "source": "fixture:built-in: blend.fillet_corner_p2 cases#411 (upstream SmFilletCorner.cpp (Nx2-shaped corner model))",
       "values_compared": 363
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_00",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#412 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_01",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#413 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_02",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#414 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 4
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_03",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#415 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 0
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_04",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#416 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_05",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#417 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_06",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#418 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_07",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#419 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_08",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#420 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_09",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#421 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 4
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_10",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#422 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_11",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#423 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_12",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#424 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_13",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#425 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_14",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#426 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_15",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#427 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_16",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#428 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_17",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#429 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_18",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#430 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_19",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#431 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_20",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#432 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_21",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#433 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_22",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#434 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_23",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#435 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 4
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_24",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#436 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_25",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#437 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_26",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#438 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_27",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#439 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_28",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#440 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_29",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#441 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_30",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#442 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_31",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#443 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_32",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#444 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_33",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#445 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_34",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#446 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_35",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#447 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 3
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_36",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#448 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 0
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_37",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#449 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_38",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#450 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_solver_39",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#451 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
+      "values_compared": 5
     }
   ],
-  "cases_both_errored": 0,
+  "cases_both_errored": 6,
   "cases_deferred": 183,
   "cases_failed": 0,
-  "cases_passed": 226,
+  "cases_passed": 266,
   "cases_rejected": 3,
-  "cases_total": 412,
+  "cases_total": 452,
   "deferred_by_unit": {
     "blend.fillet_corner_p2": 1,
     "blend.fillet_executive_p1": 1,
