@@ -62,7 +62,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **How found:** read during porting (commit security review of `curve.projected_curve`); confirmed by the `.smb` reader fuzz (`crates/difftest/examples/reader_fuzz.rs`).
 - **Confirmed:** yes. `SmBrepData::ReadFromFile` (ASCII) on both 200000-level files segfaults (SIGSEGV, stack overflow) in the C++ reference build, with an 8 MiB stack; 200 levels read fine. The Rust port returns `InvalidInput` for both.
 - **Severity:** crash/UB (stack exhaustion).
-- **Rust port:** Limits nesting to 64 levels (`DatabaseReader::enter_nested`) and returns `InvalidInput` for deeper input.
+- **Rust port:** Limits nesting to 32 levels (`DatabaseReader::enter_nested`; 64 before the wasm32 stack review) and returns `InvalidInput` for deeper input.
 
 #### UB-4. Binary short reads return success with uninitialised values [PSIRT]
 - **Location:** `SmDatabaseIO.cpp:566`/`:598` `SmDatabaseIO::ReadLong`, `:473` `SmDatabaseIO::ReadLongs` (`version >= 40` path).
@@ -116,7 +116,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **How found:** read during porting (`topology.brep_data`).
 - **Confirmed:** no (guarded).
 - **Severity:** crash/UB (out-of-bounds read, stack exhaustion).
-- **Rust port:** `CompositeCurve::with_curves` returns `InvalidInput`; nesting is bounded by `DatabaseReader::enter_nested` (64).
+- **Rust port:** `CompositeCurve::with_curves` returns `InvalidInput`; nesting is bounded by `DatabaseReader::enter_nested` (32).
 
 #### UB-91. `SmSurfOfExtrusion::ReadFromDB` reads an uninitialised generator type from a failed ASCII stream [PSIRT]
 - **Location:** `source/SMLib/src/SmSurfOfExtrusion.cpp:4560` `SmSurfOfExtrusion::ReadFromDB` (def. `:4480`), through `SmDatabaseIO::ReadType` (`SmDatabaseIO.cpp:400`); also the locals `eOrientation` and `bSwapUV` (`:4506`-`:4507`).
@@ -1155,6 +1155,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes for (b) (the case above); no for (a).
 - **Severity:** crash/UB (out-of-bounds read).
 - **Rust port:** The bounds-checked skinning fails the first attempt (`InvalidInput`) and `CreateSkinnedSurface` retries as upstream does after a failure. The shim rejects both inputs (a dry run of the knot insertion and the ruled / revolved tests).
+
+#### UB-204. `SmFilletSolver::GetSurface` recurses without bound through the geometry set for the surfaces
+- **Location:** `source/SMLib/src/SmFilletSolver.cpp:136` (`SmFilletSolver::GetSurface`: `m_pFGForSurfaces->GetOffsetSurface(lRailIndex)`) and `source/SMLib/src/SmFilletGeom.cpp:9679` (`SmFilletGeom::GetOffsetSurface`: `m_pFilletSolver->GetSurface(lRailIndex)` when `m_pOffSurfs[lRailIndex]` is `NULL`).
+- **What happens:** With a geometry set by `SetFilletGeomForSurfaces` whose own offset surface for the rail is `NULL` and whose `m_pFilletSolver` is the same solver, each function calls the other until the stack overflows.
+- **Trigger:** `SetFilletGeomForSurfaces(pFG)` (`SmFilletGeom.cpp:11827`, `SmFilletCorner.cpp:7686-7693`, `:8092-8096`) on a geometry of the solver that never got its offset copies (`FinishConstruction` not run, or `SetOffsetSurface(i, NULL)` after it), then any `GetSurface(i)`.
+- **How found:** read during porting.
+- **Confirmed:** no.
+- **Severity:** crash/UB (stack exhaustion).
+- **Rust port:** `FilletSolver::surface` returns `Unported` while a geometry is set for the surfaces (`plan/findings.md`, "blend.fillet_solver_p1: the geometry for the surfaces"); no Rust caller sets one yet.
 
 #### UB-186. `SmCircularCrossSectionFSG::CreateSurfaceFromCurves` `G1` skin retry interpolates cross sections of different control point counts
 - **Location:** `source/SMLib/src/NL_SrfAdv.cpp:15096` (`N_CreateSkinSrfBoundaryContinuity`: `N_CrvGetCPts( cur[i], &nc, &Cw ); N_CopyCPt( Cw[j], &Qw[i] )` for `j` up to the first section's `nc`), reached from `SmFilletStandardSolver.cpp:3917` (`CreateSkinnedSurface` with the `G1` derivative surfaces) through `SmBSplineSurface::CreateSkinnedSurface`'s retry without the knot vector.
