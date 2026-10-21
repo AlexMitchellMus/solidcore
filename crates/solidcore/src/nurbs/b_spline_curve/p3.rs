@@ -153,8 +153,13 @@ pub enum GapFix {
 // ---- back-edges -------------------------------------------------------------------
 
 /// `SmCurve::ApproximateLength` of `curve` over `interval` with `samples` samples.
-fn approximate_length(curve: &BSplineCurve, interval: &Extent1d, samples: usize) -> Result<f64> {
-    Ok(crate::curve::curve::p2::approximate_length(curve, interval, samples, false)?.0)
+fn approximate_length(
+    k: &Kernel,
+    curve: &BSplineCurve,
+    interval: &Extent1d,
+    samples: usize,
+) -> Result<f64> {
+    Ok(crate::curve::curve::p2::approximate_length(k, curve, interval, samples, false)?.0)
 }
 
 /// A curve of [`global_curve_intersect`] in its solutions (`0`: the first curve, `1`:
@@ -425,7 +430,7 @@ impl BSplineCurve {
     ///
     /// Those of the degeneracy test; `InvalidInput` for an unclamped knot vector
     /// (upstream reads outside the control points).
-    pub fn has_internal_pole(&self, tol: f64) -> Result<bool> {
+    pub fn has_internal_pole(&self, k: &Kernel, tol: f64) -> Result<bool> {
         let mut rtn = false;
 
         // no work - no BSplineCurve representation
@@ -434,7 +439,7 @@ impl BSplineCurve {
         };
 
         // no work - degenerate curve
-        if self.is_degenerate(tol, None)? {
+        if self.is_degenerate(k, tol, None)? {
             return Ok(false);
         }
 
@@ -710,6 +715,7 @@ impl BSplineCurve {
     /// [`SolidError::Unported`] from `IsLine`'s back-edges.
     pub fn join_with(
         &mut self,
+        k: &Kernel,
         this_at_end: bool,
         other: &mut Self,
         other_at_end: bool,
@@ -725,7 +731,7 @@ impl BSplineCurve {
             t
         } else {
             let length =
-                approximate_length(self, &ivl1, 10)? + approximate_length(other, &ivl2, 10)?;
+                approximate_length(k, self, &ivl1, 10)? + approximate_length(k, other, &ivl2, 10)?;
             length * EFF_ZERO_SQRT * 1000.0
         };
 
@@ -801,7 +807,7 @@ impl BSplineCurve {
         let mut resulting_curves = Vec::new();
 
         let (knots, _) = self.knots(None)?; // Unique knot vector
-        let (_, continuities) = self.calculate_continuities(continuity_angle_tol)?;
+        let (_, continuities) = self.calculate_continuities(k, continuity_angle_tol)?;
 
         // check state
         if knots.len() != continuities.len() {
@@ -1038,7 +1044,7 @@ impl BSplineCurve {
         level_given: bool,
         key: ObjectKey,
     ) -> Result<bool> {
-        let is_degenerate = |tol: f64| self.is_degenerate(tol, None);
+        let is_degenerate = |tol: f64| self.is_degenerate(k, tol, None);
         self.assert_valid_with(
             k,
             list,
@@ -1382,7 +1388,7 @@ impl BSplineCurve {
         /* 15 */
         // Are Curve Internal ControlPoints Coincident
         let pole_tol = ZONE_TOL_3D / 10.0;
-        let has_internal_pole = self.has_internal_pole(pole_tol)?;
+        let has_internal_pole = self.has_internal_pole(k, pole_tol)?;
         rtn &= report(
             &mut list,
             key,
@@ -1491,17 +1497,19 @@ mod tests {
 
     #[test]
     fn join_with_gap_too_large() {
+        let k = &Kernel::default();
         let mut a = quad();
         let mut b = curve(
             1,
             &[[9.0, 0.0, 0.0], [10.0, 0.0, 0.0]],
             &[0.0, 0.0, 1.0, 1.0],
         );
-        assert!(a.join_with(true, &mut b, false, Some(0.01)).is_err());
+        assert!(a.join_with(k, true, &mut b, false, Some(0.01)).is_err());
     }
 
     #[test]
     fn join_with_curves() {
+        let k = &Kernel::default();
         // two lines at an angle: joined by CreateByJoining
         let mut a = curve(
             1,
@@ -1513,7 +1521,7 @@ mod tests {
             &[[1.0, 0.0, 0.0], [1.0, 1.0, 0.0]],
             &[0.0, 0.0, 1.0, 1.0],
         );
-        a.join_with(true, &mut b, false, Some(0.01)).unwrap();
+        a.join_with(k, true, &mut b, false, Some(0.01)).unwrap();
         let e = a.ends().unwrap();
         assert_eq!(e.start, Vec3::new(0.0, 0.0, 0.0));
         assert_eq!(e.end, Vec3::new(1.0, 1.0, 0.0));
@@ -1523,7 +1531,7 @@ mod tests {
             &[[1.0, 1.0, 0.0], [1.0, 2.0, 0.0]],
             &[0.0, 0.0, 1.0, 1.0],
         );
-        let r = b.join_with(true, &mut c, false, Some(0.01));
+        let r = b.join_with(k, true, &mut c, false, Some(0.01));
         assert!(!matches!(
             r,
             Err(SolidError::Unported {
