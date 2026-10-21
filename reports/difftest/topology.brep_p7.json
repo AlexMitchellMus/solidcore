@@ -3,8 +3,8 @@
   "cases": [
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0000",
@@ -15,8 +15,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0001",
@@ -50,16 +50,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0005",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427438353069631914",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -114,21 +110,17 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0012",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427438353069631921",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0013",
@@ -2287,8 +2279,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_0",
@@ -2299,8 +2291,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_1",
@@ -2311,8 +2303,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_2",
@@ -2323,8 +2315,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_3",
@@ -2347,8 +2339,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_5",
@@ -2359,8 +2351,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_6",
@@ -2383,8 +2375,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_8",
@@ -2395,8 +2387,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_9",
@@ -2407,8 +2399,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_10",
@@ -2419,8 +2411,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_11",
@@ -2431,8 +2423,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_12",
@@ -2443,8 +2435,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_13",
@@ -2455,8 +2447,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_14",
@@ -2467,8 +2459,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_15",
@@ -2479,8 +2471,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_16",
@@ -2491,8 +2483,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_17",
@@ -2503,8 +2495,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_18",
@@ -2515,8 +2507,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_19",
@@ -2567,8 +2559,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_cos_no_uv_0_1",
@@ -2614,16 +2606,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "face_curves_cos_no_uv_2_1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:built-in: topology.brep_p7 cases#291 (upstream tests/prog_test (pt_TestFiles B-reps))",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
@@ -2659,8 +2647,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "make_face_small_1e-12",
@@ -2799,8 +2787,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "make_face_1_0_1",
@@ -2811,8 +2799,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "make_face_1_0_2",
@@ -2823,8 +2811,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "make_face_1_1_1",
@@ -2835,8 +2823,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "make_face_1_1_2",
@@ -2847,9 +2835,9 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 79,
+  "cases_deferred": 76,
   "cases_failed": 0,
-  "cases_passed": 237,
+  "cases_passed": 240,
   "cases_total": 316,
   "deferred_by_unit": {
     "boolean.merge_p2": 3,
@@ -2858,11 +2846,10 @@
     "curve.curve_p6": 2,
     "query.brep": 2,
     "surface.surface_p2": 12,
-    "topology.brep_p3": 30,
     "topology.brep_p4": 1,
     "topology.brep_p9": 2,
     "topology.face_p2": 18,
-    "topology.face_p3": 1,
+    "topology.face_p3": 28,
     "topology.face_p4": 3
   },
   "max_rel_err": 0.0,

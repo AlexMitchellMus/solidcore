@@ -187,8 +187,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::~SmBrep (stable owning record erasure)",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "isolated_op13_editing_False",
@@ -199,8 +199,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::~SmBrep (stable owning record erasure)",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "isolated_op13_editing_True",
@@ -283,8 +283,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::TurnToNURBS",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::GetCurves",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "nonuniform_deferred_kind0",
@@ -295,8 +295,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::TurnToNURBS",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::GetCurves",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "reflection_deferred_kind0",
@@ -411,8 +411,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::TurnToNURBS",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::GetCurves",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "nonuniform_deferred_kind1",
@@ -423,8 +423,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::TurnToNURBS",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::GetCurves",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "reflection_deferred_kind1",
@@ -527,8 +527,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::TurnToNURBS",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::GetCurves",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "nonuniform_deferred_kind2",
@@ -539,8 +539,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::TurnToNURBS",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::GetCurves",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "reflection_deferred_kind2",
@@ -607,8 +607,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::TurnToNURBS",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::GetCurves",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "identity_scale_delta_1e-11",
@@ -6596,9 +6596,8 @@
   "cases_passed": 744,
   "cases_total": 797,
   "deferred_by_unit": {
-    "topology.brep_p1": 28,
-    "topology.brep_p3": 9,
-    "topology.brep_p4": 14,
+    "topology.brep_p1": 35,
+    "topology.brep_p4": 16,
     "topology.brep_p9": 2
   },
   "max_rel_err": 0.0,
