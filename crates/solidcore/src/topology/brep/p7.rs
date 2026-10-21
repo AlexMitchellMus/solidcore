@@ -1141,6 +1141,8 @@ fn make_face_with_curves_impl(
                         start_vertex,
                         end_vertex,
                         curve: &curve,
+                        // (a new input curve: no edge owns it)
+                        curve_owner: None,
                         interval: ivl,
                         tolerance: zone_tol,
                     };
