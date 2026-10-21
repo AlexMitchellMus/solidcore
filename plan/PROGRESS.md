@@ -2,7 +2,7 @@
 
 Generated from `plan/modules.toml` and `reports/difftest/*.json` by `harness/plan/progress.py`; do not edit by hand.
 
-**236 / 261 units ported** (114 green, 122 partial), **344,573 / 387,903 upstream lines (88.8%)**. 25 claimed, 0 blocked, 0 todo.
+**236 / 261 units ported** (115 green, 121 partial), **344,573 / 387,903 upstream lines (88.8%)**. 25 claimed, 0 blocked, 0 todo.
 
 Legend: ✅ green (identical to C++) · 🟡 partial (passes; some cases wait on unported code) · 🔨 claimed · ▶️ ready (all dependencies done) · ⏳ claimable, dependencies still missing · ⛔ blocked.
 
@@ -172,7 +172,7 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 - [x] ✅ `surface.bend_volume` (945 lines) — green, 2347 cases
 - [x] ✅ `surface.cone_p1` (1835 lines) — green, 20702 cases
 - [x] ✅ `surface.surf_of_extrusion_p1` (1865 lines) — green, 2055 cases
-- [ ] 🟡 `surface.surf_of_revolution_p3` (1620 lines) — partial, 26705 cases
+- [x] ✅ `surface.surf_of_revolution_p3` (1620 lines) — green, 26705 cases
 - [ ] 🟡 `surface.surface_cache_p2` (1245 lines) — partial, 905 cases
 - [x] ✅ `surface.torus` (1180 lines) — green, 563 cases
 - [x] ✅ `surface.unbend_volume` (920 lines) — green, 1874 cases
@@ -306,8 +306,8 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 
 ### offset (2/3)
 
-- [ ] 🟡 `offset.offset_geometry_creation` (2652 lines) — partial, 861 cases
-- [ ] 🟡 `offset.offset_executive_p1` (2107 lines) — partial, 693 cases
+- [ ] 🟡 `offset.offset_geometry_creation` (2652 lines) — partial, 874 cases
+- [ ] 🟡 `offset.offset_executive_p1` (2107 lines) — partial, 1032 cases
 - [ ] 🔨 `offset.offset_executive_p2` (1846 lines) — in progress: #201 @altvnk (ready for review)
 
 ### boolean (7/9)
@@ -319,7 +319,7 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 - [ ] 🔨 `boolean.merge_p2` (1967 lines) — in progress: #229 @Pluto-XI (ready for review)
 - [ ] 🟡 `boolean.merge_p5` (475 lines) — partial, 140 cases
 - [ ] 🟡 `boolean.merge_p4` (2590 lines) — partial, 311 cases
-- [ ] 🟡 `boolean.merge_p3` (1152 lines) — partial, 354 cases
+- [ ] 🟡 `boolean.merge_p3` (1152 lines) — partial, 387 cases
 - [ ] 🟡 `boolean.api_brep` (410 lines) — partial, 287 cases
 
 ### blend (11/22)
