@@ -683,6 +683,86 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "generators_coincident_lines_touching_end_to_end",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_extrusion_p1/coverage.json#0 (upstream source/SMLib/src/SmSurfOfExtrusion.cpp:3042 (coverage: crates/solidcore/src/surface/surf_of_extrusion/p1.rs:1959))",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "generators_coincident_lines_touching_end_to_end_scaled",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_extrusion_p1/coverage.json#1 (upstream source/SMLib/src/SmSurfOfExtrusion.cpp:3042 (coverage: crates/solidcore/src/surface/surf_of_extrusion/p1.rs:1959))",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "generators_coincident_lines_touching_reversed",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_extrusion_p1/coverage.json#2 (upstream source/SMLib/src/SmSurfOfExtrusion.cpp:3042 (coverage: crates/solidcore/src/surface/surf_of_extrusion/p1.rs:1959))",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "generators_coincident_lines_touching_reversed_scaled",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_extrusion_p1/coverage.json#3 (upstream source/SMLib/src/SmSurfOfExtrusion.cpp:3042 (coverage: crates/solidcore/src/surface/surf_of_extrusion/p1.rs:1959))",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "generators_coincident_lines_overlapping",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_extrusion_p1/coverage.json#4 (upstream source/SMLib/src/SmSurfOfExtrusion.cpp:2977 (coverage: crates/solidcore/src/surface/surf_of_extrusion/p1.rs:1971))",
+      "values_compared": 89
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "generators_coincident_lines_overlapping_scaled",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_extrusion_p1/coverage.json#5 (upstream source/SMLib/src/SmSurfOfExtrusion.cpp:2977 (coverage: crates/solidcore/src/surface/surf_of_extrusion/p1.rs:1971))",
+      "values_compared": 89
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "generators_coincident_lines_disjoint_heights",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_extrusion_p1/coverage.json#6 (upstream source/SMLib/src/SmSurfOfExtrusion.cpp:3108 (coverage: crates/solidcore/src/surface/surf_of_extrusion/p1.rs:2012))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "generators_coincident_lines_disjoint_heights_scaled",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_extrusion_p1/coverage.json#7 (upstream source/SMLib/src/SmSurfOfExtrusion.cpp:3108 (coverage: crates/solidcore/src/surface/surf_of_extrusion/p1.rs:2012))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "generators_coincident_lines_disjoint_heights_reversed",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_extrusion_p1/coverage.json#8 (upstream source/SMLib/src/SmSurfOfExtrusion.cpp:3108 (coverage: crates/solidcore/src/surface/surf_of_extrusion/p1.rs:2012))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "generators_coincident_lines_disjoint_heights_reversed_scaled",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_extrusion_p1/coverage.json#9 (upstream source/SMLib/src/SmSurfOfExtrusion.cpp:3108 (coverage: crates/solidcore/src/surface/surf_of_extrusion/p1.rs:2012))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "review2_par_inv_f0.0009_d0.29_t0.2901_oob1",
       "outcome": "pass",
       "pass": true,
@@ -16445,8 +16525,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 2055,
-  "cases_total": 2055,
+  "cases_passed": 2065,
+  "cases_total": 2065,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

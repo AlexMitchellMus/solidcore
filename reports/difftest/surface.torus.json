@@ -507,6 +507,46 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "horn_iso_inner_major_circle_degenerate",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.torus/coverage.json#0 (upstream source/SMLib/src/SmTorus.cpp:829 (coverage: crates/solidcore/src/surface/torus.rs:1061))",
+      "values_compared": 60
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "horn_iso_inner_major_circle_degenerate_dom",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.torus/coverage.json#1 (upstream source/SMLib/src/SmTorus.cpp:829 (coverage: crates/solidcore/src/surface/torus.rs:1061))",
+      "values_compared": 50
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "horn_half_iso_start_on_axis",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.torus/coverage.json#2 (upstream source/SMLib/src/SmTorus.cpp:829 (coverage: crates/solidcore/src/surface/torus.rs:1061))",
+      "values_compared": 60
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "horn_half_minor_iso_from_axis_0.0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.torus/coverage.json#3 (upstream source/SMLib/src/SmTorus.cpp:867 (coverage: crates/solidcore/src/surface/torus.rs:1099))",
+      "values_compared": 52
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "horn_half_minor_iso_from_axis_0.5",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.torus/coverage.json#4 (upstream source/SMLib/src/SmTorus.cpp:867 (coverage: crates/solidcore/src/surface/torus.rs:1099))",
+      "values_compared": 52
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -4509,8 +4549,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 563,
-  "cases_total": 563,
+  "cases_passed": 568,
+  "cases_total": 568,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

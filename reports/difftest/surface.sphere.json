@@ -3,6 +3,134 @@
   "cases": [
     {
       "max_rel_err": 0.0,
+      "name": "trim_circle_tangent_to_boundary_closed",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.sphere/coverage.json#0 (upstream source/SMLib/src/SmSphere.cpp:2166 (coverage: crates/solidcore/src/surface/sphere.rs:1405))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "trim_circle_tangent_to_boundary_open",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.sphere/coverage.json#1 (upstream source/SMLib/src/SmSphere.cpp:2337 (coverage: crates/solidcore/src/surface/sphere.rs:1548))",
+      "values_compared": 24
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "trim_circle_short_arc_across_boundary",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.sphere/coverage.json#2 (upstream source/SMLib/src/SmSphere.cpp:2254 (coverage: crates/solidcore/src/surface/sphere.rs:1472))",
+      "values_compared": 24
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "trim_circle_short_arc_across_boundary_open",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.sphere/coverage.json#3 (upstream source/SMLib/src/SmSphere.cpp:2254 (coverage: crates/solidcore/src/surface/sphere.rs:1472))",
+      "values_compared": 24
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "isect_sphere_coincident",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.sphere/coverage.json#4 (upstream source/SMLib/src/SmSphere.cpp:1705 (coverage: crates/solidcore/src/surface/sphere.rs:1069))",
+      "values_compared": 11
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "isect_sphere_coincident_tol",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.sphere/coverage.json#5 (upstream source/SMLib/src/SmSphere.cpp:1705 (coverage: crates/solidcore/src/surface/sphere.rs:1069))",
+      "values_compared": 11
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "isect_sphere_concentric_radius_gap",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.sphere/coverage.json#6 (upstream source/SMLib/src/SmSphere.cpp:1709 (coverage: crates/solidcore/src/surface/sphere.rs:1075))",
+      "values_compared": 11
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "isect_sphere_short_arc_across_cap",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.sphere/coverage.json#7 (upstream source/SMLib/src/SmSphere.cpp:1842 (coverage: crates/solidcore/src/surface/sphere.rs:1152))",
+      "values_compared": 34
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "isect_sphere_short_arc_across_cap_other_cap",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.sphere/coverage.json#8 (upstream source/SMLib/src/SmSphere.cpp:1842 (coverage: crates/solidcore/src/surface/sphere.rs:1152))",
+      "values_compared": 34
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "isect_cone_far_from_axis",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.sphere/coverage.json#9 (upstream source/SMLib/src/SmSphere.cpp:2459 (coverage: crates/solidcore/src/surface/sphere.rs:1598))",
+      "values_compared": 11
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "isect_cone_boxes_disjoint",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.sphere/coverage.json#10 (upstream source/SMLib/src/SmSphere.cpp:2477 (coverage: crates/solidcore/src/surface/sphere.rs:1627))",
+      "values_compared": 11
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "isect_cone_apex_on_sphere",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.sphere/coverage.json#11 (upstream source/SMLib/src/SmSphere.cpp:2625 (coverage: crates/solidcore/src/surface/sphere.rs:1719))",
+      "values_compared": 141
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "isect_cone_apex_on_cap",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.sphere/coverage.json#12 (upstream source/SMLib/src/SmSphere.cpp:2625 (coverage: crates/solidcore/src/surface/sphere.rs:1719))",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "step_inv_pole",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.sphere/coverage.json#13 (upstream source/SMLib/src/SmSphere.cpp:3524 (coverage: crates/solidcore/src/surface/sphere.rs:2297))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "step_inv_seam_guess_high",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.sphere/coverage.json#14 (upstream source/SMLib/src/SmSphere.cpp:3530 (coverage: crates/solidcore/src/surface/sphere.rs:2309))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "step_inv_seam_guess_low",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.sphere/coverage.json#15 (upstream source/SMLib/src/SmSphere.cpp:3530 (coverage: crates/solidcore/src/surface/sphere.rs:2309))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -6405,8 +6533,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 800,
-  "cases_total": 800,
+  "cases_passed": 816,
+  "cases_total": 816,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

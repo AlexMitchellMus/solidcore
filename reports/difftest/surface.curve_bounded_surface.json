@@ -1083,6 +1083,22 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "eq_other_3d_boundaries_swapped",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.curve_bounded_surface/coverage.json#0 (upstream source/SMLib/src/SmCurveBoundedSurface.cpp:111 (coverage: crates/solidcore/src/surface/curve_bounded_surface.rs:234))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "eq_other_uv_boundaries_differ",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.curve_bounded_surface/coverage.json#1 (upstream source/SMLib/src/SmCurveBoundedSurface.cpp:119 (coverage: crates/solidcore/src/surface/curve_bounded_surface.rs:242))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -4285,8 +4301,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 535,
-  "cases_total": 535,
+  "cases_passed": 537,
+  "cases_total": 537,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

@@ -3,6 +3,46 @@
   "cases": [
     {
       "max_rel_err": 0.0,
+      "name": "cylinder_offset_to_axis_minus",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.offset_surface/coverage.json#0 (upstream source/SMLib/src/SmOffsetSurface.cpp:1598 (coverage: crates/solidcore/src/surface/offset_surface.rs:1451))",
+      "values_compared": 51
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_offset_to_centre_minus",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.offset_surface/coverage.json#1 (upstream source/SMLib/src/SmOffsetSurface.cpp:1598 (coverage: crates/solidcore/src/surface/offset_surface.rs:1451))",
+      "values_compared": 64
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_base_offset_script",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.offset_surface/coverage.json#2 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator, offset by SmOffsetSurface (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:193))",
+      "values_compared": 186
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_base_offset_edits",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.offset_surface/coverage.json#3 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator, offset by SmOffsetSurface (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:218))",
+      "values_compared": 159
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_base_read_db",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.offset_surface/coverage.json#4 (upstream source/SMLib/src/SmOffsetSurface.cpp:2197 (ReadFromDB) over an SmHyperbola-generated SmSurfOfRevolution (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "third_derivative_outputs",
       "outcome": "pass",
       "pass": true,
@@ -24621,8 +24661,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 3077,
-  "cases_total": 3077,
+  "cases_passed": 3082,
+  "cases_total": 3082,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

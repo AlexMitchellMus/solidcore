@@ -1443,6 +1443,70 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "seams_doubly_closed_low_corner_op4",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_point_solve_p2/coverage.json#0 (upstream source/SMLib/src/SmSurfacePointSolve.cpp:2635 (coverage: crates/solidcore/src/surface/surface_point_solve/p2.rs:925))",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "seams_doubly_closed_low_corner_op3",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_point_solve_p2/coverage.json#1 (upstream source/SMLib/src/SmSurfacePointSolve.cpp:2635 (coverage: crates/solidcore/src/surface/surface_point_solve/p2.rs:925))",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "seams_doubly_closed_high_corner_op4",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_point_solve_p2/coverage.json#2 (upstream source/SMLib/src/SmSurfacePointSolve.cpp:2635 (coverage: crates/solidcore/src/surface/surface_point_solve/p2.rs:925))",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "seams_doubly_closed_high_corner_op3",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_point_solve_p2/coverage.json#3 (upstream source/SMLib/src/SmSurfacePointSolve.cpp:2635 (coverage: crates/solidcore/src/surface/surface_point_solve/p2.rs:925))",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "seams_doubly_closed_mixed_corner_op4",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_point_solve_p2/coverage.json#4 (upstream source/SMLib/src/SmSurfacePointSolve.cpp:2635 (coverage: crates/solidcore/src/surface/surface_point_solve/p2.rs:925))",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "seams_doubly_closed_mixed_corner_op3",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_point_solve_p2/coverage.json#5 (upstream source/SMLib/src/SmSurfacePointSolve.cpp:2635 (coverage: crates/solidcore/src/surface/surface_point_solve/p2.rs:925))",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "seams_doubly_closed_mixed_corner2_op4",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_point_solve_p2/coverage.json#6 (upstream source/SMLib/src/SmSurfacePointSolve.cpp:2635 (coverage: crates/solidcore/src/surface/surface_point_solve/p2.rs:925))",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "seams_doubly_closed_mixed_corner2_op3",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_point_solve_p2/coverage.json#7 (upstream source/SMLib/src/SmSurfacePointSolve.cpp:2635 (coverage: crates/solidcore/src/surface/surface_point_solve/p2.rs:925))",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "integration_port106_gen0015_norms",
       "outcome": "pass",
       "pass": true,
@@ -10765,8 +10829,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 1345,
-  "cases_total": 1345,
+  "cases_passed": 1353,
+  "cases_total": 1353,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

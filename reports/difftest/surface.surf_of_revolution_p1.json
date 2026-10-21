@@ -2067,6 +2067,294 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "hyperboloid_canon_build",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#0 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 248
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_canon_eval_step_k2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#1 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_canon_eval_step_pt",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#2 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_canon_to_step",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#3 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_canon_iso_u",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#4 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_canon_iso_v",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#5 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 59
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_canon_directrix",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#6 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 62
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_canon_generator",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#7 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 28
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_canon_eq_self",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#8 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_ctor_build",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#9 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:164 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 212
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_ctor_eval_step_k2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#10 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:164 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_ctor_eval_step_pt",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#11 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:164 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_ctor_to_step",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#12 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:164 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_ctor_iso_u",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#13 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:164 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_ctor_iso_v",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#14 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:164 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 49
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_ctor_directrix",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#15 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:164 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 52
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_ctor_generator",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#16 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:164 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 28
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperboloid_ctor_eq_self",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#17 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:164 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperbola_off_axis_canon_build",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#18 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 248
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperbola_off_axis_canon_eval_step_k2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#19 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperbola_off_axis_canon_eval_step_pt",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#20 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperbola_off_axis_canon_to_step",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#21 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperbola_off_axis_canon_iso_u",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#22 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperbola_off_axis_canon_iso_v",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#23 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 59
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperbola_off_axis_canon_directrix",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#24 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 62
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperbola_off_axis_canon_generator",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#25 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 28
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperbola_off_axis_canon_eq_self",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#26 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:639 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperbola_off_axis_ctor_build",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#27 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:164 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 212
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperbola_off_axis_ctor_eval_step_k2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#28 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:164 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperbola_off_axis_ctor_eval_step_pt",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#29 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:164 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperbola_off_axis_ctor_to_step",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#30 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:164 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperbola_off_axis_ctor_iso_u",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#31 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:164 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 29
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperbola_off_axis_ctor_iso_v",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#32 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:164 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 49
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperbola_off_axis_ctor_directrix",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#33 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:164 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 52
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperbola_off_axis_ctor_generator",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#34 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:164 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 28
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "hyperbola_off_axis_ctor_eq_self",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surf_of_revolution_p1/coverage.json#35 (upstream source/SMLib/src/SmSurfOfRevolution.cpp:164 with an SmHyperbola generator (SmBSplineCurve virtuals) (coverage: crates/solidcore/src/surface/surf_of_revolution/p1.rs:152))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -6869,8 +7157,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 858,
-  "cases_total": 858,
+  "cases_passed": 894,
+  "cases_total": 894,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

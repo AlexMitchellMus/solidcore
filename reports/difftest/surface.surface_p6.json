@@ -3,6 +3,38 @@
   "cases": [
     {
       "max_rel_err": 0.0,
+      "name": "ssid_poles_same_equal_values",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p6/coverage.json#0 (upstream source/SMLib/src/SmSurface.cpp:21594 (coverage: crates/solidcore/src/surface/surface/p6.rs:1438))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ssid_poles_same_first_better",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p6/coverage.json#1 (upstream source/SMLib/src/SmSurface.cpp:21594 (coverage: crates/solidcore/src/surface/surface/p6.rs:1438))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ssid_poles_other_equal_values",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p6/coverage.json#2 (upstream source/SMLib/src/SmSurface.cpp:21594 (coverage: crates/solidcore/src/surface/surface/p6.rs:1438))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ssid_poles_other_first_better",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p6/coverage.json#3 (upstream source/SMLib/src/SmSurface.cpp:21594 (coverage: crates/solidcore/src/surface/surface/p6.rs:1438))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "cont_surface_u",
       "outcome": "pass",
       "pass": true,
@@ -16797,8 +16829,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 2099,
-  "cases_total": 2099,
+  "cases_passed": 2103,
+  "cases_total": 2103,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

@@ -663,9 +663,9 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
   - `SmBSplineCurve.cpp:43`: `SmBSplineCurve(lDim)` has a NULL NURB, which nearly every query dereferences (`GetOrCreateGwNurbPointer` asserts in debug only).
   - `SmHyperbola.cpp:422` `MakeNurb` (`:441`, `:470`) and `SmParabola.cpp:419` (`:435`): when `smgu_LineLineClosestPoint` fails, `MakeNurb` fails. The constructor ignores this, and `GlobalPointSolveSTEP` then dereferences the missing NURB in the curve cache.
 - **What happens:** NULL dereference.
-- **Trigger:** A hyperbola or parabola with a degenerate interval (parallel end tangents) or zero focal distance, then `GlobalPointSolveSTEP`.
-- **How found:** read during porting.
-- **Confirmed:** no. The shim refuses these inputs.
+- **Trigger:** A hyperbola or parabola with a degenerate interval (parallel end tangents) or zero focal distance, then `GlobalPointSolveSTEP`. Also the `SmHyperbola` constructor (`SmHyperbola.cpp:66`, `SE(MakeNurb())`) on extreme but finite input, e.g. a semi axis of 1e300 or a centre at 9.2e18 with unit axes: the NURB is left NULL or with non-finite control points, and building a surface of revolution / extrusion / offset over it segfaults.
+- **How found:** read during porting; the constructor trigger by `--fuzz 200` on the hyperbola generators of the `surface.surf_of_revolution_p1`, `surf_of_revolution_p3` and `offset_surface` runners (2026-10-21, 21 segfaults).
+- **Confirmed:** yes for the constructor trigger (segfaults in the C++ reference run); the shims now refuse a hyperbola whose built NURB is NULL or has a non-finite control point.
 - **Severity:** crash/UB.
 - **Rust port:** Returns `SM_ERR`.
 - **Fuzz sweep trigger (2026-10-20):** `SmParabola` with a non-finite-after-unitize frame (`/a/y/2 = 1e+300`, `curve.parabola` fuzz `fuzz01135`, op `gps_step`): `MakeNurb` fails, `GlobalPointSolveSTEP` -> `AdjustSTEPInterval` keeps the domain, then `SmCurve::GlobalPointSolve` builds the length cache through `SmBSplineCurve::EvaluatePoint`, which dereferences `GetOrCreateGwNurbPointer()` (`SmBSplineCurve.cpp:3300`). SIGSEGV in the C++ reference run. Change **Confirmed:** to yes (crash in the C++ reference run, fuzz sweep); the shim's earlier refusal did not cover this input, the FFI now replays `Adjust`/`MakeNurb` first (`crates/solidcore-ffi/src/units/curve_parabola.rs:131`).

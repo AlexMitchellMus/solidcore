@@ -3,6 +3,102 @@
   "cases": [
     {
       "max_rel_err": 0.0,
+      "name": "classify_dome_curve_in_tangent_plane",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p4/coverage.json#0 (upstream source/SMLib/src/SmSurface.cpp:13248 (coverage: crates/solidcore/src/surface/surface/p4.rs:1639))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "classify_dome_flat_curve_in_tangent_plane",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p4/coverage.json#1 (upstream source/SMLib/src/SmSurface.cpp:13248 (coverage: crates/solidcore/src/surface/surface/p4.rs:1639))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "classify_saddle_curve_in_tangent_plane",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p4/coverage.json#2 (upstream source/SMLib/src/SmSurface.cpp:13248 (coverage: crates/solidcore/src/surface/surface/p4.rs:1649))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "classify_saddle_flat_curve_in_tangent_plane",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p4/coverage.json#3 (upstream source/SMLib/src/SmSurface.cpp:13248 (coverage: crates/solidcore/src/surface/surface/p4.rs:1649))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "classify_cylinder_curve_in_tangent_plane",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p4/coverage.json#4 (upstream source/SMLib/src/SmSurface.cpp:13248 (coverage: crates/solidcore/src/surface/surface/p4.rs:1661))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "classify_cylinder_flat_curve_in_tangent_plane",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p4/coverage.json#5 (upstream source/SMLib/src/SmSurface.cpp:13248 (coverage: crates/solidcore/src/surface/surface/p4.rs:1661))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "classify_cylinder_v_curve_in_tangent_plane",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p4/coverage.json#6 (upstream source/SMLib/src/SmSurface.cpp:13248 (coverage: crates/solidcore/src/surface/surface/p4.rs:1661))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "classify_cylinder_v_flat_curve_in_tangent_plane",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p4/coverage.json#7 (upstream source/SMLib/src/SmSurface.cpp:13248 (coverage: crates/solidcore/src/surface/surface/p4.rs:1661))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "classify_flat_curve_in_tangent_plane",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p4/coverage.json#8 (upstream source/SMLib/src/SmSurface.cpp:13248 (coverage: crates/solidcore/src/surface/surface/p4.rs:1630))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "classify_flat_flat_curve_in_tangent_plane",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p4/coverage.json#9 (upstream source/SMLib/src/SmSurface.cpp:13248 (coverage: crates/solidcore/src/surface/surface/p4.rs:1630))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "classify_dome_curve_in_normal_plane",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p4/coverage.json#10 (upstream source/SMLib/src/SmSurface.cpp:13410 (coverage: crates/solidcore/src/surface/surface/p4.rs:1813))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "classify_degenerate_curve",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p4/coverage.json#11 (upstream source/SMLib/src/SmSurface.cpp:13127 (coverage: crates/solidcore/src/surface/surface/p4.rs:1530))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "port106_gen0120",
       "outcome": "pass",
       "pass": true,
@@ -24029,8 +24125,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 3003,
-  "cases_total": 3003,
+  "cases_passed": 3015,
+  "cases_total": 3015,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

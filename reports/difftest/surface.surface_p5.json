@@ -3,6 +3,102 @@
   "cases": [
     {
       "max_rel_err": 0.0,
+      "name": "iso_bounded_singular_v_iso_domain",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p5/coverage.json#0 (upstream source/SMLib/src/SmSurface.cpp:15028 (coverage: crates/solidcore/src/surface/surface/p5.rs:554))",
+      "values_compared": 32
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "iso_bounded_singular_v_iso",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p5/coverage.json#1 (upstream source/SMLib/src/SmSurface.cpp:15028 (coverage: crates/solidcore/src/surface/surface/p5.rs:554))",
+      "values_compared": 32
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ident_sp_pole_first_better",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p5/coverage.json#2 (upstream source/SMLib/src/SmSurface.cpp:19932 (coverage: crates/solidcore/src/surface/surface/p5.rs:2033))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ident_cs_pole_first_better",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p5/coverage.json#3 (upstream source/SMLib/src/SmSurface.cpp:17726 (coverage: crates/solidcore/src/surface/surface/p5.rs:2033))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ident_sp_second_off_pole_loose_tol",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p5/coverage.json#4 (upstream source/SMLib/src/SmSurface.cpp:19913 (coverage: crates/solidcore/src/surface/surface/p5.rs:2018))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ident_lsi_second_off_pole_loose_tol",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p5/coverage.json#5 (upstream source/SMLib/src/SmSurface.cpp:18877 (coverage: crates/solidcore/src/surface/surface/p5.rs:2018))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cover_plane_like_bilinear",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p5/coverage.json#6 (upstream source/SMLib/src/SmSurface.cpp:8412 (coverage: crates/solidcore/src/surface/surface/p5.rs:1536))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cover_plane_like_bilinear_merged",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p5/coverage.json#7 (upstream source/SMLib/src/SmSurface.cpp:8412 (coverage: crates/solidcore/src/surface/surface/p5.rs:1536))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cover_biquadratic_vs_bilinear",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p5/coverage.json#8 (upstream source/SMLib/src/SmSurface.cpp:8412 (coverage: crates/solidcore/src/surface/surface/p5.rs:1536))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cover_biquadratic_vs_bilinear_merged",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p5/coverage.json#9 (upstream source/SMLib/src/SmSurface.cpp:8412 (coverage: crates/solidcore/src/surface/surface/p5.rs:1536))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cover_bilinear_vs_biquadratic",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p5/coverage.json#10 (upstream source/SMLib/src/SmSurface.cpp:8412 (coverage: crates/solidcore/src/surface/surface/p5.rs:1536))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cover_bilinear_vs_biquadratic_merged",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p5/coverage.json#11 (upstream source/SMLib/src/SmSurface.cpp:8412 (coverage: crates/solidcore/src/surface/surface/p5.rs:1536))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "closest_pt1_min",
       "outcome": "pass",
       "pass": true,
@@ -24373,8 +24469,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 3046,
-  "cases_total": 3046,
+  "cases_passed": 3058,
+  "cases_total": 3058,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,
