@@ -1787,6 +1787,22 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "edges_overflowing",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#162 (upstream source/SMLib/src/SmBrep.cpp:1009)",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "edges_regular_then_overflowing",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#163 (upstream source/SMLib/src/SmBrep.cpp:1009)",
+      "values_compared": 21
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "endcap_vertex0_bnd",
       "outcome": "pass",
       "pass": true,
@@ -10353,8 +10369,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 247,
   "cases_failed": 0,
-  "cases_passed": 923,
-  "cases_total": 1170,
+  "cases_passed": 925,
+  "cases_total": 1172,
   "deferred_by_unit": {
     "geom.tol": 74,
     "harness:analytic-geometry-export": 20,

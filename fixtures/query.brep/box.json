@@ -18637,6 +18637,97 @@
      }
     ]
    }
+  },
+  {
+   "name": "edges_overflowing",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp:1009",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "points",
+     "vertices": [],
+     "lines": [
+      [
+       -1e+300,
+       0.0,
+       0.0,
+       1e+300,
+       1e+300,
+       0.0,
+       1e-06
+      ]
+     ]
+    },
+    "steps": [
+     {
+      "step": "tight"
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": true,
+      "expand": false,
+      "defaults": false
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": true,
+      "defaults": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "edges_regular_then_overflowing",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp:1009",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "points",
+     "vertices": [],
+     "lines": [
+      [
+       0.0,
+       0.0,
+       0.0,
+       1.0,
+       2.0,
+       3.0,
+       1e-06
+      ],
+      [
+       -1e+300,
+       -1e+300,
+       5.0,
+       1e+300,
+       1e+300,
+       5.0,
+       1e-06
+      ]
+     ]
+    },
+    "steps": [
+     {
+      "step": "tight"
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": true,
+      "expand": false,
+      "defaults": false
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": true,
+      "defaults": false
+     }
+    ]
+   }
   }
  ]
 }

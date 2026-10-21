@@ -11297,8 +11297,14 @@ guarded in `offset.offset_geometry_creation`; the fix belongs to the curve cache
   face to face and uses what a failed call leaves; `query.face_p3` gained
   `calculate_tight_bounding_box_into`, which writes the caller's box at the same two points
   as `SmFace::CalculateTightBoundingBox`. A failed loose edge box is taken as the freshly
-  initialised (empty) box: the curve boxes write their output only once computed (not
-  checked for every curve override).
+  initialised (empty) box: every curve override (`SmCurve`, `SmBSplineCurve`, `SmLine`,
+  `SmHermiteCurve`, `SmCrvOnSurf`, `SmCompositeCurve`) returns its error before writing
+  the caller's box (checked against upstream; the composite ignores its segments' statuses
+  and always succeeds). No fixture reaches these ignored statuses: a probe over every box
+  fixture (files, solids, wires, overflowing segments) saw the edge and face boxes fail only
+  with `Unported` (`SmFace::GetTolerance`, `topology.face_p2`), which propagates. The
+  inputs that would fail them (a face without surface, a curve whose span search fails)
+  crash or are rejected on the C++ side, so the shim guards them out.
 - **`merge_vertex` records.** Wiring `Point3DClassify` made `SmMerge::ProcessWiresAndShellVertices`
   reach `merge_vertex`'s `Copy` notification for vertices of imported operands, which had
   no `Topology` record (records are made when this crate creates an entity). Upstream every
@@ -11323,3 +11329,15 @@ guarded in `offset.offset_geometry_creation`; the fix belongs to the curve cache
     own the B-rep (as `boolean::merge::p4::ArenaPair` does).
   - `geom.object`: `Shape::new` gets B-rep keys but no store to resolve them, so the B-rep
     box (and the face box, already a `DISPATCH GAP`) cannot be reached there.
+- **Wider seeds (2000 generated cases per unit, local macOS run).** `query.brep`,
+  `boolean.merge_p1`, `boolean.merge_p4` and `topology.brep_p9` show no failures. Two units
+  fail on generated cases this PR does not change; both are left to their owners:
+  - `boolean.merge_p5` (64 failures). (1) On a repeated call, a marked other wire without a
+    mate makes `SmMerge::ProcessWiresAndShellVertices` append `NULL` to `keep_as_wires`
+    upstream; the Rust list is a `Vec<EdgeId>` and has no null entry, so it reports a null
+    pointer instead. (2) The entities `merge_vertex` / `MakeShellVertex` create are numbered
+    in creation order on both sides (`SmOwningTopology::PostInsert` appends, as the arenas
+    do), but the runner's walk visits them in a different order than the C++ walk, so the
+    topology indices permute. Neither involves `Point3DClassify`'s result.
+  - `topology.shell` (8 failures): `IsDegenerate` on the loose shell box path of
+    `query.face_p1`, a path this PR does not reach.
