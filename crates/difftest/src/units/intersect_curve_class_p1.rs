@@ -13,9 +13,17 @@
 //! its `SmStatus` (`InvalidInput` 1007, `-1` for one upstream cannot return); an `Unported`
 //! error anywhere defers the case.
 //!
-//! The vertex, edge and face objects are B-rep records ([`BareTopology`]), so their zone
-//! tolerances and the edge curve / face surface of `ComputePointParameters` are the ported
-//! topology members.
+//! A few generated scripts (and none of the fixtures) add a real one-face B-rep (`face`, as in
+//! unit `intersect.curve_class_p4`: `sc_one_face_brep.h` in the shim,
+//! `heal_face_props::rust_brep` plus its down face use's side in Rust) whose face, loops,
+//! edges, vertices and edge uses follow the objects in the pool: a classification along a line
+//! through two of its corners, its interiors on its edges and its ends on its vertices, for
+//! `sm_MakeConsistentClassifications` (`SmEdge::GetVertex`, `SmVertex::GetEdges`, the edge
+//! drops) over the ported topology.
+//!
+//! Without that B-rep, the pool's vertex, edge and face stand-ins are B-rep records
+//! ([`BareTopology`]), so their zone tolerances and the edge curve / face surface of
+//! `ComputePointParameters` are the ported topology members.
 //!
 //! Deferred cases: ops that reach other topology members (`sm_SetXSectEdgeThroughPoint`,
 //! `sm_GetCCIGeometry`, `sm_ComputeFacePointClass`),
@@ -57,7 +65,11 @@ use solidcore::topology::face::p2 as topo_face;
 use solidcore::topology::vertex as topo_vertex;
 use solidcore::topology::{Brep, Edge, Face, Vertex, VertexId};
 use solidcore::{EntityRef, SolidError};
+use solidcore_ffi::units::heal_face_props::FaceSpec;
 use solidcore_ffi::units::intersect_curve_class_p1::{self as ffi, kind, op};
+
+use super::intersect_curve_class_p4::{face_brep, gen_face, topology_entities, topology_kinds};
+use crate::units::heal_face_props::{self as hfp, FaceIn, LoopsIn};
 
 use crate::case::{CaseContext, CaseSource};
 use crate::runner::default_cases;
@@ -288,6 +300,10 @@ enum OpIn {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Script {
     objects: Vec<ObjIn>,
+    /// A real one-face B-rep (as in unit `intersect.curve_class_p4`) whose topology follows
+    /// the objects in the pool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    face: Option<FaceIn>,
     ops: Vec<OpIn>,
 }
 
@@ -678,9 +694,13 @@ fn op_code(o: &OpIn) -> (usize, usize) {
     }
 }
 
+fn ffi_face(s: &Script) -> Option<FaceSpec> {
+    s.face.as_ref().map(hfp::ffi_face)
+}
+
 fn cpp(s: &Script) -> Result<Output, HarnessError> {
     let input = cpp_input(s);
-    let out = ffi::run(&input).map_err(|e| harness(format!("c++: {e}")))?;
+    let out = ffi::run(ffi_face(s).as_ref(), &input).map_err(|e| harness(format!("c++: {e}")))?;
     Ok(Output::new().values("out", out))
 }
 
@@ -717,8 +737,28 @@ pub(crate) struct Pool {
     pub(crate) objs: Vec<PoolObj>,
     pub(crate) handles: Vec<H>,
     pub(crate) kinds: Vec<usize>,
-    /// The vertex, edge and face objects as B-rep records ([`BareTopology`]).
-    pub(crate) topo: BareTopology,
+    /// A real B-rep whose entities are the pool handles from `first` on (unit
+    /// `intersect.curve_class_p7`); the other topology handles are bare stand-ins.
+    pub(crate) topo: Option<PoolTopology>,
+    /// Without `topo`: the vertex, edge and face stand-ins as B-rep records
+    /// ([`BareTopology`]).
+    pub(crate) bare: BareTopology,
+}
+
+/// The B-rep behind pool handles `first..first + entities.len()`.
+pub(crate) struct PoolTopology {
+    pub(crate) brep: Brep,
+    pub(crate) first: usize,
+    pub(crate) entities: Vec<EntityRef>,
+}
+
+impl Pool {
+    /// The B-rep entity of handle `o`, if it is one.
+    fn entity(&self, o: H) -> Option<(&Brep, EntityRef)> {
+        let t = self.topo.as_ref()?;
+        let e = *t.entities.get(o.0.checked_sub(t.first)?)?;
+        Some((&t.brep, e))
+    }
 }
 
 impl ClassGeometry<H> for Pool {
@@ -744,16 +784,37 @@ impl ClassGeometry<H> for Pool {
         }
     }
     fn classification_vertex_point(&self, o: H) -> Option<Vec3> {
-        self.topo.vertex_point(o.0)
+        match self.topo {
+            Some(_) => match self.entity(o)? {
+                (b, EntityRef::Vertex(v)) => b.vertex(v).ok().map(|r| r.point),
+                _ => None,
+            },
+            None => self.bare.vertex_point(o.0),
+        }
     }
     fn topology_zone_tol_3d(&self, o: H) -> Option<f64> {
-        self.topo.zone_tol_3d(o.0)
+        if self.topo.is_none() {
+            return self.bare.zone_tol_3d(o.0);
+        }
+        match self.entity(o)? {
+            (b, EntityRef::Vertex(v)) => b.vertex(v).ok().map(|r| r.tolerance),
+            (b, EntityRef::Edge(e)) => b.edge(e).ok().map(|r| r.tolerance),
+            (b, EntityRef::Face(f)) => b.face(f).ok().map(|r| r.tolerance),
+            _ => None,
+        }
     }
     fn topology_entity(&self, o: H) -> Option<(&Brep, EntityRef)> {
-        self.topo.entity(o.0)
+        match self.topo {
+            Some(_) => self.entity(o),
+            None => self.bare.entity(o.0),
+        }
     }
     fn topology_handle(&self, e: EntityRef) -> Option<H> {
-        self.handles.get(self.topo.index_of(e)?).copied()
+        let Some(t) = self.topo.as_ref() else {
+            return self.handles.get(self.bare.index_of(e)?).copied();
+        };
+        let i = t.entities.iter().position(|x| *x == e)?;
+        self.handles.get(t.first + i).copied()
     }
 }
 
@@ -920,7 +981,7 @@ impl Pool {
 
     fn put_curve(&mut self, i: usize, c: Curve) {
         // the shim's edges share the pool curve: keep their records in step
-        self.topo.curve_edited(i, &c);
+        self.bare.curve_edited(i, &c);
         if let Some(slot) = self.objs.get_mut(i) {
             *slot = PoolObj::Curve(c);
         }
@@ -959,7 +1020,8 @@ pub(crate) fn build_pool(objects: &[ObjIn]) -> Result<Pool, HarnessError> {
         objs: Vec::new(),
         handles: Vec::new(),
         kinds: Vec::new(),
-        topo: BareTopology::default(),
+        topo: None,
+        bare: BareTopology::default(),
     };
     for (i, o) in objects.iter().enumerate() {
         let k = obj_kind(o);
@@ -990,7 +1052,7 @@ pub(crate) fn build_pool(objects: &[ObjIn]) -> Result<Pool, HarnessError> {
             Some(PoolObj::Surface(x)) => Some(x),
             _ => None,
         };
-        pool.topo.push(class_kind_of(k), curve, surface)?;
+        pool.bare.push(class_kind_of(k), curve, surface)?;
         pool.objs.push(obj);
         pool.handles.push(H(i, class_kind_of(k)));
         pool.kinds.push(k);
@@ -1160,6 +1222,9 @@ fn uvp(q: [f64; 2]) -> Point2 {
 fn rust_run(s: &Script) -> Result<Vec<f64>, Fail> {
     let k = Kernel::default();
     let mut pool = build_pool(&s.objects)?;
+    if let Some(face) = &s.face {
+        add_face(&k, &mut pool, face)?;
+    }
     let mut ccs: [CurveClassification<H>; 2] =
         [CurveClassification::new(&k), CurveClassification::new(&k)];
     let mut o: Vec<f64> = Vec::new();
@@ -1340,7 +1405,7 @@ fn rust_run(s: &Script) -> Result<Vec<f64>, Fail> {
                         o.extend([0.0, b(cc.is_referenced(pool.handle(*obj)?))]);
                     }
                     OpIn::MakeConsistent { .. } => {
-                        let r = cc_mod::make_consistent_classifications(cc);
+                        let r = cc_mod::make_consistent_classifications(&k, &pool, cc);
                         o.push(st(r)?.err().unwrap_or(0.0));
                     }
                     OpIn::Type { types, .. } => {
@@ -2130,6 +2195,11 @@ fn gen_xsect_setup(rng: &mut Rng, objs: &mut Vec<ObjIn>) -> (usize, [usize; 2], 
 
 #[allow(clippy::too_many_lines)]
 fn gen_script(rng: &mut Rng) -> Script {
+    if rng.chance(0.08) {
+        if let Some(s) = gen_face_script(rng) {
+            return s;
+        }
+    }
     let mut objects = gen_objects(rng);
     let mode = rng.below(20);
     let mut ops = Vec::new();
@@ -2410,16 +2480,102 @@ fn gen_script(rng: &mut Rng) -> Script {
             });
         }
     }
-    Script { objects, ops }
+    Script { objects, face: None, ops }
+}
+
+/// A script over a real one-face B-rep for `sm_MakeConsistentClassifications`: a
+/// classification along a line through two corners of the face whose interiors classify to
+/// its edges and whose ends to its vertices, consistent with the edges or not.
+fn gen_face_script(rng: &mut Rng) -> Option<Script> {
+    let face = (0..8)
+        .map(|_| gen_face(rng))
+        .find(|f| matches!(f.loops, Some(LoopsIn::Edges { .. })))?;
+    let corners: Vec<[f64; 3]> = match face.loops.as_ref() {
+        Some(LoopsIn::Edges { loops }) => loops.iter().flatten().copied().collect(),
+        _ => Vec::new(),
+    };
+    let mut objects = gen_objects(rng);
+    let i = rng.below(corners.len() as u64) as usize;
+    let a = corners.get(i).copied()?;
+    let c = corners.get((i + 1) % corners.len()).copied()?;
+    let line = objects.len();
+    objects.push(ObjIn::Curve(CurveIn::Line(LineIn {
+        p: a,
+        v: [c[0] - a[0], c[1] - a[1], c[2] - a[2]],
+        domain: [0.0, 1.0],
+        scale: 1.0,
+        inside_out: false,
+    })));
+    let n_obj = objects.len();
+    let kinds = topology_kinds(&face);
+    let real = |k: usize| -> Vec<usize> {
+        kinds.iter().enumerate().filter(|(_, &x)| x == k).map(|(j, _)| n_obj + j).collect()
+    };
+    let (edges, vertices) = (real(kind::EDGE), real(kind::VERTEX));
+    let mut ops = Vec::new();
+    for t in 0..2 {
+        if t == 1 && !rng.chance(0.3) {
+            continue;
+        }
+        let n = 1 + rng.below(3) as usize;
+        ops.push(OpIn::SetSize { t, n });
+        ops.push(OpIn::SetCurve { t, obj: Some(line), owned: false });
+        if rng.chance(0.7) {
+            ops.push(OpIn::SetSrcTol { t, tol: gen_tol(rng) });
+        }
+        let cuts: Vec<f64> = (0..=n).map(|j| j as f64 / n as f64).collect();
+        for j in 0..n {
+            let lo = cuts.get(j).copied().unwrap_or(0.0);
+            let hi = cuts.get(j + 1).copied().unwrap_or(1.0);
+            ops.push(OpIn::IvlSet { t, j, a: lo, b: hi });
+            if rng.chance(0.9) {
+                ops.push(OpIn::PcSetClass { t, j, w: 1, class: 103, obj: pick(rng, &edges) });
+            }
+            for w in [0, 2] {
+                if rng.chance(0.75) {
+                    ops.push(OpIn::PcSetClass { t, j, w, class: 104, obj: pick(rng, &vertices) });
+                }
+            }
+        }
+    }
+    for _ in 0..=rng.below(2) {
+        ops.push(OpIn::MakeConsistent { t: 0 });
+    }
+    Some(Script { objects, face: Some(face), ops })
 }
 
 /// Whether the shim accepts the script (it rejects what is undefined upstream).
 fn shim_accepts(s: &Script) -> bool {
-    match ffi::run(&cpp_input(s)) {
+    match ffi::run(ffi_face(s).as_ref(), &cpp_input(s)) {
         Ok(_) => true,
         Err(solidcore_ffi::FfiError::Status(c)) if c == SC_ERR_ARG => false,
         Err(_) => false,
     }
+}
+
+/// Appends the topology of `face`'s one-face B-rep to the pool, in the shim's order.
+pub(crate) fn add_face(k: &Kernel, pool: &mut Pool, face: &FaceIn) -> Result<(), HarnessError> {
+    let (mut b, f) = face_brep(k, face)?;
+    // the down face use's loops, so that edge mates (an edge's end vertex) exist as upstream
+    hfp::add_down_side(&mut b, f)?;
+    let first = pool.handles.len();
+    let mut entities = Vec::new();
+    for (e, kd) in topology_entities(&b, f)? {
+        let ck = match e {
+            EntityRef::Face(_) => ClassObjectKind::Face,
+            EntityRef::Loop(_) => ClassObjectKind::Loop,
+            EntityRef::Edge(_) => ClassObjectKind::Edge,
+            EntityRef::Vertex(_) => ClassObjectKind::Vertex,
+            EntityRef::Edgeuse(_) => ClassObjectKind::Edgeuse,
+            _ => ClassObjectKind::Other,
+        };
+        pool.handles.push(H(pool.objs.len(), ck));
+        pool.objs.push(PoolObj::Bare);
+        pool.kinds.push(kd);
+        entities.push(e);
+    }
+    pool.topo = Some(PoolTopology { brep: b, first, entities });
+    Ok(())
 }
 
 // ---- fixtures built in code ---------------------------------------------------------------
@@ -2492,7 +2648,7 @@ fn edge_cases() -> Vec<(String, Value)> {
             OpIn::SetSize { t: 0, n: 2 },
             OpIn::SetPcParams { t: 0, mids: false },
         ];
-        out.push((format!("edge_containers_{name}"), json!(Script { objects: objs, ops })));
+        out.push((format!("edge_containers_{name}"), json!(Script { objects: objs, face: None, ops })));
     }
     // winding counts: in/out excess, out/in excess, balanced, empty
     let loop_objs = vec![ObjIn::Loop, ObjIn::Loop, ObjIn::Other];
@@ -2508,7 +2664,7 @@ fn edge_cases() -> Vec<(String, Value)> {
             OpIn::TouchConnected { t: 0, c: Some(0), touches: list.clone() },
             OpIn::TouchConnected { t: 1, c: None, touches: list.clone() },
         ];
-        out.push((format!("edge_touches_{name}"), json!(Script { objects: loop_objs.clone(), ops })));
+        out.push((format!("edge_touches_{name}"), json!(Script { objects: loop_objs.clone(), face: None, ops })));
     }
     // degenerate tangents and NULL curves for the angle
     let objs = vec![
@@ -2533,7 +2689,7 @@ fn edge_cases() -> Vec<(String, Value)> {
         OpIn::TolPair { t: 0, c: Some(0), s: None, p1: 0.0, tol1: USE_DEFAULT, p2: 1.0, tol2: -1e-3 },
         OpIn::Gaps { t: 0, cp: [0.0; 3], ep: [3.0, 4.0, 0.0], sol: [0.0, 0.0], pairs: vec![], count: 0 },
     ];
-    out.push(("edge_angles".into(), json!(Script { objects: objs, ops })));
+    out.push(("edge_angles".into(), json!(Script { objects: objs, face: None, ops })));
     // the topology helpers (deferred in the port)
     let objs = vec![
         line([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0]),
@@ -2564,7 +2720,7 @@ fn edge_cases() -> Vec<(String, Value)> {
             OpIn::SetIntersectData { t: 0, s1: Some(1), s2: Some(2), uv2: None, current: true, ti: None },
             op,
         ];
-        out.push((format!("edge_topology_{name}"), json!(Script { objects: objs.clone(), ops })));
+        out.push((format!("edge_topology_{name}"), json!(Script { objects: objs.clone(), face: None, ops })));
     }
     out
 }
@@ -2577,7 +2733,7 @@ impl UnitDiff for Runner {
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
         for _ in 0..64 {
             let s = gen_script(rng);
-            if ffi::validate(&cpp_input(&s)).is_err() || !shim_accepts(&s) {
+            if ffi::validate(ffi_face(&s).as_ref(), &cpp_input(&s)).is_err() || !shim_accepts(&s) {
                 continue;
             }
             return serde_json::to_value(s).ok();

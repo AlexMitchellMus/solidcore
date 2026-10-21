@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-16, PR #127 (`sweep.trans_sweep_geometry` partial: 719 bit-identical passes, 50 deferred on `surface.cone_p2`, 19 rejected native fixtures). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
-Latest harness: PR #295 (B-rep records for the classification shims' topology handles): curve_class_p1 2048->2070, p2 1462->1649, p7 1077->1217, point_class 2411->2449 passes, 0 failed; stacked PR #296: curve_class_p3 3163->3288, p6 4216->4316.
+Latest harness: PR #295 (B-rep records for the classification shims' bare topology stand-ins, on top of main's real one-face B-rep adapter #347): curve_class_p1 2054->2070, p2 1495->1627, p7 1327->1474, point_class 2411->2466 passes, 0 failed.
 
 Latest unit: `topology.face_p4` partial (port: topology.face_p4, taking over the #134 claim): 5506 cases, 3957 bit-identical passes, 0 failed, 1549 deferred (mostly the tolerance of face-owned surfaces: `SmTol::GetZoneTol3d` in the surface cache, tagged `geom.tol`, and `SmFace::GetTolerance`, `topology.face_p2`); 26 of its 44 back-edge stubs wired, including those of `heal.stitch_p1`, `topology.brep_p5`/`p7`/`p9`/`p10` and `topology.face_p3` (169 more `face_p3` passes); the rest take generic handles without a B-rep, or (one in `brep_p5`) no kernel; its own calls into `query.face_p3` (`sm_FaceClassifyUVLine`, `SectorClassifyCurveOn`) are wired since #132; `HasSeamProblem` returns `SM_SUCCESS` as TRUE upstream (`plan/upstream-issues.md` WR-176); 238 units (main after #229), 116 green and 122 partial.
 
