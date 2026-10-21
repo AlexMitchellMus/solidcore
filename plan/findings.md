@@ -4481,6 +4481,16 @@ a gap below 0.1 and a loose tolerance, so it only shows in large seed counts; th
 default 3,093-case set (which the gate and CI run) is clean, and the previous generator's
 30,055-case run was clean.
 
+**Handling (#94).** Logged as `UB-204` in `plan/upstream-issues.md`. The Rust side keeps zeroing
+`Matrix::new`: emulating a stack slot is neither possible nor deterministic, and the port's goal is
+deterministic results. The unit's generator skips the shape, so `--seeds 30000` no longer reports
+`gen21507`: `reads_uninitialised_jacobian` in `crates/difftest/src/units/curve_curve_p9.rs` drops
+op 9 cases where a Hermite end tangent of length zero is reached and the other curve is within 0.1
+of that end. Measured over the default 30,093 cases it matches 4 (the failing one and 3
+pairs that touch exactly at that end and pass); the other 38 cases with a zero end tangent are 0.5 or more
+apart. It is deliberately narrower than "any zero tangent", which the generator keeps drawing
+(8% of Hermite `d2`, 10% of `d1`) as degenerate coverage.
+
 ## intersect.surface_intersector_p5 (`SmSurfaceIntersector::DoIntersection`, 2026-10-14; partial, no disagreements)
 
 - **Dispatch.** Every upstream caller runs `DoIntersection` on an
@@ -9509,6 +9519,73 @@ with owner-tagged `Unported` errors and documented continuations.
   same run (`fuzz01001`, `fuzz01653`: a `map_twin` rectangle corner at `±1e-300`, native
   vertex `0` vs Rust `±1e-300`) are the native constructor's rounding of a coordinate
   outside the generator's domain, not a port difference.
+
+- **Vertex-cap review-readiness integration (2026-10-21, PR #288).** Reconciled
+  the source with main `159b34d2`, preserving #282's contained-face/mapping work
+  and both ordinary/strut vertex-creator calls. ABI modes 4/5/6 coexist without
+  changing their payloads: face_tail, map_twin and vertex. The combined fixture
+  budget is 448 plus 600 generated cases. Conflicted reports are regenerated
+  from the combined native run, never selected or hand-merged.
+  P1 is **1048 cases / 731 compared / 316 deferred / 1 rejected / 0 failed**,
+  max relative error `1.850371707708594e-16`, sensitivity **731/731**. All 18
+  vertex-named cases pass bit for bit. The shared creator's report remains
+  byte-identical to main: **874 / 585 compared / 289 deferred / 0 failed**,
+  sensitivity **585/585**. No tolerance, seed, generator or absolute floor changed.
+  Formatting/include checks, strict Clippy with/without C++, workspace tests
+  (**1559 kernel tests**), wasm, **27 p1 runner tests** and **16 FFI tests** pass.
+  The full C++-enabled runner library also passes: 179 passed, 29 ignored;
+  float-roundtrip and the three runner integration tests pass as well.
+  The full local ARM64 gate completes **238 units: 118 green, 116 partial and
+  the four documented platform-dependent hash/healing failures**; canonical
+  x86-64 CI remains the published-head gate.
+  Independent source review found no blockers in typed arena routing, tolerance
+  selection, ownership transfer or shared creator delegation. Sixteen added
+  vertex fixtures include fourteen actual caps and two no-cap filters, not just
+  surface-presence checks. This is still a **partial** executive: general
+  three-edge trims, threshold-sensitive routing, nonempty trim production,
+  closed-surface seam mutation and the full FaceuseOffset/EdgeuseOffset/SSI
+  bridge remain outside this vertex follow-up. This branch is not stacked on
+  #201 and makes no new shared-native-context synchronization guarantee.
+  The kernel-dispatch API migration threads the actual caller kernel through
+  vertex fixtures and evaluations; numerical formulas and both native reports
+  remain unchanged. CI success, not an assertion of complete geometry
+  coverage, is the readiness gate under the updated repository policy.
+
+- **Historical vertex-cap executive adapter follow-up (2026-10-20).** Both ordinary and
+  exactly-one-boundary strut creator calls now reuse the landed `VertexOffset`
+  algorithm through a narrow internal backend. Tagged typed handles distinguish
+  original vertices from result edges/faces; selection uses the result tolerance,
+  while the creator reads the original vertex's B-rep tolerance. Seam queries borrow
+  the real mutable result arena, concrete curve kinds are preserved, and generated
+  geometry is moved into the owned output. There is no analytic sphere shortcut.
+  Sixteen new fixtures cover isolated vertices, translated/scaled strut caps,
+  mate-faceuse fallback and no-cap filters. Snapshots compare surface type/domain,
+  full homogeneous NURBS data, knots, second derivatives, and trims/orientations.
+  ABI mode 6 leaves modes 4/5 available for the independent face-tail work in #282.
+  The unit remains **partial**: 709 cases, 704 compared passes, four deferred,
+  one native constructor rejection, zero failures; maximum relative error remains
+  `2.9158035700250084e-14`, unchanged `1e-9` tolerance, no absolute floors.
+  All 18 vertex-named cases compare bit for bit. Remaining first stops are
+  `CalculateBoundingBox`, editing metadata, `ShrinkGeometry` and the legacy
+  normalized-evaluation adapter. The old `RemoveEmpty` test expectation is corrected
+  to the actual part 1 editing-metadata boundary rather than part 5 removal.
+  After merging main `aabae414`, formatting, strict C++-enabled Clippy, default
+  workspace tests (1501 kernel tests), wasm checking and the complete p1/creator
+  differential runs pass locally in Docker. Sensitivity detects 704/704 p1 and
+  428/428 creator comparisons; the creator report remains unchanged. Before that
+  merge, the 16 p1 FFI tests and 24 p1 runner tests passed serially, and the p1
+  report also passed against the x86-64 C++ reference. Independent GPT-6-Astra
+  review found no remaining code blockers for a **draft** PR. Executive-level
+  ordinary multi-boundary caps, threshold-sensitive tolerance routing, actual
+  nonempty trim production, and analytic/closed-surface seam paths remain coverage
+  gaps. Empty trim snapshots do not certify those paths.
+  **Full canonical x86-64 manifest validation is pending CI.** The local ARM
+  campaign on the earlier `ef504a4a` base ran all 228 selected units but reproduced
+  the four documented architecture-specific hash/healing failures (General above).
+  Local x86-64 emulation timed out before completing the full gate; no full-gate
+  pass is claimed. Shared native synchronization remains separate work in #201;
+  this main-based follow-up retains main's native calling convention and makes no
+  new cross-wrapper thread-safety guarantee.
 
 ## topology.brep_p1 (`SmBrep` members, collections, `sm_*` helpers of `SmBrep.cpp`, PR #145, 2026-10-16; partial, no disagreements)
 
