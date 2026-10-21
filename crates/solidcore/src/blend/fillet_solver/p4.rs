@@ -3966,25 +3966,7 @@ impl crate::blend::fillet_intersector::FilletSolverOps for IntersectorSolver<'_,
     /// `SetStatus` (the intersector's co-ported `SmFilStatus` mapped onto the
     /// solver's, value for value).
     fn set_status(&mut self, status: crate::blend::fillet_intersector::FilStatus) -> Result<()> {
-        use super::p1::FilStatus as S;
-        use crate::blend::fillet_intersector::FilStatus as I;
-
-        let status = match status {
-            I::Unprocessed => S::Unprocessed,
-            I::Processed => S::Processed,
-            I::Failure => S::Failure,
-            I::SurfIntFailure => S::SurfIntFailure,
-            I::EndPntDropFailure => S::EndPntDropFailure,
-            I::ToBeSqueezed => S::ToBeSqueezed,
-            I::CubicRailRailInterpolate => S::CubicRailRailInterpolate,
-            I::NoIntRailEu => S::NoIntRailEu,
-            I::SolverNotConverge => S::SolverNotConverge,
-            I::ToBeDeleted => S::ToBeDeleted,
-            I::SurfTracingFailure => S::SurfTracingFailure,
-            I::SelfIntHandlingFailure => S::SelfIntHandlingFailure,
-            I::SurfSkinningFailure => S::SurfSkinningFailure,
-        };
-        self.ops.solver_mut().set_status(status);
+        self.ops.solver_mut().set_status(status.into());
         Ok(())
     }
 

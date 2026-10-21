@@ -37,6 +37,7 @@ use solidcore::blend::fillet_custom_solver::{ConstantRadiusAssistedFs, OffsetSur
 use solidcore::blend::fillet_intersector::{
     find_guess_mid_tsect_pnt, flush_crv, FilletIntersector, TYPE,
 };
+use solidcore::blend::fillet_solver::p1::FilletGeomRef;
 use solidcore::curve::curve::Curve;
 use solidcore::geom::extent1d::{Extent1d, ExtentPointType};
 use solidcore::geom::extent2d::Extent2d;
@@ -518,7 +519,7 @@ fn put_back(fi: &mut Fi<'_>, i: usize, p: TsectPnt) -> Result<(), Fail> {
     Ok(())
 }
 
-type Fi<'s> = FilletIntersector<'s, 'static, NoSurfaceHandle, ()>;
+type Fi<'s> = FilletIntersector<'s, 'static, NoSurfaceHandle, FilletGeomRef>;
 
 #[allow(clippy::too_many_lines)]
 fn run_op(
