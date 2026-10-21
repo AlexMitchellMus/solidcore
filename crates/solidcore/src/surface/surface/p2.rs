@@ -169,7 +169,7 @@ use crate::geom::global_solver::{
 };
 use crate::geom::object::{NotifyOperation, ObjectRef};
 use crate::geom::polynomial::solve_quadratic;
-use crate::geom::solution_array::{Solution, SolutionArray, SolutionObject};
+use crate::geom::solution_array::{OperandObject, Solution, SolutionArray, SolutionObject};
 use crate::geom::tol::{are_same, eff_zero_param, scaled_zero2, tol3d};
 use crate::geom::tree::{AuxDataType, Tree, TreeNode, TreeOwner};
 use crate::geom::vector2d::{Point2, Vec2};
@@ -1096,8 +1096,9 @@ impl Surface {
     }
 
     /// `DropPointFast`: the plane and surface of revolution overrides (their
-    /// solutions name no object); the other ported kinds run the base default, which
-    /// fails.
+    /// solutions name no object; the surface of revolution's are merged as
+    /// upstream's, which name the surface); the other ported kinds run the base
+    /// default, which fails.
     ///
     /// # Errors
     ///
@@ -1130,17 +1131,22 @@ impl Surface {
                     "surface.surface_p2",
                 ))
             }
-            SurfaceKind::SurfOfRevolution(s) => s.drop_point_fast(
-                k,
-                uv_domain,
-                operation,
-                test_point,
-                in_pointing_vector,
-                distance_tolerance,
-                target_distance,
-                requested,
-                None,
-            ),
+            // upstream's solutions name this surface, whose natural UV domain
+            // IdenticalSolutions reads: solve naming a stand-in for it, return the
+            // solutions without objects
+            SurfaceKind::SurfOfRevolution(s) => Ok(s
+                .drop_point_fast(
+                    k,
+                    uv_domain,
+                    operation,
+                    test_point,
+                    in_pointing_vector,
+                    distance_tolerance,
+                    target_distance,
+                    requested,
+                    Some(OperandObject::Surface(0, self.natural_uv_domain())),
+                )?
+                .without_objects()),
             SurfaceKind::BSpline(_)
             | SurfaceKind::CurveBounded(_)
             | SurfaceKind::Step(_)
