@@ -1596,12 +1596,13 @@
       "values_compared": 19
     },
     {
+      "both_errored": true,
       "max_rel_err": 0.0,
       "name": "gen0155",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=10620584185765354474",
-      "values_compared": 39
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3676,7 +3677,7 @@
       "values_compared": 3
     }
   ],
-  "cases_both_errored": 50,
+  "cases_both_errored": 51,
   "cases_deferred": 38,
   "cases_failed": 0,
   "cases_passed": 396,
