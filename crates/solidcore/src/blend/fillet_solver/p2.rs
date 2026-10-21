@@ -60,12 +60,12 @@ use crate::blend::fillet_geom::p1::{
 };
 use crate::blend::fillet_geom::p2::{srf_srf_intersection, SrfSrfOptions};
 use crate::blend::fillet_geom::p4::{set_edge_curve, set_vertex_point};
-use crate::blend::fillet_standard_solver::p1::VARIABLE_RADIUS_FS_TYPE;
 use crate::blend::fillet_solver::p1::{
     check_edge_curve_domains, test_manifold_tangent_rollover, test_side_edge_convexity, FilStatus,
     FilletGeomRef, FilletSolver, FilletSolverOps, FilletSphereSolveEnfo,
     FilletSurfaceGeneratorType, RailRailIntersectEnfo, RailUvCurveIntersectEnfo,
 };
+use crate::blend::fillet_standard_solver::p1::VARIABLE_RADIUS_FS_TYPE;
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::Curve;
 use crate::curve::line::Line;
@@ -1583,10 +1583,7 @@ impl FilletSolver {
             Some(start_v)
         } else {
             let end_v = rail_end_v.ok_or_else(|| invalid("rail without end vertex"))?;
-            pseudo
-                .fillet_vertex(end_v)?
-                .fillet_corner()
-                .map(|_| end_v)
+            pseudo.fillet_vertex(end_v)?.fillet_corner().map(|_| end_v)
         };
 
         // Pick the side surface to extend: the side face's surface or its copy
@@ -1602,7 +1599,9 @@ impl FilletSolver {
             let new_surface = adj.create_extended_surface(k, extension_dist, ContinuityType::G1)?;
             // Copy pNewSurface, when possible as an analytic surface
             let copy = new_surface.copy_and_add_analytics(k)?;
-            pseudo.fillet_edge_mut(rail_on_cliff)?.set_original_face(None);
+            pseudo
+                .fillet_edge_mut(rail_on_cliff)?
+                .set_original_face(None);
             Some(copy)
         };
 
@@ -1685,12 +1684,7 @@ impl FilletSolver {
                 let mate = eu::mate(pseudo.brep(), prim)?
                     .ok_or_else(|| invalid("edge use without mate"))?;
                 for e_u in [prim, mate] {
-                    if let Some(uv) = pseudo
-                        .brep_mut()
-                        .edgeuse_mut(e_u)?
-                        .uv_trim_curve
-                        .as_mut()
-                    {
+                    if let Some(uv) = pseudo.brep_mut().edgeuse_mut(e_u)?.uv_trim_curve.as_mut() {
                         ignore_status(uv.trim(&tk, &mut trim_ivl, TrimMode::Notify))?;
                     }
                 }
@@ -1772,11 +1766,8 @@ impl FilletSolver {
 
         // Create new fillet geom added to FilletSolver->m_vFilletGeoms array
         // (`SmFilletGeom::SmFilletGeom` is `FilletGeom::new`)
-        let side_geom = FilletGeom::new(
-            k,
-            Some((solver_id, &*self)),
-            FilletGeomType::CliffSidePatch,
-        )?;
+        let side_geom =
+            FilletGeom::new(k, Some((solver_id, &*self)), FilletGeomType::CliffSidePatch)?;
         let side_fg = pseudo.add_geom(side_geom);
         let side_fg_ref = geom_ref(side_fg);
         self.fillet_geoms.push(side_fg_ref);
@@ -2308,8 +2299,14 @@ mod tests {
         fb.fillet_edge_mut(rail)
             .unwrap()
             .set_fillet_edge_type(FilletEdgeType::Rail);
-        let eu1 = fb.brep_mut().add_edgeuse_record(Edgeuse::default()).unwrap();
-        let eu2 = fb.brep_mut().add_edgeuse_record(Edgeuse::default()).unwrap();
+        let eu1 = fb
+            .brep_mut()
+            .add_edgeuse_record(Edgeuse::default())
+            .unwrap();
+        let eu2 = fb
+            .brep_mut()
+            .add_edgeuse_record(Edgeuse::default())
+            .unwrap();
         for (eu, vert, orient) in [
             (eu1, v[0], OrientType::Same),
             (eu2, v[1], OrientType::Opposite),
@@ -2342,7 +2339,10 @@ mod tests {
 
     /// A classification of `n` intervals whose ends take the given classes (an edge
     /// handle for `PointClassType::Edge`).
-    fn classification(k: &Kernel, ends: &[(PointClassType, PointClassType)]) -> CurveClassification<H> {
+    fn classification(
+        k: &Kernel,
+        ends: &[(PointClassType, PointClassType)],
+    ) -> CurveClassification<H> {
         let mut cc = CurveClassification::<H>::new(k);
         cc.set_size(k, ends.len()).unwrap();
         for (i, (s, e)) in ends.iter().enumerate() {
@@ -2363,8 +2363,12 @@ mod tests {
         io: &mut RolloverSideEdge,
     ) -> Result<()> {
         let uv = Curve::from(
-            BSplineCurve::create_line_segment(3, Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0))
-                .unwrap(),
+            BSplineCurve::create_line_segment(
+                3,
+                Point3::new(0.0, 0.0, 0.0),
+                Point3::new(1.0, 0.0, 0.0),
+            )
+            .unwrap(),
         );
         let surface = Surface::from(Plane::from_normal(
             Point3::new(0.0, 0.0, 0.0),
@@ -2373,7 +2377,17 @@ mod tests {
         let mut target = Brep::new();
         let edge_of = |h: H| Some(EdgeId::from_index(h.0));
         find_rollover_side_edge(
-            k, fb, &mut target, cc, rail, &uv, &surface, true, 1.0e-3, &edge_of, io,
+            k,
+            fb,
+            &mut target,
+            cc,
+            rail,
+            &uv,
+            &surface,
+            true,
+            1.0e-3,
+            &edge_of,
+            io,
         )
     }
 

@@ -234,8 +234,7 @@ fn with_solver_pair<R>(
         let mut copy = assisted_at(solvers, j, op)?.clone();
         return f(assisted_at_mut(solvers, i, op)?, &mut copy);
     }
-    let missing =
-        || SolidError::invalid_input(op, "fillet solver id not in the solver table");
+    let missing = || SolidError::invalid_input(op, "fillet solver id not in the solver table");
     let (lo, hi) = if i < j { (i, j) } else { (j, i) };
     let (head, tail) = solvers.split_at_mut(hi);
     let a = head.get_mut(lo).ok_or_else(missing)?;
@@ -1646,7 +1645,13 @@ impl FilletBrep {
                 // May lead to potential failures, step off the boundary: along the
                 // edge first, then off the boundary edge
                 param = arc_length_param(k, &curve, param, 2.0 * curve_stepoff_dist, OP)?;
-                uvs = find_stepoff_uv(k, target, assisted_at(solvers, s1, OP)?, param, stepoff_dist)?;
+                uvs = find_stepoff_uv(
+                    k,
+                    target,
+                    assisted_at(solvers, s1, OP)?,
+                    param,
+                    stepoff_dist,
+                )?;
                 break;
             }
         }
@@ -1677,7 +1682,13 @@ impl FilletBrep {
 
             // No solution found there, step off the vertex along the edge and again
             param = arc_length_param(k, &curve, param, curve_stepoff_dist, OP)?;
-            uvs = find_stepoff_uv(k, target, assisted_at(solvers, s1, OP)?, param, stepoff_dist)?;
+            uvs = find_stepoff_uv(
+                k,
+                target,
+                assisted_at(solvers, s1, OP)?,
+                param,
+                stepoff_dist,
+            )?;
         }
         self.fillet_vertexuse_mut(vu1)?.set_tsect_pnt(&tsect);
 
@@ -2400,7 +2411,12 @@ mod tests {
         let mut solvers: Vec<ConstantRadiusAssistedFs> = Vec::new();
         let null =
             |r: Result<()>| matches!(r, Err(SolidError::Upstream { code, .. }) if code == 1006);
-        assert!(null(fb.calc_rail_int_rail(&k, v, &mut solvers, &mut target)));
+        assert!(null(fb.calc_rail_int_rail(
+            &k,
+            v,
+            &mut solvers,
+            &mut target
+        )));
         assert!(null(fb.calc_rail_int_edgeuse(
             &k,
             v,

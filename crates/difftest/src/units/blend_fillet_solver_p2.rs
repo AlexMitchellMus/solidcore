@@ -38,8 +38,8 @@ use solidcore::blend::fillet_custom_solver::{
     InitialValues, JacobianLoad, OffsetSurface, SurfaceId,
 };
 use solidcore::blend::fillet_geom::p1::{
-    FilStatus, FilletBrep, FilletEdgeType, FilletEdgeuse, FilletGeom, FilletGeomId,
-    FilletGeomType, FilletVertex, FilletVertexType, FilletVertexuse,
+    FilStatus, FilletBrep, FilletEdgeType, FilletEdgeuse, FilletGeom, FilletGeomId, FilletGeomType,
+    FilletVertex, FilletVertexType, FilletVertexuse,
 };
 use solidcore::blend::fillet_solver::p1::{
     FilletExecutiveRef, FilletGeomRef, FilletSolver, FilletSolverOps, FilletSurfaceGenerator,
@@ -67,7 +67,7 @@ use solidcore::surface::surface::p1::evaluate_1st_derivatives;
 use solidcore::surface::surface::Surface;
 use solidcore::topology::brep::p2::{make_edge_vertex_topology, make_shell_vertex_topology};
 use solidcore::topology::{
-    edge, vertex, Brep, Edgeuse, EdgeuseId, EdgeId, Vertexuse, VertexuseOwner, VertexId,
+    edge, vertex, Brep, EdgeId, Edgeuse, EdgeuseId, VertexId, Vertexuse, VertexuseOwner,
 };
 use solidcore::SolidError;
 use solidcore_ffi::units::blend_fillet_solver_p2::{self as ffi, Op};
@@ -752,7 +752,10 @@ fn put_stored(
             o.extend([ivl.min(), ivl.max()]);
         }
     }
-    put_crv(o, geom.center_line_curve().cloned().map(Curve::from).as_ref());
+    put_crv(
+        o,
+        geom.center_line_curve().cloned().map(Curve::from).as_ref(),
+    );
     Ok(())
 }
 
@@ -802,9 +805,10 @@ fn link_uses(
 fn analytic_brep(k: &Kernel, spec: &AnalyticEdge) -> Result<Brep, HarnessError> {
     let h = |e: SolidError| harness(e.to_string());
     let curve = match spec {
-        AnalyticEdge::Line { a, b } => {
-            Curve::from(Line::create_line_segment(3, Vec3::from_array(*a), Vec3::from_array(*b), None).map_err(h)?)
-        }
+        AnalyticEdge::Line { a, b } => Curve::from(
+            Line::create_line_segment(3, Vec3::from_array(*a), Vec3::from_array(*b), None)
+                .map_err(h)?,
+        ),
         AnalyticEdge::Circle { radius, span } => Curve::from(
             Ellipse::create_canonical_circle(
                 k,
@@ -1140,7 +1144,9 @@ fn rust_run(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, Harn
                 index: g.0 as usize,
             });
             let r = match which {
-                0 => FilletSolver::calc_cylinder_fillet_geom(&mut fs, &k, &target, &mut fb, &pts, fg),
+                0 => {
+                    FilletSolver::calc_cylinder_fillet_geom(&mut fs, &k, &target, &mut fb, &pts, fg)
+                }
                 1 => FilletSolver::calc_cone_fillet_geom(&mut fs, &k, &target, &mut fb, &pts, fg),
                 _ => FilletSolver::calc_torus_fillet_geom(&mut fs, &k, &target, &mut fb, &pts, fg),
             };
@@ -1194,7 +1200,10 @@ fn rust_run(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, Harn
             fs.base.executive = Some(FilletExecutiveRef);
             let (fb, _) = fillet_geom_model(&k, None)?;
             let pts = [TsectPnt::default()];
-            match fs.base.record_fillet_error(&c.brep, &fb, 5, &pts, "difftest") {
+            match fs
+                .base
+                .record_fillet_error(&c.brep, &fb, 5, &pts, "difftest")
+            {
                 Ok(()) => {
                     o.push(-2.0);
                     Ok(())
@@ -1485,12 +1494,10 @@ fn gen_straight(rng: &mut Rng, which: u8) -> Inputs {
         line([xs - 0.5, 0.0, 0.0], [xe + 0.5, 0.0, 0.0])
     };
     // a real `SmLine` edge (`IsLine` of the line kind) in a fifth of the cases
-    let analytic = rng
-        .chance(0.2)
-        .then(|| AnalyticEdge::Line {
-            a: [xs - 0.5, 0.0, 0.0],
-            b: [xe + 0.5, 0.0, 0.0],
-        });
+    let analytic = rng.chance(0.2).then(|| AnalyticEdge::Line {
+        a: [xs - 0.5, 0.0, 0.0],
+        b: [xe + 0.5, 0.0, 0.0],
+    });
     let mut c = gen_cfg(rng, 0, r);
     c.slope = slope;
     Inputs::Geom {
@@ -1525,7 +1532,9 @@ fn gen_degenerate(rng: &mut Rng) -> Inputs {
     let r = rng.uniform(0.2, 2.0);
     let (xs, xe) = (rng.uniform(-5.0, -1.0), rng.uniform(1.0, 5.0));
     let opposed = rng.chance(0.5);
-    let gap = *rng.choose(&[0.0, 1e-12, 1e-8, 1e-6, 1e-4, 1e-2]).unwrap_or(&0.0);
+    let gap = *rng
+        .choose(&[0.0, 1e-12, 1e-8, 1e-6, 1e-4, 1e-2])
+        .unwrap_or(&0.0);
     let surfs = if opposed {
         Surfs {
             base: [floor(), patch(L, move |u, v| [u, v, 2.0 * r])],
@@ -1547,12 +1556,10 @@ fn gen_degenerate(rng: &mut Rng) -> Inputs {
         tsect([xe, r], [xe + gap, r], 1.0),
     ];
     let which = u8::from(rng.chance(0.5));
-    let analytic = rng
-        .chance(0.5)
-        .then(|| AnalyticEdge::Line {
-            a: [xs - 0.5, 0.0, 0.0],
-            b: [xe + 0.5, 0.0, 0.0],
-        });
+    let analytic = rng.chance(0.5).then(|| AnalyticEdge::Line {
+        a: [xs - 0.5, 0.0, 0.0],
+        b: [xe + 0.5, 0.0, 0.0],
+    });
     Inputs::Geom {
         which,
         cfg: gen_cfg(rng, 0, r),
@@ -1674,6 +1681,28 @@ fn gen_torus(rng: &mut Rng) -> Inputs {
     }
 }
 
+/// The op of a case, for its name: `rail_rail_solve` when all four offset surfaces are
+/// present (the solve runs), `rail_rail_missing` for the `SM_ERR` exit; `cylinder`,
+/// `cone`, `torus` for the geometry builders.
+fn op_label(i: &Inputs) -> &'static str {
+    match i {
+        Inputs::Plane { .. } => "plane",
+        Inputs::RailEu { .. } => "rail_eu",
+        Inputs::RailRail { surfs, .. } => {
+            if surfs.iter().all(|s| s.has.iter().all(|&h| h)) {
+                "rail_rail_solve"
+            } else {
+                "rail_rail_missing"
+            }
+        }
+        Inputs::Geom { which: 0, .. } => "cylinder",
+        Inputs::Geom { which: 1, .. } => "cone",
+        Inputs::Geom { .. } => "torus",
+        Inputs::Corner { .. } => "corner",
+        Inputs::Record { .. } => "record",
+    }
+}
+
 fn gen_case(rng: &mut Rng) -> Inputs {
     match rng.below(24) {
         0..=3 => gen_plane(rng),
@@ -1720,7 +1749,17 @@ impl UnitDiff for Runner {
             seeds: ctx.seeds.max(300),
             ..ctx.clone()
         };
-        crate::runner::default_cases(self, &ctx)
+        let mut cases = crate::runner::default_cases(self, &ctx)?;
+        // generated cases carry their op in the name (`gen0042_rail_rail_solve`), so the
+        // report and `--filter` can count and select them per op
+        for c in &mut cases {
+            if matches!(c.source, crate::case::CaseSource::Generated { .. }) {
+                if let Ok(i) = c.parse::<Inputs>() {
+                    c.name = format!("{}_{}", c.name, op_label(&i));
+                }
+            }
+        }
+        Ok(cases)
     }
 
     fn run_cpp(&self, case: &crate::Case) -> Result<Output, HarnessError> {
