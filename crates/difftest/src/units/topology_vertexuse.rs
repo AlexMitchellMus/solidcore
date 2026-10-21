@@ -422,6 +422,25 @@ fn read_curve(rd: &mut Rd<'_>, uv: bool) -> Result<Option<SmCurve>, HarnessError
 /// exported `SmBSplineSurface` subclass type code (`None` for a plane or no surface).
 type SurfaceBlock = (Option<Surface>, bool, Option<i64>);
 
+/// A face's surface block: an exact analytic head (`2 ...`,
+/// [`crate::util::read_exact_surface`]) and the regular block after it, or the regular
+/// block alone.
+fn read_face_surface(rd: &mut Rd<'_>) -> Result<SurfaceBlock, HarnessError> {
+    if rd.v.get(rd.at) != Some(&2.0) {
+        return read_surface(rd);
+    }
+    rd.at += 1;
+    let exact = crate::util::read_exact_surface(&mut || rd.num())?;
+    let (fallback, fallback_exact, ty) = read_surface(rd)?;
+    match exact {
+        Some(s) => {
+            crate::util::check_exact_base(&s, fallback.as_ref())?;
+            Ok((Some(s), true, ty))
+        }
+        None => Ok((fallback, fallback_exact, ty)),
+    }
+}
+
 fn read_surface(rd: &mut Rd<'_>) -> Result<SurfaceBlock, HarnessError> {
     let kind = rd.num()?;
     if kind == -1.0 {
@@ -612,7 +631,7 @@ pub(crate) fn import_with_types(ex: &[f64]) -> Result<TypedImport, HarnessError>
     let mut exact_faces = Vec::new();
     let mut face_types = Vec::new();
     for f in 0..n_f {
-        let (mut surface, exact, ty) = read_surface(&mut rd)?;
+        let (mut surface, exact, ty) = read_face_surface(&mut rd)?;
         exact_faces.push(exact);
         face_types.push(ty);
         let faceuse = opt(rd.idx()?, FaceuseId::from_index)?;

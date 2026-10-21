@@ -2599,7 +2599,7 @@
     },
     {
       "deferred": {
-        "symbol": "analytic face surface exported as its B-spline part",
+        "symbol": "SmSurfOfExtrusion face surface exported as its B-spline part",
         "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,

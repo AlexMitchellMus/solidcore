@@ -29050,14 +29050,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_1_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3052 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -29234,14 +29230,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_4_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3074 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -29410,14 +29402,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_7_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3095 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -29514,14 +29502,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_10_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3107 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -29690,14 +29674,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_13_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3128 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -29794,14 +29774,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_16_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3140 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -29970,14 +29946,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_19_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3161 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -30074,14 +30046,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_22_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3173 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -30290,14 +30258,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_rb_0_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3199 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -30514,14 +30478,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_rb_3_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3226 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -30690,14 +30650,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_rb_6_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3247 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -30794,14 +30750,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_rb_9_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3259 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -30970,14 +30922,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_rb_12_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3280 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -31074,14 +31022,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_rb_15_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3292 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -31250,14 +31194,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_rb_18_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3313 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -31354,14 +31294,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_surf_rev_rb_21_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3325 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -34130,14 +34066,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_torus_0_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3655 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -34426,14 +34358,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_torus_3_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3691 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -34530,14 +34458,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_torus_6_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3703 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -34706,14 +34630,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_torus_9_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3724 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -34810,14 +34730,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_torus_12_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3736 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -34986,14 +34902,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_torus_15_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3757 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -35090,14 +35002,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_torus_18_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3769 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -35266,14 +35174,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_torus_21_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3790 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -35490,14 +35394,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_torus_rb_2_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3817 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -35634,14 +35534,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_torus_rb_5_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3834 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -35810,14 +35706,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_torus_rb_8_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3855 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -35914,14 +35806,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_torus_rb_11_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3867 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -36090,14 +35978,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_torus_rb_14_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3888 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -36194,14 +36078,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_torus_rb_17_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3900 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -36370,14 +36250,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_torus_rb_20_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3921 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -36474,14 +36350,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_torus_rb_23_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3933 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -36730,14 +36602,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_1_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3964 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -36914,14 +36782,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_4_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#3986 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -37090,14 +36954,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_7_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4007 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -37194,14 +37054,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_10_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4019 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -37370,14 +37226,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_13_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4040 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -37474,14 +37326,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_16_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4052 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -37650,14 +37498,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_19_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4073 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -37754,14 +37598,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_22_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4085 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -37970,14 +37810,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_rb_0_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4111 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -38194,14 +38030,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_rb_3_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4138 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -38370,14 +38202,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_rb_6_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4159 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -38474,14 +38302,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_rb_9_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4171 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -38650,14 +38474,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_rb_12_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4192 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -38754,14 +38574,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_rb_15_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4204 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -38930,14 +38746,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_rb_18_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4225 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -39034,14 +38846,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_toruswvy_rb_21_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4237 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -39330,14 +39138,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_2_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4273 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -39546,14 +39350,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_5_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4299 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -39650,14 +39450,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_8_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4311 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -39826,14 +39622,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_11_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4332 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -39930,14 +39722,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_14_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4344 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -40106,14 +39894,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_17_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4365 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -40210,14 +39994,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_20_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4377 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -40386,14 +40166,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_23_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4398 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -40570,14 +40346,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_rb_1_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4420 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -40826,14 +40598,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_rb_4_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4451 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -40930,14 +40698,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_rb_7_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4463 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -41106,14 +40870,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_rb_10_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4484 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -41210,14 +40970,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_rb_13_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4496 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -41386,14 +41142,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_rb_16_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4517 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -41490,14 +41242,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_rb_19_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4529 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -41666,14 +41414,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "rv_vase_rev_rb_22_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/review_adversarial.json#4550 (upstream review adversarial sweep (PR #102): every op on loop index 0..23 of each B-rep)",
       "values_compared": 0
     },
@@ -65242,14 +64986,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_002_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#742 (upstream tests/prog_test/src/smAdvancedTest.cpp:2543)",
       "values_compared": 0
     },
@@ -65326,14 +65066,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_012_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#752 (upstream tests/prog_test/src/smAdvancedTest.cpp:2543)",
       "values_compared": 0
     },
@@ -65410,14 +65146,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_022_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#762 (upstream tests/prog_test/src/smAdvancedTest.cpp:2543)",
       "values_compared": 0
     },
@@ -65494,14 +65226,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_032_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#772 (upstream tests/prog_test/src/smAdvancedTest.cpp:2543)",
       "values_compared": 0
     },
@@ -65734,14 +65462,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "surf_rev_rebuilt_002_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#800 (upstream tests/prog_test/src/smAdvancedTest.cpp:2543)",
       "values_compared": 0
     },
@@ -66498,14 +66222,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "torus_002_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#890 (upstream tests/prog_test/src/smAdvancedTest.cpp:41)",
       "values_compared": 0
     },
@@ -66582,14 +66302,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "torus_012_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#900 (upstream tests/prog_test/src/smAdvancedTest.cpp:41)",
       "values_compared": 0
     },
@@ -66666,14 +66382,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "torus_022_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#910 (upstream tests/prog_test/src/smAdvancedTest.cpp:41)",
       "values_compared": 0
     },
@@ -66750,14 +66462,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "torus_032_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#920 (upstream tests/prog_test/src/smAdvancedTest.cpp:41)",
       "values_compared": 0
     },
@@ -66990,14 +66698,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "torus_rebuilt_002_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#948 (upstream tests/prog_test/src/smAdvancedTest.cpp:41)",
       "values_compared": 0
     },
@@ -67126,14 +66830,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "toruswvy_002_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#964 (upstream tests/prog_test/src/smAdvancedTest.cpp:547)",
       "values_compared": 0
     },
@@ -67210,14 +66910,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "toruswvy_012_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#974 (upstream tests/prog_test/src/smAdvancedTest.cpp:547)",
       "values_compared": 0
     },
@@ -67294,14 +66990,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "toruswvy_022_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#984 (upstream tests/prog_test/src/smAdvancedTest.cpp:547)",
       "values_compared": 0
     },
@@ -67378,14 +67070,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "toruswvy_032_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#994 (upstream tests/prog_test/src/smAdvancedTest.cpp:547)",
       "values_compared": 0
     },
@@ -67618,14 +67306,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "toruswvy_rebuilt_002_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#1022 (upstream tests/prog_test/src/smAdvancedTest.cpp:547)",
       "values_compared": 0
     },
@@ -67754,14 +67438,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "vase_rev_002_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#1038 (upstream tests/prog_test/src/smAdvancedTest.cpp:703)",
       "values_compared": 0
     },
@@ -67838,14 +67518,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "vase_rev_012_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#1048 (upstream tests/prog_test/src/smAdvancedTest.cpp:703)",
       "values_compared": 0
     },
@@ -67922,14 +67598,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "vase_rev_022_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#1058 (upstream tests/prog_test/src/smAdvancedTest.cpp:703)",
       "values_compared": 0
     },
@@ -68006,14 +67678,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "vase_rev_032_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#1068 (upstream tests/prog_test/src/smAdvancedTest.cpp:703)",
       "values_compared": 0
     },
@@ -68246,14 +67914,10 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "vase_rev_rebuilt_002_missing_seam",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.loopuse/upstream_files.json#1096 (upstream tests/prog_test/src/smAdvancedTest.cpp:703)",
       "values_compared": 0
     },
@@ -69617,14 +69281,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "extra00132",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=269157856",
       "values_compared": 0
     },
@@ -69759,14 +69419,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "extra00149",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=269157856",
       "values_compared": 0
     },
@@ -73529,14 +73185,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeTopologyFromData",
-        "unit": "topology.brep_p10"
-      },
       "max_rel_err": 0.0,
       "name": "extra00594",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=269157856",
       "values_compared": 0
     },
@@ -73584,15 +73236,14 @@
     }
   ],
   "cases_both_errored": 333,
-  "cases_deferred": 604,
+  "cases_deferred": 517,
   "cases_failed": 0,
-  "cases_passed": 8250,
+  "cases_passed": 8337,
   "cases_total": 8854,
   "deferred_by_unit": {
     "intersect.surface_drop_lib_p3": 48,
     "surface.surf_of_extrusion_p2": 33,
     "surface.surface_p2": 70,
-    "topology.brep_p10": 87,
     "topology.face_p4": 366
   },
   "max_rel_err": 0.0,
