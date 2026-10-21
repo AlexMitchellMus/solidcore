@@ -825,11 +825,21 @@ impl Curve {
     /// once (`N_CrvRemoveKnotMaxErr`). The index and multiplicity are not checked, as
     /// upstream, except that indices outside the arrays are `InvalidInput`.
     pub fn remove_knot_max_err(&self, r: usize, s: usize) -> Result<f64> {
+        Self::remove_knot_max_err_of(self.cpts(), self.knots(), self.degree(), r, s)
+    }
+
+    /// [`Curve::remove_knot_max_err`] of the curve with control points `pw`
+    /// (`Pw[0..=n]`), knots `uk` (`U[0..=m]`) and degree `p`, without building it.
+    pub(crate) fn remove_knot_max_err_of(
+        pw: &[CPoint],
+        uk: &[f64],
+        p: usize,
+        r: usize,
+        s: usize,
+    ) -> Result<f64> {
         const OP: &str = "nurbs::crv_tool::p1::Curve::remove_knot_max_err";
-        let pw = self.cpts();
-        let uk = self.knots();
-        check_short_degree(self.degree(), OP)?;
-        let p = sx(self.degree(), OP)?;
+        check_short_degree(p, OP)?;
+        let p = sx(p, OP)?;
         let r = sx(r, OP)?;
         let s = sx(s, OP)?;
 
