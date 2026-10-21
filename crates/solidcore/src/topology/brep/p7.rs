@@ -1899,7 +1899,9 @@ mod tests {
         let result = make_face_with_curve_owners(
             &mut k,
             &mut b,
-            Some(region),
+            // All curves are discarded first; the later MakeFace region lookup
+            // must fail independently of whether brep_p6 has been ported.
+            Some(RegionId::from_index(12345)),
             FaceCurvesInput {
                 loops: vec![3],
                 curves_3d: Some(vec![None, None, None]),
@@ -1914,7 +1916,7 @@ mod tests {
             &mut owners,
             &mut env,
         );
-        assert!(result.is_err());
+        assert!(matches!(result, Err(error) if !error.is_unported()));
         assert_eq!(owners, vec![None, None, None]);
     }
 

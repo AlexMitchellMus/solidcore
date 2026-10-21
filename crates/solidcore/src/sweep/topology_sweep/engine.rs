@@ -406,9 +406,8 @@ impl TopologySweep {
         if swept.trim_curves.is_empty() {
             return Err(SolidError::sm_err(OP));
         }
-        let kernel = a.kernel(region.0)?;
-        if surface.is_degenerate_curve(kernel, 1.0e-4, None, ZONE_TOL_3D / 10.0)?
-            || surface.is_degenerate_point(kernel, ZONE_TOL_3D / 10.0, None)?
+        if surface.is_degenerate_curve(a.kernel(region.0)?, 1.0e-4, None, ZONE_TOL_3D / 10.0)?
+            || surface.is_degenerate_point(a.kernel(region.0)?, ZONE_TOL_3D / 10.0, None)?
         {
             return Err(SolidError::invalid_input(
                 OP,
@@ -1745,5 +1744,30 @@ mod tests {
             access.with_merge(b, b, b, 1e-5, 0.1, |_, _| Err(SolidError::sm_err(OP)));
         assert!(result.is_err());
         assert_eq!(access.deleted_merges, 1);
+    }
+    #[test]
+    fn stitch_default_calls_port_and_restores_caller_state() {
+        let mut access = Access::new();
+        let owner = BrepId::from_index(0);
+        let mut sweep = TopologySweep::new(super::super::TopologySweepOptions::default());
+        for editing in [false, true] {
+            for doing_boolean in [false, true] {
+                access.brep_mut(owner).unwrap().set_editing_enabled(editing);
+                access.kernel.context.set_doing_boolean(doing_boolean);
+                let result = access.stitch(owner, &mut sweep, 0.125, false);
+                assert!(
+                    matches!(
+                        result,
+                        Err(SolidError::Unported {
+                            upstream: "SmBrep::CalculateBoundingBox",
+                            unit: "query.brep",
+                        })
+                    ),
+                    "stitch result: {result:?}"
+                );
+                assert_eq!(access.brep(owner).unwrap().editing_enabled(), editing);
+                assert_eq!(access.kernel.context.doing_boolean(), doing_boolean);
+            }
+        }
     }
 }
