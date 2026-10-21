@@ -139,6 +139,30 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "fuzz_regress_fill_arclen_limit_00198",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_adv_p6/fuzz_regressions.json#0 (upstream fuzz sweep nlib.srf_adv_p6 fuzz00198: N_FillNSidedHole with a 1e300 boundary coordinate; ST_BezCalcArcLength (NL_Bezier.cpp) stops at its recursion limit with a bare flag (1000 on both sides))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "fuzz_regress_fill_arclen_limit_01035",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_adv_p6/fuzz_regressions.json#1 (upstream fuzz sweep nlib.srf_adv_p6 fuzz01035: N_FillNSidedHole with a 1e300 boundary coordinate; ST_BezCalcArcLength (NL_Bezier.cpp) stops at its recursion limit with a bare flag (1000 on both sides))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "fuzz_regress_fill_arclen_limit_01326",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_adv_p6/fuzz_regressions.json#2 (upstream fuzz sweep nlib.srf_adv_p6 fuzz01326: N_FillNSidedHole with a 1e300 boundary coordinate; ST_BezCalcArcLength (NL_Bezier.cpp) stops at its recursion limit with a bare flag (1000 on both sides))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -8141,8 +8165,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 1017,
-  "cases_total": 1017,
+  "cases_passed": 1020,
+  "cases_total": 1020,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,
