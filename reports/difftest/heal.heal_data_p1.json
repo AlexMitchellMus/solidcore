@@ -427,8 +427,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "heal_brep_targets",
@@ -1171,8 +1171,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "heal_box_10_healbrep_all",
@@ -1183,8 +1183,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "heal_box_10_healbrep_all_faces_only",
@@ -4608,8 +4608,8 @@
   "cases_passed": 329,
   "cases_total": 493,
   "deferred_by_unit": {
-    "curve.crv_on_surf": 62,
-    "intersect.curve_class_p2": 35,
+    "curve.crv_on_surf": 65,
+    "intersect.curve_class_p2": 32,
     "intersect.surface_drop_lib_p3": 11,
     "primitive.api_primitives": 7,
     "topology.face_p4": 49
