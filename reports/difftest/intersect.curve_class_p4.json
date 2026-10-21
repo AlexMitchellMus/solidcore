@@ -1071,8 +1071,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0099",
@@ -2039,8 +2039,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0192",
@@ -2567,8 +2567,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0243",
@@ -2603,8 +2603,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0246",
@@ -3843,8 +3843,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0365",
@@ -4215,8 +4215,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0399",
@@ -9491,8 +9491,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0908",
@@ -10047,8 +10047,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0961",
@@ -10527,8 +10527,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1009",
@@ -11299,8 +11299,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1081",
@@ -12731,8 +12731,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1221",
@@ -13511,8 +13511,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1294",
@@ -14855,8 +14855,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1423",
@@ -15795,8 +15795,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1514",
@@ -19247,8 +19247,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1853",
@@ -21907,8 +21907,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2114",
@@ -22003,8 +22003,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2123",
@@ -22131,8 +22131,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2134",
@@ -24183,8 +24183,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2329",
@@ -25795,8 +25795,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2477",
@@ -26059,8 +26059,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2501",
@@ -26651,8 +26651,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2558",
@@ -27615,8 +27615,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2651",
@@ -28479,8 +28479,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2734",
@@ -29055,8 +29055,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2791",
@@ -31199,8 +31199,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2997",
@@ -31267,8 +31267,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_unit_plane_edge_min",
@@ -31279,8 +31279,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_unit_plane_edge_max",
@@ -31383,8 +31383,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_unit_cylinder_edge_min",
@@ -31395,8 +31395,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_unit_cylinder_edge_max",
@@ -31491,8 +31491,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_unit_half_cylinder_edge_min",
@@ -31503,8 +31503,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_unit_half_cylinder_edge_max",
@@ -31907,8 +31907,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_huge_plane_edge_min",
@@ -31919,8 +31919,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_huge_plane_edge_max",
@@ -32019,8 +32019,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_huge_cylinder_edge_min",
@@ -32031,8 +32031,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_huge_cylinder_edge_max",
@@ -32123,8 +32123,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_huge_half_cylinder_edge_min",
@@ -32135,8 +32135,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_huge_half_cylinder_edge_max",
@@ -32531,8 +32531,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_tiny_plane_edge_min",
@@ -32543,8 +32543,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_tiny_plane_edge_max",
@@ -32647,8 +32647,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_tiny_cylinder_edge_min",
@@ -32659,8 +32659,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_tiny_cylinder_edge_max",
@@ -32755,8 +32755,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMinUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_tiny_half_cylinder_edge_min",
@@ -32767,8 +32767,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveInterval::GetMaxUV",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::GetSurface",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_tiny_half_cylinder_edge_max",
@@ -33144,8 +33144,8 @@
   "cases_passed": 1319,
   "cases_total": 3201,
   "deferred_by_unit": {
-    "intersect.curve_class_p2": 1059,
-    "topology.face_p2": 463,
+    "intersect.curve_class_p2": 1015,
+    "topology.face_p2": 507,
     "topology.face_p4": 360
   },
   "max_rel_err": 0.0,
