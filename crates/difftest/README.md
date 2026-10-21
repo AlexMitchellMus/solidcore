@@ -132,6 +132,48 @@ Rust port), then copy the case into `fixtures/<unit>/` as a regression case
 failure. A `differs` case is printed as a `note (differs)` line with its file and
 is written the same way (so it can be re-run), but does not fail the run.
 
+## Fuzzing the `.smb` readers (`examples/reader_fuzz.rs`)
+
+A mutation fuzzer for the Rust database readers only (no C++, not part of the
+gate). Build and run it with the difftest profile, so arithmetic overflow
+panics and is reported:
+
+```sh
+X="nice -n 10 cargo run --profile difftest -p difftest --example reader_fuzz --"
+$X sweep --seeds-dir upstream/TestFiles/pt_TestFiles --cases 2000 --jobs 4 \
+    --out reader-fuzz-out --tag read [--stage read|topo|full|persist] [--filter <substr>]
+$X repro --seed <seed file> --case <i> [--write out.smb]     # rebuild one case
+$X run --input f.smb [--binary] [--stage ..] [--stack-kb N]  # run one file in-process
+$X minimize --input f.smb [--binary] --expect <verdict prefix> [--output f.min]
+$X stats --seeds-dir <dir> --cases N [--stage ..]            # error-site histogram
+```
+
+* **Stages.** `read`: `BrepData::read_from_file`. `full`:
+  `topology::brep::p7::read_from_file`. `topo`: read, then
+  `p10::make_topology_from_data` without analytics, healing or UV checks.
+  `persist`: `BrepData::read_from_db` with persisted attributes and a small
+  attribute table. `selftest` checks that every bad verdict is detected.
+* **Cases.** Case `i` of a seed applies 1 to 5 mutations (bit and byte flips,
+  truncation, integer and float token swaps, line and section edits, type-code
+  swaps, nesting wrappers, raw 8-byte overwrites for binary files) chosen by
+  splitmix64 seeded from the seed's relative path and `i`, so `repro` rebuilds
+  any case. A seed under a directory named `corpus-bin` is read as binary.
+* **Isolation.** Batches (`--batch`, default 250) run in child processes under
+  `ulimit -v` (`--mem-mb`, default 3072), one thread per case with a fixed
+  stack (`--stack-kb`, default 8192), with a per-case timeout (`--timeout`,
+  default 20 s).
+* **Verdicts.** `ok`, `err`, `unported` are fine; `panic`, `oom`,
+  `stack-overflow`, `crash` and `timeout` are bad. Each bad case is written to
+  `<out>/crashes/` (mutated file plus a `.txt` with seed, case and mutations);
+  each sweep writes `<tag>-summary.txt`, `<tag>-findings.tsv` and
+  `<tag>-per-seed.tsv`. Exit status `1` on any bad verdict.
+* `stats` runs in-process (use it only after a clean sweep) and counts the
+  error site each case ended at, as a coverage proxy.
+* Binary and persisted-attribute seeds must be written by upstream
+  (`SmBrepData::WriteToFile(SM_BINARY)`, `WriteToDB(.., bPersistAttribs)`).
+  The tool that does this is not in the repo; it would go in `harness/cpp/`
+  as a small program (or shim functions) linked against the reference build.
+
 ## Deferred cases, `partial` units
 
 A unit's Rust code may call into a unit that is not ported yet; it then returns
