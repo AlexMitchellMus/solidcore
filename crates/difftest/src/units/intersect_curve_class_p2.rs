@@ -472,7 +472,7 @@ fn rust_run(s: &Script) -> Result<Vec<f64>, Fail> {
                 o.extend([0.0, b(r)]);
             }
             OpIn::CrvLoc { j, .. } => {
-                let (p, prm) = must(cc.classify_crv_loc_by_index(&pool, *j))?;
+                let (p, prm) = must(cc.classify_crv_loc_by_index(&k, &pool, *j))?;
                 o.extend([0.0, prm, p.x, p.y, p.z]);
             }
             OpIn::Insert { j, ivl, .. } => {
