@@ -2084,19 +2084,33 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
         // vertex (upstream frees it first and dereferences it after; the FFI refuses such
         // inputs): make the link reciprocal where the mate has a free slot, else drop it
         for pos in 1..verts.len() {
-            let v = verts[pos];
+            let Some(&v) = verts.get(pos) else {
+                break;
+            };
             for slot in 0..2 {
-                let m = model.vertices[v].mates[slot];
-                let Ok(m) = usize::try_from(m) else {
+                let Some(m) = model
+                    .vertices
+                    .get(v)
+                    .and_then(|rec| rec.mates.get(slot))
+                    .and_then(|&m| usize::try_from(m).ok())
+                else {
                     continue;
                 };
-                if !verts[1..pos].contains(&m) || model.vertices[m].mates.contains(&(v as i64)) {
+                let deleted_earlier = verts.get(1..pos).is_some_and(|s| s.contains(&m));
+                let Some(mate) = model.vertices.get_mut(m) else {
+                    continue;
+                };
+                if !deleted_earlier || mate.mates.contains(&(v as i64)) {
                     continue;
                 }
-                if let Some(free) = model.vertices[m].mates.iter_mut().find(|x| **x < 0) {
+                if let Some(free) = mate.mates.iter_mut().find(|x| **x < 0) {
                     *free = v as i64;
-                } else {
-                    model.vertices[v].mates[slot] = -1;
+                } else if let Some(link) = model
+                    .vertices
+                    .get_mut(v)
+                    .and_then(|rec| rec.mates.get_mut(slot))
+                {
+                    *link = -1;
                 }
             }
         }
