@@ -157,7 +157,7 @@ where
                                 b.edge(edge_id)?.curve.as_ref(),
                                 "ray target edge without curve",
                             )?
-                            .has_repeated_end_control_points(crate::geom::tol::ZONE_TOL_3D)?;
+                            .has_repeated_end_control_points(k, crate::geom::tol::ZONE_TOL_3D)?;
                         if (pass == 0 && dubious) || (pass == 1 && !dubious) {
                             continue;
                         }
@@ -166,7 +166,7 @@ where
                             required(record.curve.as_ref(), "ray target edge without curve")?;
                         for parameter in parameters {
                             let point =
-                                curve.evaluate_point(record.interval.evaluate(parameter))?;
+                                curve.evaluate_point(k, record.interval.evaluate(parameter))?;
                             let ray = point - ray_start;
                             let squared = ray.length_squared();
                             if squared < distance {
@@ -200,7 +200,7 @@ where
                 let edge_id = best_edge.ok_or_else(|| SolidError::null_pointer(OP))?;
                 let record = b.edge(edge_id)?;
                 let curve = required(record.curve.as_ref(), "ray target edge without curve")?;
-                let point = curve.evaluate_point(record.interval.evaluate(0.789))?;
+                let point = curve.evaluate_point(k, record.interval.evaluate(0.789))?;
                 let attempt = crate::topology::shell::ray_fire(
                     k,
                     b,
@@ -218,7 +218,7 @@ where
                 let success = ray_success(&attempt.status)?;
                 state = attempt.state;
                 if !success {
-                    let point = curve.evaluate_point(record.interval.evaluate(0.189))?;
+                    let point = curve.evaluate_point(k, record.interval.evaluate(0.189))?;
                     let start = bounds.min() - (bounds.max() - bounds.min()) * 0.5;
                     let attempt = crate::topology::shell::ray_fire(
                         k,
@@ -258,7 +258,7 @@ where
                     let curve = required(record.curve.as_ref(), "ray target edge without curve")?;
                     let big_tolerance = record.tolerance > 1.01 * b.tolerance();
                     let repeated =
-                        curve.has_repeated_end_control_points(crate::geom::tol::ZONE_TOL_3D)?;
+                        curve.has_repeated_end_control_points(k, crate::geom::tol::ZONE_TOL_3D)?;
                     // IsSeam may create UV trim curves; reborrow the edge afterwards.
                     let seam = edge::is_seam(k, b, *edge_id)?;
                     let record = b.edge(*edge_id)?;
@@ -281,7 +281,7 @@ where
                         continue;
                     }
                     for parameter in parameters {
-                        let point = curve.evaluate_point(record.interval.evaluate(parameter))?;
+                        let point = curve.evaluate_point(k, record.interval.evaluate(parameter))?;
                         let ray = point - ray_start;
                         let squared = ray.length_squared();
                         if squared < distance {
@@ -297,9 +297,9 @@ where
                 let edge_id = *required(edges.first(), "missing first ray edge")?;
                 let record = b.edge(edge_id)?;
                 let curve = required(record.curve.as_ref(), "ray target edge without curve")?;
-                let point = curve.evaluate_point(record.interval.evaluate(0.789))?;
+                let point = curve.evaluate_point(k, record.interval.evaluate(0.789))?;
                 if !brep_ray_fire(b, ray_start, point - ray_start, tolerance, &mut state)? {
-                    let point = curve.evaluate_point(record.interval.evaluate(0.189))?;
+                    let point = curve.evaluate_point(k, record.interval.evaluate(0.189))?;
                     let start = bounds.min() - (bounds.max() - bounds.min()) * 0.5;
                     if !brep_ray_fire(b, start, point - start, tolerance, &mut state)? {
                         return Err(SolidError::sm_err(OP));
@@ -923,8 +923,8 @@ pub(crate) fn make_vertex_split_edge_with_state(
             let start_ivl = Extent1d::from_min_max(interval.min(), parameter);
             let end_ivl = Extent1d::from_min_max(parameter, interval.max());
             let curve = required(b.edge(edge_id)?.curve.as_ref(), "split edge has no curve")?;
-            let dist_to_start = curve.approximate_length(&start_ivl, 2, false)?.0;
-            let dist_to_end = curve.approximate_length(&end_ivl, 2, false)?.0;
+            let dist_to_start = curve.approximate_length(k, &start_ivl, 2, false)?.0;
+            let dist_to_end = curve.approximate_length(k, &end_ivl, 2, false)?.0;
             let start = required(
                 edge::start_vertex(b, edge_id)?,
                 "split edge has no start vertex",
@@ -936,11 +936,13 @@ pub(crate) fn make_vertex_split_edge_with_state(
             let start_tol = b.vertex(start)?.tolerance;
             let end_tol = b.vertex(end)?.tolerance;
             if dist_to_start < start_tol
-                && curve.approximate_length(&start_ivl, 10, false)?.0 < start_tol
+                && curve.approximate_length(k, &start_ivl, 10, false)?.0 < start_tol
             {
                 near_start = true;
             }
-            if dist_to_end < end_tol && curve.approximate_length(&end_ivl, 10, false)?.0 < end_tol {
+            if dist_to_end < end_tol
+                && curve.approximate_length(k, &end_ivl, 10, false)?.0 < end_tol
+            {
                 near_end = true;
             }
             if near_start {
@@ -1087,7 +1089,7 @@ pub(crate) fn make_vertex_split_edge_with_state(
             b.edge_mut(new_edge)?.interval = ivl1;
         }
         let point = required(b.edge(edge_id)?.curve.as_ref(), "split edge without curve")?
-            .evaluate_point(split_parameter)?;
+            .evaluate_point(k, split_parameter)?;
         state.with_env(k, |env| {
             ignore_status(set_vertex_point(b, new_vertex, point, env))
         })?;
@@ -1429,7 +1431,7 @@ pub fn make_edge_in_face_with_vu(
             copy
         });
         seam = required(b.edgeuse(top)?.uv_trim_curve.as_ref(), "trim disappeared")?
-            .is_domain_boundary(&domain, crate::math::EFF_ZERO)?;
+            .is_domain_boundary(k, &domain, crate::math::EFF_ZERO)?;
         if seam != SurfParamType::Neither {
             let translation = match seam {
                 SurfParamType::UMin => Vec3::new(domain.x_length(), 0.0, 0.0),
@@ -1942,7 +1944,7 @@ fn redistribute_inner_loops(
         }
         let edges = lu::loop_edges(b, loop_)?;
         let (mut point, mut tolerance) = if let Some(edge) = edges.first() {
-            edge_sample(b, required(*edge, "inner loop has null edge")?)?
+            edge_sample(k, b, required(*edge, "inner loop has null edge")?)?
         } else {
             let vertices = lu::loop_vertices(b, loop_)?;
             let v = required(
@@ -2012,7 +2014,7 @@ fn redistribute_inner_loops(
                     } else {
                         let edge =
                             *required(other_edges.first(), "nested other face without edge")?;
-                        (point, tolerance) = edge_sample(b, edge)?;
+                        (point, tolerance) = edge_sample(k, b, edge)?;
                         classify_with_retries(
                             k,
                             b,
@@ -2058,10 +2060,10 @@ fn redistribute_inner_loops(
     Ok(())
 }
 
-fn edge_sample(b: &Brep, edge: EdgeId) -> Result<(Point3, f64)> {
+fn edge_sample(k: &Kernel, b: &Brep, edge: EdgeId) -> Result<(Point3, f64)> {
     let record = b.edge(edge)?;
     let point = required(record.curve.as_ref(), "sample edge without curve")?
-        .evaluate_point(record.interval.evaluate(0.34567))?;
+        .evaluate_point(k, record.interval.evaluate(0.34567))?;
     Ok((point, record.tolerance))
 }
 

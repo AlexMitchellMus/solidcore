@@ -695,7 +695,7 @@ fn rectangular_face(
     Ok(face)
 }
 
-fn build(fixture: &Fixture, tolerance: f64) -> HResult<Brep> {
+fn build(kernel: &Kernel, fixture: &Fixture, tolerance: f64) -> HResult<Brep> {
     let mut brep = Brep::new();
     brep.set_tolerance(tolerance);
     // SmBrep.cpp:532–537: the constructor explicitly creates a void infinite region.
@@ -717,8 +717,8 @@ fn build(fixture: &Fixture, tolerance: f64) -> HResult<Brep> {
         } => {
             let curve = line(v3(start), v3(end), domain, 3)?;
             let [t0, t1] = interval;
-            let a = add_vertex(&mut brep, curve.evaluate_point(t0).map_err(setup)?)?;
-            let b = add_vertex(&mut brep, curve.evaluate_point(t1).map_err(setup)?)?;
+            let a = add_vertex(&mut brep, curve.evaluate_point(kernel, t0).map_err(setup)?)?;
+            let b = add_vertex(&mut brep, curve.evaluate_point(kernel, t1).map_err(setup)?)?;
             let shell = add_shell(&mut brep, region)?;
             let edge = add_edge(&mut brep, [a, b], curve, interval)?;
             let first = add_use(
@@ -762,7 +762,7 @@ fn build(fixture: &Fixture, tolerance: f64) -> HResult<Brep> {
             for uv in corners {
                 vertices.push(add_vertex(
                     &mut brep,
-                    surface.evaluate_point(point2(uv)).map_err(setup)?,
+                    surface.evaluate_point(kernel, point2(uv)).map_err(setup)?,
                 )?);
             }
             let shell = add_shell(&mut brep, region)?;
@@ -985,7 +985,7 @@ fn domain_values(domain: Extent2d) -> [f64; 4] {
     let hi = domain.max();
     [lo.x, lo.y, hi.x, hi.y]
 }
-fn rust_projection(fixture: &Fixture, brep: &Brep) -> HResult<Projection> {
+fn rust_projection(kernel: &Kernel, fixture: &Fixture, brep: &Brep) -> HResult<Projection> {
     let counts = [
         brep.regions().len() as i64,
         brep.shells().len() as i64,
@@ -1023,9 +1023,9 @@ fn rust_projection(fixture: &Fixture, brep: &Brep) -> HResult<Projection> {
                     (1.0 - fraction) * lo.x + fraction * hi.x,
                     (1.0 - fraction) * lo.y + fraction * hi.y,
                 ]);
-                let point = surface.evaluate_point(uv).map_err(setup)?;
+                let point = surface.evaluate_point(kernel, uv).map_err(setup)?;
                 let normal = surface
-                    .evaluate_normal(uv, Side::Left, Side::Left)
+                    .evaluate_normal(kernel, uv, Side::Left, Side::Left)
                     .map_err(setup)?;
                 result.statuses.extend([i64::from(ffi::NATIVE_SUCCESS); 2]);
                 result.values.extend(xyz(point));
@@ -1052,7 +1052,7 @@ fn rust_projection(fixture: &Fixture, brep: &Brep) -> HResult<Projection> {
                 domain.max(),
             ]);
             for parameter in [edge.interval.min(), edge.interval.max()] {
-                let point = curve.evaluate_point(parameter).map_err(setup)?;
+                let point = curve.evaluate_point(kernel, parameter).map_err(setup)?;
                 result.statuses.push(i64::from(ffi::NATIVE_SUCCESS));
                 result.values.extend(xyz(point));
             }
@@ -1521,15 +1521,16 @@ fn register_notification_brep(
 
 fn rust_output(input: &Inputs) -> RResult<Output> {
     validate(input)?;
+    let mut kernel = Kernel::default();
     let mut source = input
         .source
         .as_ref()
-        .map(|fixture| build(fixture, input.tolerance))
+        .map(|fixture| build(&kernel, fixture, input.tolerance))
         .transpose()?;
     let mut foreign = input
         .foreign
         .as_ref()
-        .map(|fixture| build(fixture, input.tolerance))
+        .map(|fixture| build(&kernel, fixture, input.tolerance))
         .transpose()?;
     let mut records = BTreeMap::new();
     let mut attributes = AttributeStore::default();
@@ -1559,15 +1560,14 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
         .source
         .as_ref()
         .zip(source.as_ref())
-        .map(|(fixture, brep)| rust_projection(fixture, brep))
+        .map(|(fixture, brep)| rust_projection(&kernel, fixture, brep))
         .transpose()?;
     let foreign_before = input
         .foreign
         .as_ref()
         .zip(foreign.as_ref())
-        .map(|(fixture, brep)| rust_projection(fixture, brep))
+        .map(|(fixture, brep)| rust_projection(&kernel, fixture, brep))
         .transpose()?;
-    let mut kernel = Kernel::default();
     let boolean_before = kernel.context.doing_boolean();
     let mut exec = input
         .operation
@@ -1648,13 +1648,13 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
         .source
         .as_ref()
         .zip(source.as_ref())
-        .map(|(fixture, brep)| rust_projection(fixture, brep))
+        .map(|(fixture, brep)| rust_projection(&kernel, fixture, brep))
         .transpose()?;
     let foreign_after = input
         .foreign
         .as_ref()
         .zip(foreign.as_ref())
-        .map(|(fixture, brep)| rust_projection(fixture, brep))
+        .map(|(fixture, brep)| rust_projection(&kernel, fixture, brep))
         .transpose()?;
     let source_pure = source_state_before == source.as_ref().map(|brep| format!("{brep:?}"));
     let foreign_pure = foreign_state_before == foreign.as_ref().map(|brep| format!("{brep:?}"));
@@ -2024,8 +2024,8 @@ mod tests {
             .into_iter()
             .chain(result_lists)
             .all(|h| h.type_code == 0));
-        let mut source = build(&sheet([0.0; 3], 1.0, 0), 1e-6).unwrap();
-        let mut foreign = build(&sheet([0.0; 3], 1.0, 0), 1e-6).unwrap();
+        let mut source = build(&Kernel::default(), &sheet([0.0; 3], 1.0, 0), 1e-6).unwrap();
+        let mut foreign = build(&Kernel::default(), &sheet([0.0; 3], 1.0, 0), 1e-6).unwrap();
         let mut records = BTreeMap::new();
         register_notification_brep(&mut records, &mut source, 1);
         let source_count = records.len();
@@ -2054,7 +2054,7 @@ mod tests {
                 2,
             ),
         ] {
-            let brep = build(&fixture, 1e-6).unwrap();
+            let brep = build(&Kernel::default(), &fixture, 1e-6).unwrap();
             assert_eq!(brep.regions().len(), regions);
             assert_eq!(brep.shells().len(), shells);
             let infinite = brep.infinite_region().unwrap();
@@ -2080,8 +2080,18 @@ mod tests {
     fn source_face_origin_cannot_alias_foreign_face_zero_and_order_is_preserved() {
         let mut input = input(Operation::ApiShell);
         input.foreign = Some(sheet([20.0, 3.0, -4.0], 3.0, 1));
-        let source = build(input.source.as_ref().unwrap(), input.tolerance).unwrap();
-        let foreign = build(input.foreign.as_ref().unwrap(), input.tolerance).unwrap();
+        let source = build(
+            &Kernel::default(),
+            input.source.as_ref().unwrap(),
+            input.tolerance,
+        )
+        .unwrap();
+        let foreign = build(
+            &Kernel::default(),
+            input.foreign.as_ref().unwrap(),
+            input.tolerance,
+        )
+        .unwrap();
         assert_eq!(
             face_at(Some(&source), 0).unwrap(),
             face_at(Some(&foreign), 0).unwrap()
@@ -2299,8 +2309,11 @@ mod tests {
         let fixture = Fixture::Empty;
         let block = empty_block(3e-12);
         let projection = native_projection(&fixture, &decode_block(&block).unwrap()).unwrap();
-        let brep = build(&fixture, 3e-12).unwrap();
-        assert_eq!(projection, rust_projection(&fixture, &brep).unwrap());
+        let brep = build(&Kernel::default(), &fixture, 3e-12).unwrap();
+        assert_eq!(
+            projection,
+            rust_projection(&Kernel::default(), &fixture, &brep).unwrap()
+        );
         let mut broken = block.clone();
         broken.integers.pop(); // Missing native-only region void flag.
         assert!(decode_block(&broken).is_err());
@@ -2450,8 +2463,8 @@ mod tests {
             origin: [0.0; 3],
             size: [10.0; 3],
         };
-        let brep = build(&box_fixture, 1e-6).unwrap();
-        let projection = rust_projection(&box_fixture, &brep).unwrap();
+        let brep = build(&Kernel::default(), &box_fixture, 1e-6).unwrap();
+        let projection = rust_projection(&Kernel::default(), &box_fixture, &brep).unwrap();
         assert_eq!(projection.counts, [6, 12, 8]);
         assert_eq!(projection.kinds, [1; 6]);
         assert_eq!(projection.values, [1e-6, 0.0, 0.0, 0.0, 10.0, 10.0, 10.0]);

@@ -696,8 +696,14 @@ fn at<T>(v: &[T], i: usize) -> Result<&T> {
 }
 
 /// The start of `c` as oriented by `orient` (`GetEnds`, status ignored: `prev` kept).
-fn oriented_end(c: &Curve, orient: OrientType, start: bool, prev: Point3) -> Result<Point3> {
-    Ok(match ignored(c.ends())? {
+fn oriented_end(
+    k: &Kernel,
+    c: &Curve,
+    orient: OrientType,
+    start: bool,
+    prev: Point3,
+) -> Result<Point3> {
+    Ok(match ignored(c.ends(k))? {
         Some(e) => {
             if (orient == OrientType::Same) == start {
                 e.start
@@ -860,14 +866,16 @@ fn make_face_with_curves_impl(
     // GetInfiniteRegion() (an inline field read; NULL when unset)
     let region = region.or(b.infinite_region());
     // (the surface tests return flags upstream: a failed test is "no")
-    if ignored(surface.is_degenerate_curve(EFF_ZERO_DEG, None, DEGENERATE_TOL_3D))?.unwrap_or(false)
+    if ignored(surface.is_degenerate_curve(k.geometry(), EFF_ZERO_DEG, None, DEGENERATE_TOL_3D))?
+        .unwrap_or(false)
     {
         return Err(SolidError::invalid_input(
             OP,
             "surface degenerates to a curve",
         ));
     }
-    if ignored(surface.is_degenerate_point(DEGENERATE_TOL_3D, None))?.unwrap_or(false) {
+    if ignored(surface.is_degenerate_point(k.geometry(), DEGENERATE_TOL_3D, None))?.unwrap_or(false)
+    {
         return Err(SolidError::invalid_input(
             OP,
             "surface degenerates to a point",
@@ -921,7 +929,8 @@ fn make_face_with_curves_impl(
                         let c = CrvOnSurf::new(k.geometry(), uv_curve, base, Some(*uv_domain), 2)?;
                         let c = Curve::from(c);
                         // (IsDegenerate returns a flag upstream: a failed test is "no")
-                        if ignored(c.is_degenerate(EFF_ZERO, None))?.unwrap_or(false) {
+                        if ignored(c.is_degenerate(k.geometry(), EFF_ZERO, None))?.unwrap_or(false)
+                        {
                             None
                         } else {
                             Some(c)
@@ -971,8 +980,8 @@ fn make_face_with_curves_impl(
                     let cw = at(&s3d, cwi)?
                         .as_ref()
                         .ok_or_else(|| null("missing curve"))?;
-                    start = oriented_end(c, o, true, start)?;
-                    cw_end = oriented_end(cw, cwo, false, cw_end)?;
+                    start = oriented_end(k.geometry(), c, o, true, start)?;
+                    cw_end = oriented_end(k.geometry(), cw, cwo, false, cw_end)?;
                     if start.distance_squared(cw_end) > tol2 {
                         if let Some(slot) = new_points.get_mut(jj) {
                             *slot = Some((start + cw_end) / 2.0);
@@ -1044,8 +1053,9 @@ fn make_face_with_curves_impl(
                 continue;
             };
             let ivl = curve.natural_interval();
-            let is_degen = ignored(curve.is_degenerate(EFF_ZERO, None))?.unwrap_or(false);
-            let approx_len = curve.approximate_length(&ivl, 5, false)?.0;
+            let is_degen =
+                ignored(curve.is_degenerate(k.geometry(), EFF_ZERO, None))?.unwrap_or(false);
+            let approx_len = curve.approximate_length(k.geometry(), &ivl, 5, false)?.0;
             if is_degen || approx_len < zone_tol {
                 degenerate += 1;
                 continue;
@@ -1059,7 +1069,7 @@ fn make_face_with_curves_impl(
                 };
 
             // find or make the start vertex
-            let start_pt = curve.evaluate_point(start_param)?;
+            let start_pt = curve.evaluate_point(k.geometry(), start_param)?;
             let mut m = find_first_vertex_within_tol_to_pnt(b, &vertices, start_pt, zone_tol)?;
             if !vertices.is_empty() && !m.found {
                 if m.distance < zone_tol * 100.0 {
@@ -1094,7 +1104,7 @@ fn make_face_with_curves_impl(
             };
 
             // the end vertex
-            let end_pt = curve.evaluate_point(end_param)?;
+            let end_pt = curve.evaluate_point(k.geometry(), end_param)?;
             if end_pt.distance_squared(start_pt) < zone_tol * zone_tol && approx_len < zone_tol {
                 return Err(SolidError::sm_err(OP));
             }
@@ -1123,7 +1133,7 @@ fn make_face_with_curves_impl(
                         interval: ivl,
                         tolerance: zone_tol,
                     };
-                    if let Some(c) = find_coincident_edge(b, &query, &edges, 0)? {
+                    if let Some(c) = find_coincident_edge(k.geometry(), b, &query, &edges, 0)? {
                         if c.max_deviation < zone_tol * 1.0e-3 {
                             // share the coincident edge (the curve is dropped)
                             let coin = *at(&edges, c.index)?;
@@ -1329,8 +1339,8 @@ pub fn glue_edges_general(
                     )?;
                     if md.distance < surv_tol / 1000.00 {
                         let t_mid = surv_ivl.evaluate(0.45678);
-                        let sp = sc.evaluate_point(t_mid)?;
-                        let dp = dc.evaluate_point(t_mid)?;
+                        let sp = sc.evaluate_point(k, t_mid)?;
+                        let dp = dc.evaluate_point(k, t_mid)?;
                         let tolerance = EFF_ZERO * (1.0 + sp.max_dimension());
                         if sp.distance(dp) < tolerance {
                             same_geometry = true;
