@@ -9,13 +9,14 @@ compares the results. A unit may be marked `status = "green"` in
 ## Quick start
 
 ```sh
-harness/cpp/build.sh                      # once: builds bin/cpp/lib/libSM_API.a, libSMLib.a (owner: agent A)
+scripts/fetch-cpp.sh                      # once: bin/cpp/lib/libSM_API.a, libSMLib.a (prebuilt; else runs harness/cpp/build.sh)
 export CARGO_BUILD_JOBS=2                 # shared machine
+export RUSTC_WRAPPER=sccache              # optional: also caches the ~200 shim objects
 # --profile difftest: optimised build with overflow checks; same results as debug, ~20x faster.
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --list
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --unit harness.selftest
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --unit harness.selftest --perturb   # sensitivity check
-nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --green          # every status=green|partial unit
+nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --green          # every status=green|partial unit (~35 min on 16 threads; C++ topology units dominate)
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --green --jobs 4 # same, 4 units at a time (below)
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --status-of nlib.knots   # prints green|partial|fail
 nice -n 10 cargo test -p difftest --features cpp                     # harness self-tests
@@ -49,6 +50,28 @@ then the first few failing cases and `reports/difftest/<unit>.json`.
 at least one float, integer or topology entry and those that compared nothing
 (both sides returned the same error, or empty outputs). A unit whose passes are
 mostly `no_values` proves little: make the generator reach the success path.
+
+**Timing** (stderr, one line per unit; diagnostic only, not in the report):
+
+```
+TIME <unit> n=<cases> cases=<s> cpp=<s> rust=<s> compare=<s> ratio=<rust/cpp> slowest_rust=<case>:<s>
+```
+
+**Output digest** (opt-in): with `DIFFTEST_RUST_DIGEST=<dir>` set, each unit
+writes `<dir>/<unit>.digest` with one `<case>\t<fnv1a64>` line per case, the
+hash of the Rust output's `Debug` form (f64 `Debug` is the shortest round-trip
+form). Equal digest files from two builds mean bit-identical Rust outputs, which
+is how a refactor or optimisation proves it changed no value.
+
+**Profiling without perf/sudo**: `scripts/perf/sampler.py` (ptrace sampler,
+frame-pointer unwinding) and `scripts/perf/analyze.py` (self/inclusive tables):
+
+```sh
+CARGO_TARGET_DIR=bin/prof CARGO_PROFILE_DIFFTEST_DEBUG=line-tables-only \
+RUSTFLAGS="-C force-frame-pointers=yes" cargo build --profile difftest -p difftest --features cpp
+python3 scripts/perf/sampler.py out.json 2 -- bin/prof/difftest/difftest --unit <u> --no-report
+python3 scripts/perf/analyze.py out.json --focus solidcore --libc
+```
 
 **Perturbation** (`--perturb`): per case, in order of preference: the error
 string if the Rust side errored (gets `~perturbed` appended); else the first
@@ -131,6 +154,49 @@ Rust port), then copy the case into `fixtures/<unit>/` as a regression case
 failure. A `differs` case is printed as a `note (differs)` line with its file and
 is written the same way (so it can be re-run), but does not fail the run.
 
+## Fuzzing the `.smb` readers (`examples/reader_fuzz.rs`)
+
+A mutation fuzzer for the Rust database readers only (no C++, not part of the
+gate). Build and run it with the difftest profile, so arithmetic overflow
+panics and is reported. Unix-only (the code is in `examples/reader_fuzz/fuzz.rs`;
+on other platforms the example only prints a notice and exits 2):
+
+```sh
+X="nice -n 10 cargo run --profile difftest -p difftest --example reader_fuzz --"
+$X sweep --seeds-dir upstream/TestFiles/pt_TestFiles --cases 2000 --jobs 4 \
+    --out reader-fuzz-out --tag read [--stage read|topo|full|persist] [--filter <substr>]
+$X repro --seed <seed file> --case <i> [--write out.smb]     # rebuild one case
+$X run --input f.smb [--binary] [--stage ..] [--stack-kb N]  # run one file in-process
+$X minimize --input f.smb [--binary] --expect <verdict prefix> [--output f.min]
+$X stats --seeds-dir <dir> --cases N [--stage ..]            # error-site histogram
+```
+
+* **Stages.** `read`: `BrepData::read_from_file`. `full`:
+  `topology::brep::p7::read_from_file`. `topo`: read, then
+  `p10::make_topology_from_data` without analytics, healing or UV checks.
+  `persist`: `BrepData::read_from_db` with persisted attributes and a small
+  attribute table. `selftest` checks that every bad verdict is detected.
+* **Cases.** Case `i` of a seed applies 1 to 5 mutations (bit and byte flips,
+  truncation, integer and float token swaps, line and section edits, type-code
+  swaps, nesting wrappers, raw 8-byte overwrites for binary files) chosen by
+  splitmix64 seeded from the seed's relative path and `i`, so `repro` rebuilds
+  any case. A seed under a directory named `corpus-bin` is read as binary.
+* **Isolation.** Batches (`--batch`, default 250) run in child processes under
+  `ulimit -v` (`--mem-mb`, default 3072), one thread per case with a fixed
+  stack (`--stack-kb`, default 8192), with a per-case timeout (`--timeout`,
+  default 20 s).
+* **Verdicts.** `ok`, `err`, `unported` are fine; `panic`, `oom`,
+  `stack-overflow`, `crash` and `timeout` are bad. Each bad case is written to
+  `<out>/crashes/` (mutated file plus a `.txt` with seed, case and mutations);
+  each sweep writes `<tag>-summary.txt`, `<tag>-findings.tsv` and
+  `<tag>-per-seed.tsv`. Exit status `1` on any bad verdict.
+* `stats` runs in-process (use it only after a clean sweep) and counts the
+  error site each case ended at, as a coverage proxy.
+* Binary and persisted-attribute seeds must be written by upstream
+  (`SmBrepData::WriteToFile(SM_BINARY)`, `WriteToDB(.., bPersistAttribs)`).
+  The tool that does this is not in the repo; it would go in `harness/cpp/`
+  as a small program (or shim functions) linked against the reference build.
+
 ## Deferred cases, `partial` units
 
 A unit's Rust code may call into a unit that is not ported yet; it then returns
@@ -200,7 +266,7 @@ is `harness.selftest` (`harness_selftest.*`).
 // SPDX-License-Identifier: Apache-2.0
 // difftest shim for unit `foo.bar`. Wraps upstream <Fn> (source/SMLib/src/<File>.cpp).
 #include "sc_shim.h"
-#include <nurbs.h>            // or SmXxx.h / SmApi*.h — include dirs come from bin/cpp/compile_commands.json
+#include <nurbs.h>            // or SmXxx.h / SmApi*.h — include dirs come from bin/cpp/ffi.env
 
 SC_EXPORT int32_t sc_foo_bar_eval(const double* pts, int64_t n_pts, double t,
                                   double* out, int64_t cap, int64_t* out_len)
@@ -218,8 +284,8 @@ caller-owned flat arrays + lengths); return `int32_t` status (`0` ok, upstream
 error flag, or `SC_ERR_*`); never let exceptions or C++-allocated memory cross
 the boundary (free upstream objects inside the shim); flatten points as
 `[x0,y0,z0,x1,…]`. Shims are compiled with the same `-D`/`-I`/`-f` flags as the
-kernel (taken from `bin/cpp/compile_commands.json`, or `bin/cpp/ffi.env` if
-present — format in `crates/solidcore-ffi/build.rs`).
+kernel (taken from `bin/cpp/ffi.env`, or `bin/cpp/compile_commands.json` if
+it is missing — format in `crates/solidcore-ffi/build.rs`).
 
 Topology from C++: walk upstream lists in their native order and emit
 **traversal-order indices** (map each pointer to its first-seen index), never
