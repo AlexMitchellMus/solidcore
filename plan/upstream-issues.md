@@ -2290,6 +2290,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** wrong result.
 - **Rust port:** Ported as is (`query::face::p3`, private `find_element_in_masked_array`).
 
+#### WR-197. `SmMerge::MergeAddedTopology`'s declared defaults shift into the wrong flags
+- **Location:** `source/SMLib/inc/SmMerge.h:357` (declaration) against `source/SMLib/src/SmMerge.cpp:5304` (definition), `SmMerge::MergeAddedTopology`.
+- **What happens:** The declaration puts `bDoGluing = TRUE` ninth, followed by `bMakingManifoldSolid = FALSE`, `bFastEdgeCompare = TRUE`, `bDoRegionNesting = TRUE`, `bIgnoreProblems = TRUE`. The definition takes the four flags ninth to twelfth and the unused gluing flag last. A call relying on the defaults therefore runs with making-manifold-solid `TRUE` and fast edge compare `FALSE`, the opposite of what the declaration documents.
+- **Trigger:** Any call that omits the trailing arguments. Both upstream callers (`MergeAddedFace`, `SmFeatureExecutive`) pass all four flags explicitly, so they are not affected.
+- **How found:** read during porting (`boolean.merge_p2`).
+- **Confirmed:** no (no upstream caller uses the defaults).
+- **Severity:** wrong result (latent).
+- **Rust port:** `MergeAddedOptions::default()` is what the declared defaults actually pass, `(TRUE, FALSE, TRUE, TRUE)`; `MERGE_ADDED_FACE_OPTIONS` is `MergeAddedFace`'s explicit `(FALSE, TRUE, TRUE, TRUE)`.
+
 ### NLib
 
 #### WR-22. `ST_surxsdr` returns a stale error number past its recursion limit
@@ -3063,16 +3072,16 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **How found:** difftest fuzzing of `heal.stitch_p1` (PR #196): 4 crashes in 2000 programs; gdb backtrace `SmBrep::GetEdges <- SmBrep::GetMinEdgeBBoxSize <- SmMerge::SmMerge <- SmApiStitch`.
 - **Confirmed:** yes (C++ reference build, standalone reproducer under gdb).
 - **Severity:** crash/UB.
-- **Rust port:** `heal::stitch::p1::api_stitch_face` returns `Unported` (`SmMerge::SmMerge`, then `MergeAddedFace`, unit `boolean.merge_p2`; UB-167); the difftest FFI refuses `SmApiStitch` with a B-rep and a face, so only its null-argument guards are compared.
+- **Rust port:** `heal::stitch::p1::api_stitch_face` builds the merge with `MergeState::with_breps(.., None, 0.0, 0.0, None)` (PR #229), which returns `InvalidInput` where upstream dereferences the null other B-rep (after the primary's `GetMinEdgeBBoxSize`); the difftest FFIs refuse `SmApiStitch` with a B-rep and a face (`heal.stitch_p1`) and a computed tolerance without other B-rep (`boolean.merge_p2`).
 
 #### UB-176. Two-list `SmStitch::StitchVertexPairs` glues a vertex twice
 - **Location:** `source/SMLib/src/SmStitch.cpp:3242`-`3749` (the two-list `StitchVertexPairs`): each glue deletes `sUsingVerts2[...]` and nulls only its own slot.
 - **What happens:** A vertex repeated in `rVertexList2`, or present in both lists, is glued (and deleted) once per occurrence, so a later `GlueVertices` gets an already-deleted vertex (double free / use after free). The sorting loops also index `sSortedIndex1` / `sSortedIndex2` with the unfiltered counts, reading past them when a list holds `NULL` entries.
-- **Trigger:** caller-built lists with a repeated vertex, a vertex in both lists, or a `NULL` entry.
-- **How found:** source review while porting `heal.stitch_p1` (PR #196); the difftest FFI refuses repeats, shared vertices and `NULL`s.
-- **Confirmed:** no (source inspection only; the shim never runs it).
+- **Trigger:** caller-built lists with a repeated vertex, a vertex in both lists, or a `NULL` entry. `SmMerge::MergeAddedTopology` (`source/SMLib/src/SmMerge.cpp:5735`) reaches it with a vertex repeated in its caller's `pMergeVerts`, which it copies into `rVertexList2` unchecked: e.g. the ASCII `plane_square.smb` with vertices `[0, 0]`, no faces or edges, tolerance 10 (stitch tolerance 40).
+- **How found:** source review while porting `heal.stitch_p1` (PR #196); the difftest FFI refuses repeats, shared vertices and `NULL`s. The `MergeAddedTopology` route: an adversarial `boolean.merge_p2` fixture run with that unit's duplicate guard relaxed (PR #229).
+- **Confirmed:** yes (C++ reference build, through `MergeAddedTopology`: segfault, exit 139; the same request without the repeated vertex succeeds).
 - **Severity:** crash/UB.
-- **Rust port:** `heal::stitch::p1::Stitch::stitch_vertex_pairs` returns `InvalidInput` where the sorted index arrays would be read past; repeated vertices are a caller error the FFI refuses.
+- **Rust port:** `heal::stitch::p1::Stitch::stitch_vertex_pairs` returns `InvalidInput` where the sorted index arrays would be read past; repeated vertices are a caller error the FFI refuses. `boolean.merge_p2`'s FFI refuses any entity listed twice in a `MergeAddedTopology` list.
 
 #### UB-177. `SmStitch::DoSimpleFaceStitch` glues vertices that are already freed [PSIRT]
 - **Location:** `source/SMLib/src/SmStitch.cpp:680`-`681` (`sKVertices.Add` / `sDVertices.Add` across all face pairs), `:785` (`pBrepToStitch->RemoveFaces(cpFacesToDelete)`), then the glue loop at `:840`-`916` (`pV1->IsLaminaVertex()`, `SelectTopologyToKeep`, `GlueVertices` / `SqueezeEdge`).
