@@ -695,14 +695,14 @@ mod tests {
         let source = BrepId::from_index(0);
         let destination = BrepId::from_index(1);
         assert!(model.copy_edges(source, &[], destination)?.is_empty());
-        // The live p1 infinite-region lookup now reaches wire topology creation.
+        // The live shell-vertex constructor now reaches wire-edge topology creation.
         let copied = model.copy_edges(source, &[EdgeId::from_index(0)], destination);
         assert!(
             matches!(
                 copied,
                 Err(SolidError::Unported {
-                    upstream: "SmBrep::MakeShellVertex",
-                    unit: "topology.brep_p9",
+                    upstream: "SmBrep::MakeWireEdgeVertex",
+                    unit: "topology.brep_p3",
                 })
             ),
             "{copied:?}"
