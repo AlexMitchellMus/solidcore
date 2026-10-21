@@ -2227,8 +2227,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmFace::GetBrep",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "copy_plane_square.smb_1",
@@ -2251,8 +2251,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmFace::GetBrep",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "copy_disk.smb_1",
@@ -2275,8 +2275,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::SmMerge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmFace::GetBrep",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "copy_plane_circ.smb_1",
@@ -2852,7 +2852,6 @@
   "cases_passed": 237,
   "cases_total": 316,
   "deferred_by_unit": {
-    "boolean.merge_p2": 3,
     "cpp-guard:ub-165": 3,
     "curve.crv_on_surf": 2,
     "curve.curve_p6": 2,
@@ -2863,7 +2862,7 @@
     "topology.brep_p9": 2,
     "topology.face_p2": 18,
     "topology.face_p3": 1,
-    "topology.face_p4": 3
+    "topology.face_p4": 6
   },
   "max_rel_err": 0.0,
   "pass": true,
