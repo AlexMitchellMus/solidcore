@@ -2428,6 +2428,278 @@
      16042
     ]
    }
+  },
+  {
+   "name": "error_info_defaults",
+   "inputs": {
+    "object": "error_info",
+    "exec": 0,
+    "script": []
+   }
+  },
+  {
+   "name": "error_info_with_executive_null_comment_keeps_old",
+   "inputs": {
+    "object": "error_info",
+    "exec": 7,
+    "script": [
+     {
+      "call": "note",
+      "code": 3,
+      "comment": null
+     },
+     {
+      "call": "note",
+      "code": 4,
+      "comment": "first"
+     },
+     {
+      "call": "note",
+      "code": 5,
+      "comment": null
+     }
+    ]
+   }
+  },
+  {
+   "name": "error_info_null_texts_print_null",
+   "inputs": {
+    "object": "error_info",
+    "exec": 0,
+    "script": [
+     {
+      "call": "edge",
+      "edge": 2,
+      "status": 2,
+      "code": 4,
+      "comment": null
+     },
+     {
+      "call": "corner",
+      "code": 3,
+      "corner": 4,
+      "status": 2,
+      "name": null,
+      "vertex": 5,
+      "surfaces": [
+       1,
+       0
+      ],
+      "fillet_vertices": [
+       0,
+       6
+      ],
+      "comment": null
+     }
+    ]
+   }
+  },
+  {
+   "name": "error_info_null_edge_ignored",
+   "inputs": {
+    "object": "error_info",
+    "exec": 0,
+    "script": [
+     {
+      "call": "note",
+      "code": 1,
+      "comment": "keep"
+     },
+     {
+      "call": "edge",
+      "edge": 0,
+      "status": 2,
+      "code": 4,
+      "comment": "dropped"
+     }
+    ]
+   }
+  },
+  {
+   "name": "error_info_comment_cut_to_1023_bytes",
+   "inputs": {
+    "object": "error_info",
+    "exec": 0,
+    "script": [
+     {
+      "call": "note",
+      "code": 2,
+      "comment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+     },
+     {
+      "call": "fillet_edge",
+      "code": 4,
+      "status": 2,
+      "fe_type": 5,
+      "fillet_edge": 3,
+      "name": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "comment": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+     }
+    ]
+   }
+  },
+  {
+   "name": "error_info_add_unique_keeps_nulls_once",
+   "inputs": {
+    "object": "error_info",
+    "exec": 0,
+    "script": [
+     {
+      "call": "merge",
+      "code": 7,
+      "status": 2,
+      "edge": 1,
+      "face": 2,
+      "fillet_edge": 0,
+      "surface": 3,
+      "comment": "m1"
+     },
+     {
+      "call": "merge",
+      "code": 7,
+      "status": 3,
+      "edge": 4,
+      "face": 0,
+      "fillet_edge": 0,
+      "surface": 3,
+      "comment": "m2"
+     },
+     {
+      "call": "merge",
+      "code": 7,
+      "status": 3,
+      "edge": 4,
+      "face": 0,
+      "fillet_edge": 5,
+      "surface": 0,
+      "comment": "m3"
+     },
+     {
+      "call": "intersection",
+      "code": 5,
+      "status": 3,
+      "edge": 6,
+      "surfaces": [
+       3,
+       0,
+       8,
+       8
+      ],
+      "curves": [
+       9,
+       9,
+       10
+      ],
+      "edges": [
+       5,
+       0,
+       11
+      ],
+      "at": [
+       1.5,
+       -2.25,
+       1e-300
+      ],
+      "comment": "x"
+     }
+    ]
+   }
+  },
+  {
+   "name": "executive_defaults",
+   "inputs": {
+    "object": "executive",
+    "target": 0,
+    "script": []
+   }
+  },
+  {
+   "name": "executive_setters_and_topo_edges",
+   "inputs": {
+    "object": "executive",
+    "target": 5,
+    "script": [
+     {
+      "call": "add_topo_edge",
+      "h": 1
+     },
+     {
+      "call": "add_topo_edge",
+      "h": 2
+     },
+     {
+      "call": "add_topo_edge",
+      "h": 1
+     },
+     {
+      "call": "add_topo_edge",
+      "h": 0
+     },
+     {
+      "call": "remove_topo_edge",
+      "h": 1
+     },
+     {
+      "call": "remove_topo_edge",
+      "h": 9
+     },
+     {
+      "call": "remove_topo_edge",
+      "h": 0
+     },
+     {
+      "call": "add_generator",
+      "h": 3
+     },
+     {
+      "call": "add_generator",
+      "h": 3
+     },
+     {
+      "call": "handler",
+      "h": 4
+     },
+     {
+      "call": "global_merge",
+      "on": true
+     },
+     {
+      "call": "trimming",
+      "on": false
+     },
+     {
+      "call": "note",
+      "code": 6,
+      "comment": "exec note"
+     }
+    ]
+   }
+  },
+  {
+   "name": "executive_corner_error_names_entity",
+   "inputs": {
+    "object": "executive",
+    "target": 1,
+    "script": [
+     {
+      "call": "corner",
+      "code": 3,
+      "corner": 12,
+      "status": 2,
+      "name": "SM_FCR_N_x_N_CONCAVE",
+      "vertex": 2,
+      "surfaces": [
+       3,
+       3
+      ],
+      "fillet_vertices": [
+       4,
+       5
+      ],
+      "comment": "Unable to intersect fillet surfaces"
+     }
+    ]
+   }
   }
  ]
 }

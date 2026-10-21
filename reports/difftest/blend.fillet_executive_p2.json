@@ -1826,40 +1826,28 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmFilletErrorInfo::NoteError",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "set_params_mismatch_x",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_executive_p2/constructed.json#228",
-      "values_compared": 0
+      "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmFilletErrorInfo::NoteError",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "set_params_mismatch_r",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_executive_p2/constructed.json#229",
-      "values_compared": 0
+      "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmFilletErrorInfo::NoteError",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "set_params_mismatch_v",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_executive_p2/constructed.json#230",
-      "values_compared": 0
+      "values_compared": 10
     },
     {
       "both_errored": true,
@@ -1871,21 +1859,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletErrorInfo::NoteError",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "set_params_single_fsg_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_executive_p2/constructed.json#232",
-      "values_compared": 0
+      "values_compared": 10
     },
     {
       "deferred": {
-        "symbol": "SmFilletExecutive::AddFilletSurfaceGenerator",
-        "unit": "blend.fillet_executive_p1"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "set_params_single_fsg_1",
@@ -1896,8 +1880,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletExecutive::AddFilletSurfaceGenerator",
-        "unit": "blend.fillet_executive_p1"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "set_params_single_fsg_2",
@@ -1908,8 +1892,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletExecutive::AddFilletSurfaceGenerator",
-        "unit": "blend.fillet_executive_p1"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "set_params_single_fsg_3",
@@ -1919,33 +1903,25 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletErrorInfo::NoteError",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "set_params_per_edge_r0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_executive_p2/constructed.json#236",
-      "values_compared": 0
+      "values_compared": 10
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "set_params_per_edge_r1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p2/constructed.json#237",
+      "values_compared": 10
     },
     {
       "deferred": {
         "symbol": "SmFace::GetTolerance",
         "unit": "topology.face_p2"
-      },
-      "max_rel_err": 0.0,
-      "name": "set_params_per_edge_r1",
-      "outcome": "deferred",
-      "pass": false,
-      "source": "fixture:fixtures/blend.fillet_executive_p2/constructed.json#237",
-      "values_compared": 0
-    },
-    {
-      "deferred": {
-        "symbol": "SmConstantDistanceFS::SmConstantDistanceFS",
-        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "set_params_per_edge_r2",
@@ -1965,8 +1941,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletErrorInfo::NoteError",
-        "unit": "blend.fillet_executive_p1"
+        "symbol": "SmConstantDistanceFS::SmConstantDistanceFS",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "set_params_per_edge_r4",
@@ -1976,38 +1952,27 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletErrorInfo::NoteError",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "set_params_per_edge_r5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_executive_p2/constructed.json#241",
-      "values_compared": 0
+      "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmFilletErrorInfo::NoteError",
-        "unit": "blend.fillet_executive_p1"
-      },
       "max_rel_err": 0.0,
       "name": "set_params_per_edge_r6",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_executive_p2/constructed.json#242",
-      "values_compared": 0
+      "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmFilletExecutive::AddFilletSurfaceGenerator",
-        "unit": "blend.fillet_executive_p1"
-      },
+      "both_errored": true,
       "max_rel_err": 0.0,
       "name": "set_params_vr_null_laws",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_executive_p2/constructed.json#243",
       "values_compared": 0
     },
@@ -2025,8 +1990,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletExecutive::AddFilletSurfaceGenerator",
-        "unit": "blend.fillet_executive_p1"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "set_params_box2",
@@ -2053,8 +2018,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletExecutive::AddFilletSurfaceGenerator",
-        "unit": "blend.fillet_executive_p1"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "exec_process_1",
@@ -2065,8 +2030,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletExecutive::AddFilletSurfaceGenerator",
-        "unit": "blend.fillet_executive_p1"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "exec_process_2",
@@ -2077,8 +2042,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletExecutive::AddFilletSurfaceGenerator",
-        "unit": "blend.fillet_executive_p1"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "exec_process_3",
@@ -2097,8 +2062,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletExecutive::AddFilletSurfaceGenerator",
-        "unit": "blend.fillet_executive_p1"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "exec_collect_1",
@@ -2109,8 +2074,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletExecutive::AddFilletSurfaceGenerator",
-        "unit": "blend.fillet_executive_p1"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "exec_collect_2",
@@ -2121,8 +2086,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletExecutive::AddFilletSurfaceGenerator",
-        "unit": "blend.fillet_executive_p1"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "exec_collect_3",
@@ -2133,8 +2098,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletExecutive::AddFilletSurfaceGenerator",
-        "unit": "blend.fillet_executive_p1"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "temp_radius_const",
@@ -2145,8 +2110,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletExecutive::AddFilletSurfaceGenerator",
-        "unit": "blend.fillet_executive_p1"
+        "symbol": "SmVariableRadiusFS::SmVariableRadiusFS",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "temp_radius_vr",
@@ -2157,8 +2122,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletExecutive::AddFilletSurfaceGenerator",
-        "unit": "blend.fillet_executive_p1"
+        "symbol": "SmVariableRadiusFS::SmVariableRadiusFS",
+        "unit": "blend.fillet_standard_solver_p2"
       },
       "max_rel_err": 0.0,
       "name": "temp_radius_vr_flat",
@@ -2296,15 +2261,14 @@
       "values_compared": 6
     }
   ],
-  "cases_both_errored": 2,
-  "cases_deferred": 25,
+  "cases_both_errored": 3,
+  "cases_deferred": 16,
   "cases_failed": 0,
-  "cases_passed": 249,
+  "cases_passed": 258,
   "cases_total": 274,
   "deferred_by_unit": {
-    "blend.fillet_executive_p1": 22,
-    "blend.fillet_standard_solver_p2": 2,
-    "topology.face_p2": 1
+    "blend.fillet_standard_solver_p2": 4,
+    "topology.face_p2": 12
   },
   "max_rel_err": 0.0,
   "pass": true,

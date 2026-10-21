@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-// difftest shim for unit `blend.fillet_executive_p1` (the fillet laws). Wraps upstream
-// SmFilletLaw / SmLinearFilletLaw / SmBSplineFilletLaw (source/SMLib/src/SmFilletExecutive.cpp
-// 5126-6132, source/SMLib/inc/SmFilletExecutive.h 660-899).
+// difftest shim for unit `blend.fillet_executive_p1`. `sc_blend_fillet_executive_p1_law_eval`
+// wraps upstream SmFilletLaw / SmLinearFilletLaw / SmBSplineFilletLaw
+// (source/SMLib/src/SmFilletExecutive.cpp 5126-6132, source/SMLib/inc/SmFilletExecutive.h
+// 660-899); `sc_blend_fillet_executive_p1_object_eval` runs scripts on SmFilletErrorInfo and
+// SmFilletExecutive (cpp 30-292, 488-570, header 380-530); its layout is in
+// crates/solidcore-ffi/src/units/blend_fillet_executive_p1.rs.
 //
+// Law input:
 // Input (flat doubles; validated by crates/solidcore-ffi/src/units/blend_fillet_executive_p1.rs):
 //   kind                 0 linear `r0 r1`; 1 B-spline `n p m cpts(x y z w)... knots...`; 2 base
 //   has_map e0 e1        the edge map (ignored when has_map == 0 or kind == 2)
@@ -20,6 +24,8 @@
 #include <SmVector3d.h>
 #include <nurbs.h>
 
+#include <cstdint>
+#include <string>
 #include <vector>
 
 namespace
@@ -153,6 +159,296 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p1_law_eval(const double* in, int64_
         o.push_back(law->IsKindOf((SM_TYPE)rd.idx()) ? 1.0 : 0.0);
 
     delete law;
+    return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len);
+    SC_CATCH
+}
+
+// ---- error info and executive object scripts ---------------------------------------------
+
+namespace
+{
+// Handle h > 0 stands for the (never dereferenced) pointer h << 6; 0 for NULL. The script
+// calls only store and compare these pointers.
+template <typename T> T* ptr(int64_t h)
+{
+    return h == 0 ? NULL : (T*)(uintptr_t)((uint64_t)h << 6);
+}
+
+// `-1` for the executive itself, else the handle.
+double hnd(const void* p, const void* self)
+{
+    if (p != NULL && p == self)
+        return -1.0;
+    return (double)((uintptr_t)p >> 6);
+}
+
+// `len c...`: len = -1 is NULL.
+struct Str
+{
+    bool null;
+    std::string s;
+    const char* c() const { return null ? NULL : s.c_str(); }
+};
+
+Str read_str(Rd& rd)
+{
+    Str out{false, std::string()};
+    int64_t len = rd.idx();
+    if (len < 0)
+    {
+        out.null = true;
+        return out;
+    }
+    for (int64_t i = 0; i < len; i++)
+        out.s.push_back((char)rd.idx());
+    return out;
+}
+
+void put_text(std::vector<double>& o, const char* text)
+{
+    std::string t(text);
+    o.push_back((double)t.size());
+    for (unsigned char ch : t)
+        o.push_back((double)ch);
+}
+
+// The private m_eFilletStatus (no getter), through an explicit instantiation.
+template <typename Tag, typename Tag::type M> struct Rob
+{
+    friend typename Tag::type get(Tag) { return M; }
+};
+struct StatusTag
+{
+    typedef SmFilStatus SmFilletErrorInfo::*type;
+    friend type get(StatusTag);
+};
+template struct Rob<StatusTag, &SmFilletErrorInfo::m_eFilletStatus>;
+
+// One NoteError call of kind 0-5; false for another kind.
+bool note(Rd& rd, int64_t kind, SmFilletErrorInfo& e, bool& fv_set, bool& loc_set)
+{
+    switch (kind)
+    {
+    case 0:
+    {
+        SmFilletErrorType code = (SmFilletErrorType)rd.idx();
+        Str c = read_str(rd);
+        e.NoteError(code, c.c());
+        return true;
+    }
+    case 1:
+    {
+        const SmEdge* edge = ptr<const SmEdge>(rd.idx());
+        SmFilStatus st = (SmFilStatus)rd.idx();
+        SmFilletErrorType code = (SmFilletErrorType)rd.idx();
+        Str c = read_str(rd);
+        e.NoteError(edge, st, code, c.c());
+        return true;
+    }
+    case 2:
+    {
+        SmFilletErrorType code = (SmFilletErrorType)rd.idx();
+        SmFilStatus st = (SmFilStatus)rd.idx();
+        const SmEdge* edge = ptr<const SmEdge>(rd.idx());
+        const SmFace* face = ptr<const SmFace>(rd.idx());
+        const SmFilletEdge* fe = ptr<const SmFilletEdge>(rd.idx());
+        const SmSurface* surf = ptr<const SmSurface>(rd.idx());
+        Str c = read_str(rd);
+        e.NoteError(code, st, edge, face, fe, surf, c.c());
+        return true;
+    }
+    case 3:
+    {
+        SmFilletErrorType code = (SmFilletErrorType)rd.idx();
+        SmFilletCornerType ct = (SmFilletCornerType)rd.idx();
+        SmFilStatus st = (SmFilStatus)rd.idx();
+        Str name = read_str(rd);
+        const SmVertex* v = ptr<const SmVertex>(rd.idx());
+        const SmSurface* s1 = ptr<const SmSurface>(rd.idx());
+        const SmSurface* s2 = ptr<const SmSurface>(rd.idx());
+        const SmFilletVertex* fv1 = ptr<const SmFilletVertex>(rd.idx());
+        const SmFilletVertex* fv2 = ptr<const SmFilletVertex>(rd.idx());
+        Str c = read_str(rd);
+        e.NoteError(code, ct, st, (TCHAR*)name.c(), v, s1, s2, fv1, fv2, c.c());
+        fv_set = true;
+        return true;
+    }
+    case 4:
+    {
+        SmFilletErrorType code = (SmFilletErrorType)rd.idx();
+        SmFilStatus st = (SmFilStatus)rd.idx();
+        SmFilletEdgeType et = (SmFilletEdgeType)rd.idx();
+        const SmFilletEdge* fe = ptr<const SmFilletEdge>(rd.idx());
+        Str name = read_str(rd);
+        Str c = read_str(rd);
+        e.NoteError(code, st, et, fe, name.c(), c.c());
+        return true;
+    }
+    case 5:
+    {
+        SmFilletErrorType code = (SmFilletErrorType)rd.idx();
+        SmFilStatus st = (SmFilStatus)rd.idx();
+        const SmEdge* edge = ptr<const SmEdge>(rd.idx());
+        SmTArray<SM_FILLETSURF_TYPE*> surfs;
+        SmTArray<SmBSplineCurve*> curves;
+        SmTArray<SmFilletEdge*> edges;
+        int64_t n = rd.idx();
+        for (int64_t i = 0; i < n; i++)
+            surfs.Add(ptr<SM_FILLETSURF_TYPE>(rd.idx()));
+        n = rd.idx();
+        for (int64_t i = 0; i < n; i++)
+            curves.Add(ptr<SmBSplineCurve>(rd.idx()));
+        n = rd.idx();
+        for (int64_t i = 0; i < n; i++)
+            edges.Add(ptr<SmFilletEdge>(rd.idx()));
+        double x = rd.num();
+        double y = rd.num();
+        double z = rd.num();
+        SmPoint3d at(x, y, z);
+        Str c = read_str(rd);
+        e.NoteError(code, st, edge, surfs, curves, edges, at, c.c());
+        loc_set = true;
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
+// `code status corner edge_type exec vertex edge side end has_fv [fv1 fv2] ns s* ne e* nc c*
+// has_loc [x y z] comment name`.
+void put_error(std::vector<double>& o, SmFilletErrorInfo& e, const void* self, bool fv_set, bool loc_set)
+{
+    o.push_back((double)e.GetErrorCode());
+    o.push_back((double)(e.*get(StatusTag())));
+    o.push_back((double)e.m_eCornerType);
+    o.push_back((double)e.m_eEdgeType);
+    o.push_back(hnd(e.m_pFilExec, self));
+    o.push_back(hnd(e.m_pFilletedVertex, self));
+    o.push_back(hnd(e.m_pFilletedEdge, self));
+    o.push_back(hnd(e.m_pSideFace, self));
+    o.push_back(hnd(e.m_pEndFace, self));
+    o.push_back(fv_set ? 1.0 : 0.0);
+    if (fv_set)
+    {
+        o.push_back(hnd(e.m_pFilletVertex1, self));
+        o.push_back(hnd(e.m_pFilletVertex2, self));
+    }
+    o.push_back((double)e.m_pFilletSurfaces.GetSize());
+    for (ULONG i = 0; i < e.m_pFilletSurfaces.GetSize(); i++)
+        o.push_back(hnd(e.m_pFilletSurfaces[i], self));
+    o.push_back((double)e.m_pFilletEdges.GetSize());
+    for (ULONG i = 0; i < e.m_pFilletEdges.GetSize(); i++)
+        o.push_back(hnd(e.m_pFilletEdges[i], self));
+    o.push_back((double)e.m_pFilletCurves.GetSize());
+    for (ULONG i = 0; i < e.m_pFilletCurves.GetSize(); i++)
+        o.push_back(hnd(e.m_pFilletCurves[i], self));
+    o.push_back(loc_set ? 1.0 : 0.0);
+    if (loc_set)
+    {
+        o.push_back(e.m_vLocation.x);
+        o.push_back(e.m_vLocation.y);
+        o.push_back(e.m_vLocation.z);
+    }
+    put_text(o, e.m_cComment);
+    put_text(o, e.m_cEntityName);
+}
+
+// Reads the protected members the constructor and the setters change.
+struct Exec : public SmFilletExecutive
+{
+    Exec(const SmContext& ctx, SmBrep* target) : SmFilletExecutive(ctx, target) {}
+
+    // `piecewise insertion global trimming classification target fillet n_corners n_solvers
+    // n_topo topo* n_fsg fsg* handler ignore_tangency approx_tol ang_tol has_pseudo
+    // has_attribute`, then the error info.
+    void put(std::vector<double>& o, bool fv_set, bool loc_set)
+    {
+        o.push_back(m_bDoPiecewiseMerge ? 1.0 : 0.0);
+        o.push_back(m_bDoTopologyInsertion ? 1.0 : 0.0);
+        o.push_back(m_bDoGlobalMerge ? 1.0 : 0.0);
+        o.push_back(m_bDoTrimming ? 1.0 : 0.0);
+        o.push_back(m_bDoClassification ? 1.0 : 0.0);
+        o.push_back(hnd(m_pTargetBrep, this));
+        o.push_back(hnd(m_pFilletBrep, this));
+        o.push_back((double)m_vFilletCorners.GetSize());
+        o.push_back((double)m_vFilletSolvers.GetSize());
+        o.push_back((double)m_vTopoEdges.GetSize());
+        for (ULONG i = 0; i < m_vTopoEdges.GetSize(); i++)
+            o.push_back(hnd(m_vTopoEdges[i], this));
+        o.push_back((double)m_vFSGs.GetSize());
+        for (ULONG i = 0; i < m_vFSGs.GetSize(); i++)
+            o.push_back(hnd(m_vFSGs[i], this));
+        o.push_back(hnd(m_pSelfIntersectionHandler, this));
+        o.push_back(m_vTI.m_bIgnoreTangency ? 1.0 : 0.0);
+        o.push_back(m_vTI.GetThisApproxTol3d());
+        o.push_back(m_vTI.GetThisAngTolRad());
+        o.push_back(m_pPseudoBrep != NULL ? 1.0 : 0.0);
+        o.push_back(m_pAttributeE != NULL ? 1.0 : 0.0);
+        put_error(o, m_sErrorInfo, this, fv_set, loc_set);
+    }
+
+    // The fake generator pointers must not reach the destructor's delete.
+    void drop_fsgs() { m_vFSGs.ReSet(); }
+};
+
+} // namespace
+
+SC_EXPORT int32_t sc_blend_fillet_executive_p1_object_eval(int32_t op, const double* in, int64_t n_in, double* out,
+                                                           int64_t cap, int64_t* out_len)
+{
+    (void)n_in;
+    SC_TRY
+    SmContext ctx;
+    std::vector<double> o;
+    Rd rd{in, 0};
+    bool fv_set = false;
+    bool loc_set = false;
+    if (op == 0)
+    {
+        int64_t exec = rd.idx();
+        SmFilletErrorInfo e(ptr<SmFilletExecutive>(exec));
+        int64_t calls = rd.idx();
+        for (int64_t i = 0; i < calls; i++)
+            note(rd, rd.idx(), e, fv_set, loc_set);
+        o.push_back(0.0);
+        put_error(o, e, NULL, fv_set, loc_set);
+    }
+    else
+    {
+        Exec x(ctx, ptr<SmBrep>(rd.idx()));
+        int64_t calls = rd.idx();
+        for (int64_t i = 0; i < calls; i++)
+        {
+            int64_t kind = rd.idx();
+            if (note(rd, kind, *x.GetFilletErrorInfo(), fv_set, loc_set))
+                continue;
+            switch (kind)
+            {
+            case 10:
+                x.SetDoGlobalMerge(rd.flag() ? TRUE : FALSE);
+                break;
+            case 11:
+                x.SetDoTrimming(rd.flag() ? TRUE : FALSE);
+                break;
+            case 12:
+                x.SetSelfIntersectionHandler(ptr<SmSelfIntersectionHandler>(rd.idx()));
+                break;
+            case 13:
+                x.AddFilletSurfaceGenerator(ptr<SmFilletSurfaceGenerator>(rd.idx()));
+                break;
+            case 14:
+                x.AddTopoEdges(ptr<SmFilletEdge>(rd.idx()));
+                break;
+            default:
+                x.RemoveFromTopoEdges(ptr<SmFilletEdge>(rd.idx()));
+                break;
+            }
+        }
+        o.push_back(0.0);
+        x.put(o, fv_set, loc_set);
+        x.drop_fsgs();
+    }
     return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len);
     SC_CATCH
 }

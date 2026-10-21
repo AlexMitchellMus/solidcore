@@ -1,9 +1,9 @@
-//! FFI wrappers for unit `blend.fillet_executive_p1` (the fillet laws). Shim:
-//! `harness/cpp/shim/blend_fillet_executive_p1.cpp`. Upstream: `SmFilletExecutive.cpp`
-//! (`SmFilletLaw`, `SmLinearFilletLaw`, `SmBSplineFilletLaw`: constructors, `Evaluate`,
-//! `IsLinearLaw`, `GetType`, `IsKindOf`, `GetExtendedCurve`).
+//! FFI wrappers for unit `blend.fillet_executive_p1`. Shim:
+//! `harness/cpp/shim/blend_fillet_executive_p1.cpp`. Upstream: `SmFilletExecutive.cpp`.
 //!
-//! Input layout (flat doubles, validated here):
+//! [`law_eval`] runs the fillet laws (`SmFilletLaw`, `SmLinearFilletLaw`,
+//! `SmBSplineFilletLaw`: constructors, `Evaluate`, `IsLinearLaw`, `GetType`, `IsKindOf`,
+//! `GetExtendedCurve`). Its input layout (flat doubles, validated here):
 //!
 //! ```text
 //! kind              0 linear `r0 r1`; 1 B-spline `n p m cpts(x y z w)... knots...`; 2 base
@@ -11,11 +11,65 @@
 //! ncalls            then per call `t i0 i1 reverse` (the interval, swapped if reversed)
 //! nk kinds[nk]      type codes for IsKindOf
 //! ```
+//!
+//! [`object_eval`] runs a script on an `SmFilletErrorInfo` ([`ObjectOp::ErrorScript`]:
+//! `exec ncalls call*`, the info built with `exec` as its executive) or on a new
+//! `SmFilletExecutive(ctx, target)` ([`ObjectOp::ExecScript`]: `target ncalls call*`).
+//! Handles are integers in `[0, MAX_HANDLE]` the shim turns into pointers it never
+//! dereferences (`0` is NULL); a text is `len c*` (`len = -1` is NULL; characters
+//! `1..=127`). Calls:
+//!
+//! ```text
+//! 0 code text                                             NoteError(eErrorCode, cComment)
+//! 1 edge status code text                                 NoteError(pBadEdge, eStatus, ...)
+//! 2 code status edge face fillet_edge surface text        NoteError(..., pSideFace, ...)
+//! 3 code corner status name vertex s1 s2 fv1 fv2 text     NoteError(..., cCornerName, ...)
+//! 4 code status fe_type fillet_edge name text             NoteError(..., cEdgeName, ...)
+//! 5 code status edge ns s* nc c* ne e* x y z text         NoteError(..., rTsectPos, ...)
+//! 10 flag | 11 flag | 12 h | 13 h | 14 h | 15 h           (ExecScript only) SetDoGlobalMerge,
+//!                     SetDoTrimming, SetSelfIntersectionHandler, AddFilletSurfaceGenerator,
+//!                     AddTopoEdges, RemoveFromTopoEdges
+//! ```
+//!
+//! Codes stay inside their enums (`SmFilletErrorType` 0-7, `SmFilStatus` 0-12,
+//! `SmFilletCornerType` 0-12, `SmFilletEdgeType` 0-14). Output: `0`, for `ExecScript`
+//! first `piecewise insertion global trimming classification target fillet n_corners
+//! n_solvers n_topo topo* n_fsg fsg* handler ignore_tangency approx_tol ang_tol
+//! has_pseudo has_attribute`, then the error info `code status corner edge_type exec
+//! vertex edge side end has_fv [fv1 fv2] ns s* ne e* nc c* has_loc [x y z] comment
+//! name` (texts as `len c*`; a handle `-1` is the executive itself; the fillet vertices
+//! and the location only once a call set them, being uninitialised before).
 use crate::units::blend_fillet_standard_solver_p1::{bcurve, Reader, MAX_ARRAY, MAX_CALLS};
 use crate::{call_with_buffer, FfiError};
 
+/// Largest handle.
+pub const MAX_HANDLE: usize = 1 << 20;
+/// Most calls in a script.
+pub const MAX_SCRIPT: usize = 64;
+/// Most entries of a list argument.
+pub const MAX_LIST: usize = 16;
+/// Longest text.
+pub const MAX_TEXT: usize = 1200;
+
+/// [`object_eval`] operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjectOp {
+    /// Calls on an `SmFilletErrorInfo`.
+    ErrorScript = 0,
+    /// Calls on a new `SmFilletExecutive`.
+    ExecScript = 1,
+}
+
 mod sys {
     extern "C" {
+        pub fn sc_blend_fillet_executive_p1_object_eval(
+            op: i32,
+            input: *const f64,
+            n_in: i64,
+            out: *mut f64,
+            cap: i64,
+            out_len: *mut i64,
+        ) -> i32;
         pub fn sc_blend_fillet_executive_p1_law_eval(
             input: *const f64,
             n_in: i64,
@@ -79,6 +133,121 @@ pub fn law_eval(input: &[f64]) -> Result<Vec<f64>, FfiError> {
         // shim honours the capacity; len is valid.
         unsafe {
             sys::sc_blend_fillet_executive_p1_law_eval(
+                input.as_ptr(),
+                input.len() as i64,
+                buf.as_mut_ptr(),
+                buf.len() as i64,
+                &raw mut *len,
+            )
+        }
+    })
+}
+
+fn handle(rd: &mut Reader<'_>) -> Result<(), FfiError> {
+    rd.index(MAX_HANDLE).map(|_| ())
+}
+
+fn handles(rd: &mut Reader<'_>) -> Result<(), FfiError> {
+    for _ in 0..rd.index(MAX_LIST)? {
+        handle(rd)?;
+    }
+    Ok(())
+}
+
+/// `len c*`: `-1` (NULL) or up to [`MAX_TEXT`] characters `1..=127` (no NUL, which would
+/// end the C string early).
+fn text(rd: &mut Reader<'_>) -> Result<(), FfiError> {
+    if rd.input.get(rd.at).copied() == Some(-1.0) {
+        rd.at += 1;
+        return Ok(());
+    }
+    for _ in 0..rd.index(MAX_TEXT)? {
+        if rd.index(127)? == 0 {
+            return Err(crate::units::blend_fillet_standard_solver_p1::bad("NUL in text"));
+        }
+    }
+    Ok(())
+}
+
+/// One call of the script; `exec` allows the executive calls.
+fn call(rd: &mut Reader<'_>, exec: bool) -> Result<(), FfiError> {
+    let (code, status, corner, fe_type) = (7, 12, 12, 14);
+    match rd.index(15)? {
+        0 => {
+            rd.index(code)?;
+            text(rd)
+        }
+        1 => {
+            handle(rd)?;
+            rd.index(status)?;
+            rd.index(code)?;
+            text(rd)
+        }
+        2 => {
+            rd.index(code)?;
+            rd.index(status)?;
+            for _ in 0..4 {
+                handle(rd)?;
+            }
+            text(rd)
+        }
+        3 => {
+            rd.index(code)?;
+            rd.index(corner)?;
+            rd.index(status)?;
+            text(rd)?;
+            for _ in 0..5 {
+                handle(rd)?;
+            }
+            text(rd)
+        }
+        4 => {
+            rd.index(code)?;
+            rd.index(status)?;
+            rd.index(fe_type)?;
+            handle(rd)?;
+            text(rd)?;
+            text(rd)
+        }
+        5 => {
+            rd.index(code)?;
+            rd.index(status)?;
+            handle(rd)?;
+            handles(rd)?;
+            handles(rd)?;
+            handles(rd)?;
+            rd.finites(3)?;
+            text(rd)
+        }
+        10 | 11 if exec => rd.flag().map(|_| ()),
+        12..=15 if exec => handle(rd),
+        _ => Err(crate::units::blend_fillet_standard_solver_p1::bad("bad call kind")),
+    }
+}
+
+/// Runs the script `input` of `op` (layout in the module docs) and returns the shim's
+/// output record.
+///
+/// # Errors
+///
+/// [`FfiError::InvalidArgument`] for input the shim must not see (unknown calls, codes
+/// outside their enums, oversized handles, lists or texts, NUL characters, non-finite
+/// locations); [`FfiError::Status`] for a shim failure.
+pub fn object_eval(op: ObjectOp, input: &[f64]) -> Result<Vec<f64>, FfiError> {
+    let mut rd = Reader { input, at: 0 };
+    handle(&mut rd)?;
+    for _ in 0..rd.index(MAX_SCRIPT)? {
+        call(&mut rd, op == ObjectOp::ExecScript)?;
+    }
+    rd.done()?;
+    call_with_buffer(16384, |buf, len| {
+        // SAFETY: input is valid for input.len() reads and holds exactly what the shim
+        // reads (validated above: every call, code, count and text the shim passes to
+        // upstream; the handles become pointers the calls only store and compare); buf
+        // is valid for buf.len() writes and the shim honours the capacity; len is valid.
+        unsafe {
+            sys::sc_blend_fillet_executive_p1_object_eval(
+                op as i32,
                 input.as_ptr(),
                 input.len() as i64,
                 buf.as_mut_ptr(),
