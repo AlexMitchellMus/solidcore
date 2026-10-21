@@ -80,8 +80,11 @@ mod tests {
     struct Model {
         k: Kernel,
         b: Brep,
-        /// Hand out the one B-rep as a scratch B-rep with a settable tolerance, so a
-        /// taper reaches its normal.
+        /// More B-reps, as ids 1, 2, … after `b` (id 0).
+        extra: Vec<Brep>,
+        /// The ids released through `delete_brep`.
+        deleted: Vec<BrepId>,
+        /// Hand out the one B-rep as a scratch B-rep, so a taper reaches its normal.
         scratch: bool,
     }
     fn none<T>() -> Result<T> {
@@ -98,16 +101,24 @@ mod tests {
             Ok(Self {
                 k: Kernel::default(),
                 b,
+                extra: Vec::new(),
+                deleted: Vec::new(),
                 scratch: false,
             })
         }
     }
     impl SweepAccess for Model {
-        fn brep(&self, _: BrepId) -> Result<&Brep> {
-            Ok(&self.b)
+        fn brep(&self, id: BrepId) -> Result<&Brep> {
+            match id.index() {
+                0 => Ok(&self.b),
+                i => self.extra.get(i as usize - 1).map_or_else(none, Ok),
+            }
         }
-        fn brep_mut(&mut self, _: BrepId) -> Result<&mut Brep> {
-            Ok(&mut self.b)
+        fn brep_mut(&mut self, id: BrepId) -> Result<&mut Brep> {
+            match id.index() {
+                0 => Ok(&mut self.b),
+                i => self.extra.get_mut(i as usize - 1).map_or_else(none, Ok),
+            }
         }
         fn kernel(&self, _: BrepId) -> Result<&Kernel> {
             Ok(&self.k)
@@ -141,13 +152,28 @@ mod tests {
         ) -> Result<T> {
             none()
         }
+        fn with_brep_notifications<T>(
+            &mut self,
+            _: BrepId,
+            _: impl FnOnce(&mut Brep, &mut NotifyEnv<'_>) -> Result<T>,
+        ) -> Result<T> {
+            none()
+        }
+        fn retain_hcr(&mut self, _: BrepId, _: crate::blend::hcr::Hcr) -> Result<BrepId> {
+            none()
+        }
+        fn hcr_session(&self, _: BrepId) -> Result<&crate::blend::hcr::Hcr> {
+            none()
+        }
         fn new_brep(&mut self, _: BrepId) -> Result<BrepId> {
             if self.scratch {
                 return Ok(B);
             }
             Err(SolidError::unported("SmBrep::SmBrep", "topology.brep_p3"))
         }
-        fn delete_brep(&mut self, _: BrepId) {}
+        fn delete_brep(&mut self, id: BrepId) {
+            self.deleted.push(id);
+        }
         fn delete_merge(&mut self, _: SweepMergeId) {}
         fn tag(&self, _: SweepEntity) -> Result<Option<TagData>> {
             none()
@@ -195,12 +221,6 @@ mod tests {
         }
     }
     impl PrimitiveCreationAccess for Model {
-        fn set_brep_tolerance(&mut self, _: BrepId, _: f64) -> Result<()> {
-            if self.scratch {
-                return Ok(());
-            }
-            none()
-        }
         fn copy_faces_into(&mut self, _: BrepId, _: &[FaceId], _: BrepId) -> Result<()> {
             none()
         }
@@ -364,6 +384,124 @@ mod tests {
         );
         assert_eq!(code(&pipe), Some(1006));
         assert!(stale.is_empty());
+        Ok(())
+    }
+
+    /// The model's B-rep (id 0) and `more` others (ids 1, 2, …), each with an infinite
+    /// region to tell it from an empty B-rep, and with its id plus one as its tolerance to
+    /// tell them apart (a new B-rep's key is always 0).
+    fn models(more: u32) -> Result<(Model, Vec<BrepId>)> {
+        let mut a = Model::new()?;
+        a.b.set_tolerance(1.0);
+        let mut ids = vec![B];
+        for i in 1..=more {
+            let mut b = Brep::new();
+            let region = b.add_region_record(Region {
+                in_brep: true,
+                ..Default::default()
+            })?;
+            b.set_infinite_region(Some(region));
+            b.set_tolerance(f64::from(i) + 1.0);
+            a.extra.push(b);
+            ids.push(BrepId::from_index(i));
+        }
+        Ok((a, ids))
+    }
+    fn keys(a: &Model, ids: &[BrepId]) -> Result<Vec<f64>> {
+        ids.iter()
+            .map(|&id| a.brep(id).map(Brep::tolerance))
+            .collect()
+    }
+    fn whole(a: &Model, id: BrepId) -> bool {
+        a.brep(id).is_ok_and(|b| b.infinite_region().is_some())
+    }
+
+    #[test]
+    fn the_tolerance_and_manifold_queries_call_the_brep_ports() -> Result<()> {
+        let mut a = Model::new()?;
+        a.set_brep_tolerance(B, 0.5)?;
+        assert_eq!(a.b.tolerance(), 0.5);
+        // zero takes the tolerance from the B-rep's box, which is not ported yet; p2's
+        // callers pass the result B-rep's own (positive) tolerance
+        let zero = a.set_brep_tolerance(B, 0.0);
+        assert!(matches!(&zero, Err(e) if e.is_unported()), "{zero:?}");
+        assert_eq!(a.b.tolerance(), 0.5);
+        // only the infinite region: not a solid
+        assert!(!a.is_manifold_solid(B)?);
+        Ok(())
+    }
+
+    #[test]
+    fn boolean_trees_checks_its_list_before_moving_a_brep() -> Result<()> {
+        let (mut a, ids) = models(1)?;
+        let before = keys(&a, &ids)?;
+        let mut empty = Vec::new();
+        assert_eq!(code(&a.boolean_trees(&mut empty, &[0])), Some(1007));
+        let mut twice = vec![ids[0], ids[0]];
+        assert_eq!(code(&a.boolean_trees(&mut twice, &[0, 1, -1])), Some(1007));
+        assert_eq!(twice, [ids[0], ids[0]]);
+        let mut unknown = vec![ids[0], BrepId::from_index(7)];
+        assert!(a.boolean_trees(&mut unknown, &[0]).is_err());
+        // a leaf past the list fails in the merge before it takes a B-rep: all go back
+        let mut both = ids.clone();
+        assert_eq!(code(&a.boolean_trees(&mut both, &[5])), Some(1007));
+        assert_eq!(both, ids);
+        assert_eq!(keys(&a, &ids)?, before);
+        assert!(whole(&a, ids[0]) && whole(&a, ids[1]));
+        assert!(a.deleted.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn boolean_trees_puts_the_breps_back_in_its_order() -> Result<()> {
+        // a tree of one leaf combines nothing: its B-rep comes first, then the unused
+        // ones in their order, as sOrderedBreps returns, and no slot is left over
+        let (mut a, ids) = models(2)?;
+        let before = keys(&a, &ids)?;
+        let mut list = ids.clone();
+        a.boolean_trees(&mut list, &[2])?;
+        assert_eq!(list, ids);
+        assert_eq!(keys(&a, &ids)?, [before[2], before[0], before[1]]);
+        assert!(a.deleted.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn a_failed_union_loses_the_breps_the_merge_took() -> Result<()> {
+        // both leaves move onto the merge's stack before the union defers (`SmMerge::SmMerge`,
+        // boolean.merge_p2); upstream would leak them, here they are gone, and the slots
+        // stay listed for the caller
+        let (mut a, ids) = models(1)?;
+        let mut list = ids.clone();
+        let union = a.boolean_trees(&mut list, &[0, 1, -1]);
+        assert!(matches!(&union, Err(e) if e.is_unported()), "{union:?}");
+        assert_eq!(list, ids);
+        assert!(!whole(&a, ids[0]) && !whole(&a, ids[1]));
+        assert!(a.deleted.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn a_line_paths_box_is_its_end_points_as_an_smline_gives() -> Result<()> {
+        // SmLine::CalculateBoundingBox: the box of the interval's two end points, not
+        // enlarged; the pipe's B-spline path takes the same box
+        use crate::nurbs::b_spline_curve::p2::BoundingBoxRequest;
+        let (start, end) = (Vec3::new(1.0, -2.0, 0.5), Vec3::new(-3.0, 4.0, 7.25));
+        let line = BSplineCurve::create_line_segment(3, start, end)?;
+        let request = BoundingBoxRequest {
+            normal: true,
+            ..BoundingBoxRequest::default()
+        };
+        let boxes = line.calculate_bounding_box(&line.natural_interval(), request)?;
+        let mut expected = crate::geom::extent3d::Extent3d::from_point(start);
+        expected.add_point(end);
+        let normal = boxes
+            .normal
+            .ok_or_else(|| SolidError::sm_err("no normal box"))?;
+        assert_eq!(
+            (normal.min(), normal.max()),
+            (expected.min(), expected.max())
+        );
         Ok(())
     }
 }

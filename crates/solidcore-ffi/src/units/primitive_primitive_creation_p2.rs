@@ -23,8 +23,11 @@
 //! than two curves (UB-111 for none; one curve can make the sliver test read past
 //! the split curve array, the dereference behind UB-112), a curve shorter than
 //! `2e-5` (UB-112) or curves its chaining deletes as duplicates and reads again
-//! (UB-50, both chaining passes; with the end cap at the offset end, any chain that
-//! encloses nothing), a planar path without path curves (`rPathCurves[0]`), skin
+//! (UB-50, both chaining passes, the reversed one where upstream may take it; with the
+//! end cap at the offset end, a closed chain whose short curve meets a long one at a
+//! corner sharper than `3e-5` radians, where upstream may reverse it), with the start cap
+//! curves that close a loop while an end meets no other end or more than one (UB-243,
+//! use after free), a planar path without path curves (`rPathCurves[0]`), skin
 //! profile counts past the curves (`r3DCurves[lCount]`), a partial cone or torus that
 //! sweeps a profile edge shorter than the zone tolerance (UB-215, use after free), and
 //! a sphere, torus or cone a few zone tolerances across, at any turn (HANG-35).
@@ -231,6 +234,10 @@ fn points(v: &[f64]) -> [V3; 3] {
     }
 }
 
+/// A curve in a chain: its start, end and mid points in chain direction, the record it
+/// came from, and whether the chain runs it backwards.
+type Link = ([V3; 3], usize, bool);
+
 /// One `SmCurve::FixChainCurvesList` pass as the taper calls it (`dTol = 2 * ZONE_TOL`,
 /// deleting duplicates), on the curves' start, end and mid points: the chains in
 /// upstream's order, their curves in its order and direction, or `None` when it
@@ -238,21 +245,21 @@ fn points(v: &[f64]) -> [V3; 3] {
 /// built so far, not another curve: a square with a repeated side deletes nothing,
 /// while a line from a chain's end back to its start, through its last link's mid
 /// point, is deleted.
-fn chain(curves: Vec<[V3; 3]>) -> Option<Vec<Vec<[V3; 3]>>> {
+fn chain(curves: Vec<Link>) -> Option<Vec<Vec<Link>>> {
     let tol2 = (2.0 * ZONE_TOL).powi(2);
-    let mut left: Vec<Option<[V3; 3]>> = curves.into_iter().map(Some).collect();
+    let mut left: Vec<Option<Link>> = curves.into_iter().map(Some).collect();
     let mut chains = Vec::new();
     for kk in 0..left.len() {
         let Some(first) = left[kk].take() else {
             continue;
         };
         let mut chained = vec![first];
-        let [mut start, mut end, mid] = first;
+        let ([mut start, mut end, mid], _, _) = first;
         let (mut mid_start, mut mid_end) = (mid, mid);
         loop {
             let (mut best, mut next) = (f64::MAX, None);
             for (j, slot) in left.iter().enumerate() {
-                let Some([s1, e1, m1]) = *slot else {
+                let Some(([s1, e1, m1], _, _)) = *slot else {
                     continue;
                 };
                 let (s1e, e1e) = (dist2(s1, end), dist2(e1, end));
@@ -286,16 +293,18 @@ fn chain(curves: Vec<[V3; 3]>) -> Option<Vec<Vec<[V3; 3]>>> {
             let Some((j, link)) = next else {
                 break;
             };
-            let Some([s1, e1, m1]) = left[j].take() else {
+            let Some(([s1, e1, m1], record, backwards)) = left[j].take() else {
                 break;
             };
             // 1 and 2 add at the end, 3 and 4 before the start; 2 and 4 reverse it
-            let (s1, e1) = if link % 2 == 0 { (e1, s1) } else { (s1, e1) };
+            let flip = link % 2 == 0;
+            let (s1, e1) = if flip { (e1, s1) } else { (s1, e1) };
+            let entry = ([s1, e1, m1], record, backwards != flip);
             if link <= 2 {
-                chained.push([s1, e1, m1]);
+                chained.push(entry);
                 (end, mid_end) = (e1, m1);
             } else {
-                chained.insert(0, [s1, e1, m1]);
+                chained.insert(0, entry);
                 (start, mid_start) = (s1, m1);
             }
         }
@@ -304,39 +313,271 @@ fn chain(curves: Vec<[V3; 3]>) -> Option<Vec<Vec<[V3; 3]>>> {
     Some(chains)
 }
 
-/// Whether a chain that closes (to the chaining tolerance) is narrower than that
-/// tolerance: the vector area of the polygon through its curves' start and mid
-/// points against its length. An open chain, such as a repeated side left over from
-/// a square, is not tested.
-fn encloses_nothing(chain: &[[V3; 3]]) -> bool {
-    let (Some(&[start, ..]), Some(&[_, end, _])) = (chain.first(), chain.last()) else {
-        return false;
+/// The sharpest corner the offset end cap may not survive (radians), where a short curve
+/// meets one more than [`SHORT_AGAINST_LONG`] times longer. Probed natively at caps 2:
+/// slivers whose short link meets the long side at up to 1e-6 crash (1e-4 wide on a 100
+/// side, 1e-3 on 1000), from 3e-6 they run, at heights 1 to 100 and drafts from -45 to 45
+/// degrees; the margin is tenfold. A needle's tip, where two long sides meet even more
+/// sharply, ran in every probe.
+const SHARPEST_CAPPED_CORNER: f64 = 3e-5;
+
+/// How much longer the other curve at a corner is when the short one makes the corner
+/// count: links of up to 5e-4 of the long side crashed, 1e-3 ran; twentyfold margin.
+const SHORT_AGAINST_LONG: f64 = 100.0;
+
+/// A record's unit tangents at its start and end, in chain direction: a line's
+/// direction, or an arc's (it turns from its start angle to its end angle about +Z of
+/// its frame) at those angles. `None` for a line without length.
+fn end_tangents(v: &[f64], backwards: bool) -> Option<(V3, V3)> {
+    let (start, end) = match v {
+        [kind, x, y, z, a, b, c] if *kind == 0.0 => {
+            let d = sub([*a, *b, *c], [*x, *y, *z]);
+            let length = norm(d);
+            if length.is_nan() || length <= 0.0 {
+                return None;
+            }
+            let u = [d[0] / length, d[1] / length, d[2] / length];
+            (u, u)
+        }
+        [_, _, _, _, _, b, c] => {
+            let sense = if c >= b { 1.0 } else { -1.0 };
+            let at = |deg: f64| {
+                let (sin, cos) = deg.to_radians().sin_cos();
+                [-sin * sense, cos * sense, 0.0]
+            };
+            (at(*b), at(*c))
+        }
+        _ => return None,
+    };
+    let back = |t: V3| [-t[0], -t[1], -t[2]];
+    Some(if backwards {
+        (back(end), back(start))
+    } else {
+        (start, end)
+    })
+}
+
+/// The sharpest corner of a chain that closes (to the chaining tolerance) where a curve
+/// meets one more than [`SHORT_AGAINST_LONG`] times longer (lengths between their ends),
+/// in radians: the angle between the way back along the arriving curve and the leaving
+/// curve (0 where the chain turns straight back), the closing joint too. `None` for a
+/// chain that stays open or has no such corner; 0 when a tangent cannot be taken.
+fn sharpest_corner(chain: &[Link], records: &[&[f64]]) -> Option<f64> {
+    let (Some(&([start, ..], _, _)), Some(&([_, end, _], _, _))) = (chain.first(), chain.last())
+    else {
+        return None;
     };
     if dist2(start, end) >= (2.0 * ZONE_TOL).powi(2) {
+        return None;
+    }
+    let tangents: Option<Vec<(V3, V3)>> = chain
+        .iter()
+        .map(|&(_, record, backwards)| records.get(record).and_then(|r| end_tangents(r, backwards)))
+        .collect();
+    let Some(tangents) = tangents else {
+        return Some(0.0);
+    };
+    let lengths: Vec<f64> = chain
+        .iter()
+        .map(|&([s, e, _], _, _)| norm(sub(e, s)))
+        .collect();
+    let mut sharpest = None;
+    for (k, &(_, arriving)) in tangents.iter().enumerate() {
+        let next = (k + 1) % tangents.len();
+        let (Some(&(leaving, _)), Some(&a), Some(&b)) =
+            (tangents.get(next), lengths.get(k), lengths.get(next))
+        else {
+            return Some(0.0);
+        };
+        if a.max(b) <= SHORT_AGAINST_LONG * a.min(b) {
+            continue;
+        }
+        let back = [-arriving[0], -arriving[1], -arriving[2]];
+        let cos =
+            (back[0] * leaving[0] + back[1] * leaving[1] + back[2] * leaving[2]).clamp(-1.0, 1.0);
+        let angle = cos.acos();
+        sharpest = Some(sharpest.map_or(angle, |s: f64| s.min(angle)));
+    }
+    sharpest
+}
+
+/// The points `SmCurve::ComputeCrvsNormal` evaluates on a record, in chain direction:
+/// a line (`CreateLineSegment`, two control points) at its ends, an arc
+/// (`CreateCircleSegment`, quadratic) at six even parameters, taken here at six even
+/// angles (its mid parameter is its mid angle; the other four lie within about a degree).
+fn samples(v: &[f64], backwards: bool) -> Vec<V3> {
+    let mut points = match v {
+        [kind, x, y, z, a, b, c] if *kind == 0.0 => vec![[*x, *y, *z], [*a, *b, *c]],
+        [_, x, y, z, r, b, c] => (0..=5)
+            .map(|i| {
+                let (sin, cos) = (b + (c - b) * f64::from(i) / 5.0).to_radians().sin_cos();
+                [x + r * cos, y + r * sin, *z]
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    if backwards {
+        points.reverse();
+    }
+    points
+}
+
+/// Whether upstream may reverse the chained curves: `CreateTaperExtrude` takes its second
+/// pass when their computed normal is within 1e-4 radians of antiparallel to the supplied
+/// one (`SmPrimitiveCreation.cpp:3693-3713`). The normal is `ComputeCrvsNormal`'s sum of
+/// the cross products of consecutive sample chords, plus the closing corner when the
+/// last point equals the first. It is false only when that sum surely points along
+/// `normal`: a turn inside an arc keeps its sign however the arc is sampled, and a corner
+/// between two lines is exact, while a corner at an arc within 30 degrees of straight or
+/// of turning back, and the closing corner of a chain that ends where it starts, may take
+/// either sign; those count against it at full size, and every other term at a fifth of
+/// its size.
+fn may_reverse(chains: &[Vec<Link>], records: &[&[f64]], normal: &[f64]) -> bool {
+    let (Some(&nx), Some(&ny), Some(&nz)) = (normal.first(), normal.get(1), normal.get(2)) else {
+        return true;
+    };
+    let length = (nx * nx + ny * ny + nz * nz).sqrt();
+    if length.is_nan() || length <= 0.0 {
+        return true;
+    }
+    let n = [nx / length, ny / length, nz / length];
+    let dot = |a: V3| a[0] * n[0] + a[1] * n[1] + a[2] * n[2];
+    // each chord with the curve it belongs to and whether that curve is an arc
+    let mut chords: Vec<(V3, usize, bool)> = Vec::new();
+    let (mut first, mut last) = (None, None);
+    for (k, &(_, record, backwards)) in chains.iter().flatten().enumerate() {
+        let Some(r) = records.get(record) else {
+            return true;
+        };
+        let arc = r.first() != Some(&0.0);
+        let points = samples(r, backwards);
+        first = first.or_else(|| points.first().copied());
+        last = points.last().copied().or(last);
+        for pair in points.windows(2) {
+            chords.push((sub(pair[1], pair[0]), k, arc));
+        }
+    }
+    let turn = |a: V3, b: V3| {
+        let (la, lb) = (norm(a), norm(b));
+        if la > 0.0 && lb > 0.0 {
+            ((a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / (la * lb))
+                .clamp(-1.0, 1.0)
+                .acos()
+        } else {
+            0.0
+        }
+    };
+    let near = 30f64.to_radians();
+    let (mut sure, mut slack) = (0.0, 0.0);
+    for pair in chords.windows(2) {
+        let ((v1, k1, arc1), (v2, k2, arc2)) = (pair[0], pair[1]);
+        let t = cross(v1, v2);
+        let angle = turn(v1, v2);
+        let unsure =
+            k1 != k2 && (arc1 || arc2) && (angle < near || angle > std::f64::consts::PI - near);
+        if unsure {
+            slack += norm(t);
+        } else {
+            sure += dot(t);
+            slack += 0.2 * norm(t);
+        }
+    }
+    // the closing corner, which upstream adds only when the last point equals the first:
+    // possible only when they are within the chaining tolerance here
+    let closes =
+        matches!((first, last), (Some(a), Some(b)) if dist2(a, b) < (2.0 * ZONE_TOL).powi(2));
+    if let (true, Some(&(end, ..)), Some(&(start, ..))) = (closes, chords.last(), chords.first()) {
+        slack += norm(cross(end, start));
+    }
+    sure <= slack
+}
+
+/// Ends this near meet: the tolerance the taper chains its curves with (`2 * ZONE_TOL`), and
+/// the shortest curve kept here, so no curve's own two ends meet.
+const JOIN: f64 = 2.0 * ZONE_TOL;
+
+/// The root of `i` in a union-find over `root`, halving the path on the way.
+fn find_root(root: &mut [usize], mut i: usize) -> usize {
+    while root[i] != i {
+        root[i] = root[root[i]];
+        i = root[i];
+    }
+    i
+}
+
+/// UB-243 in `CreateTaperExtrude`'s start cap (`caps` 1 or 3): `CreatePlanarFaceWith3DCurves`
+/// needs each curve end to meet exactly one other (`SmBrep.cpp:3800-3801`). Otherwise it can
+/// fail after building edges on the input curves, and the taper, taking the failure for a
+/// missing cap, deletes curves those edges still use (SIGSEGV in `SmEdgeuse::~SmEdgeuse`).
+/// Probed natively, every crash had a closed loop among the curves and an end that met no
+/// other end or more than one (a tail into a square, two squares at a corner, a spike from a
+/// corner); curves that close no loop fail first and harmlessly, and so do clean loops, a
+/// self-crossing bow-tie too. A repeat of another curve (the same ends either way and the same
+/// mid point) is left out first: a square with a repeated or reversed side ran in every probe.
+/// So, where the curves close a loop, every end must meet exactly one other within [`JOIN`].
+fn start_cap_is_unsafe(records: &[&[f64]]) -> bool {
+    let joined = |a: V3, b: V3| dist2(a, b) < JOIN * JOIN;
+    let all: Vec<[V3; 3]> = records.iter().map(|r| points(r)).collect();
+    let mut kept: Vec<[V3; 3]> = Vec::with_capacity(all.len());
+    for &[s, e, m] in &all {
+        let repeat = kept.iter().any(|&[s1, e1, m1]| {
+            joined(m, m1) && ((joined(s, s1) && joined(e, e1)) || (joined(s, e1) && joined(e, s1)))
+        });
+        if !repeat {
+            kept.push([s, e, m]);
+        }
+    }
+    let ends: Vec<V3> = kept.iter().flat_map(|&[s, e, _]| [s, e]).collect();
+    let loose = ends.iter().enumerate().any(|(i, &p)| {
+        ends.iter()
+            .enumerate()
+            .filter(|&(j, &q)| j != i && joined(p, q))
+            .count()
+            != 1
+    });
+    if !loose {
         return false;
     }
-    let points: Vec<V3> = chain.iter().flat_map(|&[s, _, m]| [s, m]).collect();
-    let (mut area, mut length) = ([0.0; 3], 0.0);
-    for (i, &p) in points.iter().enumerate() {
-        let q = points[(i + 1) % points.len()];
-        let c = cross(p, q);
-        area = [area[0] + c[0], area[1] + c[1], area[2] + c[2]];
-        length += norm(sub(q, p));
+    // a loop closes when a curve joins two ends already connected (union-find over the ends)
+    let mut root: Vec<usize> = (0..ends.len()).collect();
+    for i in 0..ends.len() {
+        for j in i + 1..ends.len() {
+            if joined(ends[i], ends[j]) {
+                let (a, b) = (find_root(&mut root, i), find_root(&mut root, j));
+                root[a] = b;
+            }
+        }
     }
-    0.5 * norm(area) < 2.0 * ZONE_TOL * length
+    let mut curve_root: Vec<usize> = (0..ends.len()).collect();
+    for k in 0..kept.len() {
+        let (a, b) = (find_root(&mut root, 2 * k), find_root(&mut root, 2 * k + 1));
+        let (a, b) = (find_root(&mut curve_root, a), find_root(&mut curve_root, b));
+        if a == b {
+            return true;
+        }
+        curve_root[a] = b;
+    }
+    false
 }
 
 /// UB-50 in `CreateTaperExtrude`: it first chains its curves. With a supplied normal
 /// it may reverse them all and chain again, depending on their computed normal; that
-/// second pass is checked whenever a normal is supplied, so a few inputs it would not
-/// reverse are refused too. The end cap at the offset end (`caps` 2 or 3) chains the
-/// trimmed offset curves through a copy of their list, so a curve deleted there is
-/// freed again at cleanup; which offsets coincide cannot be told without building
-/// them, so with that cap a closed chain enclosing nothing (every such probe that
-/// crashed) is refused. The offsets' chaining before the caps (`SmPrimitiveCreation.cpp:3884`)
-/// is not checked.
+/// second pass is checked unless the computed normal surely points along the supplied
+/// one ([`may_reverse`]), so a few inputs it would not reverse are refused too. The end
+/// cap at the offset end (`caps` 2 or 3) chains the trimmed offset curves through a copy
+/// of their list, so a curve deleted there is freed again at cleanup; which offsets
+/// coincide cannot be told without building them, so with that cap, where upstream may
+/// reverse the curves (every such probe that crashed did), a closed chain with a short
+/// curve meeting a long one at a corner sharper than [`SHARPEST_CAPPED_CORNER`] (the
+/// slivers and back-and-forth loops of those probes) is refused. The offsets' chaining before the caps
+/// (`SmPrimitiveCreation.cpp:3884`) is not checked.
 fn taper_is_unsafe(caps: f64, normal: &[f64], records: &[&[f64]]) -> bool {
-    let Some(chains) = chain(records.iter().map(|r| points(r)).collect()) else {
+    let links = records
+        .iter()
+        .enumerate()
+        .map(|(i, r)| (points(r), i, false))
+        .collect();
+    let Some(chains) = chain(links) else {
         return true;
     };
     let supplied = normal.iter().map(|v| v * v).sum::<f64>() >= 0.00001;
@@ -344,11 +585,17 @@ fn taper_is_unsafe(caps: f64, normal: &[f64], records: &[&[f64]]) -> bool {
         chains
             .iter()
             .flatten()
-            .map(|&[s, e, m]| [e, s, m])
+            .map(|&([s, e, m], record, backwards)| ([e, s, m], record, !backwards))
             .collect()
     };
-    (supplied && chain(reversed()).is_none())
-        || (caps >= 2.0 && chains.iter().any(|c| encloses_nothing(c)))
+    let reverses = supplied && may_reverse(&chains, records, normal);
+    ((caps == 1.0 || caps == 3.0) && start_cap_is_unsafe(records))
+        || (reverses && chain(reversed()).is_none())
+        || (caps >= 2.0
+            && reverses
+            && chains
+                .iter()
+                .any(|c| sharpest_corner(c, records).is_some_and(|a| a < SHARPEST_CAPPED_CORNER)))
 }
 
 /// Validate the layout, flags, counts and the inputs upstream cannot run safely
@@ -471,7 +718,11 @@ mod tests {
     }
 
     fn taper(caps: f64, normal_z: f64, curves: &[[f64; 7]]) -> Result<(), FfiError> {
-        let mut d = vec![0., 1., 5., caps, 0., 0., normal_z, 0.];
+        taper_at(5., caps, normal_z, curves)
+    }
+
+    fn taper_at(draft: f64, caps: f64, normal_z: f64, curves: &[[f64; 7]]) -> Result<(), FfiError> {
+        let mut d = vec![0., 1., draft, caps, 0., 0., normal_z, 0.];
         d.extend(curves.iter().flatten());
         validate(8, &d)
     }
@@ -511,16 +762,36 @@ mod tests {
         }
         // a line and its reverse that the first pass chains apart: the reversed second
         // pass deletes one, and segfaults natively under the normal the curves wind
-        // against (-Z). Under +Z upstream does not take that pass and runs, but the
-        // pass is checked for any supplied normal; a computed normal runs and is kept
+        // against (-Z), at every cap. Under +Z and a computed normal upstream does not
+        // take that pass and runs; the guard tells that from the curves' normal
         let apart = [
             line([0., 1., 0.], [0., 0., 0.]),
             line([1., 1., 0.], [0., 1., 0.]),
             line([0., 1., 0.], [1., 1., 0.]),
         ];
-        assert!(taper(1., -1., &apart).is_err());
-        assert!(taper(1., 1., &apart).is_err());
-        assert!(taper(1., 0., &apart).is_ok());
+        for caps in [0., 1., 2., 3.] {
+            assert!(taper(caps, -1., &apart).is_err());
+            assert!(taper(caps, 1., &apart).is_ok());
+            assert!(taper(caps, 0., &apart).is_ok());
+        }
+        // a half circle with its chord both ways: the same under -Z (segfaults natively),
+        // and it runs under +Z and a computed normal; with one chord either way it runs
+        // under every normal
+        let (ab, ba) = (
+            line([1., 0., 0.], [-1., 0., 0.]),
+            line([-1., 0., 0.], [1., 0., 0.]),
+        );
+        for caps in [0., 1., 2., 3.] {
+            for curves in [[arc, ab, ba], [arc, ba, ab]] {
+                assert!(taper(caps, -1., &curves).is_err());
+                assert!(taper(caps, 1., &curves).is_ok());
+                assert!(taper(caps, 0., &curves).is_ok());
+            }
+            for z in [-1., 0., 1.] {
+                assert!(taper(caps, z, &[arc, ab]).is_ok());
+                assert!(taper(caps, z, &[arc, ba]).is_ok());
+            }
+        }
         // a link reversed as it joins decides the next duplicate test: these chain
         // apart and run natively (a replay that kept the link's direction deletes)
         let turned = [
@@ -529,11 +800,11 @@ mod tests {
             line([0., 1., 0.], [0.5, 0., 0.]),
         ];
         assert!(taper(1., 0., &turned).is_ok());
-        // the end cap at the offset end chains the offsets of a loop that encloses
-        // nothing: the short link's loop at side 100 under -Z frees a curve twice
-        // natively (caps 2 and 3, not 0 and 1); every closed chain that narrow is
-        // refused with that cap, the short link at side 1 under +Z too, which runs.
-        // The open chain of the line and its reverse is not tested, and runs
+        // the end cap at the offset end chains the offsets: the short link's
+        // back-and-forth loop at side 100 under -Z frees a curve twice natively (caps 2
+        // and 3, not 0 and 1). A loop of no area may be reversed under either normal, so
+        // with that cap it is refused under both, the short link at side 1 under +Z too,
+        // which runs. The open chain of the line and its reverse is not tested, and runs
         let far = [
             line([0., 0., 0.], [5e-5, 0., 0.]),
             line([5e-5, 0., 0.], [100., 0., 0.]),
@@ -545,6 +816,39 @@ mod tests {
         }
         assert!(taper(1., -1., &far).is_ok());
         assert!(taper(3., 0., &apart).is_ok());
+        // a sliver whose 1e-3 link meets the 100 side at 1e-6 radians segfaults natively
+        // with that cap under -Z at a -24.9 degree draft (from 3e-6 it runs): refused
+        // where upstream may reverse the curves, kept under +Z, where it runs, and
+        // without the cap
+        let sliver = [
+            line([0., 0., 0.], [1e-3, 0., 0.]),
+            line([1e-3, 0., 0.], [100., 1e-4, 0.]),
+            line([100., 1e-4, 0.], [0., 0., 0.]),
+        ];
+        for caps in [2., 3.] {
+            assert!(taper_at(-24.9, caps, -1., &sliver).is_err());
+            assert!(taper_at(-24.9, caps, 1., &sliver).is_ok());
+            assert!(taper_at(-24.9, caps, 0., &sliver).is_ok());
+        }
+        assert!(taper_at(-24.9, 1., -1., &sliver).is_ok());
+        // a triangle 5e-5 tall on a side of 1 runs natively with both caps under every
+        // normal, and is kept; so is a needle whose two long sides meet more sharply
+        let low = [
+            line([0., 0., 0.], [1., 0., 0.]),
+            line([1., 0., 0.], [0.5, 5e-5, 0.]),
+            line([0.5, 5e-5, 0.], [0., 0., 0.]),
+        ];
+        let needle = [
+            line([0., 0., 0.], [1e-3, 0., 0.]),
+            line([1e-3, 0., 0.], [100., 1., 0.]),
+            line([100., 1., 0.], [0., 0., 0.]),
+        ];
+        for caps in [2., 3.] {
+            for z in [-1., 0., 1.] {
+                assert!(taper(caps, z, &low).is_ok());
+                assert!(taper_at(-24.9, caps, z, &needle).is_ok());
+            }
+        }
         // a square with a repeated or reversed side deletes nothing in either pass,
         // keeps its area and runs natively with both caps, as do two halves of a
         // circle and a half circle's chord
@@ -565,6 +869,116 @@ mod tests {
         }
         assert!(taper(3., 1., &[arc, [1., 0., 0., 0., 1., 180., 360.]]).is_ok());
         assert!(taper(3., 1., &[arc, line([-1., 0., 0.], [1., 0., 0.])]).is_ok());
+    }
+
+    #[test]
+    fn a_start_cap_on_a_loop_with_a_loose_or_crowded_end_is_rejected() {
+        // UB-243: each segfaults natively with the start cap (caps 1 and 3) under one normal
+        // or another (fuzz00880's tail into a unit square ending at its corner, the same tail
+        // stopping 1e-3 short and two squares at a corner under +Z and a computed normal, a
+        // spike into the square from a corner under -Z), and is refused under every normal
+        let ln = |a: [f64; 2], b: [f64; 2]| line([a[0], a[1], 0.], [b[0], b[1], 0.]);
+        let square = [
+            ln([1., 0.], [1., 1.]),
+            ln([1., 1.], [0., 1.]),
+            ln([0., 1.], [0., 0.]),
+            ln([0., 0.], [1., 0.]),
+        ];
+        let with = |first: &[[f64; 7]], last: &[[f64; 7]]| [first, &square[..], last].concat();
+        let lollipop = with(&[ln([0., 43.], [1., 0.])], &[]);
+        let short_tail = with(&[ln([0., 10.], [1.001, 0.])], &[]);
+        let spike = with(&[], &[ln([1., 0.], [0.3, 0.6])]);
+        let other = [
+            ln([2., 1.], [2., 2.]),
+            ln([2., 2.], [1., 2.]),
+            ln([1., 2.], [1., 1.]),
+            ln([1., 1.], [2., 1.]),
+        ];
+        let corner = with(&[], &other);
+        // a half circle across a side shares its ends but not its mid point, so it is no
+        // repeat: it segfaults natively under every normal, bulging out or in
+        let across = with(&[], &[[1., 0.5, 0., 0., 0.5, 180., 360.]]);
+        for curves in [&lollipop, &short_tail, &spike, &corner, &across] {
+            for caps in [1., 3.] {
+                for z in [-1., 0., 1.] {
+                    assert!(taper(caps, z, curves).is_err());
+                }
+            }
+            // without the start cap they run natively and are kept
+            for caps in [0., 2.] {
+                assert!(taper(caps, 1., curves).is_ok());
+            }
+        }
+        // kept with the start cap, each running natively: the square, a self-crossing
+        // bow-tie, curves that close no loop (an open crossing, a tail into an open C),
+        // two squares apart, and a square with a repeated or reversed side
+        let bowtie = [
+            ln([0., 0.], [1., 1.]),
+            ln([1., 1.], [1., 0.]),
+            ln([1., 0.], [0., 1.]),
+            ln([0., 1.], [0., 0.]),
+        ];
+        let open_x = [
+            ln([0., 0.], [1., 1.]),
+            ln([1., 1.], [1., 0.]),
+            ln([1., 0.], [0., 1.]),
+        ];
+        let open_c = [ln([0., 43.], [1., 0.]), square[0], square[1], square[2]];
+        let apart: Vec<[f64; 7]> = [
+            &square[..],
+            &other.map(|r| [r[0], r[1] + 1., r[2], r[3], r[4] + 1., r[5], r[6]]),
+        ]
+        .concat();
+        let repeated = with(&[], &[square[0]]);
+        let reversed = with(&[], &[ln([1., 1.], [1., 0.])]);
+        for curves in [
+            &square[..],
+            &bowtie,
+            &open_x,
+            &open_c,
+            &apart,
+            &repeated,
+            &reversed,
+        ] {
+            for caps in [1., 3.] {
+                assert!(taper(caps, 1., curves).is_ok());
+                assert!(taper(caps, 0., curves).is_ok());
+            }
+        }
+        // a third end needs to be within the chaining tolerance to crowd a corner: 4e-5 off
+        // it is loose, so the lollipop is still refused (it segfaults natively too); a
+        // separate square 4e-5 off the corner leaves every end of both squares met by
+        // exactly one other and is kept (it runs)
+        let near = with(&[ln([0., 43.], [1. + 4e-5, 0.])], &[]);
+        assert!(taper(1., 1., &near).is_err());
+        let off = other.map(|r| [r[0], r[1] + 4e-5, r[2], r[3], r[4] + 4e-5, r[5], r[6]]);
+        assert!(taper(1., 1., &[&square[..], &off].concat()).is_ok());
+    }
+
+    #[test]
+    fn a_corner_at_an_arc_near_turning_back_counts_against_the_normal() {
+        // a shallow arc and its chord turn back at both ends (within 30 degrees), where the
+        // sampled chords may not match upstream's: under its own normal the sum is not
+        // sure, so the second pass stays checked; a half circle's corners are square, so
+        // under its own normal it is sure
+        let chained = |records: &[&[f64]]| {
+            let links = records
+                .iter()
+                .enumerate()
+                .map(|(i, r)| (points(r), i, false))
+                .collect();
+            chain(links).unwrap_or_default()
+        };
+        let shallow_arc = [1., 0., 0., 0., 1., 0., 20.];
+        let (s, e) = ((20f64).to_radians().cos(), (20f64).to_radians().sin());
+        let shallow_chord = line([s, e, 0.], [1., 0., 0.]);
+        let shallow: [&[f64]; 2] = [&shallow_arc, &shallow_chord];
+        assert!(may_reverse(&chained(&shallow), &shallow, &[0., 0., 1.]));
+        let half_arc = [1., 0., 0., 0., 1., 0., 180.];
+        let half_chord = line([-1., 0., 0.], [1., 0., 0.]);
+        let half: [&[f64]; 2] = [&half_arc, &half_chord];
+        assert!(!may_reverse(&chained(&half), &half, &[0., 0., 1.]));
+        assert!(may_reverse(&chained(&half), &half, &[0., 0., -1.]));
     }
 
     fn primitive(op: i32, sizes: &[f64], start: f64, end: f64) -> Result<(), FfiError> {

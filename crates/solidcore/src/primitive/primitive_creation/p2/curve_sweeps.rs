@@ -12,8 +12,10 @@
 //! A missing edge curve (a null dereference upstream) and a failed curve copy
 //! (a null `Trim` target upstream) are errors. The pipe's circle stays a null
 //! profile slot when it cannot be built, as upstream ignores that status. The
-//! path's box uses the B-spline override, as the typed path is a B-spline.
-//! No recursion.
+//! path's box uses the B-spline override, as the typed path is a B-spline; for a
+//! line path that override evaluates the interval's end points, as
+//! `SmLine::CalculateBoundingBox` does (`SmLine.cpp:605-657`), so the box is the
+//! same. No recursion.
 
 use super::PrimitiveCreationAccess;
 use crate::curve::curve::Curve;

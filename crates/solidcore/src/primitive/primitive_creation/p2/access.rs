@@ -7,8 +7,9 @@
 //! | [`PrimitiveCreationAccess`] | B-rep, face, merge and stitching services |
 //!
 //! Deviations: extends p3's [`PrimitiveAccess`] as that trait extends
-//! `SweepAccess`. Defaults call the ported services (`topology.face_p3`,
-//! `topology.brep_p5`) and defer only callees whose unit is not ported yet;
+//! `SweepAccess`. Defaults call the ported services (`topology.brep_p2`,
+//! `topology.face_p3`, `topology.brep_p5`, `boolean.merge_p3` through
+//! `boolean::api_brep`) and defer only callees whose unit is not ported yet;
 //! outputs no p2 caller reads (stitch counts and gaps) are not returned.
 
 use crate::curve::composite_curve::OffsetMapAttribute;
@@ -53,14 +54,15 @@ pub trait PrimitiveCreationAccess: PrimitiveAccess {
         approx_tol: f64,
     ) -> Result<()>;
 
-    /// Set the B-rep's zone tolerance (`SmBrep::SetTolerance(tol)`).
-    fn set_brep_tolerance(&mut self, brep: BrepId, tolerance: f64) -> Result<()> {
-        let _ = (brep, tolerance);
-        // UNPORTED(topology.brep_p2): SmBrep::SetTolerance
-        Err(SolidError::unported(
-            "SmBrep::SetTolerance",
-            "topology.brep_p2",
-        ))
+    /// Set the B-rep's zone tolerance (`SmBrep::SetTolerance(tol)`, with its defaults:
+    /// `bUpdateOnlyIfLarger` and `bCascadeToBndries` `TRUE`, `SmBrep.h:700-702`).
+    fn set_brep_tolerance(&mut self, brep: BrepId, tolerance: f64) -> Result<()>
+    where
+        Self: Sized,
+    {
+        self.with_primitive_brep(brep, |k, b| {
+            crate::topology::brep::p2::set_tolerance(k, b, tolerance, true, true)
+        })
     }
     /// Shrink every face's surface to its UV trim curves and every edge's curve to
     /// the edge (`SmBrep::ShrinkGeometry`).
@@ -109,21 +111,69 @@ pub trait PrimitiveCreationAccess: PrimitiveAccess {
     }
     /// Whether the B-rep is a closed manifold solid (`SmBrep::IsManifoldSolid`).
     fn is_manifold_solid(&mut self, brep: BrepId) -> Result<bool> {
-        let _ = brep;
-        // UNPORTED(topology.brep_p2): SmBrep::IsManifoldSolid
-        Err(SolidError::unported(
-            "SmBrep::IsManifoldSolid",
-            "topology.brep_p2",
-        ))
+        crate::topology::brep::p2::is_manifold_solid(self.brep(brep)?)
     }
     /// Combine `breps` by the postfix tree `tree`, leaving the result first
-    /// (`SmMerge::BooleanTrees`).
+    /// (`SmMerge::BooleanTrees`). The B-reps move out of their slots into
+    /// `boolean::api_brep::boolean_trees` and come back in its order (one result per
+    /// tree, then the unused B-reps, as `sOrderedBreps` returns) in the first slots of
+    /// `breps`; the slots left over are released and dropped from `breps`.
+    ///
+    /// # Errors
+    ///
+    /// `SM_ERR_INVALID_INPUT` for an empty list or a B-rep listed twice, before any
+    /// B-rep moves; those of the merge, after which the B-reps it had not reached are
+    /// back in their slots and the ones it had taken stay empty (upstream loses them
+    /// too); `SM_ERR_NULL_POINTER` for a tree that leaves no B-rep, where upstream would
+    /// go on with a null `pSweepBrep`.
     fn boolean_trees(&mut self, breps: &mut Vec<BrepId>, tree: &[i64]) -> Result<()> {
-        let _ = (breps, tree);
-        // UNPORTED(boolean.merge_p3): SmMerge::BooleanTrees
-        Err(SolidError::unported(
-            "SmMerge::BooleanTrees",
-            "boolean.merge_p3",
-        ))
+        const OP: &str = "SmMerge::BooleanTrees";
+        let first = *breps
+            .first()
+            .ok_or_else(|| SolidError::invalid_input(OP, "no B-reps to combine"))?;
+        for (i, id) in breps.iter().enumerate() {
+            self.brep(*id)?;
+            if breps.iter().take(i).any(|other| other == id) {
+                return Err(SolidError::invalid_input(OP, "a B-rep listed twice"));
+            }
+        }
+        let mut operands: Vec<Option<crate::topology::Brep>> = Vec::with_capacity(breps.len());
+        for &id in breps.iter() {
+            operands.push(Some(std::mem::replace(
+                self.brep_mut(id)?,
+                crate::topology::Brep::new(),
+            )));
+        }
+        let status = match self.kernel_mut(first) {
+            Ok(k) => crate::boolean::api_brep::boolean_trees(k, &mut operands, tree),
+            Err(e) => Err(e),
+        };
+        if let Err(e) = status {
+            for (&id, operand) in breps.iter().zip(operands) {
+                if let Some(b) = operand {
+                    *self.brep_mut(id)? = b;
+                }
+            }
+            return Err(e);
+        }
+        let count = operands.len();
+        if count > breps.len() {
+            return Err(SolidError::sm_err(OP));
+        }
+        let mut missing = false;
+        for (&id, operand) in breps.iter().zip(operands) {
+            match operand {
+                Some(b) => *self.brep_mut(id)? = b,
+                None => missing = true,
+            }
+        }
+        for &id in breps.iter().skip(count) {
+            self.delete_brep(id);
+        }
+        breps.truncate(count);
+        if missing {
+            return Err(SolidError::null_pointer(OP));
+        }
+        Ok(())
     }
 }
