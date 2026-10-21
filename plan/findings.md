@@ -10572,14 +10572,20 @@ targets are `FilletBrep::copy_fillet_geom`, `create_end_curve`, `trim_rail_curve
   both uses' orientations and list order, each vertex use's vertex, for `EndCurve` the 3D
   curve, interval, primary UV curve and the geometry's side uses, for `RailEdge` the
   geometry's rail and vertices): its Rust side is written but unreachable until
-  `topology.brep_p3` lands, so it has never run against the C++ record; the porter of
+  `topology.brep_p3` lands, so it has never been compared with the C++ record; the porter of
   `topology.brep_p3` should expect to debug it. One known difference to account for
   then: a rail made by `MakeRailEdgeuse` has no vertex uses at the far end, while the
   Rust arena record `Edge.vertices` names the fillet vertex at both ends (the export reads
   that field; every topology accessor derives the vertices from the uses). The
   `RailEdgeuse` op compares its two checks before the allocations (`NER(pFilletSolver)`,
   `NER(pFilletVertex)`); the base solvers of the harness carry no edge uses, so past them
-  upstream ends in `NER(pBaseEU)` and the Rust side defers at the edge-use constructor.
+  upstream ends in `NER(pBaseEU)`, whose `SmObjDelete` clean-up deletes a vertex use that
+  is still linked in the fillet vertex (a double free in `~SmFilletVertex`, UB-238, source
+  inspection): the shim refuses that path, so one generated case runs the op today.
+  The C++ side of the success export did run once: `MakeRailEdge` hands its two new
+  vertices to the geometry (`m_vVertices`), so the shim takes them back out of the
+  model's own vertex list after the export (the model deleted them a second time and
+  crashed `~SmFilletGeom` otherwise).
   `copy_fillet_geom` has no shim op: its first dereference is
   `SmFilletExecutive::GetPseudoBrep` (`blend.fillet_executive_p1`), which the harness
   cannot build.
