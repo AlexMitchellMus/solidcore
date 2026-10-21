@@ -15,6 +15,15 @@
 //! | [`ProtoTopologyManager::resolve_overlapping_proto_edges`] | `SmProtoTopologyManager::ResolveOverlappingProtoEdges` |
 //!
 //! Deviations:
+//! - **Removed proto edges** (SolidCraft fix, tangency-labs/smlib 93efd6d, UB-239).
+//!   Upstream's `SplitIntersectingProtoEdges` deletes the combined-away proto edge while
+//!   proto faces (coincident lists) and other proto edges (overlap lists) still name
+//!   it, and `GlueCoincidentBrepVertices` reads it after the free. Here the faces it
+//!   bounded get the surviving edge first
+//!   ([`ProtoTopologyManager::hand_over_coincident_proto_edge`]), and
+//!   [`ProtoTopologyManager::remove_proto_edge`] (part 1) drops every reference to
+//!   it. Without that, the stale id names a deleted slot and the later passes fail
+//!   with `InvalidInput`.
 //! - **B-rep access.** Topology objects are the caller's handles `O`, as in
 //!   [`p1`](super::p1). What these functions read from vertices and edges, and the
 //!   store new curves go to, is [`ProtoBrep`] (of `topology.proto_topology_p2`, which
@@ -919,6 +928,11 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                     pe1_to_combine,
                     pe2_to_combine,
                 ))?;
+
+                // ProtoFaces bounded by the combined-away PE are bounded by the
+                // survivor now (SolidCraft change, tangency-labs/smlib 93efd6d)
+                self.hand_over_coincident_proto_edge(pe1_to_combine, pe2_to_combine);
+
                 ignore_soft(self.remove_proto_edge(pe2_to_combine))?;
                 deleted.extend(self.delete_proto_edge_object(pe2_to_combine));
             }
