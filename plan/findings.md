@@ -29,6 +29,15 @@ are also logged, one entry each, in `plan/upstream-issues.md` for the upstream m
   `topology.face_p4` line op passed on arm64 and failed 326 cases on x86-64 CI (lines through
   permuted points). Read each value into a named local first (`double x = ad.num(), y =
   ad.num();` is sequenced).
+- **Graphs after deletions.** An arena cannot free a record, so a Rust op that deletes
+  topology resets it, while the C++ side exports a fresh walk. `boolean_merge_p1::graph`
+  numbers every arena record (unreachable ones last), so its counts and lists differ
+  after a deletion; `graph_reachable` (and `Canon::reachable`) compares only the
+  topology reachable from the regions and the edge list. Also, the shared importer
+  leaves the Rust-only caches `Face::loops` and `Loop::edges` empty: a runner whose
+  port fills them (`topology.brep_p9`'s `sync_face_cache`) empties them before
+  comparing. Both surfaced in `topology.brep_p9` once `topology.face_p4` let its
+  MakeVertexLoop / MakeEdgeInFace paths run.
 - **difftest report `seeds` field.** It records the `--seeds` CLI value, not the number of
   generated cases a runner actually produced. `nlib.knots` overrides `cases()` to always
   generate at least 1200.
