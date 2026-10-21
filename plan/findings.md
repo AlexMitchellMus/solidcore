@@ -7,6 +7,22 @@ of each section.
 Upstream C++ defects only (UB, crashes, hangs, nondeterminism, wrong results, wrong docs)
 are also logged, one entry each, in `plan/upstream-issues.md` for the upstream maintainers.
 
+## PR #233 — caller Kernel integration (2026-10-21)
+
+Main #133 made curve and surface evaluation explicitly take the caller Kernel.
+The primitive p1/p3 and sweep stack now forwards its existing owner-qualified
+Kernel through those calls. The retained `Curve::is_linear_after_ends` helper
+and `ruled_surface_from_offset` require the same Kernel, including for interior
+samples, lengths and degeneracy checks. No production default Kernel is added.
+Numerical formulas, operation order, tolerances and error handling are unchanged.
+
+Main through `41617b03` is integrated, including fixture export memoization and
+executive updates. Both parents' findings and main's complete p5/p7/HCR notes
+remain, with the earlier API extensions and virtual/lazy-NURB changes retained.
+The native p3 fixtures still compare the ruled-offset helper and early/empty
+state; they do not certify successful full primitive/cap/stitch topology.
+The actual-head validation results are tracked in the PR discussion.
+
 ## General
 
 - **Nondeterministic upstream paths.** `SmFace::GetPointsInFace` (asked for more than one
@@ -12957,20 +12973,3 @@ Exact controls still compare 4 values (`line_join_fw_tangent_start`), 18
 (`plane_square_e0_tangent`), and 50 (`Mouse_e0_query`). The Mouse query uses the
 same imported B-rep as the deferred operations: the guard still applies per
 operation, not to the whole B-rep.
-
-
-## PR #233 — caller Kernel integration (2026-10-21)
-
-Main #133 made curve and surface evaluation explicitly take the caller Kernel.
-The primitive p1/p3 and sweep stack now forwards its existing owner-qualified
-Kernel through those calls. The retained `Curve::is_linear_after_ends` helper
-and `ruled_surface_from_offset` require the same Kernel, including for interior
-samples, lengths and degeneracy checks. No production default Kernel is added.
-Numerical formulas, operation order, tolerances and error handling are unchanged.
-
-Main through `41617b03` is integrated, including fixture export memoization and
-executive updates. Both parents' findings and main's complete p5/p7/HCR notes
-remain, with the earlier API extensions and virtual/lazy-NURB changes retained.
-The native p3 fixtures still compare the ruled-offset helper and early/empty
-state; they do not certify successful full primitive/cap/stitch topology.
-The actual-head validation results are tracked in the PR discussion.
