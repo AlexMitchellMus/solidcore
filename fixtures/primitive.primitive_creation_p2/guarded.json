@@ -121,7 +121,7 @@
    }
   },
   {
-   "name": "ub243_taper_start_cap_tail_into_square_fuzz00880",
+   "name": "ub247_taper_start_cap_tail_into_square_fuzz00880",
    "inputs": {
     "expected_rejection": true,
     "op": 8,
@@ -129,7 +129,7 @@
    }
   },
   {
-   "name": "ub243_taper_start_cap_tail_short_of_corner_up",
+   "name": "ub247_taper_start_cap_tail_short_of_corner_up",
    "inputs": {
     "expected_rejection": true,
     "op": 8,
@@ -137,7 +137,7 @@
    }
   },
   {
-   "name": "ub243_taper_start_cap_two_squares_at_a_corner",
+   "name": "ub247_taper_start_cap_two_squares_at_a_corner",
    "inputs": {
     "expected_rejection": true,
     "op": 8,
@@ -145,7 +145,7 @@
    }
   },
   {
-   "name": "ub243_taper_start_cap_spike_from_corner_down",
+   "name": "ub247_taper_start_cap_spike_from_corner_down",
    "inputs": {
     "expected_rejection": true,
     "op": 8,
@@ -153,7 +153,7 @@
    }
   },
   {
-   "name": "ub243_taper_start_cap_half_circle_across_a_side",
+   "name": "ub247_taper_start_cap_half_circle_across_a_side",
    "inputs": {
     "expected_rejection": true,
     "op": 8,

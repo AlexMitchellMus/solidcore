@@ -12289,7 +12289,7 @@ rule refuses, where upstream may reverse, a closed chain whose short curve meets
 at a corner sharper than `3e-5` radians. 7,236 native probes: 1,078 crash, the guard refuses all of them
 (as the pushed head's did) and now refuses 1,805 that run instead of 5,558.
 
-`--fuzz 1000` on the merged tree found UB-243 (`fuzz00880`): with the start cap,
+`--fuzz 1000` on the merged tree found UB-247 (`fuzz00880`): with the start cap,
 `CreatePlanarFaceWith3DCurves` fails after building edges on the input curves when an end meets no other end
 or more than one, and the taper deletes the curves those edges use. About 400 native probes: every crash had
 a closed loop and such an end; curves closing no loop and clean loops (a self-crossing bow-tie, a square with a

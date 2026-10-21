@@ -26,7 +26,7 @@
 //! (UB-50, both chaining passes, the reversed one where upstream may take it; with the
 //! end cap at the offset end, a closed chain whose short curve meets a long one at a
 //! corner sharper than `3e-5` radians, where upstream may reverse it), with the start cap
-//! curves that close a loop while an end meets no other end or more than one (UB-243,
+//! curves that close a loop while an end meets no other end or more than one (UB-247,
 //! use after free), a planar path without path curves (`rPathCurves[0]`), skin
 //! profile counts past the curves (`r3DCurves[lCount]`), a partial cone or torus that
 //! sweeps a profile edge shorter than the zone tolerance (UB-215, use after free), and
@@ -505,7 +505,7 @@ fn find_root(root: &mut [usize], mut i: usize) -> usize {
     i
 }
 
-/// UB-243 in `CreateTaperExtrude`'s start cap (`caps` 1 or 3): `CreatePlanarFaceWith3DCurves`
+/// UB-247 in `CreateTaperExtrude`'s start cap (`caps` 1 or 3): `CreatePlanarFaceWith3DCurves`
 /// needs each curve end to meet exactly one other (`SmBrep.cpp:3800-3801`). Otherwise it can
 /// fail after building edges on the input curves, and the taper, taking the failure for a
 /// missing cap, deletes curves those edges still use (SIGSEGV in `SmEdgeuse::~SmEdgeuse`).
@@ -873,7 +873,7 @@ mod tests {
 
     #[test]
     fn a_start_cap_on_a_loop_with_a_loose_or_crowded_end_is_rejected() {
-        // UB-243: each segfaults natively with the start cap (caps 1 and 3) under one normal
+        // UB-247: each segfaults natively with the start cap (caps 1 and 3) under one normal
         // or another (fuzz00880's tail into a unit square ending at its corner, the same tail
         // stopping 1e-3 short and two squares at a corner under +Z and a computed normal, a
         // spike into the square from a corner under -Z), and is refused under every normal
