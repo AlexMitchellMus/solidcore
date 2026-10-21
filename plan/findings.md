@@ -12867,6 +12867,95 @@ guarded in `offset.offset_geometry_creation`; the fix belongs to the curve cache
 - **Status.** Open, with `fuzz00504`. Reproduce with the fuzz output file as a fixture and
   the tolerance set to any accepted value.
 
+## query.brep (B-rep boxes, `Point3DClassify`, decimation attributes, `SmApiEvaluateSurface*`; PR #329, takeover of #101, 2026-10-21; partial, no disagreements)
+
+- **Lazy B-rep cache.** Upstream builds the `SM_OC_BREP` cache inside the solves that need it
+  (`CacheMakeOrValidate`). `query::brep::BrepQuery` does the same: a single-region
+  `Point3DClassify` (and one without boundary intersections that never fires a ray) builds
+  none, and a failed build is a failed `RayFire` (ignored, next direction), not an error of
+  the classification.
+- **`const` queries that edit.** `RayFire` / `LocalCurveSector` may create missing UV trim
+  curves on the B-rep (upstream does it inside `const` methods). Callers holding the B-rep
+  shared (`query.api_queries`' containment tests, `SmShell::RayFire`'s sector) classify on
+  a private copy (`BrepClassifier`), as `query.face_p3` and `mass.integrator` already do;
+  callers with the B-rep mutable (the merge, `FindInfiniteRegion`) work on it directly.
+- **Identities.** The cache keys and geometry owners are the caller's. Every wired library
+  caller uses `BrepIdentity::arena` (records' `arena_identity`), which is what this crate's
+  builders and importers give geometry; a caller with other keys passes its own
+  `BrepIdentity`.
+- **Ignored statuses in `CalculateTightBoundingBox`.** The face loop keeps `rFaceBBox` from
+  face to face and uses what a failed call leaves; `query.face_p3` gained
+  `calculate_tight_bounding_box_into`, which writes the caller's box at the same two points
+  as `SmFace::CalculateTightBoundingBox`. A failed loose edge box is taken as the freshly
+  initialised (empty) box: every curve override (`SmCurve`, `SmBSplineCurve`, `SmLine`,
+  `SmHermiteCurve`, `SmCrvOnSurf`, `SmCompositeCurve`) returns its error before writing
+  the caller's box (checked against upstream; the composite ignores its segments' statuses
+  and always succeeds). No fixture reaches these ignored statuses: a probe over every box
+  fixture (files, solids, wires, overflowing segments) saw the edge and face boxes fail only
+  with `Unported` (`SmFace::GetTolerance`, `topology.face_p2`), which propagates. The
+  inputs that would fail them (a face without surface, a curve whose span search fails)
+  crash or are rejected on the C++ side, so the shim guards them out.
+- **`merge_vertex` records.** Wiring `Point3DClassify` made `SmMerge::ProcessWiresAndShellVertices`
+  reach `merge_vertex`'s `Copy` notification for vertices of imported operands, which had
+  no `Topology` record (records are made when this crate creates an entity). Upstream every
+  `SmVertex` is an `SmTopology`; `merge_vertex` now materialises a missing record as the
+  default one.
+- **Harness gaps found on newly reached paths.** `topology.brep_p2`'s RayFire op passed an
+  unbuilt cache (hidden by the `query.brep` stub); `geom.a_object`, `boolean.merge_p4`,
+  `boolean.topology_intersector_p1` and `mass.integrator` needed the runner fixes of #332
+  (bherbruck), applied here. `boolean.merge_p1` defers its unmated
+  `FindBrepRegionOfOtherFace` on analytic face geometry
+  (`harness:analytic-geometry-export`).
+- **Coverage limits.** The shared B-rep fixture gained kind 7 (the closed box of
+  `SmApiCreateBox`) so the multi-region ray-fire path is compared: rays that miss, the
+  retry order and boundary hits on edges and vertices compare; rays that hit a face defer
+  on `geom.tol`'s `SmTol::GetZoneTol3d(const SmObject*)`. Kind 8 (up to 600 vertices and
+  150 wire segments at given tolerances) reaches the 500-vertex / 100-edge approximation
+  shortcut and non-default tolerance expansion.
+- **Follow-ups for other units (no open PR covers them).**
+  - `topology.brep_p2`: `merge_curves_on_surface` takes `&mut Brep` and the classification
+    world separately, so no world can read the B-rep's geometry during the call;
+    `topology::brep::p10::merge_curves_world` stays a `DISPATCH GAP` until the world can
+    own the B-rep (as `boolean::merge::p4::ArenaPair` does).
+  - `geom.object`: `Shape::new` gets B-rep keys but no store to resolve them, so the B-rep
+    box (and the face box, already a `DISPATCH GAP`) cannot be reached there.
+- **Wider seeds (2000 generated cases per unit, local macOS run).** `query.brep`,
+  `boolean.merge_p1`, `boolean.merge_p4` and `topology.brep_p9` show no failures. Two units
+  fail on generated cases this PR does not change; both are left to their owners:
+  - `boolean.merge_p5` (64 failures). (1) On a repeated call, a marked other wire without a
+    mate makes `SmMerge::ProcessWiresAndShellVertices` append `NULL` to `keep_as_wires`
+    upstream; the Rust list is a `Vec<EdgeId>` and has no null entry, so it reports a null
+    pointer instead. (2) The entities `merge_vertex` / `MakeShellVertex` create are numbered
+    in creation order on both sides (`SmOwningTopology::PostInsert` appends, as the arenas
+    do), but the runner's walk visits them in a different order than the C++ walk, so the
+    topology indices permute. Neither involves `Point3DClassify`'s result.
+  - `topology.shell` (8 failures): `IsDegenerate` on the loose shell box path of
+    `query.face_p1`, a path this PR does not reach.
+- **Runners newly exposed after merging main's `boolean.merge_p2` (#229) (2026-10-21).**
+  - `boolean.api_brep` passes empty stand-in B-reps (the box and sphere constructors are
+    `primitive.primitive_creation_p1`). The `query.brep` stub used to stop every call that
+    reached the merge engine; with it ported, those calls ran on the empty stand-ins and
+    113 cases failed. The runner now defers a call that took a mark
+    (`SmNewMarkAndLock`: the merge engine does, input validation never does) on
+    `primitive.primitive_creation_p1`, whatever it returned. The compared set is
+    unchanged (151 validation cases); the 114 former `query.brep` deferrals now name the
+    stand-ins.
+  - `boolean.merge_p5` imported its operands without geometry owners, so the B-rep cache
+    of `Point3DClassify`'s boundary solve indexed no curves and a wire midpoint lying on an
+    edge classified to the region (`partial_other_marks_classification`). The import now
+    calls `own_arena_geometry`, as the `query.brep` and `topology.brep_p2` runners do.
+  - Later merges of main exposed three more such places, handled the same way:
+    - The `boolean.topology_intersector_p1/p2` runner keyed its B-rep caches by
+      `query_key` but imported unowned geometry (4 failing `IntersectTopology`
+      scripts). `Two::new` now sets those owners.
+    - `offset.offset_executive_p2` (#201) fails closed when a Rust call returns a B-rep
+      its scaffolded fixtures cannot certify. Six cases do so now that the box is
+      ported; they defer on `harness:offset-result-adapter` until the runner has an
+      output adapter.
+    - `boolean::merge::p4::arena_pair` called the box under caller notification keys
+      with no kernel; it is retagged as a `DISPATCH GAP` of `boolean.merge_p4` (the
+      cache there also needs the caller's geometry identities).
+
 ## intersect.curve_class_p4 — `ReSet` / `ConnectIntervals` back-edges left unwired (2026-10-20, small-fixes PR)
 
 Both `intersect.curve_class_p2` functions are ported (`CurveClassification::reset`,
@@ -13003,6 +13092,50 @@ operation, not to the whole B-rep.
   crafted file reads in C++ and fails in Rust. Left as a deliberate deviation (no fixture
   holds such a code; the generators never write one).
 
+## Upstream prog_test parity cases (2026-10-21, `tests/upstream-parity`): what they found
+
+New fixtures replicate upstream prog_test calls in `surface.surface_p2` (`ssi_adv.json`,
+`smAdvancedTest.cpp` `my_test_ssi_adv`), `curve.curve_p1/p7/p8/p9`, `surface.surface_p7/p8`,
+`surface.surface_p11` and `intersect.surface_drop_lib_p1` (`upstream_prog_test.json`).
+
+- **`surface.surface_p2` SSI: tangent and singular start points dropped.** Eight
+  `my_test_ssi_adv` part files (`ssi_tor_sph_tan`, `ssi_tor_sph_tan2`,
+  `ssi_tor_in_tor_tang_hyper`, `ssi_tor_in_tor_tan_ellip`, `ssi_rev_rev_sing`,
+  `ssi_cyl_cyl_sing2`, `ssi_clasic_ruled`, `ssi_cylcyl_90_tan`) disagree on `main`: Rust finds
+  0 or fewer curves (e.g. `ssi_tor_sph_tan`: C++ 4 boundary start points, Rust 0). Cause:
+  `SurfaceIntersector::compute_point_values` (`intersect/surface_intersector/p2.rs`, the
+  near-parallel-normals branch) calls the base `compute_singularity_point_base` (`SM_ERR`)
+  where upstream's virtual call reaches `SmAdvSurfaceIntersector::ComputeSingularityPoint`
+  (`SmAdvSurfaceIntersector.cpp:116`), so `FindBoundaryStartPoints` skips those points and
+  traces stop at them. PR #140 adds this dispatch (`advanced` flag); on #140's head all 56
+  pairs pass or defer (0 failures). The eight files are listed in
+  `harness/fixturegen/ssi_adv.py` `PENDING_PR140`; remove the list and regenerate once #140
+  is on `main`.
+- **`surface.surface_p11` `LiftCurve`: `PS_lift_crv2` on `PS_lift_srf2` disagrees**
+  (`smSurfaceTest.cpp:2587`, the "kinked UVTrimCurve" case upstream itself expects to trip
+  `AssertValid`; left out of the fixture). Same max distance 0.009390995684972677, type
+  14033, dim 3, degree 3, but C++ has 235 control points / 79 knots and Rust 232 / 78. The
+  C0 split segment [12.99999867340698, 13]: Rust's 10-sample degenerate check finds all
+  samples within tol/100 and skips it; C++ keeps it (extra knots 12.99999867332897,
+  12.99999999992199; later knots shift by about 1.3e-6). Suspected: the `SmCrvOnSurf`
+  evaluation near the kink inside the `GetDomainWithContinuity` segment (clamping), i.e.
+  `domain_with_continuity` or CrvOnSurf clamping. Open.
+- **Upstream assertion that the C++ itself fails** (`surface.surface_p8`,
+  `smSurfaceTest.cpp` `my_test_csi_tangency`): for the lines with y < 1 the test asserts 2
+  hits, but C++ returns one range-of-values solution (e.g. `prog_csi_tangency_line_00`: t
+  0.4776 to 0.5224); Rust returns the same, so the cases are kept. The circle cases match the
+  assertions.
+- **Back-edges that now block these cases although their units are partial** (library
+  wiring, not done here): `intersect/surface_drop_lib/p1.rs` `drop_curve_trace`
+  (`UNPORTED(intersect.surface_drop_curve)`; defers the 5 `PS10_drp` DropAndTrimCurve cases;
+  `SurfaceDropCurve::drop_trace` exists), and `Surface::create_silhouette_curves`
+  (`surface/surface/p1.rs`, `UNPORTED(intersect.surface_tracer)`; `SurfaceSilhouette` and its
+  trace exist; the non-perspective post-processing of `SmSurface.cpp` ~9632-9695 is also
+  missing), which keeps `smAdvancedTest.cpp` `my_test_sil_adv` out of reach.
+- **`curve.curve_p1` fuzz: `Curve::tessellate` allocated from `min_segments` unchecked**
+  (`tess` with `minseg = 4294967296` aborted the Rust side): fixed on `main` by PR #322
+  (`Line::tessellate` reserves with `try_reserve_exact`, `InvalidInput`).
+
 ## Fuzz "Rust-only hangs" (surface.surface_point_solve_p2, offset.offset_executive_p1; 2026-10-21)
 
 The fuzz sweep (#321-#325) reported two Rust-only timeouts as possible port divergences.
@@ -13031,3 +13164,16 @@ Neither is one.
   slower than C++: zeroed `[[_; 18]; 18]` scratch arrays, nested `Vec` results, checked
   indexing), not more work. Nothing to fix for parity. A faster `srf_nurb::derivs` would
   help every surface unit.
+## Plane x cone global intersection dispatch (follow-up to #313, 2026-10-21)
+
+- `SmPlane::GlobalSurfaceIntersect` calls `rCone.IntersectWithPlane` for
+  `SmCone_TYPE` / `SmCylinder_TYPE` with `rCone` an `SmCone&`: `SmCone` declares its own
+  `IntersectWithPlane` (`SmCone.cpp:3219`, conic sections: lines, circles, ellipses,
+  ~1000 lines), hiding `SmSurfOfRevolution::IntersectWithPlane` (generator-based). The
+  port's `plane::p2::global_surface_intersect` `Cone` arm (from #313) called the
+  surface of revolution's method on the cone's base.
+- Shown by `fixtures/surface.plane_p2/cone.json` (real `SmCone` / `SmCylinder` from
+  `CreateCanonical` through the plane GSI op): before the fix
+  `global_cone_plane_through_axis` (record length 60 vs 80) and
+  `global_cylinder_plane_perp` (rel err 0.92) failed and 4 cases deferred on
+  `SmPlane::CreateIsoParametricCurve`; after it 9 of 10 pass bit-identically.
