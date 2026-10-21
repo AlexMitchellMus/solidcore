@@ -885,7 +885,7 @@ fn rust_op(o: &mut Vec<f64>, c: &mut CrvOnSurf, op: &OpIn, k: &Kernel) -> Result
             if let Ok(cp) = r {
                 let cp = cos_of(cp)?;
                 put_state(o, &cp);
-                let r = cp.evaluate(*t, *n, *left, *nonzero);
+                let r = cp.evaluate(k, *t, *n, *left, *nonzero);
                 o.push(st(&r)?);
                 if let Ok(v) = r {
                     for p in v {
