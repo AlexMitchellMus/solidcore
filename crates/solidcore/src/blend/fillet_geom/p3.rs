@@ -23,8 +23,7 @@
 //!   opaque [`FilletSolverId`]: the dispatchers resolve it in the caller's `solvers`
 //!   table (index `id.0`); `ReCalcFilletGeom` and `TopologySplit` take their geometry's
 //!   solver directly (`&mut dyn FilletSolverOps` for the virtual `SetupOffsetValues`);
-//!   `ReCalcFilletGeom` also takes a `geometry_id` resolver that maps the solver's
-//!   opaque [`FilletGeomRef`]s (`GetFirstFilletGeom`, `GetLastFilletGeom`) to this
+//!   the solver's geometries (`GetFirstFilletGeom`, `GetLastFilletGeom`) are this
 //!   pseudo B-rep's [`FilletGeomId`]s.
 //!   `GetFilletExecutive()->GetPseudoBrep()` (unit `blend.fillet_executive_p1`) is
 //!   `self`; a solver without an executive is [`SolidError::InvalidInput`] (upstream
@@ -77,7 +76,7 @@
 use crate::blend::fillet_corner::p3::FilletCorner;
 use crate::blend::fillet_custom_solver::OffsetSurface;
 use crate::blend::fillet_intersector;
-use crate::blend::fillet_solver::p1::{FilletGeomRef, FilletSolver, FilletSolverOps};
+use crate::blend::fillet_solver::p1::{FilletSolver, FilletSolverOps};
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::{Curve, CurveKind};
 use crate::error::{ignore_status, ignored, EntityRef, Result, SolidError};
@@ -723,9 +722,7 @@ impl FilletBrep {
     /// edge uses' UV trim curves otherwise), sorted by that parameter without
     /// duplicates, and the fillet is traced through them (an analytic cone or torus
     /// when `is_analytic_fillet`); then the cross-section edges are recomputed and the
-    /// geometry is processed. `solver` is `g`'s solver; `geometry_id` resolves its
-    /// geometry handles (`GetFirstFilletGeom`, `GetLastFilletGeom`) into this pseudo
-    /// B-rep.
+    /// geometry is processed. `solver` is `g`'s solver.
     ///
     /// # Errors
     ///
@@ -747,7 +744,6 @@ impl FilletBrep {
         is_analytic_fillet: bool,
         opt_march_dir: Option<Vec3>,
         opt_ref_curve: Option<&Curve>,
-        geometry_id: &impl Fn(FilletGeomRef) -> Result<FilletGeomId>,
     ) -> Result<()> {
         let nul = || SolidError::null_pointer(OP_RECALC);
         let geom = self.geom(g)?;
@@ -969,10 +965,10 @@ impl FilletBrep {
             let mut extend_before = false;
             let mut extend_after = false;
             let fs = solver.solver();
-            if geometry_id(fs.first_fillet_geom()?)? == g {
+            if fs.first_fillet_geom()? == g {
                 extend_before = fs.extend_before;
             }
-            if geometry_id(fs.last_fillet_geom()?)? == g {
+            if fs.last_fillet_geom()? == g {
                 extend_after = fs.extend_after;
             }
 
@@ -1775,7 +1771,7 @@ mod tests {
         let (g, _) = two_rail_geom(&mut fb, &k);
         let mut s = solver(true);
         let err = fb
-            .re_calc_fillet_geom(&k, g, &mut s, &Brep::new(), false, None, None, &|_| Ok(g))
+            .re_calc_fillet_geom(&k, g, &mut s, &Brep::new(), false, None, None)
             .unwrap_err();
         assert!(matches!(err, SolidError::InvalidInput { .. }), "{err:?}");
     }

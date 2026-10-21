@@ -1575,11 +1575,11 @@ impl FilletCorner {
                 }
 
                 // SmFilletSolver::SplitFilletGeomAtSideEdge is ported
-                // (`FilletSolver::split_fillet_geom_at_side_edge`, blend.fillet_solver_p1),
-                // but on the solver's `FilletGeomRef` stand-in, which carries no geometry
-                // data for its part 6 calls (GetRailIndexOfVertexuse, GetRailVertex,
-                // SetUpRailPoint). Wire it once the solver works on `FilletGeomId`.
-                // UNPORTED(blend.fillet_solver_p1): SmFilletSolver::SplitFilletGeomAtSideEdge
+                // (`FilletSolver::split_fillet_geom_at_side_edge`, blend.fillet_solver_p1,
+                // on this pseudo B-rep's `FilletGeomId`s), but its first call is
+                // GetRailIndexOfVertexuse (blend.fillet_geom_p6). Wire it once
+                // fillet_geom_p6 lands (it needs the geometry's solver object).
+                // UNPORTED(blend.fillet_geom_p6): SmFilletSolver::SplitFilletGeomAtSideEdge
                 let new_geom: FilletGeomId = Err(unported(
                     "SmFilletSolver::SplitFilletGeomAtSideEdge",
                     "blend.fillet_solver_p1",

@@ -42,7 +42,7 @@ use solidcore::blend::fillet_geom::p6::{
     join_two_fillet_verts_by_curves, move_tsp,
 };
 use solidcore::blend::fillet_solver::p1::{
-    FilletExecutiveRef, FilletGeomRef, FilletSolver, OffsetSurfaceSlot,
+    FilletExecutiveRef, FilletSolver, OffsetSurfaceSlot,
 };
 use solidcore::curve::curve::{Curve, CurveKind};
 use solidcore::geom::extent1d::Extent1d;
@@ -1644,13 +1644,9 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                     .ok_or_else(|| harness("solver"))?,
                 None => FilletSolver::new(1e-6, 1e-3, 1e-6),
             };
-            let this_ref = FilletGeomRef {
-                index: 1000 + g.0 as usize,
-            };
             let r = m.fb.rail_edgeuse_intersect(
                 &k,
                 g,
-                this_ref,
                 &mut solver,
                 &tg.brep,
                 *rail,

@@ -82,7 +82,7 @@
 
 use crate::blend::fillet_corner::p3::FilletCorner;
 use crate::blend::fillet_custom_solver::OffsetSurface;
-use crate::blend::fillet_solver::p1::{FilletGeomRef, FilletSolver};
+use crate::blend::fillet_solver::p1::FilletSolver;
 use crate::curve::curve::p2::BSPLINE_CURVE_TYPE;
 use crate::curve::curve::Curve;
 use crate::curve::hermite_curve::HermiteCurve;
@@ -1668,8 +1668,8 @@ impl FilletBrep {
 
     /// `SmFilletGeom::RailEdgeuseIntersect(lRailIndex, pEdgeuse, dGuessEdgeParameter,
     /// ...)`: the solver's rail/edge-use intersection evaluated on this geometry's
-    /// surfaces: the solver's geometry for surfaces is `this_ref` (the solver's handle
-    /// of geometry `g`) during the call and restored after it. Returns
+    /// surfaces: the solver's geometry for surfaces is `g` during the call and restored
+    /// after it. Returns
     /// `(rbFoundIntersection, rTsectPnt, rdEdgeuseParameter)`.
     ///
     /// # Errors
@@ -1682,7 +1682,6 @@ impl FilletBrep {
         &self,
         k: &Kernel,
         g: FilletGeomId,
-        this_ref: FilletGeomRef,
         solver: &mut FilletSolver,
         target: &Brep,
         rail_index: usize,
@@ -1698,7 +1697,7 @@ impl FilletBrep {
         // If there's anything there already, restore it when we're done.
         let saved_fg = solver.fillet_geom_for_surfaces();
 
-        solver.set_fillet_geom_for_surfaces(Some(this_ref));
+        solver.set_fillet_geom_for_surfaces(Some(g));
 
         // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::RailEdgeuseIntersect
         let stat = unported_on(
@@ -2419,13 +2418,12 @@ mod tests {
         let mut fb = FilletBrep::new();
         let (g, _) = two_rail_geom(&mut fb, &k);
         let mut s = solver(false);
-        let saved = Some(FilletGeomRef { index: 3 });
+        let saved = Some(FilletGeomId(3));
         s.set_fillet_geom_for_surfaces(saved);
         let err = fb
             .rail_edgeuse_intersect(
                 &k,
                 g,
-                FilletGeomRef { index: 9 },
                 &mut s,
                 &Brep::new(),
                 0,
@@ -2442,7 +2440,6 @@ mod tests {
             .rail_edgeuse_intersect(
                 &k,
                 g,
-                FilletGeomRef { index: 9 },
                 &mut s,
                 &Brep::new(),
                 0,
