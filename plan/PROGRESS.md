@@ -2,7 +2,7 @@
 
 Generated from `plan/modules.toml` and `reports/difftest/*.json` by `harness/plan/progress.py`; do not edit by hand.
 
-**236 / 261 units ported** (115 green, 121 partial), **344,573 / 387,903 upstream lines (88.8%)**. 25 claimed, 0 blocked, 0 todo.
+**236 / 261 units ported** (116 green, 120 partial), **344,573 / 387,903 upstream lines (88.8%)**. 25 claimed, 0 blocked, 0 todo.
 
 Legend: ✅ green (identical to C++) · 🟡 partial (passes; some cases wait on unported code) · 🔨 claimed · ▶️ ready (all dependencies done) · ⏳ claimable, dependencies still missing · ⛔ blocked.
 
@@ -126,7 +126,7 @@ Anything `todo` can be claimed. These need stubs for, or co-porting of, the list
 - [x] ✅ `nlib.srf_offset` (613 lines) — green, 424 cases
 - [x] ✅ `nurbs.b_spline_surface_n_lib_p1` (2033 lines) — green, 665 cases
 - [ ] 🟡 `nurbs.b_spline_surface_n_lib_p2` (1932 lines) — partial, 654 cases
-- [ ] 🟡 `nurbs.b_spline_surface_p2` (1338 lines) — partial, 764 cases
+- [x] ✅ `nurbs.b_spline_surface_p2` (1338 lines) — green, 764 cases
 
 ### curve (25/25)
 
