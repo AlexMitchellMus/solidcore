@@ -12379,7 +12379,7 @@ operation, not to the whole B-rep.
 ## Green-unit coverage pass (2026-10-21, `tests/green-coverage`)
 
 - An llvm-cov run of `difftest --green` (solidcore 79.8% of lines executed; green units
-  93.1%, partial 70.8%) listed the ported spans no case ran. 463 cases in
+  93.1%, partial 70.8%) listed the ported spans no case ran. 458 cases in
   `fixtures/<unit>/coverage.json` (44 green units) now execute many of them, each citing the
   upstream branch and the Rust line. Spans classified as Rust-only, defensive or unreachable
   from upstream callers were left alone. Recipe: build the difftest binary with
