@@ -2080,39 +2080,49 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
             }
         }
         topo = (0..ne).filter(|_| rng.chance(0.5)).collect();
-        // the deletions must not leave a one-way mate link to an earlier-deleted corner
-        // vertex (upstream frees it first and dereferences it after; the FFI refuses such
-        // inputs): make the link reciprocal where the mate has a free slot, else drop it
-        for pos in 1..verts.len() {
-            let Some(&v) = verts.get(pos) else {
-                break;
-            };
-            for slot in 0..2 {
-                let Some(m) = model
-                    .vertices
-                    .get(v)
-                    .and_then(|rec| rec.mates.get(slot))
-                    .and_then(|&m| usize::try_from(m).ok())
-                else {
-                    continue;
-                };
-                let deleted_earlier = verts.get(1..pos).is_some_and(|s| s.contains(&m));
-                let Some(mate) = model.vertices.get_mut(m) else {
-                    continue;
-                };
-                if !deleted_earlier || mate.mates.contains(&(v as i64)) {
-                    continue;
+        // the deletions must not leave a mate slot pointing at an earlier-deleted corner
+        // vertex: ~SmFilletVertex clears one slot of each mate per backlink, so simulate
+        // the deletions in order and, at the first dangling slot, add a backlink to the
+        // mate (a free slot) or drop the link, until the order is clean (the FFI refuses
+        // such inputs)
+        'repair: loop {
+            let mut mates: Vec<[i64; 2]> = model.vertices.iter().map(|r| r.mates).collect();
+            let mut freed: Vec<usize> = Vec::new();
+            for &v in verts.iter().skip(1) {
+                for slot in 0..2 {
+                    let Some(m) = mates
+                        .get(v)
+                        .and_then(|s| s.get(slot))
+                        .and_then(|&m| usize::try_from(m).ok())
+                    else {
+                        continue;
+                    };
+                    if freed.contains(&m) {
+                        let backlink = model
+                            .vertices
+                            .get_mut(m)
+                            .and_then(|rec| rec.mates.iter_mut().find(|x| **x < 0));
+                        if let Some(free) = backlink {
+                            *free = v as i64;
+                        } else if let Some(link) = model
+                            .vertices
+                            .get_mut(v)
+                            .and_then(|rec| rec.mates.get_mut(slot))
+                        {
+                            *link = -1;
+                        }
+                        continue 'repair;
+                    }
+                    if let Some(x) = mates
+                        .get_mut(m)
+                        .and_then(|back| back.iter_mut().find(|x| **x == v as i64))
+                    {
+                        *x = -1;
+                    }
                 }
-                if let Some(free) = mate.mates.iter_mut().find(|x| **x < 0) {
-                    *free = v as i64;
-                } else if let Some(link) = model
-                    .vertices
-                    .get_mut(v)
-                    .and_then(|rec| rec.mates.get_mut(slot))
-                {
-                    *link = -1;
-                }
+                freed.push(v);
             }
+            break;
         }
     }
     // the end patch: a fillet-side-face edge, with or without an original face
