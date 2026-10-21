@@ -5,10 +5,11 @@
 //! | Rust | Upstream |
 //! |------|----------|
 //! | [`KernelManifoldIntersector`] | `SmMerge::m_vTI` and shared merge-stage access |
+//! | [`KernelManifoldIntersector::delete_faces_in`] | `SmTopologyIntersector(ctx, brep, brep, ..).DeleteFaces` over one B-rep |
 //!
 //! Deviations: the existing typed `Relations` is the sole mate store. Object
-//! keys either encode a caller-reserved 27-bit namespace, operand, class and
-//! arena id, or use caller identity callbacks and the caller's actual stores.
+//! keys either encode a caller-reserved namespace, operand, class and arena id,
+//! or use caller identity callbacks and the caller's actual stores.
 //! The namespace-backed API is retained unchanged. Borrowed-store cache access
 //! stops at `BuildTrees`' unavailable `CalculateBoundingBox` rather than constructing
 //! a substitute kernel; that back-edge also needs live-kernel cache plumbing.
@@ -20,9 +21,11 @@
 use super::arena_pair::{self, ArenaPair, H};
 use super::notification_keys::{ManifoldNotificationKeys, NotificationKeys};
 use super::{
-    manifold_boolean, BooleanKernels, FixedGaps, ManifoldIntersector, ManifoldState, MergeEntity,
+    manifold_boolean, BooleanKernels, FixedGaps, MadeFaceuse, ManifoldIntersector, ManifoldState,
+    MergeEntity,
 };
 use crate::boolean::merge::p1::{self, MergeState};
+use crate::boolean::merge::p2::{self, MergeContext, MergeOperand, TopologyCopy};
 use crate::boolean::merge::p5;
 use crate::boolean::topology_intersector::p1::TopologyIntersector;
 use crate::boolean::topology_intersector::p1::{set_subset_objects, Relations};
@@ -191,32 +194,26 @@ impl<'keys> ManifoldKernelAdapter<'keys> {
         }
     }
 
-    /// Configure explicit tolerances for an operand-taking merge.
-    /// The strict `distance < EFF_ZERO` branch belongs to the still-unported
-    /// `SmMerge` constructor (`boolean.merge_p2`, PR #229), which needs both
-    /// operands to select its tolerance. It must not use a guessed edge size.
+    /// Configure the intersector tolerances using the canonical merge constructor.
     pub fn configure_operands(
         &mut self,
-        _primary: &Brep,
-        _other: &Brep,
+        kernel: &Kernel,
+        primary: &Brep,
+        other: &Brep,
         distance: f64,
         angle_radians: f64,
     ) -> Result<()> {
-        // Operand references are reserved for merge_p2's automatic-tolerance constructor.
-        if distance < crate::math::EFF_ZERO {
-            // UNPORTED(boolean.merge_p2): SmMerge::SmMerge (automatic tolerances)
-            return Err(SolidError::unported(
-                "SmMerge::SmMerge (automatic tolerances)",
-                "boolean.merge_p2",
-            ));
-        }
-        self.set_intersection_tolerances(
+        let configured = MergeState::<TopologyIntersector<MergeOperand>>::with_breps(
+            kernel,
+            (primary, MergeOperand::Primary),
+            Some((other, MergeOperand::Other)),
             distance,
-            if angle_radians == 0.0 {
-                20.0 * crate::math::PI / 180.0
-            } else {
-                angle_radians
-            },
+            angle_radians,
+            None,
+        )?;
+        self.set_intersection_tolerances(
+            configured.intersector.this_approx_tol_3d(),
+            configured.intersector.this_ang_tol_rad(),
         );
         Ok(())
     }
@@ -229,12 +226,77 @@ impl<'keys> ManifoldKernelAdapter<'keys> {
         )
     }
 
+    /// `SmTopologyIntersector(ctx, pBrep, pBrep, SM_EFF_ZERO, SM_EFF_ZERO).DeleteFaces(faces)`
+    /// over one kernel B-rep, as the offset executive's lamina clean-up uses it
+    /// (`SmOffsetExecutive.cpp:3749-3752`): a fresh intersector whose two operands
+    /// are the same B-rep deletes `faces` through this crate's arena access.
+    /// Notifications of the deleted topology go to `records` and `attributes` under
+    /// `namespace` (27 bits, distinct from any other pair sharing the store).
+    ///
+    /// # Errors
+    ///
+    /// Those of [`TopologyIntersector::delete_faces`] and an over-wide namespace.
+    pub fn delete_faces_in(
+        kernel: &mut Kernel,
+        brep: &mut Brep,
+        faces: &[FaceId],
+        records: &mut BTreeMap<ObjectKey, Topology>,
+        attributes: &mut AttributeStore,
+        namespace: u32,
+    ) -> Result<()> {
+        if namespace > 0x07ff_ffff {
+            return Err(SolidError::invalid_input(
+                OP,
+                "object namespace exceeds 27 bits",
+            ));
+        }
+        let mut intersector: TopologyIntersector<H> = TopologyIntersector::new(
+            Some(arena_pair::brep_h(0)),
+            Some(arena_pair::brep_h(0)),
+            crate::math::EFF_ZERO,
+            crate::math::EFF_ZERO,
+        );
+        let handles: Vec<H> = faces
+            .iter()
+            .map(|&face| arena_pair::encode(EntityRef::Face(face), false))
+            .collect();
+        let mut curves = Vec::new();
+        let mut extra_curves = Vec::new();
+        Context::with_notification_context(kernel, |k, context| {
+            let mut pair = ArenaPair::new(
+                brep,
+                None,
+                &mut curves,
+                &mut extra_curves,
+                records,
+                attributes,
+                Some(cache_kernels(k, None, context)),
+                context,
+                None,
+                NotificationKeys::Namespace(namespace),
+            );
+            intersector.delete_faces(&mut pair, &handles, None)
+        })
+    }
+
     /// Set the same explicit intersection tolerances supplied to `SmMerge`.
     /// Leaving them at zero retains the context-only intersector defaults;
     /// automatic tolerance selection belongs to the merge constructor's owner.
     pub fn set_intersection_tolerances(&mut self, distance: f64, angle_radians: f64) {
         self.intersector.set_this_approx_tol_3d(distance);
         self.intersector.set_this_ang_tol_rad(angle_radians);
+    }
+
+    /// Set `m_vTI.m_lIntersectLaminaEdges` (0 none, 1 both, 2 only the B-rep's,
+    /// 3 only the other's), as `NonManifoldBoolean` and `PiecewiseMerge` do.
+    pub fn set_intersect_lamina_edges(&mut self, mode: u64) {
+        self.intersector.intersect_lamina_edges = mode;
+    }
+
+    /// `m_vTI.m_lIntersectLaminaEdges`.
+    #[must_use]
+    pub fn intersect_lamina_edges(&self) -> u64 {
+        self.intersector.intersect_lamina_edges
     }
 
     /// Run the orchestration with the options held in the canonical `MergeState`.
@@ -672,12 +734,22 @@ impl ManifoldIntersector for ManifoldKernelAdapter<'_> {
     ) -> Result<()> {
         let keys = self.keys;
         let source_key = |id| keys.object(true, EntityRef::Vertex(id));
-        let destination_key = |e| keys.object(false, e);
-        let mut copy = p1::VertexCopy {
-            records: &mut self.records,
-            attributes,
-            source_key: &source_key,
-            destination_key: &destination_key,
+        let destination_key = |entity| keys.object(false, entity);
+        let edge_source = |edge| keys.object(true, EntityRef::Edge(edge));
+        let edge_destination = |edge| keys.object(false, EntityRef::Edge(edge));
+        let face_source = |face| keys.object(true, EntityRef::Face(face));
+        let face_destination = |face| keys.object(false, EntityRef::Face(face));
+        let mut copy = TopologyCopy {
+            vertices: p1::VertexCopy {
+                records: &mut self.records,
+                attributes,
+                source_key: &source_key,
+                destination_key: &destination_key,
+            },
+            edge_source_key: &edge_source,
+            edge_destination_key: &edge_destination,
+            face_source_key: &face_source,
+            face_destination_key: &face_destination,
         };
         p5::process_wires_and_shell_vertices_with_kernels(
             kernels.primary,
@@ -693,6 +765,58 @@ impl ManifoldIntersector for ManifoldKernelAdapter<'_> {
             other_mark,
             keep,
         )
+    }
+
+    fn make_faceuse(
+        &mut self,
+        kernels: &mut BooleanKernels<'_>,
+        primary: &mut Brep,
+        other: &mut Brep,
+        attributes: &mut AttributeStore,
+        faceuse: FaceuseId,
+        original_region: Option<RegionId>,
+    ) -> Result<MadeFaceuse> {
+        let keys = self.keys;
+        let vertex_source = |id| keys.object(true, EntityRef::Vertex(id));
+        let destination = |entity| keys.object(false, entity);
+        let edge_source = |edge| keys.object(true, EntityRef::Edge(edge));
+        let edge_destination = |edge| keys.object(false, EntityRef::Edge(edge));
+        let face_source = |face| keys.object(true, EntityRef::Face(face));
+        let face_destination = |face| keys.object(false, EntityRef::Face(face));
+        let mut copy = TopologyCopy {
+            vertices: p1::VertexCopy {
+                records: &mut self.records,
+                attributes,
+                source_key: &vertex_source,
+                destination_key: &destination,
+            },
+            edge_source_key: &edge_source,
+            edge_destination_key: &edge_destination,
+            face_source_key: &face_source,
+            face_destination_key: &face_destination,
+        };
+        // New topology is made with the primary context; copies notify through the
+        // other operand's (or the shared) context.
+        let ctx = match kernels.other.as_deref_mut() {
+            Some(o) => MergeContext::Split(kernels.primary, Some(&mut o.context)),
+            None => MergeContext::Shared(kernels.primary),
+        };
+        let mut faces = Vec::new();
+        let made = p2::make_faceuse_with(
+            ctx,
+            primary,
+            other,
+            faceuse,
+            original_region,
+            &mut self.merge.intersector,
+            &mut copy,
+            Some(&mut faces),
+        )?;
+        Ok(MadeFaceuse {
+            old_region: made.old_region,
+            new_region: made.new_region,
+            faces,
+        })
     }
 
     fn find_region_of_other_face(
@@ -1482,7 +1606,8 @@ mod tests {
         let mut placement = Axis2Placement::default();
         placement.translate(Vec3::X);
         // SmBrep::Notify is topology.brep_p2's (#149) and now runs through the adapter's
-        // environment; the transform then stops at its vertex walk
+        // environment; the vertex walk (GetVertices) is wired, so the transform then
+        // stops at its curve walk
         let r = adapter.transform_brep(
             &mut kernels,
             &mut b,
@@ -1497,7 +1622,7 @@ mod tests {
                 r,
                 Err(SolidError::Unported {
                     unit: "topology.brep_p1",
-                    upstream: "SmBrep::GetVertices"
+                    upstream: "SmBrep::GetCurves"
                 })
             ),
             "transform: {r:?}"
@@ -1623,30 +1748,49 @@ mod tests {
     }
 
     #[test]
-    fn explicit_tolerances_preserve_the_automatic_constructor_boundary() {
+    fn tolerances_match_the_canonical_merge_constructor() {
         use crate::math::EFF_ZERO;
         let mut a = Brep::new();
         let mut b = Brep::new();
+        wire(&mut a);
+        wire(&mut b);
         a.set_tolerance(EFF_ZERO * 0.8);
         b.set_tolerance(EFF_ZERO * 0.4);
 
         let mut adapter = KernelManifoldIntersector::new(9).unwrap();
-        for requested in [-1.0, -0.0, 0.0, EFF_ZERO * 0.5] {
-            assert!(matches!(
-                adapter.configure_operands(&a, &b, requested, 0.3),
-                Err(SolidError::Unported {
-                    upstream: "SmMerge::SmMerge (automatic tolerances)",
-                    unit: "boolean.merge_p2"
-                })
-            ));
+        adapter.merge.options = p1::MergeOptions::new(true, true, false, true, true);
+        adapter.merge.tag_id = 42;
+        adapter.merge.manifold_boolean = Some(false);
+        adapter.merge.intersection_loop_closed = Some(false);
+        let options = adapter.merge.options;
+        let kernel = Kernel::default();
+        for requested in [0.0, -0.0, -1.0, EFF_ZERO * 0.5, EFF_ZERO, 0.123] {
+            for angle in [0.0, 0.345] {
+                let expected = MergeState::<TopologyIntersector<MergeOperand>>::with_breps(
+                    &kernel,
+                    (&a, MergeOperand::Primary),
+                    Some((&b, MergeOperand::Other)),
+                    requested,
+                    angle,
+                    None,
+                )
+                .unwrap();
+                adapter
+                    .configure_operands(&kernel, &a, &b, requested, angle)
+                    .unwrap();
+                assert_eq!(adapter.merge.options, options);
+                assert_eq!(adapter.merge.tag_id, 42);
+                assert_eq!(adapter.merge.manifold_boolean, Some(false));
+                assert_eq!(adapter.merge.intersection_loop_closed, Some(false));
+                assert_eq!(
+                    adapter.intersection_tolerances(),
+                    (
+                        expected.intersector.this_approx_tol_3d(),
+                        expected.intersector.this_ang_tol_rad()
+                    )
+                );
+            }
         }
-        adapter.configure_operands(&a, &b, EFF_ZERO, 0.0).unwrap();
-        assert_eq!(
-            adapter.intersection_tolerances(),
-            (EFF_ZERO, 20.0 * crate::math::PI / 180.0)
-        );
-        adapter.configure_operands(&b, &a, 0.123, 0.345).unwrap();
-        assert_eq!(adapter.intersection_tolerances(), (0.123, 0.345));
     }
 
     #[test]

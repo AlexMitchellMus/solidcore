@@ -48,6 +48,7 @@ use crate::error::{EntityRef, Result, SolidError};
 use crate::geom::a_object::BooleanOperation;
 use crate::geom::attribute::{AttributeStore, ObjectKey};
 use crate::geom::context::{with_mark_lock, MarkType, ALL_MARKS};
+use crate::geom::extent2d::Extent2d;
 use crate::geom::object::{FaceKey, NotifyOperation, ObjectRef};
 use crate::heal::stitch::p2 as stitch;
 use crate::kernel::Kernel;
@@ -404,15 +405,10 @@ impl OffsetExecutive {
                 }
             }
 
-            // cpp:1613–1703: every currently reachable result is empty. Once the
-            // face-construction boundaries are wired, this continuation must walk
-            // non-marked/non-closing result faces, GetCreateExtendedSurface, then
-            // ReplaceSurface(UNSURE, NULL, FALSE) before calculating the trim domain
-            // with bLimitToCurrentDomain=FALSE. Keep the original surface if trim
-            // fits its natural domain, the extension if trim fits that domain;
-            // otherwise restore the original and return SM_ERR. Do not synthesize
-            // replacement surfaces or omit this work for nonempty results.
-            self.extend_result_faces_prefix(kernel, notifications)?;
+            // cpp:1613–1703: retain owning-list order and the active face mark.
+            // Temporarily replace each eligible surface before computing unrestricted
+            // trim bounds; restore the original before reporting an out-of-domain error.
+            self.extend_result_faces_prefix(kernel, mark_type, notifications)?;
 
             let mut result = self.piecewise_merge(kernel, original)?;
             if !self.create_offset_solid() {
@@ -567,7 +563,18 @@ impl OffsetExecutive {
         }
         // cpp:498–506: copied rounded faces do not apply inset.
         self.relate_faceuse(faceuse, new_face);
-        self.map_edgeuses(kernel, original, faceuse, new_face)
+        self.map_edgeuses_with_kernel_context(
+            kernel,
+            original,
+            faceuse,
+            new_face,
+            &mut NotificationStores {
+                records: &mut *notifications.records,
+                attributes: &mut *notifications.attributes,
+                key_of: notifications.original_key_of,
+            },
+            notifications.result_key_of,
+        )
     }
 
     fn offset_face_prefix(&self, original: &Brep, id: FaceId, extended: bool) -> Result<()> {
@@ -633,55 +640,95 @@ impl OffsetExecutive {
     fn extend_result_faces_prefix(
         &mut self,
         kernel: &mut Kernel,
+        mark_type: MarkType,
         notifications: &mut OffsetNotifications<'_>,
     ) -> Result<()> {
         let mut temporary = required(self.take_offset_brep(), OP_EXTENDED)?;
         let status = (|| {
-            let faces = temporary
-                .faces()
-                .iter()
-                .map(|(id, _)| id)
-                .collect::<Vec<_>>();
+            let faces = bp1::faces(&temporary, None)?;
             for id in faces {
+                let key = (notifications.result_key_of)(EntityRef::Face(id));
+                let record = notifications.records.entry(key.key).or_default();
+                if record.is_marked(&kernel.context, mark_type) {
+                    continue;
+                }
                 if self.closing_faces().contains(&id) {
                     continue;
                 }
+                record.mark(Some(&kernel.context), mark_type);
                 let surface = required(temporary.face(id)?.surface.as_ref(), OP_EXTENDED)?;
+                let original_domain = surface.natural_uv_domain();
                 // Face-owned surfaces use the caller's result-arena identities.
-                let key = (notifications.result_key_of)(EntityRef::Face(id));
                 let extension = self
                     .get_create_extended_surface(kernel, key.key.0, surface)?
                     .clone();
+                let extension_domain = extension.natural_uv_domain();
                 // cpp:1639: UNSURE retains the original; FALSE suppresses UV trim
                 // creation. The optional modified-face list is not requested.
-                let (_original, _) = crate::geom::context::Context::with_notification_context(
-                    kernel,
-                    |kernel, context| {
-                        crate::topology::brep::p2::replace_surface(
+                let (original_surface, _) =
+                    crate::geom::context::Context::with_notification_context(
+                        kernel,
+                        |kernel, context| {
+                            crate::topology::brep::p2::replace_surface(
+                                kernel,
+                                &mut temporary,
+                                &mut crate::topology::edge::NotifyEnv {
+                                    records: &mut *notifications.records,
+                                    attributes: &mut *notifications.attributes,
+                                    context: Some(context),
+                                    key_of: notifications.result_key_of,
+                                },
+                                id,
+                                extension,
+                                key,
+                                crate::topology::brep::p2::OldSurface::Keep,
+                                false,
+                            )
+                        },
+                    )?;
+                let trim_domain =
+                    crate::topology::face::p1::calculate_uv_domain_from_uv_trim_curves(
+                        kernel,
+                        &mut temporary,
+                        id,
+                        false,
+                        false,
+                        false,
+                    )?
+                    .domain;
+                let original_surface = required(original_surface, OP_EXTENDED)?;
+                let mut original_surface = Some(original_surface);
+                choose_extended_domain(
+                    &trim_domain,
+                    &original_domain,
+                    &extension_domain,
+                    crate::math::EFF_ZERO,
+                    || {
+                        let original_surface = required(original_surface.take(), OP_EXTENDED)?;
+                        let restored = crate::geom::context::Context::with_notification_context(
                             kernel,
-                            &mut temporary,
-                            &mut crate::topology::edge::NotifyEnv {
-                                records: &mut *notifications.records,
-                                attributes: &mut *notifications.attributes,
-                                context: Some(context),
-                                key_of: notifications.result_key_of,
+                            |kernel, context| {
+                                crate::topology::brep::p2::replace_surface(
+                                    kernel,
+                                    &mut temporary,
+                                    &mut crate::topology::edge::NotifyEnv {
+                                        records: &mut *notifications.records,
+                                        attributes: &mut *notifications.attributes,
+                                        context: Some(context),
+                                        key_of: notifications.result_key_of,
+                                    },
+                                    id,
+                                    original_surface,
+                                    key,
+                                    crate::topology::brep::p2::OldSurface::Keep,
+                                    false,
+                                )
                             },
-                            id,
-                            extension,
-                            key,
-                            crate::topology::brep::p2::OldSurface::Keep,
-                            false,
-                        )
+                        )?;
+                        drop(restored);
+                        Ok(())
                     },
                 )?;
-                // cpp:1645–1684 still needs the trim-domain calculation with FALSE
-                // and the original/extended-domain selection and restoration. Do
-                // not report successful extension after only the temporary swap.
-                // UNPORTED(offset.offset_executive_p2): SmOffsetExecutive::DoExtendedOffset (trim-domain continuation)
-                return Err(SolidError::unported(
-                    "SmOffsetExecutive::DoExtendedOffset (trim-domain continuation)",
-                    "offset.offset_executive_p2",
-                ));
             }
             Ok(())
         })();
@@ -852,6 +899,7 @@ fn shell_difference_with(
     let result =
         KernelManifoldIntersector::with_notifications(keys, notifications.records, |adapter| {
             adapter.configure_operands(
+                kernel,
                 required(primary.as_ref(), OP_SHELL)?,
                 required(other.as_ref(), OP_SHELL)?,
                 tolerance,
@@ -896,6 +944,30 @@ fn check_shell_radius(radius: f64, tolerance: f64) -> Result<()> {
         Err(invalid_input(OP_SHELL))
     } else {
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExtendedDomainChoice {
+    Original,
+    Extension,
+}
+
+fn choose_extended_domain(
+    trim: &Extent2d,
+    original: &Extent2d,
+    extension: &Extent2d,
+    tolerance: f64,
+    restore_original: impl FnOnce() -> Result<()>,
+) -> Result<ExtendedDomainChoice> {
+    if trim.is_contained_by(original, tolerance) {
+        restore_original()?;
+        Ok(ExtendedDomainChoice::Original)
+    } else if trim.is_contained_by(extension, tolerance) {
+        Ok(ExtendedDomainChoice::Extension)
+    } else {
+        restore_original()?;
+        Err(SolidError::sm_err(OP_EXTENDED))
     }
 }
 
@@ -1185,6 +1257,70 @@ mod tests {
         assert!(region.in_brep);
         assert_eq!(region.shells.as_slice(), &[shell]);
         assert_eq!(region.is_void(), 1);
+    }
+
+    #[test]
+    fn extended_domain_selection_preserves_native_branch_order_and_restore_status() {
+        let original = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
+        let extension = Extent2d::from_bounds(-1.0, -1.0, 2.0, 2.0);
+        let tolerance = crate::math::EFF_ZERO;
+        let at_tolerance = Extent2d::from_bounds(-tolerance, 0.0, 1.0, 1.0);
+        assert!(at_tolerance.is_contained_by(&original, tolerance));
+        let beyond_tolerance = Extent2d::from_bounds(-tolerance * 1.01, 0.0, 1.0, 1.0);
+        assert!(!beyond_tolerance.is_contained_by(&original, tolerance));
+        let mut restored = false;
+        assert_eq!(
+            choose_extended_domain(&original, &original, &extension, tolerance, || {
+                restored = true;
+                Ok(())
+            })
+            .unwrap(),
+            ExtendedDomainChoice::Original
+        );
+        assert!(restored);
+
+        restored = false;
+        let inside = Extent2d::from_bounds(-0.5, -0.5, 1.5, 1.5);
+        assert_eq!(
+            choose_extended_domain(&inside, &original, &extension, tolerance, || {
+                restored = true;
+                Ok(())
+            })
+            .unwrap(),
+            ExtendedDomainChoice::Extension
+        );
+        assert!(!restored);
+
+        let extension_boundary = Extent2d::from_bounds(-1.0, -0.5, 1.5, 1.5);
+        assert!(extension_boundary.is_contained_by(&extension, tolerance));
+        let outside_extension = Extent2d::from_bounds(-1.0 - tolerance * 1.01, -0.5, 1.5, 1.5);
+        assert!(!outside_extension.is_contained_by(&extension, tolerance));
+
+        restored = false;
+        let outside = Extent2d::from_bounds(-2.0, -2.0, 3.0, 3.0);
+        assert_status(
+            choose_extended_domain(&outside, &original, &extension, tolerance, || {
+                restored = true;
+                Ok(())
+            }),
+            SM_ERR,
+        );
+        assert!(restored);
+
+        let restore_error = SolidError::invalid_input(OP_EXTENDED, "restore failed");
+        assert!(matches!(
+            choose_extended_domain(&outside, &original, &extension, tolerance, || {
+                Err(restore_error.clone())
+            }),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        let dependency = SolidError::unported("restore", "unit");
+        assert!(matches!(
+            choose_extended_domain(&outside, &original, &extension, tolerance, || {
+                Err(dependency.clone())
+            }),
+            Err(SolidError::Unported { .. })
+        ));
     }
 
     #[test]
@@ -2207,7 +2343,7 @@ mod tests {
         );
         exec.set_offset_brep(result);
         assert_dependency(
-            exec.extend_result_faces_prefix(&mut kernel, &mut fixture.context()),
+            exec.extend_result_faces_prefix(&mut kernel, MarkType::Mark, &mut fixture.context()),
             "SmFace::Notify",
             "topology.face_p3",
         );
@@ -2220,7 +2356,9 @@ mod tests {
             crate::topology::face::p2::UNSURE
         );
         assert_eq!(result.face(face).unwrap().uv_domain, old_domain);
-        assert_eq!(fixture.records.get(&face_ref.key), Some(&record));
+        let record_after = fixture.records.get(&face_ref.key).unwrap();
+        assert_eq!(record_after.user_index1(), 912);
+        assert!(record_after.is_marked(&kernel.context, MarkType::Mark));
         let log = kernel
             .context
             .user_notify_callback()
@@ -2232,6 +2370,91 @@ mod tests {
         assert_eq!(
             log.0,
             vec![(NotifyOperation::PreEdit, face_ref, Some(face_ref))]
+        );
+    }
+
+    #[test]
+    fn extended_faces_skip_marked_before_geometry_or_notification() {
+        let mut kernel = Kernel::default();
+        kernel
+            .context
+            .set_user_notify_callback(Some(Box::<NotificationLog>::default()));
+        let (result, face_id) = one_face(true);
+        let original_trim = result.face(face_id).unwrap().rectangular_trim;
+        let key = result_key(EntityRef::Face(face_id));
+        let mut fixture = NotificationFixture::new(&source_brep());
+        let mut record = Topology::new();
+        record.set_user_index1(321);
+        record.mark(Some(&kernel.context), MarkType::Mark);
+        fixture.records.insert(key.key, record);
+        let original_records = fixture.records.clone();
+        let mut exec = executive();
+        exec.insert_extended_surface(
+            key.key.0,
+            Surface::from(Plane::from_normal(Vec3::Z, Vec3::Z)),
+        );
+        exec.set_offset_brep(result);
+        assert_eq!(
+            exec.extend_result_faces_prefix(&mut kernel, MarkType::Mark, &mut fixture.context()),
+            Ok(())
+        );
+        let result = exec.offset_brep().unwrap();
+        assert_eq!(
+            result.face(face_id).unwrap().rectangular_trim,
+            original_trim
+        );
+        assert_eq!(fixture.records, original_records);
+        assert_eq!(fixture.records.get(&key.key).unwrap().user_index1(), 321);
+        let log = kernel
+            .context
+            .user_notify_callback()
+            .unwrap()
+            .as_any()
+            .unwrap()
+            .downcast_ref::<NotificationLog>()
+            .unwrap();
+        assert!(log.0.is_empty());
+    }
+
+    #[test]
+    fn extended_face_is_marked_before_real_replace_surface_defers() {
+        let mut kernel = Kernel::default();
+        let (result, face_id) = one_face(true);
+        let key = result_key(EntityRef::Face(face_id));
+        let mut fixture = NotificationFixture::new(&source_brep());
+        let mut record = Topology::new();
+        record.set_user_index1(654);
+        fixture.records.insert(key.key, record);
+        let mut exec = executive();
+        exec.insert_extended_surface(
+            key.key.0,
+            Surface::from(Plane::from_normal(Vec3::Z, Vec3::Z)),
+        );
+        exec.set_offset_brep(result);
+        assert_dependency(
+            exec.extend_result_faces_prefix(&mut kernel, MarkType::Mark, &mut fixture.context()),
+            "SmFace::Notify",
+            "topology.face_p3",
+        );
+        let record = fixture.records.get(&key.key).unwrap();
+        assert_eq!(record.user_index1(), 654);
+        assert!(record.is_marked(&kernel.context, MarkType::Mark));
+    }
+
+    #[test]
+    fn trim_domain_failure_is_generic_sm_err() {
+        let original = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
+        let extension = Extent2d::from_bounds(-1.0, -1.0, 2.0, 2.0);
+        let outside = Extent2d::from_bounds(-2.0, -2.0, 3.0, 3.0);
+        assert_status(
+            choose_extended_domain(
+                &outside,
+                &original,
+                &extension,
+                crate::math::EFF_ZERO,
+                || Ok(()),
+            ),
+            SM_ERR,
         );
     }
 
@@ -2482,7 +2705,7 @@ mod tests {
     }
 
     #[test]
-    fn latent_shell_auto_tolerance_defers_at_its_actual_callee_before_boolean_or_consumption() {
+    fn latent_shell_auto_tolerance_reaches_the_real_bounding_box_dependency() {
         for distance in [-0.25, 0.25, -0.0, 0.0] {
             let original = source_brep();
             let original_key_value = original.key();
@@ -2490,17 +2713,16 @@ mod tests {
             let mut input = Some(original);
             let mut kernel = Kernel::default();
             assert_dependency(
-                shell_difference_with(
+                shell_difference(
                     &mut kernel,
                     &mut input,
                     Brep::new(),
                     distance,
                     crate::math::EFF_ZERO * 0.5,
                     &mut fixture.context(),
-                    |_, _, _, _, _| panic!("auto-tolerance dependency was skipped"),
                 ),
-                "SmMerge::SmMerge (automatic tolerances)",
-                "boolean.merge_p2",
+                "SmBrep::CalculateBoundingBox",
+                "query.brep",
             );
             assert_eq!(input.as_ref().unwrap().key(), original_key_value);
             assert!(fixture.records.contains_key(&original_key_value));

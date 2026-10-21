@@ -775,9 +775,7 @@ fn face_notify_call(
     operation: NotifyOperation,
     data: [Option<crate::geom::object::ObjectRef>; 3],
 ) -> Result<()> {
-    let _ = (b, face, env, operation, data);
-    // UNPORTED(topology.face_p3): SmFace::Notify
-    Err(SolidError::unported("SmFace::Notify", "topology.face_p3"))
+    crate::topology::face::p3::notify(b, face, env, None, operation, data)
 }
 
 fn required<T>(v: Option<T>, reason: &'static str) -> Result<T> {
@@ -1485,19 +1483,22 @@ pub fn make_edge_in_face_with_vu(
             let curve = required(
                 b.edge(edge_id)?.curve.as_ref(),
                 "inserted edge without curve",
-            )?;
+            )?
+            .clone();
+            let tolerance = b.tolerance();
             end = find_vertex_sector(
+                k,
                 b,
                 VertexSectorInput {
                     face,
                     vertex: end_vertex,
-                    curve,
+                    curve: &curve,
                     uv_trim: None,
                     parameter: t_end,
                     other_parameter: t_start,
                     orientation: end_orientation,
-                    tolerance: b.tolerance(),
-                    use_uv_classification: false,
+                    tolerance,
+                    validate_sector: false,
                 },
             )?
             .unwrap_or(end);
@@ -1689,10 +1690,17 @@ struct VertexSectorInput<'a> {
     other_parameter: f64,
     orientation: OrientType,
     tolerance: f64,
-    use_uv_classification: bool,
+    validate_sector: bool,
 }
 
-fn find_vertex_sector(b: &Brep, input: VertexSectorInput<'_>) -> Result<Option<VertexuseId>> {
+/// `pFace->FindVertexSector(pVertex, *pCurve, pUVTrim, dT, dTOther, eOrient, tol,
+/// bValidateSector, rpVU, ..)` (unit `topology.face_p4`; `bUVSpaceOkay` at its default
+/// `TRUE`; the possible-problem outputs are unused): the vertex use of the sector.
+fn find_vertex_sector(
+    k: &Kernel,
+    b: &mut Brep,
+    input: VertexSectorInput<'_>,
+) -> Result<Option<VertexuseId>> {
     let VertexSectorInput {
         face,
         vertex,
@@ -1702,25 +1710,25 @@ fn find_vertex_sector(b: &Brep, input: VertexSectorInput<'_>) -> Result<Option<V
         other_parameter,
         orientation,
         tolerance,
-        use_uv_classification,
+        validate_sector,
     } = input;
-    let _ = (
+    let sector = crate::topology::face::p4::find_vertex_sector(
+        k,
         b,
         face,
-        vertex,
-        curve,
-        uv_trim,
-        parameter,
-        other_parameter,
-        orientation,
-        tolerance,
-        use_uv_classification,
-    );
-    // UNPORTED(topology.face_p4): SmFace::FindVertexSector
-    Err(SolidError::unported(
-        "SmFace::FindVertexSector",
-        "topology.face_p4",
-    ))
+        crate::topology::face::p4::FindVertexSectorArgs {
+            vertex,
+            curve,
+            uv_curve: uv_trim,
+            param_at_vertex: parameter,
+            param_ivl_end: other_parameter,
+            orientation,
+            zone_tol_3d: tolerance,
+            validate_sector,
+            uv_space_okay: true,
+        },
+    )?;
+    Ok(sector.vertexuse)
 }
 
 fn remove_old_loop_vertices(b: &mut Brep, vu: VertexuseId) -> Result<()> {
@@ -1774,18 +1782,20 @@ fn set_face_tolerance(
 
 fn compute_loop_orientation(
     k: &Kernel,
-    b: &Brep,
+    b: &mut Brep,
     face: FaceId,
     loop_: LoopId,
     uv_bounds: Option<&mut crate::geom::extent2d::Extent2d>,
     do_3d_loop_computation: bool,
 ) -> Result<OrientType> {
-    let _ = (k, b, face, loop_, uv_bounds, do_3d_loop_computation);
-    // UNPORTED(topology.face_p3): SmFace::ComputeLoopOrientation
-    Err(SolidError::unported(
-        "SmFace::ComputeLoopOrientation",
-        "topology.face_p3",
-    ))
+    crate::topology::face::p3::compute_loop_orientation(
+        k,
+        b,
+        face,
+        loop_,
+        uv_bounds,
+        do_3d_loop_computation,
+    )
 }
 
 fn shell_post_insert(
