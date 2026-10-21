@@ -1665,3 +1665,7 @@ SC_EXPORT int32_t sc_blend_fillet_geom_p1_eval(int32_t op, const double* in, int
 
 // The difftest shim of unit blend.fillet_corner_p3, corner operations (it needs this file's Model).
 #include "blend_fillet_corner_p3_static.inc"
+
+// The difftest shim of unit blend.fillet_standard_solver_p2, ReCalcFilletGeom (it needs this
+// file's Model).
+#include "blend_fillet_standard_solver_p2_static.inc"

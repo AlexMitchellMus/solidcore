@@ -89,6 +89,8 @@ use crate::blend::fillet_custom_solver::{
     offset_local_point_solve, surface_global_point_solve, ConstantRadiusAssistedFs, InitialValues,
     OffsetSurface, SurfaceId,
 };
+use crate::blend::fillet_geom::p1::{FilStatus, FilletBrep, FilletGeomId, FilletVertexType};
+use crate::blend::fillet_intersector::FilletIntersector;
 use crate::blend::fillet_solver::p1::{
     FilletSolver, FilletSolverOps, FilletSphereSolveEnfo, OffsetSurfaceSlot,
 };
@@ -109,7 +111,9 @@ use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::geom::local_solve_nd::{BoundaryHandler, EvalNFunctions, LocalSolveNd, NdSolution};
 use crate::geom::matrix::Matrix;
 use crate::geom::vector2d::Point2;
+use crate::intersect::adv_surface_intersector::NoSurfaceHandle;
 use crate::intersect::surface_intersector::p1::{SrfIndex, TsectPnt};
+use crate::intersect::surface_intersector::p4::LawIntersectionOptions;
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3, EFF_ZERO, EFF_ZERO_SQ, EFF_ZERO_SQRT, PI};
 use crate::nurbs::b_spline_curve::BSplineCurve;
@@ -122,7 +126,7 @@ use crate::surface::surface::Surface;
 use crate::topology::edgeuse::p1 as edgeuse;
 use crate::topology::edgeuse::p3 as edgeuse_p3;
 use crate::topology::face::p2 as face;
-use crate::topology::{edge, Brep, EdgeuseId, ObjectHandle};
+use crate::topology::{edge, vertexuse, Brep, EdgeuseId, ObjectHandle, VertexuseId};
 
 const OP: &str = "blend::fillet_standard_solver::p2";
 const OP_CR_INIT: &str = "blend::fillet_standard_solver::p2::constant_radius_load_initial_values";
@@ -1432,15 +1436,32 @@ impl VariableRadiusFs {
     }
 
     /// `SmVariableRadiusFS::ReCalcFilletGeom(bIsAnalyticFillet, pOptMarchDir,
-    /// pOptRefCurve)`: clears the extension flags, then walks the rails of the
-    /// solver's fillet geometry.
+    /// pOptRefCurve)`: clears the extension flags; collects the intersection points of
+    /// the rail ends of the solver's first fillet geometry (in `pseudo`, the pseudo
+    /// B-rep the geometry lives in), skipping unprocessed, mate and
+    /// rail-x-extended-edge-use vertices, sorted by their projection on the reference
+    /// curve (points within `SM_EFF_ZERO_SQRT` of the curve's length of one already
+    /// taken are dropped); then traces the law intersection of the two offsets over
+    /// their extended domains through those points (`SmFilletIntersector::
+    /// DoLawIntersection`), which updates the points in place, and fails when a point
+    /// after the first has a negative curve parameter. `bIsAnalyticFillet` and
+    /// `pOptMarchDir` are unused upstream.
     ///
     /// # Errors
     ///
-    /// `SM_ERR_NULL_POINTER` without reference curve; [`SolidError::Unported`] at the
-    /// first rail (`SmFilletGeom::GetRail`, unit `blend.fillet_geom_p1`).
+    /// `SM_ERR_NULL_POINTER` without reference curve, rail or original curve; `SM_ERR`
+    /// for a rail without exactly two edge uses, a projection without exactly one
+    /// solution or a point with a negative curve parameter; those of the projection,
+    /// `SetupOffsetExtension` and the law intersection ([`SolidError::Unported`] from
+    /// the law, `SmFilletLaw::Evaluate`, unit `blend.fillet_executive_p1`);
+    /// [`SolidError::InvalidInput`] for a solver without fillet geometry or surfaces, or
+    /// a rail edge use without vertex use or fillet vertex (upstream reads out of
+    /// bounds or dereferences `NULL`).
+    #[allow(clippy::too_many_lines)]
     pub fn re_calc_fillet_geom(
         &mut self,
+        k: &Kernel,
+        pseudo: &mut FilletBrep,
         _is_analytic_fillet: bool,
         _march_dir: Option<Vec3>,
         ref_curve: Option<&Curve>,
@@ -1449,18 +1470,155 @@ impl VariableRadiusFs {
         self.curve_based.solver.extend_before = false;
         self.curve_based.solver.extend_after = false;
 
-        // pCurve = pOptRefCurve; NER(pCurve);
+        // pCurve = pOptRefCurve; NER(pCurve); (m_vFilletGeoms[0] is read before, but
+        // first dereferenced in the rail loop)
         let curve = ref_curve.ok_or_else(|| SolidError::null_pointer(OP))?;
-        // (sIvl = pCurve->GetNaturalInterval(), dTol = m_dThisApproxTol3d and
-        // dScale = sIvl.GetLength() are read inside the rail loop)
-        let _ivl = curve.natural_interval();
+        let fillet_geom = *self
+            .curve_based
+            .solver
+            .fillet_geoms
+            .first()
+            .ok_or_else(|| SolidError::invalid_input(OP, "solver without fillet geometry"))?;
+        // (b3DTest is TRUE: the 2D test on the edge uses' UV trim curves is never taken)
+        let b3d_test = true;
 
-        // for each rail of m_vFilletGeoms[0]: sAllRails.Add(pFilletGeom->GetRail(i))
-        // UNPORTED(blend.fillet_geom_p1): SmFilletGeom::GetRail -- justified: plan/findings.md blend.fillet_standard_solver_p2 (the solver holds FilletGeomRef handles without geometry data)
-        Err(SolidError::unported(
-            "SmFilletGeom::GetRail",
-            "blend.fillet_geom_p1",
-        ))
+        let ivl = curve.natural_interval();
+        // (the closed solver edge test is disabled upstream: `#if 0`)
+        let is_closed_solver_edge = false;
+
+        let tol = self.curve_based.solver.approx_tol_3d;
+        let scale = ivl.length();
+
+        // Sort the SmTsectPnt's of each rail-end, the rails should
+        // go in the same 'direction' as the solver edge
+        // (sTsectPnts holds pointers to the vertex uses' points: their ids here)
+        let mut tsect_pnts: Vec<VertexuseId> = Vec::new();
+        let mut proj_params: Vec<f64> = Vec::new();
+        for i in 0..2 {
+            // (m_vOtherRails1 / m_vOtherRails2 are not appended upstream)
+            let all_rails = [pseudo.geom(fillet_geom)?.rail(i)];
+            for rail in all_rails {
+                let rail = rail.ok_or_else(|| SolidError::null_pointer(OP))?;
+                let fil_eus = edge::edgeuses(pseudo.brep(), rail, None, None)?;
+                if fil_eus.len() != 2 {
+                    return Err(SolidError::sm_err(OP));
+                }
+                for &eu in &fil_eus {
+                    let vu = pseudo.brep().edgeuse(eu)?.vertexuse.ok_or_else(|| {
+                        SolidError::invalid_input(OP, "rail edge use without vertex use")
+                    })?;
+                    let v = vertexuse::vertex(pseudo.brep(), vu)?.ok_or_else(|| {
+                        SolidError::invalid_input(OP, "vertex use without vertex")
+                    })?;
+                    let fv = pseudo.fillet_vertex(v)?;
+                    if fv.status == FilStatus::Unprocessed
+                        || fv.vertex_type == FilletVertexType::Mate
+                        || fv.vertex_type == FilletVertexType::RailXExtendedEdgeuse
+                    {
+                        continue;
+                    }
+                    let tsect_pnt = pseudo.fillet_vertexuse(vu)?.tsect_pnt();
+                    // Do a 3D test (an SM_IP_UNKNOWN point is not set up: commented out
+                    // upstream)
+                    let pnt = tsect_pnt.crv_pos();
+
+                    // Drop 3D point on surface
+                    let solutions = curve.global_point_solve(
+                        k,
+                        &ivl,
+                        SolverOperation::Minimize,
+                        pnt,
+                        tol,
+                        SolutionRequested::Single,
+                        &GlobalPointSolveOptions::<ObjectHandle>::default(),
+                    )?;
+                    if solutions.len() != 1 {
+                        return Err(SolidError::sm_err(OP));
+                    }
+                    let mut t = solutions
+                        .get(0)
+                        .ok_or_else(|| SolidError::sm_err(OP))?
+                        .start
+                        .param(0)?;
+                    if b3d_test && ivl.is_value_on_boundary(t, EFF_ZERO).0 && is_closed_solver_edge
+                    {
+                        // Do this logical test if dT is on boundary of a
+                        // closed edge. (Please noted that the rail is already
+                        // in the same direction as the solver)
+                        if pseudo.brep().edgeuse(eu)?.orientation == OrientType::Opposite {
+                            t = ivl.max();
+                        }
+                    }
+
+                    let mut index_of_insert = proj_params.len();
+                    let mut do_insertion = true;
+                    for (kk, &p) in proj_params.iter().enumerate() {
+                        if (t - p).abs() < EFF_ZERO_SQRT * scale {
+                            do_insertion = false;
+                            break;
+                        } else if t < p {
+                            index_of_insert = kk;
+                            break;
+                        }
+                    }
+                    if do_insertion {
+                        proj_params.insert(index_of_insert, t);
+                        tsect_pnts.insert(index_of_insert, vu);
+                    }
+                }
+            }
+        }
+
+        let solver = &self.curve_based.solver;
+        let surf1 = Surface::from(rail_offset(solver, 0)?.surface.clone());
+        let surf2 = Surface::from(rail_offset(solver, 1)?.surface.clone());
+        let mut domain1 = rail_offset(solver, 0)?.surface.natural_uv_domain();
+        let mut domain2 = rail_offset(solver, 1)?.surface.natural_uv_domain();
+        solver.setup_offset_extension(k, &surf1, &mut domain1)?;
+        solver.setup_offset_extension(k, &surf2, &mut domain2)?;
+        // Setup FilletIntersector (no current fillet geometry: the default NULL)
+        let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, FilletGeomId> =
+            FilletIntersector::new(k, &surf1, &domain1, &surf2, &domain2, None)?;
+        let mut ids = Vec::new();
+        for &vu in &tsect_pnts {
+            let p = pseudo.fillet_vertexuse(vu)?.tsect_pnt().clone();
+            ids.push(fi.base.base.alloc_point(p));
+        }
+
+        // (bUseNormalAveraging and bUniformSteps are TRUE; the uniform-steps flag and
+        // the angle tolerance are unused by DoLawIntersection)
+        let original = self
+            .curve_based
+            .original
+            .as_ref()
+            .ok_or_else(|| SolidError::null_pointer(OP))?;
+        let opts = LawIntersectionOptions {
+            law: &self.law,
+            law_orient: self.law_orientation,
+            point_curve: original,
+            point_curve_interval: self.law_interval,
+            surface_orientations: solver.orientations,
+            use_normal_plane_averaging: true,
+            approx_tol_3d: Some(tol),
+        };
+        // DISPATCH GAP: upstream runs DoLawIntersection on the SmFilletIntersector, so
+        // its ComputeNextPoint / FlushCurve / ComputePointValues / TestSpanAccuracy
+        // overrides apply; the base intersector here calls its own versions
+        // (plan/findings.md, blend.fillet_intersector "Virtual overrides").
+        let traced = fi.base.base.do_law_intersection(k, &ids, &opts);
+        // the points are SmTsectPnt references upstream: copy them back
+        for (&vu, &id) in tsect_pnts.iter().zip(&ids) {
+            let p = fi.base.base.point(id)?.clone();
+            pseudo.fillet_vertexuse_mut(vu)?.set_tsect_pnt(&p);
+        }
+        traced?;
+        for &vu in tsect_pnts.iter().skip(1) {
+            if pseudo.fillet_vertexuse(vu)?.tsect_pnt().curve_parameter < 0.0 {
+                return Err(SolidError::sm_err(OP));
+            }
+        }
+
+        Ok(())
     }
 
     /// `SmVariableRadiusFS::LoadJacobian`: with `crX = [.. u1 v1 u2 v2 t ..]` (the UV
@@ -2412,13 +2570,16 @@ mod tests {
         };
         assert!(vr.is_kind_of(VARIABLE_RADIUS_FS_TYPE) && vr.is_kind_of(CURVE_BASED_FS_TYPE));
         assert!(!vr.is_kind_of(CONSTANT_RADIUS_FS_TYPE));
+        let mut pseudo = FilletBrep::new();
         assert!(matches!(
-            vr.re_calc_fillet_geom(false, None, None),
+            vr.re_calc_fillet_geom(&k, &mut pseudo, false, None, None),
             Err(SolidError::Upstream { .. })
         ));
-        assert!(vr
-            .re_calc_fillet_geom(false, None, Some(&centre))
-            .is_err_and(|e| e.is_unported()));
+        // (no fillet geometry: upstream reads m_vFilletGeoms[0] out of bounds)
+        assert!(matches!(
+            vr.re_calc_fillet_geom(&k, &mut pseudo, false, None, Some(&centre)),
+            Err(SolidError::InvalidInput { .. })
+        ));
 
         // the generators' CreateSurface: G1 only for the blend curves of a
         // constant-radius solver

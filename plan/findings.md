@@ -10828,10 +10828,12 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   valgrind with `harness/valgrind/ub11.supp` gives 0 errors on the simple, unify, select and split
   samples.
 
-## blend.fillet_standard_solver_p2 (`SmFilletStandardSolver.cpp` part 2, PR #265, 2026-10-19; partial, disagreement resolved 2026-10-20)
+## blend.fillet_standard_solver_p2 (`SmFilletStandardSolver.cpp` part 2, PR #265, 2026-10-19, continued in PR #439, 2026-10-21; partial)
 
-Difftest 405 cases (400 generated + 5 fixtures): 388 pass, 0 failed, 17 deferred; 3000
-seeds: 2893 pass, 0 failed, 112 deferred (max_rel_err 3.8e-16).
+Difftest (PR #439, on #303): 405 cases (400 generated + 5 fixtures): 367 pass, 0 failed, 33
+deferred, 5 rejected; `--perturb` 367/367; `--fuzz 2000` 0 differs. (PR #265 before the
+`ReCalcFilletGeom` port: 388 pass, 17 deferred; 3000 seeds 2893 pass, 0 failed, 112
+deferred, max_rel_err 3.8e-16.)
 
 - **Resolved disagreement.** `SmConstantRadiusFS::LoadInitialValues` on an
   `SmSurfaceSurfaceFS` (fixture `fx_a`, generated case `gen0180`, seed `7089733659915066011`;
@@ -10855,23 +10857,43 @@ seeds: 2893 pass, 0 failed, 112 deferred (max_rel_err 3.8e-16).
   fix resolved the point-on-plane case `gen0386` once `SmFilletSphereSolveENFO::Evaluate`
   was wired. `blend.fillet_custom_solver`, `blend.fillet_standard_solver_p1` and
   `blend.fillet_solver_p1` are unchanged by it (0 failed).
-- **Stub kept, justified.** `SmVariableRadiusFS::ReCalcFilletGeom` stops at
-  `SmFilletGeom::GetRail` (`UNPORTED(blend.fillet_geom_p1)`, partial): the solver base
-  (`blend.fillet_solver_p1`'s `FilletSolver`, PR #192) holds `m_vFilletGeoms` as
-  `FilletGeomRef` handles only; the geometry data (its rails) belongs to
-  `blend.fillet_geom_p1`'s model, which the solver does not carry yet, so there are no
-  rails to take.
+- **ReCalcFilletGeom (ported, PR #439).** `VariableRadiusFs::re_calc_fillet_geom` takes the
+  pseudo B-rep its fillet geometry lives in (as `blend.fillet_solver_p1` does since #303) and
+  ports the whole routine: the rail walk over the first geometry's rails (unprocessed, mate
+  and rail-x-extended-edge-use vertices skipped), the projection of the rail-end points on
+  the reference curve and their sorted, de-duplicated insertion, `SetupOffsetExtension` and
+  `SmFilletIntersector::DoLawIntersection`, whose points are written back to the vertex
+  uses. `DoLawIntersection` evaluates the law first (`SmFilletLaw::Evaluate`,
+  `UNPORTED(blend.fillet_executive_p1)`), so a case with exactly two points defers there;
+  0, 1, 3 or 4 points (`SM_ERR`), a missing reference curve or rail (`SM_ERR_NULL_POINTER`)
+  and a zero point tangent (`Unitize`, `SM_ERR_INVALID_INPUT`) compare. The call runs on the
+  base intersector: `DISPATCH GAP` for `SmFilletIntersector`'s overrides (the
+  `blend.fillet_intersector` "Virtual overrides" note above). Harness: the `recalc` op
+  (shim `blend_fillet_standard_solver_p2_static.inc`, included by
+  `blend_fillet_geom_p1.cpp` to build the geometry with its `Model`) constructs a real
+  `SmVariableRadiusFS`, pins its offsets and replaces its first geometry by the Model's.
+- **Upstream solvers start with one fillet geometry.** `SmFilletSolver()` adds
+  `new SmFilletGeom(this)` to `m_vFilletGeoms` (`SmFilletSolver.cpp:65`), so after any
+  derived constructor `m_vFilletGeoms.GetSize() == 1`; Rust's `FilletSolver::new` leaves it
+  out (`FilletSolver::new_in` / `add_constructor_fillet_geom` add it, #303). A shim that
+  `Add`s a geometry to a constructed solver puts it at index 1, not 0 (the first `recalc`
+  harness did, and every case read the constructor's rail-less geometry: `NER(pRail)`).
 - **FinishConstruction (stub kept, justified).** The `SmConstantDistanceFS` and
   `SmVariableRadiusFS` constructors (and upstream's `SmConstantRadiusFS` surface
-  constructor under `SmSurfaceSurfaceFS`) end with `FinishConstruction()`, which installs
-  copies of the two offsets into each fillet geometry (`SmFilletGeom::SetOffsetSurface`,
-  `UNPORTED(blend.fillet_geom_p1)`). It changes nothing on the solver (the copies go to the
-  geometry); the geometries are `FilletGeomRef` handles without data, and nothing these
-  units port reads a geometry's offsets. Calling `FilletSolver::finish_construction`
-  (an explicit `Unported`) would defer every constructor case, including all
-  `SmSurfaceSurfaceFS` cases; `blend.fillet_standard_solver_p1`'s `SmConstantRadiusFS`
-  constructors and `FilletSolver::from_surfaces` skip it the same way. Wire it when the
-  solver carries `blend.fillet_geom_p1`'s geometries.
+  constructor under `SmSurfaceSurfaceFS`) end with `FinishConstruction()`. Because of the
+  constructor's default geometry above, upstream it is not a no-op: it installs copies of
+  the two offsets into that geometry (`SmFilletGeom::SetOffsetSurface`). It changes nothing
+  on the solver, and nothing these units port reads that geometry's offsets. Wiring it needs
+  the constructors to take the pseudo B-rep and the solver's id (as `FilletSolver::new_in`)
+  and to add the default geometry first; `blend.fillet_standard_solver_p1`'s
+  `SmConstantRadiusFS` constructors, which these build on, do not take them yet either. The
+  three sites keep `UNPORTED(blend.fillet_geom_p1)` comments pointing here.
+- **Stacked on #303 (2026-10-21).** PR #265 was closed unmerged and continued in PR #439,
+  which merges PR #303 (tdamsma, `blend.fillet_solver_p1` glue: it carries #192 and
+  replaces `FilletGeomRef` by `FilletGeomId` with the pseudo B-rep threaded through
+  `FilletSolverOps`) instead of #192; #265's WIP also carried froglemonade2's #192 commit
+  `f676c2e8`, which #303 lacks. The custom solvers' intersector adapters gained #303's
+  four geometry setters (delegating to the base).
 - **Stacked on #192 (2026-10-20).** The PR merges PR #192 (`blend.fillet_solver_p1`):
   one `FilletSolver` base, `FilletSurfaceGenerator::Circular`/`BlendCurve` wrapping
   p1's generator structs (continuity `u32`), `ConstantRadiusAssistedFs`'s
