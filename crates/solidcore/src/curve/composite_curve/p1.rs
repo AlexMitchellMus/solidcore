@@ -318,14 +318,14 @@ impl CompositeCurveSegment {
     ///
     /// Those of [`Curve::approx_eq`] (only reached when transition and sense
     /// agree).
-    pub fn approx_eq(&self, other: &Self) -> Result<bool> {
+    pub fn approx_eq(&self, k: &Kernel, other: &Self) -> Result<bool> {
         // low work
         if core::ptr::eq(self, other) {
             return Ok(true);
         }
         Ok(self.transition == other.transition
             && self.same_sense == other.same_sense
-            && self.curve.approx_eq(&other.curve)?
+            && self.curve.approx_eq(k, &other.curve)?
             && is_zero(self.gap_start - other.gap_start)
             && is_zero(self.gap_end - other.gap_end))
     }
@@ -410,6 +410,7 @@ impl CurveEvaluate for CompositeCurve {
 
     fn evaluate(
         &self,
+        _k: &Kernel,
         _t: f64,
         _num_derivs: usize,
         _from_left: bool,
@@ -419,12 +420,12 @@ impl CurveEvaluate for CompositeCurve {
         Err(SolidError::sm_err(OP))
     }
 
-    fn evaluate_point(&self, _t: f64) -> Result<Point3> {
+    fn evaluate_point(&self, _k: &Kernel, _t: f64) -> Result<Point3> {
         // SmCurve::EvaluatePoint (not overridden)
         Err(SolidError::sm_err(OP))
     }
 
-    fn is_closed_virtual(&self, _interval: &Extent1d, _tol: f64) -> Result<bool> {
+    fn is_closed_virtual(&self, _k: &Kernel, _interval: &Extent1d, _tol: f64) -> Result<bool> {
         Ok(Self::is_closed(self))
     }
 }
@@ -588,7 +589,7 @@ impl CompositeCurve {
     /// # Errors
     ///
     /// Those of [`CompositeCurveSegment::approx_eq`] (every segment is compared).
-    pub fn approx_eq(&self, other: &Self) -> Result<bool> {
+    pub fn approx_eq(&self, k: &Kernel, other: &Self) -> Result<bool> {
         // low work
         if core::ptr::eq(self, other) {
             return Ok(true);
@@ -604,7 +605,7 @@ impl CompositeCurve {
             // check segments (upstream ANDs every comparison, no short cut)
             if rtn {
                 for (a, b) in self.segments.iter().zip(&other.segments) {
-                    let same = a.approx_eq(b)?;
+                    let same = a.approx_eq(k, b)?;
                     rtn &= same;
                 }
             }
@@ -895,6 +896,7 @@ impl CompositeCurve {
     /// curves or an empty polygon (upstream reads past the arrays);
     /// [`SolidError::Unported`] from the linearity test and the tessellation.
     pub fn compute_projected_loop_orientation(
+        k: &Kernel,
         curves: &[Curve],
         senses: &[bool],
         normal: Vec3,
@@ -917,16 +919,16 @@ impl CompositeCurve {
             // Tessellate every curve.
             for (this_curve, bsc) in curves.iter().enumerate() {
                 // For lines, we need only the two end points.
-                if bsc.is_linear(EFF_ZERO, false)?.linear {
+                if bsc.is_linear(k, EFF_ZERO, false)?.linear {
                     let ivl = bsc.natural_interval();
-                    let p0 = bsc.evaluate_point(ivl.min())?;
+                    let p0 = bsc.evaluate_point(k, ivl.min())?;
                     bsc_poly.clear();
                     bsc_poly.push(p0);
-                    let p1 = bsc.evaluate_point(ivl.max())?;
+                    let p1 = bsc.evaluate_point(k, ivl.max())?;
                     bsc_poly.push(p1);
                 } else {
                     // tesselate curve to current dAngleDeg - skip failures
-                    match bsc.tessellate(&bsc.natural_interval(), 0.0, angle_deg, 3) {
+                    match bsc.tessellate(k, &bsc.natural_interval(), 0.0, angle_deg, 3) {
                         Ok(t) => bsc_poly = t.points,
                         Err(e) if e.is_unported() => return Err(e),
                         Err(_) => continue,
@@ -1067,6 +1069,7 @@ impl CompositeCurve {
     /// `distance_to_create_line` not above it; those of the lengths and the gap
     /// lines; [`SolidError::Unported`] from the end points.
     pub fn build_composites_from_curves(
+        k: &Kernel,
         curves: Vec<Curve>,
         same_point_tolerance: f64,
         distance_to_create_line: f64,
@@ -1105,7 +1108,7 @@ impl CompositeCurve {
             if let Some(e) = ignored(
                 item.curve
                     .as_ref()
-                    .map_or_else(|| Err(SolidError::sm_err(OP_BUILD)), Curve::ends),
+                    .map_or_else(|| Err(SolidError::sm_err(OP_BUILD)), |curve| curve.ends(k)),
             )? {
                 item.start = e.start;
                 item.end = e.end;
@@ -1192,6 +1195,7 @@ impl CompositeCurve {
             let Some(f) = found else {
                 // Flush the curve and reinitialize the list
                 flush_crv(
+                    k,
                     &mut items,
                     &mut head,
                     tol,
@@ -1319,6 +1323,7 @@ fn take_curve(items: &mut [CurveItem], i: usize) -> Result<Curve> {
 /// `sm_FlushCrv`: turns the linked list after `head` into composite curves (see
 /// [`CompositeCurve::build_composites_from_curves`]) and empties it.
 fn flush_crv(
+    k: &Kernel,
     items: &mut [CurveItem],
     head: &mut Option<usize>,
     tol: f64,
@@ -1376,7 +1381,7 @@ fn flush_crv(
                     .as_ref()
                     .ok_or_else(|| SolidError::invalid_input(OP_BUILD, "curve listed twice"))?;
                 let ivl = crv.natural_interval();
-                let (len, _) = crv.approximate_length(&ivl, 5, false)?;
+                let (len, _) = crv.approximate_length(k, &ivl, 5, false)?;
 
                 // skip 1st curves too small
                 if len < same_point_tolerance {
@@ -1729,7 +1734,7 @@ pub fn create_corner(
             // the plane normal of the two extensions (status ignored upstream)
             let pair = [c1, c2];
             let plane_normal =
-                ignored(compute_crvs_normal(&pair))?.unwrap_or(Vec3::new(0.0, 0.0, 0.0));
+                ignored(compute_crvs_normal(k, &pair))?.unwrap_or(Vec3::new(0.0, 0.0, 0.0));
             [c1, c2] = pair;
 
             let chamfer_vector = vertex_to_x.cross(plane_normal);
@@ -1814,8 +1819,8 @@ pub fn curve_classify(
     // Quick check of the mid point for being in a bow-tie.
     if let Some(orig) = originator {
         let mid = ivl.evaluate(0.5);
-        let pv_this = ignored(trimmed_offset.evaluate(mid, 1, false, true))?.unwrap_or_default();
-        let pv_orig = ignored(orig.evaluate(mid, 1, false, true))?.unwrap_or_default();
+        let pv_this = ignored(trimmed_offset.evaluate(k, mid, 1, false, true))?.unwrap_or_default();
+        let pv_orig = ignored(orig.evaluate(k, mid, 1, false, true))?.unwrap_or_default();
         let d_this = at(&pv_this, 1);
         let d_orig = at(&pv_orig, 1);
         if d_this.dot(d_orig) < 0.0 {
@@ -1830,7 +1835,7 @@ pub fn curve_classify(
     let min_dist = offset_distance + 2.0 * xsect_tol_3d;
 
     // drop the mid point onto every original curve
-    let pnt = trimmed_offset.evaluate_point(ivl.evaluate(0.5))?;
+    let pnt = trimmed_offset.evaluate_point(k, ivl.evaluate(0.5))?;
     let samples = [pnt];
 
     for orig in orig_curves {
@@ -2017,6 +2022,7 @@ mod tests {
 
     #[test]
     fn build_square() {
+        let k = &Kernel::default();
         let pts = [
             [0.0, 0.0, 0.0],
             [1.0, 0.0, 0.0],
@@ -2029,7 +2035,7 @@ mod tests {
             line(pts[2], pts[1]),
             line(pts[3], pts[0]),
         ];
-        let r = CompositeCurve::build_composites_from_curves(curves, 1e-6, 0.0).unwrap();
+        let r = CompositeCurve::build_composites_from_curves(k, curves, 1e-6, 0.0).unwrap();
         assert_eq!(r.composites.len(), 1);
         assert!(r.composites[0].is_closed());
         assert_eq!(r.composites[0].num_segments(), 4);
@@ -2038,6 +2044,7 @@ mod tests {
 
     #[test]
     fn orientation_of_square() {
+        let k = &Kernel::default();
         let pts = [
             [0.0, 0.0, 0.0],
             [1.0, 0.0, 0.0],
@@ -2051,6 +2058,7 @@ mod tests {
             line(pts[3], pts[0]),
         ];
         let o = CompositeCurve::compute_projected_loop_orientation(
+            k,
             &curves,
             &[true; 4],
             Vec3::new(0.0, 0.0, 1.0),
@@ -2059,6 +2067,7 @@ mod tests {
         .unwrap();
         assert_eq!(o, OrientType::Same);
         let o = CompositeCurve::compute_projected_loop_orientation(
+            k,
             &curves,
             &[true; 4],
             Vec3::new(0.0, 0.0, -1.0),

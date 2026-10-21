@@ -391,7 +391,7 @@ fn put_samples(c: &SmCurve, out: &mut Vec<f64>) -> Result<(), SolidError> {
     let ivl = c.natural_interval();
     out.extend([ivl.min(), ivl.max()]);
     for k in 0..=2u8 {
-        match c.evaluate_point(ivl.evaluate(f64::from(k) / 2.0)) {
+        match c.evaluate_point(&Kernel::default(), ivl.evaluate(f64::from(k) / 2.0)) {
             Ok(p) => out.extend([0.0, p.x, p.y, p.z]),
             Err(SolidError::Upstream { code, .. }) => out.extend([f64::from(code), 0.0, 0.0, 0.0]),
             Err(e) => return Err(e),
@@ -856,12 +856,14 @@ mod tests {
     use super::*;
     use solidcore::curve::line::Line;
     use solidcore::geom::extent1d::Extent1d;
+    use solidcore::kernel::Kernel;
     use solidcore::math::{Point3, Vec3};
     use solidcore::nurbs::b_spline_curve::BSplineCurve;
     use solidcore::nurbs::nurbs_crv::allocate_nurb_curve;
 
     #[test]
     fn own_uv_trim_copy_slices_line_to_its_b_spline_base() {
+        let k = Kernel::default();
         let mut nurb = allocate_nurb_curve(1, 1, 3).unwrap();
         for (point, x) in nurb.cpts_mut().iter_mut().zip([-5.0, 5.0]) {
             point.x = x;
@@ -882,8 +884,8 @@ mod tests {
         let parameter = 1.0 / 7.0;
 
         assert!(matches!(native_copy.kind(), CurveKind::BSpline(_)));
-        let native_x = native_copy.evaluate_point(parameter).unwrap().x;
-        let analytic_x = line.evaluate_point(parameter).unwrap().x;
+        let native_x = native_copy.evaluate_point(&k, parameter).unwrap().x;
+        let analytic_x = line.evaluate_point(&k, parameter).unwrap().x;
         assert_eq!(native_x, -5.0 * (1.0 - parameter) + 5.0 * parameter);
         assert_ne!(native_x, analytic_x);
     }

@@ -334,7 +334,7 @@ fn build_all(k: &Kernel, s: &Script) -> Result<Pool, Fail> {
     for [uv, sf] in &s.cos {
         let uv_curve = pool.curve_at(Some(*uv))?.ok_or_else(|| harness("no uv curve"))?.clone();
         let surface = pool.surface_at(Some(*sf))?.ok_or_else(|| harness("no surface"))?;
-        
+
         let c = must(CrvOnSurf::new(k, uv_curve, surface.clone(), None, 0))?;
         let i = pool.objs.len();
         pool.objs.push(PoolObj::Curve(Curve::from(c)));
@@ -468,7 +468,7 @@ fn rust_run(s: &Script) -> Result<Vec<f64>, Fail> {
                 o.extend([0.0, b(r)]);
             }
             OpIn::CrvLoc { j, .. } => {
-                let (p, prm) = must(cc.classify_crv_loc_by_index(&pool, *j))?;
+                let (p, prm) = must(cc.classify_crv_loc_by_index(&k, &pool, *j))?;
                 o.extend([0.0, prm, p.x, p.y, p.z]);
             }
             OpIn::Insert { j, ivl, .. } => {
@@ -514,9 +514,9 @@ fn rust_run(s: &Script) -> Result<Vec<f64>, Fail> {
             OpIn::MinUv { j, uv, .. } | OpIn::MaxUv { j, uv, .. } => {
                 let given = Point2::new(uv[0], uv[1]);
                 let r = if matches!(x, OpIn::MinUv { .. }) {
-                    cc.interval_min_uv(&pool, *j, given)
+                    cc.interval_min_uv(&k, &pool, *j, given)
                 } else {
-                    cc.interval_max_uv(&pool, *j, given)
+                    cc.interval_max_uv(&k, &pool, *j, given)
                 };
                 match st(r)? {
                     Ok(p) => o.extend([0.0, p.x, p.y]),

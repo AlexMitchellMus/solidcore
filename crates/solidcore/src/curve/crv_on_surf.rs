@@ -156,7 +156,7 @@ pub const CONTINUITY_ANGLE: f64 = 0.5;
 
 // ---- back-edges ----------------------------------------------------------------------
 
-/// `SmSurface::ReadFromDB(type, db, .., version)`: the surface of the record.
+/// `SmSurface::ReadFromDB(type, db, .., version)`: the concrete surface of the record.
 fn surface_read_from_db(
     k: &Kernel,
     surface_type: i64,
@@ -591,7 +591,7 @@ impl CrvOnSurf {
     /// # Errors
     ///
     /// Those of the UV curve comparison.
-    pub fn approx_eq(&self, other: &Self) -> Result<bool> {
+    pub fn approx_eq(&self, k: &Kernel, other: &Self) -> Result<bool> {
         // low work
         if core::ptr::eq(self, other) {
             return Ok(true);
@@ -599,8 +599,8 @@ impl CrvOnSurf {
 
         // check equivalence of these objects
         let mut rtn = true;
-        rtn &= self.uv_curve.approx_eq(&other.uv_curve)?;
-        rtn &= self.surface.approx_eq(&other.surface)?;
+        rtn &= self.uv_curve.approx_eq(k, &other.uv_curve)?;
+        rtn &= self.surface.approx_eq(k, &other.surface)?;
         rtn &= self.uv_domain.are_same(&other.uv_domain);
         Ok(rtn)
     }
@@ -618,6 +618,7 @@ impl CrvOnSurf {
     /// `InvalidInput` for requested orders above 4096, after those geometry errors.
     pub fn evaluate(
         &self,
+        k: &Kernel,
         t: f64,
         num_derivs: usize,
         from_left: bool,
@@ -629,7 +630,7 @@ impl CrvOnSurf {
         // Curve eval
         let crv = self
             .uv_curve
-            .evaluate(t, n_eval, from_left, non_zero_tangents)?;
+            .evaluate(k, t, n_eval, from_left, non_zero_tangents)?;
 
         // surface eval locals
         let p = at(&crv, 0);
@@ -644,7 +645,7 @@ impl CrvOnSurf {
         // Surface eval
         let mut srf = self
             .surface
-            .evaluate(uv, n_eval, n_eval, flags(non_zero_tangents));
+            .evaluate(k, uv, n_eval, n_eval, flags(non_zero_tangents));
 
         // If the surface can't handle this many derivatives (default bNonZeroTangents)
         while let Err(e) = &srf {
@@ -652,7 +653,7 @@ impl CrvOnSurf {
                 break;
             }
             n_eval -= 1;
-            srf = self.surface.evaluate(uv, n_eval, n_eval, flags(true));
+            srf = self.surface.evaluate(k, uv, n_eval, n_eval, flags(true));
         }
         let srf = srf?;
 
@@ -730,12 +731,12 @@ impl CrvOnSurf {
     /// # Errors
     ///
     /// Those of the UV curve's and the surface's point evaluation.
-    pub fn evaluate_point(&self, t: f64) -> Result<Point3> {
+    pub fn evaluate_point(&self, k: &Kernel, t: f64) -> Result<Point3> {
         // UVCurve eval
-        let p = self.uv_curve.evaluate_point(t)?;
+        let p = self.uv_curve.evaluate_point(k, t)?;
 
         // surface eval
-        self.surface.evaluate_point(Point2::new(p.x, p.y))
+        self.surface.evaluate_point(k, Point2::new(p.x, p.y))
     }
 
     /// The UV point at `t` (`EvaluateUVPoint`).
@@ -743,8 +744,8 @@ impl CrvOnSurf {
     /// # Errors
     ///
     /// Those of the UV curve's point evaluation.
-    pub fn evaluate_uv_point(&self, t: f64) -> Result<Point2> {
-        let p = self.uv_curve.evaluate_point(t)?;
+    pub fn evaluate_uv_point(&self, k: &Kernel, t: f64) -> Result<Point2> {
+        let p = self.uv_curve.evaluate_point(k, t)?;
         Ok(Point2::new(p.x, p.y))
     }
 
@@ -755,9 +756,14 @@ impl CrvOnSurf {
     ///
     /// Those of the UV curve's evaluation; [`SolidError::Unported`] from the normal
     /// (`SmSurface::EvaluateNormal`).
-    pub fn evaluate_surface_normal(&self, t: f64, from_left: bool) -> Result<SurfaceNormalEval> {
+    pub fn evaluate_surface_normal(
+        &self,
+        k: &Kernel,
+        t: f64,
+        from_left: bool,
+    ) -> Result<SurfaceNormalEval> {
         // Curve eval - exact tangent values
-        let crv = self.uv_curve.evaluate(t, 1, from_left, false)?;
+        let crv = self.uv_curve.evaluate(k, t, 1, from_left, false)?;
 
         // set outputs
         let p = at(&crv, 0);
@@ -767,7 +773,7 @@ impl CrvOnSurf {
 
         let normal = self
             .surface
-            .evaluate_normal(uv, side(from_left), side(from_left))?;
+            .evaluate_normal(k, uv, side(from_left), side(from_left))?;
         Ok(SurfaceNormalEval {
             uv,
             uv_tangent,
@@ -784,18 +790,19 @@ impl CrvOnSurf {
     /// (`SmSurface::Evaluate2ndDerivatives`).
     pub fn evaluate_surface_1st_deriv_derivs(
         &self,
+        k: &Kernel,
         t: f64,
         from_left: bool,
     ) -> Result<([Vec3; 2], [Vec3; 2])> {
         // Curve eval - non-zero tangent values
-        let crv = self.uv_curve.evaluate(t, 1, from_left, true)?;
+        let crv = self.uv_curve.evaluate(k, t, 1, from_left, true)?;
         let p = at(&crv, 0);
         let uv = Point2::new(p.x, p.y);
         let uvt = at(&crv, 1);
 
         let [_s, su, sv, suv, suu, svv] = self
             .surface
-            .evaluate_2nd_derivatives(uv, from_left, from_left)?;
+            .evaluate_2nd_derivatives(k, uv, from_left, from_left)?;
 
         // set outputs
         Ok((
@@ -959,6 +966,7 @@ impl CrvOnSurf {
     /// [`SolidError::InvalidInput`] without breaks.
     pub fn calculate_continuities(
         &mut self,
+        k: &Kernel,
         angle_tol: f64,
     ) -> Result<(ContinuityType, Vec<ContinuityType>)> {
         // init output
@@ -988,7 +996,7 @@ impl CrvOnSurf {
                 .ok_or_else(|| SolidError::invalid_input(OP_CONTS, "no breaks"))?;
 
             // evaluate geometric continuities
-            let c = evaluate_continuity(self, t, true, self, t, false, angle_tol)?.continuity;
+            let c = evaluate_continuity(k, self, t, true, self, t, false, angle_tol)?.continuity;
 
             // set output
             if let Some(d) = conts.get_mut(ii) {
@@ -1011,9 +1019,10 @@ impl CrvOnSurf {
     /// As [`Self::calculate_continuities`].
     pub fn calculate_continuities_ref(
         &self,
+        k: &Kernel,
         angle_tol: f64,
     ) -> Result<(ContinuityType, Vec<ContinuityType>)> {
-        self.clone().calculate_continuities(angle_tol)
+        self.clone().calculate_continuities(k, angle_tol)
     }
 
     // ---- the B-spline approximation -------------------------------------------------
@@ -1143,7 +1152,7 @@ impl CrvOnSurf {
         match self.get_or_create_bs_approx(k, APPROX_TOL_3D, None, None) {
             Ok(bs) => bs.calculate_bounding_box(interval, req),
             Err(e) if e.is_unported() => Err(e),
-            Err(_) => calculate_bounding_box_base(&self.as_curve(), interval, req, expand),
+            Err(_) => calculate_bounding_box_base(k, &self.as_curve(), interval, req, expand),
         }
     }
 
@@ -1403,9 +1412,9 @@ impl CrvOnSurf {
         };
 
         // Evaluate surface point and normal at the given parameter.
-        let sn = self.evaluate_surface_normal(param, true)?;
+        let sn = self.evaluate_surface_normal(k, param, true)?;
         let norm = sn.normal;
-        let surf_pt = self.surface.evaluate_point(sn.uv)?;
+        let surf_pt = self.surface.evaluate_point(k, sn.uv)?;
 
         // Find point on 3d curve that would drop here: Intersect it with Surface Pt/Normal.
         let line = Line::infinite(surf_pt, norm, 3, false);
@@ -1422,7 +1431,7 @@ impl CrvOnSurf {
             }
             for s in &x.solutions {
                 let this_param = s.start.param(0)?;
-                let crv_pt = other.evaluate_point(this_param)?;
+                let crv_pt = other.evaluate_point(k, this_param)?;
                 let gap = crv_pt - surf_pt;
                 let dist = gap.dot(norm).abs();
                 if dist < min_dist {
@@ -1448,7 +1457,7 @@ impl CrvOnSurf {
             }
         }
 
-        let crv_pt = other.evaluate_point(crv_param)?;
+        let crv_pt = other.evaluate_point(k, crv_param)?;
 
         // Get the gap and find its two components: parallel and perp to the normal.
         let gap = crv_pt - surf_pt;
@@ -1729,16 +1738,17 @@ impl CurveEvaluate for CrvOnSurf {
 
     fn evaluate(
         &self,
+        k: &Kernel,
         t: f64,
         num_derivs: usize,
         from_left: bool,
         non_zero_tangents: bool,
     ) -> Result<Vec<Vec3>> {
-        Self::evaluate(self, t, num_derivs, from_left, non_zero_tangents)
+        Self::evaluate(self, k, t, num_derivs, from_left, non_zero_tangents)
     }
 
-    fn evaluate_point(&self, t: f64) -> Result<Point3> {
-        Self::evaluate_point(self, t)
+    fn evaluate_point(&self, k: &Kernel, t: f64) -> Result<Point3> {
+        Self::evaluate_point(self, k, t)
     }
 
     fn as_crv_on_surf(&self) -> Option<&CrvOnSurf> {
@@ -1785,9 +1795,9 @@ mod tests {
         let k = Kernel::default();
         let surface = OffsetSurface::new(&k, 0.15, patch().into(), true, 0).unwrap();
         let curve = CrvOnSurf::new(&k, uv(), surface.into(), None, 0).unwrap();
-        let expected = curve.evaluate(0.3, 3, true, false).unwrap();
+        let expected = curve.evaluate(&k, 0.3, 3, true, false).unwrap();
         for n in [0, 1, 2, 3, 4, 6, MAX_REQUESTED_DERIVS] {
-            let values = curve.evaluate(0.3, n, true, false).unwrap();
+            let values = curve.evaluate(&k, 0.3, n, true, false).unwrap();
             assert_eq!(values.len(), n + 1);
             let computed = n.min(3) + 1;
             assert_eq!(&values[..computed], &expected[..computed]);
@@ -1806,7 +1816,7 @@ mod tests {
             .chain(std::iter::once(usize::MAX))
         {
             assert!(matches!(
-                curve.evaluate(0.3, n, true, false),
+                curve.evaluate(&k, 0.3, n, true, false),
                 Err(SolidError::InvalidInput {
                     operation: OP_EVAL,
                     ..
@@ -1817,10 +1827,13 @@ mod tests {
 
     #[test]
     fn evaluate_excessive_request_preserves_uv_error_precedence() {
+        let k = Kernel::default();
         let curve = CrvOnSurf::empty(BSplineCurve::new(2).into(), patch().into()).unwrap();
-        let expected = curve.evaluate(0.3, 3, true, false).unwrap_err();
+        let expected = curve.evaluate(&k, 0.3, 3, true, false).unwrap_err();
         assert_eq!(
-            curve.evaluate(0.3, usize::MAX, true, false).unwrap_err(),
+            curve
+                .evaluate(&k, 0.3, usize::MAX, true, false)
+                .unwrap_err(),
             expected
         );
     }
@@ -1860,10 +1873,10 @@ mod tests {
         for _ in 0..63 {
             nested = Curve::from(CrvOnSurf::new(&k, nested, plane(), None, 0).unwrap());
         }
-        let expected = nested.evaluate_point(0.25).unwrap();
-        assert_eq!(nested.clone().evaluate_point(0.25).unwrap(), expected);
+        let expected = nested.evaluate_point(&k, 0.25).unwrap();
+        assert_eq!(nested.clone().evaluate_point(&k, 0.25).unwrap(), expected);
         assert_eq!(
-            nested.copy(&k).unwrap().evaluate_point(0.25).unwrap(),
+            nested.copy(&k).unwrap().evaluate_point(&k, 0.25).unwrap(),
             expected
         );
         assert!(matches!(
@@ -1876,12 +1889,12 @@ mod tests {
         ));
         let mut target = CrvOnSurf::new(&k, uv(), plane(), None, 0).unwrap();
         target.set_breaks_cache(false, vec![0.0, 1.0]);
-        let before = target.evaluate_point(0.25).unwrap();
+        let before = target.evaluate_point(&k, 0.25).unwrap();
         assert!(matches!(
             target.set_uv_curve(nested),
             Err(SolidError::InvalidInput { .. })
         ));
-        assert_eq!(target.evaluate_point(0.25).unwrap(), before);
+        assert_eq!(target.evaluate_point(&k, 0.25).unwrap(), before);
         assert_eq!(target.breaks(), &[0.0, 1.0]);
     }
 
@@ -1935,11 +1948,11 @@ mod tests {
             // Crv depth 0, surface depth 1 (+1 for an offset), volume tail 63.
             let mut curve = volume_mapped_curve(&k, twist, 61 - usize::from(offset), offset);
             let sample = 0.25;
-            let before = curve.evaluate(sample, 1, true, false).unwrap();
+            let before = curve.evaluate(&k, sample, 1, true, false).unwrap();
             curve
                 .transform(&k, &Axis2Placement::IDENTITY, None)
                 .unwrap();
-            assert_eq!(curve.evaluate(sample, 1, true, false).unwrap(), before);
+            assert_eq!(curve.evaluate(&k, sample, 1, true, false).unwrap(), before);
             let approx = curve
                 .get_or_create_bs_approx(&k, 1e-5, Some(&[0.0, 1.0]), Some(true))
                 .unwrap();
@@ -1956,9 +1969,9 @@ mod tests {
             assert!((cached_after - cached_before - translation).length() < 1e-12);
             assert_eq!(curve.bs_approx_max_gap_3d(), gap);
             assert_eq!(curve.breaks(), breaks);
-            assert_eq!(curve.evaluate(sample, 1, true, false).unwrap(), before);
+            assert_eq!(curve.evaluate(&k, sample, 1, true, false).unwrap(), before);
             for copy in [curve.copy(&k).unwrap(), curve.clone()] {
-                assert_eq!(copy.evaluate(sample, 1, true, false).unwrap(), before);
+                assert_eq!(copy.evaluate(&k, sample, 1, true, false).unwrap(), before);
                 assert_eq!(
                     copy.bs_approx().unwrap().evaluate_point(sample).unwrap(),
                     cached_after
@@ -1971,7 +1984,7 @@ mod tests {
                     curve.transform(&k, &motion, Some(Vec3::new(2.0, 3.0, 4.0))),
                     Err(SolidError::Upstream { code: 1001, .. })
                 ));
-                assert_eq!(curve.evaluate(sample, 1, true, false).unwrap(), before);
+                assert_eq!(curve.evaluate(&k, sample, 1, true, false).unwrap(), before);
             }
         }
     }
@@ -2001,13 +2014,13 @@ mod tests {
             );
             for mut curve in [absorb, append] {
                 let sample = 0.25;
-                let before = curve.evaluate(sample, 1, true, false).unwrap();
+                let before = curve.evaluate(&k, sample, 1, true, false).unwrap();
                 curve.transform(&k, &motion, None).unwrap();
-                let after = curve.evaluate(sample, 1, true, false).unwrap();
+                let after = curve.evaluate(&k, sample, 1, true, false).unwrap();
                 assert!((after[0] - before[0] - translation).length() < 1e-12);
                 assert_eq!(after[1], before[1]);
                 for copy in [curve.copy(&k).unwrap(), curve.clone()] {
-                    assert_eq!(copy.evaluate(sample, 1, true, false).unwrap(), after);
+                    assert_eq!(copy.evaluate(&k, sample, 1, true, false).unwrap(), after);
                 }
             }
         }
@@ -2058,10 +2071,10 @@ mod tests {
         )
         .unwrap();
         for copy in [curve.copy(&k).unwrap(), curve.clone()] {
-            assert_eq!(copy.evaluate_point(sample).unwrap(), direct);
+            assert_eq!(copy.evaluate_point(&k, sample).unwrap(), direct);
             assert_eq!(
-                copy.evaluate(sample, 1, true, false).unwrap(),
-                curve.evaluate(sample, 1, true, false).unwrap()
+                copy.evaluate(&k, sample, 1, true, false).unwrap(),
+                curve.evaluate(&k, sample, 1, true, false).unwrap()
             );
         }
         // Native owned Crv copies still call virtual Surface::copy; an offset
@@ -2085,7 +2098,7 @@ mod tests {
             .unwrap();
             let expected = direct + Vec3::Z * 0.15;
             for copy in [owned.clone(), owned.copy(&k).unwrap()] {
-                assert!((copy.evaluate_point(sample).unwrap() - expected).length() < 1e-12);
+                assert!((copy.evaluate_point(&k, sample).unwrap() - expected).length() < 1e-12);
             }
         }
         let (approximation, gap) = curve
@@ -2097,13 +2110,16 @@ mod tests {
 
     #[test]
     fn construct_and_query() {
-        let c = CrvOnSurf::new(&Kernel::default(), uv(), patch().into(), None, 1).unwrap();
+        let k = &Kernel::default();
+        let c = CrvOnSurf::new(k, uv(), patch().into(), None, 1).unwrap();
         assert_eq!(c.owner_flag(), 1);
         assert!(c.need_breaks());
         assert!(c.is_kind_of(CrvOnSurf::TYPE) && c.is_kind_of(crate::curve::curve::p2::TYPE));
         assert_eq!(c.type_string(), "SmCrvOnSurf_TYPE");
         assert_eq!(c.natural_interval().max(), 1.0);
-        assert!(c.approx_eq(&c.copy(&Kernel::default()).unwrap()).unwrap());
+        assert!(c
+            .approx_eq(k, &c.copy(&Kernel::default()).unwrap())
+            .unwrap());
         let l = CrvOnSurf::from_uv_line(
             &Kernel::default(),
             Point2::new(0.0, 0.0),
@@ -2114,21 +2130,22 @@ mod tests {
         )
         .unwrap();
         assert_eq!(l.owner_flag(), 1);
-        let p = l.evaluate_point(0.5).unwrap();
+        let p = l.evaluate_point(k, 0.5).unwrap();
         assert!((p.z - 0.25).abs() < 1e-12);
     }
 
     #[test]
     fn evaluate_lifts_derivatives() {
-        let c = CrvOnSurf::new(&Kernel::default(), uv(), patch().into(), None, 0).unwrap();
-        let d = c.evaluate(0.3, 5, true, false).unwrap();
+        let k = &Kernel::default();
+        let c = CrvOnSurf::new(k, uv(), patch().into(), None, 0).unwrap();
+        let d = c.evaluate(k, 0.3, 5, true, false).unwrap();
         assert_eq!(d.len(), 6);
-        let p = c.evaluate_point(0.3).unwrap();
+        let p = c.evaluate_point(k, 0.3).unwrap();
         assert!((d[0] - p).length() < 1e-12);
         // finite difference of the tangent
         let h = 1e-6;
-        let a = c.evaluate_point(0.3 - h).unwrap();
-        let b = c.evaluate_point(0.3 + h).unwrap();
+        let a = c.evaluate_point(k, 0.3 - h).unwrap();
+        let b = c.evaluate_point(k, 0.3 + h).unwrap();
         let fd = (b - a) / (2.0 * h);
         assert!((fd - d[1]).length() < 1e-6);
         assert_eq!(d[4], Vec3::new(0.0, 0.0, 0.0));
@@ -2144,7 +2161,7 @@ mod tests {
         assert_eq!(kn, vec![0.0, 0.25, 1.0]);
         assert_eq!(m, vec![4, 2, 4]);
         assert_eq!(c.number_natural_knots().unwrap(), 10);
-        let (min, conts) = c.calculate_continuities(CONTINUITY_ANGLE).unwrap();
+        let (min, conts) = c.calculate_continuities(&k, CONTINUITY_ANGLE).unwrap();
         assert_eq!(conts.len(), 3);
         assert_ne!(min, ContinuityType::Undefined);
         c.edit_parameterization(&Kernel::default(), &Extent1d::from_min_max(0.0, 2.0))
@@ -2214,7 +2231,7 @@ mod tests {
         let (approximation, gap) = curve.approximate_curve(&k, &breaks, 1e-4, true).unwrap();
         assert_eq!(curve.breaks(), &breaks);
         let point = approximation.evaluate_point(0.4).unwrap();
-        assert!(point.distance(curve.evaluate_point(0.4).unwrap()) <= 1e-4);
+        assert!(point.distance(curve.evaluate_point(&k, 0.4).unwrap()) <= 1e-4);
         let reused = curve
             .get_or_create_bs_approx(&k, gap, Some(&breaks), Some(true))
             .unwrap();

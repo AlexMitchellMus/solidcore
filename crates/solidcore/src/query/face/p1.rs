@@ -80,7 +80,7 @@ const OP_EDGE_CURVE: &str = "query::face::p1::edge_curve_on_classify";
 ///
 /// [`SolidError::InvalidInput`] (`SM_ERR_INVALID_INPUT`) for a null curve or a parameter
 /// outside the natural interval (NaN included); those of the curve's evaluator.
-pub fn evaluate_curve(curve: Option<&Curve>, parameter: f64) -> Result<[Vec3; 3]> {
+pub fn evaluate_curve(k: &Kernel, curve: Option<&Curve>, parameter: f64) -> Result<[Vec3; 3]> {
     let curve = curve.ok_or_else(|| SolidError::invalid_input(OP_CURVE, "null curve"))?;
 
     // Negated in-range test so a NaN parameter is rejected too.
@@ -92,7 +92,7 @@ pub fn evaluate_curve(curve: Option<&Curve>, parameter: f64) -> Result<[Vec3; 3]
         ));
     }
 
-    let values = curve.evaluate(parameter, 2, true, true)?;
+    let values = curve.evaluate(k, parameter, 2, true, true)?;
     let mut iter = values.into_iter();
     let missing = || SolidError::invalid_input(OP_CURVE, "curve returned too few derivatives");
     Ok([
@@ -503,7 +503,7 @@ pub fn point_3d_classify(
     // the 3D point and its surface point instead.
     let surface = fp2::surface(b, f)?
         .ok_or_else(|| SolidError::invalid_input(OP_POINT, "face without surface"))?;
-    if let Some(surface_point) = ignored(surface.evaluate_point(uv))? {
+    if let Some(surface_point) = ignored(surface.evaluate_point(k, uv))? {
         pc.set_gap_3d(point.distance(surface_point));
     }
 
@@ -772,31 +772,32 @@ mod tests {
         .unwrap();
         let uv = Curve::from(BSplineCurve::from_nurb(raw, 2, true));
         let sample = 0.75 * delta;
-        let direct = uv.evaluate(sample, 1, false, false).unwrap();
-        let repaired = uv.clone().evaluate(sample, 1, false, false).unwrap();
+        let direct = uv.evaluate(&k, sample, 1, false, false).unwrap();
+        let repaired = uv.clone().evaluate(&k, sample, 1, false, false).unwrap();
         assert!((repaired[0] - direct[0]).length() > 0.01);
         assert!((repaired[1] - direct[1]).length() > 1e10);
 
         let lifted = lift_to_face(&k, &b, face, &uv).unwrap();
         for t in [0.0, sample, delta, 0.25] {
-            let expected = uv.evaluate(t, 1, false, false).unwrap();
-            let actual = lifted.evaluate(t, 1, false, false).unwrap();
+            let expected = uv.evaluate(&k, t, 1, false, false).unwrap();
+            let actual = lifted.evaluate(&k, t, 1, false, false).unwrap();
             let point = Point3::new(expected[0].x, expected[0].y, z);
             let tangent = Vec3::new(expected[1].x, expected[1].y, 0.0);
             assert!((actual[0] - point).length() <= 1e-12);
             assert!((actual[1] - tangent).length() <= 1e-12 * tangent.length().max(1.0));
-            let point_only = lifted.evaluate_point(t).unwrap();
+            let point_only = lifted.evaluate_point(&k, t).unwrap();
             assert!((point_only - point).length() <= 1e-12);
         }
     }
 
     #[test]
     fn evaluate_curve_rejects_null_nan_and_outside() {
-        assert!(evaluate_curve(None, 0.0).is_err());
+        let k = &Kernel::default();
+        assert!(evaluate_curve(k, None, 0.0).is_err());
         let c: Curve = Line::from_points(Vec3::new(0., 0., 0.), Vec3::new(1., 2., 3.), 3).into();
-        assert!(evaluate_curve(Some(&c), f64::NAN).is_err());
-        assert!(evaluate_curve(Some(&c), 2.0).is_err());
-        let [p, d1, _] = evaluate_curve(Some(&c), 0.5).unwrap();
+        assert!(evaluate_curve(k, Some(&c), f64::NAN).is_err());
+        assert!(evaluate_curve(k, Some(&c), 2.0).is_err());
+        let [p, d1, _] = evaluate_curve(k, Some(&c), 0.5).unwrap();
         assert_eq!(p, Vec3::new(0.5, 1.0, 1.5));
         assert_eq!(d1, Vec3::new(1.0, 2.0, 3.0));
     }

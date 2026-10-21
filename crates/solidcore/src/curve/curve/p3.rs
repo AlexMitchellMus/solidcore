@@ -110,20 +110,26 @@ const SM_ERR_NOT_CONVERGING: i32 = 1022;
 
 /// `EvaluatePoint` whose status upstream ignores: the previous value of the output
 /// on failure; [`SolidError::Unported`] is propagated.
-fn point_keep<C: CurveEvaluate + ?Sized>(curve: &C, t: f64, prev: Point3) -> Result<Point3> {
-    Ok(ignored(curve.evaluate_point(t))?.unwrap_or(prev))
+fn point_keep<C: CurveEvaluate + ?Sized>(
+    k: &Kernel,
+    curve: &C,
+    t: f64,
+    prev: Point3,
+) -> Result<Point3> {
+    Ok(ignored(curve.evaluate_point(k, t))?.unwrap_or(prev))
 }
 
 /// `Evaluate` (from the left) into an `N`-entry array; entries not written stay
 /// [`Vec3::UNDEF`].
 pub(super) fn eval_n<const N: usize, C: CurveEvaluate + ?Sized>(
+    k: &Kernel,
     curve: &C,
     t: f64,
     num_derivs: usize,
     from_left: bool,
     non_zero_tangents: bool,
 ) -> Result<[Vec3; N]> {
-    let v = curve.evaluate(t, num_derivs, from_left, non_zero_tangents)?;
+    let v = curve.evaluate(k, t, num_derivs, from_left, non_zero_tangents)?;
     let mut out = [Vec3::UNDEF; N];
     for (d, s) in out.iter_mut().zip(v) {
         *d = s;
@@ -181,7 +187,8 @@ impl<C1: CurveEvaluate + ?Sized, C2: CurveEvaluate + ?Sized> EvalNFunctions
         f: &mut [f64],
         jacobian: Option<&mut Matrix>,
     ) -> Result<bool> {
-        self.evaluate_equations(x, f, jacobian)
+        let k = self.kernel;
+        self.evaluate_equations(k, x, f, jacobian)
     }
 }
 
@@ -195,7 +202,8 @@ impl<C1: CurveEvaluate + ?Sized, C2: CurveEvaluate + ?Sized> EvalNFunctions
         f: &mut [f64],
         jacobian: Option<&mut Matrix>,
     ) -> Result<bool> {
-        self.evaluate_equations(x, f, jacobian)
+        let k = self.kernel;
+        self.evaluate_equations(k, x, f, jacobian)
     }
 }
 
@@ -210,8 +218,9 @@ impl<C1: CurveEvaluate + ?Sized, C2: CurveEvaluate + ?Sized> EvalNFunctions
         f: &mut [f64],
         jacobian: Option<&mut Matrix>,
     ) -> Result<bool> {
+        let k = self.kernel;
         // pass the call along
-        CcTangentIntEnfo::static_evaluate(self.curve1, self.curve2, x, f, jacobian)
+        CcTangentIntEnfo::static_evaluate(k, self.curve1, self.curve2, x, f, jacobian)
     }
 }
 
@@ -226,7 +235,7 @@ impl<C1: CurveEvaluate + ?Sized, C2: CurveEvaluate + ?Sized> EvalNFunctions
 ///
 /// `SM_ERR` for a single linear curve; those of the control point counts;
 /// [`SolidError::Unported`] from the evaluations.
-pub fn compute_crvs_normal(curves: &[Curve]) -> Result<Vec3> {
+pub fn compute_crvs_normal(k: &Kernel, curves: &[Curve]) -> Result<Vec3> {
     // Initialize resulting normal
     let mut normal = Vec3::new(0.0, 0.0, 0.0);
 
@@ -242,12 +251,12 @@ pub fn compute_crvs_normal(curves: &[Curve]) -> Result<Vec3> {
     for (ii, crv) in curves.iter().enumerate() {
         let domain = crv.natural_interval();
 
-        if crv.is_linear(EFF_ZERO, false)?.linear && num_curves == 1 {
+        if crv.is_linear(k, EFF_ZERO, false)?.linear && num_curves == 1 {
             return Err(SolidError::sm_err(OP_NORMAL));
         }
 
         let mut t = 0.0;
-        pt3 = point_keep(crv, domain.evaluate(t), pt3)?;
+        pt3 = point_keep(k, crv, domain.evaluate(t), pt3)?;
 
         // Keep track of start point in case loop is closed
         if ii == 0 {
@@ -265,7 +274,7 @@ pub fn compute_crvs_normal(curves: &[Curve]) -> Result<Vec3> {
             pt2 = pt3;
             vec1 = vec2;
 
-            pt3 = point_keep(crv, domain.evaluate(t + t_incr), pt3)?;
+            pt3 = point_keep(k, crv, domain.evaluate(t + t_incr), pt3)?;
 
             total_points += 1;
             vec2 = pt3 - pt2;
@@ -349,15 +358,15 @@ pub fn crvs_fix_gaps(k: &Kernel, curves: Vec<Curve>, tol: f64) -> Result<FixedGa
         }
 
         // every segment in the current chain
-        for k in low..hi {
-            let crv0 = chained.curves.get(k).ok_or_else(missing)?;
-            let crv1 = chained.curves.get(k + 1).ok_or_else(missing)?;
+        for join_index in low..hi {
+            let crv0 = chained.curves.get(join_index).ok_or_else(missing)?;
+            let crv1 = chained.curves.get(join_index + 1).ok_or_else(missing)?;
             let domain0 = crv0.natural_interval();
             let domain1 = crv1.natural_interval();
 
             // start and end point between curves within loop/chain
-            let end_pt = point_keep(crv0, domain0.max(), Vec3::UNDEF)?;
-            let start_pt = point_keep(crv1, domain1.min(), Vec3::UNDEF)?;
+            let end_pt = point_keep(k, crv0, domain0.max(), Vec3::UNDEF)?;
+            let start_pt = point_keep(k, crv1, domain1.min(), Vec3::UNDEF)?;
 
             // gap between current segments
             let gap = start_pt.distance(end_pt);
@@ -365,7 +374,7 @@ pub fn crvs_fix_gaps(k: &Kernel, curves: Vec<Curve>, tol: f64) -> Result<FixedGa
             // when gap is not zero but smaller than dTol
             if gap > EFF_ZERO && gap < tol {
                 // set the end point to the start of the next curve
-                let crv0 = chained.curves.get_mut(k).ok_or_else(missing)?;
+                let crv0 = chained.curves.get_mut(join_index).ok_or_else(missing)?;
                 move_end_point(crv0, start_pt)?;
                 fixed += 1;
             }
@@ -382,8 +391,8 @@ pub fn crvs_fix_gaps(k: &Kernel, curves: Vec<Curve>, tol: f64) -> Result<FixedGa
         let domain1 = crv1.natural_interval();
 
         // start and end points of 'loop' for each chain
-        let start_pt = point_keep(crv0, domain0.min(), Vec3::UNDEF)?;
-        let end_pt = point_keep(crv1, domain1.max(), Vec3::UNDEF)?;
+        let start_pt = point_keep(k, crv0, domain0.min(), Vec3::UNDEF)?;
+        let end_pt = point_keep(k, crv1, domain1.max(), Vec3::UNDEF)?;
 
         // end to start gap for current chain
         let gap = start_pt.distance(end_pt);
@@ -596,7 +605,7 @@ impl Curve {
             }
 
             // exact Tangent values
-            let deriv: [Vec3; 2] = eval_n(self, curr_t, 1, true, false)?;
+            let deriv: [Vec3; 2] = eval_n(k, self, curr_t, 1, true, false)?;
             let fcn_deriv = deriv[1].length();
             let mut delta_t = -fcn_val / fcn_deriv;
 
@@ -670,6 +679,7 @@ impl EvalFunction for FindPcExtremaEfo<'_, Curve> {
     /// tangent is a solution on a degenerate curve and `SM_ERR` otherwise; a zero gap
     /// is `SM_ERR` when maximising.
     fn evaluate(&mut self, t: f64, out: &mut FunctionValue, _signal_errors: bool) -> Result<()> {
+        let k = self.kernel;
         // init output
         out.f = 0.0;
         out.f_prime = 0.0;
@@ -677,7 +687,7 @@ impl EvalFunction for FindPcExtremaEfo<'_, Curve> {
 
         // curve point
         let side = t < self.domain.mid();
-        let mut pv: [Vec3; 3] = eval_n(self.curve, t, 2, side, true)?; // nonZeroTangent values
+        let mut pv: [Vec3; 3] = eval_n(k, self.curve, t, 2, side, true)?; // nonZeroTangent values
 
         // gap: sV = CurvePoint - TestPoint
         let mut sv = pv[0] - self.test_point;
@@ -714,7 +724,7 @@ impl EvalFunction for FindPcExtremaEfo<'_, Curve> {
         let tan_dot_tan = pv[1].dot(pv[1]);
         if tan_dot_tan < EFF_ZERO_SQ {
             // degenerate curve?  Just return that we are perp, where we are.
-            if self.curve.is_degenerate(EFF_ZERO, None)? {
+            if self.curve.is_degenerate(k, EFF_ZERO, None)? {
                 out.f = 0.0;
                 out.found_answer = true;
                 return Ok(());
@@ -777,6 +787,9 @@ impl EvalFunction for FindPcExtremaEfo<'_, Curve> {
 /// ([`CcTangentIntEnfo::static_evaluate`]) near a tangent intersection.
 #[derive(Debug, Clone)]
 pub struct BestLineFitEnfo<'a, C1: ?Sized, C2: ?Sized> {
+    /// Caller context for virtual evaluations.
+    pub kernel: &'a Kernel,
+
     /// `m_crCurve1`.
     pub curve1: &'a C1,
     /// `m_crCurve2`.
@@ -797,8 +810,14 @@ impl<'a, C1: ?Sized, C2: ?Sized> BestLineFitEnfo<'a, C1, C2> {
     /// `SmBestLineFitENFO(crCurve1, crCurve2, dSquaredTolerance)`: no intervals or
     /// periodicities; the base class's solution size `0` and scaled zero `1`.
     #[must_use]
-    pub const fn new(curve1: &'a C1, curve2: &'a C2, squared_tolerance: f64) -> Self {
+    pub const fn new(
+        k: &'a Kernel,
+        curve1: &'a C1,
+        curve2: &'a C2,
+        squared_tolerance: f64,
+    ) -> Self {
         Self {
+            kernel: k,
             curve1,
             curve2,
             intervals: None,
@@ -847,6 +866,7 @@ impl<C1: CurveEvaluate + ?Sized, C2: CurveEvaluate + ?Sized> EvalNFunctions
         f: &mut [f64],
         jacobian: Option<&mut Matrix>,
     ) -> Result<bool> {
+        let k = self.kernel;
         let (Some(&x0), Some(&x1)) = (x.first(), x.get(1)) else {
             return Err(SolidError::invalid_input(
                 OP_LINE_FIT,
@@ -864,8 +884,8 @@ impl<C1: CurveEvaluate + ?Sized, C2: CurveEvaluate + ?Sized> EvalNFunctions
         let mut found = false;
 
         // Evaluate both curves; need two derivatives.
-        let pvv1: [Vec3; 3] = eval_n(self.curve1, x0, 2, true, true)?; // nonZeroTangent values
-        let pvv2: [Vec3; 3] = eval_n(self.curve2, x1, 2, true, true)?; // nonZeroTangent values
+        let pvv1: [Vec3; 3] = eval_n(k, self.curve1, x0, 2, true, true)?; // nonZeroTangent values
+        let pvv2: [Vec3; 3] = eval_n(k, self.curve2, x1, 2, true, true)?; // nonZeroTangent values
 
         // get the gap - save the SolutionSize
         let gap_vec = pvv1[0] - pvv2[0];
@@ -888,6 +908,7 @@ impl<C1: CurveEvaluate + ?Sized, C2: CurveEvaluate + ?Sized> EvalNFunctions
             // switch to the TangentIntersection Solver Objective Functions
             // (status ignored)
             if let Some(r) = ignored(CcTangentIntEnfo::static_evaluate(
+                k,
                 self.curve1,
                 self.curve2,
                 x,
@@ -977,6 +998,7 @@ impl Curve {
     /// answer, as upstream.
     pub fn local_point_solve<O: Copy>(
         &self,
+        k: &Kernel,
         interval: &Extent1d,
         op: SolverOperation,
         test_point: Point3,
@@ -1005,6 +1027,7 @@ impl Curve {
 
             // Find point on curve with closest projection to [testPoint, OptVec[0]] plane
             let found = local_property_analysis(
+                k,
                 self,
                 interval,
                 CurvePropertyType::ProjectedPointMinimize,
@@ -1020,7 +1043,7 @@ impl Curve {
             }
 
             // get Curve solution point
-            let pnt = self.evaluate_point(sol.start.param(0)?)?;
+            let pnt = self.evaluate_point(k, sol.start.param(0)?)?;
 
             // Project CurvePoint to [testPoint, OptVec[0]] line
             let param = line_closest_point(vecs[0], vecs[1], pnt);
@@ -1055,6 +1078,7 @@ impl Curve {
             let periodicities = [false; 4];
 
             let mut eval = crate::curve::curve::p4::CpDistAtEnfo::new(
+                k,
                 self,
                 test_point,
                 target,      // Desired GapSizeSq
@@ -1073,7 +1097,7 @@ impl Curve {
                 let t0 = r.x.first().copied().unwrap_or(0.0);
                 solution.solution_type = SolutionType::SingleValue;
                 set_param(&mut solution.start, 0, t0)?;
-                let eval_pnt = self.evaluate_point(t0)?;
+                let eval_pnt = self.evaluate_point(k, t0)?;
                 solution.start.solution_value = eval_pnt.distance(test_point);
                 return Ok((true, solution));
             }
@@ -1082,6 +1106,7 @@ impl Curve {
 
         // For all other operation cases - Use Newton-Raphson to solve
         let mut efo = FindPcExtremaEfo::new(
+            k,
             self,
             test_point,
             *interval,
@@ -1113,7 +1138,7 @@ impl Curve {
 
         // else when SolveIt did converge or found a bounded value
         //   let solutionValue = dist(TestPoint,SolutionPoint)
-        let found_pnt = point_keep(self, r.t, Vec3::UNDEF)?;
+        let found_pnt = point_keep(k, self, r.t, Vec3::UNDEF)?;
 
         solution.solution_type = SolutionType::SingleValue;
         solution.start.solution_value = found_pnt.distance(test_point);
@@ -1129,6 +1154,7 @@ impl Curve {
 /// The local curve/curve solve of every operation but
 /// [`SolverOperation::Signed3dDirectedMinimize`] (see [`local_curve_solve`]).
 fn curve_solve_newton<O: Copy, C1, C2>(
+    k: &Kernel,
     this: &C1,
     interval: &Extent1d,
     other: &C2,
@@ -1162,6 +1188,7 @@ where
     }
 
     let mut eval = FindCcNormalEnfo::new(
+        k,
         this,
         other,
         EFF_ZERO * EFF_ZERO,
@@ -1186,8 +1213,8 @@ where
     solution.num_objects = 2;
     solution.objects[0] = objects[0];
     solution.objects[1] = objects[1];
-    let pnt1 = this.evaluate_point(sol0)?;
-    let pnt2 = other.evaluate_point(sol1)?;
+    let pnt1 = this.evaluate_point(k, sol0)?;
+    let pnt2 = other.evaluate_point(k, sol1)?;
     solution.start.solution_value = pnt1.distance(pnt2);
 
     // Note that for projected operations we only have one vector and that
@@ -1221,12 +1248,12 @@ where
 
         if op == SolverOperation::SignedPivotMinimize {
             direction = vec(2)?;
-            let sol_pt = other.evaluate_point(sol1)?;
+            let sol_pt = other.evaluate_point(k, sol1)?;
             solution.start.solution_value =
                 proj_signed_angle(pnt1, sol_pt, vec(1)?, normal, direction)?;
         } else {
             solution.start.solution_value =
-                proj_dist(other, sol1, pnt1, normal, true, direction, op)?;
+                proj_dist(k, other, sol1, pnt1, normal, true, direction, op)?;
         }
     }
 
@@ -1302,6 +1329,7 @@ where
 /// [`Curve::local_curve_solve`]) or a missing option vector; those of the solver
 /// and evaluations.
 pub fn local_curve_solve<O: Copy, C1, C2>(
+    k: &Kernel,
     this: &C1,
     interval: &Extent1d,
     other: &C2,
@@ -1324,6 +1352,7 @@ where
         ));
     }
     curve_solve_newton(
+        k,
         this,
         interval,
         other,
@@ -1352,6 +1381,7 @@ impl Curve {
     /// option vectors.
     pub fn local_curve_solve<O: Copy>(
         &self,
+        k: &Kernel,
         interval: &Extent1d,
         other: &Self,
         other_interval: &Extent1d,
@@ -1364,6 +1394,7 @@ impl Curve {
     ) -> Result<(bool, Solution<O>)> {
         if op != SolverOperation::Signed3dDirectedMinimize {
             return curve_solve_newton(
+                k,
                 self,
                 interval,
                 other,
@@ -1407,6 +1438,7 @@ impl Curve {
 
         // find projected curve intersections
         let isect = local_curve_intersect(
+            k,
             &proj1,
             interval,
             &proj2,
@@ -1419,8 +1451,8 @@ impl Curve {
             // Check for coplanarity case and use separate solver
 
             // curve values at guess parameters
-            let pv1: [Vec3; 2] = eval_n(self, guesses[0], 1, true, true)?; // nonZeroTangent values
-            let pv2: [Vec3; 2] = eval_n(other, guesses[1], 1, true, true)?; // nonZeroTangent values
+            let pv1: [Vec3; 2] = eval_n(k, self, guesses[0], 1, true, true)?; // nonZeroTangent values
+            let pv2: [Vec3; 2] = eval_n(k, other, guesses[1], 1, true, true)?; // nonZeroTangent values
 
             let norm = pv1[1].cross(vec0);
             if norm.length_squared() < EFF_ZERO_SQ {
@@ -1440,6 +1472,7 @@ impl Curve {
             // use a different solver to fix the problem.
             let vecs = [norm, vec0];
             let (found, sol) = self.local_curve_solve(
+                k,
                 interval,
                 other,
                 other_interval,
@@ -1455,8 +1488,8 @@ impl Curve {
             }
 
             // Make sure resulting points lie parallel to the vector
-            let p1 = self.evaluate_point(sol.start.param(0)?)?;
-            let p2 = other.evaluate_point(sol.start.param(1)?)?;
+            let p1 = self.evaluate_point(k, sol.start.param(0)?)?;
+            let p2 = other.evaluate_point(k, sol.start.param(1)?)?;
             let vec = p2 - p1;
             if vec.length_squared() < EFF_ZERO_SQ {
                 return Ok((false, solution));
@@ -1476,8 +1509,8 @@ impl Curve {
             return Ok((true, solution));
         };
 
-        let p1 = self.evaluate_point(isect.my_param)?;
-        let p2 = other.evaluate_point(isect.other_param)?;
+        let p1 = self.evaluate_point(k, isect.my_param)?;
+        let p2 = other.evaluate_point(k, isect.other_param)?;
         let vec = p2 - p1;
         let mut dist = vec.length();
         if vec.dot(vec0) < 0.0 {
@@ -1511,6 +1544,7 @@ pub struct CurveIntersection {
 /// Distance between `this` at `t1` and `other` at `t2` (positions of nonZeroTangent
 /// evaluations) and both evaluations.
 fn deviation_at<C1, C2>(
+    k: &Kernel,
     this: &C1,
     other: &C2,
     t1: f64,
@@ -1520,8 +1554,8 @@ where
     C1: CurveEvaluate + ?Sized,
     C2: CurveEvaluate + ?Sized,
 {
-    let pv1: [Vec3; 2] = eval_n(this, t1, 1, true, true)?; // nonZeroTangent values
-    let pv2: [Vec3; 2] = eval_n(other, t2, 1, true, true)?; // nonZeroTangent values
+    let pv1: [Vec3; 2] = eval_n(k, this, t1, 1, true, true)?; // nonZeroTangent values
+    let pv2: [Vec3; 2] = eval_n(k, other, t2, 1, true, true)?; // nonZeroTangent values
     Ok((pv1[0].distance(pv2[0]), pv1, pv2))
 }
 
@@ -1538,6 +1572,7 @@ where
 ///
 /// Those of the solvers and evaluations.
 pub fn local_curve_intersect<C1, C2>(
+    k: &Kernel,
     this: &C1,
     interval: &Extent1d,
     other: &C2,
@@ -1564,7 +1599,7 @@ where
     let guess_t = [my_guess, other_guess];
 
     // create a newton raphson solver object containing a curve/curve evaluator.
-    let mut eval = CcIntersectEnfo::new(this, other, EFF_ZERO * EFF_ZERO / 10000.0);
+    let mut eval = CcIntersectEnfo::new(k, this, other, EFF_ZERO * EFF_ZERO / 10000.0);
     let mut ls = LocalSolveNd::new(&mut eval, Some(&intervals), Some(&periodicities));
 
     // Pick up close solutions and then test them
@@ -1585,7 +1620,7 @@ where
     }
 
     // get solution deviation
-    let (mut deviation, mut pv1, mut pv2) = deviation_at(this, other, sol[0], sol[1])?;
+    let (mut deviation, mut pv1, mut pv2) = deviation_at(k, this, other, sol[0], sol[1])?;
 
     // Be happy with a result within the really tight tolerance:
     if deviation < EFF_ZERO_SQ {
@@ -1615,7 +1650,7 @@ where
             || !are_same_to_tol(old_sol[1], old_guess[1], EFF_ZERO_SQRT)
         {
             // create a second NewtonRaphson Solver
-            let mut eval2 = CcIntersectEnfo::new(this, other, EFF_ZERO * EFF_ZERO / 10000.0);
+            let mut eval2 = CcIntersectEnfo::new(k, this, other, EFF_ZERO * EFF_ZERO / 10000.0);
             let mut ls2 = LocalSolveNd::new(&mut eval2, Some(&intervals), Some(&periodicities));
 
             // Pick up close solutions and then test them
@@ -1636,7 +1671,7 @@ where
             // when a better solution was found - store it
             if r2.found {
                 // get new deviation
-                let (new_deviation, npv1, npv2) = deviation_at(this, other, sol[0], sol[1])?;
+                let (new_deviation, npv1, npv2) = deviation_at(k, this, other, sol[0], sol[1])?;
                 pv1 = npv1;
                 pv2 = npv2;
 
@@ -1662,6 +1697,7 @@ where
     {
         // Find minimum distance between spans as best possible answer
         let (found, s) = local_curve_solve::<(), C1, C2>(
+            k,
             this,
             interval,
             other,
@@ -1684,10 +1720,10 @@ where
     // If the curves are nearly parallel,
     // an SmCCTangentIntENFO can often do better.
     if deviation > EFF_ZERO && pv1[1].is_parallel_to(pv2[1], 2.0) {
-        let mut eval2 = CcTangentIntEnfo::new(this, other, EFF_ZERO * EFF_ZERO);
+        let mut eval2 = CcTangentIntEnfo::new(k, this, other, EFF_ZERO * EFF_ZERO);
         let periodicities2 = [
-            is_periodic(this, interval)?,
-            is_periodic(other, other_interval)?,
+            is_periodic(k, this, interval)?,
+            is_periodic(k, other, other_interval)?,
         ];
 
         let guess_t2 = sol;
@@ -1702,7 +1738,7 @@ where
             r2.x.first().copied().unwrap_or(0.0),
             r2.x.get(1).copied().unwrap_or(0.0),
         ];
-        let (new_deviation, _, _) = deviation_at(this, other, sol2[0], sol2[1])?;
+        let (new_deviation, _, _) = deviation_at(k, this, other, sol2[0], sol2[1])?;
         if new_deviation < deviation {
             return Ok(Some(CurveIntersection {
                 my_param: sol2[0],
@@ -1739,7 +1775,7 @@ impl<'t, O: SolutionObject + 't> CurvePropertyGs<'t, O> {
     /// leaf; status `1` for a projected pseudo box corner at the origin of the angle
     /// properties; those of the evaluations, `LocalPropertyAnalysis` and
     /// `sm_FindAdditionalCpGuess`.
-    pub fn local_solve_branch(&mut self, branch: &Branch) -> Result<bool> {
+    pub fn local_solve_branch(&mut self, k: &Kernel, branch: &Branch) -> Result<bool> {
         // init output
         let needs_more_subdivision = false;
 
@@ -1834,7 +1870,7 @@ impl<'t, O: SolutionObject + 't> CurvePropertyGs<'t, O> {
             for (jj, cont) in conts.iter().enumerate() {
                 let mut param = if jj == 0 { ivl.min() } else { ivl.max() };
                 if (*cont as i32) < (ContinuityType::G1 as i32) {
-                    let pnt = curve.evaluate_point(param)?;
+                    let pnt = curve.evaluate_point(k, param)?;
 
                     // for minimize angle cases
                     if prop != CurvePropertyType::PlaneIntersection {
@@ -1878,9 +1914,9 @@ impl<'t, O: SolutionObject + 't> CurvePropertyGs<'t, O> {
 
                             if jj == 0 {
                                 param = ivl.max();
-                                let pnt2 = curve.evaluate_point(param)?;
+                                let pnt2 = curve.evaluate_point(k, param)?;
                                 let val2 = pnt2.dot(abc) + value;
-                                let pnt3 = curve.evaluate_point(ivl.evaluate(0.4567))?;
+                                let pnt3 = curve.evaluate_point(k, ivl.evaluate(0.4567))?;
                                 let val3 = pnt3.dot(abc) + value;
                                 if val2.abs() < self.base.tolerance_3d
                                     && val3.abs() < self.base.tolerance_3d
@@ -1941,6 +1977,7 @@ impl<'t, O: SolutionObject + 't> CurvePropertyGs<'t, O> {
             let this_ii = ii;
             ii += 1;
             let mut found = match local_property_analysis(
+                k,
                 curve,
                 &ivl,
                 prop,
@@ -1958,7 +1995,7 @@ impl<'t, O: SolutionObject + 't> CurvePropertyGs<'t, O> {
 
             if found && prop == CurvePropertyType::ParallelToVector {
                 // nonZeroTangent values
-                let pv: [Vec3; 2] = eval_n(curve, sol.start.param(0)?, 1, true, true)?;
+                let pv: [Vec3; 2] = eval_n(k, curve, sol.start.param(0)?, 1, true, true)?;
                 let mut angle = self.opt(0)?.angle_between(pv[1])?;
                 if angle > PI / 2.0 {
                     angle = PI - angle;
@@ -1994,7 +2031,7 @@ impl<'t, O: SolutionObject + 't> CurvePropertyGs<'t, O> {
                 // make a circle at the solution and intersect with plane.
                 if this_ii < num_original_guess {
                     if let Some(new_guess) =
-                        find_additional_cp_guess(curve, &ivl, self.opt(0)?, sol.start.param(0)?)?
+                        find_additional_cp_guess(k, curve, &ivl, self.opt(0)?, sol.start.param(0)?)?
                     {
                         guess_t.push(new_guess);
                     }
@@ -2067,6 +2104,7 @@ mod tests {
 
     #[test]
     fn normal_of_a_planar_loop() {
+        let k = &Kernel::default();
         // a counter-clockwise loop in the XY plane made of curved Hermite pieces
         let curves = vec![
             hermite(
@@ -2094,14 +2132,15 @@ mod tests {
                 [0.5, -1.0, 0.0],
             ),
         ];
-        let n = compute_crvs_normal(&curves).unwrap();
+        let n = compute_crvs_normal(k, &curves).unwrap();
         assert!((n.z - 1.0).abs() < 1e-12, "{n:?}");
     }
 
     #[test]
     fn single_line_has_no_normal() {
+        let k = &Kernel::default();
         let l = line([0.0; 3], [1.0, 0.0, 0.0], 0.0, 1.0);
-        assert!(compute_crvs_normal(&[l]).is_err());
+        assert!(compute_crvs_normal(k, &[l]).is_err());
     }
 
     #[test]
@@ -2120,6 +2159,7 @@ mod tests {
 
     #[test]
     fn closest_point_on_a_hermite_curve() {
+        let k = &Kernel::default();
         let c = hermite(
             [0.0, 0.0, 0.0],
             [1.0, 1.0, 0.0],
@@ -2129,6 +2169,7 @@ mod tests {
         let ivl = c.natural_interval();
         let (found, sol): (bool, Solution<()>) = c
             .local_point_solve(
+                k,
                 &ivl,
                 SolverOperation::Minimize,
                 Vec3::new(1.0, 2.0, 0.0),
@@ -2142,6 +2183,7 @@ mod tests {
 
     #[test]
     fn point_extrema_rejects_overflowed_hermite_tangent_without_scaling_forever() {
+        let k = &Kernel::default();
         let c = hermite(
             [0.0; 3],
             [f64::MAX / 2.0, 0.0, 0.0],
@@ -2150,6 +2192,7 @@ mod tests {
         );
         let domain = c.natural_interval();
         let mut evaluator = FindPcExtremaEfo::new(
+            k,
             &c,
             Vec3::ZERO,
             domain,
@@ -2163,6 +2206,7 @@ mod tests {
         ));
         let (found, _): (bool, Solution<()>) = c
             .local_point_solve(
+                k,
                 &domain,
                 SolverOperation::Minimize,
                 Vec3::ZERO,
@@ -2175,6 +2219,7 @@ mod tests {
 
     #[test]
     fn crossing_lines_intersect_locally() {
+        let k = &Kernel::default();
         let a = hermite([0.0; 3], [1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 0.0]);
         let b = hermite(
             [0.5, -1.0, 0.0],
@@ -2183,7 +2228,7 @@ mod tests {
             [0.0, 2.0, 0.0],
         );
         let ivl = a.natural_interval();
-        let r = local_curve_intersect(&a, &ivl, &b, &ivl, 1e-6, 0.4, 0.6)
+        let r = local_curve_intersect(k, &a, &ivl, &b, &ivl, 1e-6, 0.4, 0.6)
             .unwrap()
             .unwrap();
         assert!((r.my_param - 0.5).abs() < 1e-9, "{r:?}");
