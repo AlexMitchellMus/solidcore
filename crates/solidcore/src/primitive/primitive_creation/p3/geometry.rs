@@ -126,7 +126,7 @@ fn scaling(
         let solution = solutions
             .get(0)
             .ok_or_else(|| SolidError::null_pointer(OP))?;
-        let projected = reference.evaluate_point(solution.start.param(0)?)?;
+        let projected = reference.evaluate_point(k, solution.start.param(0)?)?;
         Ok(point.distance(projected))
     };
     let factor = 1.0 / distance(scale.evaluate_point(domain.min())?)?;
@@ -247,7 +247,7 @@ pub fn prepare_curve_sweep(
     }
     if options.orient_profile_perpendicular_to_path {
         let as_curves: Vec<_> = profiles.iter().cloned().map(Curve::from).collect();
-        let mut normal = match compute_crvs_normal(&as_curves) {
+        let mut normal = match compute_crvs_normal(k, &as_curves) {
             Ok(normal) => normal,
             Err(SolidError::Unported { upstream, unit }) => {
                 return Err(SolidError::Unported { upstream, unit })
@@ -270,7 +270,7 @@ pub fn prepare_curve_sweep(
             }
             Err(error) => return Err(error),
         };
-        ignore_status(compute_crvs_normal(&[Curve::from(path.clone())]))?;
+        ignore_status(compute_crvs_normal(k, &[Curve::from(path.clone())]))?;
         if normal.dot(Vec3::X) < 0.0 {
             normal = -normal;
         }
@@ -376,7 +376,7 @@ mod tests {
         assert!((original_start - start).length() < 1e-12);
         assert_eq!(path.evaluate_point(path.natural_interval().min())?, start);
         assert_eq!(
-            profile.evaluate_point(profile.natural_interval().min())?,
+            profile.evaluate_point(&k, profile.natural_interval().min())?,
             Vec3::Y
         );
         Ok(())

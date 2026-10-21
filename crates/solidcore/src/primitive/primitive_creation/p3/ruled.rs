@@ -44,6 +44,7 @@ pub struct OffsetRuleOptions {
 /// `unmarried` records whether each original generator remains unused.
 /// A missing map returns `SM_ERR` after reducing the offset's degree.
 pub fn ruled_surface_from_offset(
+    k: &crate::kernel::Kernel,
     offset_curve: &mut BSplineCurve,
     map: Option<OffsetMapAttribute>,
     generators: &mut [BSplineCurve],
@@ -126,11 +127,11 @@ pub fn ruled_surface_from_offset(
     }
     let [domain0, domain1] = intervals;
     let length0 = Curve::from(first.clone())
-        .approximate_length(&domain0, 3, false)?
+        .approximate_length(k, &domain0, 3, false)?
         .0;
     if length0 < 2.0 * options.tolerance
         && Curve::from(second.clone())
-            .approximate_length(&domain1, 3, false)?
+            .approximate_length(k, &domain1, 3, false)?
             .0
             < 2.0 * options.tolerance
     {
@@ -151,9 +152,9 @@ pub fn ruled_surface_from_offset(
     compatible?;
     let [first, second] = &mut rules;
     if map.corner_offset && first_input_rational {
-        if first.is_degenerate(EFF_ZERO, None)? {
+        if first.is_degenerate(k, EFF_ZERO, None)? {
             ignore_status(first.match_weights(second))?;
-        } else if second.is_degenerate(EFF_ZERO, None)? {
+        } else if second.is_degenerate(k, EFF_ZERO, None)? {
             ignore_status(second.match_weights(first))?;
         }
     }
@@ -182,6 +183,7 @@ mod tests {
         let mut movement = Axis2Placement::IDENTITY;
         movement.translate(2.0 * Vec3::Z);
         let result = ruled_surface_from_offset(
+            &crate::kernel::Kernel::default(),
             &mut offset,
             Some(map),
             &mut generators,

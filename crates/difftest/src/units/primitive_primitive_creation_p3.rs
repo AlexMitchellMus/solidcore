@@ -77,6 +77,7 @@ fn samples(curve: &BSplineCurve, out: &mut Vec<f64>) -> Result<()> {
     Ok(())
 }
 fn ruled(data: &[f64]) -> Result<Vec<f64>> {
+    let k = Kernel::default();
     let mut offset = curve(&data[20..27])?;
     let mut generators = [curve(&data[27..34])?, curve(&data[34..41])?];
     let mut unmarried = [data[6] != 0., data[7] != 0.];
@@ -99,6 +100,7 @@ fn ruled(data: &[f64]) -> Result<Vec<f64>> {
         )
     });
     let result = api::ruled_surface_from_offset(
+        &k,
         &mut offset,
         map,
         &mut generators,
@@ -147,7 +149,10 @@ fn ruled(data: &[f64]) -> Result<Vec<f64>> {
             for v in 0..=4 {
                 out.extend(
                     surface
-                        .evaluate_point(domain.evaluate(f64::from(u) / 4.0, f64::from(v) / 4.0))?
+                        .evaluate_point(
+                            &k,
+                            domain.evaluate(f64::from(u) / 4.0, f64::from(v) / 4.0),
+                        )?
                         .to_array(),
                 );
             }

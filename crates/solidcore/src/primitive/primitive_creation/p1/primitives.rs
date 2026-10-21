@@ -757,8 +757,8 @@ impl PrimitiveCreation {
                     _ => curve.natural_interval(),
                 };
                 analytic_domain.set_u_interval(&interval);
-                let surface = if curve.is_linear(EFF_ZERO, false)?.linear {
-                    let ends = curve.ends()?;
+                let surface = if curve.is_linear(k, EFF_ZERO, false)?.linear {
+                    let ends = curve.ends(k)?;
                     let tangent = (ends.end - ends.start).unitize_or_z();
                     if tangent.dot(direction).abs() < EFF_ZERO {
                         Some(Surface::from(Plane::new(
@@ -772,7 +772,7 @@ impl PrimitiveCreation {
                         None
                     }
                 } else if let Some((mut frame, radius, start, end)) =
-                    curve.is_arc(8, brep.tolerance())?
+                    curve.is_arc(k, 8, brep.tolerance())?
                 {
                     let angle = end - start;
                     if angle < 360.0 + brep.tolerance()
@@ -1019,11 +1019,11 @@ pub fn analytic_rotational_sweep(
     use crate::math::{Vec3, EFF_ZERO_SQRT};
     let op = "primitive::primitive_creation::p1::analytic_rotational_sweep";
     let tol = brep.tolerance();
-    let ends = curve.ends()?;
+    let ends = curve.ends(k)?;
     let (start_distance, _) = line_point_distance(axis_base, axis, ends.start);
     let (end_distance, _) = line_point_distance(axis_base, axis, ends.end);
     let mut analytic = None;
-    if curve.is_linear(EFF_ZERO, false)?.linear {
+    if curve.is_linear(k, EFF_ZERO, false)?.linear {
         let length = (ends.end - ends.start).length();
         if length < tol {
             return Err(SolidError::invalid_input(
@@ -1104,8 +1104,8 @@ pub fn analytic_rotational_sweep(
                     }
                 }
             }
-            let bottom = axis_line.evaluate_point(bottom_parameter)?;
-            let top = axis_line.evaluate_point(top_parameter)?;
+            let bottom = axis_line.evaluate_point(k, bottom_parameter)?;
+            let top = axis_line.evaluate_point(k, top_parameter)?;
             let height = (bottom - top).length();
             let tmp = if axis.dot(line) < 0.0 {
                 axis * -1.0
@@ -1126,7 +1126,7 @@ pub fn analytic_rotational_sweep(
                 analytic = Some(AnalyticSurface::Cone(cone));
             }
         }
-    } else if let Some((frame, radius, start, end)) = curve.is_arc(8, tol)? {
+    } else if let Some((frame, radius, start, end)) = curve.is_arc(k, 8, tol)? {
         let angle = end - start;
         if angle < 180.0 + tol && angle > 180.0 - tol {
             if line_point_distance(axis_base, axis, ends.start).0 > tol
@@ -1154,6 +1154,7 @@ pub fn analytic_rotational_sweep(
             let (major, param) = line_point_distance(axis_base, axis, frame.origin());
             let origin = axis_base + axis * param;
             let normal = ignored(crate::curve::curve::p3::compute_crvs_normal(
+                k,
                 core::slice::from_ref(curve),
             ))?
             .unwrap_or(Vec3::UNDEF);
