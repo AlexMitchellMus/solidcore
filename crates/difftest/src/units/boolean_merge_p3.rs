@@ -1096,13 +1096,9 @@ mod tests {
     fn piecewise_dependency_errors_name_the_next_missing_owner() {
         let mut pool = Pool::load(&inputs()).unwrap();
         let mut k = Kernel::default();
-        assert!(matches!(
-            pool.new_face_brep(&mut k, 0),
-            Err(SolidError::Unported {
-                unit: "topology.brep_p3",
-                ..
-            })
-        ));
+        // the new face B-rep (topology.brep_p3's SmBrep constructor, brep_p2's
+        // SetTolerance) is ported: it is appended after the two operands
+        assert_eq!(pool.new_face_brep(&mut k, 0).unwrap(), 2);
         // SmBrep::Notify is topology.brep_p2's (#149): PRE_EDIT of the fixture B-rep runs
         let r = pool.notify_pre_edit(&mut k, 0);
         assert!(r.is_ok(), "notify_pre_edit: {r:?}");

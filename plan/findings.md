@@ -11279,3 +11279,16 @@ guarded in `offset.offset_geometry_creation`; the fix belongs to the curve cache
   tessellation, before any intersection test, as in `fuzz00504`.
 - **Status.** Open, with `fuzz00504`. Reproduce with the fuzz output file as a fixture and
   the tolerance set to any accepted value.
+- **Difftest `graph()` compared arena records upstream deletes (topology.brep_p3, PR #204).** The shared
+  difftest helper `graph()` / `Canon::of` (`crates/difftest/src/units/boolean_merge_p1.rs`, used by
+  several runners) counted raw arena lengths and appended the records its walk did not reach, while the
+  C++ side is a fresh import of the shim's export walk, which emits only live objects. Upstream deletes
+  records the Rust arenas keep, unlinked (topology.brep_p2's documented deviation: "deleted records ...
+  stay in the arena, unlinked", e.g. `MakeEdgeVertexTopology` deleting a vertex shell's vertex use,
+  SmBrep.cpp:13850). It surfaced when #339 wired `GetInfiniteRegion` into topology.brep_p5, so
+  `CreateWireEdgeFromCurve` (op 13) ran for the first time: 5 vertex uses vs 4, geometry 29 vs 27, graph
+  57 vs 54, with equal topology. `graph()` now numbers, compares and counts only the records the walk
+  reaches from the B-rep's roots (regions and edge list, as the export walk): reachability is the
+  definition of the B-rep's content upstream, and a record that is wrongly still linked is reached and
+  compared. The unreached count is a Rust-side report diagnostic (`diagnostics.unreached_records`,
+  never compared) so leaks stay visible.

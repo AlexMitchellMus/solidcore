@@ -147,8 +147,12 @@ impl<I: ArenaId + Copy> Order<I> {
 /// first-seen order, while Rust arenas append new records. Both sides are renumbered
 /// by the same walk (the shim's, from the B-rep's regions in arena order and the edge
 /// list; on an imported C++ export it is the identity), so records created by the op
-/// compare by position in the topology, not by allocation order. Records the walk
-/// does not reach follow in arena order.
+/// compare by position in the topology, not by allocation order. Only records the walk
+/// reaches are numbered, compared and counted, as the C++ export walk emits only those:
+/// a record upstream deletes stays in the Rust arena, unlinked (the arena model's
+/// documented deviation, e.g. `MakeEdgeVertexTopology`'s vertex-shell vertex use), and
+/// is not part of the B-rep. A record that is wrongly still linked is reached, so it is
+/// still compared. The unreached count is a report diagnostic ([`graph`]).
 pub(crate) struct Canon {
     pub(crate) regions: Order<RegionId>,
     pub(crate) shells: Order<ShellId>,
@@ -317,43 +321,23 @@ impl Canon {
                 l += 1;
                 more = true;
             }
-            if !more {
-                // unreachable records, in arena order, then walk on from them
-                let before = g.len();
-                for (id, _) in b.regions().iter() {
-                    g.regions.add(Some(id));
-                }
-                for (id, _) in b.shells().iter() {
-                    g.shells.add(Some(id));
-                }
-                for (id, _) in b.faceuses().iter() {
-                    g.faceuses.add(Some(id));
-                }
-                for (id, _) in b.faces().iter() {
-                    g.faces.add(Some(id));
-                }
-                for (id, _) in b.loopuses().iter() {
-                    g.loopuses.add(Some(id));
-                }
-                for (id, _) in b.loops().iter() {
-                    g.loops.add(Some(id));
-                }
-                for (id, _) in b.edgeuses().iter() {
-                    g.edgeuses.add(Some(id));
-                }
-                for (id, _) in b.edges().iter() {
-                    g.edges.add(Some(id));
-                }
-                for (id, _) in b.vertexuses().iter() {
-                    g.vertexuses.add(Some(id));
-                }
-                for (id, _) in b.vertices().iter() {
-                    g.vertices.add(Some(id));
-                }
-                more = g.len() != before;
-            }
         }
         g
+    }
+    /// The arena records of `b` the walk did not reach (deleted records the arenas
+    /// keep, or a leak).
+    pub(crate) fn unreached(&self, b: &Brep) -> usize {
+        let all = b.regions().len()
+            + b.shells().len()
+            + b.faceuses().len()
+            + b.faces().len()
+            + b.loopuses().len()
+            + b.loops().len()
+            + b.edgeuses().len()
+            + b.edges().len()
+            + b.vertexuses().len()
+            + b.vertices().len();
+        all.saturating_sub(self.len())
     }
     fn len(&self) -> usize {
         self.regions.items.len()
@@ -373,17 +357,18 @@ impl Canon {
 #[allow(clippy::too_many_lines)]
 pub(crate) fn graph(b: &Brep, record: Vec<f64>) -> Output {
     let c = Canon::of(b);
+    // the reached records of each kind (what the C++ export walk emits)
     let mut ints = vec![
-        b.regions().len() as i64,
-        b.shells().len() as i64,
-        b.faceuses().len() as i64,
-        b.faces().len() as i64,
-        b.loopuses().len() as i64,
-        b.loops().len() as i64,
-        b.edgeuses().len() as i64,
-        b.edges().len() as i64,
-        b.vertexuses().len() as i64,
-        b.vertices().len() as i64,
+        c.regions.items.len() as i64,
+        c.shells.items.len() as i64,
+        c.faceuses.items.len() as i64,
+        c.faces.items.len() as i64,
+        c.loopuses.items.len() as i64,
+        c.loops.items.len() as i64,
+        c.edgeuses.items.len() as i64,
+        c.edges.items.len() as i64,
+        c.vertexuses.items.len() as i64,
+        c.vertices.items.len() as i64,
     ];
     let regions: Vec<_> = c
         .regions
@@ -543,10 +528,14 @@ pub(crate) fn graph(b: &Brep, record: Vec<f64>) -> Output {
     for e in &edges {
         values.extend([e.interval.min(), e.interval.max(), e.tolerance]);
     }
-    Output::new()
+    let out = Output::new()
         .values("record", record)
         .values("geometry", values)
-        .ints("graph", ints)
+        .ints("graph", ints);
+    match c.unreached(b) {
+        0 => out,
+        n => out.diagnostic("unreached_records", n as i64),
+    }
 }
 #[derive(Debug, Default)]
 struct Recorder {
@@ -984,5 +973,49 @@ impl UnitDiff for Runner {
             seeds: ctx.seeds.max(96),
         };
         crate::runner::default_cases(self, &ctx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use solidcore::topology::{Vertexuse, VertexuseOwner};
+
+    /// A B-rep with one shell vertex in its infinite region.
+    fn shell_vertex() -> (Brep, VertexId) {
+        let mut b = Brep::new_with_infinite_region().unwrap();
+        let inf = b.infinite_region();
+        let (_, v) = solidcore::topology::brep::p2::make_shell_vertex_topology(&mut b, inf).unwrap();
+        (b, v)
+    }
+
+    /// `graph` compares what the C++ export walk emits: a record the walk does not reach
+    /// (one upstream deleted, which the arena keeps unlinked) leaves the compared output
+    /// unchanged and is only counted as a diagnostic; an extra vertex use that is still
+    /// linked is reached, so it changes the output.
+    #[test]
+    fn graph_compares_only_reachable_records() {
+        let (b, _) = shell_vertex();
+        let base = graph(&b, vec![]);
+        assert!(base.diagnostics.is_none());
+
+        let (mut unlinked, _) = shell_vertex();
+        unlinked.add_vertexuse_record(Vertexuse::default()).unwrap();
+        let g = graph(&unlinked, vec![]);
+        assert_eq!((&g.values, &g.ints), (&base.values, &base.ints));
+        assert_eq!(g.diagnostic_value("unreached_records"), Some(1));
+
+        let (mut linked, v) = shell_vertex();
+        let extra = linked
+            .add_vertexuse_record(Vertexuse {
+                vertex: Some(v),
+                owner: VertexuseOwner::Unknown,
+                ..Vertexuse::default()
+            })
+            .unwrap();
+        linked.vertex_mut(v).unwrap().vertexuses.push(extra);
+        let g = graph(&linked, vec![]);
+        assert_ne!(g.ints, base.ints);
+        assert!(g.diagnostics.is_none());
     }
 }
