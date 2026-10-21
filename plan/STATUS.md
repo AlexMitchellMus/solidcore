@@ -4,7 +4,7 @@ Last updated: 2026-10-16, PR #127 (`sweep.trans_sweep_geometry` partial: 719 bit
 
 Latest topology integration: `topology.brep_p6` partial (PR #169, after its dependency #154: 498 cases, 450 pass, 48 deferred, 0 failed; 206 units, 113 green and 93 partial); before: `topology.shell` partial (PR #154, continuing @0xlillith's PR #80: 192 ported units, 109 green and 83 partial); before: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green); before: `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
 
-Latest unit (draft): `blend.fillet_solver_p2` partial (PR #249, stacked on #192: 300 cases, 187 pass, 113 deferred on `intersect.surface_drop_lib_p3`, `surface.surface_p2`, `blend.fillet_geom_p1`, `blend.fillet_executive_p2`, 0 failed).
+Latest unit (draft): `blend.fillet_solver_p2` partial (PR #249, stacked on #192: 311 cases, 222 pass (163 compare 3+ values), 89 deferred on `intersect.surface_drop_lib_p3` 45, `surface.surface_p2` 34, `blend.fillet_executive_p1` 10, 0 failed).
 
 Latest main integration: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green).
 

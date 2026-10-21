@@ -898,7 +898,10 @@ fn fillet_geom_model(
         }
         fb.geom_mut(g).map_err(h)?.set_rail(i, Some(e));
         if let Some(pts) = rails {
-            for (v, p) in [vs, ve].into_iter().zip(&pts[2 * i..2 * i + 2]) {
+            let ends = pts
+                .get(2 * i..2 * i + 2)
+                .ok_or_else(|| harness("rail point index"))?;
+            for (v, p) in [vs, ve].into_iter().zip(ends) {
                 let fv = fb.fillet_vertex_mut(v).map_err(h)?;
                 fv.set_fillet_vertex_type(FilletVertexType::RailXEdgeuse);
                 fv.set_status(FilStatus::Processed);
@@ -1106,15 +1109,14 @@ fn rust_run(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, Harn
             eu,
             tsects,
         } => {
-            let (target, n_eus) = match analytic {
-                Some(a) => (analytic_brep(&k, a)?, WIRE_EDGEUSES),
-                None => {
-                    let Ok(c) = brep_case(brep)? else {
-                        return Err(harness("B-rep failed on the Rust side only"));
-                    };
-                    let n = n_eu(&c);
-                    (c.brep, n)
-                }
+            let (target, n_eus) = if let Some(a) = analytic {
+                (analytic_brep(&k, a)?, WIRE_EDGEUSES)
+            } else {
+                let Ok(c) = brep_case(brep)? else {
+                    return Err(harness("B-rep failed on the Rust side only"));
+                };
+                let n = n_eu(&c);
+                (c.brep, n)
             };
             o.push(0.0);
             let mut fs = solver_of(cfg, surfs)?;
@@ -1494,7 +1496,7 @@ fn gen_straight(rng: &mut Rng, which: u8) -> Inputs {
         line([xs - 0.5, 0.0, 0.0], [xe + 0.5, 0.0, 0.0])
     };
     // a real `SmLine` edge (`IsLine` of the line kind) in a fifth of the cases
-    let analytic = rng.chance(0.2).then(|| AnalyticEdge::Line {
+    let analytic = rng.chance(0.2).then_some(AnalyticEdge::Line {
         a: [xs - 0.5, 0.0, 0.0],
         b: [xe + 0.5, 0.0, 0.0],
     });
@@ -1556,7 +1558,7 @@ fn gen_degenerate(rng: &mut Rng) -> Inputs {
         tsect([xe, r], [xe + gap, r], 1.0),
     ];
     let which = u8::from(rng.chance(0.5));
-    let analytic = rng.chance(0.5).then(|| AnalyticEdge::Line {
+    let analytic = rng.chance(0.5).then_some(AnalyticEdge::Line {
         a: [xs - 0.5, 0.0, 0.0],
         b: [xe + 0.5, 0.0, 0.0],
     });

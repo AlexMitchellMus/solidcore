@@ -10993,7 +10993,7 @@ the shim's `MakeRailEdge` rails; the torus rail-end checks set `m_bExtendAfter` 
   `FilletSolver::rail_rail_intersect` (its virtual callees can change the solvers); the intersection points start as
   `SmTsectPnt()`, as upstream's locals. `SmTemporaryRadiusChange::SetUp` (`blend.fillet_executive_p2`) does nothing unless the
   solver is an `SmVariableRadiusFS`, so `RailRailIntersect` stops there only for such a solver (`is_kind_of`); for any other
-  class, whose `IsKindOf` is ported, the whole solve runs (the difftest's test solver: 52 cases). A `ConstantRadiusAssistedFs`
+  class, whose `IsKindOf` is ported, the whole solve runs (the difftest's test solver: 32 generated cases with all four offset surfaces, `gen*_rail_rail_solve`, all pass). A `ConstantRadiusAssistedFs`
   answers `IsKindOf` with `Unported` (`blend.fillet_standard_solver_p2`), so the class test stops there for it.
 - `blend.fillet_geom_p2` held base `FilletSolver`s in the caller's table and built `ConstantRadiusAssistedFs` *clones* of them with
   radii `[0, 0]` for the virtuals (review of PR #249: invented radii, and the virtuals' changes to the solver, such as offsets

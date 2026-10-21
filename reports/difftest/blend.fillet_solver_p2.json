@@ -99,7 +99,7 @@
         "unit": "blend.fillet_executive_p1"
       },
       "max_rel_err": 0.0,
-      "name": "gen0000",
+      "name": "gen0000_record",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226003",
@@ -111,7 +111,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0001",
+      "name": "gen0001_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226004",
@@ -119,7 +119,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0002",
+      "name": "gen0002_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226005",
@@ -127,7 +127,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0003",
+      "name": "gen0003_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226006",
@@ -139,7 +139,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0004",
+      "name": "gen0004_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226007",
@@ -147,7 +147,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0005",
+      "name": "gen0005_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226008",
@@ -155,7 +155,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0006",
+      "name": "gen0006_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226009",
@@ -163,7 +163,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0007",
+      "name": "gen0007_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226010",
@@ -175,7 +175,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0008",
+      "name": "gen0008_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226011",
@@ -187,7 +187,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0009",
+      "name": "gen0009_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226012",
@@ -195,7 +195,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0010",
+      "name": "gen0010_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226013",
@@ -203,7 +203,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0011",
+      "name": "gen0011_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226014",
@@ -211,7 +211,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0012",
+      "name": "gen0012_rail_eu",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226015",
@@ -219,7 +219,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0013",
+      "name": "gen0013_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226016",
@@ -227,7 +227,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0014",
+      "name": "gen0014_cylinder",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226017",
@@ -235,7 +235,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0015",
+      "name": "gen0015_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226018",
@@ -243,7 +243,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0016",
+      "name": "gen0016_rail_eu",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226019",
@@ -251,7 +251,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0017",
+      "name": "gen0017_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226020",
@@ -259,7 +259,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0018",
+      "name": "gen0018_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226021",
@@ -271,7 +271,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0019",
+      "name": "gen0019_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226022",
@@ -279,7 +279,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0020",
+      "name": "gen0020_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226023",
@@ -287,7 +287,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0021",
+      "name": "gen0021_cylinder",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226024",
@@ -299,7 +299,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0022",
+      "name": "gen0022_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226025",
@@ -307,7 +307,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0023",
+      "name": "gen0023_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226026",
@@ -315,7 +315,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0024",
+      "name": "gen0024_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226027",
@@ -323,7 +323,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0025",
+      "name": "gen0025_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226028",
@@ -331,7 +331,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0026",
+      "name": "gen0026_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226029",
@@ -339,7 +339,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0027",
+      "name": "gen0027_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226030",
@@ -347,7 +347,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0028",
+      "name": "gen0028_cylinder",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226031",
@@ -355,7 +355,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0029",
+      "name": "gen0029_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226032",
@@ -367,7 +367,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0030",
+      "name": "gen0030_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226033",
@@ -379,7 +379,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0031",
+      "name": "gen0031_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226034",
@@ -387,7 +387,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0032",
+      "name": "gen0032_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226035",
@@ -395,7 +395,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0033",
+      "name": "gen0033_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226036",
@@ -403,7 +403,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0034",
+      "name": "gen0034_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226037",
@@ -415,7 +415,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0035",
+      "name": "gen0035_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226038",
@@ -423,7 +423,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0036",
+      "name": "gen0036_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226039",
@@ -431,7 +431,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0037",
+      "name": "gen0037_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226040",
@@ -439,7 +439,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0038",
+      "name": "gen0038_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226041",
@@ -447,7 +447,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0039",
+      "name": "gen0039_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226042",
@@ -459,7 +459,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0040",
+      "name": "gen0040_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226043",
@@ -467,7 +467,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0041",
+      "name": "gen0041_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226044",
@@ -475,7 +475,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0042",
+      "name": "gen0042_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226045",
@@ -483,7 +483,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0043",
+      "name": "gen0043_rail_eu",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226046",
@@ -495,7 +495,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0044",
+      "name": "gen0044_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226047",
@@ -503,7 +503,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0045",
+      "name": "gen0045_cylinder",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226048",
@@ -515,7 +515,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0046",
+      "name": "gen0046_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226049",
@@ -523,7 +523,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0047",
+      "name": "gen0047_cylinder",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226050",
@@ -531,7 +531,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0048",
+      "name": "gen0048_cylinder",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226051",
@@ -539,7 +539,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0049",
+      "name": "gen0049_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226052",
@@ -551,7 +551,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0050",
+      "name": "gen0050_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226053",
@@ -559,7 +559,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0051",
+      "name": "gen0051_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226054",
@@ -567,7 +567,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0052",
+      "name": "gen0052_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226055",
@@ -575,7 +575,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0053",
+      "name": "gen0053_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226056",
@@ -583,7 +583,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0054",
+      "name": "gen0054_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226057",
@@ -591,7 +591,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0055",
+      "name": "gen0055_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226058",
@@ -603,7 +603,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0056",
+      "name": "gen0056_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226059",
@@ -611,7 +611,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0057",
+      "name": "gen0057_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226060",
@@ -623,7 +623,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0058",
+      "name": "gen0058_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226061",
@@ -635,7 +635,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0059",
+      "name": "gen0059_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226062",
@@ -647,7 +647,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0060",
+      "name": "gen0060_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226063",
@@ -659,7 +659,7 @@
         "unit": "blend.fillet_executive_p1"
       },
       "max_rel_err": 0.0,
-      "name": "gen0061",
+      "name": "gen0061_record",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226064",
@@ -667,7 +667,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0062",
+      "name": "gen0062_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226065",
@@ -675,7 +675,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0063",
+      "name": "gen0063_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226066",
@@ -683,7 +683,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0064",
+      "name": "gen0064_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226067",
@@ -695,7 +695,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0065",
+      "name": "gen0065_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226068",
@@ -707,7 +707,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0066",
+      "name": "gen0066_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226069",
@@ -715,7 +715,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0067",
+      "name": "gen0067_rail_eu",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226070",
@@ -723,7 +723,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0068",
+      "name": "gen0068_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226071",
@@ -731,7 +731,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0069",
+      "name": "gen0069_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226072",
@@ -739,7 +739,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0070",
+      "name": "gen0070_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226073",
@@ -747,7 +747,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0071",
+      "name": "gen0071_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226074",
@@ -755,7 +755,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0072",
+      "name": "gen0072_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226075",
@@ -763,7 +763,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0073",
+      "name": "gen0073_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226076",
@@ -771,7 +771,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0074",
+      "name": "gen0074_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226077",
@@ -783,7 +783,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0075",
+      "name": "gen0075_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226078",
@@ -791,7 +791,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0076",
+      "name": "gen0076_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226079",
@@ -803,7 +803,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0077",
+      "name": "gen0077_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226080",
@@ -811,7 +811,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0078",
+      "name": "gen0078_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226081",
@@ -823,7 +823,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0079",
+      "name": "gen0079_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226082",
@@ -831,7 +831,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0080",
+      "name": "gen0080_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226083",
@@ -839,7 +839,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0081",
+      "name": "gen0081_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226084",
@@ -847,7 +847,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0082",
+      "name": "gen0082_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226085",
@@ -859,7 +859,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0083",
+      "name": "gen0083_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226086",
@@ -871,7 +871,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0084",
+      "name": "gen0084_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226087",
@@ -883,7 +883,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0085",
+      "name": "gen0085_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226088",
@@ -891,7 +891,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0086",
+      "name": "gen0086_cylinder",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226089",
@@ -903,7 +903,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0087",
+      "name": "gen0087_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226090",
@@ -915,7 +915,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0088",
+      "name": "gen0088_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226091",
@@ -927,7 +927,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0089",
+      "name": "gen0089_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226092",
@@ -935,7 +935,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0090",
+      "name": "gen0090_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226093",
@@ -943,7 +943,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0091",
+      "name": "gen0091_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226094",
@@ -951,7 +951,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0092",
+      "name": "gen0092_cylinder",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226095",
@@ -959,7 +959,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0093",
+      "name": "gen0093_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226096",
@@ -967,7 +967,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0094",
+      "name": "gen0094_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226097",
@@ -975,7 +975,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0095",
+      "name": "gen0095_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226098",
@@ -983,7 +983,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0096",
+      "name": "gen0096_rail_eu",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226099",
@@ -991,7 +991,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0097",
+      "name": "gen0097_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226100",
@@ -999,7 +999,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0098",
+      "name": "gen0098_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226101",
@@ -1007,7 +1007,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0099",
+      "name": "gen0099_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226102",
@@ -1015,7 +1015,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0100",
+      "name": "gen0100_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226103",
@@ -1023,7 +1023,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0101",
+      "name": "gen0101_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226104",
@@ -1031,7 +1031,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0102",
+      "name": "gen0102_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226105",
@@ -1043,7 +1043,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0103",
+      "name": "gen0103_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226106",
@@ -1051,7 +1051,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0104",
+      "name": "gen0104_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226107",
@@ -1063,7 +1063,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0105",
+      "name": "gen0105_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226108",
@@ -1071,7 +1071,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0106",
+      "name": "gen0106_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226109",
@@ -1079,7 +1079,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0107",
+      "name": "gen0107_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226110",
@@ -1091,7 +1091,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0108",
+      "name": "gen0108_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226111",
@@ -1103,7 +1103,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0109",
+      "name": "gen0109_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226112",
@@ -1111,7 +1111,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0110",
+      "name": "gen0110_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226113",
@@ -1119,7 +1119,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0111",
+      "name": "gen0111_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226114",
@@ -1127,7 +1127,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0112",
+      "name": "gen0112_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226115",
@@ -1139,7 +1139,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0113",
+      "name": "gen0113_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226116",
@@ -1147,7 +1147,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0114",
+      "name": "gen0114_cylinder",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226117",
@@ -1159,7 +1159,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0115",
+      "name": "gen0115_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226118",
@@ -1171,7 +1171,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0116",
+      "name": "gen0116_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226119",
@@ -1183,7 +1183,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0117",
+      "name": "gen0117_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226120",
@@ -1191,7 +1191,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0118",
+      "name": "gen0118_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226121",
@@ -1199,7 +1199,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0119",
+      "name": "gen0119_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226122",
@@ -1207,7 +1207,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0120",
+      "name": "gen0120_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226123",
@@ -1215,7 +1215,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0121",
+      "name": "gen0121_rail_eu",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226124",
@@ -1223,7 +1223,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0122",
+      "name": "gen0122_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226125",
@@ -1231,7 +1231,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0123",
+      "name": "gen0123_corner",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226126",
@@ -1239,7 +1239,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0124",
+      "name": "gen0124_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226127",
@@ -1247,7 +1247,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0125",
+      "name": "gen0125_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226128",
@@ -1255,7 +1255,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0126",
+      "name": "gen0126_rail_eu",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226129",
@@ -1267,7 +1267,7 @@
         "unit": "blend.fillet_executive_p1"
       },
       "max_rel_err": 0.0,
-      "name": "gen0127",
+      "name": "gen0127_record",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226130",
@@ -1279,7 +1279,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0128",
+      "name": "gen0128_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226131",
@@ -1287,7 +1287,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0129",
+      "name": "gen0129_rail_eu",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226132",
@@ -1299,7 +1299,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0130",
+      "name": "gen0130_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226133",
@@ -1307,7 +1307,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0131",
+      "name": "gen0131_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226134",
@@ -1319,7 +1319,7 @@
         "unit": "blend.fillet_executive_p1"
       },
       "max_rel_err": 0.0,
-      "name": "gen0132",
+      "name": "gen0132_record",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226135",
@@ -1327,7 +1327,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0133",
+      "name": "gen0133_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226136",
@@ -1335,7 +1335,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0134",
+      "name": "gen0134_rail_eu",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226137",
@@ -1343,7 +1343,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0135",
+      "name": "gen0135_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226138",
@@ -1351,7 +1351,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0136",
+      "name": "gen0136_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226139",
@@ -1359,7 +1359,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0137",
+      "name": "gen0137_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226140",
@@ -1371,7 +1371,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0138",
+      "name": "gen0138_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226141",
@@ -1383,7 +1383,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0139",
+      "name": "gen0139_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226142",
@@ -1391,7 +1391,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0140",
+      "name": "gen0140_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226143",
@@ -1399,7 +1399,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0141",
+      "name": "gen0141_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226144",
@@ -1407,7 +1407,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0142",
+      "name": "gen0142_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226145",
@@ -1415,7 +1415,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0143",
+      "name": "gen0143_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226146",
@@ -1427,7 +1427,7 @@
         "unit": "blend.fillet_executive_p1"
       },
       "max_rel_err": 0.0,
-      "name": "gen0144",
+      "name": "gen0144_record",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226147",
@@ -1435,7 +1435,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0145",
+      "name": "gen0145_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226148",
@@ -1443,7 +1443,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0146",
+      "name": "gen0146_rail_eu",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226149",
@@ -1451,7 +1451,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0147",
+      "name": "gen0147_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226150",
@@ -1459,7 +1459,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0148",
+      "name": "gen0148_rail_eu",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226151",
@@ -1467,7 +1467,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0149",
+      "name": "gen0149_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226152",
@@ -1475,7 +1475,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0150",
+      "name": "gen0150_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226153",
@@ -1483,7 +1483,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0151",
+      "name": "gen0151_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226154",
@@ -1491,7 +1491,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0152",
+      "name": "gen0152_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226155",
@@ -1499,7 +1499,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0153",
+      "name": "gen0153_cylinder",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226156",
@@ -1507,7 +1507,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0154",
+      "name": "gen0154_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226157",
@@ -1515,7 +1515,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0155",
+      "name": "gen0155_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226158",
@@ -1523,7 +1523,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0156",
+      "name": "gen0156_corner",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226159",
@@ -1531,7 +1531,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0157",
+      "name": "gen0157_rail_eu",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226160",
@@ -1543,7 +1543,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0158",
+      "name": "gen0158_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226161",
@@ -1555,7 +1555,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0159",
+      "name": "gen0159_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226162",
@@ -1563,7 +1563,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0160",
+      "name": "gen0160_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226163",
@@ -1575,7 +1575,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0161",
+      "name": "gen0161_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226164",
@@ -1583,7 +1583,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0162",
+      "name": "gen0162_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226165",
@@ -1591,7 +1591,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0163",
+      "name": "gen0163_rail_eu",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226166",
@@ -1599,7 +1599,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0164",
+      "name": "gen0164_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226167",
@@ -1607,7 +1607,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0165",
+      "name": "gen0165_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226168",
@@ -1615,7 +1615,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0166",
+      "name": "gen0166_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226169",
@@ -1627,7 +1627,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0167",
+      "name": "gen0167_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226170",
@@ -1635,7 +1635,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0168",
+      "name": "gen0168_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226171",
@@ -1643,7 +1643,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0169",
+      "name": "gen0169_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226172",
@@ -1655,7 +1655,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0170",
+      "name": "gen0170_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226173",
@@ -1667,7 +1667,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0171",
+      "name": "gen0171_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226174",
@@ -1675,7 +1675,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0172",
+      "name": "gen0172_rail_eu",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226175",
@@ -1683,7 +1683,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0173",
+      "name": "gen0173_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226176",
@@ -1691,7 +1691,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0174",
+      "name": "gen0174_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226177",
@@ -1699,7 +1699,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0175",
+      "name": "gen0175_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226178",
@@ -1711,7 +1711,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0176",
+      "name": "gen0176_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226179",
@@ -1719,7 +1719,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0177",
+      "name": "gen0177_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226180",
@@ -1727,7 +1727,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0178",
+      "name": "gen0178_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226181",
@@ -1735,7 +1735,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0179",
+      "name": "gen0179_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226182",
@@ -1743,7 +1743,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0180",
+      "name": "gen0180_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226183",
@@ -1751,7 +1751,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0181",
+      "name": "gen0181_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226184",
@@ -1759,7 +1759,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0182",
+      "name": "gen0182_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226185",
@@ -1767,7 +1767,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0183",
+      "name": "gen0183_cylinder",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226186",
@@ -1775,7 +1775,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0184",
+      "name": "gen0184_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226187",
@@ -1783,7 +1783,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0185",
+      "name": "gen0185_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226188",
@@ -1791,7 +1791,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0186",
+      "name": "gen0186_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226189",
@@ -1799,7 +1799,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0187",
+      "name": "gen0187_cylinder",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226190",
@@ -1807,7 +1807,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0188",
+      "name": "gen0188_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226191",
@@ -1819,7 +1819,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0189",
+      "name": "gen0189_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226192",
@@ -1827,7 +1827,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0190",
+      "name": "gen0190_corner",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226193",
@@ -1835,7 +1835,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0191",
+      "name": "gen0191_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226194",
@@ -1843,7 +1843,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0192",
+      "name": "gen0192_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226195",
@@ -1855,7 +1855,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0193",
+      "name": "gen0193_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226196",
@@ -1863,7 +1863,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0194",
+      "name": "gen0194_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226197",
@@ -1871,7 +1871,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0195",
+      "name": "gen0195_corner",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226198",
@@ -1879,7 +1879,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0196",
+      "name": "gen0196_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226199",
@@ -1891,7 +1891,7 @@
         "unit": "blend.fillet_executive_p1"
       },
       "max_rel_err": 0.0,
-      "name": "gen0197",
+      "name": "gen0197_record",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226200",
@@ -1899,7 +1899,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0198",
+      "name": "gen0198_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226201",
@@ -1907,7 +1907,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0199",
+      "name": "gen0199_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226202",
@@ -1919,7 +1919,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0200",
+      "name": "gen0200_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226203",
@@ -1927,7 +1927,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0201",
+      "name": "gen0201_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226204",
@@ -1935,7 +1935,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0202",
+      "name": "gen0202_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226205",
@@ -1947,7 +1947,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0203",
+      "name": "gen0203_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226206",
@@ -1955,7 +1955,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0204",
+      "name": "gen0204_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226207",
@@ -1963,7 +1963,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0205",
+      "name": "gen0205_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226208",
@@ -1971,7 +1971,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0206",
+      "name": "gen0206_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226209",
@@ -1979,7 +1979,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0207",
+      "name": "gen0207_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226210",
@@ -1991,7 +1991,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0208",
+      "name": "gen0208_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226211",
@@ -1999,7 +1999,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0209",
+      "name": "gen0209_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226212",
@@ -2007,7 +2007,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0210",
+      "name": "gen0210_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226213",
@@ -2015,7 +2015,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0211",
+      "name": "gen0211_cylinder",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226214",
@@ -2023,7 +2023,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0212",
+      "name": "gen0212_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226215",
@@ -2031,7 +2031,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0213",
+      "name": "gen0213_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226216",
@@ -2043,7 +2043,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0214",
+      "name": "gen0214_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226217",
@@ -2051,7 +2051,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0215",
+      "name": "gen0215_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226218",
@@ -2059,7 +2059,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0216",
+      "name": "gen0216_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226219",
@@ -2071,7 +2071,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0217",
+      "name": "gen0217_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226220",
@@ -2083,7 +2083,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0218",
+      "name": "gen0218_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226221",
@@ -2095,7 +2095,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0219",
+      "name": "gen0219_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226222",
@@ -2103,7 +2103,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0220",
+      "name": "gen0220_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226223",
@@ -2111,7 +2111,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0221",
+      "name": "gen0221_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226224",
@@ -2119,7 +2119,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0222",
+      "name": "gen0222_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226225",
@@ -2131,7 +2131,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0223",
+      "name": "gen0223_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226226",
@@ -2139,7 +2139,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0224",
+      "name": "gen0224_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226227",
@@ -2147,7 +2147,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0225",
+      "name": "gen0225_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226228",
@@ -2155,7 +2155,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0226",
+      "name": "gen0226_corner",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226229",
@@ -2163,7 +2163,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0227",
+      "name": "gen0227_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226230",
@@ -2175,7 +2175,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0228",
+      "name": "gen0228_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226231",
@@ -2183,7 +2183,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0229",
+      "name": "gen0229_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226232",
@@ -2191,7 +2191,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0230",
+      "name": "gen0230_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226233",
@@ -2199,7 +2199,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0231",
+      "name": "gen0231_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226234",
@@ -2207,7 +2207,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0232",
+      "name": "gen0232_cylinder",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226235",
@@ -2215,7 +2215,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0233",
+      "name": "gen0233_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226236",
@@ -2223,7 +2223,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0234",
+      "name": "gen0234_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226237",
@@ -2235,7 +2235,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0235",
+      "name": "gen0235_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226238",
@@ -2243,7 +2243,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0236",
+      "name": "gen0236_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226239",
@@ -2255,7 +2255,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0237",
+      "name": "gen0237_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226240",
@@ -2263,7 +2263,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0238",
+      "name": "gen0238_rail_eu",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226241",
@@ -2271,7 +2271,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0239",
+      "name": "gen0239_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226242",
@@ -2279,7 +2279,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0240",
+      "name": "gen0240_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226243",
@@ -2291,7 +2291,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0241",
+      "name": "gen0241_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226244",
@@ -2299,7 +2299,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0242",
+      "name": "gen0242_cylinder",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226245",
@@ -2307,7 +2307,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0243",
+      "name": "gen0243_cylinder",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226246",
@@ -2315,7 +2315,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0244",
+      "name": "gen0244_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226247",
@@ -2327,7 +2327,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0245",
+      "name": "gen0245_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226248",
@@ -2339,7 +2339,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0246",
+      "name": "gen0246_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226249",
@@ -2347,7 +2347,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0247",
+      "name": "gen0247_corner",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226250",
@@ -2359,7 +2359,7 @@
         "unit": "blend.fillet_executive_p1"
       },
       "max_rel_err": 0.0,
-      "name": "gen0248",
+      "name": "gen0248_record",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226251",
@@ -2371,7 +2371,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0249",
+      "name": "gen0249_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226252",
@@ -2379,7 +2379,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0250",
+      "name": "gen0250_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226253",
@@ -2391,7 +2391,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0251",
+      "name": "gen0251_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226254",
@@ -2403,7 +2403,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0252",
+      "name": "gen0252_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226255",
@@ -2415,7 +2415,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0253",
+      "name": "gen0253_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226256",
@@ -2423,7 +2423,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0254",
+      "name": "gen0254_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226257",
@@ -2431,7 +2431,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0255",
+      "name": "gen0255_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226258",
@@ -2439,7 +2439,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0256",
+      "name": "gen0256_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226259",
@@ -2451,7 +2451,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0257",
+      "name": "gen0257_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226260",
@@ -2459,7 +2459,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0258",
+      "name": "gen0258_rail_eu",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226261",
@@ -2467,7 +2467,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0259",
+      "name": "gen0259_cylinder",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226262",
@@ -2479,7 +2479,7 @@
         "unit": "blend.fillet_executive_p1"
       },
       "max_rel_err": 0.0,
-      "name": "gen0260",
+      "name": "gen0260_record",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226263",
@@ -2491,7 +2491,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0261",
+      "name": "gen0261_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226264",
@@ -2499,7 +2499,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0262",
+      "name": "gen0262_corner",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226265",
@@ -2511,7 +2511,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0263",
+      "name": "gen0263_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226266",
@@ -2523,7 +2523,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0264",
+      "name": "gen0264_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226267",
@@ -2531,7 +2531,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0265",
+      "name": "gen0265_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226268",
@@ -2543,7 +2543,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0266",
+      "name": "gen0266_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226269",
@@ -2551,7 +2551,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0267",
+      "name": "gen0267_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226270",
@@ -2563,7 +2563,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0268",
+      "name": "gen0268_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226271",
@@ -2571,7 +2571,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0269",
+      "name": "gen0269_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226272",
@@ -2579,7 +2579,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0270",
+      "name": "gen0270_cylinder",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226273",
@@ -2587,7 +2587,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0271",
+      "name": "gen0271_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226274",
@@ -2595,7 +2595,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0272",
+      "name": "gen0272_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226275",
@@ -2603,7 +2603,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0273",
+      "name": "gen0273_corner",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226276",
@@ -2615,7 +2615,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0274",
+      "name": "gen0274_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226277",
@@ -2623,7 +2623,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0275",
+      "name": "gen0275_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226278",
@@ -2631,7 +2631,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0276",
+      "name": "gen0276_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226279",
@@ -2639,7 +2639,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0277",
+      "name": "gen0277_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226280",
@@ -2647,7 +2647,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0278",
+      "name": "gen0278_cone",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226281",
@@ -2659,7 +2659,7 @@
         "unit": "blend.fillet_executive_p1"
       },
       "max_rel_err": 0.0,
-      "name": "gen0279",
+      "name": "gen0279_record",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226282",
@@ -2667,7 +2667,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0280",
+      "name": "gen0280_cylinder",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226283",
@@ -2679,7 +2679,7 @@
         "unit": "blend.fillet_executive_p1"
       },
       "max_rel_err": 0.0,
-      "name": "gen0281",
+      "name": "gen0281_record",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226284",
@@ -2691,7 +2691,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0282",
+      "name": "gen0282_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226285",
@@ -2699,7 +2699,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0283",
+      "name": "gen0283_rail_eu",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226286",
@@ -2707,7 +2707,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0284",
+      "name": "gen0284_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226287",
@@ -2719,7 +2719,7 @@
         "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0285",
+      "name": "gen0285_cylinder",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226288",
@@ -2727,7 +2727,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0286",
+      "name": "gen0286_rail_rail_missing",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226289",
@@ -2735,7 +2735,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0287",
+      "name": "gen0287_corner",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226290",
@@ -2743,7 +2743,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0288",
+      "name": "gen0288_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226291",
@@ -2751,7 +2751,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0289",
+      "name": "gen0289_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226292",
@@ -2759,7 +2759,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0290",
+      "name": "gen0290_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226293",
@@ -2771,7 +2771,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0291",
+      "name": "gen0291_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226294",
@@ -2779,7 +2779,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0292",
+      "name": "gen0292_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226295",
@@ -2787,7 +2787,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0293",
+      "name": "gen0293_rail_eu",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226296",
@@ -2795,7 +2795,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0294",
+      "name": "gen0294_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226297",
@@ -2807,7 +2807,7 @@
         "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0295",
+      "name": "gen0295_rail_eu",
       "outcome": "deferred",
       "pass": false,
       "source": "generated:seed=2561848488984226298",
@@ -2815,7 +2815,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0296",
+      "name": "gen0296_rail_rail_solve",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226299",
@@ -2823,7 +2823,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0297",
+      "name": "gen0297_corner",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226300",
@@ -2831,7 +2831,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0298",
+      "name": "gen0298_plane",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226301",
@@ -2839,7 +2839,7 @@
     },
     {
       "max_rel_err": 0.0,
-      "name": "gen0299",
+      "name": "gen0299_torus",
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=2561848488984226302",
