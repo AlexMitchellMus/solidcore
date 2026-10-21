@@ -592,7 +592,14 @@ fn gen_uv_curve(rng: &mut Rng) -> Option<Inputs> {
             // an iso line in u or v
             0 => {
                 let u = rng.uniform(0.0, 1.0);
-                return Some(gen_uv_from(rng, surface, scale, on_surface(&k, &rs, u, 0.1)?, on_surface(&k, &rs, u, 0.8)?, false));
+                return Some(gen_uv_from(
+                    rng,
+                    surface,
+                    scale,
+                    on_surface(&k, &rs, u, 0.1)?,
+                    on_surface(&k, &rs, u, 0.8)?,
+                    false,
+                ));
             }
             1 => q = p, // coincident
             2 => {
