@@ -4481,6 +4481,16 @@ a gap below 0.1 and a loose tolerance, so it only shows in large seed counts; th
 default 3,093-case set (which the gate and CI run) is clean, and the previous generator's
 30,055-case run was clean.
 
+**Handling (#94).** Logged as `UB-204` in `plan/upstream-issues.md`. The Rust side keeps zeroing
+`Matrix::new`: emulating a stack slot is neither possible nor deterministic, and the port's goal is
+deterministic results. The unit's generator skips the shape, so `--seeds 30000` no longer reports
+`gen21507`: `reads_uninitialised_jacobian` in `crates/difftest/src/units/curve_curve_p9.rs` drops
+op 9 cases where a Hermite end tangent of length zero is reached and the other curve is within 0.1
+of that end. Measured over the default 30,093 cases it matches 4 (the failing one and 3
+pairs that touch exactly at that end and pass); the other 38 cases with a zero end tangent are 0.5 or more
+apart. It is deliberately narrower than "any zero tangent", which the generator keeps drawing
+(8% of Hermite `d2`, 10% of `d1`) as degenerate coverage.
+
 ## intersect.surface_intersector_p5 (`SmSurfaceIntersector::DoIntersection`, 2026-10-14; partial, no disagreements)
 
 - **Dispatch.** Every upstream caller runs `DoIntersection` on an
@@ -12389,3 +12399,32 @@ operation, not to the whole B-rep.
   "notified object is not a topology object". `primitive.api_primitives`: 1445 pass,
   536 deferred, 0 failed, unchanged (its face paths go through the unported
   `topology.brep_p8` and `primitive_creation_p*`).
+
+## Fuzz "Rust-only hangs" (surface.surface_point_solve_p2, offset.offset_executive_p1; 2026-10-21)
+
+The fuzz sweep (#321-#325) reported two Rust-only timeouts as possible port divergences.
+Neither is one.
+
+- **offset.offset_executive_p1, `/offset_distance = -1.0` or `-1e300` (`op = extend`).**
+  The C++ side never ran: the FFI rejects a negative internal extension magnitude
+  (HANG-16), but `--fuzz` still runs Rust after a C++ harness error, and the port looped as
+  upstream would. `CreateExtendedSurface(5 * dist)` extends once, then `while (dExtDist <
+  dDist/2.0) dExtDist *= 2.0` doubles a negative distance down to `-inf`, where the G1R
+  extension of a plane still succeeds, so the loop never exits. Fix: the doubling loop of
+  `nurbs::b_spline_surface_n_lib::p1::extend_side` is bounded by `MAX_EXTEND_DOUBLINGS`
+  (`MAX_EXTEND_HALVINGS + 1`, never reached by a positive distance) and returns
+  `NotConverged`. Positive distances are unchanged.
+- **surface.surface_point_solve_p2, `/wrap = true` (fuzz00474 `push`, fuzz00961 `line`).**
+  Not a hang: both sides finish and agree (PASS, `max_rel_err = 0`). The Rust side just
+  needs more than the 20 s fuzz timeout. The STEP-wrapped surface takes the generic
+  `SmSurfaceCache` path (`CalculateBoundingBox` of the directed operation, solver 10), and
+  these near-degenerate nets (control points around `1e-4`) make the tree split 133,249
+  times. Each `sm_ComputeBezierApproximation` corner calls `IsSingularity` ->
+  `GetSingularities` (no cache upstream either), so that is 1,066,002 `GetSingularities`
+  calls, 23.5 M `N_SrfDerivs` and 21.9 M `N_SrfEvalPt`. The C++ builds the same tree in
+  about 3 s. Rust takes 25 s / 56 s at `opt-level = 3` and 42 s / 94 s with the
+  `difftest` profile (`opt-level = 1`, debug assertions). Samply shows the same call
+  structure on both sides. The gap is per-evaluation cost (surface derivatives about 10x
+  slower than C++: zeroed `[[_; 18]; 18]` scratch arrays, nested `Vec` results, checked
+  indexing), not more work. Nothing to fix for parity. A faster `srf_nurb::derivs` would
+  help every surface unit.
