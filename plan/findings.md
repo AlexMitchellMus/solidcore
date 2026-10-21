@@ -7935,6 +7935,25 @@ Changes made for bherbruck's review (all re-verified; numbers below are the new 
   is exercised by the difftest. Final numbers: `PARTIAL boolean.topology_intersector_p1 cases=827 passed=653 failed=0 deferred=174 max_rel_err=0e0 blocked_by=query.face_p1(7),topology.brep_p1(74),topology.face_p2(82),topology.face_p4(11)`, `SENSITIVE boolean.topology_intersector_p1 perturbed=653 detected=653 unperturbed=0 deferred=174`, `cases_both_errored` 3 (scripts cut at op 0), 32 of the 653 passes compare one refused op's status only; real-value comparisons 618.
 
 
+**Wiring follow-up: `SmFace::CalculateBoundingBox` through the adapter (2026-10-20).**
+The 7 generated cases deferred under `query.face_p1` (`gen0011`, `gen0105`, `gen0124`,
+`gen0133`, `gen0180`, `gen0513`, `gen0642`) stopped at the intersector's own private
+`face_bounding_box` stub, a dispatch gap: `query::face::p1::calculate_bounding_box` is
+ported (main since #238's batch) but takes the face's `Brep` and `FaceId`, which the opaque
+handle does not carry. The call is now `IntersectorBrep::face_calculate_bounding_box(k, face,
+tight)`, the last method of the trait (the pattern of the edge box; named after the upstream
+call in full because open PR #229's `MergeBrep` already has a `face_bounding_box`), implemented by the difftest
+adapter and by `boolean.merge_p4`'s `ArenaPair` on the B-rep behind the handle. The
+intersector's one call (the edge-face box check, `bTight = FALSE`) takes the port's
+non-tight branch, which is complete; the tight branch (`query.face_p3`) is never requested.
+Case diff against main: 830 cases (with #272's regression fixtures since the merge of main
+bb137d7d; 827 before), 713 pass, 0 fail, 117 deferred on both sides (693 / 137 before #149
+wired `topology.brep_p2`'s stubs, merged at e5f3e441); the 7 now
+run their face box and defer deeper, 6 at `SmFace::GetUpwardLoopuses` (`topology.face_p4`)
+and 1 at `SmBrep::CalculateBoundingBox` (`query.brep`); no new compared values yet, so the
+box itself is exercised but not compared until those stubs are wired. Perturb 690/690,
+`FUZZ-PASS` 2000; `boolean.merge_p4` unchanged (311 cases, 30 pass, 278 deferred).
+
 ## boolean.topology_intersector_p2
 
 PR #203 (on main's #146). Part 2 of `SmTopologyIntersector.cpp`: `RegisterExistingSSI`,
