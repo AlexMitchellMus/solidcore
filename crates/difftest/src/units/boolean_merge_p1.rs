@@ -1078,7 +1078,8 @@ mod tests {
     fn shell_vertex() -> (Brep, VertexId) {
         let mut b = Brep::new_with_infinite_region().unwrap();
         let inf = b.infinite_region();
-        let (_, v) = solidcore::topology::brep::p2::make_shell_vertex_topology(&mut b, inf).unwrap();
+        let (_, v) =
+            solidcore::topology::brep::p2::make_shell_vertex_topology(&mut b, inf).unwrap();
         (b, v)
     }
 

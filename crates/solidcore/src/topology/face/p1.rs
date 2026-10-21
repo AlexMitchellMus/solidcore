@@ -1018,8 +1018,8 @@ pub fn swap_uv(k: &Kernel, b: &mut Brep, f: FaceId) -> Result<()> {
 
 /// [`swap_uv`] with its `SM_NO_PRE_EDIT` / `SM_NO_POST_EDIT` (`this`,
 /// `SM_NO_GET_BREP(this)`, `NULL`) sent through the caller's notification environment
-/// (`env.key_of` names the face, [`brep_p2::brep_ref`] the B-rep; the context's
-/// callbacks see them, as upstream's B-rep context's do).
+/// (`env.key_of` names the face; `SM_NO_GET_BREP` is a null pointer upstream, so no
+/// B-rep; the context's callbacks see them, as upstream's B-rep context's do).
 ///
 /// # Errors
 ///
@@ -1032,8 +1032,8 @@ pub fn swap_uv_with_notifications(
 ) -> Result<()> {
     swap_uv_notifying(k, b, f, &mut |b, op| {
         let this = (env.key_of)(EntityRef::Face(f));
-        let brep = brep_p2::brep_ref(b);
-        fp3::notify(b, f, env, None, op, [Some(this), Some(brep), None])
+        // SM_NO_GET_BREP(this) is a null pointer upstream (SmTypes.h)
+        fp3::notify(b, f, env, None, op, [Some(this), None, None])
     })
 }
 

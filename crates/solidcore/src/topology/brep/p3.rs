@@ -3298,7 +3298,6 @@ enum RayVotes {
 /// ray pairs from points inside the face (on trimmed iso curves through test points
 /// of its edge uses), each voting whether the face normal points into the solid.
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
-#[allow(clippy::too_many_arguments)]
 fn orient_ray_votes(
     k: &Kernel,
     b: &mut Brep,
