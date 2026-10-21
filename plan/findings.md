@@ -11276,3 +11276,10 @@ guarded in `offset.offset_geometry_creation`; the fix belongs to the curve cache
   tessellation, before any intersection test, as in `fuzz00504`.
 - **Status.** Open, with `fuzz00504`. Reproduce with the fuzz output file as a fixture and
   the tolerance set to any accepted value.
+
+### boolean.topology_intersector_p1/_p2: `--fuzz 30000` (2026-10-21)
+
+- Hangs on surface control points of `1e154` or more: HANG-46 in `plan/upstream-issues.md`; the FFI reader now refuses them.
+- Slow, not hung: `fuzz09748` (p1) and `fuzz15421` (p2) set `/approx = 1e300`. Replayed with `approx` from `1e3` to `1e300`, the C++ returns in 22-25 s every time (`1`: 0.5 s), just over the fuzz harness's fixed 20 s budget (`CASE_TIMEOUT`). These are valid upstream inputs, so the FFI accepts them; they stay `timeout` verdicts in the fuzz until the harness has a per-unit budget.
+- 5 `differs` in p2 (`fuzz06628`, `fuzz08367`, `fuzz19033`, `fuzz19955`, `fuzz23628`): `values.state.len` is 3 shorter on the Rust side in each. Not yet assessed.
+

@@ -90,6 +90,10 @@ pub const MAX_INDEX: usize = 32;
 pub const MAX_DEGREE: usize = 5;
 /// Largest coordinate magnitude.
 pub const MAX_COORD: f64 = 1.0e300;
+/// Bound (exclusive) on surface control point coordinates: from about `1e154`, where
+/// their squares overflow, upstream's face/face, edge/face and coincidence
+/// intersections do not finish (HANG-46; below `1e150` they return at once).
+pub const MAX_SURFACE_COORD: f64 = 1.0e154;
 /// Most ops in a script.
 pub const MAX_OPS: usize = 64;
 /// Most handles in one list.
@@ -366,7 +370,13 @@ fn check_knots(knots: &[f64], p: usize, what: &str) -> Result<(f64, f64), FfiErr
 
 /// Checks `k` control points sharing their rational marker (`z = NOZ` allowed for
 /// curves when `planar`).
-fn check_points(rd: &mut Reader<'_>, k: usize, planar: bool, what: &str) -> Result<(), FfiError> {
+fn check_points(
+    rd: &mut Reader<'_>,
+    k: usize,
+    planar: bool,
+    bound: f64,
+    what: &str,
+) -> Result<(), FfiError> {
     let mut w0 = None;
     for _ in 0..k {
         let x = rd.num()?;
@@ -386,7 +396,7 @@ fn check_points(rd: &mut Reader<'_>, k: usize, planar: bool, what: &str) -> Resu
         let z = if z == NOZ { 0.0 } else { z };
         if [x, y, z]
             .iter()
-            .any(|c| !c.is_finite() || c.abs() > MAX_COORD)
+            .any(|c| !c.is_finite() || c.abs() > MAX_COORD || c.abs() >= bound)
         {
             return Err(bad(format!("{what}: point out of range")));
         }
@@ -418,7 +428,7 @@ fn surface(rd: &mut Reader<'_>) -> Result<Domain, FfiError> {
             "surface: need 1 <= p <= n, 1 <= q <= m, r = n+p+1, s = m+q+1",
         ));
     }
-    check_points(rd, (n + 1) * (m + 1), false, "surface")?;
+    check_points(rd, (n + 1) * (m + 1), false, MAX_SURFACE_COORD, "surface")?;
     let u = rd.finites(r + 1)?;
     let v = rd.finites(s + 1)?;
     let (u0, u1) = check_knots(&u, p, "surface u")?;
@@ -438,7 +448,7 @@ fn curve(rd: &mut Reader<'_>) -> Result<(f64, f64), FfiError> {
     if p == 0 || p > n || m != n + p + 1 {
         return Err(bad("curve: need 1 <= p <= n and m = n + p + 1"));
     }
-    check_points(rd, n + 1, dim == 2, "curve")?;
+    check_points(rd, n + 1, dim == 2, f64::INFINITY, "curve")?;
     let knots = rd.finites(m + 1)?;
     check_knots(&knots, p, "curve")
 }

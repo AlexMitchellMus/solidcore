@@ -1936,6 +1936,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** hang.
 - **Rust port:** Stops after `MAX_TOL_DOUBLINGS` (2200) doublings with `SolidError::InvalidInput`.
 
+#### HANG-46. Topology intersections do not return for a surface control point of magnitude 1e154 or more
+- **Location:** `source/SMLib/src/SmTopologyIntersector.cpp`, the face/face, face/face coincidence, edge/face and full (`IntersectInsertRelate`) intersections of `SmTopologyIntersector`; the stuck loop was not isolated (the same overflow class as HANG-16, HANG-19 and HANG-37).
+- **What happens:** With one surface control point coordinate at `1e154` or beyond, the intersection gives no result within 60 s; at `1e150` and below the same script returns in 0.1 s. The squared distances of such coordinates overflow.
+- **Trigger:** `--fuzz 30000` of `boolean.topology_intersector_p1`: `fuzz05142` (`face_face_coin` after `other_mate`, `/brep_b/surface/bspline/net/1/0/1 = 1e300`), `fuzz17005` (`check_ssi` then `edge_face`, `net/1/0/1 = -1e300`), `fuzz27420` (`face_face`, `net/1/0/0 = 1e300`); of `boolean.topology_intersector_p2`: `fuzz06354` (`relate`, `mgr_new`, `intersect_topo`, `/brep_a/surface/bspline/net/1/4/1 = -1e300`, other B-rep rebuilt from its file).
+- **How found:** `--fuzz 30000` of both units on main `16f04231`; threshold by replaying `fuzz05142` with the coordinate replaced (60 s limit per run): `1e300`, `1e280`, `1e250`, `1e200`, `1e160`, `1e154` give no result; `1e150`, `1e100`, `1e50`, `1e10`, `1` return in 0.0-0.2 s.
+- **Confirmed:** yes (no result within 60 s for six values; infinite execution not proven).
+- **Severity:** hang on out-of-range geometry; not a parity blocker (no fixture or generated case reaches it).
+- **Rust port:** the `boolean.topology_intersector_p1` FFI reader, shared with `_p2`, refuses surface control point coordinates of `MAX_SURFACE_COORD = 1e154` or more (the boundary of the measured hang, as `_p2`'s `HANG_COORD` for `IntersectInsertRelate`).
+
 ## Nondeterminism
 
 #### ND-1. `srand(time(NULL))` in face sampling and shell classification

@@ -4840,3 +4840,42 @@ fn edge_cases() -> Vec<(String, Value)> {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::case::CaseSource;
+
+    /// HANG-46: the `--fuzz 30000` inputs whose surface control point of `1e300` kept
+    /// the C++ intersection busy past the timeout, for this unit and `_p2` (which
+    /// shares this reader). They cannot be fixtures (a harness error always fails a
+    /// case), so this test keeps them: the FFI refuses each before any construction.
+    #[cfg(feature = "cpp")]
+    #[test]
+    fn ffi_refuses_surface_points_in_the_hang_range() {
+        let p2 = super::super::boolean_topology_intersector_p2::Runner;
+        let files: [(&str, &dyn UnitDiff); 2] = [
+            (
+                include_str!("../../tests/fuzz_regressions/boolean.topology_intersector_p1.json"),
+                &Runner,
+            ),
+            (
+                include_str!("../../tests/fuzz_regressions/boolean.topology_intersector_p2.json"),
+                &p2,
+            ),
+        ];
+        for (text, runner) in files {
+            let recorded: Value = serde_json::from_str(text).unwrap();
+            for recorded in recorded["cases"].as_array().unwrap() {
+                let case = Case {
+                    unit: runner.id().into(),
+                    name: recorded["name"].as_str().unwrap().into(),
+                    source: CaseSource::Inline,
+                    inputs: recorded["inputs"].clone(),
+                };
+                let error = runner.run_cpp(&case).unwrap_err().to_string();
+                assert!(error.contains("surface: point out of range"), "{}: {error}", case.name);
+            }
+        }
+    }
+}
