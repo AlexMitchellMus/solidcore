@@ -52,7 +52,7 @@ pub fn read_exact_surface(
     let surf_oob = num()? != 0.0;
     let gen_oob = num()? != 0.0;
     let n = num()?;
-    if !(0.0..=1e8).contains(&n) || !(0.0..=1e4).contains(&version) {
+    if !(0.0..=1e8).contains(&n) || n.fract() != 0.0 || !(0.0..=1e4).contains(&version) {
         return Err(harness(format!(
             "export: bad exact surface head ({version}, {n})"
         )));
