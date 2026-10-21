@@ -502,10 +502,10 @@ impl FilletSolver {
         // instead of the base surface, in order to handle extended surfaces.
         let s = ops.solver_mut();
         s.set_surfaces_to_zero_offset()?;
-        let mut start_pnt0 = eval_offset(k, s,0, start_uv0)?;
-        let mut start_pnt1 = eval_offset(k, s,1, start_uv1)?;
-        let mut end_pnt0 = eval_offset(k, s,0, end_uv0)?;
-        let mut end_pnt1 = eval_offset(k, s,1, end_uv1)?;
+        let mut start_pnt0 = eval_offset(k, s, 0, start_uv0)?;
+        let mut start_pnt1 = eval_offset(k, s, 1, start_uv1)?;
+        let mut end_pnt0 = eval_offset(k, s, 0, end_uv0)?;
+        let mut end_pnt1 = eval_offset(k, s, 1, end_uv1)?;
         s.reload_surface_offsets()?;
 
         // get extension vectors along each rail curve and the center curve
@@ -674,10 +674,10 @@ impl FilletSolver {
         // instead of the base surface, in order to handle extended surfaces.
         let s = ops.solver_mut();
         s.set_surfaces_to_zero_offset()?;
-        let mut start_pnt0 = eval_offset(k, s,0, start_uv0)?;
-        let start_pnt1 = eval_offset(k, s,1, start_uv1)?;
-        let mut end_pnt0 = eval_offset(k, s,0, end_uv0)?;
-        let _end_pnt1 = eval_offset(k, s,1, end_uv1)?;
+        let mut start_pnt0 = eval_offset(k, s, 0, start_uv0)?;
+        let start_pnt1 = eval_offset(k, s, 1, start_uv1)?;
+        let mut end_pnt0 = eval_offset(k, s, 0, end_uv0)?;
+        let _end_pnt1 = eval_offset(k, s, 1, end_uv1)?;
         s.reload_surface_offsets()?;
 
         // Get origin & axis of revolution
@@ -830,7 +830,8 @@ impl FilletSolver {
         if !is_circular_fsg(s)? {
             return Err(sm_err());
         }
-        let Some((ref_frame, _arc_radius, start_ang, _end_ang)) = curve.is_arc(k, 11, ANALYTIC_TOL)?
+        let Some((ref_frame, _arc_radius, start_ang, _end_ang)) =
+            curve.is_arc(k, 11, ANALYTIC_TOL)?
         else {
             return Err(sm_err());
         };
@@ -866,8 +867,8 @@ impl FilletSolver {
         // instead of the base surface, in order to handle extended surfaces.
         let s = ops.solver_mut();
         s.set_surfaces_to_zero_offset()?;
-        let p0 = eval_offset(k, s,0, start_uv0)?; // sP0 = rail1 point
-        let p1 = eval_offset(k, s,1, start_uv1)?; // sP1 = rail2 point
+        let p0 = eval_offset(k, s, 0, start_uv0)?; // sP0 = rail1 point
+        let p1 = eval_offset(k, s, 1, start_uv1)?; // sP1 = rail2 point
         s.reload_surface_offsets()?;
 
         // allocate the arc from the points [centerPoint, sP0, sP1]
@@ -912,8 +913,8 @@ impl FilletSolver {
         let end_uv1 = t_last.uv_pos(SrfIndex::Second);
         let s = ops.solver_mut();
         s.set_surfaces_to_zero_offset()?;
-        let end_p0 = eval_offset(k, s,0, end_uv0)?; // sEndP0 = rail1 point
-        let end_p1 = eval_offset(k, s,1, end_uv1)?; // sEndP1 = rail2 point
+        let end_p0 = eval_offset(k, s, 0, end_uv0)?; // sEndP0 = rail1 point
+        let end_p1 = eval_offset(k, s, 1, end_uv1)?; // sEndP1 = rail2 point
         s.reload_surface_offsets()?;
 
         let mut end_vec = end_p0 - origin;

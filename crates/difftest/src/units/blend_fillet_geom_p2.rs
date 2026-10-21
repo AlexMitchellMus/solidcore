@@ -991,7 +991,9 @@ fn gen_rail_rail(rng: &mut Rng) -> Option<Inputs> {
     let d = rs.natural_uv_domain();
     let at = |a: f64, b: f64| -> Option<([f64; 3], [f64; 2])> {
         let uv = d.evaluate(a, b);
-        rs.evaluate_point(&k, uv).ok().map(|p| (v3a(p), [uv.x, uv.y]))
+        rs.evaluate_point(&k, uv)
+            .ok()
+            .map(|p| (v3a(p), [uv.x, uv.y]))
     };
     // the edge's two vertices and the rails' far ends
     // fractions of the domain (the planes' domains are large: points near the middle)

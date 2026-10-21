@@ -717,16 +717,16 @@ fn rust_record(i: &Inputs) -> Result<Vec<f64>, Fail> {
         slot.surface.surface.set_allow_extension(true);
     }
 
-    let mut fi: Fi<'_> = match FilletIntersector::new(&k, &a, &ext(i.dom1), bref, &ext(i.dom2), None)
-    {
-        Ok(fi) => fi,
-        Err(e) => {
-            if let Some(d) = Output::unported(&e) {
-                return Err(Fail::Deferred(Box::new(d)));
+    let mut fi: Fi<'_> =
+        match FilletIntersector::new(&k, &a, &ext(i.dom1), bref, &ext(i.dom2), None) {
+            Ok(fi) => fi,
+            Err(e) => {
+                if let Some(d) = Output::unported(&e) {
+                    return Err(Fail::Deferred(Box::new(d)));
+                }
+                return Err(Fail::Harness(harness(format!("constructor: {e}"))));
             }
-            return Err(Fail::Harness(harness(format!("constructor: {e}"))));
-        }
-    };
+        };
     fi.base.base.this_ang_tol_rad = i.ang_tol;
     fi.base.base.this_approx_tol_3d = i.approx_tol;
     fi.base.base.clipped_by_through_point = i.clipped;
@@ -929,7 +929,13 @@ fn lerp_dom(d: [f64; 4], fu: f64, fv: f64) -> [f64; 2] {
 /// A point of the generated trace at `t`: UV points `base + t dir` on both surfaces,
 /// the curve point on the first surface and its unit tangent (central differences),
 /// UV tangents scaled to the unit-speed parameter `t |tangent|`.
-fn trace_point(k: &Kernel, srfs: &[Surface; 2], base: [[f64; 2]; 2], dir: [[f64; 2]; 2], t: f64) -> PointIn {
+fn trace_point(
+    k: &Kernel,
+    srfs: &[Surface; 2],
+    base: [[f64; 2]; 2],
+    dir: [[f64; 2]; 2],
+    t: f64,
+) -> PointIn {
     let uv = [
         [base[0][0] + t * dir[0][0], base[0][1] + t * dir[0][1]],
         [base[1][0] + t * dir[1][0], base[1][1] + t * dir[1][1]],

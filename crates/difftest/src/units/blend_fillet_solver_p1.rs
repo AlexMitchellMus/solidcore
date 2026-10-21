@@ -1353,7 +1353,8 @@ fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
         Inputs::SurfValues { setup, surfs, uv } => {
             let mut fs = shim_with(surfs, false, false, *setup)?;
             let mut t = TsectPnt::new();
-            let r = FilletSolver::compute_surface_values(k, 
+            let r = FilletSolver::compute_surface_values(
+                k,
                 &mut fs as &mut dyn FilletSolverOps,
                 [Point2::new(uv[0], uv[1]), Point2::new(uv[2], uv[3])],
                 &mut t,
