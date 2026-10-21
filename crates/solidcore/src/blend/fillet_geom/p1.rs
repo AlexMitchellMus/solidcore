@@ -91,10 +91,10 @@
 //!   `SmBrep()`, which creates that region; the constructor is `topology.brep_p3`'s and
 //!   not ported, so [`FilletBrep::new`] has none and the edge use constructor stops
 //!   there with `UNPORTED(topology.brep_p3)` (a missing region is that gap, never
-//!   upstream's NULL). `MakeShellVertexTopology` (`topology.brep_p2`) is a stub carrying
-//!   upstream's arguments; the rest of the constructor (the shell-owned edge use with no
-//!   fillet geometry) is ported behind them, so [`FilletBrep::new_fillet_edgeuse`]
-//!   returns [`SolidError::Unported`] today and completes once they are wired. `SmFilletGeom(pFilletSolver, eType)` copies the
+//!   upstream's NULL). `MakeShellVertexTopology` is `topology.brep_p2`'s; the rest of the
+//!   constructor (the shell-owned edge use with no fillet geometry) is ported behind
+//!   them, so [`FilletBrep::new_fillet_edgeuse`] returns [`SolidError::Unported`] today
+//!   and completes once the `SmBrep` constructor is wired. `SmFilletGeom(pFilletSolver, eType)` copies the
 //!   solver's offset surfaces with `SmOffsetSurface::Copy` (the kernel stands for the
 //!   solver's creation context; its status is ignored upstream, so a failed copy leaves
 //!   `NULL`, and only [`SolidError::Unported`] propagates). That constructor leaves `m_dOrientations` and `m_bCapped`
@@ -114,9 +114,9 @@
 //!   values; a geometry whose adjusting path needs a solver it does not have is a
 //!   null-pointer error (upstream dereferences it). Upstream's `pAdjustFS` is any
 //!   `SmFilletSolver` and only base members are read (`GetSurface(k)`, `m_pSurfaces`);
-//!   the signature commits to the one solver kind on main until `blend.
-//!   fillet_standard_solver_p1` (PR #168) lands its `FilletSolverData` base-member
-//!   struct, which this argument should then take.
+//!   the signature commits to the one solver kind; it could take the
+//!   [`crate::blend::fillet_solver::p1::FilletSolver`] base that every solver of
+//!   `blend.fillet_standard_solver_p1` and `blend.fillet_custom_solver` now holds.
 //! - **Surface cache flags.** `sm_SurfaceDropPoint` and `sm_FindStepoffUV` temporarily
 //!   turn off the surface cache's point test (`m_bPointTestEnabled`) and turn on its
 //!   boundary-curve processing around `GlobalPointSolve`, so every solution is kept
@@ -172,8 +172,9 @@
 //!   `SmSurfaceDropCurve::DoTrace` call of `intersect.surface_drop_lib_p1` (its stub
 //!   carries the label `intersect.surface_drop_curve`);
 //!   `SmFace::CreateUVTrimCurves` (`topology.face_p3`, reached through the wired
-//!   `SmFace::CalculateUVDomainFromUVTrimCurves` of `topology.face_p1`) and
-//!   `SmFace::Point3DClassify` (`query.face_p1`) in `sm_ClassifyFacePoint`;
+//!   `SmFace::CalculateUVDomainFromUVTrimCurves` of `topology.face_p1`) and the
+//!   unported callees of `SmFace::Point3DClassify` (wired to `query::face::p1`) in
+//!   `sm_ClassifyFacePoint`;
 //!   `SmFilletSolver::FindIndexOfRailOnFace` (`blend.fillet_solver_p1`) and
 //!   `SmFilletSolver::RailRailIntersect` (`blend.fillet_solver_p2`) in
 //!   `sm_CreateCubicRailRailInterpolant` (the cubic built from their result is ported
@@ -1076,7 +1077,7 @@ impl FilletGeom {
         let mut off_surfs = [None, None];
         for (slot, i) in off_surfs.iter_mut().zip(0..2usize) {
             if let Some((_, fs)) = solver {
-                *slot = match fs.solver.surfaces.get(i).and_then(Option::as_ref) {
+                *slot = match fs.solver.surface(i)? {
                     // SmOffsetSurface::Copy() returns an SmSurface*, not SmOffsetSurface*;
                     // its status is ignored, so a failed copy leaves NULL
                     Some(off_srf) => match offset_surface_copy(k, &off_srf.surface) {
@@ -1193,12 +1194,7 @@ impl FilletGeom {
             return Ok(Some(s));
         }
         let fs = solver.ok_or_else(|| SolidError::null_pointer(OP_OFFSET))?;
-        Ok(fs
-            .solver
-            .surfaces
-            .get(rail_index)
-            .and_then(Option::as_ref)
-            .map(|slot| &slot.surface))
+        Ok(fs.solver.surface(rail_index)?.map(|slot| &slot.surface))
     }
 
     /// `SetOffsetSurface(lWhichSrf, pNewOffSrf)`: replaces (deleting) the rail's offset
@@ -1387,8 +1383,8 @@ impl FilletBrep {
     /// # Errors
     ///
     /// [`SolidError::Unported`]: `SmBrep::SmBrep` (`topology.brep_p3`) while the pseudo
-    /// B-rep has no infinite region (see below); then `SmBrep::MakeShellVertexTopology`
-    /// of `topology.brep_p2` when the region has no shell; [`SolidError::Upstream`]
+    /// B-rep has no infinite region (see below); the errors of
+    /// `SmBrep::MakeShellVertexTopology` when the region has no shell; [`SolidError::Upstream`]
     /// (`SM_ERR_NULL_POINTER`) when the region still has no shell (upstream reads
     /// `sShells[0]` of an empty array).
     pub fn new_fillet_edgeuse(&mut self) -> Result<EdgeuseId> {
@@ -1705,7 +1701,8 @@ impl FilletBrep {
     ///
     /// # Errors
     ///
-    /// Those of [`classify_face_point`] (deferred: `topology.face_p3`, `query.face_p1`);
+    /// Those of [`classify_face_point`] (deferred: `topology.face_p3` and the unported
+    /// callees of `SmFace::Point3DClassify`);
     /// [`SolidError::NotFound`] for dangling ids.
     pub fn update_split_face(
         &mut self,
@@ -2558,27 +2555,47 @@ fn uv_domain_from_uv_trim_curves(
     }
 }
 
-/// `SmFace::Point3DClassify` (unit `query.face_p1`): the classification's point class
-/// and the call's status. `zone_tol_3d` is `SmTol::GetZoneTol3d(pOrigFace)` for both
-/// faces; the flags are upstream's `TRUE` (check boundaries first), `FALSE` (target
-/// loops only), `NULL` (target loops) and `TRUE` (okay to work in UV space).
+/// `SmFace::Point3DClassify` ([`crate::query::face::p1::point_3d_classify`]): the
+/// classification's point class and whether the call returned `SM_SUCCESS` (upstream
+/// compares the status and does not propagate it). `zone_tol_3d` is
+/// `SmTol::GetZoneTol3d(pOrigFace)` for both faces; the flags are upstream's `TRUE`
+/// (check boundaries first), `FALSE` (target loops only), `NULL` (target loops) and
+/// `TRUE` (okay to work in UV space). A failed call keeps the class written before the
+/// failure; an unported callee propagates.
+#[allow(clippy::too_many_arguments)]
 fn point_3d_classify(
-    _k: &Kernel,
-    _brep: &Brep,
-    _face: FaceId,
-    _pos: Point3,
-    _zone_tol_3d: f64,
-    _check_boundaries_first: bool,
-    _guess_uv: Option<Point2>,
-    _target_loops_only: bool,
-    _target_loops: Option<&[crate::topology::LoopId]>,
-    _ok_in_uv_space: bool,
+    k: &Kernel,
+    brep: &mut Brep,
+    face: FaceId,
+    pos: Point3,
+    zone_tol_3d: f64,
+    check_boundaries_first: bool,
+    guess_uv: Option<Point2>,
+    target_loops_only: bool,
+    target_loops: Option<&[crate::topology::LoopId]>,
+    ok_in_uv_space: bool,
 ) -> Result<(PointClassType, bool)> {
-    // UNPORTED(query.face_p1): SmFace::Point3DClassify
-    Err(SolidError::unported(
-        "SmFace::Point3DClassify",
-        "query.face_p1",
-    ))
+    let mut pc = PointClassification::<EntityRef>::new(zone_tol_3d);
+    let r = crate::query::face::p1::point_3d_classify(
+        k,
+        brep,
+        face,
+        pos,
+        zone_tol_3d,
+        check_boundaries_first,
+        &mut pc,
+        crate::query::face::p1::Point3dClassifyOptions {
+            guess_uv,
+            tgt_loops_only: target_loops_only,
+            tgt_loops: target_loops,
+            uv_space_okay: ok_in_uv_space,
+        },
+    );
+    match r {
+        Ok(()) => Ok((pc.point_class(), true)),
+        Err(e) if e.is_unported() => Err(e),
+        Err(_) => Ok((pc.point_class(), false)),
+    }
 }
 
 /// `sm_ClassifyFacePoint`: which of two faces that were one face before a split
@@ -2590,8 +2607,8 @@ fn point_3d_classify(
 /// # Errors
 ///
 /// [`SolidError::Unported`]: `SmFace::CreateUVTrimCurves` (`topology.face_p3`, through
-/// `SmFace::CalculateUVDomainFromUVTrimCurves`), `SmFace::Point3DClassify`
-/// (`query.face_p1`);
+/// `SmFace::CalculateUVDomainFromUVTrimCurves`), the unported callees of
+/// `SmFace::Point3DClassify` ([`crate::query::face::p1::point_3d_classify`]);
 /// [`SolidError::Upstream`] (`SM_ERR_NULL_POINTER`) for a face without a surface.
 pub fn classify_face_point(
     k: &Kernel,
@@ -3314,13 +3331,11 @@ fn drop_rail_onto_offset_surface(
 ) -> Result<()> {
     let solver = adjust_solver.ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?;
     // SmFilletSolver::GetSurface(k); NER(pOffsetSurf)
-    let offset_surf = solver
+    let offset_surf = &mut solver
         .solver
-        .surfaces
-        .get_mut(rail_index)
-        .and_then(Option::as_mut)
-        .map(|slot| &mut slot.surface)
-        .ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?;
+        .surface_mut(rail_index)?
+        .ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?
+        .surface;
     let orig_offset_dist = offset_surf.offset_distance();
     offset_surf.set_offset_distance(0.0);
 
@@ -3377,14 +3392,11 @@ fn region_shells(brep: &Brep, region: RegionId) -> Result<Vec<ShellId>> {
     brep.region(region)?.get_shells(None, |_, _| Ok(false))
 }
 
-/// `SmBrep::MakeShellVertexTopology(pRegion, rpShell, rpVertex)` (unit
-/// `topology.brep_p2`): the new shell and vertex.
-fn make_shell_vertex_topology(_brep: &mut Brep, _region: RegionId) -> Result<(ShellId, VertexId)> {
-    // UNPORTED(topology.brep_p2): SmBrep::MakeShellVertexTopology
-    Err(SolidError::unported(
-        "SmBrep::MakeShellVertexTopology",
-        "topology.brep_p2",
-    ))
+/// `SmBrep::MakeShellVertexTopology(pRegion, rpShell, rpVertex)`
+/// ([`topology::brep::p2::make_shell_vertex_topology`](crate::topology::brep::p2::make_shell_vertex_topology)):
+/// the new shell and vertex.
+fn make_shell_vertex_topology(brep: &mut Brep, region: RegionId) -> Result<(ShellId, VertexId)> {
+    crate::topology::brep::p2::make_shell_vertex_topology(brep, Some(region))
 }
 
 /// `SmOffsetSurface::Copy(crContext, rpNewSurf)` ([`OffsetSurface::copy`](crate::surface::offset_surface::OffsetSurface::copy);
@@ -3503,7 +3515,7 @@ pub fn join_verts_by_capping(
 
             // add the curves to the output arrays
             uv_curves.push(uv_curve);
-            curves_3d.push(Curve::from(lifted.curve));
+            curves_3d.push(lifted.curve);
             orients.push(OrientType::Same);
         }
     }

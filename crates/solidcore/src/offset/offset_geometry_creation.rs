@@ -50,11 +50,13 @@
 //!   reports the `rbDelete*` flags).
 //! - **Callees not ported yet** are private stubs returning [`SolidError::Unported`],
 //!   each tagged `UNPORTED(<unit>)`:
-//!   `SmBrep::MateLaminaEdgeToSurface` / `ReplaceSurface` (`topology.brep_p2`) and
-//!   `SmCircularCrossSectionFSG` (`blend.fillet_solver_p1`,
-//!   `blend.fillet_standard_solver_p1`). The code after a stub is ported in full;
+//!   `SmCircularCrossSectionFSG::CreateSurfaceFromCurves` is
+//!   `blend.fillet_standard_solver_p1`'s, on the centre line's `SmBSplineCurve` part,
+//!   and only the curve on surface below remains a stub. The code after a stub is
+//!   ported in full;
 //!   `SmEdgeuse::NormalizedEvaluate` / `CreateUVTrimCurve` (`topology.edgeuse_p3`,
-//!   through [`OffsetBrep`]), `SmSurface::GlobalCurveIntersect` (`surface.surface_p8`) and
+//!   through [`OffsetBrep`]), `SmBrep::MateLaminaEdgeToSurface` / `ReplaceSurface`
+//!   (`topology.brep_p2`, through [`OffsetBrep`]), `SmSurface::GlobalCurveIntersect` (`surface.surface_p8`) and
 //!   `SmSurface::CreateOffsetSurface` / the `SmOffsetSurface` constructor
 //!   (`surface.offset_surface`) are real calls. The offset-surface rail of
 //!   `EdgeuseOffset` defers at `SmCrvOnSurf` over that offset surface
@@ -99,7 +101,7 @@
 //!   defined in the reference build.
 //! - **Recursion.** None.
 
-use crate::blend::fillet_solver::p1::FilletSurfaceGenerator;
+use crate::blend::fillet_standard_solver::p1::CircularCrossSectionFsg;
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::p2::{Curve, CurveKind};
 use crate::curve::curve::p8::CurveIntersectOptions;
@@ -341,6 +343,28 @@ pub trait OffsetBrep<O>: ProtoGeometry<O> {
     /// `Curve::set_owner`): the edge takes the curve (its old curve and the edge
     /// uses' UV trim curves are dropped).
     fn edge_set_curve(&mut self, k: &Kernel, edge: O, curve: O) -> Result<()>;
+    /// `SmBrep::MateLaminaEdgeToSurface(pEdge, crSurface, dSurfaceExtensionFactor,
+    /// dUVCurveExtensionFactor)` of the edge's B-rep (`topology::brep::p2`, with the
+    /// owner's arenas and notification state).
+    fn brep_mate_lamina_edge_to_surface(
+        &mut self,
+        k: &Kernel,
+        edge: O,
+        surface: O,
+        surface_extension_factor: f64,
+        uv_curve_extension_factor: f64,
+    ) -> Result<()>;
+    /// `SmBrep::ReplaceSurface(pFace, pNewSurface, bAddToDeletedList, NULL,
+    /// bCreateUVTrimCurves)` of the face's B-rep (`topology::brep::p2`): the face takes
+    /// the surface behind `surface`.
+    fn brep_replace_surface(
+        &mut self,
+        k: &Kernel,
+        face: O,
+        surface: O,
+        add_to_deleted_list: bool,
+        create_uv_trim_curves: bool,
+    ) -> Result<()>;
     /// `SmEdge::GetFaces` (`topology::edge::faces`).
     fn edge_faces(&self, edge: O) -> Result<Vec<O>>;
     /// `SmEdge::GetEdgeuses` (`topology::edge::edgeuses`).
@@ -485,36 +509,36 @@ fn edgeuse_create_uv_trim_curve<O: ClassObject>(
 /// `pEdge->GetBrep()->MateLaminaEdgeToSurface(pEdge, crSurface, dTolMult = 1.5,
 /// dMaxTolMult = 10.0)` (both values passed explicitly upstream).
 fn brep_mate_lamina_edge_to_surface<O>(
-    _k: &Kernel,
-    _brep: &mut impl OffsetBrep<O>,
-    _edge: O,
-    _surface: O,
-    _tol_mult: f64,
-    _max_tol_mult: f64,
+    k: &Kernel,
+    brep: &mut impl OffsetBrep<O>,
+    edge: O,
+    surface: O,
+    tol_mult: f64,
+    max_tol_mult: f64,
 ) -> Result<()> {
-    // UNPORTED(topology.brep_p2): SmBrep::MateLaminaEdgeToSurface
-    Err(SolidError::unported(
-        "SmBrep::MateLaminaEdgeToSurface",
-        "topology.brep_p2",
-    ))
+    brep.brep_mate_lamina_edge_to_surface(k, edge, surface, tol_mult, max_tol_mult)
 }
 
 /// `pFace->GetBrep()->ReplaceSurface(pFace, pNewSurface, bAddToDeleteSurfaceList = FALSE,
 /// rOptModifiedFaces = NULL, bOptCreateUVTrimCurves = TRUE)`.
 fn brep_replace_surface<O>(
-    _k: &Kernel,
-    _brep: &mut impl OffsetBrep<O>,
-    _face: O,
-    _surface: O,
-    _add_to_delete_surface_list: bool,
-    _want_modified_faces: bool,
-    _create_uv_trim_curves: bool,
+    k: &Kernel,
+    brep: &mut impl OffsetBrep<O>,
+    face: O,
+    surface: O,
+    add_to_delete_surface_list: bool,
+    want_modified_faces: bool,
+    create_uv_trim_curves: bool,
 ) -> Result<()> {
-    // UNPORTED(topology.brep_p2): SmBrep::ReplaceSurface
-    Err(SolidError::unported(
-        "SmBrep::ReplaceSurface",
-        "topology.brep_p2",
-    ))
+    // rOptModifiedFaces = NULL: the modified faces are not wanted
+    let _ = want_modified_faces;
+    brep.brep_replace_surface(
+        k,
+        face,
+        surface,
+        add_to_delete_surface_list,
+        create_uv_trim_curves,
+    )
 }
 
 /// `SmSurface::GlobalCurveIntersect(domain, curve, interval, tol, solutions)` of the
@@ -589,25 +613,20 @@ struct ApproximateCurveFlags {
 /// bMirror = FALSE, bComplement = FALSE)` then `sFSG.CreateSurfaceFromCurves(ctx,
 /// *pCenterLine, *pRail1, *pRail2, tol, bNeedG1Continuity = FALSE, NULL, NULL, NULL, NULL,
 /// pNewSurface)`; the four NULLs are the optional surfaces and UV curves of the rails
-/// (`with_rail_surfaces`). The curves are non-const upstream, so they are `&mut`.
+/// (`blend.fillet_standard_solver_p1`'s generator takes none). The curves are non-const
+/// upstream, so they are `&mut`; the centre line is passed as its `SmBSplineCurve` part
+/// (the reference type of `rCenterLine`).
 fn circular_cross_section_surface(
-    _k: &Kernel,
-    fsg: FilletSurfaceGenerator,
-    _center_line: &mut Curve,
-    _rail1: &mut BSplineCurve,
-    _rail2: &mut BSplineCurve,
-    _tol: f64,
-    _need_g1_continuity: bool,
-    _with_rail_surfaces: bool,
+    k: &Kernel,
+    fsg: CircularCrossSectionFsg,
+    center_line: &mut Curve,
+    rail1: &mut BSplineCurve,
+    rail2: &mut BSplineCurve,
+    tol: f64,
+    need_g1_continuity: bool,
 ) -> Result<BSplineSurface> {
-    // (the constructed `SmCircularCrossSectionFSG`, `blend.fillet_solver_p1`, the wired call
-    // will call on)
-    let _ = fsg;
-    // UNPORTED(blend.fillet_standard_solver_p1): SmCircularCrossSectionFSG::CreateSurfaceFromCurves
-    Err(SolidError::unported(
-        "SmCircularCrossSectionFSG::CreateSurfaceFromCurves",
-        "blend.fillet_standard_solver_p1",
-    ))
+    let cl = b_spline_part_mut(center_line)?.ok_or(dangling("centre line kind"))?;
+    fsg.create_surface_from_curves(k, cl, rail1, rail2, tol, need_g1_continuity)
 }
 
 // ---- helpers over handles -------------------------------------------------------------------
@@ -1313,8 +1332,8 @@ impl OffsetGeometryCreation {
     ///
     /// `SM_ERR` when the trim curve domain cannot be computed;
     /// [`SolidError::Unported`] from `SmFace::CalculateUVDomainFromUVTrimCurves`' callees
-    /// (`CreateUVTrimCurves`, `topology.face_p3`) and for `SmBrep::ReplaceSurface`
-    /// (`topology.brep_p2`).
+    /// (`CreateUVTrimCurves`, `topology.face_p3`); those of `SmBrep::ReplaceSurface`
+    /// ([`OffsetBrep::brep_replace_surface`]).
     pub fn update_face_surface_domain<O: ClassObject + SolutionObject>(
         &self,
         k: &Kernel,
@@ -2246,7 +2265,7 @@ impl OffsetGeometryCreation {
             let dropped = surface_of(brep, other_ext_h)?.drop_and_trim_curve::<O>(
                 k,
                 &other_ext_domain,
-                &Curve::from(lifted_curve.clone()),
+                &lifted_curve,
                 &lifted_curve.natural_interval(),
                 off_tol / 3.0,
                 true,
@@ -2319,7 +2338,7 @@ impl OffsetGeometryCreation {
 
         // Now that we have created one or two UV curves and a 3D curve find trimming
         // interval and if we find a good one replace the geometry.
-        let lifted_h = store_curve(brep, Curve::from(lifted_curve.clone()))?;
+        let lifted_h = store_curve(brep, lifted_curve.clone())?;
         let trim_ivl = self.trim_extended_edge(
             k,
             brep,
@@ -3218,17 +3237,15 @@ impl OffsetGeometryCreation {
             Some(s) => s,
             None => circular_cross_section_surface(
                 k,
-                FilletSurfaceGenerator::Circular {
+                // SmCircularCrossSectionFSG sFSG(FALSE): the other arguments' defaults
+                CircularCrossSectionFsg {
                     approximate_arcs: false,
-                    tol_percent_radius: 0.05,
-                    mirror: false,
-                    complement: false,
+                    ..CircularCrossSectionFsg::default()
                 },
                 &mut center_line,
                 &mut rail1,
                 &mut rail2,
                 self.this_approx_tol_3d,
-                false,
                 false,
             )?,
         };
