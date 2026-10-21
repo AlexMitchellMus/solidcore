@@ -10297,8 +10297,10 @@ passes). With the parallel owner-zone-tolerance `SmFace::GetTolerance` PR on top
 differed by up to 7.3e-4 through `DropPointFast`. Still flattened (no `SurfaceKind`, the
 dispatch gap of `Surface::read_from_db`): `SmSurfOfExtrusion`, `SmCone`, `SmCylinder`,
 `SmSphere`, `SmTorus`, and analytic edge curves. A non-local `FaceuseOffset` of a revolution
-face is still not run by the `offset.offset_geometry_creation` shim (HANG-26); it now defers
-under `upstream:HANG-26` instead of the harness label.
+face is still not run by the `offset.offset_geometry_creation` shim (HANG-26). That runner
+also reads its own appended `WriteToDB` records (main's #156 follow-up ed40f92c, which landed
+the same HANG-26 keying independently), so its counts are unchanged by this export; the two
+imports of a revolution face agree.
 
 ## boolean.topology_intersector_p1: B-rep cache of the difftest adapter (exposed by topology.brep_p1)
 
