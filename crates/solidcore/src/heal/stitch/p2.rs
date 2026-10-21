@@ -1481,8 +1481,8 @@ fn delete_face(
 }
 
 /// `SmBrep::FindAndSetInfiniteRegion(pOptShellToTest, eVoidSettingFlag, pOptBrepBBox)`
-/// (unit `topology.brep_p5`; upstream defaults `NULL`, `SM_VS_INFINITEREGION_SWAP`,
-/// `NULL`).
+/// (upstream defaults `NULL`, `SM_VS_INFINITEREGION_SWAP`, `NULL`); the box is passed
+/// as a copy.
 pub(crate) fn find_and_set_infinite_region(
     k: &mut Kernel,
     b: &mut Brep,
@@ -1490,12 +1490,14 @@ pub(crate) fn find_and_set_infinite_region(
     void_setting: SetRegionVoidType,
     brep_bbox: Option<&Extent3d>,
 ) -> Result<()> {
-    let _ = (k, b, shell_to_test, void_setting, brep_bbox);
-    // UNPORTED(topology.brep_p5): SmBrep::FindAndSetInfiniteRegion
-    Err(SolidError::unported(
-        "SmBrep::FindAndSetInfiniteRegion",
-        "topology.brep_p5",
-    ))
+    let _ = k;
+    let code = match void_setting {
+        SetRegionVoidType::NestedSolid => 0,
+        SetRegionVoidType::InfiniteRegionOnly => 1,
+        SetRegionVoidType::InfiniteRegionSwap => 2,
+    };
+    let mut bbox = brep_bbox.copied();
+    crate::topology::brep::p5::find_and_set_infinite_region(b, shell_to_test, code, bbox.as_mut())
 }
 
 /// `SmFace::IsLamina` (unit `topology.face_p3`).
@@ -1515,9 +1517,10 @@ fn face_is_degenerate(
     crate::topology::face::p3::is_degenerate(k, b, f, skip_quick_check, zone_tol_3d)
 }
 
-/// `SmFace::Notify(eNotifyOperation, pData1, pData2, pData3)` (unit
-/// `topology.face_p3`); `data2_is_brep` stands for `pData2` being the face's B-rep,
-/// else null (`SM_NO_GET_BREP(pF)` is null).
+/// `SmFace::Notify(eNotifyOperation, pData1, pData2, pData3)`; `data2_is_brep` stands
+/// for `pData2` being the face's B-rep, else null (`SM_NO_GET_BREP(pF)` is null). The
+/// B-rep has no `EntityRef` identity, so it is passed as null (as `brep::p7`'s
+/// `face_notify`).
 fn face_notify(
     b: &mut Brep,
     f: FaceId,
@@ -1526,9 +1529,8 @@ fn face_notify(
     data2_is_brep: bool,
     data3: Option<EntityRef>,
 ) -> Result<()> {
-    let _ = (b, f, operation, data1, data2_is_brep, data3);
-    // UNPORTED(topology.face_p3): SmFace::Notify
-    Err(SolidError::unported("SmFace::Notify", "topology.face_p3"))
+    let _ = data2_is_brep;
+    crate::topology::loopuse::face_notify_data(b, f, operation, [data1, None, data3])
 }
 
 #[cfg(test)]

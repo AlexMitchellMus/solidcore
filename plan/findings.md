@@ -11081,3 +11081,23 @@ Final integrated-tree checks pending.
 - **Adapter.** Calls into partial units are required `ExecutiveAccess` methods: the `blend.fillet_solver_p1` surface-generator records and `SetFilletSurfaceGenerator`, `GetEdgeuse`, and `blend.fillet_standard_solver_p1`'s constant-radius constructor. `GetSetBackDist` is an inline read of `m_dSetBackDist`. The constant-distance, variable-radius and surface/surface solver constructors stay `UNPORTED(blend.fillet_standard_solver_p2)`.
 - **Duplicate enums on main.** `FilletSolverType` and `FilletSurfaceGeneratorType` exist both in `blend::fillet_solver::p1` and in `blend::fillet_standard_solver::p1` (#168's co-port), as distinct types. p2 takes the latter, as `FilletLaw` does, and maps them onto `fillet_solver::p1::FilletSurfaceGenerator`. A later dedup should re-export one of them.
 - **Not wired.** `blend::fillet_geom::p2`'s `UNPORTED(blend.fillet_executive_p2)` `SmTemporaryRadiusChange::SetUp` receives a base `FilletSolver`. Reaching the variable-radius law from it needs #260's `FilletSolverKind`, so the stub stays until that lands.
+
+## intersect.curve_class_p4 — `ReSet` / `ConnectIntervals` back-edges left unwired (2026-10-20, small-fixes PR)
+
+Both `intersect.curve_class_p2` functions are ported (`CurveClassification::reset`,
+`CurveClassification::connect_intervals`), but wiring the p4 stubs to them is not
+mechanical:
+
+- **`ReSet`** (the full constructor `with_curve`): wired, `topology.brep_p2`'s fixture
+  `merge_plane10_line` (`fixtures/topology.brep_p2/ops.json#0`, MergeCurves on a 10x10
+  plane with a line at y = 5.5) stops being deferred and fails with the harness error
+  `intersect::point_class::ClassGeometry: invalid input: classification object handle
+  does not resolve`: the brep_p2 MergeCurves path builds a classification over handles
+  its `ClassGeometry` adapter cannot resolve. Fix that adapter before wiring.
+- **`ConnectIntervals`** (`sm_SqueezeOutSmallestInterval`): wired together with `ReSet`,
+  4 generated `intersect.curve_class_p4` cases disagree on the record length
+  (gen0164 C++ 827 / Rust 741, gen1926 1289 / 1203, gen2544 7063 / 7059, gen2695
+  4099 / 4095; default seeds). Not diagnosed: either `connect_intervals` with
+  `allow_removal_of_ends = false` or the runner's record after the squeeze op.
+
+`SmCurveInterval::GetMinUV` / `GetMaxUV` are wired (no case reaches them yet).

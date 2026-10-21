@@ -208,14 +208,10 @@ fn transform_brep(brep: &mut Brep, transform: &Axis2Placement) -> Result<()> {
     ))
 }
 
-/// `SmBrep::FindAndSetInfiniteRegion` (unit `topology.brep_p5`).
+/// `SmBrep::FindAndSetInfiniteRegion()` with its header defaults: no shell to test,
+/// `SM_VS_INFINITEREGION_SWAP`, no bounding box.
 fn find_and_set_infinite_region(brep: &mut Brep) -> Result<()> {
-    let _ = brep;
-    // UNPORTED(topology.brep_p5): SmBrep::FindAndSetInfiniteRegion
-    Err(SolidError::unported(
-        "SmBrep::FindAndSetInfiniteRegion",
-        "topology.brep_p5",
-    ))
+    crate::topology::brep::p5::find_and_set_infinite_region(brep, None, 2, None)
 }
 
 /// `SmBrep::CalculateBoundingBox` (unit `query.brep`).
