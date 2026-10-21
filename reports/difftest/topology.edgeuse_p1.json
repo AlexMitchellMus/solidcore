@@ -19925,16 +19925,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_0_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#896",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -19945,16 +19941,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_0_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#898",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -19965,16 +19957,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_2_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#900",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -19985,16 +19973,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_2_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#902",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20005,16 +19989,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_4_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#904",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20025,16 +20005,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_4_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#906",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20045,16 +20021,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_6_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#908",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20065,16 +20037,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_6_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#910",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20085,16 +20053,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_8_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#912",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20105,16 +20069,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_8_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#914",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20125,16 +20085,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_10_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#916",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20145,16 +20101,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_10_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#918",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20165,16 +20117,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_12_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#920",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20185,16 +20133,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_12_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#922",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20205,16 +20149,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_14_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#924",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20225,16 +20165,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_14_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#926",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20245,16 +20181,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_16_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#928",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20265,16 +20197,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_16_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#930",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20285,16 +20213,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_18_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#932",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20305,16 +20229,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_18_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#934",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20325,16 +20245,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_20_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#936",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20345,16 +20261,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_20_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#938",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20365,16 +20277,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_22_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#940",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20385,16 +20293,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_0_22_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#942",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20469,16 +20373,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_0_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#952",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20489,16 +20389,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_0_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#954",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20509,16 +20405,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_2_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#956",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20529,16 +20421,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_2_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#958",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20549,16 +20437,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_4_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#960",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20569,16 +20453,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_4_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#962",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20589,16 +20469,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_6_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#964",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20609,16 +20485,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_6_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#966",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20629,16 +20501,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_8_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#968",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20649,16 +20517,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_8_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#970",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20669,16 +20533,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_10_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#972",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20689,16 +20549,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_10_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#974",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20709,16 +20565,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_12_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#976",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20729,16 +20581,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_12_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#978",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20749,16 +20597,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_14_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#980",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20769,16 +20613,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_14_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#982",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20789,16 +20629,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_16_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#984",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20809,16 +20645,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_16_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#986",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20829,16 +20661,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_18_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#988",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20849,16 +20677,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_18_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#990",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20869,16 +20693,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_20_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#992",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20889,16 +20709,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_20_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#994",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -20909,16 +20725,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_22_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#996",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -20929,16 +20741,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_sphere.smb_1_22_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#998",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -22997,16 +22805,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_0_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1232",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23017,16 +22821,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_0_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1234",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23037,16 +22837,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_2_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1236",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23057,16 +22853,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_2_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1238",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23077,16 +22869,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_4_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1240",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23097,16 +22885,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_4_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1242",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23117,16 +22901,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_6_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1244",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23137,16 +22917,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_6_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1246",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23157,16 +22933,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_8_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1248",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23177,16 +22949,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_8_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1250",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23197,16 +22965,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_10_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1252",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23217,16 +22981,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_10_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1254",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23237,16 +22997,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_12_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1256",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23257,16 +23013,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_12_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1258",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23277,16 +23029,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_14_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1260",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23297,16 +23045,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_14_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1262",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23317,16 +23061,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_16_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1264",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23337,16 +23077,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_16_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1266",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23357,16 +23093,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_18_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1268",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23377,16 +23109,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_18_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1270",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23397,16 +23125,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_20_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1272",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23417,16 +23141,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_20_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1274",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23437,16 +23157,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_22_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1276",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23457,16 +23173,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_0_22_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1278",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23541,16 +23253,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_0_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1288",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23561,16 +23269,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_0_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1290",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23581,16 +23285,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_2_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1292",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23601,16 +23301,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_2_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1294",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23621,16 +23317,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_4_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1296",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23641,16 +23333,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_4_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1298",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23661,16 +23349,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_6_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1300",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23681,16 +23365,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_6_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1302",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23701,16 +23381,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_8_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1304",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23721,16 +23397,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_8_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1306",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23741,16 +23413,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_10_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1308",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23761,16 +23429,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_10_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1310",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23781,16 +23445,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_12_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1312",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23801,16 +23461,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_12_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1314",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23821,16 +23477,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_14_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1316",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23841,16 +23493,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_14_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1318",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23861,16 +23509,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_16_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1320",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23881,16 +23525,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_16_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1322",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23901,16 +23541,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_18_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1324",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23921,16 +23557,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_18_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1326",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23941,16 +23573,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_20_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1328",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -23961,16 +23589,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_20_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1330",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -23981,16 +23605,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_22_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1332",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -24001,16 +23621,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "review_gapval_surf_sphere150.smb_1_22_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/review_gap_values.json#1334",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -32133,16 +31749,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "sphere_gaps0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/upstream_files.json#668 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -32153,16 +31765,12 @@
       "values_compared": 4
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "sphere_gaps2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/upstream_files.json#670 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -33997,16 +33605,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_gaps0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/upstream_files.json#899 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -34017,16 +33621,12 @@
       "values_compared": 4
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_gaps2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p1/upstream_files.json#901 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -36183,13 +35783,13 @@
     }
   ],
   "cases_both_errored": 28,
-  "cases_deferred": 234,
+  "cases_deferred": 134,
   "cases_failed": 0,
-  "cases_passed": 4168,
+  "cases_passed": 4268,
   "cases_total": 4402,
   "deferred_by_unit": {
     "surface.surf_of_extrusion_p2": 84,
-    "surface.surface_p2": 150
+    "surface.surface_p2": 50
   },
   "max_rel_err": 0.0,
   "pass": true,

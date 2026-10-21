@@ -30373,8 +30373,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs0_0_0",
@@ -30385,8 +30385,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs0_0_1",
@@ -30397,8 +30397,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs0_1_0",
@@ -30409,8 +30409,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs0_2_0",
@@ -30421,8 +30421,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs0_3_0",
@@ -30433,8 +30433,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs0_4_0",
@@ -30445,8 +30445,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs0_4_1",
@@ -30457,8 +30457,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs0_5_0",
@@ -30469,8 +30469,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs0_6_0",
@@ -30481,8 +30481,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs0_7_0",
@@ -30493,8 +30493,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs0_7_1",
@@ -30656,16 +30656,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "sphere_so0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p2/upstream_files.json#1246 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "deferred": {
@@ -30681,8 +30677,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs1_0_0",
@@ -30693,8 +30689,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs1_0_1",
@@ -30705,8 +30701,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs1_1_0",
@@ -30717,8 +30713,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs1_2_0",
@@ -30729,8 +30725,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs1_3_0",
@@ -30741,8 +30737,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs1_4_0",
@@ -30753,8 +30749,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs1_4_1",
@@ -30765,8 +30761,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs1_5_0",
@@ -30777,8 +30773,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs1_6_0",
@@ -30789,8 +30785,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs1_7_0",
@@ -30801,8 +30797,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs1_7_1",
@@ -30965,8 +30961,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs5_0_0",
@@ -30977,8 +30973,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs5_0_1",
@@ -30989,8 +30985,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs5_1_0",
@@ -31001,8 +30997,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs5_2_0",
@@ -31013,8 +31009,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs5_3_0",
@@ -31025,8 +31021,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs5_4_0",
@@ -31037,8 +31033,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs5_4_1",
@@ -31049,8 +31045,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs5_5_0",
@@ -31061,8 +31057,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs5_6_0",
@@ -31073,8 +31069,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs5_7_0",
@@ -31085,8 +31081,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs5_7_1",
@@ -31249,8 +31245,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs9_0_0",
@@ -31261,8 +31257,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs9_0_1",
@@ -31273,8 +31269,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs9_1_0",
@@ -31285,8 +31281,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs9_2_0",
@@ -31297,8 +31293,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs9_3_0",
@@ -31309,8 +31305,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs9_4_0",
@@ -31321,8 +31317,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs9_4_1",
@@ -31333,8 +31329,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs9_5_0",
@@ -31345,8 +31341,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs9_6_0",
@@ -31357,8 +31353,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs9_7_0",
@@ -31369,8 +31365,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_cs9_7_1",
@@ -31532,16 +31528,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "sphere_so9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p2/upstream_files.json#1338 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "deferred": {
@@ -31557,8 +31549,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_rb_cs2_0_0",
@@ -31569,8 +31561,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_rb_cs2_0_1",
@@ -31581,8 +31573,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_rb_cs2_1_0",
@@ -31593,8 +31585,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_rb_cs2_2_0",
@@ -31605,8 +31597,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_rb_cs2_2_1",
@@ -31617,8 +31609,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_rb_cs2_3_0",
@@ -31693,8 +31685,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_rb_cs7_0_0",
@@ -31705,8 +31697,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_rb_cs7_0_1",
@@ -31717,8 +31709,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_rb_cs7_1_0",
@@ -31729,8 +31721,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_rb_cs7_2_0",
@@ -31741,8 +31733,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_rb_cs7_2_1",
@@ -31753,8 +31745,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "sphere_rb_cs7_3_0",
@@ -34725,8 +34717,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs0_0_0",
@@ -34737,8 +34729,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs0_0_1",
@@ -34749,8 +34741,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs0_1_0",
@@ -34761,8 +34753,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs0_2_0",
@@ -34773,8 +34765,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs0_3_0",
@@ -34785,8 +34777,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs0_4_0",
@@ -34797,8 +34789,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs0_4_1",
@@ -34809,8 +34801,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs0_5_0",
@@ -34821,8 +34813,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs0_6_0",
@@ -34833,8 +34825,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs0_7_0",
@@ -34845,8 +34837,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs0_7_1",
@@ -35008,16 +35000,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_so0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p2/upstream_files.json#1702 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "deferred": {
@@ -35033,8 +35021,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs1_0_0",
@@ -35045,8 +35033,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs1_0_1",
@@ -35057,8 +35045,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs1_1_0",
@@ -35069,8 +35057,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs1_2_0",
@@ -35081,8 +35069,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs1_3_0",
@@ -35093,8 +35081,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs1_4_0",
@@ -35105,8 +35093,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs1_4_1",
@@ -35117,8 +35105,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs1_5_0",
@@ -35129,8 +35117,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs1_6_0",
@@ -35141,8 +35129,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs1_7_0",
@@ -35153,8 +35141,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs1_7_1",
@@ -35317,8 +35305,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs5_0_0",
@@ -35329,8 +35317,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs5_0_1",
@@ -35341,8 +35329,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs5_1_0",
@@ -35353,8 +35341,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs5_2_0",
@@ -35365,8 +35353,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs5_3_0",
@@ -35377,8 +35365,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs5_4_0",
@@ -35389,8 +35377,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs5_4_1",
@@ -35401,8 +35389,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs5_5_0",
@@ -35413,8 +35401,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs5_6_0",
@@ -35425,8 +35413,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs5_7_0",
@@ -35437,8 +35425,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs5_7_1",
@@ -35601,8 +35589,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs9_0_0",
@@ -35613,8 +35601,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs9_0_1",
@@ -35625,8 +35613,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs9_1_0",
@@ -35637,8 +35625,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs9_2_0",
@@ -35649,8 +35637,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs9_3_0",
@@ -35661,8 +35649,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs9_4_0",
@@ -35673,8 +35661,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs9_4_1",
@@ -35685,8 +35673,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs9_5_0",
@@ -35697,8 +35685,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs9_6_0",
@@ -35709,8 +35697,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs9_7_0",
@@ -35721,8 +35709,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_cs9_7_1",
@@ -35884,16 +35872,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_so9",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.edgeuse_p2/upstream_files.json#1794 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "deferred": {
@@ -35909,8 +35893,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_rb_cs2_0_0",
@@ -35921,8 +35905,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_rb_cs2_0_1",
@@ -35933,8 +35917,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_rb_cs2_1_0",
@@ -35945,8 +35929,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_rb_cs2_2_0",
@@ -35957,8 +35941,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_rb_cs2_2_1",
@@ -35969,8 +35953,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_rb_cs2_3_0",
@@ -36045,8 +36029,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_rb_cs7_0_0",
@@ -36057,8 +36041,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_rb_cs7_0_1",
@@ -36069,8 +36053,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_rb_cs7_1_0",
@@ -36081,8 +36065,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_rb_cs7_2_0",
@@ -36093,8 +36077,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_rb_cs7_2_1",
@@ -36105,8 +36089,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_rb_cs7_3_0",
@@ -41440,16 +41424,16 @@
     }
   ],
   "cases_both_errored": 85,
-  "cases_deferred": 1172,
+  "cases_deferred": 1168,
   "cases_failed": 0,
-  "cases_passed": 3411,
+  "cases_passed": 3415,
   "cases_total": 4583,
   "deferred_by_unit": {
-    "curve.crv_on_surf": 509,
+    "curve.crv_on_surf": 621,
     "intersect.curve_class_p2": 245,
     "intersect.surface_drop_lib_p3": 75,
     "surface.surf_of_extrusion_p2": 162,
-    "surface.surface_p2": 181
+    "surface.surface_p2": 65
   },
   "max_rel_err": 0.0,
   "pass": true,

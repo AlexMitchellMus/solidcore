@@ -8554,16 +8554,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
-      },
       "max_rel_err": 0.0,
       "name": "gen0037",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439085",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -8902,16 +8898,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
-      },
       "max_rel_err": 0.0,
       "name": "gen0071",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439119",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -9926,16 +9918,12 @@
       "values_compared": 9
     },
     {
-      "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
-      },
       "max_rel_err": 0.0,
       "name": "gen0176",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439224",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -11386,14 +11374,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
-      },
       "max_rel_err": 0.0,
       "name": "gen0322",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439370",
       "values_compared": 0
     },
@@ -11546,16 +11530,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
-      },
       "max_rel_err": 0.0,
       "name": "gen0337",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439385",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -13554,16 +13534,12 @@
       "values_compared": 9
     },
     {
-      "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
-      },
       "max_rel_err": 0.0,
       "name": "gen0535",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439583",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -13846,16 +13822,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
-      },
       "max_rel_err": 0.0,
       "name": "gen0565",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399439613",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -15647,8 +15619,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0742",
@@ -18010,16 +17982,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
-      },
       "max_rel_err": 0.0,
       "name": "gen0975",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399440023",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -18530,16 +18498,12 @@
       "values_compared": 9
     },
     {
-      "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
-      },
       "max_rel_err": 0.0,
       "name": "gen1028",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399440076",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -18874,16 +18838,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
-      },
       "max_rel_err": 0.0,
       "name": "gen1059",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399440107",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "deferred": {
@@ -19698,16 +19658,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
-      },
       "max_rel_err": 0.0,
       "name": "gen1140",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4634842130399440188",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -20299,18 +20255,17 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 626,
+  "cases_deferred": 615,
   "cases_failed": 0,
-  "cases_passed": 1598,
+  "cases_passed": 1609,
   "cases_total": 2224,
   "deferred_by_unit": {
     "curve.crv_on_surf": 19,
     "geom.tol": 57,
     "intersect.surface_drop_lib_p3": 36,
     "surface.cone_p1": 41,
-    "surface.sphere": 12,
     "surface.surf_of_extrusion_p2": 59,
-    "topology.face_p2": 400,
+    "topology.face_p2": 401,
     "topology.face_p3": 2
   },
   "max_rel_err": 0.0,

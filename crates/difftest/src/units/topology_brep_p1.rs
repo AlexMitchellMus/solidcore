@@ -1167,6 +1167,8 @@ fn put_surface(o: &mut Vec<f64>, s: &Surface) -> Result<(), HarnessError> {
     let base = match s.kind() {
         SurfaceKind::BSpline(bs) => Some(bs),
         SurfaceKind::SurfOfRevolution(r) => Some(r.base()),
+        SurfaceKind::Sphere(r) => Some(r.base().base()),
+        SurfaceKind::Torus(r) => Some(r.base().base()),
         _ => None,
     };
     match (s.kind(), base) {

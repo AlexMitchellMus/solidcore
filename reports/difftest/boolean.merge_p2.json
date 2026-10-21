@@ -195,8 +195,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere as SmSurface",
-        "unit": "surface.surface_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "make_faceuse_sphere",
@@ -428,12 +428,11 @@
   "cases_passed": 30,
   "cases_total": 45,
   "deferred_by_unit": {
-    "surface.surface_p2": 1,
     "topology.brep_p1": 1,
     "topology.brep_p3": 3,
     "topology.brep_p9": 1,
     "topology.face_p2": 1,
-    "topology.face_p3": 4,
+    "topology.face_p3": 5,
     "topology.face_p4": 4
   },
   "max_rel_err": 0.0,
