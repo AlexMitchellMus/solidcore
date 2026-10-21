@@ -499,8 +499,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Point3DClassify",
+        "unit": "query.face_p1"
       },
       "max_rel_err": 0.0,
       "name": "two_real_rails_classified_on_rectangle",
@@ -1245,8 +1245,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Point3DClassify",
+        "unit": "query.face_p1"
       },
       "max_rel_err": 0.0,
       "name": "review_classify_2_0",
@@ -1265,8 +1265,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Point3DClassify",
+        "unit": "query.face_p1"
       },
       "max_rel_err": 0.0,
       "name": "review_classify_2_3",
@@ -1285,8 +1285,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Point3DClassify",
+        "unit": "query.face_p1"
       },
       "max_rel_err": 0.0,
       "name": "review_classify_2_6",
@@ -1431,7 +1431,7 @@
   "cases_rejected": 2,
   "cases_total": 170,
   "deferred_by_unit": {
-    "topology.face_p4": 4
+    "query.face_p1": 4
   },
   "max_rel_err": 0.0,
   "pass": true,
