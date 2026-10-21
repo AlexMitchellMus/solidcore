@@ -398,7 +398,11 @@ fn sel(s: i64, n: usize) -> i64 {
 /// The C++ export of the case's B-rep.
 fn export(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
     let path = path_of(&i.brep)?;
-    ffi::eval(Op::Export, &path, &brep_block(i)?).map_err(|e| harness(format!("c++ export: {e}")))
+    let block = brep_block(i)?;
+    crate::export_memo::export("topology_vertex", &[&path], &block, || {
+        ffi::eval(Op::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))
 }
 
 /// A build failure as an operation error.
@@ -1681,7 +1685,7 @@ fn run_rust_op(b: &mut Brep, op: &OpIn) -> Result<Output, Fail> {
             let mut q = Vec::new();
             put_flag(
                 &mut q,
-                vx::are_edges_tangent(b, vid(*v), e(*e1), e(*e2), *tol_deg),
+                vx::are_edges_tangent(&k, b, vid(*v), e(*e1), e(*e2), *tol_deg),
             )?;
             return Ok(Output::new().ints("q", q));
         }
