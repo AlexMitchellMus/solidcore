@@ -655,10 +655,14 @@ impl TemporaryBrepTransform {
     }
 }
 
+/// The squared distance from the origin past which [`temporary_brep_transform`] moves the
+/// operands' box center to the origin (upstream: "Arbitrary: > 1000").
+const MIN_SHIFT_CENTER_LENGTH_SQ: f64 = 1.0e6;
+
 /// The first half of `SmTemporaryBrepTransform(pTI)`, the scoped origin shift of
 /// manifold Booleans: the union of the operands' boxes (`brep` boxed in
 /// `primary_kernel`'s context, `other` in `other_kernel`'s; statuses ignored, a failure
-/// leaves the box initialised) gives a center; when its squared length exceeds `1e6`
+/// leaves the box initialised) gives a center; when its squared length exceeds `MIN_SHIFT_CENTER_LENGTH_SQ`
 /// the operands need the translation by `-center`. [`TemporaryBrepShift::apply`] is the
 /// second half (the boxes are computed before either operand moves, as upstream).
 ///
@@ -678,7 +682,7 @@ pub fn temporary_brep_transform(
 
     // when bbox is very large - translate its center to the origin
     let center = bbox.evaluate(0.5, 0.5, 0.5);
-    let shift = (center.length_squared() > 1.0e6).then(|| -center);
+    let shift = (center.length_squared() > MIN_SHIFT_CENTER_LENGTH_SQ).then(|| -center);
     Ok(TemporaryBrepShift { shift })
 }
 

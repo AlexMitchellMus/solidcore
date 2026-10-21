@@ -268,11 +268,12 @@ void put_attribute(std::vector<double>& o, int64_t kind, SmAttribute* a, bool so
 
 } // namespace sc_query_brep
 
-// `kind id(hi lo) has_behavior behavior set [data]`: constructs the attribute (with the
-// default behaviour unless `has_behavior`), sets its data when `set`, copies it with
-// MakeCopy and returns `id(hi lo) behavior type data` of the original, then of the copy.
-SC_EXPORT int32_t sc_query_brep_attribute(const double* in, int64_t n_in, double* out, int64_t cap,
-                                          int64_t* out_len)
+// `id(hi lo) has_behavior behavior set [data]` for an attribute of class `kind`:
+// constructs the attribute (with the default behaviour unless `has_behavior`), sets its
+// data when `set`, copies it with MakeCopy and returns `id(hi lo) behavior type data` of
+// the original, then of the copy.
+SC_EXPORT int32_t sc_query_brep_attribute(int32_t kind, const double* in, int64_t n_in, double* out,
+                                          int64_t cap, int64_t* out_len)
 {
     using namespace sc_query_brep;
     if (!in || n_in < 5)
@@ -280,7 +281,6 @@ SC_EXPORT int32_t sc_query_brep_attribute(const double* in, int64_t n_in, double
     SC_TRY
     const SmContext& ctx = *SmApiGetOrCreateContext();
     Rd rd{in, 0};
-    int64_t kind = rd.idx();
     ULONG id = read_ulong(rd);
     bool has_behavior = rd.flag();
     SmAttributeBehaviorType behavior = (SmAttributeBehaviorType)rd.idx();
@@ -369,39 +369,42 @@ enum
     STEP_UNLOCK = 3,
 };
 
-// Appends the status and `min max` of a box seeded with the runner's sentinel box.
-template <typename F> void put_box(std::vector<double>& o, F call)
+// Appends the status and `min max` of a box seeded with `seed` (`min max`).
+template <typename F> void put_box(std::vector<double>& o, const double* seed, F call)
 {
     SmExtent3d box;
-    box.SetMinMax(SmPoint3d(-17, -19, -23), SmPoint3d(29, 31, 37));
+    box.SetMinMax(SmPoint3d(seed[0], seed[1], seed[2]), SmPoint3d(seed[3], seed[4], seed[5]));
     SmStatus s = call(box);
     o.push_back(s == SM_SUCCESS ? 0.0 : (double)s);
     SmPoint3d lo = box.GetMin(), hi = box.GetMax();
     o.insert(o.end(), {lo.x, lo.y, lo.z, hi.x, hi.y, hi.z});
 }
 
-// Runs `n` steps `kind a b c d` on the B-rep (layouts in the ffi module).
+// Runs `seed n` then `n` steps `kind a b c defaults` on the B-rep (layouts in the ffi
+// module).
 int32_t run_steps(const double* args, int64_t n_args, SmBrep& brep, std::vector<double>& o)
 {
-    if (n_args < 1)
+    const int64_t SEED_LEN = 6, STEP_LEN = 5;
+    if (n_args < SEED_LEN + 1)
         return SC_ERR_ARG;
-    int64_t n = (int64_t)args[0];
-    if (n < 0 || n_args != 1 + 5 * n)
+    const double* seed = args;
+    int64_t n = (int64_t)args[SEED_LEN];
+    if (n < 0 || n_args != SEED_LEN + 1 + STEP_LEN * n)
         return SC_ERR_ARG;
     for (int64_t i = 0; i < n; i++)
     {
-        const double* a = args + 1 + 5 * i;
+        const double* a = args + SEED_LEN + 1 + STEP_LEN * i;
         int64_t kind = (int64_t)a[0];
         SmBoolean x = a[1] != 0.0 ? TRUE : FALSE;
         SmBoolean y = a[2] != 0.0 ? TRUE : FALSE;
         SmBoolean z = a[3] != 0.0 ? TRUE : FALSE;
         bool defaults = a[4] != 0.0;
         if (kind == STEP_BOX)
-            put_box(o, [&](SmExtent3d& b) {
+            put_box(o, seed, [&](SmExtent3d& b) {
                 return defaults ? brep.CalculateBoundingBox(b) : brep.CalculateBoundingBox(b, x, y, z);
             });
         else if (kind == STEP_TIGHT)
-            put_box(o, [&](SmExtent3d& b) { return brep.CalculateTightBoundingBox(b); });
+            put_box(o, seed, [&](SmExtent3d& b) { return brep.CalculateTightBoundingBox(b); });
         else if (kind == STEP_LOCK)
         {
             SmStatus s = defaults ? brep.LockBoundingBox() : brep.LockBoundingBox(x);

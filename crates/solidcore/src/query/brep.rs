@@ -94,12 +94,18 @@ const NORMAL_BOX: BoundingBoxRequest = BoundingBoxRequest {
 
 // ---- bounding boxes -----------------------------------------------------------------
 
+/// With [`BoundingBoxOptions::approx`], a B-rep of more vertices than this (and more
+/// edges than [`APPROX_EDGES`]) is boxed by its vertices only.
+pub const APPROX_VERTICES: usize = 500;
+/// See [`APPROX_VERTICES`].
+pub const APPROX_EDGES: usize = 100;
+
 /// The arguments of [`calculate_bounding_box`]; [`Default`] gives upstream's default
 /// arguments.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoundingBoxOptions {
     /// `bApprox` (default `FALSE`): leave out the faces and, on a B-rep with more than
-    /// 500 vertices and more than 100 edges, the edges too.
+    /// [`APPROX_VERTICES`] vertices and more than [`APPROX_EDGES`] edges, the edges too.
     pub approx: bool,
     /// `bTight` (default `FALSE`): the tight box of every edge and face (expensive).
     pub tight: bool,
@@ -121,8 +127,8 @@ impl Default for BoundingBoxOptions {
 /// `SmBrep::CalculateBoundingBox`: the locked box when there is one; else the union of
 /// the B-rep's vertex points, the boxes of its edges with a curve and, unless
 /// `approx`, the boxes of its faces (each expanded by the entity's tolerance with
-/// `expand_by_zone_tol_3d`), in list order. With `approx` on a B-rep of more than 500
-/// vertices and 100 edges only the vertices are used.
+/// `expand_by_zone_tol_3d`), in list order. With `approx` on a B-rep of more than
+/// [`APPROX_VERTICES`] vertices and [`APPROX_EDGES`] edges only the vertices are used.
 ///
 /// # Errors
 ///
@@ -155,7 +161,7 @@ pub fn calculate_bounding_box(k: &Kernel, b: &Brep, opts: BoundingBoxOptions) ->
     let edges = bp1::edges(b, None)?;
 
     // when asked - if this is a large brep, settle for a fast approximation
-    if opts.approx && vertices.len() > 500 && edges.len() > 100 {
+    if opts.approx && vertices.len() > APPROX_VERTICES && edges.len() > APPROX_EDGES {
         return Ok(brep_bbox);
     }
 

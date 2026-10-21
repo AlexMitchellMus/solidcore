@@ -49,7 +49,7 @@ use solidcore::math::{Point2, Vec3};
 use solidcore::query::brep::{self as qb, PolyVertexClass};
 use solidcore::surface::surface::Surface;
 use solidcore_ffi::units::query_brep::{
-    self as ffi, AttrKind, BoxStep, EvalOp, CLASSIFY_LEN, MAX_BOX_STEPS,
+    self as ffi, AttrKind, BoxStep, EvalOp, CLASSIFICATION_LEN, MAX_BOX_STEPS, SEED_BOX,
 };
 
 use super::surface_surface_cache_p1::harness;
@@ -58,6 +58,7 @@ use super::query_face_p1::{everything, gen_face_brep, inexact, model, Model, NoG
 use super::surface_surface_p7::{st, Fail};
 use super::topology_edgeuse_p1::{fixture_input, gen_brep, BrepIn};
 use crate::case::CaseContext;
+use crate::util::flag;
 use crate::runner::default_cases;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
 
@@ -66,6 +67,27 @@ pub const MIN_GENERATED: usize = 600;
 
 /// `query.brep` runner.
 pub struct Runner;
+
+/// `SM_SUCCESS` as an output status.
+const SUCCESS: f64 = 0.0;
+/// The output of a case whose selected entity kind the B-rep does not have.
+const NO_ENTITY: f64 = -2.0;
+/// Where `P`, `Du` and `Dv` start in an evaluation output (after the status).
+const P_AT: usize = 0;
+const DU_AT: usize = 3;
+const DV_AT: usize = 6;
+
+/// The object kinds of a classification output (as the shim's `put_object`) and the index
+/// of no object.
+mod object_kind {
+    pub const NONE: f64 = 0.0;
+    pub const FACE: f64 = 1.0;
+    pub const EDGE: f64 = 2.0;
+    pub const VERTEX: f64 = 3.0;
+    pub const REGION: f64 = 4.0;
+    pub const OTHER: f64 = -3.0;
+    pub const NO_INDEX: f64 = -1.0;
+}
 
 // ---- inputs -----------------------------------------------------------------------
 
@@ -243,13 +265,9 @@ mod non_finite2 {
 // ---- C++ side -----------------------------------------------------------------------
 
 fn eval_input(i: &EvalIn) -> Result<Vec<f64>, HarnessError> {
-    let mut o = Vec::new();
-    match &i.surf {
-        Some(s) => {
-            o.push(1.0);
-            push_surf(&mut o, s)?;
-        }
-        None => o.push(0.0),
+    let mut o = vec![flag(i.surf.is_some())];
+    if let Some(s) = &i.surf {
+        push_surf(&mut o, s)?;
     }
     o.extend(i.uv);
     o.extend(i.sentinel);
@@ -278,14 +296,14 @@ fn halves(v: u64) -> [f64; 2] {
 fn attr_input(i: &AttrIn) -> Vec<f64> {
     let mut o = halves(i.id).to_vec();
     o.extend([
-        f64::from(u8::from(i.behavior.is_some())),
+        flag(i.behavior.is_some()),
         f64::from(i.behavior.unwrap_or(0)),
-        f64::from(u8::from(i.data.is_some())),
+        flag(i.data.is_some()),
     ]);
     if let Some(d) = &i.data {
         o.extend(d);
         if !matches!(i.kind, Kind::QuadricVertex) {
-            o.push(f64::from(u8::from(i.sort.is_some())));
+            o.push(flag(i.sort.is_some()));
             o.extend(halves(i.sort.unwrap_or(0)));
         }
     }
@@ -342,7 +360,7 @@ fn classify_point(m: &Model, i: &ClassifyIn) -> Result<Option<[f64; 3]>, Harness
 fn cpp_classify(i: &ClassifyIn) -> Result<Output, HarnessError> {
     let m = model(&i.brep)?;
     let Some(p) = classify_point(&m, i)? else {
-        return Ok(Output::new().values("classify", vec![-2.0]));
+        return Ok(Output::new().values("classify", vec![NO_ENTITY]));
     };
     let flat = ffi::classify(&m.path, &m.block, p, i.tol, i.do_bnd)
         .map_err(|e| harness(e.to_string()))?;
@@ -361,17 +379,21 @@ fn rust_evaluate(i: &EvalIn) -> Result<Output, Fail> {
         }
     };
     let code = match i.what {
-        What::Point => st(qb::evaluate_surface_point(surface.as_ref(), uv))?.map(|p| put(0, p)),
-        What::Normal => st(qb::evaluate_surface_normal(surface.as_ref(), uv))?.map(|n| put(0, n)),
+        What::Point => {
+            st(qb::evaluate_surface_point(surface.as_ref(), uv))?.map(|p| put(P_AT, p))
+        }
+        What::Normal => {
+            st(qb::evaluate_surface_normal(surface.as_ref(), uv))?.map(|n| put(P_AT, n))
+        }
         What::Derivatives => st(qb::evaluate_surface_derivatives(surface.as_ref(), uv))?.map(
             |(p, du, dv)| {
-                put(0, p);
-                put(3, du);
-                put(6, dv);
+                put(P_AT, p);
+                put(DU_AT, du);
+                put(DV_AT, dv);
             },
         ),
     }
-    .map_or_else(|code| code, |()| 0.0);
+    .map_or_else(|code| code, |()| SUCCESS);
     let mut flat = vec![code];
     flat.extend(out);
     Ok(eval_output(&flat))
@@ -475,7 +497,8 @@ fn rust_attribute(i: &AttrIn) -> Result<Output, HarnessError> {
 
 /// The sentinel box the shim seeds every box with.
 fn seed_box() -> Extent3d {
-    Extent3d::from_points(Vec3::new(-17.0, -19.0, -23.0), Vec3::new(29.0, 31.0, 37.0))
+    let [x0, y0, z0, x1, y1, z1] = SEED_BOX;
+    Extent3d::from_points(Vec3::new(x0, y0, z0), Vec3::new(x1, y1, z1))
 }
 
 /// The `SmStatus` of a Rust result; `None` for an error upstream has no status for.
@@ -489,7 +512,7 @@ fn status_code(e: &SolidError) -> Option<f64> {
 /// Appends a box step's status and box (the seed when it failed).
 fn push_box(o: &mut Vec<f64>, r: solidcore::Result<Extent3d>) -> Result<(), Fail> {
     let (status, bx) = match r {
-        Ok(bx) => (0.0, bx),
+        Ok(bx) => (SUCCESS, bx),
         Err(e) => match Output::unported(&e) {
             Some(d) => return Err(Fail::Deferred(Box::new(d))),
             None => (
@@ -529,13 +552,13 @@ fn run_steps(k: &Kernel, b: &mut Brep, steps: &[StepIn]) -> Result<Vec<f64>, Fai
                 // the default argument is `FALSE`
                 let r = qb::lock_bounding_box(k, b, tight && !defaults);
                 o.push(match st(r)? {
-                    Ok(()) => 0.0,
+                    Ok(()) => SUCCESS,
                     Err(code) => code,
                 });
             }
             StepIn::Unlock => {
                 qb::unlock_bounding_box(b);
-                o.push(0.0);
+                o.push(SUCCESS);
             }
         }
     }
@@ -560,12 +583,12 @@ fn rust_box(i: &BoxIn) -> Result<Output, Fail> {
 /// the shim's `put_pc`).
 fn pc_block(pc: &PointClassification<EntityRef>) -> Vec<f64> {
     let object = |o: Option<EntityRef>| match o {
-        None => (0.0, -1.0),
-        Some(EntityRef::Face(f)) => (1.0, f64::from(f.index())),
-        Some(EntityRef::Edge(e)) => (2.0, f64::from(e.index())),
-        Some(EntityRef::Vertex(v)) => (3.0, f64::from(v.index())),
-        Some(EntityRef::Region(r)) => (4.0, f64::from(r.index())),
-        Some(_) => (-3.0, -1.0),
+        None => (object_kind::NONE, object_kind::NO_INDEX),
+        Some(EntityRef::Face(f)) => (object_kind::FACE, f64::from(f.index())),
+        Some(EntityRef::Edge(e)) => (object_kind::EDGE, f64::from(e.index())),
+        Some(EntityRef::Vertex(v)) => (object_kind::VERTEX, f64::from(v.index())),
+        Some(EntityRef::Region(r)) => (object_kind::REGION, f64::from(r.index())),
+        Some(_) => (object_kind::OTHER, object_kind::NO_INDEX),
     };
     let (kind, index) = object(pc.object());
     let (face_kind, face_index) = object(pc.face());
@@ -581,7 +604,7 @@ fn pc_block(pc: &PointClassification<EntityRef>) -> Vec<f64> {
         pc.t_param(),
         uv.x,
         uv.y,
-        f64::from(u8::from(pc.are_parameters_set())),
+        flag(pc.are_parameters_set()),
         face_kind,
         face_index,
     ]
@@ -590,7 +613,7 @@ fn pc_block(pc: &PointClassification<EntityRef>) -> Vec<f64> {
 fn rust_classify(i: &ClassifyIn) -> Result<Output, Fail> {
     let m = model(&i.brep)?;
     let Some(p) = classify_point(&m, i)? else {
-        return Ok(Output::new().values("classify", vec![-2.0]));
+        return Ok(Output::new().values("classify", vec![NO_ENTITY]));
     };
     let (faces, edges) = everything(&m.brep);
     if let Some(o) = inexact(&m, &faces, &edges) {
@@ -622,7 +645,7 @@ fn rust_classify(i: &ClassifyIn) -> Result<Output, Fail> {
         i.do_bnd,
     );
     let (status, pc) = match r {
-        Ok(pc) => (0.0, pc),
+        Ok(pc) => (SUCCESS, pc),
         Err(e) => {
             if let Some(d) = Output::unported(&e) {
                 return Ok(d);
@@ -638,7 +661,7 @@ fn rust_classify(i: &ClassifyIn) -> Result<Output, Fail> {
     };
     let mut flat = vec![status];
     flat.extend(pc_block(&pc));
-    debug_assert_eq!(flat.len(), CLASSIFY_LEN);
+    debug_assert_eq!(flat.len(), 1 + CLASSIFICATION_LEN);
     Ok(Output::new().values("classify", flat))
 }
 
