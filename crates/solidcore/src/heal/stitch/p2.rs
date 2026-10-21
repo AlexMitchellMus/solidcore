@@ -36,11 +36,12 @@
 //!   reason (the lengths are still computed).
 //! - `SmBrep::Notify(SM_NO_PRE_EDIT)` is `super::p1::brep_notify_pre_edit`
 //!   (`topology::brep::p2::notify`). The calls into `CalculateBoundingBox`
-//!   (`query.brep`), `DeleteFace`, `SqueezeEdge` (`topology.brep_p3`), `GlueVertices`,
+//!   (`query.brep`), `GlueVertices`,
 //!   `FindAndSetInfiniteRegion` (`topology.brep_p5`), `GlueEdgesGeneral`
 //!   (`topology.brep_p7`), `MakeVertexSplitEdge` (`topology.brep_p9`, through
 //!   [`test_and_split_edge`]) and `SmFace::IsLamina`, `IsDegenerate`, `Notify`
-//!   (`topology.face_p3`) return [`SolidError::Unported`].
+//!   (`topology.face_p3`) return [`SolidError::Unported`]. `DeleteFace` and `SqueezeEdge`
+//!   are `topology.brep_p3`'s, notifying through the kernel context's callbacks.
 
 use super::p1::{
     brep_notify_pre_edit, glue_edges_general, glue_vertices, set_point, sort_by_param,
@@ -320,7 +321,7 @@ impl Stitch<'_> {
                     let surv_v = surv_v.ok_or_else(|| deref("edge without vertex"))?;
                     // remove and delete edge from topology graph by squeezing
                     // [vertex-edge-vertex] into [vertex]
-                    squeeze_edge_to(b, Some(e), surv_v)?;
+                    squeeze_edge_to(k, b, Some(e), surv_v)?;
 
                     if candidate_vertices.is_some() {
                         add_unique(&mut cand_vertices, surv_v); // This becomes a candidate.
@@ -570,13 +571,13 @@ impl Stitch<'_> {
                     // squeeze or glue vertices together (make pV the retained vertex)
                     if choice.keep_first {
                         if do_squeeze {
-                            squeeze_edge_to(b, squeeze_edge, v)?;
+                            squeeze_edge_to(k, b, squeeze_edge, v)?;
                         } else if do_glue {
                             glue_vertices(k, b, v, cv, Some(&wire_edges))?;
                         }
                     } else {
                         if do_squeeze {
-                            squeeze_edge_to(b, squeeze_edge, cv)?;
+                            squeeze_edge_to(k, b, squeeze_edge, cv)?;
                         } else if do_glue {
                             glue_vertices(k, b, cv, v, Some(&wire_edges))?;
                         }
@@ -1067,14 +1068,14 @@ impl Stitch<'_> {
                 // squeeze or glue vertices together (make pV the retained vertex)
                 if choice.keep_first {
                     if do_squeeze {
-                        squeeze_edge_to(b, squeeze_edge, v)?;
+                        squeeze_edge_to(k, b, squeeze_edge, v)?;
                     } else if do_glue {
                         glue_vertices(k, b, v, cv, None)?;
                     }
                     out.deleted.push(cv);
                 } else {
                     if do_squeeze {
-                        squeeze_edge_to(b, squeeze_edge, cv)?;
+                        squeeze_edge_to(k, b, squeeze_edge, cv)?;
                     } else if do_glue {
                         glue_vertices(k, b, cv, v, None)?;
                     }
@@ -1453,8 +1454,11 @@ fn brep_bounding_box(
 }
 
 /// `SmBrep::DeleteFace(face, bDeleteEdgesVertices, bDoRegionNesting,
-/// pOptDeletedEdgesVertices, pOptRegionToKeep)` (unit `topology.brep_p3`; upstream
-/// defaults `FALSE`, `TRUE`, `NULL`, `NULL`).
+/// pOptDeletedEdgesVertices, pOptRegionToKeep)` ([`crate::topology::brep::p3::delete_face`];
+/// upstream defaults `FALSE`, `TRUE`, `NULL`, `NULL`), notifying through the kernel
+/// context's callbacks ([`crate::topology::brep::p3::with_kernel_callbacks`], as
+/// `super::p1::squeeze_edge_to`). `deleted_edges_vertices` is reset first, as upstream,
+/// and gets the deleted edges and vertices when the deletion succeeds.
 fn delete_face(
     k: &mut Kernel,
     b: &mut Brep,
@@ -1464,20 +1468,24 @@ fn delete_face(
     deleted_edges_vertices: Option<&mut Vec<EntityRef>>,
     region_to_keep: Option<RegionId>,
 ) -> Result<()> {
-    let _ = (
-        k,
-        b,
-        f,
+    use crate::topology::brep::p3 as brep_p3;
+    let options = brep_p3::DeleteFaceOptions {
         delete_edges_vertices,
         do_region_nesting,
-        deleted_edges_vertices,
         region_to_keep,
-    );
-    // UNPORTED(topology.brep_p3): SmBrep::DeleteFace
-    Err(SolidError::unported(
-        "SmBrep::DeleteFace",
-        "topology.brep_p3",
-    ))
+    };
+    let mut out = deleted_edges_vertices;
+    if let Some(out) = out.as_deref_mut() {
+        out.clear();
+    }
+    let deleted = brep_p3::with_kernel_callbacks(k, b, |k, b, env| {
+        let mut marks = crate::topology::topology_traverser::Marks::default();
+        brep_p3::delete_face(k, b, env, &mut marks, f, options)
+    })?;
+    if let Some(out) = out {
+        *out = deleted;
+    }
+    Ok(())
 }
 
 /// `SmBrep::FindAndSetInfiniteRegion(pOptShellToTest, eVoidSettingFlag, pOptBrepBBox)`

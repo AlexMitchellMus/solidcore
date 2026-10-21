@@ -117,15 +117,18 @@ pub struct KernelManifoldIntersector {
 impl KernelManifoldIntersector {
     /// Create an adapter with default merge options and no relationships.
     /// The caller reserves `namespace` exclusively among all object keys in the
-    /// supplied attribute/notification stores; its complete block is `2^37` keys.
+    /// supplied attribute/notification stores; its complete block is `2^37` keys. Keys
+    /// stay below the kernel's reserved range (`geom::context::KERNEL_KEY_BASE`, bit
+    /// 63), which `topology::brep::p3`'s edits refuse as caller keys, so the namespace
+    /// has 26 bits.
     ///
     /// # Errors
-    /// A namespace exceeding 27 bits.
+    /// A namespace exceeding 26 bits.
     pub fn new(namespace: u32) -> Result<Self> {
-        if namespace > 0x07ff_ffff {
+        if namespace > 0x03ff_ffff {
             return Err(SolidError::invalid_input(
                 OP,
-                "object namespace exceeds 27 bits",
+                "object namespace exceeds 26 bits",
             ));
         }
         Ok(Self {
@@ -281,7 +284,7 @@ impl ManifoldIntersector for KernelManifoldIntersector {
                 scale_tolerance,
                 Some(&mut env),
             )
-        })
+        })?
     }
 
     fn intersect_insert_relate(
@@ -327,7 +330,7 @@ impl ManifoldIntersector for KernelManifoldIntersector {
             // Deleted curve handles no longer appear in manager/table state. Storage
             // remains stable so surviving handles keep their identities.
             result.map(|_| ())
-        })
+        })?
     }
 
     fn remove_relationship(&mut self, face: FaceId, other_face: FaceId) -> Result<()> {
@@ -393,7 +396,7 @@ impl ManifoldIntersector for KernelManifoldIntersector {
                             .collect::<Result<_>>()?,
                     })
                 })
-        })
+        })?
     }
 
     fn delete_faces(
@@ -431,9 +434,9 @@ impl ManifoldIntersector for KernelManifoldIntersector {
                 &mut self.intersector,
                 arena_pair::encode,
                 arena_pair::decode,
-                |ti| ti.delete_faces(&mut pair, &faces, keep.as_deref()),
+                |ti| ti.delete_faces(k, &mut pair, &faces, keep.as_deref()),
             )
-        })
+        })?
     }
 
     fn copy_component_faces(
@@ -471,7 +474,7 @@ impl ManifoldIntersector for KernelManifoldIntersector {
                 &mut env,
             )
             .map(|_| ())
-        })
+        })?
     }
 
     fn mapped_edges(&self) -> Result<Vec<EdgeId>> {
@@ -1112,7 +1115,8 @@ mod tests {
             pair.set_vertex_point(k, arena_pair::encode(EntityRef::Vertex(v), false), Vec3::Y)?;
             pair.set_vertex_point(k, arena_pair::encode(EntityRef::Vertex(ov), true), Vec3::Z)?;
             Err(SolidError::sm_err(OP))
-        });
+        })
+        .unwrap();
         assert!(error.is_err());
         assert!(k.context.user_notify_callback().is_some());
         assert!(other_k.context.user_notify_callback().is_some());
@@ -1299,8 +1303,13 @@ mod tests {
     #[test]
     fn notification_key_blocks_never_alias_across_operands_or_classes() {
         let a = KernelManifoldIntersector::new(0).unwrap();
-        let b = KernelManifoldIntersector::new(0x07ff_ffff).unwrap();
-        assert!(KernelManifoldIntersector::new(0x0800_0000).is_err());
+        let b = KernelManifoldIntersector::new(0x03ff_ffff).unwrap();
+        assert!(KernelManifoldIntersector::new(0x0400_0000).is_err());
+        // the largest namespace's keys stay below the kernel's reserved range
+        assert!(!crate::geom::context::is_reserved_key(b.object_key(
+            true,
+            MergeEntity::Vertex(VertexId::from_index(u32::MAX))
+        )));
         let mut keys = BTreeSet::new();
         for adapter in [&a, &b] {
             for other in [false, true] {

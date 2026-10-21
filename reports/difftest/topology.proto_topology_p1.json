@@ -3247,8 +3247,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::TurnToNURBS",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::GetVertices",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0166",
@@ -12379,8 +12379,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::TurnToNURBS",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::GetVertices",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen1275",
@@ -15272,8 +15272,7 @@
   "cases_passed": 1770,
   "cases_total": 1862,
   "deferred_by_unit": {
-    "topology.brep_p1": 8,
-    "topology.brep_p3": 2,
+    "topology.brep_p1": 10,
     "topology.edge": 28,
     "topology.face_p2": 29,
     "topology.vertex": 25

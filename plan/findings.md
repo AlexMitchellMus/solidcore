@@ -1261,6 +1261,9 @@ worth knowing:
   owner metadata, with a 64-link bound; missing metadata is a capture failure.
   Tracker/callback state uses a private shared notification-array allocation so
   active resets and foreign-callback replacement preserve native array lifetimes.
+  `topology.brep_p3` (PR #204) runs heal_data_p3's ported edits (`SqueezeEdge`,
+  `DeleteFace`) under this tracker too (`SmHealData` installs
+  `SmTrackTopologyChanges(m_pBrep, TRUE)` around them, SmHealData.cpp:3341).
 - **Starting a tracker twice leaves its callback installed after it dies.** The
   second `StartTracking` sees the tracker's own callback in the slot and stores it in
   `m_pLastNotifyCallback`; `StopTracking` (and so the destructor) then does nothing,
