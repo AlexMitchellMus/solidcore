@@ -28,6 +28,7 @@ use crate::geom::extent3d::Extent3d;
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQ, PI};
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::surface::surface::Surface;
 use crate::topology::face::p2::{
     OdeArea, PrecisePropertyLayout, PPF_ALL, PPF_AREA, PPF_AREA_FIRST_MOMENTS,
@@ -121,6 +122,7 @@ impl PropertyAttributes<'_> {
 
 /// `SmEdge::ComputePreciseProperties` on a live edge.
 pub fn edge_properties(
+    k: &Kernel,
     b: &Brep,
     e: EdgeId,
     accuracy: f64,
@@ -128,10 +130,11 @@ pub fn edge_properties(
     radius: f64,
 ) -> Result<EdgeProperties> {
     let curve = edge::curve(b, e)?.ok_or_else(|| SolidError::null_pointer(OP))?;
-    curve_properties(curve, &edge::interval(b, e)?, accuracy, origin, radius)
+    curve_properties(k, curve, &edge::interval(b, e)?, accuracy, origin, radius)
 }
 /// The precise edge integration on an already-bound curve and interval.
 pub fn curve_properties(
+    k: &Kernel,
     curve: &Curve,
     interval: &Extent1d,
     accuracy: f64,
@@ -139,7 +142,7 @@ pub fn curve_properties(
     radius: f64,
 ) -> Result<EdgeProperties> {
     let eval = edge::OdeEdgeLength::new(curve, origin, radius);
-    let approx = curve.approximate_length(interval, 10, false)?.0;
+    let approx = curve.approximate_length(k, interval, 10, false)?.0;
     let mut y = [0.0; 27];
     let mut scale = [BIG_DOUBLE; 27];
     if let Some(s) = scale.first_mut() {
@@ -157,7 +160,7 @@ pub fn curve_properties(
             scale: Some(&scale),
         },
         |t, _, dy| {
-            eval.evaluate(t, &mut scratch)?;
+            eval.evaluate(k, t, &mut scratch)?;
             for (d, v) in dy.iter_mut().zip(scratch.iter().skip(1)) {
                 *d = *v;
             }
@@ -307,7 +310,7 @@ pub fn boundary_properties(
                         for (s, d) in scratch.iter_mut().skip(1).zip(dy.iter()) {
                             *s = *d;
                         }
-                        eval.evaluate(t, &mut scratch)?;
+                        eval.evaluate(k, t, &mut scratch)?;
                         for (d, v) in dy.iter_mut().zip(scratch.iter().skip(1)) {
                             *d = *v;
                         }
@@ -348,14 +351,6 @@ pub fn boundary_properties(
     Ok(result)
 }
 
-/// `SmBrep::CalculateBoundingBox(rBox)` (unit `query.brep`, default arguments).
-fn brep_box(k: &Kernel, b: &Brep) -> Result<Extent3d> {
-    crate::query::brep::calculate_bounding_box(
-        k,
-        b,
-        crate::query::brep::BoundingBoxOptions::default(),
-    )
-}
 fn face_box(k: &Kernel, b: &Brep, f: FaceId) -> Result<Extent3d> {
     crate::query::face::p1::calculate_bounding_box(k, b, f, false)
 }
@@ -397,7 +392,7 @@ pub fn brep_properties(
     behavior: MassPropertyBehavior,
     attributes: &PropertyAttributes<'_>,
 ) -> Result<PreciseProperties> {
-    let bbox = brep_box(k, b)?;
+    let bbox = qbrep::calculate_bounding_box(k, b, BoundingBoxOptions::default())?;
     let size = bbox.size();
     let estimated = size.z.max(size.x.max(size.y));
     let estimated = estimated * estimated / 100.0;
@@ -488,7 +483,7 @@ pub fn brep_properties(
             EntityRef::Edge(e),
             Vec3::new(behavior.density, behavior.edge_radius, 0.0),
         )?;
-        let delta = edge_properties(b, e, accuracy, origin, mass.y)?;
+        let delta = edge_properties(k, b, e, accuracy, origin, mass.y)?;
         if mass.x < EFF_ZERO {
             mass.x = 1.0;
         }
@@ -599,7 +594,7 @@ pub fn brep_volume(
     attributes: &PropertyAttributes<'_>,
 ) -> Result<f64> {
     valid_api_number(accuracy)?;
-    let bbox = brep_box(k, b)?;
+    let bbox = qbrep::calculate_bounding_box(k, b, BoundingBoxOptions::default())?;
     Ok(brep_properties(
         k,
         b,

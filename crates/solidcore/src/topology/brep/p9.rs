@@ -40,6 +40,7 @@ use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3, EFF_ZERO_PARAM};
 use crate::nurbs::b_spline_surface::p1::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::query::brep::{BrepIdentity, BrepQuery};
 use crate::surface::surface::{Surface, SurfaceKind};
 use crate::topology::edge;
@@ -115,8 +116,12 @@ where
         };
         let bounds = match supplied_box {
             Some(bounds) => bounds,
-            None => crate::error::ignored(brep_bounds(k, b))?
-                .unwrap_or_else(crate::geom::extent3d::Extent3d::new),
+            None => crate::error::ignored(qbrep::calculate_bounding_box(
+                k,
+                b,
+                BoundingBoxOptions::default(),
+            ))?
+            .unwrap_or_else(crate::geom::extent3d::Extent3d::new),
         };
         let ray_start = bounds.max() + (bounds.max() - bounds.min()) * 0.5;
         let mut direction = Vec3::new(1.0, 1.0, 1.0);
@@ -156,7 +161,7 @@ where
                                 b.edge(edge_id)?.curve.as_ref(),
                                 "ray target edge without curve",
                             )?
-                            .has_repeated_end_control_points(crate::geom::tol::ZONE_TOL_3D)?;
+                            .has_repeated_end_control_points(k, crate::geom::tol::ZONE_TOL_3D)?;
                         if (pass == 0 && dubious) || (pass == 1 && !dubious) {
                             continue;
                         }
@@ -165,7 +170,7 @@ where
                             required(record.curve.as_ref(), "ray target edge without curve")?;
                         for parameter in parameters {
                             let point =
-                                curve.evaluate_point(record.interval.evaluate(parameter))?;
+                                curve.evaluate_point(k, record.interval.evaluate(parameter))?;
                             let ray = point - ray_start;
                             let squared = ray.length_squared();
                             if squared < distance {
@@ -202,7 +207,7 @@ where
                 let curve =
                     required(record.curve.as_ref(), "ray target edge without curve")?.clone();
                 let interval = record.interval;
-                let point = curve.evaluate_point(interval.evaluate(0.789))?;
+                let point = curve.evaluate_point(k, interval.evaluate(0.789))?;
                 let attempt = crate::topology::shell::ray_fire(
                     k,
                     b,
@@ -220,7 +225,7 @@ where
                 let success = ray_success(&attempt.status)?;
                 state = attempt.state;
                 if !success {
-                    let point = curve.evaluate_point(interval.evaluate(0.189))?;
+                    let point = curve.evaluate_point(k, interval.evaluate(0.189))?;
                     let start = bounds.min() - (bounds.max() - bounds.min()) * 0.5;
                     let attempt = crate::topology::shell::ray_fire(
                         k,
@@ -260,7 +265,7 @@ where
                     let curve = required(record.curve.as_ref(), "ray target edge without curve")?;
                     let big_tolerance = record.tolerance > 1.01 * b.tolerance();
                     let repeated =
-                        curve.has_repeated_end_control_points(crate::geom::tol::ZONE_TOL_3D)?;
+                        curve.has_repeated_end_control_points(k, crate::geom::tol::ZONE_TOL_3D)?;
                     // IsSeam may create UV trim curves; reborrow the edge afterwards.
                     let seam = edge::is_seam(k, b, *edge_id)?;
                     let record = b.edge(*edge_id)?;
@@ -283,7 +288,7 @@ where
                         continue;
                     }
                     for parameter in parameters {
-                        let point = curve.evaluate_point(record.interval.evaluate(parameter))?;
+                        let point = curve.evaluate_point(k, record.interval.evaluate(parameter))?;
                         let ray = point - ray_start;
                         let squared = ray.length_squared();
                         if squared < distance {
@@ -307,9 +312,9 @@ where
                 let curve =
                     required(record.curve.as_ref(), "ray target edge without curve")?.clone();
                 let interval = record.interval;
-                let point = curve.evaluate_point(interval.evaluate(0.789))?;
+                let point = curve.evaluate_point(k, interval.evaluate(0.789))?;
                 if !fire(b, ray_start, point - ray_start)? {
-                    let point = curve.evaluate_point(interval.evaluate(0.189))?;
+                    let point = curve.evaluate_point(k, interval.evaluate(0.189))?;
                     let start = bounds.min() - (bounds.max() - bounds.min()) * 0.5;
                     if !fire(b, start, point - start)? {
                         return Err(SolidError::sm_err(OP));
@@ -331,15 +336,6 @@ fn brep_regions(b: &Brep) -> Result<Vec<RegionId>> {
 
 fn brep_edges(b: &Brep) -> Result<Vec<EdgeId>> {
     crate::topology::brep::p1::edges(b, None)
-}
-
-/// `SmBrep::CalculateBoundingBox(rBox)` (unit `query.brep`, default arguments).
-fn brep_bounds(k: &Kernel, b: &Brep) -> Result<crate::geom::extent3d::Extent3d> {
-    crate::query::brep::calculate_bounding_box(
-        k,
-        b,
-        crate::query::brep::BoundingBoxOptions::default(),
-    )
 }
 
 /// `this->RayFire(start, direction, tolerance, pRegion, sPC)` (unit `topology.brep_p2`)
@@ -858,8 +854,8 @@ pub fn make_vertex_split_edge(
             let start_ivl = Extent1d::from_min_max(interval.min(), parameter);
             let end_ivl = Extent1d::from_min_max(parameter, interval.max());
             let curve = required(b.edge(edge_id)?.curve.as_ref(), "split edge has no curve")?;
-            let dist_to_start = curve.approximate_length(&start_ivl, 2, false)?.0;
-            let dist_to_end = curve.approximate_length(&end_ivl, 2, false)?.0;
+            let dist_to_start = curve.approximate_length(k, &start_ivl, 2, false)?.0;
+            let dist_to_end = curve.approximate_length(k, &end_ivl, 2, false)?.0;
             let start = required(
                 edge::start_vertex(b, edge_id)?,
                 "split edge has no start vertex",
@@ -871,11 +867,13 @@ pub fn make_vertex_split_edge(
             let start_tol = b.vertex(start)?.tolerance;
             let end_tol = b.vertex(end)?.tolerance;
             if dist_to_start < start_tol
-                && curve.approximate_length(&start_ivl, 10, false)?.0 < start_tol
+                && curve.approximate_length(k, &start_ivl, 10, false)?.0 < start_tol
             {
                 near_start = true;
             }
-            if dist_to_end < end_tol && curve.approximate_length(&end_ivl, 10, false)?.0 < end_tol {
+            if dist_to_end < end_tol
+                && curve.approximate_length(k, &end_ivl, 10, false)?.0 < end_tol
+            {
                 near_end = true;
             }
             if near_start {
@@ -1016,7 +1014,7 @@ pub fn make_vertex_split_edge(
             b.edge_mut(new_edge)?.interval = ivl1;
         }
         let point = required(b.edge(edge_id)?.curve.as_ref(), "split edge without curve")?
-            .evaluate_point(split_parameter)?;
+            .evaluate_point(k, split_parameter)?;
         ignore_status(set_vertex_point(b, new_vertex, point, env))?;
         let original_uses = edge::edgeuses(b, edge_id, None, None)?;
         if original_uses.len() % 2 != 0 {
@@ -1357,7 +1355,7 @@ pub fn make_edge_in_face_with_vu(
             copy
         });
         seam = required(b.edgeuse(top)?.uv_trim_curve.as_ref(), "trim disappeared")?
-            .is_domain_boundary(&domain, crate::math::EFF_ZERO)?;
+            .is_domain_boundary(k, &domain, crate::math::EFF_ZERO)?;
         if seam != SurfParamType::Neither {
             let translation = match seam {
                 SurfParamType::UMin => Vec3::new(domain.x_length(), 0.0, 0.0),
@@ -1411,19 +1409,22 @@ pub fn make_edge_in_face_with_vu(
             let curve = required(
                 b.edge(edge_id)?.curve.as_ref(),
                 "inserted edge without curve",
-            )?;
+            )?
+            .clone();
+            let tolerance = b.tolerance();
             end = find_vertex_sector(
+                k,
                 b,
                 VertexSectorInput {
                     face,
                     vertex: end_vertex,
-                    curve,
+                    curve: &curve,
                     uv_trim: None,
                     parameter: t_end,
                     other_parameter: t_start,
                     orientation: end_orientation,
-                    tolerance: b.tolerance(),
-                    use_uv_classification: false,
+                    tolerance,
+                    validate_sector: false,
                 },
             )?
             .unwrap_or(end);
@@ -1615,10 +1616,17 @@ struct VertexSectorInput<'a> {
     other_parameter: f64,
     orientation: OrientType,
     tolerance: f64,
-    use_uv_classification: bool,
+    validate_sector: bool,
 }
 
-fn find_vertex_sector(b: &Brep, input: VertexSectorInput<'_>) -> Result<Option<VertexuseId>> {
+/// `pFace->FindVertexSector(pVertex, *pCurve, pUVTrim, dT, dTOther, eOrient, tol,
+/// bValidateSector, rpVU, ..)` (unit `topology.face_p4`; `bUVSpaceOkay` at its default
+/// `TRUE`; the possible-problem outputs are unused): the vertex use of the sector.
+fn find_vertex_sector(
+    k: &Kernel,
+    b: &mut Brep,
+    input: VertexSectorInput<'_>,
+) -> Result<Option<VertexuseId>> {
     let VertexSectorInput {
         face,
         vertex,
@@ -1628,25 +1636,25 @@ fn find_vertex_sector(b: &Brep, input: VertexSectorInput<'_>) -> Result<Option<V
         other_parameter,
         orientation,
         tolerance,
-        use_uv_classification,
+        validate_sector,
     } = input;
-    let _ = (
+    let sector = crate::topology::face::p4::find_vertex_sector(
+        k,
         b,
         face,
-        vertex,
-        curve,
-        uv_trim,
-        parameter,
-        other_parameter,
-        orientation,
-        tolerance,
-        use_uv_classification,
-    );
-    // UNPORTED(topology.face_p4): SmFace::FindVertexSector
-    Err(SolidError::unported(
-        "SmFace::FindVertexSector",
-        "topology.face_p4",
-    ))
+        crate::topology::face::p4::FindVertexSectorArgs {
+            vertex,
+            curve,
+            uv_curve: uv_trim,
+            param_at_vertex: parameter,
+            param_ivl_end: other_parameter,
+            orientation,
+            zone_tol_3d: tolerance,
+            validate_sector,
+            uv_space_okay: true,
+        },
+    )?;
+    Ok(sector.vertexuse)
 }
 
 fn remove_old_loop_vertices(b: &mut Brep, vu: VertexuseId) -> Result<()> {
@@ -1860,7 +1868,7 @@ fn redistribute_inner_loops(
         }
         let edges = lu::loop_edges(b, loop_)?;
         let (mut point, mut tolerance) = if let Some(edge) = edges.first() {
-            edge_sample(b, required(*edge, "inner loop has null edge")?)?
+            edge_sample(k, b, required(*edge, "inner loop has null edge")?)?
         } else {
             let vertices = lu::loop_vertices(b, loop_)?;
             let v = required(
@@ -1930,7 +1938,7 @@ fn redistribute_inner_loops(
                     } else {
                         let edge =
                             *required(other_edges.first(), "nested other face without edge")?;
-                        (point, tolerance) = edge_sample(b, edge)?;
+                        (point, tolerance) = edge_sample(k, b, edge)?;
                         classify_with_retries(
                             k,
                             b,
@@ -1976,10 +1984,10 @@ fn redistribute_inner_loops(
     Ok(())
 }
 
-fn edge_sample(b: &Brep, edge: EdgeId) -> Result<(Point3, f64)> {
+fn edge_sample(k: &Kernel, b: &Brep, edge: EdgeId) -> Result<(Point3, f64)> {
     let record = b.edge(edge)?;
     let point = required(record.curve.as_ref(), "sample edge without curve")?
-        .evaluate_point(record.interval.evaluate(0.34567))?;
+        .evaluate_point(k, record.interval.evaluate(0.34567))?;
     Ok((point, record.tolerance))
 }
 

@@ -20,6 +20,9 @@
 //! drawing and the compile-time false IO experiment are omitted. No recursion;
 //! connected-component extraction is bounded by the initial face count, with an
 //! error if removal fails to make progress.
+//! `PiecewiseMerge` ends on an error of its first `IntersectInsertRelate` (SolidCraft
+//! fix, tangency-labs/smlib af8db37, UB-242), where upstream ignores the status and
+//! goes on with half-imprinted B-reps.
 //! `BooleanLists` slices surface copies to base `SmSurface` upstream (WR-196); the missing
 //! base-only constructor branch is deferred to partial `surface.surface_p1`.
 //! Component-copy notifications use caller-owned records/attributes through
@@ -30,11 +33,14 @@
 //! Skip relations reuse `geom::tol::Relation` and its documented sorted-handle
 //! query order, rather than upstream's address-dependent hash order.
 //! `DependencyMerge` runs `ManifoldBoolean` through the `boolean.merge_p4` port
-//! on the engine members `SmMerge::SmMerge` builds; without one (the constructor
-//! is unported) it defers to `boolean.merge_p2` rather than default its state.
+//! on the engine members `SmMerge::SmMerge` (`boolean.merge_p2`) builds
+//! ([`MergeEngine::from_merge`]); called before `construct` it refuses rather than
+//! default the engine's state.
 
-use super::p1::MergeOptions;
+use super::p1::{MergeOptions, MergeState};
+use super::p2::MergeOperand;
 use super::p4::{BooleanKernels, KernelManifoldIntersector, ManifoldState};
+use crate::boolean::topology_intersector::p1::TopologyIntersector;
 use crate::error::{ignored, EntityRef, Result, SolidError};
 use crate::geom::a_object::BooleanOperation;
 use crate::geom::attribute::AttributeStore;
@@ -85,9 +91,9 @@ pub trait BooleanDriver {
     ) -> Result<Option<Self::Operand>>;
 }
 
-/// Dependency adapter used by API wrappers until the claimed constructor is
-/// integrated. `ManifoldBoolean` runs the `boolean.merge_p4` port on a constructed
-/// engine; a default adapter has none. No engine state or operand result is faked.
+/// The `SmMerge` the API wrappers drive: `construct` (`boolean.merge_p2`) builds the
+/// engine and `ManifoldBoolean` runs the `boolean.merge_p4` port on it. A default
+/// adapter has none until it is constructed. No engine state or operand result is faked.
 #[derive(Debug, Default)]
 pub struct DependencyMerge {
     engine: Option<MergeEngine>,
@@ -104,6 +110,38 @@ pub struct MergeEngine {
     pub state: ManifoldState,
     /// The attribute store the merge's notifications and region data use.
     pub attributes: AttributeStore,
+}
+
+impl MergeEngine {
+    /// The engine members of a merge built by `SmMerge(context, pBrep, pOtherBrep,
+    /// dApproxTol3d, dAngleTolRadians, pOptMergeOptions)` ([`MergeState::with_breps`]):
+    /// its options, tag and `m_bManifoldBoolean`, its intersector's (possibly computed)
+    /// tolerances and `m_bIntersectionLoopClosed`. The engine owns a fresh attribute
+    /// store, so its notification keys use namespace 0. The adapter always names both
+    /// operand slots; a null other B-rep is refused by `ManifoldBoolean` itself.
+    ///
+    /// # Errors
+    /// None in practice (namespace 0 is valid); those of [`KernelManifoldIntersector::new`].
+    pub fn from_merge(merge: &MergeState<TopologyIntersector<MergeOperand>>) -> Result<Self> {
+        let mut intersector = KernelManifoldIntersector::new(0)?;
+        intersector.merge.options = merge.options;
+        intersector.merge.tag_id = merge.tag_id;
+        intersector.merge.manifold_boolean = merge.manifold_boolean;
+        intersector.merge.intersection_loop_closed = merge.intersection_loop_closed;
+        intersector.set_intersection_tolerances(
+            merge.intersector.this_approx_tol_3d(),
+            merge.intersector.this_ang_tol_rad(),
+        );
+        let mut state = ManifoldState::default();
+        if let Some(closed) = merge.intersection_loop_closed {
+            state.intersection_loop_closed = closed;
+        }
+        Ok(Self {
+            intersector,
+            state,
+            attributes: AttributeStore::default(),
+        })
+    }
 }
 
 impl DependencyMerge {
@@ -143,15 +181,28 @@ impl BooleanDriver for DependencyMerge {
 
     fn construct(
         &mut self,
-        _k: &mut Kernel,
-        _primary: &mut Option<Brep>,
-        _other: &mut Option<Brep>,
-        _approx_tol: f64,
-        _angle_tol: f64,
-        _options: Option<&MergeOptions>,
+        k: &mut Kernel,
+        primary: &mut Option<Brep>,
+        other: &mut Option<Brep>,
+        approx_tol: f64,
+        angle_tol: f64,
+        options: Option<&MergeOptions>,
     ) -> Result<()> {
-        // UNPORTED(boolean.merge_p2): SmMerge::SmMerge
-        Err(SolidError::unported("SmMerge::SmMerge", "boolean.merge_p2"))
+        // SM_ASSERT(pBrep != NULL); the other B-rep may be null (the stitch methods).
+        let primary = primary.as_ref().ok_or(SolidError::invalid_input(
+            OP,
+            "SmMerge without primary B-rep",
+        ))?;
+        let merge = MergeState::with_breps(
+            k,
+            (primary, MergeOperand::Primary),
+            other.as_ref().map(|o| (o, MergeOperand::Other)),
+            approx_tol,
+            angle_tol,
+            options,
+        )?;
+        self.engine = Some(MergeEngine::from_merge(&merge)?);
+        Ok(())
     }
 
     /// The operands share `k` (one context). An assigned `rpResult` is the
@@ -167,9 +218,12 @@ impl BooleanDriver for DependencyMerge {
         operation: BooleanOperation,
         caller_lock: Option<&mut MarkLock>,
     ) -> Result<Option<Brep>> {
+        // A member function of a constructed SmMerge: `construct` comes first.
         let Some(engine) = self.engine.as_mut() else {
-            // UNPORTED(boolean.merge_p2): SmMerge::SmMerge
-            return Err(SolidError::unported("SmMerge::SmMerge", "boolean.merge_p2"));
+            return Err(SolidError::invalid_input(
+                OP,
+                "ManifoldBoolean before SmMerge::SmMerge",
+            ));
         };
         engine.intersector.set_intersect_lamina_edges(*lamina_edges);
         let mut kernels = BooleanKernels {
@@ -341,7 +395,8 @@ pub trait PiecewiseAccess: BooleanDriver {
     fn set_operands(&mut self, primary: Option<Self::Operand>, other: Option<Self::Operand>);
     /// `GetSurfaces`, in B-rep list order.
     fn surfaces(&self, brep: Self::Operand) -> Result<Vec<Self::Surface>>;
-    /// `IntersectInsertRelate()`, whose ordinary status upstream ignores.
+    /// `IntersectInsertRelate()`. Its error ends the merge (SolidCraft fix
+    /// tangency-labs/smlib af8db37; upstream ignores the status).
     fn intersect_insert_relate(&mut self, k: &mut Kernel) -> Result<()>;
     /// `m_pBToO->RemoveAll(); m_pOToB->RemoveAll()`.
     fn clear_relationships(&mut self) -> Result<()>;
@@ -396,7 +451,10 @@ where
     let original_other = original_other.ok_or_else(|| SolidError::null_pointer(OP))?;
     // The first surface query is observable even though upstream overwrites it.
     let _ = driver.surfaces(original_other)?;
-    ignored(driver.intersect_insert_relate(k))?;
+    // SER: a failed IntersectInsertRelate (a failed imprint leaves both B-reps
+    // half edited) ends the merge (SolidCraft change, tangency-labs/smlib af8db37;
+    // upstream ignores its status).
+    driver.intersect_insert_relate(k)?;
     let surfaces = driver.surfaces(original_other)?;
     driver.clear_relationships()?;
     if let Some(pairs) = skip_pairs {
@@ -829,6 +887,7 @@ mod tests {
     struct Trace {
         pairs: Vec<(Option<i64>, Option<i64>)>,
         fail: bool,
+        unported: bool,
         observed: Option<(bool, u64, BooleanOperation)>,
     }
     impl BooleanDriver for Trace {
@@ -863,10 +922,81 @@ mod tests {
             if self.fail {
                 return Err(SolidError::invalid_input(OP, "test driver failure"));
             }
+            if self.unported {
+                return Err(SolidError::unported("test driver", "test.unit"));
+            }
             let a = a.take().unwrap();
             let b = b.take().unwrap();
             Ok(Some(a - b))
         }
+    }
+
+    /// Only the calls before and at `IntersectInsertRelate` are reachable: it fails.
+    impl PiecewiseAccess for Trace {
+        type Surface = i64;
+        fn operands(&self) -> (Option<i64>, Option<i64>) {
+            (Some(1), Some(2))
+        }
+        fn set_operands(&mut self, _primary: Option<i64>, _other: Option<i64>) {
+            unreachable!("set_operands after a failed IntersectInsertRelate")
+        }
+        fn surfaces(&self, _brep: i64) -> Result<Vec<i64>> {
+            Ok(vec![7])
+        }
+        fn intersect_insert_relate(&mut self, _k: &mut Kernel) -> Result<()> {
+            self.pairs.push((None, None));
+            Err(SolidError::sm_err("test::imprint"))
+        }
+        fn clear_relationships(&mut self) -> Result<()> {
+            unreachable!("clear_relationships after a failed IntersectInsertRelate")
+        }
+        fn set_subset(&mut self, _surfaces: &[i64]) {
+            unreachable!("set_subset after a failed IntersectInsertRelate")
+        }
+        fn surface_map(&mut self, _surface: i64, _only_if_missing: bool) -> Result<()> {
+            unreachable!("surface_map after a failed IntersectInsertRelate")
+        }
+        fn surface_map_users(&self, _surface: i64) -> Result<Option<Vec<i64>>> {
+            unreachable!("surface_map_users after a failed IntersectInsertRelate")
+        }
+        fn new_face_brep(&mut self, _k: &mut Kernel, _source: i64) -> Result<i64> {
+            unreachable!("new_face_brep after a failed IntersectInsertRelate")
+        }
+        fn manifold_flag(&self) -> bool {
+            unreachable!("manifold_flag after a failed IntersectInsertRelate")
+        }
+        fn set_controls(&mut self, _manifold: bool, _wires: bool, _lamina: u64) {
+            unreachable!("set_controls after a failed IntersectInsertRelate")
+        }
+        fn process_wires(&mut self, _k: &mut Kernel, _lock: &MarkLock) -> Result<()> {
+            unreachable!("process_wires after a failed IntersectInsertRelate")
+        }
+        fn release_marks(&mut self, _k: &mut Kernel, _lock: &mut MarkLock) -> Result<()> {
+            unreachable!("release_marks after a failed IntersectInsertRelate")
+        }
+        fn register_empty_ssi(&mut self, _skip: i64, _user: i64) -> Result<()> {
+            unreachable!("register_empty_ssi after a failed IntersectInsertRelate")
+        }
+        fn clear_existing_ssi(&mut self) -> Result<()> {
+            unreachable!("clear_existing_ssi after a failed IntersectInsertRelate")
+        }
+        fn notify_pre_edit(&mut self, _k: &mut Kernel, _primary: i64) -> Result<()> {
+            unreachable!("notify_pre_edit after a failed IntersectInsertRelate")
+        }
+        fn delete_other(&mut self, _k: &mut Kernel) -> Result<()> {
+            unreachable!("delete_other after a failed IntersectInsertRelate")
+        }
+    }
+
+    #[test]
+    fn piecewise_merge_ends_on_a_failed_intersect_insert_relate() {
+        // af8db37 (#372): a failed imprint leaves both B-reps half edited; the merge
+        // went on to relate, classify and merge them
+        let mut k = Kernel::default();
+        let mut driver = Trace::default();
+        let error = piecewise_merge(&mut k, &mut driver, None, false, false).unwrap_err();
+        assert!(matches!(error, SolidError::Upstream { .. }), "{error:?}");
+        assert_eq!(driver.pairs, [(None, None)]);
     }
     #[test]
     fn surface_list_requires_native_empty_brep_constructor_before_surface_copy() {
@@ -930,10 +1060,27 @@ mod tests {
             }
         ));
         assert_eq!(input, [None, None, Some(3)]);
+        // an Unported failure passes through unmapped
+        let mut driver = Trace {
+            unported: true,
+            ..Trace::default()
+        };
+        let mut input = vec![Some(1), Some(2)];
+        let error = boolean_trees(&mut k, &mut input, &[0, 1, -1], None, &mut driver).unwrap_err();
+        assert!(error.is_unported());
+        // the real engine's ordinary failure (empty operands) is mapped too
         let mut driver = DependencyMerge::default();
         let mut input = vec![Some(Brep::new()), Some(Brep::new())];
         let error = boolean_trees(&mut k, &mut input, &[0, 1, -1], None, &mut driver).unwrap_err();
-        assert!(error.is_unported());
+        assert!(matches!(
+            error,
+            SolidError::Upstream {
+                code: crate::error::SM_ERR,
+                ..
+            }
+        ));
+        assert_eq!(input.len(), 2);
+        assert!(input.iter().all(Option::is_none));
     }
     #[test]
     fn dependency_merge_runs_manifold_boolean_on_a_constructed_engine() {
@@ -953,13 +1100,7 @@ mod tests {
             (result, primary.is_some(), other.is_some())
         };
         let (result, ..) = call(&mut DependencyMerge::default(), &mut k, Some(Brep::new()));
-        assert!(matches!(
-            result,
-            Err(SolidError::Unported {
-                upstream: "SmMerge::SmMerge",
-                unit: "boolean.merge_p2",
-            })
-        ));
+        assert!(matches!(result, Err(SolidError::InvalidInput { .. })));
         assert!(DependencyMerge::default().into_engine().is_none());
         // Retained state the owner moved in, and its options, survive the calls.
         let mut intersector = KernelManifoldIntersector::new(0).unwrap();
@@ -992,6 +1133,42 @@ mod tests {
         assert_eq!(engine.state.other_components.len(), 1);
         // the run starts its intersection loop state afresh
         assert!(engine.state.intersection_loop_closed);
+    }
+    #[test]
+    fn construct_builds_the_engine_manifold_boolean_runs_on() {
+        let mut k = Kernel::default();
+        let options = MergeOptions::new(true, false, false, true, true);
+        let mut driver = DependencyMerge::default();
+        let mut primary = Some(Brep::new());
+        let mut other = Some(Brep::new());
+        driver
+            .construct(&mut k, &mut primary, &mut other, 1e-3, 0.0, Some(&options))
+            .unwrap();
+        let engine = driver.engine().unwrap();
+        assert_eq!(engine.intersector.merge.options, options);
+        assert_eq!(engine.intersector.merge.manifold_boolean, Some(true));
+        assert_eq!(
+            engine.intersector.merge.intersection_loop_closed,
+            Some(true)
+        );
+        assert!(engine.state.intersection_loop_closed);
+        // The constructed engine runs merge_p4's ManifoldBoolean to completion on the
+        // empty operands.
+        let result = non_manifold_boolean(
+            &mut k,
+            &mut driver,
+            &mut primary,
+            &mut other,
+            &mut true,
+            &mut 0,
+            BooleanOperation::Union,
+        );
+        assert!(result.is_ok(), "{result:?}");
+        let mut none = None;
+        let error = DependencyMerge::default()
+            .construct(&mut k, &mut none, &mut other, 1e-3, 0.0, None)
+            .unwrap_err();
+        assert!(matches!(error, SolidError::InvalidInput { .. }));
     }
     #[test]
     fn nonmanifold_restores_flag_on_failure_but_retains_lamina_mode() {

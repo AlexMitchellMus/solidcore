@@ -115,7 +115,7 @@ fn id<I: ArenaId>(v: Option<I>) -> i64 {
 /// One kind's records in first-seen order of [`Canon::of`] and each arena index's
 /// position in it.
 pub(crate) struct Order<I> {
-    items: Vec<I>,
+    pub(crate) items: Vec<I>,
     index: BTreeMap<u32, i64>,
 }
 impl<I: ArenaId + Copy> Order<I> {
@@ -165,8 +165,26 @@ pub(crate) struct Canon {
     pub(crate) vertices: Order<VertexId>,
 }
 impl Canon {
-    #[allow(clippy::too_many_lines)]
+    /// Every record: the walk from the B-rep's regions and edge list, then the
+    /// unreachable records in arena order (and the walk from them).
     pub(crate) fn of(b: &Brep) -> Self {
+        Self::walk(b, true, false)
+    }
+
+    /// Only the records reachable from the B-rep's regions and edge list, in the order
+    /// of [`Canon::of`] (an arena keeps the records an op deleted, reset).
+    pub(crate) fn reachable(b: &Brep) -> Self {
+        Self::walk(b, false, false)
+    }
+
+    /// [`Canon::of`] after seeding the edge and vertex lists in list order, as
+    /// `sc_merge_fixture.h`'s `native_graph` (`GetEdges`, `GetVertices`, then `walk`).
+    pub(crate) fn of_native(b: &Brep) -> Self {
+        Self::walk(b, true, true)
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn walk(b: &Brep, unreachable: bool, native: bool) -> Self {
         let mut g = Self {
             regions: Order::new(),
             shells: Order::new(),
@@ -179,6 +197,14 @@ impl Canon {
             vertexuses: Order::new(),
             vertices: Order::new(),
         };
+        if native {
+            for &e in b.edge_list() {
+                g.edges.add(Some(e));
+            }
+            for &v in b.vertex_list() {
+                g.vertices.add(Some(v));
+            }
+        }
         for (id, r) in b.regions().iter() {
             if r.in_brep {
                 g.regions.add(Some(id));
@@ -320,7 +346,7 @@ impl Canon {
                 l += 1;
                 more = true;
             }
-            if !more {
+            if !more && unreachable {
                 // unreachable records, in arena order, then walk on from them
                 let before = g.len();
                 for (id, _) in b.regions().iter() {
@@ -373,21 +399,53 @@ impl Canon {
 }
 /// The B-rep's records and links in [`Canon`] numbering, after `record` (which the
 /// caller has already put in that numbering, see [`Canon::of`]).
-#[allow(clippy::too_many_lines)]
 pub(crate) fn graph(b: &Brep, record: Vec<f64>) -> Output {
-    let c = Canon::of(b);
-    let mut ints = vec![
-        b.regions().len() as i64,
-        b.shells().len() as i64,
-        b.faceuses().len() as i64,
-        b.faces().len() as i64,
-        b.loopuses().len() as i64,
-        b.loops().len() as i64,
-        b.edgeuses().len() as i64,
-        b.edges().len() as i64,
-        b.vertexuses().len() as i64,
-        b.vertices().len() as i64,
-    ];
+    graph_counted(b, record, false)
+}
+
+/// [`graph`] with the record counts of the reachable topology ([`Canon`]) instead of
+/// the arena lengths: for ops that delete records, which an arena only resets (the C++
+/// side exports a fresh walk, so its counts are the reachable ones).
+pub(crate) fn graph_reachable(b: &Brep, record: Vec<f64>) -> Output {
+    graph_counted(b, record, true)
+}
+
+#[allow(clippy::too_many_lines)]
+fn graph_counted(b: &Brep, record: Vec<f64>, reachable: bool) -> Output {
+    let c = if reachable {
+        Canon::reachable(b)
+    } else {
+        Canon::of(b)
+    };
+    let mut ints = if reachable {
+        [
+            c.regions.items.len(),
+            c.shells.items.len(),
+            c.faceuses.items.len(),
+            c.faces.items.len(),
+            c.loopuses.items.len(),
+            c.loops.items.len(),
+            c.edgeuses.items.len(),
+            c.edges.items.len(),
+            c.vertexuses.items.len(),
+            c.vertices.items.len(),
+        ]
+        .map(|n| n as i64)
+        .to_vec()
+    } else {
+        vec![
+            b.regions().len() as i64,
+            b.shells().len() as i64,
+            b.faceuses().len() as i64,
+            b.faces().len() as i64,
+            b.loopuses().len() as i64,
+            b.loops().len() as i64,
+            b.edgeuses().len() as i64,
+            b.edges().len() as i64,
+            b.vertexuses().len() as i64,
+            b.vertices().len() as i64,
+        ]
+    };
     let regions: Vec<_> = c
         .regions
         .items
@@ -937,8 +995,10 @@ impl UnitDiff for Runner {
             return Ok(Output::new().values("record", control(i.args)));
         }
         let (path, block) = block(&i)?;
-        let raw = fixture::eval(fixture::Op::Export, &path, &block)
-            .map_err(|e| harness(e.to_string()))?;
+        let raw = crate::export_memo::export("topology_vertexuse", &[&path], &block, || {
+            fixture::eval(fixture::Op::Export, &path, &block)
+        })
+        .map_err(|e| harness(e.to_string()))?;
         let (mut b, exact) = import(&raw)?;
         // Op 5 without mates classifies points against `b` (SmBrep::Point3DClassify;
         // with mates every edge is mated, so the radial sectors decide): a face surface
@@ -953,9 +1013,17 @@ impl UnitDiff for Runner {
             ));
         }
         let (other_path, other_block) = other_block(&i)?;
-        let other_raw = fixture::eval(fixture::Op::Export, &other_path, &other_block)
+        let other_raw =
+            crate::export_memo::export("topology_vertexuse", &[&other_path], &other_block, || {
+                fixture::eval(fixture::Op::Export, &other_path, &other_block)
+            })
             .map_err(|e| harness(e.to_string()))?;
         let (other, _) = import(&other_raw)?;
+        // the FFI's selection guard: the selectors are taken modulo these counts
+        let counts = |raw: &[f64]| fixture::counts(raw).ok_or_else(|| harness("fixture rejected"));
+        if !ffi::selection_valid(i.op, &counts(&raw)?, &counts(&other_raw)?) {
+            return Err(harness("fixture lacks selected entity"));
+        }
         match run_rust(&i, &mut b, &other) {
             Ok(v) => Ok(graph(&b, v)),
             Err(e) => Ok(Output::unported(&e).unwrap_or_else(|| {
@@ -998,5 +1066,28 @@ impl UnitDiff for Runner {
             seeds: ctx.seeds.max(96),
         };
         crate::runner::default_cases(self, &ctx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::case::CaseSource;
+
+    /// Fuzz 30000 (fuzz03460): op 2 on a wire, which has no face to select. The FFI
+    /// rejects the fixture; the Rust side must refuse it too instead of taking the
+    /// selector modulo zero faces.
+    #[test]
+    fn op_without_selected_entity_is_refused_not_a_panic() {
+        let case = Case {
+            unit: "boolean.merge_p1".into(),
+            name: "fuzz03460".into(),
+            source: CaseSource::Inline,
+            inputs: json!({"args":[2,1,0],"brep":{"curve":{"cpts":[[0,0,0,1],[4,0,0,1]],
+                "dim":3,"p":1,"u":[0,0,1,1]},"kind":"wire","t0":0.125,"t1":0.875},
+                "op":2,"tolerances":[0.001,1.0]}),
+        };
+        let e = Runner.run_rust(&case).unwrap_err();
+        assert!(e.to_string().contains("lacks selected entity"), "{e}");
     }
 }

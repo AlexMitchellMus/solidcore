@@ -171,8 +171,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::MergeEdge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::MakeWireEdge",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "op1-kind2-contexts0",
@@ -183,8 +183,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::MergeEdge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::MakeWireEdge",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "op1-kind2-contexts1",
@@ -411,8 +411,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::MergeEdge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::MakeWireEdge",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "op4-kind2-contexts0",
@@ -423,8 +423,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::MergeEdge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::MakeWireEdge",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "op4-kind2-contexts1",
@@ -491,8 +491,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::MergeEdge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::MakeWireEdge",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "op5-kind2-contexts0",
@@ -503,8 +503,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmMerge::MergeEdge",
-        "unit": "boolean.merge_p2"
+        "symbol": "SmBrep::MakeWireEdge",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "op5-kind2-contexts1",
@@ -3359,9 +3359,9 @@
   "cases_rejected": 3,
   "cases_total": 311,
   "deferred_by_unit": {
-    "boolean.merge_p2": 6,
     "intersect.curve_class_p2": 81,
     "topology.brep_p1": 19,
+    "topology.brep_p3": 6,
     "topology.brep_p4": 4,
     "topology.face_p3": 99
   },

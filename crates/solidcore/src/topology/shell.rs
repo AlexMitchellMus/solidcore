@@ -21,6 +21,7 @@
 //! | [`ray_fire`] | `SmShell::RayFire` (partial output state retained) |
 //! | [`transfer_children`] | `SmShell::TransferChildrenTo` |
 //! | [`move_faceuse`] | `SmOwningTopology::Remove` + `PostInsert` of a face use (typed list) |
+//! | [`post_insert_faceuse`] | `SmOwningTopology::PostInsert` of a new face use (typed list) |
 //! | [`shell_is_degenerate`], [`region_is_degenerate`] | `IsDegenerate` (native default tolerance) |
 //! | `shell_bounds_for_degeneracy`, `region_bounds_for_degeneracy` | default-tight `CalculateBoundingBox` (`query::face::p1`), status kept beside the partial box |
 //! | [`faceuse_sibling_links`] | typed `SmTopology::GetNext` / `GetLast` for face uses |
@@ -56,6 +57,7 @@ use crate::error::{Result, SolidError};
 use crate::geom::context::{with_mark_lock, ALL_MARKS};
 use crate::geom::object::Shape;
 use crate::kernel::Kernel;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::topology::proto_topology::p1::owning_topology;
 use crate::topology::topology_traverser::{Entity, Marks};
 use crate::topology::{
@@ -663,6 +665,32 @@ pub fn move_faceuse(brep: &mut Brep, faceuse: FaceuseId, recipient: ShellId) -> 
     refresh_faceuse_sibling_links(brep, recipient)
 }
 
+/// `pShell->PostInsert(pFU)` (`SmOwningTopology::PostInsert`, inline in
+/// `SmOwningTopology.h`) of a face use not on any list: it joins the tail of the
+/// shell's face-use list (a NULL head makes it the head) and gets the shell as owner.
+/// Literal sibling links of the members, when any are held, are refreshed.
+///
+/// # Errors
+/// A shell holding wire/vertex members, or dangling ids.
+pub fn post_insert_faceuse(brep: &mut Brep, shell: ShellId, faceuse: FaceuseId) -> Result<()> {
+    brep.faceuse(faceuse)?;
+    let members = &mut brep.shell_mut(shell)?.members;
+    match members {
+        ShellMembers::Empty => *members = ShellMembers::Faceuses(vec![faceuse]),
+        ShellMembers::Faceuses(list) => list.push(faceuse),
+        _ => return Err(invalid_members()),
+    }
+    brep.faceuse_mut(faceuse)?.shell = Some(shell);
+    let mut linked = false;
+    for member in brep.shell(shell)?.get_faceuses()? {
+        linked |= member != faceuse && brep.faceuse(member)?.sibling_links.is_some();
+    }
+    if linked {
+        refresh_faceuse_sibling_links(brep, shell)?;
+    }
+    Ok(())
+}
+
 fn clear_shell_members(brep: &mut Brep, id: ShellId) -> Result<()> {
     let shell = brep.shell_mut(id)?;
     shell.shell_type = ShellType::Unknown;
@@ -951,13 +979,9 @@ where
         } else {
             shell_brep(brep, shell_id)?.ok_or(SolidError::null_pointer(OP))?;
             // pBrep->CalculateBoundingBox(sBBox) (unit `query.brep`, default arguments)
-            crate::query::brep::calculate_bounding_box(
-                kernel,
-                brep,
-                crate::query::brep::BoundingBoxOptions::default(),
-            )?
-            .sphere_bound()
-            .radius
+            qbrep::calculate_bounding_box(kernel, brep, BoundingBoxOptions::default())?
+                .sphere_bound()
+                .radius
         };
         let end = input.start + input.direction * (3.01 * radius);
         let direction = (end - input.start)

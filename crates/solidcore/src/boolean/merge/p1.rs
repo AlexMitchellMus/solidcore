@@ -46,7 +46,7 @@ use crate::intersect::point_class::{PointClassType, PointClassification};
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3};
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
-use crate::query::brep::BrepQuery;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions, BrepQuery};
 use crate::topology::edgeuse::p1 as eu;
 use crate::topology::shell;
 use crate::topology::topology::{self as topo, Topology};
@@ -114,6 +114,13 @@ pub struct MergeState<T> {
     pub options: MergeOptions,
     /// `m_lTagID`, initially zero.
     pub tag_id: i64,
+    /// `m_bManifoldBoolean` (try fixing non-manifold cases): `TRUE` from the B-rep
+    /// constructor; `None` from the context-only one, which leaves it uninitialised
+    /// (a reader must treat `None` as upstream's indeterminate value).
+    pub manifold_boolean: Option<bool>,
+    /// `m_bIntersectionLoopClosed` (output status: `FALSE` when the result has an
+    /// open intersection loop): as [`MergeState::manifold_boolean`].
+    pub intersection_loop_closed: Option<bool>,
     /// `m_vTI`; its construction is the intersector owner's responsibility.
     pub intersector: T,
 }
@@ -127,6 +134,9 @@ impl<T> MergeState<T> {
         Self {
             options: MergeOptions::default(),
             tag_id: 0,
+            // not in the context-only constructor's initialiser list
+            manifold_boolean: None,
+            intersection_loop_closed: None,
             intersector,
         }
     }
@@ -247,7 +257,8 @@ pub fn find_brep_region_of_other_face(
             .curve
             .as_ref()
             .ok_or_else(|| SolidError::null_pointer(OP))?;
-        let Some(point) = ignore_failure(curve.evaluate_point(edge.interval.evaluate(0.456789)))?
+        let Some(point) =
+            ignore_failure(curve.evaluate_point(k, edge.interval.evaluate(0.456789)))?
         else {
             continue;
         };
@@ -723,8 +734,18 @@ pub fn temporary_brep_transform(
     other: &Brep,
 ) -> Result<TemporaryBrepShift> {
     // get parts bbox
-    let bbox1 = ignore_failure(brep_bounding_box(primary_kernel, brep))?.unwrap_or_default();
-    let bbox2 = ignore_failure(brep_bounding_box(other_kernel, other))?.unwrap_or_default();
+    let bbox1 = ignore_failure(qbrep::calculate_bounding_box(
+        primary_kernel,
+        brep,
+        BoundingBoxOptions::default(),
+    ))?
+    .unwrap_or_default();
+    let bbox2 = ignore_failure(qbrep::calculate_bounding_box(
+        other_kernel,
+        other,
+        BoundingBoxOptions::default(),
+    ))?
+    .unwrap_or_default();
     let bbox = bbox1.union(&bbox2);
 
     // when bbox is very large - translate its center to the origin
@@ -771,15 +792,6 @@ impl TemporaryBrepShift {
             inverse: Some(inverse),
         })
     }
-}
-
-/// `SmBrep::CalculateBoundingBox(rBox)` (unit `query.brep`, default arguments).
-fn brep_bounding_box(k: &Kernel, b: &Brep) -> Result<crate::geom::extent3d::Extent3d> {
-    crate::query::brep::calculate_bounding_box(
-        k,
-        b,
-        crate::query::brep::BoundingBoxOptions::default(),
-    )
 }
 
 #[cfg(test)]

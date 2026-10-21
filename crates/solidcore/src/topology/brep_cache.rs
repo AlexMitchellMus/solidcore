@@ -33,6 +33,7 @@ use crate::geom::tree::{NodeGeomType, Tree, TreeOwner};
 use crate::kernel::Kernel;
 use crate::math::EFF_ZERO;
 use crate::nurbs::b_spline_curve::BoundingBoxRequest;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::query::poly::{PolyBrep, PolyEdgeId, PolyFaceId, PolyVertexId};
 use crate::topology::{edge, Brep, EdgeId, FaceId, VertexId};
 
@@ -166,7 +167,7 @@ impl<O: Copy + PartialEq> BrepCache<O> {
         }
         let mut bbox = match source {
             CacheSource::Brep(b) => {
-                let mut bbox = brep_bounding_box(k, b)?;
+                let mut bbox = qbrep::calculate_bounding_box(k, b, BoundingBoxOptions::default())?;
                 bbox.expand_absolute(b.tolerance() * 100.0);
                 let size = bbox.size();
                 bbox.add_point(bbox.max() + 0.15 * size);
@@ -435,15 +436,6 @@ fn resize_edge(
     Ok(())
 }
 
-/// `SmBrep::CalculateBoundingBox(rBox)` (unit `query.brep`, default arguments).
-fn brep_bounding_box(k: &Kernel, b: &Brep) -> Result<Extent3d> {
-    crate::query::brep::calculate_bounding_box(
-        k,
-        b,
-        crate::query::brep::BoundingBoxOptions::default(),
-    )
-}
-
 // (SmBrep::GetVertices / GetEdges / GetFaces are wired to topology::brep::p1)
 fn brep_vertices(b: &Brep) -> Result<Vec<VertexId>> {
     crate::topology::brep::p1::vertices(b, None)
@@ -462,9 +454,7 @@ fn face_bounding_box(k: &Kernel, b: &Brep, f: FaceId) -> Result<Extent3d> {
 }
 
 fn face_edges(b: &Brep, f: FaceId) -> Result<Vec<EdgeId>> {
-    b.face(f)?;
-    // UNPORTED(topology.face_p4): SmFace::GetEdges
-    Err(SolidError::unported("SmFace::GetEdges", "topology.face_p4"))
+    crate::topology::face::p4::edges(b, f, None, false, None)
 }
 
 /// Builds a new cache for `SmSAGObject::CacheMakeOrValidate`. The source geometry

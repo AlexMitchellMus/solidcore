@@ -3232,8 +3232,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SmSurfOfExtrusion face surface exported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "Mouse_swap_face_uv_0_2_0",
@@ -4468,16 +4468,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "Endcap_swap_face_uv_0_2_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#222 (upstream TestFiles/pt_TestFiles/Endcap.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 250
     },
     {
       "max_rel_err": 0.0,
@@ -5649,8 +5645,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SmCone / SmCylinder face surface exported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_swap_face_uv_0_2_0",
@@ -6838,8 +6834,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SmCone / SmCylinder face surface exported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "cone_swap_face_uv_0_2_0",
@@ -8075,16 +8071,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "disk_swap_face_uv_0_2_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#639 (upstream TestFiles/pt_TestFiles/disk.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 223
     },
     {
       "max_rel_err": 0.0,
@@ -9267,16 +9259,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "ellips_ts2_swap_face_uv_0_2_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#778 (upstream TestFiles/pt_TestFiles/ellips_ts2.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 1818
     },
     {
       "max_rel_err": 0.0,
@@ -10435,16 +10423,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "plane_circ_swap_face_uv_0_2_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#917 (upstream TestFiles/pt_TestFiles/plane_circ.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 150
     },
     {
       "max_rel_err": 0.0,
@@ -11619,16 +11603,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "plane_square_swap_face_uv_0_2_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#1056 (upstream TestFiles/pt_TestFiles/plane_square.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 369
     },
     {
       "max_rel_err": 0.0,
@@ -12808,8 +12788,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SmSphere face surface exported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "sphere_swap_face_uv_0_2_0",
@@ -14037,8 +14017,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SmSurfOfExtrusion face surface exported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "surf_extrude_swap_face_uv_0_2_0",
@@ -15273,8 +15253,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "face surface of a kind the shared export flattens to a B-spline",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_swap_face_uv_0_2_0",
@@ -16513,8 +16493,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SmSphere face surface exported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_swap_face_uv_0_2_0",
@@ -17749,8 +17729,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "face surface of a kind the shared export flattens to a B-spline",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "torus_swap_face_uv_0_2_0",
@@ -18990,8 +18970,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "face surface of a kind the shared export flattens to a B-spline",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_swap_face_uv_0_2_0",
@@ -20231,8 +20211,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "face surface of a kind the shared export flattens to a B-spline",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_swap_face_uv_0_2_0",
@@ -22928,8 +22908,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "face surface of a kind the shared export flattens to a B-spline",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "gen0015",
@@ -22940,20 +22920,19 @@
     }
   ],
   "cases_both_errored": 45,
-  "cases_deferred": 399,
+  "cases_deferred": 394,
   "cases_failed": 0,
-  "cases_passed": 2212,
+  "cases_passed": 2217,
   "cases_rejected": 16,
   "cases_total": 2627,
   "deferred_by_unit": {
     "curve.crv_on_surf": 4,
     "geom.tol": 37,
-    "harness:analytic-geometry-export": 217,
+    "harness:analytic-geometry-export": 228,
     "intersect.surface_drop_lib_p3": 10,
     "nurbs.b_spline_surface_n_lib_p2": 5,
     "topology.face_p2": 89,
-    "topology.face_p3": 21,
-    "topology.face_p4": 16
+    "topology.face_p3": 21
   },
   "max_rel_err": 0.0,
   "pass": true,

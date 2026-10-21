@@ -4803,8 +4803,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetUpwardLoopuses",
-        "unit": "topology.face_p4"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "region_order_gather_Mouse.smb_1",
@@ -4815,8 +4815,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetUpwardLoopuses",
-        "unit": "topology.face_p4"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "region_order_gather_Mouse.smb_2",
@@ -4843,8 +4843,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetUpwardLoopuses",
-        "unit": "topology.face_p4"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "region_order_gather_box_with_large_fillet.smb_1",
@@ -4855,8 +4855,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetUpwardLoopuses",
-        "unit": "topology.face_p4"
+        "symbol": "SmCurveClassification::ReSet",
+        "unit": "intersect.curve_class_p2"
       },
       "max_rel_err": 0.0,
       "name": "region_order_gather_box_with_large_fillet.smb_2",
@@ -7354,7 +7354,7 @@
   "cases_total": 911,
   "deferred_by_unit": {
     "harness:shell-ray-world": 8,
-    "topology.face_p4": 4
+    "intersect.curve_class_p2": 4
   },
   "max_rel_err": 0.0,
   "pass": true,
