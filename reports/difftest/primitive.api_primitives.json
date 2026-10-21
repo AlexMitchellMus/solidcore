@@ -130,21 +130,17 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "pyramid_len_nan",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/primitive.api_primitives/edges.json#16",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "pyramid_h_nan",
@@ -282,21 +278,17 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "pyramid_len_inf",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/primitive.api_primitives/edges.json#34",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "pyramid_h_inf",
@@ -614,21 +606,17 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "pyramid_len_effzero",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/primitive.api_primitives/edges.json#74",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "pyramid_h_effzero",
@@ -790,21 +778,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "pyramid_len_above_effzero",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/primitive.api_primitives/edges.json#92",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "pyramid_h_above_effzero",
@@ -963,8 +947,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "pyramid_len_huge",
@@ -975,8 +959,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "pyramid_h_huge",
@@ -1131,8 +1115,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "pyramid_len_above_big",
@@ -1143,8 +1127,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "pyramid_h_above_big",
@@ -1311,8 +1295,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "pyramid_h_tiny",
@@ -1687,8 +1671,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "pyramid_valid",
@@ -1698,16 +1682,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "pyramid_nan_origin",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/primitive.api_primitives/edges.json#198",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -1879,8 +1859,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "rv_pyr_o0",
@@ -1922,16 +1902,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "rv_pyr_onan",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/primitive.api_primitives/review_adversarial.json#10",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -1966,16 +1942,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "rv_pyr_oinf",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/primitive.api_primitives/review_adversarial.json#15",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -2010,16 +1982,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "rv_pyr_oninf",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/primitive.api_primitives/review_adversarial.json#20",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -2159,8 +2127,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "rv_pyr_otiny",
@@ -2211,8 +2179,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "rv_pyr_onegz",
@@ -2542,21 +2510,17 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "rv_pyr_l_inf",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/primitive.api_primitives/review_adversarial.json#85",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "rv_pyr_h_inf",
@@ -2726,21 +2690,17 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "rv_pyr_l_huge",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/primitive.api_primitives/review_adversarial.json#107",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "rv_pyr_h_huge",
@@ -2814,21 +2774,17 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "rv_pyr_l_max",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/primitive.api_primitives/review_adversarial.json#117",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "rv_pyr_h_max",
@@ -2919,8 +2875,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "rv_pyr_h_sub",
@@ -3002,21 +2958,17 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "rv_pyr_l_eff",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/primitive.api_primitives/review_adversarial.json#139",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "rv_pyr_h_eff",
@@ -3098,21 +3050,17 @@
       "values_compared": 479
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "rv_pyr_l_effp",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/primitive.api_primitives/review_adversarial.json#150",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "rv_pyr_h_effp",
@@ -3195,8 +3143,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "rv_pyr_l_one",
@@ -3207,8 +3155,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "rv_pyr_h_one",
@@ -3291,8 +3239,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "rv_pyr_l_big18",
@@ -3303,8 +3251,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "rv_pyr_h_big18",
@@ -3387,8 +3335,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "rv_pyr_l_big18p",
@@ -3399,8 +3347,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "rv_pyr_h_big18p",
@@ -3578,21 +3526,17 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "rv_pyr_l_1e-10",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/primitive.api_primitives/review_adversarial.json#206",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "rv_pyr_h_tiny",
@@ -4575,8 +4519,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmTrimmingTools::FindOuterLoops",
+        "unit": "cpp-guard:ub-119"
       },
       "max_rel_err": 0.0,
       "name": "gen0042",
@@ -4639,8 +4583,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0048",
@@ -4694,16 +4638,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "gen0053",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=18138518039855534772",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
@@ -6887,8 +6827,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0286",
@@ -7118,16 +7058,12 @@
       "values_compared": 153
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "gen0312",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=18138518039855535031",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
@@ -7314,16 +7250,12 @@
       "values_compared": 219
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "gen0332",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=18138518039855535051",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -7699,8 +7631,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmTrimmingTools::FindOuterLoops",
+        "unit": "cpp-guard:ub-119"
       },
       "max_rel_err": 0.0,
       "name": "gen0374",
@@ -7839,8 +7771,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0390",
@@ -8590,16 +8522,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "gen0470",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=18138518039855535189",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
@@ -8786,16 +8714,12 @@
       "values_compared": 153
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "gen0491",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=18138518039855535210",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -8995,8 +8919,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0514",
@@ -9006,16 +8930,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "gen0515",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=18138518039855535234",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -9571,8 +9491,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0576",
@@ -10063,8 +9983,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0628",
@@ -10515,8 +10435,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0679",
@@ -10886,16 +10806,12 @@
       "values_compared": 153
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "gen0718",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=18138518039855535437",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -10922,16 +10838,12 @@
       "values_compared": 153
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "gen0722",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=18138518039855535441",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -10983,8 +10895,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0728",
@@ -11159,8 +11071,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0748",
@@ -11798,16 +11710,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "gen0820",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=18138518039855535539",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -12538,16 +12446,12 @@
       "values_compared": 479
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "gen0903",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=18138518039855535622",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -12903,8 +12807,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0942",
@@ -13083,8 +12987,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0961",
@@ -13262,16 +13166,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "gen0979",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=18138518039855535698",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -13451,8 +13351,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0999",
@@ -13811,8 +13711,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1040",
@@ -14147,8 +14047,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1078",
@@ -14238,16 +14138,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "gen1088",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=18138518039855535807",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -14423,8 +14319,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1108",
@@ -14590,16 +14486,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "gen1125",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=18138518039855535844",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
@@ -14747,8 +14639,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1142",
@@ -15279,8 +15171,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1201",
@@ -15375,8 +15267,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmTrimmingTools::FindOuterLoops",
+        "unit": "cpp-guard:ub-119"
       },
       "max_rel_err": 0.0,
       "name": "gen1211",
@@ -15467,8 +15359,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1222",
@@ -15578,16 +15470,12 @@
       "values_compared": 153
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "gen1234",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=18138518039855535953",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -15739,8 +15627,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1251",
@@ -16087,8 +15975,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmTrimmingTools::FindOuterLoops",
+        "unit": "cpp-guard:ub-119"
       },
       "max_rel_err": 0.0,
       "name": "gen1291",
@@ -16467,8 +16355,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1333",
@@ -16523,8 +16411,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1339",
@@ -17022,16 +16910,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "gen1394",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=18138518039855536113",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -17043,8 +16927,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1396",
@@ -17107,8 +16991,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1403",
@@ -17307,8 +17191,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1425",
@@ -17355,8 +17239,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1430",
@@ -17482,16 +17366,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "gen1443",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=18138518039855536162",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -17583,8 +17463,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1454",
@@ -17614,16 +17494,12 @@
       "values_compared": 479
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::CreatePlanarFaceWith3DCurves",
-        "unit": "topology.brep_p8"
-      },
       "max_rel_err": 0.0,
       "name": "gen1457",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=18138518039855536176",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -17995,15 +17871,16 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 536,
+  "cases_deferred": 505,
   "cases_failed": 0,
-  "cases_passed": 1445,
+  "cases_passed": 1476,
   "cases_total": 1981,
   "deferred_by_unit": {
+    "cpp-guard:ub-119": 4,
     "primitive.primitive_creation_p1": 136,
     "primitive.primitive_creation_p2": 282,
     "primitive.primitive_creation_p3": 31,
-    "topology.brep_p8": 87
+    "topology.face_p3": 52
   },
   "max_rel_err": 0.0,
   "pass": true,

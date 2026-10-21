@@ -3247,7 +3247,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::GetVertices",
+        "symbol": "SmBrep::GetCurves",
         "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
@@ -12379,7 +12379,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::GetVertices",
+        "symbol": "SmBrep::GetCurves",
         "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,

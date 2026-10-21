@@ -3,8 +3,8 @@
   "cases": [
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0000",
@@ -15,8 +15,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0001",
@@ -119,8 +119,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0013",
@@ -2279,8 +2279,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_0",
@@ -2291,8 +2291,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_1",
@@ -2303,8 +2303,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_2",
@@ -2315,8 +2315,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_3",
@@ -2339,8 +2339,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_5",
@@ -2351,8 +2351,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_6",
@@ -2375,8 +2375,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_8",
@@ -2387,8 +2387,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_9",
@@ -2399,8 +2399,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_10",
@@ -2411,8 +2411,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_11",
@@ -2423,8 +2423,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_12",
@@ -2435,8 +2435,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_13",
@@ -2447,8 +2447,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_14",
@@ -2459,8 +2459,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_15",
@@ -2471,8 +2471,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_16",
@@ -2483,8 +2483,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_17",
@@ -2495,8 +2495,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_18",
@@ -2507,8 +2507,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_19",
@@ -2559,8 +2559,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurve::GetOwner",
-        "unit": "curve.curve_p2"
+        "symbol": "SmFace::SetTolerance",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "face_curves_cos_no_uv_0_1",
@@ -2843,7 +2843,6 @@
     "boolean.merge_p2": 3,
     "cpp-guard:ub-165": 3,
     "curve.crv_on_surf": 2,
-    "curve.curve_p2": 22,
     "curve.curve_p6": 2,
     "query.brep": 2,
     "surface.sphere": 20,
@@ -2851,7 +2850,7 @@
     "topology.brep_p4": 1,
     "topology.brep_p9": 2,
     "topology.face_p2": 6,
-    "topology.face_p3": 6,
+    "topology.face_p3": 28,
     "topology.face_p4": 3
   },
   "max_rel_err": 0.0,
