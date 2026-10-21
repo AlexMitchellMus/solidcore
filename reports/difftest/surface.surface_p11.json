@@ -3,6 +3,46 @@
   "cases": [
     {
       "max_rel_err": 0.0,
+      "name": "lift_crv1_short_iso_large_aspect",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p11/upstream_prog_test.json#0 (upstream tests/prog_test/src/smSurfaceTest.cpp:2394 my_test_drop_curve: short isoParameter curve lift on very large aspect ratio surface; pSurface->LiftCurve(ctx, GetNaturalUVDomain(), *pCurve, GetNaturalInterval(), 0.01, dMaxDistToSurf, p3DCurve))",
+      "values_compared": 22
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift_crv2_internal_normal_surface",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p11/upstream_prog_test.json#1 (upstream tests/prog_test/src/smSurfaceTest.cpp:2442 my_test_drop_curve: internal curve lift from normal surface; pSurface->LiftCurve(ctx, GetNaturalUVDomain(), *pCurve, GetNaturalInterval(), 0.005, dMaxDistToSurf, p3DCurve))",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift_crv3_internal_large_aspect",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p11/upstream_prog_test.json#2 (upstream tests/prog_test/src/smSurfaceTest.cpp:2490 my_test_drop_curve: internal curve lift from large aspect surface; pSurface->LiftCurve(ctx, GetNaturalUVDomain(), *pCurve, GetNaturalInterval(), 0.005, dMaxDistToSurf, p3DCurve))",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift_crv4_nonlinear_normal_surface",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p11/upstream_prog_test.json#3 (upstream tests/prog_test/src/smSurfaceTest.cpp:2538 my_test_drop_curve: non linear curve lift from normal surface; pSurface->LiftCurve(ctx, GetNaturalUVDomain(), *pCurve, GetNaturalInterval(), 0.005, dMaxDistToSurf, p3DCurve))",
+      "values_compared": 124
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift_crv1_iso_segment_swept",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/surface.surface_p11/upstream_prog_test.json#4 (upstream tests/prog_test/src/smSurfaceTest.cpp:2636 my_test_drop_curve: isoparam segment curve on large aspect ratio swept surface with dramatic turns; pSurface->LiftCurve(ctx, GetNaturalUVDomain(), *pCurve, GetNaturalInterval(), 0.01, dMaxDistToSurf, p3DCurve))",
+      "values_compared": 292
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -98,12 +138,16 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0012",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050959772",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -146,12 +190,16 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0018",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050959778",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -162,20 +210,28 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0020",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050959780",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0021",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050959781",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -258,10 +314,14 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0032",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050959792",
       "values_compared": 0
     },
@@ -386,12 +446,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0048",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050959808",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -570,10 +634,14 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0071",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050959831",
       "values_compared": 0
     },
@@ -602,10 +670,14 @@
       "values_compared": 38
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0075",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050959835",
       "values_compared": 0
     },
@@ -858,12 +930,16 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0107",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050959867",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -1026,10 +1102,14 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0128",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050959888",
       "values_compared": 0
     },
@@ -1082,10 +1162,14 @@
       "values_compared": 76
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0135",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050959895",
       "values_compared": 0
     },
@@ -1146,10 +1230,14 @@
       "values_compared": 19
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0143",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050959903",
       "values_compared": 0
     },
@@ -1378,10 +1466,14 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0172",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050959932",
       "values_compared": 0
     },
@@ -1570,18 +1662,26 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0196",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050959956",
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0197",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050959957",
       "values_compared": 0
     },
@@ -1642,10 +1742,14 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0205",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050959965",
       "values_compared": 0
     },
@@ -1690,12 +1794,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0211",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050959971",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -1738,10 +1846,14 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0217",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050959977",
       "values_compared": 0
     },
@@ -1946,12 +2058,16 @@
       "values_compared": 95
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0243",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960003",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -2098,12 +2214,16 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0262",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960022",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -2226,12 +2346,16 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0278",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960038",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -2242,12 +2366,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0280",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960040",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -2538,10 +2666,14 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0317",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960077",
       "values_compared": 0
     },
@@ -2578,10 +2710,14 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0322",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960082",
       "values_compared": 0
     },
@@ -2682,12 +2818,16 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0335",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960095",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -2762,10 +2902,14 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0345",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960105",
       "values_compared": 0
     },
@@ -2922,10 +3066,14 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0365",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960125",
       "values_compared": 0
     },
@@ -3194,12 +3342,16 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0399",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960159",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3642,12 +3794,16 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0455",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960215",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3730,12 +3886,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0466",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960226",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3962,20 +4122,28 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0495",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960255",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0496",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960256",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4010,12 +4178,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0501",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960261",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4058,10 +4230,14 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0507",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960267",
       "values_compared": 0
     },
@@ -4162,10 +4338,14 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0520",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960280",
       "values_compared": 0
     },
@@ -4330,12 +4510,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0541",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960301",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4442,10 +4626,14 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0555",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960315",
       "values_compared": 0
     },
@@ -4498,12 +4686,16 @@
       "values_compared": 5
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0562",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960322",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4514,10 +4706,14 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0564",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960324",
       "values_compared": 0
     },
@@ -4546,12 +4742,16 @@
       "values_compared": 76
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0568",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960328",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4610,12 +4810,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmIsoCurve::SmIsoCurve (non-B-spline surface)",
+        "unit": "curve.iso_curve"
+      },
       "max_rel_err": 0.0,
       "name": "gen0576",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=13939699499050960336",
-      "values_compared": 5
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4800,18 +5004,1789 @@
       "pass": true,
       "source": "generated:seed=13939699499050960359",
       "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0000",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520564991",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0001",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520564992",
+      "values_compared": 110
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0002",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520564993",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0003",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520564994",
+      "values_compared": 68
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0004",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520564995",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0005",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520564996",
+      "values_compared": 68
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0006",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520564997",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0007",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520564998",
+      "values_compared": 110
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0008",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520564999",
+      "values_compared": 26
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0009",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565000",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0010",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565001",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0011",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565002",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0012",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565003",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0013",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565004",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0014",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565005",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0015",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565006",
+      "values_compared": 152
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0016",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565007",
+      "values_compared": 110
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0017",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565008",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0018",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565009",
+      "values_compared": 656
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0019",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565010",
+      "values_compared": 26
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0020",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565011",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0021",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565012",
+      "values_compared": 68
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0022",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565013",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0023",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565014",
+      "values_compared": 26
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0024",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565015",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0025",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565016",
+      "values_compared": 68
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0026",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565017",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0027",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565018",
+      "values_compared": 180
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0028",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565019",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0029",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565020",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0030",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565021",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0031",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565022",
+      "values_compared": 124
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0032",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565023",
+      "values_compared": 474
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0033",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565024",
+      "values_compared": 22
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0034",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565025",
+      "values_compared": 68
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0035",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565026",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0036",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565027",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0037",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565028",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0038",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565029",
+      "values_compared": 292
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0039",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565030",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0040",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565031",
+      "values_compared": 68
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0041",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565032",
+      "values_compared": 68
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0042",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565033",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0043",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565034",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0044",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565035",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0045",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565036",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0046",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565037",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0047",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565038",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0048",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565039",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0049",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565040",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0050",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565041",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0051",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565042",
+      "values_compared": 54
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0052",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565043",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0053",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565044",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0054",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565045",
+      "values_compared": 82
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0055",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565046",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0056",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565047",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0057",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565048",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0058",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565049",
+      "values_compared": 460
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0059",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565050",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0060",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565051",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0061",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565052",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0062",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565053",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0063",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565054",
+      "values_compared": 586
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0064",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565055",
+      "values_compared": 68
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0065",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565056",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0066",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565057",
+      "values_compared": 82
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0067",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565058",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0068",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565059",
+      "values_compared": 138
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0069",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565060",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0070",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565061",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0071",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565062",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0072",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565063",
+      "values_compared": 306
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0073",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565064",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0074",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565065",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0075",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565066",
+      "values_compared": 166
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0076",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565067",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0077",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565068",
+      "values_compared": 124
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0078",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565069",
+      "values_compared": 600
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0079",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565070",
+      "values_compared": 838
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0080",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565071",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0081",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565072",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0082",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565073",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0083",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565074",
+      "values_compared": 68
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0084",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565075",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0085",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565076",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0086",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565077",
+      "values_compared": 40
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0087",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565078",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0088",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565079",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0089",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565080",
+      "values_compared": 110
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0090",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565081",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0091",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565082",
+      "values_compared": 68
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0092",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565083",
+      "values_compared": 306
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0093",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565084",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0094",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565085",
+      "values_compared": 26
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0095",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565086",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0096",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565087",
+      "values_compared": 152
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0097",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565088",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0098",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565089",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0099",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565090",
+      "values_compared": 26
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0100",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565091",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0101",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565092",
+      "values_compared": 264
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0102",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565093",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0103",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565094",
+      "values_compared": 26
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0104",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565095",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0105",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565096",
+      "values_compared": 152
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0106",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565097",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0107",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565098",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0108",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565099",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0109",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565100",
+      "values_compared": 26
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0110",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565101",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0111",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565102",
+      "values_compared": 96
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0112",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565103",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0113",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565104",
+      "values_compared": 208
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0114",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565105",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0115",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565106",
+      "values_compared": 26
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0116",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565107",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0117",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565108",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0118",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565109",
+      "values_compared": 264
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0119",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565110",
+      "values_compared": 68
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0120",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565111",
+      "values_compared": 110
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0121",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565112",
+      "values_compared": 96
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0122",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565113",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0123",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565114",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0124",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565115",
+      "values_compared": 96
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0125",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565116",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0126",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565117",
+      "values_compared": 68
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0127",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565118",
+      "values_compared": 68
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0128",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565119",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0129",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565120",
+      "values_compared": 166
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0130",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565121",
+      "values_compared": 152
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0131",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565122",
+      "values_compared": 306
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0132",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565123",
+      "values_compared": 22
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0133",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565124",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0134",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565125",
+      "values_compared": 320
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0135",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565126",
+      "values_compared": 82
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0136",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565127",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0137",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565128",
+      "values_compared": 194
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0138",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565129",
+      "values_compared": 26
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0139",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565130",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0140",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565131",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0141",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565132",
+      "values_compared": 26
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0142",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565133",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0143",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565134",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0144",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565135",
+      "values_compared": 22
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0145",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565136",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0146",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565137",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0147",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565138",
+      "values_compared": 68
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0148",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565139",
+      "values_compared": 68
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0149",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565140",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0150",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565141",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0151",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565142",
+      "values_compared": 292
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0152",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565143",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0153",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565144",
+      "values_compared": 40
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0154",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565145",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0155",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565146",
+      "values_compared": 110
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0156",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565147",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0157",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565148",
+      "values_compared": 110
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0158",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565149",
+      "values_compared": 26
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0159",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565150",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0160",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565151",
+      "values_compared": 194
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0161",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565152",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0162",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565153",
+      "values_compared": 222
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0163",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565154",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0164",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565155",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0165",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565156",
+      "values_compared": 166
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0166",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565157",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0167",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565158",
+      "values_compared": 124
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0168",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565159",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0169",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565160",
+      "values_compared": 54
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0170",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565161",
+      "values_compared": 138
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0171",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565162",
+      "values_compared": 236
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0172",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565163",
+      "values_compared": 40
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0173",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565164",
+      "values_compared": 22
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0174",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565165",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0175",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565166",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0176",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565167",
+      "values_compared": 768
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0177",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565168",
+      "values_compared": 96
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0178",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565169",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0179",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565170",
+      "values_compared": 26
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0180",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565171",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0181",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565172",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0182",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565173",
+      "values_compared": 950
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0183",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565174",
+      "values_compared": 68
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0184",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565175",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0185",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565176",
+      "values_compared": 26
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0186",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565177",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0187",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565178",
+      "values_compared": 586
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0188",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565179",
+      "values_compared": 194
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0189",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565180",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0190",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565181",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0191",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565182",
+      "values_compared": 26
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0192",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565183",
+      "values_compared": 180
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0193",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565184",
+      "values_compared": 194
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0194",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565185",
+      "values_compared": 26
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0195",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565186",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
+      },
+      "max_rel_err": 0.0,
+      "name": "lift0196",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "generated:seed=14849319912520565187",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0197",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565188",
+      "values_compared": 68
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0198",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565189",
+      "values_compared": 68
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "lift0199",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=14849319912520565190",
+      "values_compared": 54
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 0,
+  "cases_deferred": 83,
   "cases_failed": 0,
-  "cases_passed": 600,
-  "cases_total": 600,
-  "deferred_by_unit": {},
+  "cases_passed": 722,
+  "cases_total": 805,
+  "deferred_by_unit": {
+    "curve.crv_on_surf": 42,
+    "curve.iso_curve": 41
+  },
   "max_rel_err": 0.0,
   "pass": true,
   "rel_tol": 1e-9,
   "seeds": 16,
-  "status": "green",
+  "status": "partial",
   "unit": "surface.surface_p11"
 }
