@@ -118,6 +118,7 @@ use crate::nurbs::b_spline_surface::{
 };
 use crate::nurbs::nurbs_crv::to_euclid;
 use crate::surface::cone::Cone;
+use crate::surface::plane::p2::PlaneOwner;
 use crate::surface::plane::Plane;
 use crate::surface::surf_of_revolution::{
     test_for_iso_circles, RevolutionIsoCurve, Revolved, SurfOfRevolution,
@@ -994,6 +995,33 @@ impl Sphere {
         other_uv_domain: &Extent2d,
         approx_tol_3d: Option<f64>,
     ) -> Result<(bool, SurfaceIntersection)> {
+        self.intersect_with_plane_owned(
+            k,
+            uv_domain,
+            plane,
+            PlaneOwner::NoFace,
+            other_uv_domain,
+            approx_tol_3d,
+        )
+    }
+
+    /// [`Sphere::intersect_with_plane`] with the plane's owner: its box is expanded by
+    /// the tolerance of the plane's face (`GetFace()->GetTolerance()`), else by
+    /// `SM_ZONE_TOL_3D`.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Sphere::intersect_with_plane`]; [`SolidError::Unported`]
+    /// (`SmFace::GetTolerance`) for a plane with a face whose tolerance is not cached.
+    pub(crate) fn intersect_with_plane_owned(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        plane: &Plane,
+        plane_owner: PlaneOwner,
+        other_uv_domain: &Extent2d,
+        approx_tol_3d: Option<f64>,
+    ) -> Result<(bool, SurfaceIntersection)> {
         // init output
         let mut out = SurfaceIntersection::default();
 
@@ -1015,7 +1043,7 @@ impl Sphere {
         // Do a little bounding box computation to see if things really intersect.
         if plane.is_bounded() {
             // get min distance from sphereOrigin to planeBoundingBox
-            let (bbox, _) = plane.bounding_boxes(k, other_uv_domain, false)?;
+            let (bbox, _) = plane.bounding_boxes(k, other_uv_domain, plane_owner)?;
             let sph_point = Extent3d::from_points(sph_origin, sph_origin);
             let dist = bbox.min_distance(&sph_point);
 
