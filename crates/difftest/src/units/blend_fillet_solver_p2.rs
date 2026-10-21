@@ -571,6 +571,7 @@ impl FilletSolverOps for TestSolver {
 
     fn load_jacobian(
         &mut self,
+        k: &Kernel,
         num_equations: &mut usize,
         num_parameters: &mut usize,
         load: &mut JacobianLoad<'_>,
@@ -588,11 +589,11 @@ impl FilletSolverOps for TestSolver {
         let (pa, dua, dva) = slot_mut(&mut self.base, rail)?
             .surface
             .surface
-            .with_evaluator(|e| evaluate_1st_derivatives(e, uv_a, Side::Left, Side::Left))?;
+            .with_evaluator(|e| evaluate_1st_derivatives(k, e, uv_a, Side::Left, Side::Left))?;
         let (pb, dub, dvb) = slot_mut(&mut self.base, other)?
             .surface
             .surface
-            .with_evaluator(|e| evaluate_1st_derivatives(e, uv_b, Side::Left, Side::Left))?;
+            .with_evaluator(|e| evaluate_1st_derivatives(k, e, uv_b, Side::Left, Side::Left))?;
         let mut scale = pa.x.abs();
         if pa.y.abs() > scale {
             scale = pa.y.abs();
@@ -697,7 +698,7 @@ fn put_tsect(o: &mut Vec<f64>, t: &TsectPnt, n_user: usize) {
 }
 
 /// `put_crv` of the shim: `1 t0 t1 P(t0) P(mid) P(t1)`, `-1` for none.
-fn put_crv(o: &mut Vec<f64>, c: Option<&Curve>) {
+fn put_crv(k: &Kernel, o: &mut Vec<f64>, c: Option<&Curve>) {
     let Some(c) = c else {
         o.push(-1.0);
         return;
@@ -706,19 +707,21 @@ fn put_crv(o: &mut Vec<f64>, c: Option<&Curve>) {
     let ivl = c.natural_interval();
     o.extend([ivl.min(), ivl.max()]);
     for t in [ivl.min(), ivl.mid(), ivl.max()] {
-        let p = c.evaluate_point(t).unwrap_or(Vec3::UNDEF);
+        let p = c.evaluate_point(k, t).unwrap_or(Vec3::UNDEF);
         o.extend([p.x, p.y, p.z]);
     }
 }
 
 /// `put_srf` of the shim: `1 u0 v0 u1 v1` and the 3 x 3 grid of points.
-fn put_srf(o: &mut Vec<f64>, s: &Surface) {
+fn put_srf(k: &Kernel, o: &mut Vec<f64>, s: &Surface) {
     o.push(1.0);
     let d = s.natural_uv_domain();
     o.extend([d.min().x, d.min().y, d.max().x, d.max().y]);
     for a in [0.0, 0.5, 1.0] {
         for bb in [0.0, 0.5, 1.0] {
-            let p = s.evaluate_point(d.evaluate(a, bb)).unwrap_or(Vec3::UNDEF);
+            let p = s
+                .evaluate_point(k, d.evaluate(a, bb))
+                .unwrap_or(Vec3::UNDEF);
             o.extend([p.x, p.y, p.z]);
         }
     }
@@ -727,6 +730,7 @@ fn put_srf(o: &mut Vec<f64>, s: &Surface) {
 /// The shim's output after a `Calc*FilletGeom`: the fillet geometry `g`'s surface, its
 /// rails' curves (and, for the cone and torus, their intervals) and its centre line.
 fn put_stored(
+    k: &Kernel,
     o: &mut Vec<f64>,
     which: u8,
     fb: &FilletBrep,
@@ -736,7 +740,7 @@ fn put_stored(
     let surface = geom
         .fillet_surface()
         .ok_or_else(|| SolidError::invalid_input("difftest", "no fillet surface"))?;
-    put_srf(o, surface);
+    put_srf(k, o, surface);
     let rails = [
         geom.rail(0)
             .ok_or_else(|| SolidError::invalid_input("difftest", "no rail"))?,
@@ -744,7 +748,7 @@ fn put_stored(
             .ok_or_else(|| SolidError::invalid_input("difftest", "no rail"))?,
     ];
     for rail in rails {
-        put_crv(o, edge::curve(fb.brep(), rail)?);
+        put_crv(k, o, edge::curve(fb.brep(), rail)?);
     }
     if which != 0 {
         for rail in rails {
@@ -753,6 +757,7 @@ fn put_stored(
         }
     }
     put_crv(
+        k,
         o,
         geom.center_line_curve().cloned().map(Curve::from).as_ref(),
     );
@@ -821,8 +826,8 @@ fn analytic_brep(k: &Kernel, spec: &AnalyticEdge) -> Result<Brep, HarnessError> 
         ),
     };
     let ivl = curve.natural_interval();
-    let ps = curve.evaluate_point(ivl.min()).map_err(h)?;
-    let pe = curve.evaluate_point(ivl.max()).map_err(h)?;
+    let ps = curve.evaluate_point(k, ivl.min()).map_err(h)?;
+    let pe = curve.evaluate_point(k, ivl.max()).map_err(h)?;
     let mut b = Brep::new_with_infinite_region().map_err(h)?;
     let tol = b.tolerance();
 
@@ -1155,7 +1160,7 @@ fn rust_run(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, Harn
             match r {
                 Ok(()) => {
                     o.push(0.0);
-                    put_stored(o, *which, &fb, g).map_err(h)?;
+                    put_stored(&k, o, *which, &fb, g).map_err(h)?;
                     Ok(())
                 }
                 Err(e) => Err(e),

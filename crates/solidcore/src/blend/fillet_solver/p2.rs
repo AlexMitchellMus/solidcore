@@ -199,27 +199,28 @@ pub struct RolloverSideEdge {
 
 // ---- function-object adapters ---------------------------------------------------------
 
-struct SphereEval<'a>(FilletSphereSolveEnfo<'a>);
+/// The function objects with the caller's kernel, which their `Evaluate` reads.
+struct SphereEval<'a, 'k>(FilletSphereSolveEnfo<'a>, &'k Kernel);
 
-impl EvalNFunctions for SphereEval<'_> {
+impl EvalNFunctions for SphereEval<'_, '_> {
     fn evaluate(&mut self, x: &[f64], f: &mut [f64], j: Option<&mut Matrix>) -> Result<bool> {
-        self.0.evaluate(x, f, j)
+        self.0.evaluate(self.1, x, f, j)
     }
 }
 
-struct RailUvEval<'a>(RailUvCurveIntersectEnfo<'a>);
+struct RailUvEval<'a, 'k>(RailUvCurveIntersectEnfo<'a>, &'k Kernel);
 
-impl EvalNFunctions for RailUvEval<'_> {
+impl EvalNFunctions for RailUvEval<'_, '_> {
     fn evaluate(&mut self, x: &[f64], f: &mut [f64], j: Option<&mut Matrix>) -> Result<bool> {
-        self.0.evaluate(x, f, j)
+        self.0.evaluate(self.1, x, f, j)
     }
 }
 
-struct RailRailEval<'a>(RailRailIntersectEnfo<'a>);
+struct RailRailEval<'a, 'k>(RailRailIntersectEnfo<'a>, &'k Kernel);
 
-impl EvalNFunctions for RailRailEval<'_> {
+impl EvalNFunctions for RailRailEval<'_, '_> {
     fn evaluate(&mut self, x: &[f64], f: &mut [f64], j: Option<&mut Matrix>) -> Result<bool> {
-        self.0.evaluate(x, f, j)
+        self.0.evaluate(self.1, x, f, j)
     }
 }
 
@@ -262,12 +263,12 @@ fn put_surface(s: &mut FilletSolver, rail: usize, surface: OffsetSurface) -> Res
 }
 
 /// `GetSurface(rail)->EvaluatePoint(uv)` (keeping an extension it makes).
-fn eval_offset(s: &mut FilletSolver, rail: usize, uv: Point2) -> Result<Point3> {
+fn eval_offset(k: &Kernel, s: &mut FilletSolver, rail: usize, uv: Point2) -> Result<Point3> {
     s.surface_mut(rail)?
         .ok_or_else(|| invalid("no offset surface"))?
         .surface
         .surface
-        .evaluate_point_extending(uv)
+        .evaluate_point_extending(k, uv)
 }
 
 fn has_surface(s: &FilletSolver, rail: usize) -> Result<bool> {
@@ -275,8 +276,8 @@ fn has_surface(s: &FilletSolver, rail: usize) -> Result<bool> {
 }
 
 /// `pCurve->Evaluate(t, 1, TRUE, sPV)`: point and first derivative.
-fn curve_pv(c: &Curve, t: f64) -> Result<(Point3, Vec3)> {
-    let pv = c.evaluate(t, 1, true, false)?;
+fn curve_pv(k: &Kernel, c: &Curve, t: f64) -> Result<(Point3, Vec3)> {
+    let pv = c.evaluate(k, t, 1, true, false)?;
     let p = pv
         .first()
         .copied()
@@ -472,7 +473,7 @@ impl FilletSolver {
         let curve = checked_edge_curve(k, s, b, e)?;
 
         // no work - not a circular cross-section on a straight line
-        if !is_circular_fsg(s)? || curve.is_line(3, ANALYTIC_TOL)?.is_none() {
+        if !is_circular_fsg(s)? || curve.is_line(k, 3, ANALYTIC_TOL)?.is_none() {
             return Err(sm_err());
         }
 
@@ -485,11 +486,11 @@ impl FilletSolver {
 
         // set OffsetSurface offset = radius for begin point and get sCenter0
         let mut radius0 = offset_radius(ops, t_first)?;
-        let mut center0 = eval_offset(ops.solver_mut(), 0, start_uv0)?;
+        let mut center0 = eval_offset(k, ops.solver_mut(), 0, start_uv0)?;
 
         // set OffsetSurface offset = radius for end point and get sCenter1
         let mut radius1 = offset_radius(ops, t_last)?;
-        let mut center1 = eval_offset(ops.solver_mut(), 0, end_uv0)?;
+        let mut center1 = eval_offset(k, ops.solver_mut(), 0, end_uv0)?;
 
         // check state - cylinder case = constant radius fillets
         if (radius1 - radius0).abs() > EFF_ZERO {
@@ -501,10 +502,10 @@ impl FilletSolver {
         // instead of the base surface, in order to handle extended surfaces.
         let s = ops.solver_mut();
         s.set_surfaces_to_zero_offset()?;
-        let mut start_pnt0 = eval_offset(s, 0, start_uv0)?;
-        let mut start_pnt1 = eval_offset(s, 1, start_uv1)?;
-        let mut end_pnt0 = eval_offset(s, 0, end_uv0)?;
-        let mut end_pnt1 = eval_offset(s, 1, end_uv1)?;
+        let mut start_pnt0 = eval_offset(k, s,0, start_uv0)?;
+        let mut start_pnt1 = eval_offset(k, s,1, start_uv1)?;
+        let mut end_pnt0 = eval_offset(k, s,0, end_uv0)?;
+        let mut end_pnt1 = eval_offset(k, s,1, end_uv1)?;
         s.reload_surface_offsets()?;
 
         // get extension vectors along each rail curve and the center curve
@@ -654,7 +655,7 @@ impl FilletSolver {
         let curve = checked_edge_curve(k, s, b, e)?;
 
         // no work - not a circular cross-section on a line
-        if !is_circular_fsg(s)? || curve.is_line(3, ANALYTIC_TOL)?.is_none() {
+        if !is_circular_fsg(s)? || curve.is_line(k, 3, ANALYTIC_TOL)?.is_none() {
             return Err(sm_err());
         }
 
@@ -665,18 +666,18 @@ impl FilletSolver {
         let end_uv0 = t_last.uv_pos(SrfIndex::First);
         let end_uv1 = t_last.uv_pos(SrfIndex::Second);
         let _radius0 = offset_radius(ops, t_first)?;
-        let mut center0 = eval_offset(ops.solver_mut(), 0, start_uv0)?;
+        let mut center0 = eval_offset(k, ops.solver_mut(), 0, start_uv0)?;
         let _radius1 = offset_radius(ops, t_last)?;
-        let mut center1 = eval_offset(ops.solver_mut(), 0, end_uv0)?;
+        let mut center1 = eval_offset(k, ops.solver_mut(), 0, end_uv0)?;
 
         // Evaluate points on base surfaces.  Use a zero-offset offset surface
         // instead of the base surface, in order to handle extended surfaces.
         let s = ops.solver_mut();
         s.set_surfaces_to_zero_offset()?;
-        let mut start_pnt0 = eval_offset(s, 0, start_uv0)?;
-        let start_pnt1 = eval_offset(s, 1, start_uv1)?;
-        let mut end_pnt0 = eval_offset(s, 0, end_uv0)?;
-        let _end_pnt1 = eval_offset(s, 1, end_uv1)?;
+        let mut start_pnt0 = eval_offset(k, s,0, start_uv0)?;
+        let start_pnt1 = eval_offset(k, s,1, start_uv1)?;
+        let mut end_pnt0 = eval_offset(k, s,0, end_uv0)?;
+        let _end_pnt1 = eval_offset(k, s,1, end_uv1)?;
         s.reload_surface_offsets()?;
 
         // Get origin & axis of revolution
@@ -829,7 +830,7 @@ impl FilletSolver {
         if !is_circular_fsg(s)? {
             return Err(sm_err());
         }
-        let Some((ref_frame, _arc_radius, start_ang, _end_ang)) = curve.is_arc(11, ANALYTIC_TOL)?
+        let Some((ref_frame, _arc_radius, start_ang, _end_ang)) = curve.is_arc(k, 11, ANALYTIC_TOL)?
         else {
             return Err(sm_err());
         };
@@ -852,7 +853,7 @@ impl FilletSolver {
         let start_uv1 = t_first.uv_pos(SrfIndex::Second);
 
         // get centerPoint = offsetSurface0(uvPnt0)
-        let arc_center = eval_offset(ops.solver_mut(), 0, start_uv0)?;
+        let arc_center = eval_offset(k, ops.solver_mut(), 0, start_uv0)?;
 
         // get cross-section radius size at begin and end fillet points
         let radius = offset_radius(ops, t_first)?;
@@ -865,8 +866,8 @@ impl FilletSolver {
         // instead of the base surface, in order to handle extended surfaces.
         let s = ops.solver_mut();
         s.set_surfaces_to_zero_offset()?;
-        let p0 = eval_offset(s, 0, start_uv0)?; // sP0 = rail1 point
-        let p1 = eval_offset(s, 1, start_uv1)?; // sP1 = rail2 point
+        let p0 = eval_offset(k, s,0, start_uv0)?; // sP0 = rail1 point
+        let p1 = eval_offset(k, s,1, start_uv1)?; // sP1 = rail2 point
         s.reload_surface_offsets()?;
 
         // allocate the arc from the points [centerPoint, sP0, sP1]
@@ -895,7 +896,7 @@ impl FilletSolver {
             return Err(sm_err());
         }
         let t_near = sols.get(0).ok_or_else(sm_err)?.start.param(0)?;
-        let (_, near_tan) = curve_pv(&curve, t_near)?;
+        let (_, near_tan) = curve_pv(k, &curve, t_near)?;
 
         // when to-be-filleted edge tangent nearest sweep curve opposes initial sweep direction
         if near_tan.dot(dir) < 0.0 {
@@ -911,8 +912,8 @@ impl FilletSolver {
         let end_uv1 = t_last.uv_pos(SrfIndex::Second);
         let s = ops.solver_mut();
         s.set_surfaces_to_zero_offset()?;
-        let end_p0 = eval_offset(s, 0, end_uv0)?; // sEndP0 = rail1 point
-        let end_p1 = eval_offset(s, 1, end_uv1)?; // sEndP1 = rail2 point
+        let end_p0 = eval_offset(k, s,0, end_uv0)?; // sEndP0 = rail1 point
+        let end_p1 = eval_offset(k, s,1, end_uv1)?; // sEndP1 = rail2 point
         s.reload_surface_offsets()?;
 
         let mut end_vec = end_p0 - origin;
@@ -937,7 +938,7 @@ impl FilletSolver {
         let mut angle_span = end_ang - start_ang;
 
         // Determine if we need to extend the span even when 'm_bExtendBefore' is FALSE
-        if !curve.is_closed(&ivl, 0.0)? && !s.extend_after {
+        if !curve.is_closed(k, &ivl, 0.0)? && !s.extend_after {
             // for both filletSector->edgeuses
             for i in 0..2 {
                 let eu_i = s.edgeuse(i)?.ok_or_else(|| invalid("no edge use"))?;
@@ -963,7 +964,7 @@ impl FilletSolver {
                         // when rail endPoint is before start of edge - set m_bExtendAfter
                         let pt = fb.vertex_point(rail_end_v)?;
                         let vector = pt - vertex::point(b, v)?;
-                        let (_, tangent) = curve_pv(&curve, ivl.min())?;
+                        let (_, tangent) = curve_pv(k, &curve, ivl.min())?;
                         let tangent = tangent.unitize()?;
                         let vector = vector.unitize()?;
                         if vector.dot(tangent) < -EFF_ZERO {
@@ -991,7 +992,7 @@ impl FilletSolver {
                         // when rail EndPoint is beyond edge end - set m_bExtendAfter = TRUE
                         let pt = fb.vertex_point(rail_end_v)?;
                         let vector = pt - vertex::point(b, v)?;
-                        let (_, tangent) = curve_pv(&curve, ivl.max())?;
+                        let (_, tangent) = curve_pv(k, &curve, ivl.max())?;
                         let tangent = tangent.unitize()?;
                         let vector = vector.unitize()?;
                         if vector.dot(tangent) > EFF_ZERO {
@@ -1022,7 +1023,7 @@ impl FilletSolver {
         let eu0 = s.edgeuse(0)?.ok_or_else(|| invalid("no edge use"))?;
         let e0 = eu::edge(b, eu0)?.ok_or_else(|| invalid("edge use without edge"))?;
         let e0_curve = edge::curve(b, e0)?.ok_or_else(|| invalid("edge without curve"))?;
-        let move_seam = if e0_curve.is_closed(&edge::interval(b, e0)?, 0.0)? {
+        let move_seam = if e0_curve.is_closed(k, &edge::interval(b, e0)?, 0.0)? {
             false
         } else {
             angle_span > 360.0 - EFF_ZERO
@@ -1162,7 +1163,7 @@ impl FilletSolver {
         let approx_tol = ops.solver().approx_tol_3d;
 
         // allocate NewtonRaphson evaluator - contains equation definitions being solved
-        let mut eval = SphereEval(FilletSphereSolveEnfo::new(plane_normal, plane_d, ops));
+        let mut eval = SphereEval(FilletSphereSolveEnfo::new(plane_normal, plane_d, ops), k);
         let mut ls = LocalSolveNd::new(&mut eval, Some(&intervals), Some(&periodicities));
 
         // set solve parameters
@@ -1241,7 +1242,7 @@ impl FilletSolver {
             .cloned()
             .ok_or_else(|| invalid("no UV trim curve"))?;
         check_uv_bspline_kind(&uv_trim)?;
-        let p2d = uv_trim.evaluate_point(guess_edge_parameter)?;
+        let p2d = uv_trim.evaluate_point(k, guess_edge_parameter)?;
         let uv_guess = Point2::new(p2d.x, p2d.y);
 
         // Now Set up Solver
@@ -1298,9 +1299,10 @@ impl FilletSolver {
 
         // specify the rail/curve intersection evaluate function for the NewtonRaphson Solver
         let ivl = uv_trim.natural_interval();
-        let mut eval = RailUvEval(RailUvCurveIntersectEnfo::new(
-            &uv_trim, ivl, rail_index, ops,
-        ));
+        let mut eval = RailUvEval(
+            RailUvCurveIntersectEnfo::new(&uv_trim, ivl, rail_index, ops),
+            k,
+        );
         let mut ls = LocalSolveNd::new(&mut eval, Some(&intervals), Some(&periodicities));
         ls.set_desired_accuracy(EFF_ZERO_SQ);
         ls.set_boundary_handler(BoundaryHandler::TotalBoundaryHits, 8);
@@ -1465,12 +1467,10 @@ impl FilletSolver {
         let tol = ops.solver().approx_tol_3d + other.solver().approx_tol_3d;
 
         // Set Solver Manager
-        let mut eval = RailRailEval(RailRailIntersectEnfo::new(
-            rail_index,
-            ops,
-            other_rail_index,
-            other,
-        ));
+        let mut eval = RailRailEval(
+            RailRailIntersectEnfo::new(rail_index, ops, other_rail_index, other),
+            k,
+        );
         let mut ls = LocalSolveNd::new(&mut eval, Some(&intervals), Some(&periodicities));
         ls.set_desired_accuracy(EFF_ZERO_SQ);
         ls.set_boundary_handler(BoundaryHandler::TotalBoundaryHits, 8);
@@ -1642,7 +1642,7 @@ impl FilletSolver {
             )?;
             let first = solutions.get(0).ok_or_else(sm_err)?;
             let param1 = first.start.param(0)?;
-            let corner_pnt = cs_curve.evaluate_point(param1)?;
+            let corner_pnt = cs_curve.evaluate_point(k, param1)?;
 
             // Update the corner vertex to the cross section / side face point
             // (SmVertex::SetPoint: the SM_NO_CHANGE_GEOMETRY resets, as geom p1/p4)
@@ -1721,7 +1721,7 @@ impl FilletSolver {
                     &GlobalPointSolveOptions::<crate::topology::ObjectHandle>::default(),
                 )?;
                 let sol = sols.get(0).ok_or_else(sm_err)?;
-                let (end_pnt, end_tan) = curve_pv(side_curve, sol.start.param(0)?)?;
+                let (end_pnt, end_tan) = curve_pv(k, side_curve, sol.start.param(0)?)?;
                 set_vertex_point(pseudo.brep_mut(), end_vert, end_pnt)?;
                 pseudo
                     .fillet_vertex_mut(end_vert)?
@@ -2128,16 +2128,16 @@ pub fn find_rollover_side_edge<O: ClassObject>(
                 let start_param = start_pc.t_param();
                 let end_param = end_pc.t_param();
                 let e1_curve = edge::curve(b, e1)?.ok_or_else(|| invalid("edge without curve"))?;
-                let (_, tangent_vec) = curve_pv(e1_curve, start_param)?;
+                let (_, tangent_vec) = curve_pv(k, e1_curve, start_param)?;
                 // Compute 'binormal' of rail curve
                 let rail_param = ivl.interval.min();
-                let pnt = orig_rail_uv_curve.evaluate_point(rail_param)?;
+                let pnt = orig_rail_uv_curve.evaluate_point(k, rail_param)?;
                 let uv = Point2::new(pnt.x, pnt.y);
                 let flags = crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags {
                     only_upper_half: true,
                     ..Default::default()
                 };
-                let pvv = orig_fillet.evaluate(uv, 1, 1, flags)?;
+                let pvv = orig_fillet.evaluate(k, uv, 1, 1, flags)?;
                 let mut bin_vec = pvv
                     .first()
                     .and_then(|row| row.get(1))

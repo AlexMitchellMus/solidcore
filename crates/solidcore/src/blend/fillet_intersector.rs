@@ -443,13 +443,13 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
 
     fn compute_surface_values(
         &mut self,
-        _k: &Kernel,
+        k: &Kernel,
         uv_values: [Point2; 2],
         point: &mut TsectPnt,
     ) -> Result<()> {
         // non-virtual in the base; it calls the virtual SetupOffsetValues, which
         // SmConstantRadiusFS overrides (blend.fillet_standard_solver_p1)
-        FilletSolver::compute_surface_values(self, uv_values, point)
+        FilletSolver::compute_surface_values(k, self, uv_values, point)
     }
 
     fn set_surfaces_to_zero_offset(&mut self) -> Result<()> {

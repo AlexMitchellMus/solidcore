@@ -2002,7 +2002,7 @@ impl<'a> RailUvCurveIntersectEnfo<'a> {
         mut jacobian: Option<&mut Matrix>,
     ) -> Result<bool> {
         const OP_E: &str = "blend::fillet_solver::p1::RailUvCurveIntersectEnfo::evaluate";
-        let pv = self.uv_curve.evaluate(x_at(x, 0)?, 1, true, false)?;
+        let pv = self.uv_curve.evaluate(k, x_at(x, 0)?, 1, true, false)?;
         let p0 = pv
             .first()
             .copied()

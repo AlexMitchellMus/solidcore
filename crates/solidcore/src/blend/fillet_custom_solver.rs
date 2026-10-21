@@ -1752,6 +1752,7 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
     /// the in/out `rlSurf1Offset`, `rlSurf2Offset` are written back into `load`.
     fn load_jacobian(
         &mut self,
+        k: &Kernel,
         num_equations: &mut usize,
         num_parameters: &mut usize,
         load: &mut JacobianLoad<'_>,
@@ -1761,6 +1762,7 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
         let mut offsets = [load.surf1_offset, load.surf2_offset];
         let found = ConstantRadiusAssistedFs::load_jacobian(
             self,
+            k,
             num_equations,
             num_parameters,
             load.rail_index,
