@@ -63,7 +63,8 @@ impl ExecutiveAccess<Handle> for Access {
     // This empty-B-rep fixture has no face handles or intersector world. These
     // required adapters reject nonexistent objects; they are not UNPORTED calls
     // to the now-ported face p3, topology intersector p2, stitch p2, fillet geom p4,
-    // fillet corner p3 or fillet solver p1 implementations.
+    // fillet corner p3 or fillet solver p1 implementations. `set_brep_tolerance` runs
+    // the brep p2 port for real.
     fn notify_face(
         &mut self,
         _: &mut Kernel,
@@ -179,13 +180,10 @@ impl ExecutiveAccess<Handle> for Access {
         _: Handle,
         _: &mut FilletExecutive<Handle>,
     ) -> SolidResult<()> {
-        // No concrete object is constructed here. Future fixtures must dispatch
-        // derived types to their owners, as documented on ExecutiveAccess.
-        // UNPORTED(blend.fillet_solver_p4): SmFilletSolver::CalcFilletGeom
-        Err(SolidError::unported(
-            "SmFilletSolver::CalcFilletGeom",
-            "blend.fillet_solver_p4",
-        ))
+        // This fixture builds no solver, so there is nothing to dispatch to: the
+        // base `CalcFilletGeom` is ported (`blend::fillet_solver::p4`) and
+        // `SmSurfaceSurfaceFS`'s override is blend.fillet_standard_solver_p2's.
+        missing()
     }
     fn corner_error_info(
         &self,
@@ -260,6 +258,27 @@ impl ExecutiveAccess<Handle> for Access {
         } else {
             tolerance
         })
+    }
+    fn set_brep_tolerance(
+        &mut self,
+        k: &mut Kernel,
+        brep: Handle,
+        tolerance: f64,
+        update_only_if_larger: bool,
+        cascade_to_boundaries: bool,
+    ) -> SolidResult<()> {
+        let b = self
+            .breps
+            .get_mut(brep.0)
+            .and_then(Option::as_mut)
+            .ok_or_else(missing_error)?;
+        solidcore::topology::brep::p2::set_tolerance(
+            k,
+            b,
+            tolerance,
+            update_only_if_larger,
+            cascade_to_boundaries,
+        )
     }
     fn editing_enabled(&self, brep: Handle) -> SolidResult<bool> {
         self.breps

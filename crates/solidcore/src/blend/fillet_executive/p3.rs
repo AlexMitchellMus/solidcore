@@ -481,11 +481,11 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         executive: &mut FilletExecutive<O>,
     ) -> Result<()>;
 
-    /// Virtual `CalcFilletGeom` dispatch. The base belongs to
-    /// `blend.fillet_solver_p4`; the `SurfaceSurfaceFS` override belongs to
-    /// `blend.fillet_standard_solver_p2`. Adapters must dispatch by concrete
-    /// solver type and return that owner's `Unported` while it is missing.
-    // UNPORTED(blend.fillet_solver_p4): SmFilletSolver::CalcFilletGeom
+    /// Virtual `CalcFilletGeom` dispatch. Adapters dispatch by concrete solver
+    /// type: the base is the ported
+    /// `blend::fillet_solver::p4::FilletSolver::calc_fillet_geom`; the
+    /// `SurfaceSurfaceFS` override belongs to `blend.fillet_standard_solver_p2` and
+    /// returns its `Unported` while it is missing.
     // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::CalcFilletGeom
     fn calc_fillet_geom(
         &mut self,
@@ -520,21 +520,19 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         ))
     }
 
-    /// `SmBrep::SetTolerance`; waiting for `topology.brep_p2`.
+    /// `SmBrep::SetTolerance(sZoneTol3d, bUpdateOnlyIfLarger, bCascadeToBndries)`:
+    /// delegate to the already ported `topology::brep::p2::set_tolerance` (brep p2) on
+    /// the B-rep `brep` resolves to, passing every argument. Upstream's `SetTolerance`
+    /// is `void`, so the callers ignore any non-`Unported` error
+    /// (`SmFilletExecutive.cpp:2439`, `:2509`).
     fn set_brep_tolerance(
         &mut self,
-        _k: &mut Kernel,
-        _brep: O,
-        _tolerance: f64,
-        _update_only_if_larger: bool,
-        _cascade_to_boundaries: bool,
-    ) -> Result<()> {
-        // UNPORTED(topology.brep_p2): SmBrep::SetTolerance
-        Err(SolidError::unported(
-            "SmBrep::SetTolerance",
-            "topology.brep_p2",
-        ))
-    }
+        k: &mut Kernel,
+        brep: O,
+        tolerance: f64,
+        update_only_if_larger: bool,
+        cascade_to_boundaries: bool,
+    ) -> Result<()>;
 
     /// `SmFilletGeom::MakeFaceBrep(m_pFilletBrep)`: delegate to the already ported
     /// `blend::fillet_geom::p4::FilletBrep::make_face_brep` (fillet geom p4) on the
