@@ -1537,13 +1537,20 @@ impl FilletBrep {
     ///
     /// # Errors
     ///
-    /// `SM_ERR` (upstream: `lIdx = 0`) when `vu` is at neither rail's ends; those of
-    /// [`FilletBrep::rail_vertexuse`] (a missing rail).
-    pub fn rail_index_of_vertexuse(&self, g: FilletGeomId, vu: VertexuseId) -> Result<usize> {
-        if self.rail_vertexuse(g, 0, 0)? == Some(vu) || self.rail_vertexuse(g, 0, 1)? == Some(vu) {
+    /// `SM_ERR_NULL_POINTER` for a `None` vertex use; `SM_ERR` (upstream: `lIdx = 0`)
+    /// when `vu` is at neither rail's ends; those of [`FilletBrep::rail_vertexuse`] (a
+    /// missing rail).
+    pub fn rail_index_of_vertexuse(
+        &self,
+        g: FilletGeomId,
+        vu: Option<VertexuseId>,
+    ) -> Result<usize> {
+        // NER( pFVU )
+        let vu = Some(vu.ok_or_else(|| SolidError::null_pointer(OP_RAIL_VU))?);
+        if self.rail_vertexuse(g, 0, 0)? == vu || self.rail_vertexuse(g, 0, 1)? == vu {
             return Ok(0);
         }
-        if self.rail_vertexuse(g, 1, 0)? == Some(vu) || self.rail_vertexuse(g, 1, 1)? == Some(vu) {
+        if self.rail_vertexuse(g, 1, 0)? == vu || self.rail_vertexuse(g, 1, 1)? == vu {
             return Ok(1);
         }
         Err(SolidError::sm_err(OP_RAIL_VU))
@@ -2238,7 +2245,7 @@ mod tests {
         for rail in 0..2 {
             for end in 0..2 {
                 let vu = fb.rail_vertexuse(g, rail, end).unwrap().unwrap();
-                assert_eq!(fb.rail_index_of_vertexuse(g, vu).unwrap(), rail);
+                assert_eq!(fb.rail_index_of_vertexuse(g, Some(vu)).unwrap(), rail);
             }
         }
 
@@ -2247,7 +2254,7 @@ mod tests {
         let b = vertex(&mut fb, &k, Point3::new(6.0, 5.0, 5.0));
         let (_, eus) = edge_with_uses(&mut fb, a, b, FilletEdgeType::CrossSection);
         let other = fb.brep().edgeuse(eus[0]).unwrap().vertexuse.unwrap();
-        let err = fb.rail_index_of_vertexuse(g, other).unwrap_err();
+        let err = fb.rail_index_of_vertexuse(g, Some(other)).unwrap_err();
         assert_eq!(code(&err), Some(SM_ERR));
     }
 

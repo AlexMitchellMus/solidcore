@@ -10508,6 +10508,16 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   `MAX_SUBDIVISION_NODES` (see `surface.surface_p11` above; reproduced on main with a plain
   3x3 quadratic patch scaled by 1e-4, review of PR #247). The generator keeps this op at
   scale 1 and above; extending it below needs that limit raised or the cases deferred.
+- **Wiring part 6 into parts 2/4, the corner and the executive exposed three harness or
+  ordering gaps, all fixed (PR #247).** (1) `blend.fillet_geom_p4`'s `MakeFace` runner built
+  a bare `Brep::new()`; upstream's `new SmBrep()` has a void infinite region, so
+  `TrimSurfaceWithModelSpaceCurves` went on in C++ (`SM_ERR`) but stopped at `NER(pRegion)`
+  in Rust. (2) `CalcBlendingGeom` read both rails before its loop; upstream reads
+  `m_vRails[i]` per iteration, so a missing second rail after a failing first one is
+  `SM_ERR`, not `SM_ERR_NULL_POINTER` (`--seeds 2000`, 6 cases). (3) `blend.fillet_corner_p3`'s
+  shim stopped `AdjustTangentCorner` at `GetRailIndexOfVertex`; it now mirrors the split loop
+  up to `SplitFilletGeomAtSideEdge`. Also `GetRailIndexOfVertexuse(NULL)` is
+  `SM_ERR_NULL_POINTER` (`NER(pFVU)`), not a rail-end comparison.
 - **Back-edges not wired.** `GetRailIndexOfVertexuse`, `GetRailVertex` and `SetUpRailPoint`
   in `blend/fillet_solver/p1.rs` (`split_fillet_geom_at_side_edge`, `split_fillet_geom`)
   stay stubs: that code holds the solver's opaque `FilletGeomRef`s and a plain pseudo

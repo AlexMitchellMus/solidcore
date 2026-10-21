@@ -1570,7 +1570,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                     .map_err(h)?
                     .vertexuse
                     .ok_or_else(|| harness("edge use without vertex use"))?;
-            let r = m.fb.rail_index_of_vertexuse(g, vu);
+            let r = m.fb.rail_index_of_vertexuse(g, Some(vu));
             results.push(r.as_ref().map_or(99.0, |&x| x as f64));
             r.map(|_| ())
         }
