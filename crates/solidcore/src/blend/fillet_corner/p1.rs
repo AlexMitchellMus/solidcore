@@ -1293,7 +1293,10 @@ impl FilletCorner {
                 let eu = vrfs
                     .curve_based
                     .solver
-                    .edgeuse(0)?
+                    .edgeuses
+                    .first()
+                    .copied()
+                    .flatten()
                     .ok_or_else(|| SolidError::null_pointer(OP_VERT_GEOM))?;
                 let filleted_edge = eu1::edge(env.target, eu)?
                     .ok_or_else(|| SolidError::invalid_input(OP_VERT_GEOM, NULL_DEREF))?;

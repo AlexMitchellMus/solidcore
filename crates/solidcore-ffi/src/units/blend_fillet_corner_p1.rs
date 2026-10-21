@@ -79,7 +79,7 @@
 use crate::{call_with_buffer, FfiError};
 
 use super::blend_fillet_geom_p1::{
-    curve as p1_curve, validate_block, Reader as P1Reader, MAX_LIST, MAX_MAGNITUDE,
+    curve as p1_curve, validate_block, Block, Reader as P1Reader, MAX_LIST, MAX_MAGNITUDE,
 };
 use super::topology_edgeuse_p1::{self as eu1, bad, brep_block, curve_up_to, surface, Reader};
 
