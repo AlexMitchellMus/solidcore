@@ -979,7 +979,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         OpIn::FilletIntFillet { e } => {
             let e = *m.edges.get(*e).ok_or_else(|| harness("edge"))?;
             let corner = m.fb.fillet_edge(e).map_err(h)?.fillet_corner();
-            m.fb.calc_edge_fillet_int_fillet(&k, e, corner, &bases)
+            m.fb.calc_edge_fillet_int_fillet(&k, e, corner, &bases, &tg.brep)
         }
         OpIn::ReCalc {
             g,
@@ -1008,6 +1008,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                 &k,
                 g,
                 solver,
+                &bases,
                 &tg.brep,
                 *analytic,
                 dir.map(|d| Vec3::new(d[0], d[1], d[2])),
