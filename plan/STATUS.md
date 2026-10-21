@@ -8,7 +8,7 @@ Latest fuzz sweep (2026-10-20): `--fuzz 2000` over all 233 green/partial units; 
 
 Latest topology integration: `topology.brep_p6` partial (PR #169, after its dependency #154: 498 cases, 450 pass, 48 deferred, 0 failed; 206 units, 113 green and 93 partial); before: `topology.shell` partial (PR #154, continuing @0xlillith's PR #80: 192 ported units, 109 green and 83 partial); before: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green); before: `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
 
-Latest unit (PR): `blend.fillet_solver_p2` partial (PR #249, stacked on #192: 311 cases, 222 pass (163 compare 3+ values), 89 deferred on `intersect.surface_drop_lib_p3` 45, `surface.surface_p2` 34, `blend.fillet_executive_p1` 10, 0 failed).
+Latest unit (PR): `blend.fillet_solver_p2` partial (PR #249, stacked on #192: 311 cases, 256 pass (197 compare 3+ values), 55 deferred on `intersect.surface_drop_lib_p3` 45, `blend.fillet_executive_p1` 10, 0 failed).
 
 Latest main integration: issue #76 kernel-aware Surface dispatch (PR #313, #133 revived, `SurfaceKind::Cone`): 234 units, 117 green / 117 partial, 0 failed; 534,436 cases, 510,383 pass, 23,933 deferred (before 493,865 / 24,694); `intersect.surface_intersector_p1`, `intersect.surface_intersector_p4`, `surface.surface_p11` promoted to green. Before: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green).
 

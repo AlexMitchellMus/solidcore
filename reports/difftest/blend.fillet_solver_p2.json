@@ -2,16 +2,12 @@
   "abs_floors": [],
   "cases": [
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "cylinder_on_sm_line_edge",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_solver_p2/cases.json#0",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -106,16 +102,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
-      "max_rel_err": 0.0,
+      "max_rel_err": 1.373865436537319e-16,
       "name": "gen0001_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226004",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -182,16 +174,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0009_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226012",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -266,16 +254,12 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
-      "max_rel_err": 0.0,
+      "max_rel_err": 6.447848034425354e-16,
       "name": "gen0019_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226022",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -410,16 +394,12 @@
       "values_compared": 12
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0035_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226038",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -454,16 +434,12 @@
       "values_compared": 9
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0040_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226043",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -546,16 +522,12 @@
       "values_compared": 63
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0050_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226053",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -854,16 +826,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0083_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226086",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "deferred": {
@@ -1038,16 +1006,12 @@
       "values_compared": 9
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0103_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226106",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -1058,16 +1022,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
-      "max_rel_err": 0.0,
+      "max_rel_err": 1.4961776207177616e-16,
       "name": "gen0105_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226108",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -1134,16 +1094,12 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0113_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226116",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -1154,40 +1110,28 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0115_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226118",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0116_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226119",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0117_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226120",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -1274,16 +1218,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0128_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226131",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -1294,16 +1234,12 @@
       "values_compared": 4
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0130_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226133",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -1366,28 +1302,20 @@
       "values_compared": 63
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0138_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226141",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0139_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226142",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -1570,16 +1498,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0161_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226164",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -1650,16 +1574,12 @@
       "values_compared": 63
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0170_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226173",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "deferred": {
@@ -1706,16 +1626,12 @@
       "values_compared": 9
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0176_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226179",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -1942,16 +1858,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0203_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226206",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -1986,16 +1898,12 @@
       "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0208_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226211",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -2126,16 +2034,12 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0223_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226226",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -2170,16 +2074,12 @@
       "values_compared": 63
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
-      "max_rel_err": 0.0,
+      "max_rel_err": 2.2575138607670217e-16,
       "name": "gen0228_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226231",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -2250,16 +2150,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
-      "max_rel_err": 0.0,
+      "max_rel_err": 1.1943364452654426e-16,
       "name": "gen0237_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226240",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -2334,16 +2230,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0246_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226249",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -2366,16 +2258,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0249_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226252",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -2446,16 +2334,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0257_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226260",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -2486,16 +2370,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0261_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226264",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -2538,16 +2418,12 @@
       "values_compared": 8
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0266_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226269",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -2610,16 +2486,12 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0274_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226277",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -2686,16 +2558,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0282_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226285",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -2714,16 +2582,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
-      "max_rel_err": 0.0,
+      "max_rel_err": 4.861742802445325e-16,
       "name": "gen0285_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561848488984226288",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -2847,16 +2711,15 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 89,
+  "cases_deferred": 55,
   "cases_failed": 0,
-  "cases_passed": 222,
+  "cases_passed": 256,
   "cases_total": 311,
   "deferred_by_unit": {
     "blend.fillet_executive_p1": 10,
-    "intersect.surface_drop_lib_p3": 45,
-    "surface.surface_p2": 34
+    "intersect.surface_drop_lib_p3": 45
   },
-  "max_rel_err": 0.0,
+  "max_rel_err": 6.447848034425354e-16,
   "pass": true,
   "rel_tol": 1e-9,
   "seeds": 16,
