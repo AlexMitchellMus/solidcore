@@ -78,10 +78,11 @@
 //!   `topology.brep_p10`'s (`ReadFromFile` takes that unit's [`TopologyEnv`]).
 //!   `GetInfiniteRegion` is the inline read [`Brep::infinite_region`], and the glue's
 //!   removal of an emptied region walks `topology.brep_p1`'s region list.
-//!   That `MakeFaceTopology` names the face for its surface's owner before the face
-//!   exists, so it gets the key `this_face` gives the next face id (arenas only append);
-//!   it builds the face on a copy of the surface, which `MakeFace` then replaces with
-//!   its own (upstream: one shared surface whose owner `MakeFace` restores).
+//!   `MakeFaceTopology` names the face by the notification environment's identity
+//!   and builds it on a copy of the surface (with no surface identity: its owner
+//!   changes are not notified), which `MakeFace` then replaces with its own
+//!   (upstream: one shared surface whose owner `MakeFace` restores). It claims its
+//!   marks through a fresh [`Marks`] record per call, as each call takes a new mark.
 //! - **`MakeFace`** returns nothing when `MakeFaceTopology` fails; upstream still hands
 //!   back the region and shell it may have made (`MakeFaceWithCurves` warns about it).
 //! - **`GlueEdgesGeneral`**: the arena cannot share one curve between two edges, so
@@ -615,7 +616,7 @@ pub struct NewFace {
 /// first).
 #[allow(clippy::too_many_arguments)]
 pub fn make_face(
-    _k: &Kernel,
+    k: &mut Kernel,
     b: &mut Brep,
     region: Option<RegionId>,
     loops: &[usize],
@@ -626,6 +627,7 @@ pub fn make_face(
     orientation: OrientType,
     opts: &MakeFaceOptions<'_>,
     this_face: &dyn Fn(FaceId) -> ObjectRef,
+    env: &mut ed::NotifyEnv<'_>,
 ) -> Result<NewFace> {
     let Some(mut surface) = surface else {
         return Err(SolidError::null_pointer(OP));
@@ -635,16 +637,14 @@ pub fn make_face(
 
     // get preexisting surface owner
     let old_owner = surface.owner();
-    // the face p6 allocates next (arenas only append)
-    let next_face = FaceId::from_index(
-        u32::try_from(b.faces().len())
-            .map_err(|_| SolidError::invalid_input(OP, "too many faces"))?,
-    );
+    // MakeFaceTopology claims a new mark: a fresh mark record serves (see p10)
     let built = p6::make_face_topology(
+        k,
         b,
+        &mut Marks::default(),
+        env,
         Some(surface.clone()),
         orientation,
-        this_face(next_face).key,
         &p6::FaceTopologyOptions {
             region,
             edge_loops: loops,
@@ -653,6 +653,7 @@ pub fn make_face(
             verify_radial_sectors: opts.verify_radial_sectors,
             calculate_trims: opts.calculate_trims,
             uv_curves: opts.uv_curves,
+            surface_key: None,
         },
     );
     // restore the preexisting surface owner, whether the build fails or succeeds
@@ -738,7 +739,7 @@ fn oriented_end(
 /// evaluations; [`SolidError::Unported`] (see the module docs).
 #[allow(clippy::too_many_lines)] // one upstream routine
 pub fn make_face_with_curves(
-    k: &Kernel,
+    k: &mut Kernel,
     b: &mut Brep,
     region: Option<RegionId>,
     input: FaceCurvesInput,
@@ -773,7 +774,7 @@ pub fn make_face_with_curves(
 /// As [`make_face_with_curves`].
 #[allow(clippy::too_many_lines)] // one upstream routine
 pub fn make_face_with_curve_owners(
-    k: &Kernel,
+    k: &mut Kernel,
     b: &mut Brep,
     region: Option<RegionId>,
     input: FaceCurvesInput,
@@ -1137,6 +1138,7 @@ pub fn make_face_with_curve_owners(
         orientation,
         &MakeFaceOptions::default(),
         this_face,
+        env,
     )?;
     out.region = made.region;
     if made.shell.is_some() && out.shell.is_some() {
@@ -1758,7 +1760,7 @@ mod tests {
 
     #[test]
     fn curve_owner_slots_retain_discarded_inputs_before_a_later_failure() {
-        let k = Kernel::default();
+        let mut k = Kernel::default();
         let mut b = Brep::new();
         let region = b
             .add_region_record(Region {
@@ -1777,9 +1779,11 @@ mod tests {
             key_of: &key_of,
         };
         let result = make_face_with_curve_owners(
-            &k,
+            &mut k,
             &mut b,
-            Some(region),
+            // All curves are discarded first; the later MakeFace region lookup
+            // must fail independently of whether brep_p6 has been ported.
+            Some(RegionId::from_index(12345)),
             FaceCurvesInput {
                 loops: vec![3],
                 curves_3d: Some(vec![None, None, None]),
@@ -1794,7 +1798,7 @@ mod tests {
             &mut owners,
             &mut env,
         );
-        assert!(result.is_err());
+        assert!(matches!(result, Err(error) if !error.is_unported()));
         assert_eq!(owners, vec![None, None, None]);
     }
 
@@ -1860,11 +1864,19 @@ mod tests {
 
     #[test]
     fn make_face_needs_a_surface() {
-        let k = Kernel::default();
+        let mut k = Kernel::default();
         let mut b = Brep::new();
         let opts = MakeFaceOptions::default();
+        let mut records = std::collections::BTreeMap::new();
+        let mut attrs = AttributeStore::default();
+        let mut env = ed::NotifyEnv {
+            records: &mut records,
+            attributes: &mut attrs,
+            context: None,
+            key_of: &key_of,
+        };
         let e = make_face(
-            &k,
+            &mut k,
             &mut b,
             None,
             &[],
@@ -1875,6 +1887,7 @@ mod tests {
             OrientType::Same,
             &opts,
             &face_ref,
+            &mut env,
         );
         assert!(matches!(
             e,
@@ -1884,7 +1897,7 @@ mod tests {
             })
         ));
         let e = make_face(
-            &k,
+            &mut k,
             &mut b,
             None,
             &[],
@@ -1895,6 +1908,7 @@ mod tests {
             OrientType::Same,
             &opts,
             &face_ref,
+            &mut env,
         );
         // no infinite region: MakeFaceTopology's NULL region
         assert!(matches!(
@@ -1912,7 +1926,7 @@ mod tests {
             .unwrap();
         b.set_infinite_region_record(Some(inf));
         let e = make_face(
-            &k,
+            &mut k,
             &mut b,
             None,
             &[],
@@ -1923,14 +1937,24 @@ mod tests {
             OrientType::Same,
             &opts,
             &face_ref,
+            &mut env,
         );
-        // the infinite region: MakeFaceTopology reaches SmFace::SetTolerance (unported)
-        assert!(e.unwrap_err().is_unported());
+        // the infinite region: an edgeless face in a new shell of that region
+        let made = e.unwrap();
+        let face = made.face.unwrap();
+        let shell = made.shell.unwrap();
+        assert_eq!(made.region, None);
+        assert_eq!(b.region(inf).unwrap().shells, vec![shell]);
+        assert_eq!(b.face(face).unwrap().uv_domain, dom());
+        assert_eq!(
+            b.face(face).unwrap().surface.as_ref().unwrap().owner(),
+            Some(face_ref(face))
+        );
     }
 
     #[test]
     fn face_with_curves_input_errors() {
-        let k = Kernel::default();
+        let mut k = Kernel::default();
         let mut b = Brep::new();
         let r = b
             .add_region_record(Region {
@@ -1948,7 +1972,7 @@ mod tests {
         };
         let mut run = |b: &mut Brep, input: FaceCurvesInput, region| {
             make_face_with_curves(
-                &k,
+                &mut k,
                 b,
                 region,
                 input,
@@ -1979,8 +2003,8 @@ mod tests {
             run(&mut b, input, Some(r)),
             Err(SolidError::InvalidInput { .. })
         ));
-        // a NULL region is the infinite region: a degenerate curve only reaches
-        // unported topology
+        // a NULL region is the infinite region: a degenerate curve only leaves no
+        // edges, so MakeFace makes an edgeless face
         b.set_infinite_region_record(Some(r));
         let input = FaceCurvesInput {
             loops: vec![1],
@@ -1988,9 +2012,10 @@ mod tests {
             orientations: vec![OrientType::Same],
             ..Default::default()
         };
-        assert!(run(&mut b, input.clone(), None).unwrap_err().is_unported());
-        // a degenerate curve only: the face topology is unported
-        assert!(run(&mut b, input, Some(r)).unwrap_err().is_unported());
+        let first = run(&mut b, input.clone(), None).unwrap();
+        let second = run(&mut b, input, Some(r)).unwrap();
+        assert_eq!(first.face, Some(FaceId::from_index(0)));
+        assert_eq!(second.face, Some(FaceId::from_index(1)));
         // more loop entries than curves
         let input = FaceCurvesInput {
             loops: vec![3],
