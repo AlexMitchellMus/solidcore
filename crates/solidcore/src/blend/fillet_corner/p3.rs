@@ -1755,11 +1755,10 @@ fn test_g1_continuity(
 /// degenerate input, as `SmOffsetCurve::Evaluate`'s zero binormal). Only an unported
 /// callee stays an error (the case is deferred).
 fn check_nx1_degeneracy(k: &Kernel, b: &mut Brep, vertex: VertexId, eu: EdgeuseId) -> Result<bool> {
-    match p1::check_nx1_degeneracy(k, b, vertex, eu) {
-        Ok(flag) => Ok(flag),
-        Err(e @ SolidError::Unported { .. }) => Err(e),
-        Err(_) => Ok(true),
-    }
+    // the status a failed side binormal evaluation returns through the SmBoolean is
+    // nonzero (true); the guards (a null dereference, a dangling id, an unported callee)
+    // stay errors
+    Ok(p1::check_nx1_degeneracy_status(k, b, vertex, eu)?.unwrap_or(true))
 }
 
 #[cfg(test)]
@@ -1838,10 +1837,37 @@ mod tests {
         // neighbour of its radial coincide: the 2x1 case, the second side is its mate
         b.edgeuse_mut(fil).unwrap().cw = Some(side1);
         b.edgeuse_mut(fil_radial).unwrap().ccw = Some(side1);
+        // Create's walk closes through the mate's clockwise neighbour
+        b.edgeuse_mut(_side1_mate).unwrap().cw = Some(fil_radial);
 
         let raw = p1::check_nx1_degeneracy(&k, &mut b, v, fil);
         assert!(matches!(raw, Err(SolidError::Upstream { .. })), "{raw:?}");
         assert!(check_nx1_degeneracy(&k, &mut b, v, fil).unwrap());
+
+        // through Create: the status selects the degenerate corner ...
+        let (exec, solvers) = one_solver(fil);
+        let c = FilletCorner::create(&k, &mut b, v, &[fil], &exec, &solvers).unwrap();
+        assert_eq!(c.map(|c| c.kind), Some(FilletCornerKind::Degenerate));
+
+        // ... while a null dereference inside the test (the side edge use without
+        // vertex use) is a guard, not a status, and fails the construction
+        b.edgeuse_mut(side1).unwrap().vertexuse = None;
+        let raw = p1::check_nx1_degeneracy(&k, &mut b, v, fil);
+        assert!(
+            matches!(raw, Err(SolidError::InvalidInput { .. })),
+            "{raw:?}"
+        );
+        let r = FilletCorner::create(&k, &mut b, v, &[fil], &exec, &solvers);
+        assert!(matches!(r, Err(SolidError::InvalidInput { .. })), "{r:?}");
+    }
+
+    /// An executive with one base linear solver for `eu` (the tolerances `Create` reads).
+    fn one_solver(eu: EdgeuseId) -> (FilletExecutiveData, Vec<FilletSolver>) {
+        let mut exec = FilletExecutiveData::default();
+        exec.edgeuse_solver_map.insert(eu, FilletSolverId(0));
+        let mut fs = FilletSolver::new(1e-3, 1e-3, 0.01);
+        fs.fsg = Some(crate::blend::fillet_solver::p1::FilletSurfaceGenerator::Linear);
+        (exec, vec![fs])
     }
 
     /// The same vertex with side loop edge uses whose edge carries an `SmOffsetCurve`
@@ -1927,6 +1953,7 @@ mod tests {
         );
         b.edgeuse_mut(fil).unwrap().cw = Some(side1);
         b.edgeuse_mut(fil_radial).unwrap().ccw = Some(side1);
+        b.edgeuse_mut(_side1_mate).unwrap().cw = Some(fil_radial);
 
         let raw = p1::check_nx1_degeneracy(&k, &mut b, v, fil);
         assert!(
@@ -1934,6 +1961,11 @@ mod tests {
             "{raw:?}"
         );
         assert!(check_nx1_degeneracy(&k, &mut b, v, fil).unwrap());
+
+        // through Create: the evaluator's status selects the degenerate corner
+        let (exec, solvers) = one_solver(fil);
+        let c = FilletCorner::create(&k, &mut b, v, &[fil], &exec, &solvers).unwrap();
+        assert_eq!(c.map(|c| c.kind), Some(FilletCornerKind::Degenerate));
     }
 
     #[test]

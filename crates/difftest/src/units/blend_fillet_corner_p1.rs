@@ -1918,7 +1918,7 @@ fn corner_rust(i: &Inputs) -> Result<Output, HarnessError> {
                     tsect_surfaces: &surfaces,
                 };
                 match c.method {
-                    CornerMethod::VertGeom => fc.calc_corner_vert_geom(&mut env, &[]),
+                    CornerMethod::VertGeom => fc.calc_corner_vert_geom(&mut env, &mut []),
                     CornerMethod::EdgeGeom => fc.calc_corner_edge_geom(&mut env),
                     _ => fc.create_end_patch(&mut env),
                 }
@@ -2080,6 +2080,40 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
             }
         }
         topo = (0..ne).filter(|_| rng.chance(0.5)).collect();
+        // the deletions must not leave a one-way mate link to an earlier-deleted corner
+        // vertex (upstream frees it first and dereferences it after; the FFI refuses such
+        // inputs): make the link reciprocal where the mate has a free slot, else drop it
+        for pos in 1..verts.len() {
+            let Some(&v) = verts.get(pos) else {
+                break;
+            };
+            for slot in 0..2 {
+                let Some(m) = model
+                    .vertices
+                    .get(v)
+                    .and_then(|rec| rec.mates.get(slot))
+                    .and_then(|&m| usize::try_from(m).ok())
+                else {
+                    continue;
+                };
+                let deleted_earlier = verts.get(1..pos).is_some_and(|s| s.contains(&m));
+                let Some(mate) = model.vertices.get_mut(m) else {
+                    continue;
+                };
+                if !deleted_earlier || mate.mates.contains(&(v as i64)) {
+                    continue;
+                }
+                if let Some(free) = mate.mates.iter_mut().find(|x| **x < 0) {
+                    *free = v as i64;
+                } else if let Some(link) = model
+                    .vertices
+                    .get_mut(v)
+                    .and_then(|rec| rec.mates.get_mut(slot))
+                {
+                    *link = -1;
+                }
+            }
+        }
     }
     // the end patch: a fillet-side-face edge, with or without an original face
     let mut orig_faces: Vec<[usize; 2]> = Vec::new();
