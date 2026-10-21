@@ -1386,7 +1386,7 @@ fn gen_case(k: &Kernel, rng: &mut Rng) -> OpIn {
 /// solver goes on with whatever the stack held. Rust's `Matrix::new` zeroes it instead, so the two
 /// sides cannot agree. In the default 30,093 cases this is 4 cases (`gen21507` and 3 pairs
 /// that touch exactly at that end and agree anyway); the other 38 with a zero end tangent are 0.5 or more apart.
-fn reads_uninitialised_jacobian(op: &OpIn) -> bool {
+fn reads_uninitialised_jacobian(k: &Kernel, op: &OpIn) -> bool {
     let OpIn::Gcs {
         c1,
         ivl1,
@@ -1410,11 +1410,12 @@ fn reads_uninitialised_jacobian(op: &OpIn) -> bool {
             } else {
                 return false;
             };
-            let e = point_at(c, end);
-            (0..=64).any(|k| {
+            let e = point_at(k, c, end);
+            (0..=64).any(|i| {
                 let q = point_at(
+                    k,
                     other,
-                    other_ivl[0] + (other_ivl[1] - other_ivl[0]) * f64::from(k) / 64.0,
+                    other_ivl[0] + (other_ivl[1] - other_ivl[0]) * f64::from(i) / 64.0,
                 );
                 (e[0] - q[0]).powi(2) + (e[1] - q[1]).powi(2) + (e[2] - q[2]).powi(2) < 0.01
             })
@@ -1436,7 +1437,7 @@ impl UnitDiff for Runner {
             if ffi::validate(code, &input).is_err() {
                 continue;
             }
-            if reads_uninitialised_jacobian(&op) {
+            if reads_uninitialised_jacobian(k, &op) {
                 continue;
             }
             return serde_json::to_value(op).ok();
