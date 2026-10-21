@@ -68,7 +68,10 @@
 //!   `m + 1`; the port requires exactly `m + 1` (`InvalidInput` otherwise).
 //! - **`DampenKnotSpacing`** loops forever when a split never brings the span ratios
 //!   below the factor (e.g. a factor at most 1); the port stops after
-//!   `DAMPEN_SPLIT_LIMIT` splits with [`SolidError::NotConverged`].
+//!   `DAMPEN_SPLIT_LIMIT` splits with [`SolidError::NotConverged`]. Its
+//!   `InsertAt(.., lMultiplicityOfNewKnots)` growth fails softly upstream (ignored);
+//!   the port reserves it fallibly and returns `InvalidInput` when the caller's
+//!   multiplicity makes the new knots too large for memory.
 //! - **Tolerances of `Trim`.** `SmTol::GetZoneTol3d(this)` of a curve without edge is
 //!   the system zone tolerance and `SmTol::MapTo1d(tol, t, curve)` maps with the first
 //!   derivative of `Evaluate(t, 1, TRUE, .., bNonZeroTangents = TRUE)` (the `SmCurve.h`
@@ -328,8 +331,13 @@ fn degree_elevate(curve: &mut BSplineCurve, new_degree: usize) -> Result<()> {
 }
 
 /// `SmCurve::ApproximateLength` of `curve` over `interval` with `samples` samples.
-fn approximate_length(curve: &BSplineCurve, interval: &Extent1d, samples: usize) -> Result<f64> {
-    Ok(crate::curve::curve::p2::approximate_length(curve, interval, samples, false)?.0)
+fn approximate_length(
+    k: &Kernel,
+    curve: &BSplineCurve,
+    interval: &Extent1d,
+    samples: usize,
+) -> Result<f64> {
+    Ok(crate::curve::curve::p2::approximate_length(k, curve, interval, samples, false)?.0)
 }
 
 /// `SmSurface::LocalPointSolve(domain, SM_SO_MINIMIZE, point, guess, found, sol)`:
@@ -347,8 +355,13 @@ fn surface_local_point_solve<S: SurfaceEvaluate>(
 
 /// `SmSurface::Evaluate(uv, 1, 1, TRUE, TRUE, TRUE, vals)`: `vals[i][j]` is the
 /// derivative `i` times in `u` and `j` times in `v`.
-fn surface_evaluate<S: SurfaceEvaluate>(surface: &S, uv: Vec2) -> Result<[[Vec3; 2]; 2]> {
+fn surface_evaluate<S: SurfaceEvaluate>(
+    k: &Kernel,
+    surface: &S,
+    uv: Vec2,
+) -> Result<[[Vec3; 2]; 2]> {
     let d = surface.evaluate(
+        k,
         uv,
         1,
         1,
@@ -779,7 +792,8 @@ impl BSplineCurve {
     /// # Errors
     ///
     /// `SM_ERR` without a NURB or when the knot insertion fails;
-    /// [`SolidError::NotConverged`] after [`DAMPEN_SPLIT_LIMIT`] splits.
+    /// [`SolidError::NotConverged`] after [`DAMPEN_SPLIT_LIMIT`] splits;
+    /// `InvalidInput` when the new knots do not fit in memory.
     pub fn dampen_knot_spacing(
         &mut self,
         max_delta_factor: f64,
@@ -837,9 +851,14 @@ impl BSplineCurve {
                     .iter()
                     .position(|&k| k > split_knot)
                     .unwrap_or(new_knots.len());
-                for _ in 0..multiplicity {
-                    new_knots.insert(insert_point, split_knot);
-                }
+                // (InsertAt with a count; fallible, as the caller's multiplicity sizes it)
+                new_knots.try_reserve(multiplicity).map_err(|_| {
+                    SolidError::invalid_input(OP_DAMPEN, "new knots too large for memory")
+                })?;
+                new_knots.splice(
+                    insert_point..insert_point,
+                    core::iter::repeat_n(split_knot, multiplicity),
+                );
                 i += 1;
             }
         }
@@ -981,7 +1000,7 @@ impl BSplineCurve {
         let disp_vec = through - near_knot_point[0];
 
         // get span distance and 3d distance from nearest knot to through point
-        let span_length = approximate_length(self, &span_interval, 5)?;
+        let span_length = approximate_length(k, self, &span_interval, 5)?;
         let proj_dist_3d = near_knot_point[1].dot(disp_vec);
 
         // Use existing knots when adding a new knot would create a too small internal segment
@@ -1225,7 +1244,7 @@ impl BSplineCurve {
                     .ok_or_else(|| invalid(OP, "uv index out of range"))? = uv_slot;
 
                 // get Surface values at UVpoints
-                let vals = surface_evaluate(surface, uv_slot)?;
+                let vals = surface_evaluate(k, surface, uv_slot)?;
 
                 // project unit 3D vector onto Surface plane
                 let dropped = surface_drop_vector(vals[1][0], vals[0][1], tan_jj)?;
@@ -2378,5 +2397,16 @@ mod tests {
         let mut r = cubic();
         r.reparametrize_with_arc_length().unwrap();
         assert!(BSplineCurve::new(3).scale(1.0).is_err());
+    }
+
+    #[test]
+    fn dampen_absurd_multiplicity_is_an_error() {
+        // fuzz regressions (nurbs.b_spline_curve_n_lib fuzz00889, fuzz01344): a huge
+        // multiplicity inserted knots one at a time without end
+        let mut c = cubic();
+        let before = c.knots(None).unwrap();
+        let r = c.dampen_knot_spacing(0.5, usize::MAX);
+        assert!(r.is_err());
+        assert_eq!(c.knots(None).unwrap(), before);
     }
 }

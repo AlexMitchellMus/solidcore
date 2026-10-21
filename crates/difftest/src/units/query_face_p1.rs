@@ -181,15 +181,16 @@ enum Input {
 
 // ---- the imported B-rep -----------------------------------------------------------------
 
-/// The case's B-rep imported from the C++ export, with each face's primary face use.
-struct Model {
-    path: String,
-    block: Vec<f64>,
-    brep: Brep,
-    types: ImportTypes,
+/// The case's B-rep imported from the C++ export, with each face's primary face use
+/// (shared with the `query.brep` runner).
+pub(crate) struct Model {
+    pub(crate) path: String,
+    pub(crate) block: Vec<f64>,
+    pub(crate) brep: Brep,
+    pub(crate) types: ImportTypes,
 }
 
-fn model(brep: &Value) -> Result<Model, HarnessError> {
+pub(crate) fn model(brep: &Value) -> Result<Model, HarnessError> {
     let (path, block) = fixture_input(brep.clone())?;
     let export = graph::eval(graph::Op::Export, &path, &block)
         .map_err(|e| harness(format!("c++ export: {e}")))?;
@@ -244,7 +245,7 @@ const HARNESS_ANALYTIC_IMPORT: &str = "harness:analytic-geometry-export";
 
 /// The deferral of a case that reads a face surface or edge curve the import holds only
 /// as its B-spline part (see the module docs).
-fn inexact(m: &Model, faces: &[FaceId], edges: &[EdgeId]) -> Option<Output> {
+pub(crate) fn inexact(m: &Model, faces: &[FaceId], edges: &[EdgeId]) -> Option<Output> {
     for f in faces {
         let st = m
             .types
@@ -297,7 +298,7 @@ fn face_and_edges(b: &Brep, f: FaceId) -> (Vec<FaceId>, Vec<EdgeId>) {
 }
 
 /// Every face and edge of the B-rep.
-fn everything(b: &Brep) -> (Vec<FaceId>, Vec<EdgeId>) {
+pub(crate) fn everything(b: &Brep) -> (Vec<FaceId>, Vec<EdgeId>) {
     (
         b.faces().iter().map(|(id, _)| id).collect(),
         b.edges().iter().map(|(id, _)| id).collect(),
@@ -410,7 +411,7 @@ struct PointArgs {
     loops: Vec<LoopId>,
 }
 
-fn point_args(m: &Model, i: &PointInput) -> Result<Option<PointArgs>, HarnessError> {
+fn point_args(k: &Kernel, m: &Model, i: &PointInput) -> Result<Option<PointArgs>, HarnessError> {
     let b = &m.brep;
     let Some(f) = pick(i.face, b.faces().len()) else {
         return Ok(None);
@@ -425,7 +426,7 @@ fn point_args(m: &Model, i: &PointInput) -> Result<Option<PointArgs>, HarnessErr
     let size = dom.size();
     let uv = Point2::new(dom.min().x + i.u * size.x, dom.min().y + i.v * size.y);
     let s = surface
-        .evaluate_point(uv)
+        .evaluate_point(k, uv)
         .map_err(|e| harness(format!("surface point: {e}")))?;
     let point = Vec3::new(s.x + i.offset[0], s.y + i.offset[1], s.z + i.offset[2]);
     let guess = i
@@ -473,8 +474,9 @@ fn pc_block(pc: &PointClassification<EntityRef>) -> Vec<f64> {
     ]
 }
 
-/// No geometry behind the B-rep handles (only the stored gap is read).
-struct NoGeometry;
+/// No geometry behind the B-rep handles (only the stored gap is read; shared with the
+/// `query.brep` runner).
+pub(crate) struct NoGeometry;
 
 impl solidcore::intersect::point_class::ClassGeometry<EntityRef> for NoGeometry {
     fn curve(&self, _o: EntityRef) -> Option<&Curve> {
@@ -491,9 +493,9 @@ impl solidcore::intersect::point_class::ClassGeometry<EntityRef> for NoGeometry 
     }
 }
 
-fn run_point(i: &PointInput, cpp: bool) -> Result<Output, HarnessError> {
+fn run_point(k: &Kernel, i: &PointInput, cpp: bool) -> Result<Output, HarnessError> {
     let m = model(&i.brep)?;
-    let Some(a) = point_args(&m, i)? else {
+    let Some(a) = point_args(k, &m, i)? else {
         return Ok(none_output());
     };
     if cpp {
@@ -654,7 +656,7 @@ fn curve_output(status: i32, values: [f64; 9]) -> Output {
         .values("out", values.to_vec())
 }
 
-fn run_curve(input: &CurveInput, cpp: bool) -> Result<Output, HarnessError> {
+fn run_curve(k: &Kernel, input: &CurveInput, cpp: bool) -> Result<Output, HarnessError> {
     // Inputs the FFI refuses before any C++ runs: nothing runs on either side.
     if !(0..=2).contains(&input.kind)
         || !(0..=7).contains(&input.mask)
@@ -690,7 +692,7 @@ fn run_curve(input: &CurveInput, cpp: bool) -> Result<Output, HarnessError> {
         _ => return Err(harness("unknown curve kind")),
     };
     let mut values = [11., 13., 17., 19., 23., 29., 31., 37., 41.];
-    match p1::evaluate_curve(curve.as_ref(), input.parameter.value()?) {
+    match p1::evaluate_curve(k, curve.as_ref(), input.parameter.value()?) {
         Ok(result) => {
             for ((i, vector), destination) in
                 result.iter().enumerate().zip(values.as_chunks_mut::<3>().0)
@@ -707,13 +709,13 @@ fn run_curve(input: &CurveInput, cpp: bool) -> Result<Output, HarnessError> {
     }
 }
 
-fn run(case: &Case, cpp: bool) -> Result<Output, HarnessError> {
+fn run(k: &Kernel, case: &Case, cpp: bool) -> Result<Output, HarnessError> {
     let input = case.parse::<Input>()?;
     match input {
         Input::Box(i) => run_box(&i, cpp),
-        Input::Point(i) => run_point(&i, cpp),
+        Input::Point(i) => run_point(k, &i, cpp),
         Input::EdgeOn(i) => run_edge_on(&i, cpp),
-        Input::Curve(i) => run_curve(&i, cpp),
+        Input::Curve(i) => run_curve(k, &i, cpp),
     }
 }
 
@@ -731,7 +733,7 @@ const EXACT_FILES: [&str; 7] = [
     "plane_square.smb",
 ];
 
-fn gen_face_brep(rng: &mut Rng) -> BrepIn {
+pub(crate) fn gen_face_brep(rng: &mut Rng) -> BrepIn {
     if rng.chance(0.7) {
         BrepIn::File {
             file: (*rng.choose(&EXACT_FILES).unwrap_or(&"plane_square.smb")).to_string(),
@@ -902,11 +904,13 @@ impl UnitDiff for Runner {
     }
 
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
-        run(case, true)
+        let k = &Kernel::default();
+        run(k, case, true)
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
-        run(case, false)
+        let k = &Kernel::default();
+        run(k, case, false)
     }
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {

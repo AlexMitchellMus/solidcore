@@ -26,7 +26,9 @@
 //!   dropped. `IsSegmentLine` and `IsOnPlane` leave some outputs unset on some paths;
 //!   those are `None` in [`SegmentLine`] / [`OnPlane`]. `IsSegmentLine` returns an
 //!   `SmStatus` through its `SmBoolean` when an evaluation fails (`SER`); the port
-//!   returns the error.
+//!   returns the error. Its sample count is bounded by [`MAX_SEGMENT_SAMPLES`]
+//!   (`InvalidInput` above it, checked only where upstream starts sampling): upstream
+//!   evaluates any count, so an absurd one spins for hours.
 //! - **Join ends** (`ULONG` 0 = start, 1 = end) are `bool`s (`true` = end), the
 //!   `TrimGap` mode (`int` 0, 1, 2) is [`GapFix`] (upstream treats any other value as
 //!   0) and its `int` result a `bool`.
@@ -99,6 +101,10 @@ use crate::nurbs::nurbs_crv::to_euclid;
 /// `SmLine_TYPE` (`CURV_BASE_TYPE + 10`).
 const LINE_TYPE: i64 = BSplineCurve::TYPE - 33 + 10;
 
+/// Largest sample count [`BSplineCurve::is_segment_line`] accepts (a port bound,
+/// far above upstream's callers; upstream evaluates any count).
+pub const MAX_SEGMENT_SAMPLES: u64 = 1 << 20;
+
 /// Cosine of `SM_CONTINUITY_ANGLE` (1 degree), as written in `AssertValid`.
 const COSINE_TOL: f64 = 0.999_847_695_156_391_3;
 
@@ -147,18 +153,29 @@ pub enum GapFix {
 // ---- back-edges -------------------------------------------------------------------
 
 /// `SmCurve::ApproximateLength` of `curve` over `interval` with `samples` samples.
-fn approximate_length(curve: &BSplineCurve, interval: &Extent1d, samples: usize) -> Result<f64> {
-    Ok(crate::curve::curve::p2::approximate_length(curve, interval, samples, false)?.0)
+fn approximate_length(
+    k: &Kernel,
+    curve: &BSplineCurve,
+    interval: &Extent1d,
+    samples: usize,
+) -> Result<f64> {
+    Ok(crate::curve::curve::p2::approximate_length(k, curve, interval, samples, false)?.0)
 }
 
 /// A curve of [`global_curve_intersect`] in its solutions (`0`: the first curve, `1`:
-/// the second, `2` / `3`: their analytic replacements).
+/// the second, `2` / `3`: their analytic replacements) and the natural interval of
+/// the curve (upstream's objects are the curves, whose natural intervals
+/// `IdenticalSolutions` reads).
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct GapCurve(u8);
+struct GapCurve(u8, Extent1d);
 
 impl SolutionObject for GapCurve {
     fn kind(&self) -> ObjectKind {
         ObjectKind::Curve
+    }
+
+    fn natural_interval(&self) -> Option<Extent1d> {
+        Some(self.1)
     }
 }
 
@@ -178,8 +195,14 @@ fn global_curve_intersect(
     let c1 = Curve::from(curve1.clone());
     let opts = CurveIntersectOptions {
         skip_global_coincidence_check: false,
-        handles: [Some(GapCurve(0)), Some(GapCurve(1))],
-        analytic_handles: [Some(GapCurve(2)), Some(GapCurve(3))],
+        handles: [
+            Some(GapCurve(0, c0.natural_interval())),
+            Some(GapCurve(1, c1.natural_interval())),
+        ],
+        analytic_handles: [
+            Some(GapCurve(2, c0.natural_interval())),
+            Some(GapCurve(3, c1.natural_interval())),
+        ],
     };
     let found = ignored(c0.global_curve_intersect(k, ivl0, &c1, ivl1, tol, &opts))?;
     Ok(found.map_or_else(Vec::new, |sols| {
@@ -419,7 +442,7 @@ impl BSplineCurve {
     ///
     /// Those of the degeneracy test; `InvalidInput` for an unclamped knot vector
     /// (upstream reads outside the control points).
-    pub fn has_internal_pole(&self, tol: f64) -> Result<bool> {
+    pub fn has_internal_pole(&self, k: &Kernel, tol: f64) -> Result<bool> {
         let mut rtn = false;
 
         // no work - no BSplineCurve representation
@@ -428,7 +451,7 @@ impl BSplineCurve {
         };
 
         // no work - degenerate curve
-        if self.is_degenerate(tol, None)? {
+        if self.is_degenerate(k, tol, None)? {
             return Ok(false);
         }
 
@@ -483,7 +506,8 @@ impl BSplineCurve {
     ///
     /// # Errors
     ///
-    /// `SM_ERR` without a NURB or when an evaluation fails.
+    /// `SM_ERR` without a NURB or when an evaluation fails; `InvalidInput` for more
+    /// than [`MAX_SEGMENT_SAMPLES`] samples.
     pub fn is_segment_line(
         &self,
         interval: &Extent1d,
@@ -528,6 +552,13 @@ impl BSplineCurve {
         // Use no less than 3 points
         if sample_count < 3 {
             sample_count = 3;
+        }
+        // (port bound: upstream samples any count, spinning for absurd ones)
+        if sample_count > MAX_SEGMENT_SAMPLES {
+            return Err(SolidError::invalid_input(
+                OP_SEG,
+                "sample count above MAX_SEGMENT_SAMPLES",
+            ));
         }
 
         // Evaluating the curve and its derivative in all internal points
@@ -696,6 +727,7 @@ impl BSplineCurve {
     /// [`SolidError::Unported`] from `IsLine`'s back-edges.
     pub fn join_with(
         &mut self,
+        k: &Kernel,
         this_at_end: bool,
         other: &mut Self,
         other_at_end: bool,
@@ -711,7 +743,7 @@ impl BSplineCurve {
             t
         } else {
             let length =
-                approximate_length(self, &ivl1, 10)? + approximate_length(other, &ivl2, 10)?;
+                approximate_length(k, self, &ivl1, 10)? + approximate_length(k, other, &ivl2, 10)?;
             length * EFF_ZERO_SQRT * 1000.0
         };
 
@@ -787,7 +819,7 @@ impl BSplineCurve {
         let mut resulting_curves = Vec::new();
 
         let (knots, _) = self.knots(None)?; // Unique knot vector
-        let (_, continuities) = self.calculate_continuities(continuity_angle_tol)?;
+        let (_, continuities) = self.calculate_continuities(k, continuity_angle_tol)?;
 
         // check state
         if knots.len() != continuities.len() {
@@ -1024,7 +1056,7 @@ impl BSplineCurve {
         level_given: bool,
         key: ObjectKey,
     ) -> Result<bool> {
-        let is_degenerate = |tol: f64| self.is_degenerate(tol, None);
+        let is_degenerate = |tol: f64| self.is_degenerate(k, tol, None);
         self.assert_valid_with(
             k,
             list,
@@ -1368,7 +1400,7 @@ impl BSplineCurve {
         /* 15 */
         // Are Curve Internal ControlPoints Coincident
         let pole_tol = ZONE_TOL_3D / 10.0;
-        let has_internal_pole = self.has_internal_pole(pole_tol)?;
+        let has_internal_pole = self.has_internal_pole(k, pole_tol)?;
         rtn &= report(
             &mut list,
             key,
@@ -1477,17 +1509,19 @@ mod tests {
 
     #[test]
     fn join_with_gap_too_large() {
+        let k = &Kernel::default();
         let mut a = quad();
         let mut b = curve(
             1,
             &[[9.0, 0.0, 0.0], [10.0, 0.0, 0.0]],
             &[0.0, 0.0, 1.0, 1.0],
         );
-        assert!(a.join_with(true, &mut b, false, Some(0.01)).is_err());
+        assert!(a.join_with(k, true, &mut b, false, Some(0.01)).is_err());
     }
 
     #[test]
     fn join_with_curves() {
+        let k = &Kernel::default();
         // two lines at an angle: joined by CreateByJoining
         let mut a = curve(
             1,
@@ -1499,7 +1533,7 @@ mod tests {
             &[[1.0, 0.0, 0.0], [1.0, 1.0, 0.0]],
             &[0.0, 0.0, 1.0, 1.0],
         );
-        a.join_with(true, &mut b, false, Some(0.01)).unwrap();
+        a.join_with(k, true, &mut b, false, Some(0.01)).unwrap();
         let e = a.ends().unwrap();
         assert_eq!(e.start, Vec3::new(0.0, 0.0, 0.0));
         assert_eq!(e.end, Vec3::new(1.0, 1.0, 0.0));
@@ -1509,7 +1543,7 @@ mod tests {
             &[[1.0, 1.0, 0.0], [1.0, 2.0, 0.0]],
             &[0.0, 0.0, 1.0, 1.0],
         );
-        let r = b.join_with(true, &mut c, false, Some(0.01));
+        let r = b.join_with(k, true, &mut c, false, Some(0.01));
         assert!(!matches!(
             r,
             Err(SolidError::Unported {
@@ -1559,5 +1593,27 @@ mod tests {
             .subdivide_at_discontinuity(&k, ContinuityType::C0, 1.0)
             .unwrap();
         assert_eq!(parts.len(), 1);
+    }
+
+    #[test]
+    fn segment_line_sample_count_is_bounded() {
+        // fuzz regression (nurbs.b_spline_curve_p3 fuzz00318): i64::MAX samples on a
+        // straight curve ran for hours
+        let c = curve(
+            2,
+            &[
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [3.0, 0.0, 0.0],
+            ],
+            &[0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0],
+        );
+        let ivl = Extent1d::from_min_max(0.0, 1.0);
+        assert!(c.is_segment_line(&ivl, 10, 1e-6).unwrap().is_line);
+        assert!(c.is_segment_line(&ivl, u64::MAX, 1e-6).is_err());
+        assert!(c
+            .is_segment_line(&ivl, MAX_SEGMENT_SAMPLES + 1, 1e-6)
+            .is_err());
     }
 }

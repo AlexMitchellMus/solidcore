@@ -1,6 +1,5 @@
 //! Real native `ManifoldBoolean` versus the Rust orchestration entry point.
-//! All non-null Rust inputs currently stop at `merge_p1`'s `query.brep` transform
-//! dependency. The real kernel adapter delegates the ported later stages;
+//! The real kernel adapter delegates the ported later stages;
 //! genuine missing dependencies still defer at their exact call sites.
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
 use serde::{Deserialize, Serialize};
@@ -58,11 +57,38 @@ fn import(input: &Operand) -> Result<Option<Brep>, HarnessError> {
     if raw == [-1.0] {
         return Err(error("native input constructor rejected"));
     }
-    super::topology_vertexuse::import(&raw).map(|(b, _)| Some(b))
+    let (mut b, _) = super::topology_vertexuse::import(&raw)?;
+    own_geometry(&mut b)?;
+    Ok(Some(b))
 }
 
-fn append_graph(output: &mut Output, prefix: &str, brep: &Brep) -> Result<(), HarnessError> {
-    let graph = super::topology_brep_p10::snapshot(brep)?;
+/// Give the imported geometry the owners the library's arena adapter keys its B-rep
+/// cache by (`arena_identity`): each edge's curve is owned by its edge, as natively,
+/// and each surface the importer marked as owned by its face keeps that face. Without
+/// this the cache would leave every curve and owned surface out of its trees.
+fn own_geometry(b: &mut Brep) -> Result<(), HarnessError> {
+    use solidcore::topology::brep_cache::{arena_identity, CacheObject};
+    let edges: Vec<_> = b.edges().ids().collect();
+    for e in edges {
+        let edge = b.edge_mut(e).map_err(|x| error(&x.to_string()))?;
+        if let Some(curve) = edge.curve.as_mut() {
+            curve.set_owner(Some(arena_identity(CacheObject::Edge(e))), None);
+        }
+    }
+    let faces: Vec<_> = b.faces().ids().collect();
+    for f in faces {
+        let face = b.face_mut(f).map_err(|x| error(&x.to_string()))?;
+        if let Some(surface) = face.surface.as_mut() {
+            if surface.owner().is_some() {
+                surface.set_owner(Some(arena_identity(CacheObject::Face(f))));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn append_graph(k: &Kernel, output: &mut Output, prefix: &str, brep: &Brep) -> Result<(), HarnessError> {
+    let graph = super::topology_brep_p10::snapshot(k, brep)?;
     for (key, values) in graph.ints {
         output.ints.insert(format!("{prefix}.{key}"), values);
     }
@@ -101,7 +127,7 @@ impl<'a> Record<'a> {
     }
 }
 
-fn native_snapshot(raw: &[f64]) -> Result<Output, HarnessError> {
+fn native_snapshot(k: &Kernel, raw: &[f64]) -> Result<Output, HarnessError> {
     let mut rd = Record { remaining: raw };
     let mut header = Vec::new();
     for _ in 0..9 {
@@ -127,7 +153,7 @@ fn native_snapshot(raw: &[f64]) -> Result<Output, HarnessError> {
             return Err(error("inexact post-state surface import"));
         }
         b.set_editing_enabled(*editing != 0.0);
-        append_graph(&mut output, prefix, &b)
+        append_graph(k, &mut output, prefix, &b)
     };
     let mut presence = Vec::new();
     for prefix in ["primary", "other"] {
@@ -153,6 +179,7 @@ fn rust_snapshot(
     state: &ManifoldState,
 ) -> Result<Output, HarnessError> {
     let other_kernel = kernels.other.as_deref().unwrap_or(kernels.primary);
+    let k: &Kernel = kernels.primary;
     let mut output = Output::new()
         .ints(
             "status_and_state",
@@ -174,7 +201,7 @@ fn rust_snapshot(
         );
     for (prefix, b) in [("primary", primary), ("other", other)] {
         if let Some(b) = b {
-            append_graph(&mut output, prefix, b)?;
+            append_graph(k, &mut output, prefix, b)?;
         }
     }
     for (i, b) in state
@@ -183,7 +210,7 @@ fn rust_snapshot(
         .chain(&state.other_components)
         .enumerate()
     {
-        append_graph(&mut output, &format!("component.{i}"), b)?;
+        append_graph(k, &mut output, &format!("component.{i}"), b)?;
     }
     Ok(output)
 }
@@ -193,13 +220,14 @@ impl UnitDiff for Runner {
         "boolean.merge_p4"
     }
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
+        let k = &Kernel::default();
         let i: Inputs = case.parse()?;
         let raw = ffi::eval(&i.primary, &i.other, request(&i)).map_err(|e| error(&e))?;
         if raw == [-1.0] {
             return Ok(Output::rejected("native primitive constructor"));
         }
         // Status is data: Output::err would suppress all state comparison.
-        native_snapshot(&raw)
+        native_snapshot(k, &raw)
     }
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
         let i: Inputs = case.parse()?;
