@@ -993,17 +993,18 @@ fn state(executive: &OffsetExecutive) -> Vec<f64> {
 
 // Build the shim's primary/mate pair explicitly, rather than assuming arena EU
 // ids are traversal ids. The closing edge is real scaffolding, not measured.
-fn add_wire(brep: &mut Brep, curve: Curve, interval: Extent1d) -> HResult<EdgeId> {
-    add_wire_with_vertices(brep, curve, interval, None)
+fn add_wire(k: &Kernel, brep: &mut Brep, curve: Curve, interval: Extent1d) -> HResult<EdgeId> {
+    add_wire_with_vertices(k, brep, curve, interval, None)
 }
 fn add_wire_with_vertices(
+    k: &Kernel,
     brep: &mut Brep,
     curve: Curve,
     interval: Extent1d,
     vertices: Option<[VertexId; 2]>,
 ) -> HResult<EdgeId> {
-    let start = curve.evaluate_point(interval.min()).map_err(setup)?;
-    let end = curve.evaluate_point(interval.max()).map_err(setup)?;
+    let start = curve.evaluate_point(k, interval.min()).map_err(setup)?;
+    let end = curve.evaluate_point(k, interval.max()).map_err(setup)?;
     let shell = brep
         .add_shell_record(Shell {
             faces: Vec::new(),
@@ -1061,8 +1062,9 @@ fn add_wire_with_vertices(
     }
     Ok(edge)
 }
-fn unit_wire(brep: &mut Brep, y: f64) -> HResult<EdgeId> {
+fn unit_wire(k: &Kernel, brep: &mut Brep, y: f64) -> HResult<EdgeId> {
     add_wire(
+        k,
         brep,
         CurveIn::Line {
             start: [0.0, y, 0.0],
@@ -1190,8 +1192,8 @@ fn face_with_edges(
     }
     Ok((face, upward))
 }
-fn plane_face(brep: &mut Brep, z: f64) -> HResult<(FaceId, FaceuseId)> {
-    rect_face(brep, [0.0, 0.0, 1.0, 1.0], z, false, false)
+fn plane_face(k: &Kernel, brep: &mut Brep, z: f64) -> HResult<(FaceId, FaceuseId)> {
+    rect_face(k, brep, [0.0, 0.0, 1.0, 1.0], z, false, false)
 }
 /// The loop of a rectangle, counter-clockwise from its lower-left corner, with
 /// the bottom edge split at `split_bottom` when given.
@@ -1204,13 +1206,14 @@ fn rectangle_loop([x0, y0, x1, y1]: [f64; 4], split_bottom: Option<f64>) -> Vec<
     points
 }
 fn rect_face(
+    k: &Kernel,
     brep: &mut Brep,
     rect: [f64; 4],
     z: f64,
     flip: bool,
     uv_trims: bool,
 ) -> HResult<(FaceId, FaceuseId)> {
-    polygon_face(brep, &rectangle_loop(rect, None), z, flip, uv_trims)
+    polygon_face(k, brep, &rectangle_loop(rect, None), z, flip, uv_trims)
 }
 /// A plane face at height `z` bounded by the straight-edged loop `points` (the
 /// shim's `curve_face` geometry: plane axes `X, Y`, or `Y, X` with `flip`, domain =
@@ -1218,6 +1221,7 @@ fn rect_face(
 /// line of its 3D line, as the native `MakeFaceWithCurves` face holds after
 /// `CreateUVTrimCurves`.
 fn polygon_face(
+    k: &Kernel,
     brep: &mut Brep,
     points: &[[f64; 2]],
     z: f64,
@@ -1248,6 +1252,7 @@ fn polygon_face(
         }
         .rust()?;
         edges.push(add_wire_with_vertices(
+            k,
             brep,
             curve,
             ivl([0.0, 1.0]),
@@ -1315,8 +1320,8 @@ fn polygon_face(
     }
     Ok(made)
 }
-fn loop_fixture(brep: &mut Brep, input: &EdgeIn) -> HResult<(EdgeId, EdgeId)> {
-    let edge = add_wire(brep, input.curve.rust()?, ivl(input.interval))?;
+fn loop_fixture(k: &Kernel, brep: &mut Brep, input: &EdgeIn) -> HResult<(EdgeId, EdgeId)> {
+    let edge = add_wire(k, brep, input.curve.rust()?, ivl(input.interval))?;
     let [a, b] = brep.edge(edge).map_err(setup)?.vertices;
     let start = brep.vertex(b).map_err(setup)?.point;
     let end = brep.vertex(a).map_err(setup)?.point;
@@ -1341,25 +1346,25 @@ fn loop_fixture(brep: &mut Brep, input: &EdgeIn) -> HResult<(EdgeId, EdgeId)> {
     }
     .map_err(setup)?;
     let interval = closing.natural_interval();
-    let support = add_wire_with_vertices(brep, Curve::from(closing), interval, Some([b, a]))?;
+    let support = add_wire_with_vertices(k, brep, Curve::from(closing), interval, Some([b, a]))?;
     face_with_edges(brep, plane(0.0), &[edge, support])?;
     Ok((edge, support))
 }
 
-fn rust_config(input: &Config) -> HResult<Output> {
+fn rust_config(k: &Kernel, input: &Config) -> HResult<Output> {
     guard(ffi::validate_config(&input.ffi()))?;
     let mut original = Brep::new();
     let mut offset = Brep::new();
     let mut face_owner = Brep::new();
     for i in 0..input.original_edges {
-        unit_wire(&mut original, i as f64)?;
+        unit_wire(k, &mut original, i as f64)?;
     }
     for i in 0..input.offset_edges {
-        unit_wire(&mut offset, i as f64)?;
+        unit_wire(k, &mut offset, i as f64)?;
     }
     let mut faces = Vec::new();
     for i in 0..input.face_count {
-        faces.push(plane_face(&mut face_owner, i as f64)?.0);
+        faces.push(plane_face(k, &mut face_owner, i as f64)?.0);
     }
     let originals = wire_uses(&original);
     let offsets = wire_uses(&offset);
@@ -1451,19 +1456,19 @@ fn measured_traversal(brep: &Brep, supports: &[EdgeId]) -> RResult<(Vec<EdgeId>,
     Ok((edges, uses))
 }
 
-fn rust_sync(input: &Synchronize) -> RResult<Output> {
+fn rust_sync(k: &Kernel, input: &Synchronize) -> RResult<Output> {
     guard(ffi::validate_synchronize(&input.ffi()))?;
     let mut kernel = Kernel::default();
     let mut original = Brep::new();
-    let edge_a = unit_wire(&mut original, 0.0)?;
-    let edge_b = unit_wire(&mut original, 1.0)?;
+    let edge_a = unit_wire(k, &mut original, 0.0)?;
+    let edge_b = unit_wire(k, &mut original, 1.0)?;
     let a = primary(&original, edge_a)?;
     let b = primary(&original, edge_b)?;
     let mut offset = Brep::new();
     let mut supports = Vec::new();
     let mut fixtures = Vec::new();
     for edge in input.first.iter().chain(&input.second) {
-        let (edge, support) = loop_fixture(&mut offset, edge)?;
+        let (edge, support) = loop_fixture(k, &mut offset, edge)?;
         supports.push(support);
         fixtures.push(primary(&offset, edge)?);
     }
@@ -1525,9 +1530,9 @@ fn rust_sync(input: &Synchronize) -> RResult<Output> {
             .curve
             .as_ref()
             .ok_or_else(|| bad("missing measured curve"))?;
-        let length = curve.approximate_length(&edge.interval, 10, false)?.0;
-        let (start_status, start) = operation(curve.evaluate_point(edge.interval.min()))?;
-        let (end_status, end) = operation(curve.evaluate_point(edge.interval.max()))?;
+        let length = curve.approximate_length(k, &edge.interval, 10, false)?.0;
+        let (start_status, start) = operation(curve.evaluate_point(k, edge.interval.min()))?;
+        let (end_status, end) = operation(curve.evaluate_point(k, edge.interval.max()))?;
         let start = start.unwrap_or(Vec3::ZERO);
         let end = end.unwrap_or(Vec3::ZERO);
         output = output
@@ -1651,12 +1656,12 @@ fn rust_extend(input: &Extension) -> RResult<Output> {
                 (1.0 - u) * domain.min().x + u * domain.max().x,
                 (1.0 - v) * domain.min().y + v * domain.max().y,
             );
-            let (status, point) = operation(surface.evaluate_point(uv))?;
+            let (status, point) = operation(surface.evaluate_point(&kernel, uv))?;
             let point = point.unwrap_or(Vec3::ZERO);
             statuses.push(status);
             samples.extend([point.x, point.y, point.z]);
             let (status, normal) =
-                operation(surface.evaluate_normal(uv, Side::Right, Side::Right))?;
+                operation(surface.evaluate_normal(&kernel, uv, Side::Right, Side::Right))?;
             let normal = normal.unwrap_or(Vec3::ZERO);
             statuses.push(status);
             samples.extend([normal.x, normal.y, normal.z]);
@@ -1700,7 +1705,7 @@ fn vertex_plane(center: Vec3, half_width: f64) -> Surface {
 // Mirrors MakeVertexLoop + MakeEdgeInFace: a bounded lamina face with a slit
 // from a boundary corner to the interior target vertex. Four strut edgeuses
 // form two mate pairs; radials, not mates, are neighbors at the strut endpoint.
-fn source_vertex_strut(brep: &mut Brep, point: Vec3) -> HResult<(VertexId, FaceuseId)> {
+fn source_vertex_strut(k: &Kernel, brep: &mut Brep, point: Vec3) -> HResult<(VertexId, FaceuseId)> {
     brep.set_editing_enabled(true);
     let mut vertices = Vec::new();
     for (x, y) in [(-2.0, -2.0), (2.0, -2.0), (2.0, 2.0), (-2.0, 2.0)] {
@@ -1724,6 +1729,7 @@ fn source_vertex_strut(brep: &mut Brep, point: Vec3) -> HResult<(VertexId, Faceu
         .map_err(setup)?;
         let interval = curve.natural_interval();
         edges.push(add_wire_with_vertices(
+            k,
             brep,
             Curve::from(curve),
             interval,
@@ -1747,7 +1753,13 @@ fn source_vertex_strut(brep: &mut Brep, point: Vec3) -> HResult<(VertexId, Faceu
         BSplineCurve::create_line_segment(3, brep.vertex(corner).map_err(setup)?.point, point)
             .map_err(setup)?;
     let interval = curve.natural_interval();
-    let strut = add_wire_with_vertices(brep, Curve::from(curve), interval, Some([corner, target]))?;
+    let strut = add_wire_with_vertices(
+        k,
+        brep,
+        Curve::from(curve),
+        interval,
+        Some([corner, target]),
+    )?;
     let first_pair = brep.edge(strut).map_err(setup)?.edgeuses.clone();
     // Duplicate the actual use/vertexuse records, not geometry or output caps.
     let mut second_pair = Vec::new();
@@ -1828,7 +1840,7 @@ fn source_vertex_strut(brep: &mut Brep, point: Vec3) -> HResult<(VertexId, Faceu
     Ok((target, upward))
 }
 
-fn result_vertex_disk(brep: &mut Brep, center: Vec3, radius: f64) -> HResult<FaceId> {
+fn result_vertex_disk(k: &Kernel, brep: &mut Brep, center: Vec3, radius: f64) -> HResult<FaceId> {
     let mut placement = Axis2Placement::IDENTITY;
     placement.translate(center);
     let circle = BSplineCurve::create_circle_segment(
@@ -1848,11 +1860,18 @@ fn result_vertex_disk(brep: &mut Brep, center: Vec3, radius: f64) -> HResult<Fac
             ..Vertex::default()
         })
         .map_err(setup)?;
-    let edge = add_wire_with_vertices(brep, Curve::from(circle), interval, Some([vertex, vertex]))?;
+    let edge = add_wire_with_vertices(
+        k,
+        brep,
+        Curve::from(circle),
+        interval,
+        Some([vertex, vertex]),
+    )?;
     Ok(face_with_edges(brep, vertex_plane(center, radius), &[edge])?.0)
 }
 
 fn put_rust_vertex_surface(
+    k: &Kernel,
     raw: &mut Vec<f64>,
     surface: &Surface,
     samples: &[[f64; 2]],
@@ -1888,7 +1907,7 @@ fn put_rust_vertex_surface(
             (1.0 - u) * domain.min().x + u * domain.max().x,
             (1.0 - v) * domain.min().y + v * domain.max().y,
         );
-        let (status, derivatives) = operation(surface.evaluate_2nd_derivatives(uv, true, true))?;
+        let (status, derivatives) = operation(surface.evaluate_2nd_derivatives(k, uv, true, true))?;
         raw.push(status as f64);
         for value in derivatives.unwrap_or([Vec3::ZERO; 6]) {
             raw.extend([value.x, value.y, value.z]);
@@ -1897,8 +1916,7 @@ fn put_rust_vertex_surface(
     Ok(())
 }
 
-fn rust_vertex(input: &VertexFixture) -> RResult<Output> {
-    let kernel = Kernel::default();
+fn rust_vertex(k: &Kernel, input: &VertexFixture) -> RResult<Output> {
     let mut original = Brep::new();
     // Native SetTolerance runs before either empty B-rep gains geometry. Its
     // nonpositive sentinel computes a unit-size fallback, not a literal <=0 tol.
@@ -1916,7 +1934,7 @@ fn rust_vertex(input: &VertexFixture) -> RResult<Output> {
     result.set_tolerance(result_tolerance);
     let point = v3(input.point);
     let (vertex, relation) = if let Some(strut) = &input.strut {
-        let (vertex, mut faceuse) = source_vertex_strut(&mut original, point)?;
+        let (vertex, mut faceuse) = source_vertex_strut(k, &mut original, point)?;
         if strut.map_mate {
             faceuse = original
                 .faceuse(faceuse)
@@ -1925,6 +1943,7 @@ fn rust_vertex(input: &VertexFixture) -> RResult<Output> {
                 .ok_or_else(|| bad("source faceuse has no mate"))?;
         }
         let face = result_vertex_disk(
+            k,
             &mut result,
             point + Vec3::new(0.0, 0.0, strut.height),
             strut.radius,
@@ -1942,8 +1961,7 @@ fn rust_vertex(input: &VertexFixture) -> RResult<Output> {
     if let Some((faceuse, face)) = relation {
         executive.relate_faceuse(faceuse, face);
     }
-    let (status, cap) =
-        operation(executive.build_offset_of_vertex(&kernel, &original, Some(vertex)))?;
+    let (status, cap) = operation(executive.build_offset_of_vertex(k, &original, Some(vertex)))?;
     let mut raw = vec![0.0, status as f64, original_tolerance, result_tolerance];
     let cap = cap.unwrap_or_default();
     raw.extend([
@@ -1970,13 +1988,13 @@ fn rust_vertex(input: &VertexFixture) -> RResult<Output> {
         ]);
         for fraction in [0.113, 0.371, 0.729, 0.913] {
             let parameter = (1.0 - fraction) * interval.min() + fraction * interval.max();
-            let (status, point) = operation(curve.evaluate_point(parameter))?;
+            let (status, point) = operation(curve.evaluate_point(k, parameter))?;
             let point = point.unwrap_or(Vec3::ZERO);
             raw.extend([status as f64, point.x, point.y, point.z]);
         }
     }
     if let Some(surface) = &cap.surface {
-        put_rust_vertex_surface(&mut raw, surface, &input.samples)?;
+        put_rust_vertex_surface(k, &mut raw, surface, &input.samples)?;
     }
     Ok(decode(&Inputs::Vertex(input.clone()), &raw)?)
 }
@@ -2239,7 +2257,7 @@ fn rust_map_twin(input: &MapTwinIn) -> RResult<Output> {
     guard(ffi::validate_map_twin(&input.ffi()))?;
     let kernel = Kernel::default();
     let mut original = Brep::new();
-    let (_, upward) = rect_face(&mut original, input.original, 0.0, false, true)?;
+    let (_, upward) = rect_face(&kernel, &mut original, input.original, 0.0, false, true)?;
     let faceuse = if input.mate {
         original
             .faceuse(upward)
@@ -2251,6 +2269,7 @@ fn rust_map_twin(input: &MapTwinIn) -> RResult<Output> {
     };
     let mut offset = Brep::new();
     let (twin, _) = polygon_face(
+        &kernel,
         &mut offset,
         &rectangle_loop(input.offset, input.split_bottom),
         input.offset_distance,
@@ -2299,7 +2318,7 @@ fn probe_env<R>(run: impl FnOnce(&mut NotifyEnv<'_>, &dyn Fn(EntityRef) -> Objec
     run(&mut env, &|entity| entity_key(entity, 2))
 }
 
-fn rust_probe(branch: Probe, tolerance: f64) -> RResult<Output> {
+fn rust_probe(k: &Kernel, branch: Probe, tolerance: f64) -> RResult<Output> {
     let mut kernel = Kernel::default();
     let mut original = Brep::new();
     let mut executive = OffsetExecutive::new(OffsetOperation::SolidOffset, 0.25, tolerance);
@@ -2317,7 +2336,7 @@ fn rust_probe(branch: Probe, tolerance: f64) -> RResult<Output> {
         }
         Probe::SideWallNull => executive.build_side_wall_of_edgeuse(&kernel, &mut original, None),
         Probe::SideWallUnmapped => {
-            let edge = unit_wire(&mut original, 0.0)?;
+            let edge = unit_wire(k, &mut original, 0.0)?;
             let eu = primary(&original, edge)?;
             executive.build_side_wall_of_edgeuse(&kernel, &mut original, Some(eu))
         }
@@ -2365,7 +2384,7 @@ fn rust_probe(branch: Probe, tolerance: f64) -> RResult<Output> {
         }
         Probe::FaceuseNull | Probe::FaceuseNoSurface => {
             let faceuse = if matches!(branch, Probe::FaceuseNoSurface) {
-                Some(plane_face(&mut original, 0.0)?.1)
+                Some(plane_face(k, &mut original, 0.0)?.1)
             } else {
                 None
             };
@@ -2387,7 +2406,7 @@ fn rust_probe(branch: Probe, tolerance: f64) -> RResult<Output> {
                 counts = [0, 0, 0, 1];
             }),
         Probe::MapPlane => {
-            let (face, faceuse) = plane_face(&mut original, 0.0)?;
+            let (face, faceuse) = plane_face(k, &mut original, 0.0)?;
             originals = wire_uses(&original);
             offsets.clone_from(&originals);
             // Native passes the original face itself as the offset face. The safe
@@ -2398,7 +2417,7 @@ fn rust_probe(branch: Probe, tolerance: f64) -> RResult<Output> {
             })
         }
         Probe::EdgeusesUnmapped => {
-            plane_face(&mut original, 0.0)?;
+            plane_face(k, &mut original, 0.0)?;
             let edge = original
                 .edges()
                 .ids()
@@ -2473,12 +2492,13 @@ impl UnitDiff for Runner {
         decode(&input, &raw)
     }
     fn run_rust(&self, case: &Case) -> HResult<Output> {
+        let k = &Kernel::default();
         let result = match case.parse::<Inputs>()? {
-            Inputs::Config(input) => rust_config(&input).map_err(RunError::Harness),
-            Inputs::Synchronize(input) => rust_sync(&input),
+            Inputs::Config(input) => rust_config(k, &input).map_err(RunError::Harness),
+            Inputs::Synchronize(input) => rust_sync(k, &input),
             Inputs::Extend(input) => rust_extend(&input),
-            Inputs::Vertex(input) => rust_vertex(&input),
-            Inputs::Probe { branch, approx_tol } => rust_probe(branch, approx_tol),
+            Inputs::Vertex(input) => rust_vertex(k, &input),
+            Inputs::Probe { branch, approx_tol } => rust_probe(k, branch, approx_tol),
             Inputs::FaceTail(input) => rust_face_tail(&input),
             Inputs::MapTwin(input) => rust_map_twin(&input),
         };
@@ -3035,6 +3055,7 @@ mod tests {
 
     #[test]
     fn real_trimmed_line_sync_agrees_with_the_documented_native_record_layout() {
+        let k = &Kernel::default();
         let input = Inputs::Synchronize(Synchronize {
             first: vec![EdgeIn {
                 curve: CurveIn::Line {
@@ -3060,7 +3081,7 @@ mod tests {
             unreachable!()
         };
         let mut brep = Brep::new();
-        let (edge, support) = loop_fixture(&mut brep, &input.first[0]).unwrap();
+        let (edge, support) = loop_fixture(k, &mut brep, &input.first[0]).unwrap();
         assert_eq!(brep.vertices().len(), 2);
         assert_eq!(brep.edge(edge).unwrap().edgeuses.len(), 2);
         assert_eq!(
@@ -3074,6 +3095,7 @@ mod tests {
 
     #[test]
     fn zero_length_and_near_degenerate_fixtures_keep_their_actual_filter_branches() {
+        let k = &Kernel::default();
         let context = CaseContext {
             root: crate::case::repo_root(),
             seeds: 0,
@@ -3133,7 +3155,7 @@ mod tests {
             };
             let mut brep = Brep::new();
             for edge in input.first.iter().chain(&input.second) {
-                let (measured, support) = loop_fixture(&mut brep, edge).unwrap();
+                let (measured, support) = loop_fixture(k, &mut brep, edge).unwrap();
                 let measured = brep.edge(measured).unwrap();
                 let support = brep.edge(support).unwrap();
                 let closing = support.curve.as_ref().unwrap();
@@ -3143,17 +3165,17 @@ mod tests {
                 );
                 assert!(
                     closing
-                        .approximate_length(&support.interval, 10, false)
+                        .approximate_length(&Kernel::default(), &support.interval, 10, false)
                         .unwrap()
                         .0
                         > 0.0
                 );
                 assert_eq!(
-                    closing.evaluate_point(support.interval.min()).unwrap(),
+                    closing.evaluate_point(k, support.interval.min()).unwrap(),
                     brep.vertex(measured.vertices[1]).unwrap().point,
                 );
                 assert_eq!(
-                    closing.evaluate_point(support.interval.max()).unwrap(),
+                    closing.evaluate_point(k, support.interval.max()).unwrap(),
                     brep.vertex(measured.vertices[0]).unwrap().point,
                 );
             }
@@ -3723,6 +3745,7 @@ mod tests {
 
     #[test]
     fn actual_rust_tie_fixtures_use_the_same_narrow_snapshot_policy() {
+        let k = &Kernel::default();
         let context = CaseContext {
             root: crate::case::repo_root(),
             seeds: 0,
@@ -3739,7 +3762,7 @@ mod tests {
             let Inputs::Synchronize(input) = fixture.parse().unwrap() else {
                 unreachable!()
             };
-            let unnormalized = rust_sync(&input).ok().unwrap();
+            let unnormalized = rust_sync(k, &input).ok().unwrap();
             assert_eq!(actual, normalize_sync_ties(unnormalized).unwrap());
             // A native snapshot may emit the opposite hash order for these ties.
             let mut opposite = actual.clone();

@@ -361,7 +361,7 @@ impl OffsetExecutive {
         let mut first = self.edgeuse_to_edgeuses.seconds(original);
         // An empty mapping does not dereference the B-rep upstream.
         if !first.is_empty() {
-            remove_small_stuff(self.required_offset_brep()?, &mut first)?;
+            remove_small_stuff(kernel, self.required_offset_brep()?, &mut first)?;
         }
         let mut second = other.map_or_else(Vec::new, |id| self.edgeuse_to_edgeuses.seconds(id));
         let mut out = SynchronizedEdgeuses::default();
@@ -376,7 +376,7 @@ impl OffsetExecutive {
         }
 
         let brep = required(self.offset_brep.as_mut())?;
-        remove_small_stuff(brep, &mut second)?;
+        remove_small_stuff(kernel, brep, &mut second)?;
         if second.is_empty() {
             sort_edgeuses(brep, &mut first)?;
             out.other_edgeuses.resize(first.len(), None);
@@ -658,7 +658,7 @@ impl OffsetExecutive {
     /// (`BuildOffsetOfVertex`), using the original vertex's geometry and tolerance.
     pub fn build_offset_of_vertex(
         &mut self,
-        kernel: &Kernel,
+        k: &Kernel,
         original: &Brep,
         vertex: Option<VertexId>,
     ) -> Result<VertexOffset> {
@@ -690,7 +690,7 @@ impl OffsetExecutive {
                     edges = face_edges(result, face)?;
                     for &edge in &edges {
                         let curve = bspline_edge_curve(result, edge)?;
-                        if let Some((frame, arc_radius, _, _)) = curve.is_arc(10, tol)? {
+                        if let Some((frame, arc_radius, _, _)) = curve.is_arc(k, 10, tol)? {
                             if arc_radius < self.offset_distance
                                 && frame.origin().distance(point) < self.offset_distance + tol
                             {
@@ -702,7 +702,7 @@ impl OffsetExecutive {
                 if edges_to_blend.len() != 1 {
                     return Ok(VertexOffset::default());
                 }
-                return self.vertex_offset_geometry(kernel, original, vertex, &edges_to_blend);
+                return self.vertex_offset_geometry(k, original, vertex, &edges_to_blend);
             }
         }
 
@@ -717,11 +717,11 @@ impl OffsetExecutive {
         for face in offset_faces {
             for edge in face_edges(result, face)? {
                 let curve = bspline_edge_curve(result, edge)?;
-                if let Some((frame, _, _, _)) = curve.is_arc(10, tol)? {
+                if let Some((frame, _, _, _)) = curve.is_arc(k, 10, tol)? {
                     if frame.origin().distance(point) < tol {
                         edges_to_blend.push(edge);
                     }
-                } else if let Some((line_point, line_vector)) = curve.is_line(10, tol)? {
+                } else if let Some((line_point, line_vector)) = curve.is_line(k, 10, tol)? {
                     if (line_vector.length() - radius).abs() < tol {
                         let (distance, _) = crate::geom::geom_utility::p1::segment_point_distance(
                             line_point,
@@ -736,7 +736,7 @@ impl OffsetExecutive {
             }
         }
         // This call is unconditional, even when the vertex has no incident edges.
-        self.vertex_offset_geometry(kernel, original, vertex, &edges_to_blend)
+        self.vertex_offset_geometry(k, original, vertex, &edges_to_blend)
     }
 
     fn vertex_offset_geometry(
@@ -1184,12 +1184,14 @@ impl OffsetExecutive {
             .unwrap_or_else(Extent2d::new);
         let mid_uv = domain.evaluate(0.5, 0.5);
         let normal = ignored(required(original_face.surface.as_ref())?.evaluate_normal(
+            kernel,
             mid_uv,
             Side::Right,
             Side::Right,
         ))?
         .unwrap_or(Vec3::UNDEF);
         let offset_normal = ignored(required(offset_face.surface.as_ref())?.evaluate_normal(
+            kernel,
             mid_uv,
             Side::Right,
             Side::Right,
@@ -1452,13 +1454,13 @@ fn insert_breaks(
     Ok(())
 }
 
-fn remove_small_stuff(brep: &Brep, edgeuses: &mut Vec<EdgeuseId>) -> Result<()> {
+fn remove_small_stuff(k: &Kernel, brep: &Brep, edgeuses: &mut Vec<EdgeuseId>) -> Result<()> {
     let mut lengths = Vec::new();
     let mut total_length = 0.0;
     for &edgeuse in edgeuses.iter() {
         let edge = brep.edge(edge_of(brep, edgeuse)?)?;
         let curve = required(edge.curve.as_ref())?;
-        let length = curve.approximate_length(&edge.interval, 10, false)?.0;
+        let length = curve.approximate_length(k, &edge.interval, 10, false)?.0;
         lengths.push(length);
         total_length += length;
     }
@@ -1948,15 +1950,16 @@ mod tests {
 
     #[test]
     fn zero_length_and_ten_equal_pieces_are_all_removed() {
+        let k = &Kernel::default();
         let mut brep = Brep::new();
         let zero = add_use(&mut brep, 0.0, 0.0, 0.0);
         let mut uses = vec![zero];
-        remove_small_stuff(&brep, &mut uses).unwrap();
+        remove_small_stuff(k, &brep, &mut uses).unwrap();
         assert!(uses.is_empty());
         for i in 0..10 {
             uses.push(add_use(&mut brep, f64::from(i), f64::from(i + 1), 1.0));
         }
-        remove_small_stuff(&brep, &mut uses).unwrap();
+        remove_small_stuff(k, &brep, &mut uses).unwrap();
         assert!(uses.is_empty());
     }
 
@@ -2178,7 +2181,7 @@ mod tests {
             .unwrap();
         assert_eq!(first.natural_uv_domain(), expected.natural_uv_domain());
         let first_point = first
-            .evaluate_point(first.natural_uv_domain().evaluate(0.5, 0.5))
+            .evaluate_point(&kernel, first.natural_uv_domain().evaluate(0.5, 0.5))
             .unwrap();
         // A cached identity does not evaluate even a different/malformed supplied base.
         let broken = Surface::from(BSplineSurface::new());
@@ -2187,7 +2190,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             cached
-                .evaluate_point(cached.natural_uv_domain().evaluate(0.5, 0.5))
+                .evaluate_point(&kernel, cached.natural_uv_domain().evaluate(0.5, 0.5))
                 .unwrap(),
             first_point
         );
@@ -2196,7 +2199,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             other
-                .evaluate_point(other.natural_uv_domain().evaluate(0.5, 0.5))
+                .evaluate_point(&kernel, other.natural_uv_domain().evaluate(0.5, 0.5))
                 .unwrap()
                 .z,
             7.0
@@ -2726,7 +2729,10 @@ mod tests {
             )
             .unwrap(),
         );
-        assert!(curve.is_arc(10, result.tolerance()).unwrap().is_some());
+        assert!(curve
+            .is_arc(&kernel, 10, result.tolerance())
+            .unwrap()
+            .is_some());
         result.edge_mut(edge).unwrap().curve = Some(curve);
         let (empty_face, _) = add_face(&mut result, plane(0.0));
         executive.set_offset_brep(result);
@@ -2788,7 +2794,7 @@ mod tests {
                 (1.0 - u) * domain.min().x + u * domain.max().x,
                 (1.0 - v) * domain.min().y + v * domain.max().y,
             );
-            let sample = surface.evaluate_point(uv).unwrap();
+            let sample = surface.evaluate_point(&kernel, uv).unwrap();
             assert!((sample.distance(point) - executive.offset_distance()).abs() < 1.0e-12);
         }
         assert_eq!(original.tolerance(), 1.0e-6);
