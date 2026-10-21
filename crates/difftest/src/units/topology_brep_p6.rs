@@ -617,9 +617,9 @@ fn make_faces_cpp(i: &Inputs) -> Result<Output, HarnessError> {
         });
     }
     let out = ffi::make_faces(&path, &block, &specs).map_err(harness)?;
-    match out.first() {
-        Some(&v) if v == -1.0 => return Ok(Output::rejected("native fixture constructor")),
-        Some(&v) if v == -2.0 => {
+    match out.first().copied() {
+        Some(-1.0) => return Ok(Output::rejected("native fixture constructor")),
+        Some(-2.0) => {
             return Ok(Output::rejected(
                 "cpp-guard: MakeFaceTopology would dereference null",
             ))
@@ -671,8 +671,8 @@ impl W {
             self.i(x);
         }
     }
-    fn point(&mut self, r: solidcore::Result<Vec3>) {
-        match r {
+    fn point(&mut self, r: &solidcore::Result<Vec3>) {
+        match *r {
             Ok(p) => {
                 self.i(0);
                 self.d(p.x);
@@ -696,7 +696,7 @@ impl W {
         self.d(ivl.max());
         for k in 0..=4 {
             let t = ivl.min() + 0.25 * f64::from(k) * (ivl.max() - ivl.min());
-            self.point(c.evaluate_point(t));
+            self.point(&c.evaluate_point(t));
         }
     }
     fn surface(&mut self, s: Option<&Surface>, owner: EntityRef) {
@@ -718,7 +718,7 @@ impl W {
                     lo.x + 0.5 * f64::from(a) * (hi.x - lo.x),
                     lo.y + 0.5 * f64::from(bb) * (hi.y - lo.y),
                 );
-                self.point(s.evaluate_point(uv));
+                self.point(&s.evaluate_point(uv));
             }
         }
         self.i(i64::from(s.owner() == Some(key_of(owner))));
@@ -1011,11 +1011,11 @@ fn plane_in(o: [f64; 3], n: [f64; 3]) -> SrfIn {
 
 /// A closed path through network points (`[from, to]` steps).
 fn cycle(points: &[usize]) -> Vec<Vec<usize>> {
-    let mut path = Vec::new();
-    for (k, &a) in points.iter().enumerate() {
-        path.push(vec![a, points[(k + 1) % points.len()]]);
-    }
-    path
+    points
+        .iter()
+        .zip(points.iter().cycle().skip(1))
+        .map(|(&a, &b)| vec![a, b])
+        .collect()
 }
 
 fn net_of(points: Vec<[f64; 3]>, edges: &[(usize, usize)]) -> NetIn {

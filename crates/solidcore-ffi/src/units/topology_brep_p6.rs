@@ -349,7 +349,7 @@ mod tests {
         ] {
             assert!(
                 matches!(
-                    make_faces("", &block, &[bad.clone()]),
+                    make_faces("", &block, std::slice::from_ref(&bad)),
                     Err(FfiError::InvalidArgument(_))
                 ),
                 "{bad:?}"
