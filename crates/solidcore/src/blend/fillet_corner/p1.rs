@@ -83,8 +83,8 @@
 //!   [`SolidError::Unported`] there; the rest of each routine is ported around those
 //!   calls. The variable-radius law-interval adjustment of `CalcCornerVertGeom` is
 //!   ported; resolving a fillet geometry's solver to its variable-radius type
-//!   (`OffsetRadiiCanChange`, the `SmVariableRadiusFS` cast) and the law's edge map
-//!   (`SmFilletLaw::m_vEdgeMap`) need the executive's solver store and are `Unported`
+//!   (`OffsetRadiiCanChange`, the `SmVariableRadiusFS` cast) needs the executive's
+//!   solver store and is `Unported`
 //!   (`blend.fillet_executive_p1`, #260). `CalcCornerEdgeGeom` iterates over a snapshot
 //!   of `m_vEdges` so a squeeze in the loop sees the same slots as upstream's `NULL`
 //!   entries, compressed at the end. `m_pExecutive->m_bDoGlobalMerge` and
@@ -107,7 +107,6 @@ use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::{p2 as curve2, Curve, CurveKind};
 use crate::error::EntityRef;
 use crate::error::{Result, SolidError};
-use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::geom::vector2d::Point2;
@@ -1164,17 +1163,6 @@ fn variable_radius_solver_mut(
     ))
 }
 
-/// `pVRFS->GetFilletLaw()->m_vEdgeMap`: the law's edge map (always parameterised 0 to
-/// 1), a member of `SmFilletLaw` (unit `blend.fillet_executive_p1`) that its Rust record
-/// does not carry yet.
-fn fillet_law_edge_map(_vrfs: &VariableRadiusFs) -> Result<Extent1d> {
-    // UNPORTED(blend.fillet_executive_p1): SmFilletLaw::m_vEdgeMap
-    Err(SolidError::unported(
-        "SmFilletLaw::m_vEdgeMap",
-        "blend.fillet_executive_p1",
-    ))
-}
-
 /// `pFrom->Remove(pVU); pTo->PostInsert(pVU)` for a vertex use of the pseudo B-rep; the
 /// edge record's vertex ends (derived from the vertex uses upstream) follow.
 fn move_vertexuse(
@@ -1209,8 +1197,8 @@ impl FilletCorner {
     ///
     /// [`SolidError::Unported`]: every vertex calculation (`blend.fillet_geom_p3`), and
     /// the solver store of the law-interval adjustment (`blend.fillet_executive_p1`,
-    /// which resolves a fillet geometry's solver to its variable-radius type and holds the
-    /// law's edge map); `SM_ERR` for a vertex calculation that fails;
+    /// which resolves a fillet geometry's solver to its variable-radius type); `SM_ERR`
+    /// for a vertex calculation that fails;
     /// [`SolidError::InvalidInput`] for a vertex without rail-end vertex use, a fillet
     /// geometry without solver or a solver without first edge use (upstream dereferences
     /// them); those of the interval arithmetic.
@@ -1317,7 +1305,7 @@ impl FilletCorner {
 
                 // See whether this end of this FS should be adjusted: it should not be
                 // adjusted if it's interior to the fillet radius law function.
-                let edge_map = fillet_law_edge_map(vrfs)?;
+                let edge_map = vrfs.fillet_law().edge_map;
                 let law_param = if at_law_start {
                     edge_map.min()
                 } else {

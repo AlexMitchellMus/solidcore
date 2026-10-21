@@ -63,10 +63,11 @@
 //!
 //! A `CheckAndFixDegeneracy` input is rejected by [`validate_corner`] when its deletions
 //! would free a model object twice or dereference a freed one: a repeated corner vertex or
-//! edge, or a corner vertex deleted after a mate it links to one-way (the destructor of the
-//! later vertex dereferences the earlier-freed mate), on a corner whose vertices are all
-//! processed (upstream's harmless unprocessed-vertex return; its far-vertex return is not
-//! modelled, so such repeats are refused as well).
+//! edge, or a corner vertex with a mate slot still pointing at an earlier-deleted corner
+//! vertex when its own destructor runs (each destructor clears one slot per backlink, so
+//! the deletions are simulated in order), on a corner whose vertices are all processed
+//! (upstream's harmless unprocessed-vertex return; its far-vertex return is not modelled,
+//! so such repeats are refused as well).
 //!
 //! A record of `-2` is "refused" (upstream would dereference null, or free an object twice:
 //! a squeezed non-rail edge with both ends at the deleted vertex, or a squeezed closed edge
@@ -499,9 +500,12 @@ pub fn validate_corner(op: CornerOp, input: &[f64]) -> Result<(), FfiError> {
 /// distance test is not modelled here, a far vertex's harmless return is refused too)
 /// deletes every corner edge and every corner vertex but the first, then uses the first:
 /// a repeated edge or vertex is freed twice (a repeated first vertex is the survivor,
-/// used after its free), and a vertex deleted after a mate it links to one-way
-/// dereferences that freed mate in `~SmFilletVertex` (a reciprocal link is cleared by
-/// the mate's destructor first). These are refused before the native call.
+/// used after its free). `~SmFilletVertex` reads each of its two mate slots: a slot still
+/// holding an earlier-freed vertex is a use after free. For each slot it clears **one**
+/// slot of that mate pointing back (the first, else the second), so a vertex survives the
+/// deletion of a mate only if the mate's slots point back at it at least as often as its
+/// own slots point at the mate. The deletions are simulated in order on the model's mate
+/// slots; an offending input is refused before the native call.
 fn degeneracy_deletions(b: &Block, verts: &[usize], edges: &[usize]) -> Result<(), FfiError> {
     if !verts
         .iter()
@@ -515,23 +519,27 @@ fn degeneracy_deletions(b: &Block, verts: &[usize], edges: &[usize]) -> Result<(
     if has_repeat(edges) {
         return Err(bad("degeneracy: repeated corner edge"));
     }
-    let mates = |v: usize| {
-        b.vertex_mates
-            .get(v)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .copied()
-    };
-    for (pos, &v) in verts.iter().enumerate().skip(1) {
-        for m in mates(v) {
-            let deleted_earlier = verts.get(1..pos).is_some_and(|s| s.contains(&m));
-            if deleted_earlier && !mates(m).any(|x| x == v) {
+    let mut mates = b.vertex_mates.clone();
+    let mut freed = Vec::new();
+    for &v in verts.iter().skip(1) {
+        for slot in 0..2 {
+            let Some(m) = mates.get(v).and_then(|s| s.get(slot)).copied().flatten() else {
+                continue;
+            };
+            if freed.contains(&m) {
                 return Err(bad(
-                    "degeneracy: one-way mate link to an earlier-deleted corner vertex",
+                    "degeneracy: mate slot pointing at an earlier-deleted corner vertex",
                 ));
             }
+            // m_pMate[j]->SetMate(0 or 1, NULL): the first of the mate's slots pointing back
+            if let Some(x) = mates
+                .get_mut(m)
+                .and_then(|back| back.iter_mut().find(|x| **x == Some(v)))
+            {
+                *x = None;
+            }
         }
+        freed.push(v);
     }
     Ok(())
 }
@@ -692,6 +700,43 @@ mod tests {
             &mutual,
             0,
             &[0.0, 1.0, 2.0],
+            &[]
+        )));
+        // both slots of 2 point at 1: 1's destructor clears one slot per backlink, so a
+        // single backlink leaves 2's second slot dangling; two backlinks clear both
+        let doubled_once = [[-1.0, -1.0], [2.0, -1.0], [1.0, 1.0]];
+        assert!(!ok(&degeneracy_input(
+            1.0,
+            &doubled_once,
+            0,
+            &[0.0, 1.0, 2.0],
+            &[]
+        )));
+        let doubled_twice = [[-1.0, -1.0], [2.0, 2.0], [1.0, 1.0]];
+        assert!(ok(&degeneracy_input(
+            1.0,
+            &doubled_twice,
+            0,
+            &[0.0, 1.0, 2.0],
+            &[]
+        )));
+        // a self link is cleared by the vertex's own destructor
+        let self_link = [[-1.0, -1.0], [1.0, 1.0], [2.0, -1.0]];
+        assert!(ok(&degeneracy_input(
+            1.0,
+            &self_link,
+            0,
+            &[0.0, 1.0, 2.0],
+            &[]
+        )));
+        // a chain 3 -> 2 -> 1 with single backlinks, deleted 1, 2, 3: each destructor
+        // clears the next vertex's slot before that vertex is destroyed
+        let chain = [[-1.0, -1.0], [2.0, -1.0], [1.0, 3.0], [2.0, -1.0]];
+        assert!(ok(&degeneracy_input(
+            1.0,
+            &chain,
+            0,
+            &[0.0, 1.0, 2.0, 3.0],
             &[]
         )));
         // the earlier-deleted vertex links one-way to the later one: it clears nothing,
