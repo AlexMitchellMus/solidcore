@@ -1381,7 +1381,7 @@ fn gen_fif(rng: &mut Rng) -> Inputs {
         ve: 1,
         etype: FilletEdgeType::FilletXFillet as i64,
         status: 0,
-        // without a curve upstream reads the corner's context (UB-210; the shim refuses that)
+        // without a curve upstream reads the corner's context (UB-246; the shim refuses that)
         corner: if !has_curve || rng.chance(0.9) { 0 } else { -1 },
         curve: has_curve.then(|| curve.clone()),
         interval: Some([a, bb]),
@@ -1584,7 +1584,7 @@ fn gen_recalc(rng: &mut Rng) -> Inputs {
         .then(|| gen_curve_on(rng, 3, 1.0, 0.0, 1.0));
     let mut dir = rng.chance(0.5).then(|| rng.point3(-1.0, 1.0));
     // Without a march direction, when rail 0 has no curve (never here) and both rails
-    // are there, upstream reads the first sorted point even when there is none (UB-208;
+    // are there, upstream reads the first sorted point even when there is none (UB-245;
     // the shim refuses that model): give such a model a direction.
     if dir.is_none() && rails[1] >= 0 && !recalc_sorts_a_point(gtype, &vertices, &edges) {
         dir = Some(rng.point3(-1.0, 1.0));

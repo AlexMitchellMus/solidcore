@@ -413,7 +413,7 @@ impl FilletBrep {
         };
 
         // compute sPnt = pFace->Surface(sUV), use ExtendedSurface as needed
-        let pnt = evaluate_mate(target, face, uv)?;
+        let pnt = evaluate_mate(k, target, face, uv)?;
 
         // set mate outputs
         let fv = self.fillet_vertex_mut(v)?;
@@ -780,7 +780,7 @@ impl FilletBrep {
         let ivl = curve.natural_interval();
 
         let is_closed_solver_edge =
-            geom_type != FilletGeomType::CornerFillet && curve.is_closed(&ivl, 0.0)?;
+            geom_type != FilletGeomType::CornerFillet && curve.is_closed(k, &ivl, 0.0)?;
 
         let off = |s: &dyn FilletSolverOps, i: usize| -> Result<OffsetSurface> {
             s.solver()
@@ -796,8 +796,8 @@ impl FilletBrep {
         let ang_tol = solver.solver().ang_tol_rad;
         let scale = ivl.length();
 
-        let surf_closure1 = set_surface_closure(&offset_as_surface(&surf1), &domain1)?;
-        let surf_closure2 = set_surface_closure(&offset_as_surface(&surf2), &domain2)?;
+        let surf_closure1 = set_surface_closure(k, &offset_as_surface(&surf1), &domain1)?;
+        let surf_closure2 = set_surface_closure(k, &offset_as_surface(&surf2), &domain2)?;
 
         let mut tsect_pnts: Vec<VertexuseId> = Vec::new();
         let mut proj_params: Vec<f64> = Vec::new();
@@ -869,7 +869,7 @@ impl FilletBrep {
                                 .ok_or_else(|| invalid(OP_RECALC, "solver without offset surface"))?
                                 .surface
                                 .surface
-                                .evaluate_point_extending(uv_pt)?;
+                                .evaluate_point_extending(k, uv_pt)?;
                             *tsect.crv_pos_mut() = p;
                             self.fillet_vertexuse_mut(vu)?.set_tsect_pnt(&tsect);
                         }
@@ -903,7 +903,7 @@ impl FilletBrep {
                         .param(0)?;
 
                     if ivl.is_value_on_boundary(t, EFF_ZERO).0 {
-                        let pv = curve.evaluate(t, 1, true, true)?;
+                        let pv = curve.evaluate(k, t, 1, true, true)?;
                         let (p0, p1) = match pv.as_slice() {
                             [p0, p1, ..] => (*p0, *p1),
                             _ => return Err(SolidError::sm_err(OP_RECALC)),
@@ -968,7 +968,8 @@ impl FilletBrep {
             solver.setup_offset_extension(k, &fi_surf1, &mut domain1)?;
             solver.setup_offset_extension(k, &fi_surf2, &mut domain2)?;
             // Setup FilletIntersector
-            let mut fi = FilletIntersector::new(&fi_surf1, &domain1, &fi_surf2, &domain2, Some(g))?;
+            let mut fi =
+                FilletIntersector::new(k, &fi_surf1, &domain1, &fi_surf2, &domain2, Some(g))?;
 
             let mut extend_before = false;
             let mut extend_after = false;
@@ -988,7 +989,7 @@ impl FilletBrep {
                     .rail(0)
                     .ok_or_else(|| invalid(OP_RECALC, "fillet geometry without rail"))?;
                 if self.brep().edge(rail0)?.curve.is_some() {
-                    edge::end_tangent(self.brep(), rail0, true)?
+                    edge::end_tangent(k, self.brep(), rail0, true)?
                 } else {
                     let first = *tsect_pnts
                         .first()
