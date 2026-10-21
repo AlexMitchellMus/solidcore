@@ -603,8 +603,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere as SmSurface",
-        "unit": "surface.surface_p2"
+        "symbol": "SmBrep::DeleteFace",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "single_vertex_sphere_rebuild_swap_False",
@@ -615,8 +615,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere as SmSurface",
-        "unit": "surface.surface_p2"
+        "symbol": "SmBrep::DeleteFace",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "single_vertex_sphere_rebuild_swap_True",
@@ -4357,7 +4357,7 @@
   "cases_total": 478,
   "deferred_by_unit": {
     "query.brep": 1,
-    "surface.surface_p2": 2,
+    "topology.brep_p3": 2,
     "topology.edge": 5,
     "topology.face_p2": 123
   },
