@@ -1632,33 +1632,30 @@ macro_rules! fillet_solver_ops {
                 &mut self.base.solver
             }
 
-            /// `SmConstantRadiusFS::GetJacobianSize`.
+            /// `SmConstantRadiusFS::GetJacobianSize` (inherited).
             fn jacobian_size(&self) -> Result<usize> {
-                Ok(self.base.jacobian_size())
+                Ok(ConstantRadiusAssistedFs::jacobian_size(&self.base))
             }
 
-            /// `SmConstantRadiusFS::SetupOffsetValues`.
+            /// `SmConstantRadiusFS::SetupOffsetValues` (inherited).
             fn setup_offset_values(
                 &mut self,
                 tsect: &TsectPnt,
                 offset_dist: Option<&mut f64>,
             ) -> Result<()> {
-                let d = self.base.setup_offset_values(tsect)?;
-                if let Some(o) = offset_dist {
-                    *o = d;
-                }
-                Ok(())
+                constant_radius_setup_offset_values(&mut self.base, tsect, offset_dist)
             }
 
-            /// `SmConstantRadiusFS::OffsetRadiiCanChange`.
+            /// `SmConstantRadiusFS::OffsetRadiiCanChange` (inherited).
             fn offset_radii_can_change(&self) -> Result<bool> {
-                Ok(self.base.offset_radii_can_change())
+                Ok(ConstantRadiusAssistedFs::offset_radii_can_change(
+                    &self.base,
+                ))
             }
 
-            /// `SmConstantRadiusAssistedFS::GetType` (`SM_COMMON`: the derived solvers
-            /// declare none of their own).
+            /// `SmConstantRadiusAssistedFS::GetType` (inherited, `SM_COMMON`).
             fn type_code(&self) -> Result<i64> {
-                Ok(crate::blend::fillet_standard_solver::p1::CONSTANT_RADIUS_ASSISTED_FS_TYPE)
+                Ok(CONSTANT_RADIUS_ASSISTED_FS_TYPE)
             }
 
             /// `SmConstantRadiusAssistedFS::IsKindOf` (inherited).
