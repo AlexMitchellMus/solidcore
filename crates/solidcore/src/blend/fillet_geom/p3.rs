@@ -59,7 +59,7 @@
 //!   intersection, `SmFilletCorner::RecordFilletError` (`blend.fillet_corner_p2`) in
 //!   the edge's `CalcFilletIntFillet`; the vertex and edge calculators of the
 //!   dispatchers that belong to part 5 (those of parts 2, 4 and 6 are called); in
-//!   `TopologySplit` `MakeRailEdgeuse` and `MakeFilletEdge` (`blend.fillet_geom_p5`),
+//!   `TopologySplit` (whose `MakeRailEdgeuse` / `MakeFilletEdge` are part 5's, wired)
 //!   `SmFilletExecutive::GetFilletCornerOfVertex` (`blend.fillet_executive_p1`) and
 //!   the fillet corner's vertex list and type (`blend.fillet_corner_p1`). Each stub
 //!   replaces only its call; the code behind it is ported.
@@ -92,7 +92,7 @@ use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::Surface;
 use crate::topology::edge;
 use crate::topology::edgeuse::p1::{self as eu1, primary_edgeuse};
-use crate::topology::{Brep, EdgeId, EdgeuseId, VertexId, VertexuseId};
+use crate::topology::{Brep, EdgeId, VertexId, VertexuseId};
 
 use super::p1::{
     check_seam_on, check_seam_out, evaluate_mate, set_surface_closure, FilStatus, FilletBrep,
@@ -1126,8 +1126,10 @@ impl FilletBrep {
     /// `SM_ERR_NULL_POINTER` when a rail has no rail-end vertex use at its end or the
     /// solver's edge has no vertex; [`SolidError::InvalidInput`] where upstream
     /// dereferences `NULL` (no solver executive, rail or vertex); those of the
-    /// topology queries; [`SolidError::Unported`] from `MakeRailEdgeuse`
-    /// (`blend.fillet_geom_p5`) and the corner calls after it.
+    /// topology queries, of [`FilletBrep::make_rail_edgeuse_on`] (its corner,
+    /// [`SolidError::Unported`] at `blend.fillet_corner_p1`) and
+    /// [`FilletBrep::make_fillet_edge`]; [`SolidError::Unported`] for the corner calls
+    /// after them.
     pub fn topology_split(
         &mut self,
         k: &Kernel,
@@ -1201,15 +1203,29 @@ impl FilletBrep {
             let uv_curve = self.brep_mut().edgeuse_mut(end_eu)?.uv_trim_curve.take();
 
             // connect pNewVert to pThisRail with new topology
-            let new_edgeuse =
-                self.make_rail_edgeuse(g, this_rail_idx, v, OrientType::Opposite, Some(this_rail))?;
+            let new_edgeuse = self.make_rail_edgeuse_on(
+                g,
+                this_rail_idx,
+                Some(v),
+                OrientType::Opposite,
+                Some(this_rail),
+                solver,
+                target,
+            )?;
 
             // move the old edgeuse's UVTrimcurve onto the new UVTrimcurve
             self.set_edgeuse_uv_curve(new_edgeuse, uv_curve, true, true)?;
 
             // Create new edgeuse and new edge in rpNewFilletGeom.
-            let new_edgeuse =
-                self.make_rail_edgeuse(new_fillet_geom, this_rail_idx, v, OrientType::Same, None)?;
+            let new_edgeuse = self.make_rail_edgeuse_on(
+                new_fillet_geom,
+                this_rail_idx,
+                Some(v),
+                OrientType::Same,
+                None,
+                solver,
+                target,
+            )?;
 
             // Grab the newly created other Rail
             let new_rail = eu1::edge(self.brep(), new_edgeuse)?
@@ -1240,7 +1256,8 @@ impl FilletBrep {
             .set_fillet_vertex_type(FilletVertexType::Mate);
 
         // build a FilletEdge between pNewVert[0] and pNewVert[1]
-        let divide_edge = self.make_fillet_edge(new_vert0, new_vert1)?;
+        // cpCorner defaults to NULL
+        let divide_edge = self.make_fillet_edge(Some(new_vert0), Some(new_vert1), None)?;
         self.fillet_edge_mut(divide_edge)?
             .set_fillet_edge_type(FilletEdgeType::CrossSection);
         let prim_eu = primary_edgeuse(self.brep(), divide_edge)?
@@ -1326,35 +1343,6 @@ impl FilletBrep {
         }
         Ok(new_fillet_geom)
     }
-
-    /// `SmFilletGeom::MakeRailEdgeuse(pPseudoBrep, lRailIndex, pVertex, rpNewEdgeuse,
-    /// eOrientation, pOptRail)` (unit `blend.fillet_geom_p5`).
-    fn make_rail_edgeuse(
-        &mut self,
-        g: FilletGeomId,
-        rail_index: usize,
-        v: VertexId,
-        orientation: OrientType,
-        opt_rail: Option<EdgeId>,
-    ) -> Result<EdgeuseId> {
-        // UNPORTED(blend.fillet_geom_p5): SmFilletGeom::MakeRailEdgeuse
-        unported_on(
-            (self, g, rail_index, v, orientation, opt_rail),
-            "SmFilletGeom::MakeRailEdgeuse",
-            "blend.fillet_geom_p5",
-        )
-    }
-
-    /// `SmFilletEdge::MakeFilletEdge(pPseudoBrep, pStart, pEnd, rpNewEdge)` (unit
-    /// `blend.fillet_geom_p5`).
-    fn make_fillet_edge(&mut self, start: VertexId, end: VertexId) -> Result<EdgeId> {
-        // UNPORTED(blend.fillet_geom_p5): SmFilletEdge::MakeFilletEdge
-        unported_on(
-            (self, start, end),
-            "SmFilletEdge::MakeFilletEdge",
-            "blend.fillet_geom_p5",
-        )
-    }
 }
 
 /// `SmFilletExecutive::GetFilletCornerOfVertex` (unit `blend.fillet_executive_p1`).
@@ -1414,7 +1402,7 @@ mod tests {
     use super::*;
     use crate::blend::fillet_solver::p1::FilletExecutiveRef;
     use crate::error::{SM_ERR, SM_ERR_NULL_POINTER};
-    use crate::topology::{Edgeuse, Vertexuse, VertexuseOwner};
+    use crate::topology::{Edgeuse, EdgeuseId, Vertexuse, VertexuseOwner};
 
     use super::super::p1::{FilletEdgeuse, FilletVertexuse};
 
@@ -1533,7 +1521,7 @@ mod tests {
     }
 
     #[test]
-    fn topology_split_stops_at_make_rail_edgeuse() {
+    fn topology_split_stops_at_the_new_rail_edgeuse() {
         let k = Kernel::default();
         let mut fb = FilletBrep::new();
         let (g, ends) = two_rail_geom(&mut fb, &k);
@@ -1548,8 +1536,10 @@ mod tests {
                 &Brep::new(),
             )
             .unwrap_err();
-        assert_eq!(unit_of(&e), Some("blend.fillet_geom_p5"), "{e:?}");
-        assert_eq!(e.operation(), "SmFilletGeom::MakeRailEdgeuse");
+        // MakeRailEdgeuse (blend.fillet_geom_p5) needs the pseudo B-rep's region and
+        // shell for its new edge use, which this bare FilletBrep lacks
+        assert_eq!(unit_of(&e), Some("topology.brep_p3"), "{e:?}");
+        assert_eq!(e.operation(), "SmBrep::SmBrep");
         // the end edge use was taken off the first rail before the stub
         assert!(!fb.brep().edge(rail0).unwrap().edgeuses.contains(&ends[0]));
         assert_eq!(fb.brep().edgeuse(ends[0]).unwrap().edge, None);

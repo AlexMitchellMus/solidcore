@@ -390,12 +390,16 @@
       "values_compared": 197
     },
     {
+      "deferred": {
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen0044",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=9207374117157446794",
-      "values_compared": 66
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -490,12 +494,16 @@
       "values_compared": 1042
     },
     {
+      "deferred": {
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen0056",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=9207374117157446806",
-      "values_compared": 60
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -806,12 +814,16 @@
       "values_compared": 728
     },
     {
+      "deferred": {
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen0093",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=9207374117157446843",
-      "values_compared": 67
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -1298,12 +1310,16 @@
       "values_compared": 39
     },
     {
+      "deferred": {
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen0147",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=9207374117157446897",
-      "values_compared": 39
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -2466,12 +2482,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen0281",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=9207374117157447031",
-      "values_compared": 39
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -3366,12 +3386,16 @@
       "values_compared": 343
     },
     {
+      "deferred": {
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen0380",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=9207374117157447130",
-      "values_compared": 60
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3543,15 +3567,15 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 85,
+  "cases_deferred": 91,
   "cases_failed": 0,
-  "cases_passed": 315,
+  "cases_passed": 309,
   "cases_total": 400,
   "deferred_by_unit": {
     "blend.fillet_executive_p1": 9,
     "blend.fillet_solver_p2": 8,
     "harness:analytic-geometry-export": 61,
-    "intersect.surface_drop_lib_p3": 7
+    "intersect.surface_drop_lib_p3": 13
   },
   "max_rel_err": 0.0,
   "pass": true,
