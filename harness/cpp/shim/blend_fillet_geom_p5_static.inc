@@ -404,11 +404,16 @@ int32_t p5_run(int32_t op, Rd& rd, std::vector<double>& o)
             SmVertex* nve = NULL;
             if (ne != NULL)
                 ne->GetVertices(nvs, nve);
+            size_t nverts = M.verts.size();
             if (nvs != NULL)
                 M.verts.push_back((SmFilletVertex*)nvs);
             if (nve != NULL)
                 M.verts.push_back((SmFilletVertex*)nve);
             M.put(o);
+            // the geometry owns the two new vertices (MakeRailEdge adds them to m_vVertices and
+            // ~SmFilletGeom deletes them): take them back out of the model's own list, or the
+            // model deletes them twice
+            M.verts.resize(nverts);
         }
         return SC_OK;
     }
