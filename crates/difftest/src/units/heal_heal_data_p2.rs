@@ -62,18 +62,89 @@ pub const MIN_GENERATED: usize = 600;
 /// The difftest runner.
 pub struct Runner;
 
+/// The classification handles: loops, and the face, surface, topology and curves of
+/// `SmFace::ClassifyLoops`' loop bisector (reached through `SetProps_Stage3`).
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct H(LoopId);
+enum H {
+    Topo(EntityRef),
+    Surface(FaceId),
+    Curve(bool),
+    EdgeCurve(EdgeId),
+    Trim(EdgeuseId),
+}
 
 impl ClassObject for H {
     fn class_kind(&self) -> ClassObjectKind {
-        ClassObjectKind::Loop
+        match self {
+            Self::Topo(e) => e.class_kind(),
+            Self::Surface(_) => ClassObjectKind::Surface,
+            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) => ClassObjectKind::Curve,
+        }
     }
 }
 
 impl LoopObject for H {
     fn from_loop(l: LoopId) -> Self {
-        Self(l)
+        Self::Topo(EntityRef::Loop(l))
+    }
+
+    fn as_loop(&self) -> Option<LoopId> {
+        match self {
+            Self::Topo(e) => e.as_loop(),
+            _ => None,
+        }
+    }
+
+    fn as_vertex(&self) -> Option<VertexId> {
+        match self {
+            Self::Topo(e) => e.as_vertex(),
+            _ => None,
+        }
+    }
+
+    fn from_face(f: FaceId) -> Option<Self> {
+        Some(Self::Topo(EntityRef::Face(f)))
+    }
+
+    fn from_face_surface(f: FaceId) -> Option<Self> {
+        Some(Self::Surface(f))
+    }
+
+    fn from_classify_curve(uv: bool) -> Option<Self> {
+        Some(Self::Curve(uv))
+    }
+
+    fn from_topology(t: EntityRef) -> Option<Self> {
+        Some(Self::Topo(t))
+    }
+
+    fn as_topology(&self) -> Option<EntityRef> {
+        match self {
+            Self::Topo(t) => Some(*t),
+            _ => None,
+        }
+    }
+
+    fn from_edge_curve(e: EdgeId) -> Option<Self> {
+        Some(Self::EdgeCurve(e))
+    }
+
+    fn as_edge_curve(&self) -> Option<EdgeId> {
+        match self {
+            Self::EdgeCurve(e) => Some(*e),
+            _ => None,
+        }
+    }
+
+    fn from_trim_curve(eu: EdgeuseId) -> Option<Self> {
+        Some(Self::Trim(eu))
+    }
+
+    fn as_trim_curve(&self) -> Option<EdgeuseId> {
+        match self {
+            Self::Trim(eu) => Some(*eu),
+            _ => None,
+        }
     }
 }
 
@@ -456,7 +527,10 @@ fn ffi_out(r: Result<Vec<f64>, solidcore_ffi::FfiError>) -> Result<Output, Harne
 /// The export of a heal case's B-rep and its `[n_v, n_e, n_f]` (`None` when it could
 /// not be built).
 fn export_of(path: &str, block: &[f64]) -> Result<(Vec<f64>, Option<[usize; 3]>), HarnessError> {
-    let ex = ffi::export(path, block).map_err(|e| harness(format!("c++ export: {e}")))?;
+    let ex = crate::export_memo::export("heal_heal_data_p2", &[path], block, || {
+        ffi::export(path, block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))?;
     let n = counts(&ex).map(vef);
     Ok((ex, n))
 }
@@ -795,6 +869,15 @@ fn pick<I: Copy>(alive: &[I], sel: u64) -> Option<I> {
     } else {
         alive.get((sel % alive.len() as u64) as usize).copied()
     }
+}
+
+/// Whether a seed step would queue a face props record a second time (the shim's
+/// `degen_face_seeded`: upstream queues each once, and the repair works on a record
+/// queued twice twice).
+fn degen_face_seeded(h: &HealData<H>) -> bool {
+    h.tgt_face_props
+        .iter()
+        .any(|id| h.bad_face_props_degen_faces.prob_array.contains(id))
 }
 
 fn target_count_after_removals<T: Copy + PartialEq>(
@@ -1430,10 +1513,14 @@ fn rust_heal(
             Step::FixBadSheets => {
                 let mut lock = MarkLock::new(std::slice::from_mut(&mut k.context), 0, ALL_MARKS)
                     .map_err(|e| harness(format!("mark lock: {e}")))?;
+                // harness env: the runner holds no attribute state (default region
+                // records, empty store; see RegionNotifyState)
+                let mut state = solidcore::topology::brep::p2::RegionNotifyState::new(&b);
                 let r = h.fix_bad_sheets(
                     &mut k,
                     &mut b,
                     &mut marks,
+                    &mut state.env(),
                     &lock,
                     HealerOpType::FixBadsheets,
                 );
@@ -1506,6 +1593,28 @@ fn rust_heal(
                     stop = true;
                     break;
                 }
+                // (the shim's guard: re-adding a live target this step does not remove
+                // gives it a second props record, which a catch-up that deletes topology
+                // frees through one record and dereferences through the other)
+                let readds = add.iter().flatten().any(|e| {
+                    !rm.contains(e)
+                        && match *e {
+                            EntityRef::Face(f) => b.face(f).is_ok() && h.tgt_faces.contains(&f),
+                            EntityRef::Edge(x) => b.edge(x).is_ok() && h.tgt_edges.contains(&x),
+                            EntityRef::Vertex(v) => {
+                                b.vertex(v).is_ok() && h.tgt_vertices.contains(&v)
+                            }
+                            _ => false,
+                        }
+                });
+                if readds
+                    && i64::from(*op).min(h.done_heal_op.code())
+                        >= HealerOpType::FixCoinVertices.code()
+                {
+                    o.push(NULL_DEREF);
+                    stop = true;
+                    break;
+                }
                 let rf = h.face_props_for_tgts(&rm, true);
                 let re = h.edge_props_for_tgts(&rm, true);
                 let rv = h.vertex_props_for_tgts(&rm, true);
@@ -1546,6 +1655,11 @@ fn rust_heal(
                     h.update_target_lists(&mut k, &mut b, &rm, &add, op_of(i64::from(*op)))
                         .map(|()| false)
                 }
+            }
+            Step::SeedFaceProblems { .. } | Step::SeedDegenFaces if degen_face_seeded(&h) => {
+                o.push(NULL_DEREF);
+                stop = true;
+                break;
             }
             Step::SeedFaceProblems { null_face } => {
                 for (i, &id) in h.tgt_face_props.iter().enumerate() {

@@ -566,7 +566,13 @@ pub struct Closed3d {
 
 /// The 3D point of an edge use's end (`start` true: its start) on its edge curve;
 /// `prev` when the evaluation fails (its status is ignored upstream).
-fn edgeuse_end_point(b: &Brep, eu: EdgeuseId, start: bool, prev: Point3) -> Result<Point3> {
+fn edgeuse_end_point(
+    k: &Kernel,
+    b: &Brep,
+    eu: EdgeuseId,
+    start: bool,
+    prev: Point3,
+) -> Result<Point3> {
     let r = b.edgeuse(eu)?;
     let e = r
         .edge
@@ -579,7 +585,7 @@ fn edgeuse_end_point(b: &Brep, eu: EdgeuseId, start: bool, prev: Point3) -> Resu
     let ivl = edge.interval;
     let same = r.orientation == OrientType::Same;
     let t = if same == start { ivl.min() } else { ivl.max() };
-    match curve.evaluate_point(t) {
+    match curve.evaluate_point(k, t) {
         Ok(p) => Ok(p),
         Err(e) if e.is_unported() => Err(e),
         Err(_) => Ok(prev),
@@ -626,7 +632,7 @@ pub fn is_closed_3d(k: &Kernel, b: &Brep, lu: LoopuseId, check_all_gaps: bool) -
     for (ii, &this_eu) in eus.iter().enumerate() {
         // This Edgeuse End Point
         let this_zone_tol_3d = tol::zone_tol3d(k, eu1::tolerance(b, this_eu)?);
-        this_end_point = edgeuse_end_point(b, this_eu, false, this_end_point)?;
+        this_end_point = edgeuse_end_point(k, b, this_eu, false, this_end_point)?;
 
         // Next Edgeuse Start Point
         let next_eu = eus
@@ -634,7 +640,7 @@ pub fn is_closed_3d(k: &Kernel, b: &Brep, lu: LoopuseId, check_all_gaps: bool) -
             .copied()
             .ok_or_else(|| null("IsClosed3d: index"))?;
         let next_zone_tol_3d = tol::zone_tol3d(k, eu1::tolerance(b, next_eu)?);
-        next_start_point = edgeuse_end_point(b, next_eu, true, next_start_point)?;
+        next_start_point = edgeuse_end_point(k, b, next_eu, true, next_start_point)?;
 
         // ThisEndPoint to NextStartPoint gap
         let gap_3d_sq = this_end_point.distance_squared(next_start_point);
@@ -790,8 +796,8 @@ pub fn is_missing_seam_at_vertices(k: &Kernel, b: &mut Brep, lu: LoopuseId) -> R
         return Ok(false);
     };
     let dom = surface.natural_uv_domain();
-    if !surface.is_closed(&dom, SurfParamType::U, None, false)?.0
-        && !surface.is_closed(&dom, SurfParamType::V, None, false)?.0
+    if !surface.is_closed(k, &dom, SurfParamType::U, None, false)?.0
+        && !surface.is_closed(k, &dom, SurfParamType::V, None, false)?.0
     {
         return Ok(false);
     }
@@ -883,7 +889,7 @@ pub fn loop_edgeuses(b: &Brep, l: LoopId) -> Result<Vec<EdgeuseId>> {
 
 /// The identity a topology entity is notified under by [`face_notify_edit`]: its type
 /// code and arena index (the B-rep keeps no attributes for it to select).
-fn notify_ref(e: EntityRef) -> ObjectRef {
+pub(crate) fn notify_ref(e: EntityRef) -> ObjectRef {
     let (type_code, kind, index) = match e {
         EntityRef::Brep(x) => (16011, 0u64, x.index()),
         EntityRef::Region(x) => (16012, 1, x.index()),
@@ -901,6 +907,31 @@ fn notify_ref(e: EntityRef) -> ObjectRef {
         type_code,
         key: ObjectKey(1 + (kind << 32) + u64::from(index)),
     }
+}
+
+/// The entity [`notify_ref`] gives the key `key`, if any (its inverse on keys). A
+/// caller decoding notification keys (the heal path's topology tracker) relies on every
+/// event of the edit being keyed by [`notify_ref`], as
+/// [`ArenaNotifyState`](crate::topology::brep::p2::ArenaNotifyState) does; a change of
+/// that scheme changes this decoder with it.
+pub(crate) fn entity_of_notify_key(key: ObjectKey) -> Option<EntityRef> {
+    let raw = key.0.checked_sub(1)?;
+    let kind = raw >> 32;
+    let index = u32::try_from(raw & u64::from(u32::MAX)).ok()?;
+    Some(match kind {
+        0 => EntityRef::Brep(crate::topology::BrepId::from_index(index)),
+        1 => EntityRef::Region(crate::topology::RegionId::from_index(index)),
+        2 => EntityRef::Shell(ShellId::from_index(index)),
+        3 => EntityRef::Faceuse(FaceuseId::from_index(index)),
+        4 => EntityRef::Face(FaceId::from_index(index)),
+        5 => EntityRef::Loopuse(LoopuseId::from_index(index)),
+        6 => EntityRef::Loop(LoopId::from_index(index)),
+        7 => EntityRef::Edgeuse(EdgeuseId::from_index(index)),
+        8 => EntityRef::Edge(EdgeId::from_index(index)),
+        9 => EntityRef::Vertexuse(VertexuseId::from_index(index)),
+        10 => EntityRef::Vertex(VertexId::from_index(index)),
+        _ => return None,
+    })
 }
 
 /// `SmFace::Notify(SM_NO_PRE_EDIT / SM_NO_POST_EDIT, pFace, SM_NO_GET_BREP(pFace) (0), NULL)`: the
@@ -1227,10 +1258,10 @@ pub fn uv_corner_boundaries(
         if let Some(trim) = trim {
             // end points
             ivl = trim.natural_interval();
-            if let Some(p) = ignored(trim.evaluate_point(ivl.evaluate(0.0)))? {
+            if let Some(p) = ignored(trim.evaluate_point(k, ivl.evaluate(0.0)))? {
                 uv_beg = p;
             }
-            if let Some(p) = ignored(trim.evaluate_point(ivl.evaluate(1.0)))? {
+            if let Some(p) = ignored(trim.evaluate_point(k, ivl.evaluate(1.0)))? {
                 uv_end = p;
             }
             uv_pnt_beg = Point2::new(uv_beg.x, uv_beg.y);
@@ -1251,8 +1282,8 @@ pub fn uv_corner_boundaries(
                 .as_ref()
                 .ok_or_else(|| null("GetUVCornerBoundaries: no curve"))?;
             ivl = edge.interval;
-            let beg = ignored(c.evaluate_point(ivl.min()))?.unwrap_or(Vec3::UNDEF);
-            let end = ignored(c.evaluate_point(ivl.max()))?.unwrap_or(Vec3::UNDEF);
+            let beg = ignored(c.evaluate_point(k, ivl.min()))?.unwrap_or(Vec3::UNDEF);
+            let end = ignored(c.evaluate_point(k, ivl.max()))?.unwrap_or(Vec3::UNDEF);
             if let Some(p) = drop_point(k, s, &dom, beg)? {
                 uv_pnt_beg = p;
             }
@@ -1604,13 +1635,11 @@ mod tests {
         assert_eq!(orientation(&b, lu(0)).unwrap(), OrientType::Opposite);
         set_loop(&mut b, lu(0), None).unwrap();
         assert_eq!(loop_(&b, lu(0)).unwrap(), None);
-        // flipping a loop on a face needs SmFace::GetUpwardEdgeuses (post-edit notification)
+        // flipping a loop on a face runs its post-edit notification through
+        // SmFace::GetUpwardEdgeuses (topology.face_p4)
         let mut b = square(0.0);
-        assert!(flip_loop_orientation(&mut b, LoopId::from_index(0))
-            .unwrap_err()
-            .is_unported());
-        // without the face, the edge use lists swap loop uses (the failed flip above had
-        // already swapped them before its post-edit notification returned Unported)
+        flip_loop_orientation(&mut b, LoopId::from_index(0)).unwrap();
+        // without the face, the edge use lists swap loop uses
         let mut b = square(0.0);
         b.faceuse_mut(FaceuseId::from_index(0)).unwrap().face = None;
         flip_loop_orientation(&mut b, LoopId::from_index(0)).unwrap();

@@ -155,7 +155,7 @@ where
                                 b.edge(edge_id)?.curve.as_ref(),
                                 "ray target edge without curve",
                             )?
-                            .has_repeated_end_control_points(crate::geom::tol::ZONE_TOL_3D)?;
+                            .has_repeated_end_control_points(k, crate::geom::tol::ZONE_TOL_3D)?;
                         if (pass == 0 && dubious) || (pass == 1 && !dubious) {
                             continue;
                         }
@@ -164,7 +164,7 @@ where
                             required(record.curve.as_ref(), "ray target edge without curve")?;
                         for parameter in parameters {
                             let point =
-                                curve.evaluate_point(record.interval.evaluate(parameter))?;
+                                curve.evaluate_point(k, record.interval.evaluate(parameter))?;
                             let ray = point - ray_start;
                             let squared = ray.length_squared();
                             if squared < distance {
@@ -198,7 +198,7 @@ where
                 let edge_id = best_edge.ok_or_else(|| SolidError::null_pointer(OP))?;
                 let record = b.edge(edge_id)?;
                 let curve = required(record.curve.as_ref(), "ray target edge without curve")?;
-                let point = curve.evaluate_point(record.interval.evaluate(0.789))?;
+                let point = curve.evaluate_point(k, record.interval.evaluate(0.789))?;
                 let attempt = crate::topology::shell::ray_fire(
                     k,
                     b,
@@ -216,7 +216,7 @@ where
                 let success = ray_success(&attempt.status)?;
                 state = attempt.state;
                 if !success {
-                    let point = curve.evaluate_point(record.interval.evaluate(0.189))?;
+                    let point = curve.evaluate_point(k, record.interval.evaluate(0.189))?;
                     let start = bounds.min() - (bounds.max() - bounds.min()) * 0.5;
                     let attempt = crate::topology::shell::ray_fire(
                         k,
@@ -256,7 +256,7 @@ where
                     let curve = required(record.curve.as_ref(), "ray target edge without curve")?;
                     let big_tolerance = record.tolerance > 1.01 * b.tolerance();
                     let repeated =
-                        curve.has_repeated_end_control_points(crate::geom::tol::ZONE_TOL_3D)?;
+                        curve.has_repeated_end_control_points(k, crate::geom::tol::ZONE_TOL_3D)?;
                     // IsSeam may create UV trim curves; reborrow the edge afterwards.
                     let seam = edge::is_seam(k, b, *edge_id)?;
                     let record = b.edge(*edge_id)?;
@@ -279,7 +279,7 @@ where
                         continue;
                     }
                     for parameter in parameters {
-                        let point = curve.evaluate_point(record.interval.evaluate(parameter))?;
+                        let point = curve.evaluate_point(k, record.interval.evaluate(parameter))?;
                         let ray = point - ray_start;
                         let squared = ray.length_squared();
                         if squared < distance {
@@ -295,9 +295,9 @@ where
                 let edge_id = *required(edges.first(), "missing first ray edge")?;
                 let record = b.edge(edge_id)?;
                 let curve = required(record.curve.as_ref(), "ray target edge without curve")?;
-                let point = curve.evaluate_point(record.interval.evaluate(0.789))?;
+                let point = curve.evaluate_point(k, record.interval.evaluate(0.789))?;
                 if !brep_ray_fire(b, ray_start, point - ray_start, tolerance, &mut state)? {
-                    let point = curve.evaluate_point(record.interval.evaluate(0.189))?;
+                    let point = curve.evaluate_point(k, record.interval.evaluate(0.189))?;
                     let start = bounds.min() - (bounds.max() - bounds.min()) * 0.5;
                     if !brep_ray_fire(b, start, point - start, tolerance, &mut state)? {
                         return Err(SolidError::sm_err(OP));
@@ -338,8 +338,14 @@ fn brep_ray_fire<O>(
     state: &mut crate::topology::shell::ShellRayState<O>,
 ) -> Result<bool> {
     let _ = (b, start, direction, tolerance, state);
-    // UNPORTED(topology.brep_p2): SmBrep::RayFire
-    Err(SolidError::unported("SmBrep::RayFire", "topology.brep_p2"))
+    // UNPORTED(query.brep): SmBrep::RayFire over the B-rep cache. The port
+    // (`topology::brep::p2::ray_fire`) solves on the SM_OC_BREP cache world and first
+    // needs CalculateBoundingBox; both belong to query.brep, as for
+    // ShellRayWorld::shell_ray_sector.
+    Err(SolidError::unported(
+        "SmBrep::RayFire (B-rep cache world)",
+        "query.brep",
+    ))
 }
 
 fn ray_direction(direction: Vec3) -> Result<Vec3> {
@@ -373,9 +379,9 @@ fn is_intersector_approx(curve: &Curve) -> Result<bool> {
 /// `OrientSheetSurfaces`. `same=true` is upstream's default orientation policy.
 ///
 /// # Errors
-/// `SM_ERR` for a face not in the B-rep or a B-rep that is not a sheet; the part-2
-/// sheet/oriented-sheet predicates and `SwapUV` (`Unported`). The UV swaps' own
-/// statuses are ignored, as upstream.
+/// `SM_ERR` for a face not in the B-rep or a B-rep that is not a sheet; those of the
+/// part-2 sheet/oriented-sheet predicates and of `SwapUV`. The UV swaps' own statuses
+/// are ignored, as upstream.
 pub fn orient_sheet_surfaces(
     k: &mut Kernel,
     b: &mut Brep,
@@ -386,10 +392,10 @@ pub fn orient_sheet_surfaces(
     let Some(face) = face.filter(|face| faces.contains(face)) else {
         return Err(SolidError::sm_err(OP));
     };
-    if !is_sheet(b)? {
+    if !is_sheet(k, b)? {
         return Err(SolidError::sm_err(OP));
     }
-    if is_oriented_sheet(b)? {
+    if is_oriented_sheet(k, b)? {
         if !same {
             // Status ignored upstream (SmBrep.cpp:11644).
             ignore_status(swap_brep_uv(k, b))?;
@@ -438,25 +444,20 @@ fn brep_faces(b: &Brep) -> Result<Vec<FaceId>> {
     crate::topology::brep::p1::faces(b, None)
 }
 
-fn is_sheet(b: &Brep) -> Result<bool> {
-    let _ = b;
-    // UNPORTED(topology.brep_p2): SmBrep::IsSheet
-    Err(SolidError::unported("SmBrep::IsSheet", "topology.brep_p2"))
+/// `IsSheet()` ([`crate::topology::brep::p2::is_sheet`]).
+fn is_sheet(k: &mut Kernel, b: &Brep) -> Result<bool> {
+    crate::topology::brep::p2::is_sheet(k, b)
 }
 
-fn is_oriented_sheet(b: &Brep) -> Result<bool> {
-    let _ = b;
-    // UNPORTED(topology.brep_p2): SmBrep::IsOrientedSheet
-    Err(SolidError::unported(
-        "SmBrep::IsOrientedSheet",
-        "topology.brep_p2",
-    ))
+/// `IsOrientedSheet()` ([`crate::topology::brep::p2::is_oriented_sheet`]).
+fn is_oriented_sheet(k: &mut Kernel, b: &Brep) -> Result<bool> {
+    crate::topology::brep::p2::is_oriented_sheet(k, b)
 }
 
+/// `SwapUV()` ([`crate::topology::brep::p2::swap_uv`], which claims its own mark).
 fn swap_brep_uv(k: &mut Kernel, b: &mut Brep) -> Result<()> {
-    let _ = (k, b);
-    // UNPORTED(topology.brep_p2): SmBrep::SwapUV
-    Err(SolidError::unported("SmBrep::SwapUV", "topology.brep_p2"))
+    let mut marks = crate::topology::topology_traverser::Marks::default();
+    crate::topology::brep::p2::swap_uv(k, b, &mut marks)
 }
 
 /// `sm_SwapFaceUV(pFace, SM_MT_NOMARK)`: swap without marking the face.
@@ -478,8 +479,8 @@ fn swap_face_uv(
 /// `MakeShellVertex`: `region=None` selects the infinite region.
 ///
 /// # Errors
-/// Allocation and linking first call part 2's `MakeShellVertexTopology`. No isolated
-/// vertex or shell is fabricated while that dependency is unavailable.
+/// Those of part 2's `MakeShellVertexTopology` (allocation and linking), the vertex
+/// point and tolerance setters and the two `ADD_TO_BREP` notifications.
 pub fn make_shell_vertex(
     b: &mut Brep,
     region: Option<RegionId>,
@@ -525,12 +526,9 @@ fn make_shell_vertex_topology(
     region: Option<RegionId>,
     env: &mut edge::NotifyEnv<'_>,
 ) -> Result<(ShellId, VertexId)> {
-    let _ = (b, region, env);
-    // UNPORTED(topology.brep_p2): SmBrep::MakeShellVertexTopology
-    Err(SolidError::unported(
-        "SmBrep::MakeShellVertexTopology",
-        "topology.brep_p2",
-    ))
+    // MakeShellVertexTopology sends no notification; the caller registers the records
+    let _ = env;
+    crate::topology::brep::p2::make_shell_vertex_topology(b, region)
 }
 
 /// `MakeVertexLoop`: creates a vertex loop with the supplied orientation
@@ -691,9 +689,9 @@ fn brep_notify_call(
     operation: NotifyOperation,
     data: [Option<crate::geom::object::ObjectRef>; 3],
 ) -> Result<()> {
-    let _ = (b, env, operation, data);
-    // UNPORTED(topology.brep_p2): SmBrep::Notify
-    Err(SolidError::unported("SmBrep::Notify", "topology.brep_p2"))
+    // no B-rep cache is held by the caller (`brep::p2::notify` with no cache slot)
+    let data = data.map(|d| d.map(crate::topology::brep::p2::NotifyArg::Object));
+    crate::topology::brep::p2::notify(b, env, None, operation, data)
 }
 
 fn face_notify(
@@ -717,9 +715,7 @@ fn face_notify_call(
     operation: NotifyOperation,
     data: [Option<crate::geom::object::ObjectRef>; 3],
 ) -> Result<()> {
-    let _ = (b, face, env, operation, data);
-    // UNPORTED(topology.face_p3): SmFace::Notify
-    Err(SolidError::unported("SmFace::Notify", "topology.face_p3"))
+    crate::topology::face::p3::notify(b, face, env, None, operation, data)
 }
 
 fn required<T>(v: Option<T>, reason: &'static str) -> Result<T> {
@@ -836,8 +832,8 @@ pub fn make_vertex_split_edge(
             let start_ivl = Extent1d::from_min_max(interval.min(), parameter);
             let end_ivl = Extent1d::from_min_max(parameter, interval.max());
             let curve = required(b.edge(edge_id)?.curve.as_ref(), "split edge has no curve")?;
-            let dist_to_start = curve.approximate_length(&start_ivl, 2, false)?.0;
-            let dist_to_end = curve.approximate_length(&end_ivl, 2, false)?.0;
+            let dist_to_start = curve.approximate_length(k, &start_ivl, 2, false)?.0;
+            let dist_to_end = curve.approximate_length(k, &end_ivl, 2, false)?.0;
             let start = required(
                 edge::start_vertex(b, edge_id)?,
                 "split edge has no start vertex",
@@ -849,11 +845,13 @@ pub fn make_vertex_split_edge(
             let start_tol = b.vertex(start)?.tolerance;
             let end_tol = b.vertex(end)?.tolerance;
             if dist_to_start < start_tol
-                && curve.approximate_length(&start_ivl, 10, false)?.0 < start_tol
+                && curve.approximate_length(k, &start_ivl, 10, false)?.0 < start_tol
             {
                 near_start = true;
             }
-            if dist_to_end < end_tol && curve.approximate_length(&end_ivl, 10, false)?.0 < end_tol {
+            if dist_to_end < end_tol
+                && curve.approximate_length(k, &end_ivl, 10, false)?.0 < end_tol
+            {
                 near_end = true;
             }
             if near_start {
@@ -994,7 +992,7 @@ pub fn make_vertex_split_edge(
             b.edge_mut(new_edge)?.interval = ivl1;
         }
         let point = required(b.edge(edge_id)?.curve.as_ref(), "split edge without curve")?
-            .evaluate_point(split_parameter)?;
+            .evaluate_point(k, split_parameter)?;
         ignore_status(set_vertex_point(b, new_vertex, point, env))?;
         let original_uses = edge::edgeuses(b, edge_id, None, None)?;
         if original_uses.len() % 2 != 0 {
@@ -1335,7 +1333,7 @@ pub fn make_edge_in_face_with_vu(
             copy
         });
         seam = required(b.edgeuse(top)?.uv_trim_curve.as_ref(), "trim disappeared")?
-            .is_domain_boundary(&domain, crate::math::EFF_ZERO)?;
+            .is_domain_boundary(k, &domain, crate::math::EFF_ZERO)?;
         if seam != SurfParamType::Neither {
             let translation = match seam {
                 SurfParamType::UMin => Vec3::new(domain.x_length(), 0.0, 0.0),
@@ -1389,19 +1387,22 @@ pub fn make_edge_in_face_with_vu(
             let curve = required(
                 b.edge(edge_id)?.curve.as_ref(),
                 "inserted edge without curve",
-            )?;
+            )?
+            .clone();
+            let tolerance = b.tolerance();
             end = find_vertex_sector(
+                k,
                 b,
                 VertexSectorInput {
                     face,
                     vertex: end_vertex,
-                    curve,
+                    curve: &curve,
                     uv_trim: None,
                     parameter: t_end,
                     other_parameter: t_start,
                     orientation: end_orientation,
-                    tolerance: b.tolerance(),
-                    use_uv_classification: false,
+                    tolerance,
+                    validate_sector: false,
                 },
             )?
             .unwrap_or(end);
@@ -1593,10 +1594,17 @@ struct VertexSectorInput<'a> {
     other_parameter: f64,
     orientation: OrientType,
     tolerance: f64,
-    use_uv_classification: bool,
+    validate_sector: bool,
 }
 
-fn find_vertex_sector(b: &Brep, input: VertexSectorInput<'_>) -> Result<Option<VertexuseId>> {
+/// `pFace->FindVertexSector(pVertex, *pCurve, pUVTrim, dT, dTOther, eOrient, tol,
+/// bValidateSector, rpVU, ..)` (unit `topology.face_p4`; `bUVSpaceOkay` at its default
+/// `TRUE`; the possible-problem outputs are unused): the vertex use of the sector.
+fn find_vertex_sector(
+    k: &Kernel,
+    b: &mut Brep,
+    input: VertexSectorInput<'_>,
+) -> Result<Option<VertexuseId>> {
     let VertexSectorInput {
         face,
         vertex,
@@ -1606,25 +1614,25 @@ fn find_vertex_sector(b: &Brep, input: VertexSectorInput<'_>) -> Result<Option<V
         other_parameter,
         orientation,
         tolerance,
-        use_uv_classification,
+        validate_sector,
     } = input;
-    let _ = (
+    let sector = crate::topology::face::p4::find_vertex_sector(
+        k,
         b,
         face,
-        vertex,
-        curve,
-        uv_trim,
-        parameter,
-        other_parameter,
-        orientation,
-        tolerance,
-        use_uv_classification,
-    );
-    // UNPORTED(topology.face_p4): SmFace::FindVertexSector
-    Err(SolidError::unported(
-        "SmFace::FindVertexSector",
-        "topology.face_p4",
-    ))
+        crate::topology::face::p4::FindVertexSectorArgs {
+            vertex,
+            curve,
+            uv_curve: uv_trim,
+            param_at_vertex: parameter,
+            param_ivl_end: other_parameter,
+            orientation,
+            zone_tol_3d: tolerance,
+            validate_sector,
+            uv_space_okay: true,
+        },
+    )?;
+    Ok(sector.vertexuse)
 }
 
 fn remove_old_loop_vertices(b: &mut Brep, vu: VertexuseId) -> Result<()> {
@@ -1678,18 +1686,20 @@ fn set_face_tolerance(
 
 fn compute_loop_orientation(
     k: &Kernel,
-    b: &Brep,
+    b: &mut Brep,
     face: FaceId,
     loop_: LoopId,
     uv_bounds: Option<&mut crate::geom::extent2d::Extent2d>,
     do_3d_loop_computation: bool,
 ) -> Result<OrientType> {
-    let _ = (k, b, face, loop_, uv_bounds, do_3d_loop_computation);
-    // UNPORTED(topology.face_p3): SmFace::ComputeLoopOrientation
-    Err(SolidError::unported(
-        "SmFace::ComputeLoopOrientation",
-        "topology.face_p3",
-    ))
+    crate::topology::face::p3::compute_loop_orientation(
+        k,
+        b,
+        face,
+        loop_,
+        uv_bounds,
+        do_3d_loop_computation,
+    )
 }
 
 fn shell_post_insert(
@@ -1836,7 +1846,7 @@ fn redistribute_inner_loops(
         }
         let edges = lu::loop_edges(b, loop_)?;
         let (mut point, mut tolerance) = if let Some(edge) = edges.first() {
-            edge_sample(b, required(*edge, "inner loop has null edge")?)?
+            edge_sample(k, b, required(*edge, "inner loop has null edge")?)?
         } else {
             let vertices = lu::loop_vertices(b, loop_)?;
             let v = required(
@@ -1906,7 +1916,7 @@ fn redistribute_inner_loops(
                     } else {
                         let edge =
                             *required(other_edges.first(), "nested other face without edge")?;
-                        (point, tolerance) = edge_sample(b, edge)?;
+                        (point, tolerance) = edge_sample(k, b, edge)?;
                         classify_with_retries(
                             k,
                             b,
@@ -1952,10 +1962,10 @@ fn redistribute_inner_loops(
     Ok(())
 }
 
-fn edge_sample(b: &Brep, edge: EdgeId) -> Result<(Point3, f64)> {
+fn edge_sample(k: &Kernel, b: &Brep, edge: EdgeId) -> Result<(Point3, f64)> {
     let record = b.edge(edge)?;
     let point = required(record.curve.as_ref(), "sample edge without curve")?
-        .evaluate_point(record.interval.evaluate(0.34567))?;
+        .evaluate_point(k, record.interval.evaluate(0.34567))?;
     Ok((point, record.tolerance))
 }
 
@@ -2044,7 +2054,11 @@ fn point_3d_classify(
         outer_only,
         pc,
     );
-    // UNPORTED(query.face_p1): SmFace::Point3DClassify
+    // DISPATCH GAP: SmFace::Point3DClassify is ported
+    // (`query::face::p1::point_3d_classify`, query.face_p1 partial; no UNPORTED marker),
+    // but it takes `&mut Brep` (for `query::face::p2::point_classify`) and this caller's
+    // chain holds `&Brep`; wire it when the B-rep can be lent mutably here. Until
+    // then every such case would still defer inside it (topology.face_p2 / query.face_p2).
     Err(SolidError::unported(
         "SmFace::Point3DClassify",
         "query.face_p1",
@@ -2242,14 +2256,13 @@ mod tests {
                 type_code: kind,
             }
         });
-        // With part 1 wired, a wire split runs to its final B-rep ADD notification.
-        assert!(matches!(
-            result,
-            Err(SolidError::Unported {
-                unit: "topology.brep_p2",
-                upstream: "SmBrep::Notify",
-            })
-        ));
+        // With parts 1 and 2 wired, a wire split completes, its final B-rep ADD
+        // notification included.
+        let out = result.unwrap();
+        assert_eq!(out.status(), 0);
+        let edges = out.edges.unwrap();
+        assert!(edges.contains(&e));
+        assert!(out.vertex.is_some());
         assert_eq!(b.edge_list().len(), 2);
         assert_eq!(b.vertex_list().len(), 3);
         assert!(!k.context.doing_boolean());

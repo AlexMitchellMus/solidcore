@@ -38,12 +38,16 @@
 //!   every entry point (the merge engine reads its tolerances).
 //! - **Statuses.** `SM_ERR_INVALID_INPUT` is [`SolidError::InvalidInput`]; `SM_ERR`
 //!   is [`SolidError::Upstream`] with [`crate::error::SM_ERR`].
-//! - **Unported callees.** The merge engine `SmMerge` (units `boolean.merge_p1` to
-//!   `_p5`) and `SmBrep::IsManifoldSolid` (`topology.brep_p2`) are not ported yet: each
-//!   entry point validates its inputs as upstream, then returns
-//!   [`SolidError::Unported`] for the first engine call it would make
-//!   (`SmMerge::SmMerge`, `SmMerge::merge_breps`, `SmMerge::BooleanLists`,
-//!   `SmMerge::BooleanTrees`).
+//! - **Dependencies.** List folding and tree evaluation call `merge::p3`; its
+//!   construction and topology calls retain narrowly scoped dependency errors. The
+//!   two-B-rep entry points build the merge (`boolean.merge_p2`, through
+//!   `merge::p3`'s `DependencyMerge`, which keeps it as the `boolean.merge_p4` engine),
+//!   then call `SmBrep::IsManifoldSolid` (`topology.brep_p2`) and `ManifoldBoolean`
+//!   (`boolean.merge_p4`) or `NonManifoldBoolean` (`boolean.merge_p3`).
+//! - **List context.** `boolean_lists` takes a mutable kernel for the connected
+//!   component traversal's mark locks.
+//! - **Nullable tree output.** Tree operands are `Option<Brep>` slots, preserving
+//!   consumed entries on failure and defined null outputs of repeated leaves.
 //! - The debug drawing (`SM_DEBUG_CODE`) and `SM_ASSERT_VALID` checks are not ported.
 
 use crate::boolean::merge::MergeOptions;
@@ -68,13 +72,7 @@ pub struct BooleanOutcome {
 }
 
 /// The outputs of [`boolean_lists`].
-#[derive(Debug, Clone, Default)]
-pub struct BooleanListsResult {
-    /// `rResultBreps`: one B-rep per separate solid, for 3D (or non-planar) inputs.
-    pub breps: Vec<Brep>,
-    /// `rResultSurfaces`: one surface per face, when every input is 2D coplanar.
-    pub surfaces: Vec<Surface>,
-}
+pub use crate::boolean::merge::p3::BooleanListsResult;
 
 /// Validates a public N-ary boolean input list without consuming it
 /// (`SmApiMergeBrepsInputsAreValid`): at least two B-reps. Upstream also rejects a
@@ -116,17 +114,55 @@ fn validate_boolean_operands(operation: BooleanOperation) -> Result<()> {
 /// `options` is given), then run `ManifoldBoolean` when both operands are manifold
 /// solids (`SmBrep::IsManifoldSolid`) and `NonManifoldBoolean` otherwise.
 fn merge_boolean(
-    k: &Kernel,
+    k: &mut Kernel,
     brep1: Brep,
     brep2: Brep,
     operation: BooleanOperation,
     options: Option<MergeOptions>,
 ) -> Result<BooleanOutcome> {
-    // The merge engine takes the context, both operands, the operation and the
-    // options; none of it is reachable until `SmMerge` is ported.
-    let _ = (k, brep1, brep2, operation, options);
-    // UNPORTED(boolean.merge_p2): SmMerge::SmMerge
-    Err(SolidError::unported("SmMerge::SmMerge", "boolean.merge_p2"))
+    // SmMerge sMerge(*pContext, pBrep1, pBrep2) (or 0, 0, &sOptions): tolerance and
+    // angle 0, both computed by the constructor.
+    use crate::boolean::merge::p3::BooleanDriver;
+    let mut driver = crate::boolean::merge::p3::DependencyMerge::default();
+    let mut primary = Some(brep1);
+    let mut other = Some(brep2);
+    driver.construct(k, &mut primary, &mut other, 0.0, 0.0, options.as_ref())?;
+    let manifold_solids = match (&primary, &other) {
+        (Some(a), Some(b)) => is_manifold_solid(a)? && is_manifold_solid(b)?,
+        _ => return Err(SolidError::invalid_input(OP_BOOLEAN, "null operand")),
+    };
+    // m_bManifoldBoolean and m_vTI's lamina-edge control of the constructed merge
+    let mut manifold = true;
+    let mut lamina_edges = 0;
+    let result = if manifold_solids {
+        driver.manifold_boolean(
+            k,
+            &mut primary,
+            &mut other,
+            &mut manifold,
+            &mut lamina_edges,
+            operation,
+            None,
+        )?
+    } else {
+        crate::boolean::merge::p3::non_manifold_boolean(
+            k,
+            &mut driver,
+            &mut primary,
+            &mut other,
+            &mut manifold,
+            &mut lamina_edges,
+            operation,
+        )?
+    };
+    Ok(BooleanOutcome {
+        result: result.ok_or_else(|| SolidError::null_pointer(OP_BOOLEAN))?,
+        other,
+    })
+}
+
+fn is_manifold_solid(brep: &Brep) -> Result<bool> {
+    crate::topology::brep::p2::is_manifold_solid(brep)
 }
 
 /// Booleans two B-reps (`SmApiBoolean`): `brep1` is modified into the result; `brep2`
@@ -138,7 +174,7 @@ fn merge_boolean(
 /// [`SolidError::InvalidInput`] for `SM_BO_EXTRACT_SEPARATE`; otherwise the merge's
 /// error ([`SolidError::Unported`] until `SmMerge` is ported).
 pub fn boolean(
-    k: &Kernel,
+    k: &mut Kernel,
     brep1: Brep,
     brep2: Brep,
     operation: BooleanOperation,
@@ -152,7 +188,7 @@ pub fn boolean(
 /// # Errors
 ///
 /// The merge's error ([`SolidError::Unported`] until `SmMerge` is ported).
-pub fn boolean_union(k: &Kernel, brep1: Brep, brep2: Brep) -> Result<Brep> {
+pub fn boolean_union(k: &mut Kernel, brep1: Brep, brep2: Brep) -> Result<Brep> {
     validate_boolean_operands(BooleanOperation::Union)?;
     merge_boolean(k, brep1, brep2, BooleanOperation::Union, None).map(|o| o.result)
 }
@@ -162,7 +198,7 @@ pub fn boolean_union(k: &Kernel, brep1: Brep, brep2: Brep) -> Result<Brep> {
 /// # Errors
 ///
 /// The merge's error ([`SolidError::Unported`] until `SmMerge` is ported).
-pub fn boolean_difference(k: &Kernel, brep1: Brep, brep2: Brep) -> Result<Brep> {
+pub fn boolean_difference(k: &mut Kernel, brep1: Brep, brep2: Brep) -> Result<Brep> {
     validate_boolean_operands(BooleanOperation::Difference)?;
     merge_boolean(k, brep1, brep2, BooleanOperation::Difference, None).map(|o| o.result)
 }
@@ -172,7 +208,7 @@ pub fn boolean_difference(k: &Kernel, brep1: Brep, brep2: Brep) -> Result<Brep> 
 /// # Errors
 ///
 /// The merge's error ([`SolidError::Unported`] until `SmMerge` is ported).
-pub fn boolean_intersection(k: &Kernel, brep1: Brep, brep2: Brep) -> Result<Brep> {
+pub fn boolean_intersection(k: &mut Kernel, brep1: Brep, brep2: Brep) -> Result<Brep> {
     validate_boolean_operands(BooleanOperation::Intersection)?;
     merge_boolean(k, brep1, brep2, BooleanOperation::Intersection, None).map(|o| o.result)
 }
@@ -182,7 +218,7 @@ pub fn boolean_intersection(k: &Kernel, brep1: Brep, brep2: Brep) -> Result<Brep
 /// # Errors
 ///
 /// The merge's error ([`SolidError::Unported`] until `SmMerge` is ported).
-pub fn boolean_merge(k: &Kernel, brep1: Brep, brep2: Brep) -> Result<Brep> {
+pub fn boolean_merge(k: &mut Kernel, brep1: Brep, brep2: Brep) -> Result<Brep> {
     validate_boolean_operands(BooleanOperation::Merge)?;
     merge_boolean(k, brep1, brep2, BooleanOperation::Merge, None).map(|o| o.result)
 }
@@ -195,9 +231,13 @@ pub fn boolean_merge(k: &Kernel, brep1: Brep, brep2: Brep) -> Result<Brep> {
 ///
 /// [`SolidError::InvalidInput`] for fewer than two B-reps or an operation other than
 /// union, intersection, difference or merge; otherwise the merge's error
-/// ([`SolidError::Unported`] until `SmMerge::merge_breps` is ported).
+/// (including [`SolidError::Unported`] for missing merge-engine dependencies).
 #[allow(clippy::ptr_arg)] // the list is drained on success, as upstream consumes it
-pub fn merge_breps(k: &Kernel, breps: &mut Vec<Brep>, operation: BooleanOperation) -> Result<Brep> {
+pub fn merge_breps(
+    k: &mut Kernel,
+    breps: &mut Vec<Brep>,
+    operation: BooleanOperation,
+) -> Result<Brep> {
     // The output is valid only on success. Reject every unsafe list shape before the
     // kernel has a chance to consume it.
     let kernel_operation = match merge_breps_kernel_operation(operation) {
@@ -211,12 +251,13 @@ pub fn merge_breps(k: &Kernel, breps: &mut Vec<Brep>, operation: BooleanOperatio
     };
     // `SmMerge::merge_breps(rBreps, lKernelOperation, rpResult)`, then `SM_ERR` when it
     // succeeds without a result.
-    let _ = (k, kernel_operation);
-    // UNPORTED(boolean.merge_p3): SmMerge::merge_breps
-    Err(SolidError::unported(
-        "SmMerge::merge_breps",
-        "boolean.merge_p3",
-    ))
+    crate::boolean::merge::p3::merge_breps(
+        k,
+        breps,
+        kernel_operation,
+        None,
+        &mut crate::boolean::merge::p3::DependencyMerge::default(),
+    )
 }
 
 /// Booleans two B-reps with full merge-option control (`SmApiBooleanWithOptions`):
@@ -228,7 +269,7 @@ pub fn merge_breps(k: &Kernel, breps: &mut Vec<Brep>, operation: BooleanOperatio
 /// [`SolidError::InvalidInput`] for `SM_BO_EXTRACT_SEPARATE`; otherwise the merge's
 /// error ([`SolidError::Unported`] until `SmMerge` is ported).
 pub fn boolean_with_options(
-    k: &Kernel,
+    k: &mut Kernel,
     brep1: Brep,
     brep2: Brep,
     operation: BooleanOperation,
@@ -244,22 +285,18 @@ pub fn boolean_with_options(
 ///
 /// # Errors
 ///
-/// The merge's error ([`SolidError::Unported`] until `SmMerge::BooleanLists` is
-/// ported).
+/// The first dependency error reached by `merge::p3::boolean_lists`.
 pub fn boolean_lists(
-    k: &Kernel,
+    k: &mut Kernel,
     breps1: &[Brep],
     surfaces1: &[Surface],
     breps2: &[Brep],
     surfaces2: &[Surface],
     operation: i32,
 ) -> Result<BooleanListsResult> {
-    let _ = (k, breps1, surfaces1, breps2, surfaces2, operation);
-    // UNPORTED(boolean.merge_p3): SmMerge::BooleanLists
-    Err(SolidError::unported(
-        "SmMerge::BooleanLists",
-        "boolean.merge_p3",
-    ))
+    crate::boolean::merge::p3::boolean_lists(
+        k, breps1, surfaces1, breps2, surfaces2, operation, None,
+    )
 }
 
 /// Combines B-reps by CSG trees in postfix notation (`SmApiBooleanTrees`, wrapping
@@ -269,19 +306,20 @@ pub fn boolean_lists(
 ///
 /// # Errors
 ///
-/// The merge's error ([`SolidError::Unported`] until `SmMerge::BooleanTrees` is
-/// ported).
+/// Dependency errors, or `InvalidInput` for an out-of-range executed leaf or
+/// a binary operation that would dereference a null operand upstream.
 pub fn boolean_trees(
-    k: &Kernel,
-    breps: &mut Vec<Brep>,
-    post_fix_trees: &mut Vec<i64>,
+    k: &mut Kernel,
+    breps: &mut Vec<Option<Brep>>,
+    post_fix_trees: &[i64],
 ) -> Result<()> {
-    let _ = (k, breps, post_fix_trees);
-    // UNPORTED(boolean.merge_p3): SmMerge::BooleanTrees
-    Err(SolidError::unported(
-        "SmMerge::BooleanTrees",
-        "boolean.merge_p3",
-    ))
+    crate::boolean::merge::p3::boolean_trees(
+        k,
+        breps,
+        post_fix_trees,
+        None,
+        &mut crate::boolean::merge::p3::DependencyMerge::default(),
+    )
 }
 
 #[cfg(test)]
@@ -325,9 +363,9 @@ mod tests {
 
     #[test]
     fn extract_separate_is_rejected() {
-        let k = Kernel::default();
+        let mut k = Kernel::default();
         let e = boolean(
-            &k,
+            &mut k,
             Brep::new(),
             Brep::new(),
             BooleanOperation::ExtractSeparate,
@@ -335,7 +373,7 @@ mod tests {
         .unwrap_err();
         assert!(matches!(e, SolidError::InvalidInput { .. }));
         let e = boolean_with_options(
-            &k,
+            &mut k,
             Brep::new(),
             Brep::new(),
             BooleanOperation::ExtractSeparate,
@@ -347,38 +385,42 @@ mod tests {
 
     #[test]
     fn valid_operands_reach_the_merge() {
-        let k = Kernel::default();
+        let mut k = Kernel::default();
         for op in ALL {
             if op == BooleanOperation::ExtractSeparate {
                 continue;
             }
-            let e = boolean(&k, Brep::new(), Brep::new(), op).unwrap_err();
-            assert_eq!(unported_unit(&e), "boolean.merge_p2", "{op:?}");
+            // The merge is built with a computed tolerance; the empty operands are not
+            // manifold solids, and NonManifoldBoolean runs merge_p4's ManifoldBoolean on
+            // the constructed engine, which stops at `SmBrep::CalculateBoundingBox`.
+            let e = boolean(&mut k, Brep::new(), Brep::new(), op).unwrap_err();
+            assert_eq!(unported_unit(&e), "query.brep", "{op:?}");
         }
         for e in [
-            boolean_union(&k, Brep::new(), Brep::new()).unwrap_err(),
-            boolean_difference(&k, Brep::new(), Brep::new()).unwrap_err(),
-            boolean_intersection(&k, Brep::new(), Brep::new()).unwrap_err(),
-            boolean_merge(&k, Brep::new(), Brep::new()).unwrap_err(),
+            boolean_union(&mut k, Brep::new(), Brep::new()).unwrap_err(),
+            boolean_difference(&mut k, Brep::new(), Brep::new()).unwrap_err(),
+            boolean_intersection(&mut k, Brep::new(), Brep::new()).unwrap_err(),
+            boolean_merge(&mut k, Brep::new(), Brep::new()).unwrap_err(),
         ] {
-            assert_eq!(unported_unit(&e), "boolean.merge_p2");
+            assert_eq!(unported_unit(&e), "query.brep");
         }
     }
 
     #[test]
     fn merge_breps_rejects_without_consuming() {
-        let k = Kernel::default();
+        let mut k = Kernel::default();
         for n in 0..2 {
             let mut breps = vec![Brep::new(); n];
-            let e = merge_breps(&k, &mut breps, BooleanOperation::Union).unwrap_err();
+            let e = merge_breps(&mut k, &mut breps, BooleanOperation::Union).unwrap_err();
             assert!(matches!(e, SolidError::InvalidInput { .. }));
             assert_eq!(breps.len(), n);
         }
         for op in ALL {
             let mut breps = vec![Brep::new(); 3];
-            let e = merge_breps(&k, &mut breps, op).unwrap_err();
+            let e = merge_breps(&mut k, &mut breps, op).unwrap_err();
             if merge_breps_kernel_operation(op).is_some() {
-                assert_eq!(unported_unit(&e), "boolean.merge_p3", "{op:?}");
+                // The merge is constructed; ManifoldBoolean stops at query.brep.
+                assert_eq!(unported_unit(&e), "query.brep", "{op:?}");
             } else {
                 assert!(matches!(e, SolidError::InvalidInput { .. }), "{op:?}");
                 assert_eq!(breps.len(), 3);
@@ -388,12 +430,27 @@ mod tests {
 
     #[test]
     fn lists_and_trees_reach_the_merge() {
-        let k = Kernel::default();
-        let e = boolean_lists(&k, &[Brep::new()], &[], &[Brep::new()], &[], 1).unwrap_err();
-        assert_eq!(unported_unit(&e), "boolean.merge_p3");
-        let mut breps = vec![Brep::new(), Brep::new()];
-        let mut tree = vec![0, 1, -1];
-        let e = boolean_trees(&k, &mut breps, &mut tree).unwrap_err();
-        assert_eq!(unported_unit(&e), "boolean.merge_p3");
+        let mut k = Kernel::default();
+        let e = boolean_lists(&mut k, &[Brep::new()], &[], &[Brep::new()], &[], 1).unwrap_err();
+        assert_eq!(unported_unit(&e), "topology.brep_p3");
+        let mut breps = vec![Some(Brep::new()), Some(Brep::new())];
+        let tree = vec![0, 1, -1];
+        let e = boolean_trees(&mut k, &mut breps, &tree).unwrap_err();
+        // The merge is constructed; ManifoldBoolean stops at query.brep.
+        assert_eq!(unported_unit(&e), "query.brep");
+    }
+    #[test]
+    fn tree_api_preserves_defined_null_outputs_and_failure_slots() {
+        let mut k = Kernel::default();
+        let mut breps = vec![Some(Brep::new()), Some(Brep::new())];
+        boolean_trees(&mut k, &mut breps, &[0, 0]).unwrap();
+        assert_eq!(breps.len(), 3);
+        assert!(breps.first().unwrap().is_some());
+        assert!(breps.get(1).unwrap().is_none());
+        assert!(breps.get(2).unwrap().is_some());
+        let mut breps = vec![Some(Brep::new()), Some(Brep::new())];
+        assert!(boolean_trees(&mut k, &mut breps, &[0, -1]).is_err());
+        assert!(breps.first().unwrap().is_none());
+        assert!(breps.get(1).unwrap().is_some());
     }
 }

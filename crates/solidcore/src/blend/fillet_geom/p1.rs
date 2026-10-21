@@ -91,10 +91,10 @@
 //!   `SmBrep()`, which creates that region; the constructor is `topology.brep_p3`'s and
 //!   not ported, so [`FilletBrep::new`] has none and the edge use constructor stops
 //!   there with `UNPORTED(topology.brep_p3)` (a missing region is that gap, never
-//!   upstream's NULL). `MakeShellVertexTopology` (`topology.brep_p2`) is a stub carrying
-//!   upstream's arguments; the rest of the constructor (the shell-owned edge use with no
-//!   fillet geometry) is ported behind them, so [`FilletBrep::new_fillet_edgeuse`]
-//!   returns [`SolidError::Unported`] today and completes once they are wired. `SmFilletGeom(pFilletSolver, eType)` copies the
+//!   upstream's NULL). `MakeShellVertexTopology` is `topology.brep_p2`'s; the rest of the
+//!   constructor (the shell-owned edge use with no fillet geometry) is ported behind
+//!   them, so [`FilletBrep::new_fillet_edgeuse`] returns [`SolidError::Unported`] today
+//!   and completes once the `SmBrep` constructor is wired. `SmFilletGeom(pFilletSolver, eType)` copies the
 //!   solver's offset surfaces with `SmOffsetSurface::Copy` (the kernel stands for the
 //!   solver's creation context; its status is ignored upstream, so a failed copy leaves
 //!   `NULL`, and only [`SolidError::Unported`] propagates). That constructor leaves `m_dOrientations` and `m_bCapped`
@@ -172,9 +172,9 @@
 //!   `SmSurfaceDropCurve::DoTrace` call of `intersect.surface_drop_lib_p1` (its stub
 //!   carries the label `intersect.surface_drop_curve`);
 //!   `SmFace::CreateUVTrimCurves` (`topology.face_p3`, reached through the wired
-//!   `SmFace::CalculateUVDomainFromUVTrimCurves` of `topology.face_p1`) and
-//!   `SmFace::Point3DClassify` (`query.face_p1`) in `sm_ClassifyFacePoint`;
-//!   `SmFilletSolver::FindIndexOfRailOnFace` (`blend.fillet_solver_p1`) and
+//!   `SmFace::CalculateUVDomainFromUVTrimCurves` of `topology.face_p1`) and the
+//!   unported callees of `SmFace::Point3DClassify` (wired to `query::face::p1`) in
+//!   `sm_ClassifyFacePoint`;
 //!   `SmFilletSolver::RailRailIntersect` (`blend.fillet_solver_p2`) in
 //!   `sm_CreateCubicRailRailInterpolant` (the cubic built from their result is ported
 //!   behind them); `SmSurface::DropCurve` (`intersect.surface_drop_lib_p3`) in the
@@ -1382,8 +1382,8 @@ impl FilletBrep {
     /// # Errors
     ///
     /// [`SolidError::Unported`]: `SmBrep::SmBrep` (`topology.brep_p3`) while the pseudo
-    /// B-rep has no infinite region (see below); then `SmBrep::MakeShellVertexTopology`
-    /// of `topology.brep_p2` when the region has no shell; [`SolidError::Upstream`]
+    /// B-rep has no infinite region (see below); the errors of
+    /// `SmBrep::MakeShellVertexTopology` when the region has no shell; [`SolidError::Upstream`]
     /// (`SM_ERR_NULL_POINTER`) when the region still has no shell (upstream reads
     /// `sShells[0]` of an empty array).
     pub fn new_fillet_edgeuse(&mut self) -> Result<EdgeuseId> {
@@ -1688,7 +1688,7 @@ impl FilletBrep {
             .first()
             .copied()
             .ok_or_else(|| SolidError::sm_err(OP_CLIFF))?;
-        let pnt = curve_3d.evaluate_point(t)?;
+        let pnt = curve_3d.evaluate_point(k, t)?;
         self.set_vertex_point(v, pnt)?;
         self.fillet_vertex_mut(v)?.set_status(FilStatus::Processed);
         Ok(())
@@ -1700,7 +1700,8 @@ impl FilletBrep {
     ///
     /// # Errors
     ///
-    /// Those of [`classify_face_point`] (deferred: `topology.face_p3`, `query.face_p1`);
+    /// Those of [`classify_face_point`] (deferred: `topology.face_p3` and the unported
+    /// callees of `SmFace::Point3DClassify`);
     /// [`SolidError::NotFound`] for dangling ids.
     pub fn update_split_face(
         &mut self,
@@ -1965,13 +1966,13 @@ impl FilletBrep {
             .curve
             .as_ref()
             .ok_or_else(|| SolidError::null_pointer(OP_FIND_EDGE))?;
-        if curve_3d.is_degenerate(EFF_ZERO, None)? {
+        if curve_3d.is_degenerate(k, EFF_ZERO, None)? {
             return Ok(());
         }
 
         // let sPnt = curve's midPoint
         let ivl = curve_3d.natural_interval();
-        let pnt = curve_3d.evaluate_point(ivl.evaluate(0.5))?;
+        let pnt = curve_3d.evaluate_point(k, ivl.evaluate(0.5))?;
 
         // These values are for checking tolerance slop.
         let mut best_edge1: Option<EdgeId> = None;
@@ -1994,7 +1995,7 @@ impl FilletBrep {
                 .ok_or_else(|| SolidError::null_pointer(OP_FIND_EDGE))?;
 
             // let sEdgePnt = edge midPoint
-            let edge_pnt = edge_curve.evaluate_point(edge.interval.evaluate(0.5))?;
+            let edge_pnt = edge_curve.evaluate_point(k, edge.interval.evaluate(0.5))?;
 
             if find_multiple_edges {
                 // Drop the point onto p3DCurve
@@ -2236,7 +2237,7 @@ fn solution_uv<O: SolutionObject>(solutions: &SolutionArray<O>, index: usize) ->
 /// [`SolidError::Upstream`] (`SM_ERR_NULL_POINTER`) for a face without a surface or one
 /// that is not a B-spline surface (the `SM_CAST_PTR` upstream); those of the
 /// evaluations.
-pub fn evaluate_mate(brep: &Brep, face: FaceId, uv: Point2) -> Result<Point3> {
+pub fn evaluate_mate(k: &Kernel, brep: &Brep, face: FaceId, uv: Point2) -> Result<Point3> {
     let surface =
         face2::surface(brep, face)?.ok_or_else(|| SolidError::null_pointer(OP_EVALUATE_MATE))?;
     // SM_CAST_PTR(SmBSplineSurface, ..) and NER before the domain test: B-spline surfaces
@@ -2250,7 +2251,7 @@ pub fn evaluate_mate(brep: &Brep, face: FaceId, uv: Point2) -> Result<Point3> {
     }
     let natural_uv_domain = surface.natural_uv_domain();
     if natural_uv_domain.contains_point(uv, 0.0) {
-        surface.evaluate_point(uv)
+        surface.evaluate_point(k, uv)
     } else {
         match surface.kind() {
             SurfaceKind::BSpline(s) => s.evaluate_point_on_extended_surface(uv),
@@ -2316,8 +2317,13 @@ pub fn surface_drop_point<O: SolutionObject>(
 }
 
 /// Whether the surface is closed in `param` over `domain` (`IsClosed`).
-fn is_closed(surface: &Surface, domain: &Extent2d, param: SurfParamType) -> Result<bool> {
-    Ok(surface.is_closed(domain, param, None, false)?.0)
+fn is_closed(
+    k: &Kernel,
+    surface: &Surface,
+    domain: &Extent2d,
+    param: SurfParamType,
+) -> Result<bool> {
+    Ok(surface.is_closed(k, domain, param, None, false)?.0)
 }
 
 /// `sm_TwoPntsIntersection`: the surface/surface intersection curve through a start
@@ -2366,9 +2372,9 @@ pub fn two_pnts_intersection(
     if solutions.len() == 2 {
         // Closed surface
         let uv = solution_uv(&solutions, 0);
-        let uv_dir = drop_vector(surf1, uv, *direction)?;
-        if (is_closed(surf1, &domain1, SurfParamType::U)? && uv_dir.x < 0.0)
-            || (is_closed(surf1, &domain1, SurfParamType::V)? && uv_dir.y < 0.0)
+        let uv_dir = drop_vector(k, surf1, uv, *direction)?;
+        if (is_closed(k, surf1, &domain1, SurfParamType::U)? && uv_dir.x < 0.0)
+            || (is_closed(k, surf1, &domain1, SurfParamType::V)? && uv_dir.y < 0.0)
         {
             index11 = 1;
         }
@@ -2387,9 +2393,9 @@ pub fn two_pnts_intersection(
     if solutions.len() == 2 {
         // Closed surface
         let uv = solution_uv(&solutions, 0);
-        let uv_dir = drop_vector(surf2, uv, *direction)?;
-        if (is_closed(surf2, &domain2, SurfParamType::U)? && uv_dir.x < 0.0)
-            || (is_closed(surf2, &domain2, SurfParamType::V)? && uv_dir.y < 0.0)
+        let uv_dir = drop_vector(k, surf2, uv, *direction)?;
+        if (is_closed(k, surf2, &domain2, SurfParamType::U)? && uv_dir.x < 0.0)
+            || (is_closed(k, surf2, &domain2, SurfParamType::V)? && uv_dir.y < 0.0)
         {
             index21 = 1;
         }
@@ -2410,7 +2416,7 @@ pub fn two_pnts_intersection(
             // Closed surface
             for ii in 0..2 {
                 let uv = solution_uv(&solutions, ii);
-                let uv_dir = drop_vector(surf1, uv, *direction)?;
+                let uv_dir = drop_vector(k, surf1, uv, *direction)?;
                 if uv_dir.dot(uv - uv11) < 0.0 {
                     index12 = 1;
                     break;
@@ -2427,7 +2433,7 @@ pub fn two_pnts_intersection(
             // Closed surface
             for ii in 0..2 {
                 let uv = solution_uv(&solutions, ii);
-                let uv_dir = drop_vector(surf2, uv, *direction)?;
+                let uv_dir = drop_vector(k, surf2, uv, *direction)?;
                 if uv_dir.dot(uv - uv21) < 0.0 {
                     index22 = 1;
                 }
@@ -2451,6 +2457,7 @@ pub fn two_pnts_intersection(
     };
 
     surf1.point_based_surface_intersect(
+        k,
         &domain1,
         surf2,
         &domain2,
@@ -2474,8 +2481,8 @@ fn drop_or_bad(r: Result<SolutionArray<NoObject>>) -> Result<SolutionArray<NoObj
 }
 
 /// `DropVectors(uv, TRUE, TRUE, 1, &direction, &uv_dir)`.
-fn drop_vector(surface: &Surface, uv: Point2, direction: Vec3) -> Result<Vec2> {
-    let dropped = drop_vectors_at(surface, uv, Side::Left, Side::Left, &[direction])?;
+fn drop_vector(k: &Kernel, surface: &Surface, uv: Point2, direction: Vec3) -> Result<Vec2> {
+    let dropped = drop_vectors_at(k, surface, uv, Side::Left, Side::Left, &[direction])?;
     dropped
         .first()
         .copied()
@@ -2553,27 +2560,47 @@ fn uv_domain_from_uv_trim_curves(
     }
 }
 
-/// `SmFace::Point3DClassify` (unit `query.face_p1`): the classification's point class
-/// and the call's status. `zone_tol_3d` is `SmTol::GetZoneTol3d(pOrigFace)` for both
-/// faces; the flags are upstream's `TRUE` (check boundaries first), `FALSE` (target
-/// loops only), `NULL` (target loops) and `TRUE` (okay to work in UV space).
+/// `SmFace::Point3DClassify` ([`crate::query::face::p1::point_3d_classify`]): the
+/// classification's point class and whether the call returned `SM_SUCCESS` (upstream
+/// compares the status and does not propagate it). `zone_tol_3d` is
+/// `SmTol::GetZoneTol3d(pOrigFace)` for both faces; the flags are upstream's `TRUE`
+/// (check boundaries first), `FALSE` (target loops only), `NULL` (target loops) and
+/// `TRUE` (okay to work in UV space). A failed call keeps the class written before the
+/// failure; an unported callee propagates.
+#[allow(clippy::too_many_arguments)]
 fn point_3d_classify(
-    _k: &Kernel,
-    _brep: &Brep,
-    _face: FaceId,
-    _pos: Point3,
-    _zone_tol_3d: f64,
-    _check_boundaries_first: bool,
-    _guess_uv: Option<Point2>,
-    _target_loops_only: bool,
-    _target_loops: Option<&[crate::topology::LoopId]>,
-    _ok_in_uv_space: bool,
+    k: &Kernel,
+    brep: &mut Brep,
+    face: FaceId,
+    pos: Point3,
+    zone_tol_3d: f64,
+    check_boundaries_first: bool,
+    guess_uv: Option<Point2>,
+    target_loops_only: bool,
+    target_loops: Option<&[crate::topology::LoopId]>,
+    ok_in_uv_space: bool,
 ) -> Result<(PointClassType, bool)> {
-    // UNPORTED(query.face_p1): SmFace::Point3DClassify
-    Err(SolidError::unported(
-        "SmFace::Point3DClassify",
-        "query.face_p1",
-    ))
+    let mut pc = PointClassification::<EntityRef>::new(zone_tol_3d);
+    let r = crate::query::face::p1::point_3d_classify(
+        k,
+        brep,
+        face,
+        pos,
+        zone_tol_3d,
+        check_boundaries_first,
+        &mut pc,
+        crate::query::face::p1::Point3dClassifyOptions {
+            guess_uv,
+            tgt_loops_only: target_loops_only,
+            tgt_loops: target_loops,
+            uv_space_okay: ok_in_uv_space,
+        },
+    );
+    match r {
+        Ok(()) => Ok((pc.point_class(), true)),
+        Err(e) if e.is_unported() => Err(e),
+        Err(_) => Ok((pc.point_class(), false)),
+    }
 }
 
 /// `sm_ClassifyFacePoint`: which of two faces that were one face before a split
@@ -2585,8 +2612,8 @@ fn point_3d_classify(
 /// # Errors
 ///
 /// [`SolidError::Unported`]: `SmFace::CreateUVTrimCurves` (`topology.face_p3`, through
-/// `SmFace::CalculateUVDomainFromUVTrimCurves`), `SmFace::Point3DClassify`
-/// (`query.face_p1`);
+/// `SmFace::CalculateUVDomainFromUVTrimCurves`), the unported callees of
+/// `SmFace::Point3DClassify` ([`crate::query::face::p1::point_3d_classify`]);
 /// [`SolidError::Upstream`] (`SM_ERR_NULL_POINTER`) for a face without a surface.
 pub fn classify_face_point(
     k: &Kernel,
@@ -2824,14 +2851,19 @@ pub fn interpolate_endpts_and_tangents(
 /// # Errors
 ///
 /// Those of the derivative evaluation and the angle computations.
-pub fn adjust_uv_on_seam(surf: &Surface, ref_direction: Vec3, uv: &mut Point2) -> Result<()> {
+pub fn adjust_uv_on_seam(
+    k: &Kernel,
+    surf: &Surface,
+    ref_direction: Vec3,
+    uv: &mut Point2,
+) -> Result<()> {
     let domain = surf.natural_uv_domain();
     let min = domain.min();
     let max = domain.max();
 
-    let (_pnt, mut du, mut dv) = surf.evaluate_1st_derivatives(*uv, true, true)?;
+    let (_pnt, mut du, mut dv) = surf.evaluate_1st_derivatives(k, *uv, true, true)?;
 
-    if is_closed(surf, &domain, SurfParamType::U)? {
+    if is_closed(k, surf, &domain, SurfParamType::U)? {
         let tolerance_2d = domain.x_length() / 1000.0;
         if (uv.x - min.x).abs() < tolerance_2d {
             let angle = du.angle_between(ref_direction)?;
@@ -2847,7 +2879,7 @@ pub fn adjust_uv_on_seam(surf: &Surface, ref_direction: Vec3, uv: &mut Point2) -
         }
     }
 
-    if is_closed(surf, &domain, SurfParamType::V)? {
+    if is_closed(k, surf, &domain, SurfParamType::V)? {
         let tolerance_2d = domain.y_length() / 1000.0;
         if (uv.y - min.y).abs() < tolerance_2d {
             let angle = dv.angle_between(ref_direction)?;
@@ -2873,9 +2905,8 @@ pub fn adjust_uv_on_seam(surf: &Surface, ref_direction: Vec3, uv: &mut Point2) -
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`]: `SmFilletSolver::FindIndexOfRailOnFace`
-/// (`blend.fillet_solver_p1`) and `SmFilletSolver::RailRailIntersect`
-/// (`blend.fillet_solver_p2`); [`SolidError::Upstream`] (`SM_ERR_NULL_POINTER`) for a
+/// [`SolidError::Unported`]: `SmFilletSolver::RailRailIntersect`
+/// (`blend.fillet_solver_p2`); those of `SmFilletSolver::FindIndexOfRailOnFace`; [`SolidError::Upstream`] (`SM_ERR_NULL_POINTER`) for a
 /// rail index past the solver's two edge uses, a missing edge use or vertex use (all
 /// dereferenced unchecked upstream); `SM_ERR` when the rails do not intersect; those of
 /// the angle computations and [`BSplineCurve::create_canonical`].
@@ -2902,8 +2933,12 @@ pub fn create_cubic_rail_rail_interpolant(
             .ok_or_else(|| SolidError::null_pointer(OP))
     };
     // First, calculate the intersection of two rails
-    let rail_index = find_index_of_rail_on_face(fil_solver1, face)?;
-    let other_rail_index = find_index_of_rail_on_face(fil_solver2, face)?;
+    let rail_index = fil_solver1
+        .solver
+        .find_index_of_rail_on_face(brep, Some(face))?;
+    let other_rail_index = fil_solver2
+        .solver
+        .find_index_of_rail_on_face(brep, Some(face))?;
     // Derive guess uv point here
     let mut eu = solver_edgeuse(fil_solver1, rail_index)?;
     let eu_vertex = |brep: &Brep, eu: EdgeuseId| -> Result<(VertexuseId, Option<VertexId>)> {
@@ -2966,18 +3001,6 @@ pub fn create_cubic_rail_rail_interpolant(
         weights: None,
         trim: None,
     })
-}
-
-/// `SmFilletSolver::FindIndexOfRailOnFace(pOrigFace)` (unit `blend.fillet_solver_p1`).
-fn find_index_of_rail_on_face(
-    _solver: &ConstantRadiusAssistedFs,
-    _orig_face: FaceId,
-) -> Result<usize> {
-    // UNPORTED(blend.fillet_solver_p1): SmFilletSolver::FindIndexOfRailOnFace
-    Err(SolidError::unported(
-        "SmFilletSolver::FindIndexOfRailOnFace",
-        "blend.fillet_solver_p1",
-    ))
 }
 
 /// `SmFilletSolver::RailRailIntersect(crUVGuess, lRailIndex, pOtherFillet,
@@ -3126,8 +3149,8 @@ pub fn examine_n_fix_fillet_geoms(
             (domain.evaluate(1.0, 0.0), domain.evaluate(1.0, 1.0))
         };
 
-        let pnt1 = surface.evaluate_point(uv1)?;
-        let pnt2 = surface.evaluate_point(uv2)?;
+        let pnt1 = surface.evaluate_point(k, uv1)?;
+        let pnt2 = surface.evaluate_point(k, uv2)?;
         let mut start_dist = start_pnt.distance(pnt1);
         let dist2 = start_pnt.distance(pnt2);
         let end_dist;
@@ -3378,14 +3401,11 @@ fn region_shells(brep: &Brep, region: RegionId) -> Result<Vec<ShellId>> {
     brep.region(region)?.get_shells(None, |_, _| Ok(false))
 }
 
-/// `SmBrep::MakeShellVertexTopology(pRegion, rpShell, rpVertex)` (unit
-/// `topology.brep_p2`): the new shell and vertex.
-fn make_shell_vertex_topology(_brep: &mut Brep, _region: RegionId) -> Result<(ShellId, VertexId)> {
-    // UNPORTED(topology.brep_p2): SmBrep::MakeShellVertexTopology
-    Err(SolidError::unported(
-        "SmBrep::MakeShellVertexTopology",
-        "topology.brep_p2",
-    ))
+/// `SmBrep::MakeShellVertexTopology(pRegion, rpShell, rpVertex)`
+/// ([`topology::brep::p2::make_shell_vertex_topology`](crate::topology::brep::p2::make_shell_vertex_topology)):
+/// the new shell and vertex.
+fn make_shell_vertex_topology(brep: &mut Brep, region: RegionId) -> Result<(ShellId, VertexId)> {
+    crate::topology::brep::p2::make_shell_vertex_topology(brep, Some(region))
 }
 
 /// `SmOffsetSurface::Copy(crContext, rpNewSurf)` ([`OffsetSurface::copy`](crate::surface::offset_surface::OffsetSurface::copy);
@@ -3462,11 +3482,11 @@ pub fn join_verts_by_capping(
     let domain = surface.natural_uv_domain();
 
     // let sUV1 = UVTrimCurve1 UV endPoint
-    let pnt = uv_curve1.evaluate_point(t_val1)?;
+    let pnt = uv_curve1.evaluate_point(k, t_val1)?;
     let uv1 = Point2::new(pnt.x, pnt.y);
 
     // let sUV4 = UVTrimCurve2 UV endPoint
-    let pnt = uv_curve2.evaluate_point(t_val2)?;
+    let pnt = uv_curve2.evaluate_point(k, t_val2)?;
     let uv4 = Point2::new(pnt.x, pnt.y);
 
     // let sUV2 = UVTrimCurve1->EndPoint moved to Surface V_Dir domain boundary
@@ -3504,7 +3524,7 @@ pub fn join_verts_by_capping(
 
             // add the curves to the output arrays
             uv_curves.push(uv_curve);
-            curves_3d.push(Curve::from(lifted.curve));
+            curves_3d.push(lifted.curve);
             orients.push(OrientType::Same);
         }
     }
@@ -3631,13 +3651,13 @@ pub fn is_order_correct(tsect_pnts: &[TsectPnt], idx1: usize, idx2: usize) -> Re
 /// # Errors
 ///
 /// Those of the closure tests.
-pub fn set_surface_closure(surf: &Surface, domain: &Extent2d) -> Result<SurfParamType> {
+pub fn set_surface_closure(k: &Kernel, surf: &Surface, domain: &Extent2d) -> Result<SurfParamType> {
     let mut ret = SurfParamType::Neither;
 
-    if is_closed(surf, domain, SurfParamType::U)? {
+    if is_closed(k, surf, domain, SurfParamType::U)? {
         ret = SurfParamType::U;
     }
-    if is_closed(surf, domain, SurfParamType::V)? {
+    if is_closed(k, surf, domain, SurfParamType::V)? {
         ret = if ret == SurfParamType::Neither {
             SurfParamType::V
         } else {
@@ -3721,8 +3741,9 @@ mod tests {
 
     #[test]
     fn surface_closure_of_an_open_patch_is_neither() {
+        let k = &Kernel::default();
         let s = bilinear_patch();
-        let closure = set_surface_closure(&s, &s.natural_uv_domain()).unwrap();
+        let closure = set_surface_closure(k, &s, &s.natural_uv_domain()).unwrap();
         assert_eq!(closure, SurfParamType::Neither);
     }
 
@@ -4083,7 +4104,7 @@ mod tests {
         // geometry 0's start row is now geometry 1's end row; its other rows are its own
         let near = |a: Point3, b: Point3| a.distance(b) < 1e-12;
         let s0 = fb.geom(g0).unwrap().fillet_surface().unwrap();
-        let at = |u: f64, v: f64| s0.evaluate_point(Point2::new(u, v)).unwrap();
+        let at = |u: f64, v: f64| s0.evaluate_point(&k, Point2::new(u, v)).unwrap();
         assert!(near(at(0.0, 0.0), Point3::new(3.0, 0.0, 0.0)));
         assert!(near(at(0.0, 1.0), Point3::new(3.0, 2.0, 0.0)));
         assert!(near(at(1.0, 0.0), Point3::new(3.5, 0.0, 0.0)));
@@ -4094,11 +4115,11 @@ mod tests {
         let curve = rail0.curve.as_ref().unwrap();
         let ivl = curve.natural_interval();
         assert!(near(
-            curve.evaluate_point(ivl.min()).unwrap(),
+            curve.evaluate_point(&k, ivl.min()).unwrap(),
             Point3::new(3.0, 0.0, 0.0)
         ));
         assert!(near(
-            curve.evaluate_point(ivl.max()).unwrap(),
+            curve.evaluate_point(&k, ivl.max()).unwrap(),
             Point3::new(3.5, 0.0, 0.0)
         ));
         assert!(fb.brep().edge(rails[1].unwrap()).unwrap().curve.is_none());

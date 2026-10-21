@@ -96,10 +96,10 @@
 //!   `UnLockBoundingBox` (`query.brep`), `SmBSplineSurface::CreateCornerBlend` with a
 //!   non-B-spline neighbour surface (`nurbs.b_spline_surface_n_lib_p2`, whose port takes
 //!   B-spline neighbours only).
-//! - `CreateEdgeEdgeBlend` takes the B-rep mutably (the edge use evaluations of
-//!   `topology.edgeuse_p3` take it so); it ignores both `EvaluateBinormal` statuses as
-//!   upstream and goes on with the outputs upstream sees after a failure (undefined, or
-//!   zeroed point, tangent and normal).
+//! - `CreateEdgeEdgeBlend` takes each edge use's B-rep (the second `None` when both are
+//!   in one B-rep), mutably: the edge use evaluations of `topology.edgeuse_p3` take it so.
+//!   It ignores both `EvaluateBinormal` statuses as upstream and goes on with the outputs
+//!   upstream sees after a failure (undefined, or zeroed point, tangent and normal).
 //! - `GetShells` dedups with a shell mark record local to the call (upstream marks the
 //!   `SmShell` objects); `SetRegionIsVoidFlagsForNestedSolids` bounds its shell queue at
 //!   `4 * shells + 16` passes.
@@ -1239,7 +1239,7 @@ pub fn check_uv_trim_curve(k: &Kernel, b: &Brep, eu: EdgeuseId) -> Result<()> {
     // evaluations below are not status-checked upstream: a failure leaves the points
     // unset; the port uses undefined coordinates there.)
     let (start_uv, end_uv) =
-        ignored(trim_crv.ends())?.map_or((Point3::UNDEF, Point3::UNDEF), |e| (e.start, e.end));
+        ignored(trim_crv.ends(k))?.map_or((Point3::UNDEF, Point3::UNDEF), |e| (e.start, e.end));
 
     let e = eu1::edge(b, eu)?.ok_or_else(|| null("sm_CheckUVTrimCurve: edge use without edge"))?;
     let edge_ivl = edge::interval(b, e)?;
@@ -1249,7 +1249,7 @@ pub fn check_uv_trim_curve(k: &Kernel, b: &Brep, eu: EdgeuseId) -> Result<()> {
         .as_ref()
         .ok_or_else(|| null("sm_CheckUVTrimCurve: edge without curve"))?;
     let edge_3d_start =
-        ignored(curve.evaluate_point(edge_ivl.evaluate(0.0)))?.unwrap_or(Point3::UNDEF);
+        ignored(curve.evaluate_point(k, edge_ivl.evaluate(0.0)))?.unwrap_or(Point3::UNDEF);
 
     let mate_vertex = |b: &Brep| -> Result<VertexId> {
         start_vertex(
@@ -1268,8 +1268,8 @@ pub fn check_uv_trim_curve(k: &Kernel, b: &Brep, eu: EdgeuseId) -> Result<()> {
         eu1::face(b, eu)?.ok_or_else(|| null("sm_CheckUVTrimCurve: edge use without face"))?;
     let surf = face2::surface(b, face)?
         .ok_or_else(|| null("sm_CheckUVTrimCurve: face without surface"))?;
-    let face_3d_start =
-        ignored(surf.evaluate_point(Point2::new(start_uv.x, start_uv.y)))?.unwrap_or(Point3::UNDEF);
+    let face_3d_start = ignored(surf.evaluate_point(k, Point2::new(start_uv.x, start_uv.y)))?
+        .unwrap_or(Point3::UNDEF);
 
     let face_tol = face2::tolerance(b, face)?;
     let edge_tol = edge::tolerance(b, e)?;
@@ -1286,7 +1286,7 @@ pub fn check_uv_trim_curve(k: &Kernel, b: &Brep, eu: EdgeuseId) -> Result<()> {
 
     // Now the other end:
     let edge_3d_end =
-        ignored(curve.evaluate_point(edge_ivl.evaluate(1.0)))?.unwrap_or(Point3::UNDEF);
+        ignored(curve.evaluate_point(k, edge_ivl.evaluate(1.0)))?.unwrap_or(Point3::UNDEF);
     let end_vtx = if reverse {
         start_vertex(b, eu)?
     } else {
@@ -1294,7 +1294,7 @@ pub fn check_uv_trim_curve(k: &Kernel, b: &Brep, eu: EdgeuseId) -> Result<()> {
     };
     let vrtx_3d_end = vertex::point(b, end_vtx)?;
     let face_3d_end =
-        ignored(surf.evaluate_point(Point2::new(end_uv.x, end_uv.y)))?.unwrap_or(Point3::UNDEF);
+        ignored(surf.evaluate_point(k, Point2::new(end_uv.x, end_uv.y)))?.unwrap_or(Point3::UNDEF);
     vrtx_tol = vertex::tolerance(b, end_vtx)?; // have to update this to End vtx.
 
     let dist_face_vrtx_end = face_3d_end.distance(vrtx_3d_end);
@@ -1553,7 +1553,7 @@ pub fn find_side_of_curve(
     }
     let sol = solutions.get(0).ok_or_else(sm_err)?;
 
-    let pv = curve.evaluate(sol.start.param(0)?, 1, true, true)?;
+    let pv = curve.evaluate(k, sol.start.param(0)?, 1, true, true)?;
     let (p0, p1) = match pv.as_slice() {
         [p0, p1, ..] => (*p0, *p1),
         _ => return Err(null("sm_FindSideOfCurve: evaluation without tangent")),
@@ -1620,8 +1620,8 @@ pub fn find_sector_of_face(
     let surface = face_surface(b, face)?;
     let eval = |uv: Point2| -> Result<(Point3, Vec3)> {
         // found Surface Point, Found Surface Point Normal
-        let p = surface.evaluate_point(uv)?;
-        let n = surface.evaluate_normal(uv, Side::Left, Side::Left)?;
+        let p = surface.evaluate_point(k, uv)?;
+        let n = surface.evaluate_normal(k, uv, Side::Left, Side::Left)?;
         Ok((p, n))
     };
     let uv_of = |start: &crate::geom::solution_array::SolutionEnd| -> Result<Point2> {
@@ -1757,7 +1757,7 @@ pub fn update_vertex_edge_intervals(
         if edge::start_vertex(b, e)? == Some(vertex) {
             // eval edge's start point
             let min_t = interval.min();
-            let pnt = curve.evaluate_point(min_t)?;
+            let pnt = curve.evaluate_point(k, min_t)?;
 
             // get edgeStart to vertex distance
             orig_dist = pnt.distance(vertex_point);
@@ -1784,7 +1784,7 @@ pub fn update_vertex_edge_intervals(
             // (SM_ASSERT: the edge's other vertex is the target vertex)
             // eval EdgeEnd point
             let max_t = interval.max();
-            let pnt = curve.evaluate_point(max_t)?;
+            let pnt = curve.evaluate_point(k, max_t)?;
 
             // get EdgeEnd to Vertex distance
             orig_dist = pnt.distance(vertex_point);
@@ -1944,7 +1944,7 @@ pub fn redistribute_seam_uv_trim_curves(
             null("sm_RedistributeSeamUVTrimCurves: edge use without UV trim curve")
         })?;
         // (the three statuses are tested, not propagated)
-        let uv = ignored(this_uv_trim_curve.evaluate_point(parameter))?;
+        let uv = ignored(this_uv_trim_curve.evaluate_point(k, parameter))?;
         let binormal = match uv {
             Some(_) => ignored(evaluate_binormal(k, b, this_eu, parameter, true))?,
             None => None,
@@ -1954,7 +1954,7 @@ pub fn redistribute_seam_uv_trim_curves(
             let surface = face2::surface(b, face)?
                 .ok_or_else(|| null("sm_RedistributeSeamUVTrimCurves: face without surface"))?;
             if let Some((_surface_point, du, dv)) =
-                ignored(surface.evaluate_1st_derivatives(Point2::new(uv.x, uv.y), true, true))?
+                ignored(surface.evaluate_1st_derivatives(k, Point2::new(uv.x, uv.y), true, true))?
             {
                 let across = if this_seam_edge == SurfParamType::U {
                     du
@@ -2101,8 +2101,8 @@ pub fn make_vertex_split_uv_trim_curve(
         .ok_or_else(|| SolidError::null_pointer(OP))?
         .clone(); // NER
     let lift = |t: f64| -> Result<Point3> {
-        let p = new_uv_curve.evaluate_point(t)?;
-        surface.evaluate_point(Point2::new(p.x, p.y))
+        let p = new_uv_curve.evaluate_point(k, t)?;
+        surface.evaluate_point(k, Point2::new(p.x, p.y))
     };
 
     // when 3D distance from splitPoint to UVTrimCurvePoint > tol/100 (was "tol/30" [B606])
@@ -2130,6 +2130,7 @@ pub fn make_vertex_split_uv_trim_curve(
             )?);
             // get best UVTrimCurve param possible by projecting splitPoint to 3d UVTrimCurve
             let (found, sol) = uv_3d_curve.local_point_solve::<NoObject>(
+                k,
                 &new_uv_curve.natural_interval(),
                 SolverOperation::Minimize,
                 split_pnt,
@@ -2257,7 +2258,7 @@ pub fn brep_intersect(
         }
     }
 
-    crate::curve::curve::p5::remove_duplicate_curves(&mut curves_3d)?;
+    crate::curve::curve::p5::remove_duplicate_curves(k, &mut curves_3d)?;
     Ok((curves_3d.into_iter().flatten().collect(), points))
 }
 
@@ -2431,7 +2432,7 @@ pub fn create_corner_blend(
 
     // SmSurface::CreateCornerBlend locals
     let mut ordered_uv: Vec<Option<BSplineCurve>> = Vec::new();
-    let mut ordered_3d: Vec<BSplineCurve> = Vec::new();
+    let mut ordered_3d: Vec<Curve> = Vec::new();
     let mut ordered_surfs: Vec<Option<BSplineSurface>> = Vec::new();
 
     // for every ordered Edgeuse - load a trimmed copy of Edgeuse->Edge->Curve to sOrdered3D
@@ -2450,11 +2451,8 @@ pub fn create_corner_blend(
         let mut e_ivl = edge::interval(b, e)?;
         copy.trim(k, &mut e_ivl, TrimMode::Notify)?;
 
-        // build the sOrdered3D array
-        ordered_3d.push(
-            bspline_part(&copy)
-                .ok_or_else(|| null("CreateCornerBlend: curve without NURBS data"))?,
-        );
+        // build the sOrdered3D array (any SmCurve, as upstream)
+        ordered_3d.push(copy);
 
         // When Needed, put in UVTrimCurve and Surface in sOrderedUV and sOrderedSurfs arrays
         let tangent = tangencies.get(i).copied().unwrap_or(true);
@@ -2505,13 +2503,13 @@ pub fn create_corner_blend(
         // evaluation below takes the raw 0/1 parameter)
 
         // Curve EndPoint
-        let pnt = curve_3d.evaluate_point(param)?;
+        let pnt = curve_3d.evaluate_point(k, param)?;
 
         // create a degenerate 'point' curve at the second curve's endPoint (parameterized from 0 to 1)
         let top_curve = BSplineCurve::create_point_curve(pnt)?;
 
         // add it to the input arrays at the proper location
-        ordered_3d.insert(2 - ii, top_curve);
+        ordered_3d.insert(2 - ii, Curve::from(top_curve));
         eu_orients.insert(2 - ii, OrientType::Same);
         ordered_uv.insert(2 - ii, None);
         ordered_surfs.insert(2 - ii, None);
@@ -2525,7 +2523,9 @@ pub fn create_corner_blend(
 
     // pass the call along (FALSE = bicubic patch through curves and crossTangents)
     let surfs: Vec<Option<&BSplineSurface>> = ordered_surfs.iter().map(Option::as_ref).collect();
+    let ordered_3d = corner_blend_bspline_curves(&ordered_3d, &ordered_uv, &surfs)?;
     BSplineSurface::create_corner_blend(
+        k,
         &ordered_3d,
         &eu_orients,
         &ordered_uv,
@@ -2536,10 +2536,63 @@ pub fn create_corner_blend(
     )
 }
 
+/// The 3D curves `SmBSplineSurface::CreateCornerBlend` gets as `SmBSplineCurve`s (unit
+/// `nurbs.b_spline_surface_n_lib_p2`, whose port takes B-spline curves). Upstream passes
+/// any `SmCurve` and converts each, in order, with `sm_CreateNonRationalCurve`
+/// (SmBSplineSurfaceNLib.cpp:3100-3110), whose `SM_CAST_PTR(SmBSplineCurve, ..)` / `NER`
+/// returns `SM_ERR_NULL_POINTER` for the first curve of another kind. Its curve count
+/// check cannot fail here (the padding leaves at least 4 curves) and its earlier NULL UV
+/// curve / surface check (`:3078-3092`, bicubic patch) returns the same status. Before
+/// that curve only a rational curve's conversion can fail, so with one there (and the
+/// NULL check passing) the case is unported.
+fn corner_blend_bspline_curves(
+    curves: &[Curve],
+    uv_curves: &[Option<BSplineCurve>],
+    surfaces: &[Option<&BSplineSurface>],
+) -> Result<Vec<BSplineCurve>> {
+    let parts: Vec<Option<BSplineCurve>> = curves.iter().map(bspline_part).collect();
+    if parts.iter().all(Option::is_some) {
+        return Ok(parts.into_iter().flatten().collect());
+    }
+    // the NULL UV curve / surface check (bCreateBilinearPatch == FALSE)
+    let curve_cnt = curves.len();
+    let mut null_count = 0usize;
+    for (uv, srf) in uv_curves.iter().zip(surfaces).take(curve_cnt) {
+        if uv.is_none() || srf.is_none() {
+            null_count += 1;
+        }
+        if ((curve_cnt == 4 && null_count > 1) || (curve_cnt > 4 && null_count > 0))
+            && (uv.is_none() || srf.is_none())
+        {
+            return Err(SolidError::null_pointer(OP)); // NER(crUVCurves[ii]) / NER(crSurfaces[ii])
+        }
+    }
+    let mut converted = Vec::new();
+    for part in parts {
+        let Some(part) = part else {
+            if converted
+                .iter()
+                .any(|p: &BSplineCurve| p.is_rational().unwrap_or(true))
+            {
+                // UNPORTED(nurbs.b_spline_surface_n_lib_p2): SmBSplineSurface::CreateCornerBlend with a rational curve before a non-B-spline one
+                return Err(SolidError::unported(
+                    "SmBSplineSurface::CreateCornerBlend",
+                    "nurbs.b_spline_surface_n_lib_p2",
+                ));
+            }
+            return Err(SolidError::null_pointer(OP)); // NER(pNurb)
+        };
+        converted.push(part);
+    }
+    Ok(converted)
+}
+
 // ---- edge-to-edge blends (SmBrep::CreateEdgeEdgeBlend) ----------------------------------
 
 /// `CreateEdgeEdgeBlend`: a ruled (`blend_flag` 0) or G1/G2/G3 blend (`1`/`2`/`3`)
-/// surface between the trimmed NURBS curves of two edges. `curves_dir_flag`: `0`
+/// surface between the trimmed NURBS curves of two edges: `eu_1` in `b_1`, `eu_2` in
+/// `b_2` (`None`: also in `b_1`; upstream's edge uses may belong to two B-reps).
+/// `curves_dir_flag`: `0`
 /// guesses the pairing from the rail distances, `1` starts both at their curve starts,
 /// `2` pairs start with end. `opt_ds_def` (its curvature type is overwritten from
 /// `blend_flag`) tunes a blend.
@@ -2554,9 +2607,10 @@ pub fn create_corner_blend(
 #[allow(clippy::too_many_arguments)]
 pub fn create_edge_edge_blend(
     k: &Kernel,
-    b: &mut Brep,
     blend_flag: u64,
+    b_1: &mut Brep,
     eu_1: Option<EdgeuseId>,
+    b_2: Option<&mut Brep>,
     eu_2: Option<EdgeuseId>,
     curves_dir_flag: u64,
     opt_ds_def: Option<&mut DerivSurfDefinition<'_>>,
@@ -2564,17 +2618,37 @@ pub fn create_edge_edge_blend(
     let eu_1 = eu_1.ok_or_else(|| SolidError::null_pointer(OP))?; // NER
     let eu_2 = eu_2.ok_or_else(|| SolidError::null_pointer(OP))?; // NER
 
+    // eu_2's B-rep: `b_2`, or `b_1` when both edge uses are in one B-rep (each edge use's
+    // reads touch only its own B-rep, as upstream's)
+    let mut b_2 = b_2;
+    macro_rules! b2_mut {
+        () => {
+            match b_2.as_deref_mut() {
+                Some(other) => other,
+                None => &mut *b_1,
+            }
+        };
+    }
+    macro_rules! b2 {
+        () => {
+            match b_2.as_deref() {
+                Some(other) => other,
+                None => &*b_1,
+            }
+        };
+    }
+
     // locals
-    let (Some(edge1), Some(edge2)) = (eu1::edge(b, eu_1)?, eu1::edge(b, eu_2)?) else {
+    let (Some(edge1), Some(edge2)) = (eu1::edge(b_1, eu_1)?, eu1::edge(b2!(), eu_2)?) else {
         return Err(status(SM_ERR_INVALID_INPUT)); // Could not fetch Edge from Edgeuse
     };
 
     // edge locals
-    let ivl1 = edge::interval(b, edge1)?;
-    let mut ivl2 = edge::interval(b, edge2)?;
-    let rail1 = edge::create_trimmed_nurbs_curve(k, b, edge1)?;
-    let rail2 = edge::create_trimmed_nurbs_curve(k, b, edge2)?;
-    let tolerance = max2(edge::tolerance(b, edge1)?, edge::tolerance(b, edge2)?);
+    let ivl1 = edge::interval(b_1, edge1)?;
+    let mut ivl2 = edge::interval(b2!(), edge2)?;
+    let rail1 = edge::create_trimmed_nurbs_curve(k, b_1, edge1)?;
+    let rail2 = edge::create_trimmed_nurbs_curve(k, b2!(), edge2)?;
+    let tolerance = max2(edge::tolerance(b_1, edge1)?, edge::tolerance(b2!(), edge2)?);
     let (Some(rail1), Some(rail2)) = (rail1, rail2) else {
         return Err(status(SM_ERR_INVALID_INPUT)); // Could not build BSplineCurves from Edges
     };
@@ -2644,12 +2718,12 @@ pub fn create_edge_edge_blend(
 
     // face locals
     let face1 =
-        eu1::face(b, eu_1)?.ok_or_else(|| null("CreateEdgeEdgeBlend: edge use without face"))?;
-    let face2_ =
-        eu1::face(b, eu_2)?.ok_or_else(|| null("CreateEdgeEdgeBlend: edge use without face"))?;
+        eu1::face(b_1, eu_1)?.ok_or_else(|| null("CreateEdgeEdgeBlend: edge use without face"))?;
+    let face2_ = eu1::face(b2!(), eu_2)?
+        .ok_or_else(|| null("CreateEdgeEdgeBlend: edge use without face"))?;
     let surfaces_present = (
-        face2::surface(b, face1)?.is_some(),
-        face2::surface(b, face2_)?.is_some(),
+        face2::surface(b_1, face1)?.is_some(),
+        face2::surface(b2!(), face2_)?.is_some(),
     );
     if !(surfaces_present.0 && surfaces_present.1) {
         return Err(status(SM_ERR_INVALID_INPUT)); // Could not fetch Surface from Edgeuse
@@ -2662,28 +2736,28 @@ pub fn create_edge_edge_blend(
         tangent: mut edge1_tangent,
         face_normal: mut face1_normal,
         ..
-    } = evaluate_binormal_status_ignored(k, b, eu_1, ivl1.evaluate(0.5))?;
+    } = evaluate_binormal_status_ignored(k, b_1, eu_1, ivl1.evaluate(0.5))?;
     let BinormalEval {
         binormal: edge2_binormal,
         tangent: mut edge2_tangent,
         face_normal: mut face2_normal,
         ..
-    } = evaluate_binormal_status_ignored(k, b, eu_2, ivl2.evaluate(0.5))?;
-    if eu1::orientation(b, eu_1)? == OrientType::Opposite {
+    } = evaluate_binormal_status_ignored(k, b2_mut!(), eu_2, ivl2.evaluate(0.5))?;
+    if eu1::orientation(b_1, eu_1)? == OrientType::Opposite {
         edge1_tangent = -edge1_tangent;
     }
-    if eu1::orientation(b, eu_2)? == OrientType::Opposite {
+    if eu1::orientation(b2!(), eu_2)? == OrientType::Opposite {
         edge2_tangent = -edge2_tangent;
     }
-    let fu_orient = |eu: EdgeuseId| -> Result<OrientType> {
+    let fu_orient = |b: &Brep, eu: EdgeuseId| -> Result<OrientType> {
         let fu = eu1::faceuse(b, eu)?
             .ok_or_else(|| null("CreateEdgeEdgeBlend: edge use without face use"))?;
         eu1::faceuse_orientation(b, fu)
     };
-    if fu_orient(eu_1)? == OrientType::Opposite {
+    if fu_orient(b_1, eu_1)? == OrientType::Opposite {
         face1_normal = -face1_normal;
     }
-    if fu_orient(eu_2)? == OrientType::Opposite {
+    if fu_orient(b2!(), eu_2)? == OrientType::Opposite {
         face2_normal = -face2_normal;
     }
 
@@ -2742,8 +2816,8 @@ pub fn create_edge_edge_blend(
     let curve1 = Curve::from(rail1);
     let curve2 = Curve::from(rail2);
     // (the face surfaces fetched above; re-borrowed past the edge use evaluations)
-    let surface1 = face2::surface(b, face1)?.ok_or_else(|| SolidError::null_pointer(OP))?;
-    let surface2 = face2::surface(b, face2_)?.ok_or_else(|| SolidError::null_pointer(OP))?;
+    let surface1 = face2::surface(b_1, face1)?.ok_or_else(|| SolidError::null_pointer(OP))?;
+    let surface2 = face2::surface(b2!(), face2_)?.ok_or_else(|| SolidError::null_pointer(OP))?;
     surface1.create_blend_surface(
         k,
         &curve1,
@@ -2865,20 +2939,98 @@ pub fn create_parallel_projection_curves(
 
 // ---- healing (SmBrep::HealBrep) ---------------------------------------------------------
 
-/// The loop handle of the healer `SmBrep::HealBrep` creates locally (`SmHealData
-/// sHealData`): a loop id, as the healer's classification objects are loops.
+/// The classification handle of the healer `SmBrep::HealBrep` creates locally
+/// (`SmHealData sHealData`): the loops the healer classifies, and the face, surface,
+/// topology and curves of `SmFace::ClassifyLoops`' loop bisector (reached through
+/// `SetProps_Stage3`; a handle type that cannot name them makes `ClassifyLoops` fail
+/// with [`crate::query::face::p3::NO_CURVE_HANDLES`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HealLoopHandle(pub LoopId);
+pub enum HealLoopHandle {
+    /// A B-rep entity (a loop, the face, or the vertex, edge, vertex use or edge use a
+    /// classification names).
+    Topo(EntityRef),
+    /// The surface of a face.
+    Surface(FaceId),
+    /// A curve the bisector makes: its 3D curve (`false`) or its UV curve (`true`).
+    Curve(bool),
+    /// The curve of an edge.
+    EdgeCurve(EdgeId),
+    /// The UV trim curve of an edge use.
+    Trim(EdgeuseId),
+}
 
 impl ClassObject for HealLoopHandle {
     fn class_kind(&self) -> ClassObjectKind {
-        ClassObjectKind::Loop
+        match self {
+            Self::Topo(e) => e.class_kind(),
+            Self::Surface(_) => ClassObjectKind::Surface,
+            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) => ClassObjectKind::Curve,
+        }
     }
 }
 
 impl LoopObject for HealLoopHandle {
     fn from_loop(l: LoopId) -> Self {
-        Self(l)
+        Self::Topo(EntityRef::Loop(l))
+    }
+
+    fn as_loop(&self) -> Option<LoopId> {
+        match self {
+            Self::Topo(e) => e.as_loop(),
+            _ => None,
+        }
+    }
+
+    fn as_vertex(&self) -> Option<VertexId> {
+        match self {
+            Self::Topo(e) => e.as_vertex(),
+            _ => None,
+        }
+    }
+
+    fn from_face(f: FaceId) -> Option<Self> {
+        Some(Self::Topo(EntityRef::Face(f)))
+    }
+
+    fn from_face_surface(f: FaceId) -> Option<Self> {
+        Some(Self::Surface(f))
+    }
+
+    fn from_classify_curve(uv: bool) -> Option<Self> {
+        Some(Self::Curve(uv))
+    }
+
+    fn from_topology(t: EntityRef) -> Option<Self> {
+        Some(Self::Topo(t))
+    }
+
+    fn as_topology(&self) -> Option<EntityRef> {
+        match self {
+            Self::Topo(t) => Some(*t),
+            _ => None,
+        }
+    }
+
+    fn from_edge_curve(e: EdgeId) -> Option<Self> {
+        Some(Self::EdgeCurve(e))
+    }
+
+    fn as_edge_curve(&self) -> Option<EdgeId> {
+        match self {
+            Self::EdgeCurve(e) => Some(*e),
+            _ => None,
+        }
+    }
+
+    fn from_trim_curve(eu: EdgeuseId) -> Option<Self> {
+        Some(Self::Trim(eu))
+    }
+
+    fn as_trim_curve(&self) -> Option<EdgeuseId> {
+        match self {
+            Self::Trim(eu) => Some(*eu),
+            _ => None,
+        }
     }
 }
 

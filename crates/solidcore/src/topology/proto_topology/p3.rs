@@ -25,8 +25,10 @@
 //!   sum of the two.
 //! - **Callees not ported yet** are private stubs returning [`SolidError::Unported`],
 //!   each tagged `UNPORTED(<unit>)`: `SmBrep::Point3DClassify` (`query.brep`),
-//!   `SmBrep::GlueVertices` /
-//!   `SqueezeEdge` / `DeleteEdge` (`topology.brep_p2` via part 5 / `_p3` / `_p4`).
+//!   `SqueezeEdge` / `DeleteEdge` (`topology.brep_p3` / `_p4`). `SmBrep::GlueVertices`
+//!   goes through [`BrepGlue`], which the B-reps' owner implements with
+//!   `topology::brep::p5` (so [`ProtoTopologyManager::glue_coincident_brep_vertices`]
+//!   takes the kernel and the B-reps mutably).
 //!   The intersector's `GetOtherMate` /
 //!   `RemoveRelationship` are reached through [`Mates`] (ported in
 //!   `boolean.topology_intersector_p1` / `_p2`; [`NoMates`] for no intersector maps). The
@@ -179,9 +181,26 @@ fn new_curve_classification<O: ClassObject>(
     )
 }
 
-/// `SmBrep::GlueVertices` of B-rep `which`.
-fn brep_glue_vertices<O: Copy + PartialEq>(_which: i32, v1: O, v2: O) -> Result<()> {
-    crate::topology::brep::p5::opaque_glue_preflight(v1 == v2)
+/// The B-rep edit [`ProtoTopologyManager::glue_coincident_brep_vertices`] (and the
+/// topology intersector) make on the B-reps behind the handles, implemented by their
+/// owner with the mutable arenas (`topology::brep::p5`).
+pub trait BrepGlue<O> {
+    /// `SmBrep::GlueVertices(pV1, pV2, pOptWireEdgesInBrep)` of `brep`;
+    /// `opt_wire_edges_in_brep` is `pOptWireEdgesInBrep` (`NULL` by default: every
+    /// shell edge is checked).
+    ///
+    /// # Errors
+    ///
+    /// Those of `topology::brep::p5::glue_vertices`; [`SolidError::InvalidInput`] for
+    /// handles that name no vertex (or edge) of `brep`.
+    fn glue_vertices(
+        &mut self,
+        k: &mut Kernel,
+        brep: O,
+        v1: O,
+        v2: O,
+        opt_wire_edges_in_brep: Option<&[O]>,
+    ) -> Result<()>;
 }
 
 /// `SmBrep::SqueezeEdge` of B-rep `which`.
@@ -312,7 +331,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         .unwrap_or_default();
 
         // when CrvInterval is degenerate - find or create a ProtoVertex for Interval
-        if curve_of(geometry, cc_curve)?.is_degenerate(tol, None)? {
+        if curve_of(geometry, cc_curve)?.is_degenerate(k, tol, None)? {
             let start =
                 can_imprint(ci1.start.point_class()) && can_imprint(ci2.start.point_class());
             let mid = can_imprint(ci1.mid.point_class()) && can_imprint(ci2.mid.point_class());
@@ -367,7 +386,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         }
 
         // quit - degenerate interval. [B488]
-        if curve_of(geometry, cc_curve)?.is_degenerate(tol, Some(&this_ivl))? {
+        if curve_of(geometry, cc_curve)?.is_degenerate(k, tol, Some(&this_ivl))? {
             return Ok((None, false));
         }
 
@@ -467,7 +486,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         let tol = d.raw_tolerance();
 
         // Takes reversal into account; status ignored.
-        let crv_pt = ignore_soft(d.evaluate(&*geometry, param_pe, true, false))?
+        let crv_pt = ignore_soft(d.evaluate(k, &*geometry, param_pe, true, false))?
             .and_then(|r| r.0)
             .unwrap_or(Vec3::UNDEF);
 
@@ -479,11 +498,11 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         let start_pv = pe.start_proto_vertex();
         let end_pv = pe.end_proto_vertex();
 
-        let pt = self.edge_def_end_position_at(&*geometry, ed, start_pv)?;
+        let pt = self.edge_def_end_position_at(k, &*geometry, ed, start_pv)?;
         if crv_pt.distance(pt) < tol * CBI_FUDGE {
             return Ok((None, None));
         }
-        let pt = self.edge_def_end_position_at(&*geometry, ed, end_pv)?;
+        let pt = self.edge_def_end_position_at(k, &*geometry, ed, end_pv)?;
         if crv_pt.distance(pt) < tol * CBI_FUDGE {
             return Ok((None, None));
         }
@@ -630,11 +649,11 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         }
         let tol = e.raw_tolerance();
 
-        let crv_pt = ignore_soft(self.proto_edge_evaluate(&*geometry, pe, dt, true, false))?
+        let crv_pt = ignore_soft(self.proto_edge_evaluate(k, &*geometry, pe, dt, true, false))?
             .and_then(|r| r.0)
             .unwrap_or(Vec3::UNDEF);
-        let start_pt = self.proto_edge_end_position(&*geometry, pe, true)?;
-        let end_pt = self.proto_edge_end_position(&*geometry, pe, false)?;
+        let start_pt = self.proto_edge_end_position(k, &*geometry, pe, true)?;
+        let end_pt = self.proto_edge_end_position(k, &*geometry, pe, false)?;
 
         // no work - Split Pt is within tol of ProtoEdge end point
         if crv_pt.distance(start_pt) < tol {
@@ -864,8 +883,8 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                     .unwrap_or((None, None));
 
                 // Combine PVs:
-                let pv1 = self.which_pv_to_combine(&*geometry, pe1, t11, npv11)?;
-                let pv2 = self.which_pv_to_combine(&*geometry, pe1, t21, npv21)?;
+                let pv1 = self.which_pv_to_combine(k, &*geometry, pe1, t11, npv11)?;
+                let pv2 = self.which_pv_to_combine(k, &*geometry, pe1, t21, npv21)?;
                 self.combine_and_delete_pvs(pv1, pv2)?;
 
                 // T2: first decide which pieces to split.
@@ -883,8 +902,8 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                 let _ = npe12;
 
                 // Combine PVs:
-                let pv1 = self.which_pv_to_combine(&*geometry, pe1_to_split, t12, npv12)?;
-                let pv2 = self.which_pv_to_combine(&*geometry, pe2_to_split, t22, npv22)?;
+                let pv1 = self.which_pv_to_combine(k, &*geometry, pe1_to_split, t12, npv12)?;
+                let pv2 = self.which_pv_to_combine(k, &*geometry, pe2_to_split, t22, npv22)?;
                 self.combine_and_delete_pvs(pv1, pv2)?;
 
                 // Combine ProtoEdges
@@ -941,8 +960,8 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
     /// in the module header.
     pub fn glue_coincident_brep_vertices(
         &mut self,
-        k: &Kernel,
-        brep: &impl ProtoBrep<O>,
+        k: &mut Kernel,
+        brep: &mut (impl ProtoBrep<O> + BrepGlue<O>),
         mates: &mut dyn Mates<O>,
     ) -> Result<Vec<O>> {
         let mut deleted_curves: Vec<O> = Vec::new();
@@ -1078,7 +1097,13 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                     if dist > xs {
                     } else if edges.is_empty() {
                         if v1 != v2 {
-                            ignore_soft(brep_glue_vertices(which, v1, v2))?;
+                            ignore_soft(brep.glue_vertices(
+                                k,
+                                self.which_brep(which),
+                                v1,
+                                v2,
+                                None,
+                            ))?;
                             set_slot(deleted_v, jj, v2);
                             self.vertex_def_mut(vd2)
                                 .ok_or(dangling("vertex definition is deleted"))?
@@ -1093,7 +1118,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                                 .edge_interval(edge)
                                 .ok_or(dangling("edge is unknown"))?;
                             let len = curve_of(brep, curve_handle)?
-                                .approximate_length(&ivl, 5, false)?
+                                .approximate_length(k, &ivl, 5, false)?
                                 .0;
                             if len < xs {
                                 // If any to-be-deleted topology is mated, remove the
@@ -1158,7 +1183,13 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                             } else {
                                 // coincident Vertices connected by a long Edge: Glue.
                                 if v1 != v2 {
-                                    ignore_soft(brep_glue_vertices(which, v1, v2))?;
+                                    ignore_soft(brep.glue_vertices(
+                                        k,
+                                        self.which_brep(which),
+                                        v1,
+                                        v2,
+                                        None,
+                                    ))?;
                                     set_slot(deleted_v, jj, v2);
                                     self.vertex_def_mut(vd2)
                                         .ok_or(dangling("vertex definition is deleted"))?

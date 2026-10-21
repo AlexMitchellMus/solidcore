@@ -272,6 +272,7 @@ fn surface_drop_curve(
             .drop_curve(k, domain, curve, interval, approx_tol, true, true)?
             .uv_curves),
         SurfaceKind::BSpline(_)
+        | SurfaceKind::Cone(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SrfInVolume(_)
         | SurfaceKind::SurfOfRevolution(_)
@@ -364,6 +365,31 @@ fn corner_type(corner: FilletCornerId) -> Result<FilletCornerType> {
         "SmFilletCorner::GetCornerType",
         "blend.fillet_corner_p1",
     )
+}
+
+/// The `SmBSplineCurve` (base) of a curve kind derived from it (`SmLine`,
+/// `SmEllipse`/`SmCircle`, `SmHyperbola`, `SmParabola`), `None` for the others.
+const fn b_spline_base(c: &Curve) -> Option<&BSplineCurve> {
+    match c.kind() {
+        CurveKind::BSpline(b) => Some(b),
+        CurveKind::Line(l) => Some(l.base()),
+        CurveKind::Ellipse(e) => Some(e.base()),
+        CurveKind::Hyperbola(h) => Some(h.base()),
+        CurveKind::Parabola(p) => Some(p.base()),
+        _ => None,
+    }
+}
+
+/// [`b_spline_base`], mutably: the receiver of a non-virtual `SmBSplineCurve` method.
+fn b_spline_base_mut(c: &mut Curve) -> Option<&mut BSplineCurve> {
+    match c.kind_mut() {
+        CurveKind::BSpline(b) => Some(b),
+        CurveKind::Line(l) => Some(l.base_mut()),
+        CurveKind::Ellipse(e) => Some(e.base_mut()),
+        CurveKind::Hyperbola(h) => Some(h.base_mut()),
+        CurveKind::Parabola(p) => Some(p.base_mut()),
+        _ => None,
+    }
 }
 
 /// `SmFilletConcaveNxNCorner::TestRailRailInterpolationCurve` (unit
@@ -666,8 +692,8 @@ pub fn srf_srf_intersection(
 
                     // Check start and end points vs. given points.
                     let trim_ivl = curve_3d.natural_interval();
-                    let p1 = curve_3d.evaluate_point(trim_ivl.min())?;
-                    let p2 = curve_3d.evaluate_point(trim_ivl.max())?;
+                    let p1 = curve_3d.evaluate_point(k, trim_ivl.min())?;
+                    let p2 = curve_3d.evaluate_point(k, trim_ivl.max())?;
                     if p1.distance(start_pnt) < 100.0 * approx_tol
                         && p2.distance(end_pnt) < 100.0 * approx_tol
                     {
@@ -815,7 +841,7 @@ pub fn srf_srf_intersection(
 
         // save the best curve seen - best = longest that is close to points
         let crv_len = new_3d_curve
-            .approximate_length(&new_3d_curve.natural_interval(), 5, false)?
+            .approximate_length(k, &new_3d_curve.natural_interval(), 5, false)?
             .0;
         if crv_len > max_len {
             max_len = crv_len;
@@ -1056,7 +1082,7 @@ impl FilletBrep {
                 .0
                 .filter(|c| is_b_spline_kind(c))
                 .ok_or_else(|| SolidError::null_pointer(OP))?;
-            *slot = trim_curve.evaluate_point(offset_param)?;
+            *slot = trim_curve.evaluate_point(k, offset_param)?;
         }
 
         // Their midpoint is the guess.
@@ -1079,7 +1105,7 @@ impl FilletBrep {
 
         // Save the SolutionPoints
         let uv_pt = tsect1.uv_pos(srf(rail_index1, OP)?);
-        let pnt = face_surface(target, face, OP)?.evaluate_point(uv_pt)?;
+        let pnt = face_surface(target, face, OP)?.evaluate_point(k, uv_pt)?;
         self.set_processed(v, uv_pt, pnt)?;
 
         // Calculate Mate if needed
@@ -1094,7 +1120,7 @@ impl FilletBrep {
             } else {
                 tsect2.uv_pos(other_srf(rail_index2, OP)?)
             };
-            let pt = face_surface(target, f, OP)?.evaluate_point(uv_pt)?;
+            let pt = face_surface(target, f, OP)?.evaluate_point(k, uv_pt)?;
             self.set_processed(mate, uv_pt, pt)?;
         }
         Ok(())
@@ -1172,7 +1198,7 @@ impl FilletBrep {
         };
         let side_edge_length = edge::curve(target, side_edge)?
             .ok_or_else(|| SolidError::null_pointer(OP))?
-            .approximate_length(&ivl, 5, false)?
+            .approximate_length(k, &ivl, 5, false)?
             .0;
         if let Some(off_srf) = self.geom_offset_surface(first, 0, solvers, OP)? {
             let rad = off_srf.offset_distance().abs();
@@ -1279,13 +1305,14 @@ impl FilletBrep {
                 .geom_offset_surface(g1, rail_index, solvers, OP)?
                 .ok_or_else(|| SolidError::null_pointer(OP))?
                 .base_surface()
-                .evaluate_point(uv)?;
+                .evaluate_point(k, uv)?;
 
             // project it onto the side edge's curve
             let side_e =
                 eu1::edge(target, side_eu1)?.ok_or_else(|| SolidError::null_pointer(OP))?;
             let curve = edge::curve(target, side_e)?.ok_or_else(|| SolidError::null_pointer(OP))?;
             let (_found, solution) = curve.local_point_solve::<()>(
+                k,
                 &curve.natural_interval(),
                 SolverOperation::Minimize,
                 pnt,
@@ -1315,7 +1342,7 @@ impl FilletBrep {
                     .ok_or_else(|| SolidError::null_pointer(OP))?
                     .base_surface();
                 let mut other_uv = tsect1.uv_pos(srf(other_index, OP)?);
-                adjust_uv_on_seam(other_surf, bin.binormal, &mut other_uv)?;
+                adjust_uv_on_seam(k, other_surf, bin.binormal, &mut other_uv)?;
                 *tsect1.uv_pos_mut(srf(other_index, OP)?) = other_uv;
                 self.fillet_vertexuse_mut(vu1)?.set_tsect_pnt(&tsect1);
             }
@@ -1331,7 +1358,7 @@ impl FilletBrep {
                 let face = as_face(self.fillet_vertex(mate)?.point_class_object(), OP)?
                     .ok_or_else(|| SolidError::null_pointer(OP))?;
                 let uv1 = tsect1.uv_pos(other_srf(rail_index, OP)?);
-                let pnt1 = evaluate_mate(target, face, uv1)?;
+                let pnt1 = evaluate_mate(k, target, face, uv1)?;
                 self.set_processed(mate, uv1, pnt1)?;
                 break;
             }
@@ -1393,7 +1420,7 @@ impl FilletBrep {
                     .ok_or_else(|| SolidError::null_pointer(OP))?
                     .base_surface();
                 let mut other_uv = tsect2.uv_pos(srf(other_index, OP)?);
-                adjust_uv_on_seam(other_surf, bin.binormal, &mut other_uv)?;
+                adjust_uv_on_seam(k, other_surf, bin.binormal, &mut other_uv)?;
                 *tsect2.uv_pos_mut(srf(other_index, OP)?) = other_uv;
                 self.fillet_vertexuse_mut(vu2)?.set_tsect_pnt(&tsect2);
             }
@@ -1412,7 +1439,7 @@ impl FilletBrep {
                 let face = as_face(self.fillet_vertex(mate)?.point_class_object(), OP)?
                     .ok_or_else(|| SolidError::null_pointer(OP))?;
                 let uv1 = tsect2.uv_pos(other_srf(other_rail_index, OP)?);
-                let pnt1 = evaluate_mate(target, face, uv1)?;
+                let pnt1 = evaluate_mate(k, target, face, uv1)?;
                 self.set_processed(mate, uv1, pnt1)?;
                 break;
             }
@@ -1473,7 +1500,7 @@ impl FilletBrep {
         let curve = edge::curve(target, e)?
             .ok_or_else(|| SolidError::null_pointer(OP))?
             .clone();
-        let pv = curve.evaluate(param, 1, true, true)?;
+        let pv = curve.evaluate(k, param, 1, true, true)?;
         let plane_orig = pv.first().copied().ok_or_else(|| SolidError::sm_err(OP))?;
         let plane_normal = pv.get(1).copied().ok_or_else(|| SolidError::sm_err(OP))?;
         let (vu1, mut tsect) = self.rail_end_tsect(v, Some(fillet_geom1), None, OP)?;
@@ -1505,7 +1532,7 @@ impl FilletBrep {
         // Determine if we need to step off the edge to avoid convergence problems
         let stepoff_dist = solver_surface(fs1, 0, OP)?.offset_distance().abs();
         let mut curve_stepoff_dist = stepoff_dist;
-        let curve_len = curve.approximate_length(&ivl, 10, false)?.0;
+        let curve_len = curve.approximate_length(k, &ivl, 10, false)?.0;
         let max_stepoff_dist = curve_len * 0.15;
         if curve_stepoff_dist > max_stepoff_dist {
             curve_stepoff_dist = max_stepoff_dist;
@@ -1523,7 +1550,7 @@ impl FilletBrep {
                 only_upper_half: true,
                 non_zero_tangents: true,
             };
-            let m = surf.evaluate(uv, 1, 1, flags)?;
+            let m = surf.evaluate(k, uv, 1, 1, flags)?;
             let du = m
                 .get(1)
                 .and_then(|r| r.first())
@@ -1585,7 +1612,7 @@ impl FilletBrep {
             rail_index = 1;
         }
         let uv1 = tsect.uv_pos(srf(rail_index, OP)?);
-        let pnt1 = face_surface(target, face1, OP)?.evaluate_point(uv1)?;
+        let pnt1 = face_surface(target, face1, OP)?.evaluate_point(k, uv1)?;
         self.set_processed(v, uv1, pnt1)?;
 
         let mut other_rail_index = 0;
@@ -1622,7 +1649,7 @@ impl FilletBrep {
         }
         let face2 = as_face(self.fillet_vertex(mate)?.point_class_object(), OP)?;
         let uv2 = tsect.uv_pos(other_srf(rail_index, OP)?);
-        let pnt2 = face_surface(target, face2, OP)?.evaluate_point(uv2)?;
+        let pnt2 = face_surface(target, face2, OP)?.evaluate_point(k, uv2)?;
         self.set_processed(mate, uv2, pnt2)?;
         Ok(())
     }
@@ -1671,13 +1698,13 @@ impl FilletBrep {
         let pv = if edge::vertex(target, e)? == cp_vertex {
             let start_param = ivl.min();
             let end_param = arc_length_param(k, curve, start_param, set_back_dist, OP)?;
-            curve.evaluate(end_param, 1, true, true)?
+            curve.evaluate(k, end_param, 1, true, true)?
         } else {
             let mut new_curve = curve.copy(k)?;
             let new_ivl = new_curve.reverse_parameterization(k, &ivl)?;
             let start_param = new_ivl.min();
             let end_param = arc_length_param(k, &new_curve, start_param, set_back_dist, OP)?;
-            new_curve.evaluate(end_param, 1, true, true)?
+            new_curve.evaluate(k, end_param, 1, true, true)?
         };
         let plane_orig = pv.first().copied().ok_or_else(|| SolidError::sm_err(OP))?;
         let plane_normal = pv.get(1).copied().ok_or_else(|| SolidError::sm_err(OP))?;
@@ -1736,7 +1763,7 @@ impl FilletBrep {
             rail_index = 0;
         }
         let uv1 = tsect.uv_pos(srf(rail_index, OP)?);
-        let pnt1 = face_surface(target, Some(face1), OP)?.evaluate_point(uv1)?;
+        let pnt1 = face_surface(target, Some(face1), OP)?.evaluate_point(k, uv1)?;
         self.set_processed(v, uv1, pnt1)?;
 
         // Calculate Mate if needed
@@ -1753,7 +1780,7 @@ impl FilletBrep {
         self.fillet_vertexuse_mut(vu2)?.set_tsect_pnt(&tsect2);
         let face2 = as_face(self.fillet_vertex(mate)?.point_class_object(), OP)?;
         let uv2 = tsect.uv_pos(other_srf(rail_index, OP)?);
-        let pnt2 = face_surface(target, face2, OP)?.evaluate_point(uv2)?;
+        let pnt2 = face_surface(target, face2, OP)?.evaluate_point(k, uv2)?;
         self.set_processed(mate, uv2, pnt2)?;
         Ok(())
     }
@@ -1858,7 +1885,7 @@ impl FilletBrep {
         // Determine if we want to work on 2D or 3D
         let mut project_and_lift = false;
         let mut create_crv_on_3d = false;
-        let is_plane = match Plane::is_nurb_surface_plane(surf_net, 1.0) {
+        let is_plane = match Plane::is_nurb_surface_plane(k, surf_net, 1.0) {
             Ok(p) => p.is_some(),
             Err(err) if err.is_unported() => return Err(err),
             // an SER status inside is a TRUE return upstream
@@ -1957,14 +1984,14 @@ impl FilletBrep {
             || (rail2_vertex == Some(end_fv) && orient2 == OrientType::Opposite);
 
         // Calc tangent (and higher derivatives) from the rail at start vertex
-        let mut pnt_vec1 = curve1.evaluate(param1, num_derivatives, true, true)?;
+        let mut pnt_vec1 = curve1.evaluate(k, param1, num_derivatives, true, true)?;
         if !same_orient1 {
             for d in pnt_vec1.iter_mut().skip(1).take(num_derivatives) {
                 *d = -*d;
             }
         }
         // Calc tangent from the other rail
-        let mut pnt_vec2 = curve2.evaluate(param2, num_derivatives, true, true)?;
+        let mut pnt_vec2 = curve2.evaluate(k, param2, num_derivatives, true, true)?;
         if !same_orient2 {
             for d in pnt_vec2.iter_mut().skip(1).take(num_derivatives) {
                 *d = -*d;
@@ -1982,7 +2009,9 @@ impl FilletBrep {
             interpolate_endpts_and_tangents(start_pnt, end_pnt, &mut start_vec, &mut end_vec, 3)?
         };
 
-        let mut curve_3d: Option<BSplineCurve>;
+        // p3DCurve, an SmBSplineCurve: a B-spline, or the line / conic iso curve
+        // LiftCurve's sm_ExtractIsoCurve makes
+        let mut curve_3d: Option<Curve>;
         let mut uv_curve: Option<Curve>;
         if create_crv_on_3d {
             // Compute UV-curve by projecting 3d curve onto the surface
@@ -1994,10 +2023,7 @@ impl FilletBrep {
                 return Err(SolidError::sm_err(OP));
             }
             uv_curve = uv_curves.into_iter().next();
-            curve_3d = match c3.into_kind() {
-                CurveKind::BSpline(b) => Some(b),
-                _ => None,
-            };
+            curve_3d = Some(c3);
         } else {
             let mut uv = new_curve;
             // its status is ignored upstream
@@ -2023,25 +2049,16 @@ impl FilletBrep {
 
             // Reparametrize the curve with arc-length for non-blend type
             if fsg_type != FilletSurfaceGeneratorType::BlendCurve {
-                c3.reparametrize_with_arc_length()?;
+                b_spline_base_mut(&mut c3)
+                    .ok_or_else(|| SolidError::null_pointer(OP))?
+                    .reparametrize_with_arc_length()?;
                 // Reproject the 3d curve back onto the surface
-                let c3c = Curve::from(c3);
-                let uv_curves = surface_drop_curve(
-                    k,
-                    face_srf,
-                    &uv_domain,
-                    &c3c,
-                    &c3c.natural_interval(),
-                    tol,
-                )?;
+                let uv_curves =
+                    surface_drop_curve(k, face_srf, &uv_domain, &c3, &c3.natural_interval(), tol)?;
                 if uv_curves.len() != 1 {
                     return Err(SolidError::sm_err(OP));
                 }
                 uv_curve = uv_curves.into_iter().next();
-                c3 = match c3c.into_kind() {
-                    CurveKind::BSpline(b) => b,
-                    _ => return Err(SolidError::null_pointer(OP)),
-                };
             }
             curve_3d = Some(c3);
         }
@@ -2050,6 +2067,7 @@ impl FilletBrep {
             if corner_type(corner)? == FilletCornerType::NByNConcave {
                 let c3 = curve_3d
                     .as_ref()
+                    .and_then(b_spline_base)
                     .ok_or_else(|| SolidError::null_pointer(OP))?;
                 // Test and see if this edge intersects with the original corner
                 if corner_test_rail_rail_interpolation_curve(corner, c3)? {
@@ -2072,10 +2090,10 @@ impl FilletBrep {
                         .as_ref()
                         .ok_or_else(|| SolidError::null_pointer(OP))?;
                     let ivl = uv.natural_interval();
-                    let pv = uv.evaluate(ivl.min(), 1, true, true)?;
+                    let pv = uv.evaluate(k, ivl.min(), 1, true, true)?;
                     let start_uv_pnt = pv.first().copied().ok_or_else(|| SolidError::sm_err(OP))?;
                     let start_uv_vec = pv.get(1).copied().ok_or_else(|| SolidError::sm_err(OP))?;
-                    let pv = uv.evaluate(ivl.max(), 1, true, true)?;
+                    let pv = uv.evaluate(k, ivl.max(), 1, true, true)?;
                     let end_uv_pnt = pv.first().copied().ok_or_else(|| SolidError::sm_err(OP))?;
                     let end_uv_vec = -pv.get(1).copied().ok_or_else(|| SolidError::sm_err(OP))?;
                     let corner_vertex = corner_filleted_vertex(corner)?
@@ -2114,7 +2132,7 @@ impl FilletBrep {
         // set p3DCurve as this FilletEdge's geometry (side effect: the edge uses' UV
         // trim curves go), then the mate edge use's UV curve
         let curve_3d = curve_3d.ok_or_else(|| SolidError::null_pointer(OP))?;
-        set_edge_curve(self.brep_mut(), e, Some(Curve::from(curve_3d)))?;
+        set_edge_curve(self.brep_mut(), e, Some(curve_3d))?;
         let mate_eu = primary_edgeuse(self.brep(), e)?
             .and_then(|p| eu1::mate(self.brep(), p).ok().flatten())
             .ok_or_else(|| SolidError::null_pointer(OP))?;

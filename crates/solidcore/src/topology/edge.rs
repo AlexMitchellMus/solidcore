@@ -67,7 +67,10 @@
 //! - **Notification.** [`notify`] runs the edge's part, the edge uses' and vertex uses'
 //!   `Notify` and `SmTopology::Notify` with a [`NotifyEnv`] (the caller's topology
 //!   records, attribute store, context and the identity of each entity).
-//!   `SmBrep::Notify` (unit `topology.brep_p2`) returns [`SolidError::Unported`].
+//!   `SmBrep::Notify` is [`crate::topology::brep::p2::notify`] without B-rep
+//!   cache (the caller-held `SM_OC_BREP` cache is not threaded through
+//!   [`NotifyEnv`]; no Rust caller can build one yet); in `Notify(SM_NO_CHANGE_GEOMETRY)` the B-rep's
+//!   `data3` (`this->GetCurve()`) is the old curve's identity, as in `SetCurve`.
 //!   The constructor's and destructor's notifications and the destructor's context
 //!   `DoingBoolean` toggling are not modelled; the record owns its curve, which is
 //!   dropped with it.
@@ -94,7 +97,7 @@
 //!   port returns the error. [`SolidError::Unported`] always propagates.
 //! - **Recursion.** `sm_CoverOtherCoincidentFace` recurses once (its second call has
 //!   `bRefineDomains` set); no other recursion.
-//! - **Unported callees** return [`SolidError::Unported`]: `SmBrep::Notify` (`topology.brep_p2`), `SmBrep::GetInfiniteRegion`
+//! - **Unported callees** return [`SolidError::Unported`]: `SmBrep::GetInfiniteRegion`
 //!   (`topology.brep_p1`) and `SmFace::CalculateUVDomainFromUVTrimCurves`
 //!   (`topology.face_p1`). `SmSurface::CoverOtherCoincidentSurface` is wired to
 //!   `surface.surface_p5` (and its `CoverCoincidentSurface` to `surface.surface_p3`); the
@@ -122,6 +125,7 @@ use crate::nurbs::knots::Side;
 use crate::query::edge::{radial_sector_of_curve_classify, CurveSectorClass, RadialSectorClass};
 use crate::surface::surface::p2::PLANE_TYPE;
 use crate::surface::surface::Surface;
+use crate::topology::brep::p2::{self as brep_p2, NotifyArg as BrepNotifyArg};
 use crate::topology::edgeuse::p1 as eu1;
 use crate::topology::edgeuse::p2 as eu2;
 use crate::topology::edgeuse::p3 as eu3;
@@ -201,11 +205,24 @@ fn get_or_create_uv_trim_curve(k: &Kernel, b: &mut Brep, eu: EdgeuseId) -> Resul
     eu3::get_or_create_uv_trim_curve(k, b, eu, false, false, true).map(|_| ())
 }
 
-/// `SmBrep::Notify` (unit `topology.brep_p2`).
-fn brep_notify(operation: NotifyOperation) -> Result<()> {
-    let _ = operation;
-    // UNPORTED(topology.brep_p2): SmBrep::Notify
-    Err(SolidError::unported("SmBrep::Notify", "topology.brep_p2"))
+/// `pBrep->Notify(operation, data1, pBrep, data3)` (unit `topology.brep_p2`).
+fn brep_notify(
+    b: &Brep,
+    env: &mut NotifyEnv<'_>,
+    operation: NotifyOperation,
+    data1: Option<BrepNotifyArg>,
+    data3: Option<ObjectRef>,
+) -> Result<()> {
+    let brep = BrepNotifyArg::Object(brep_p2::brep_ref(b));
+    // the caller-held SM_OC_BREP cache is not threaded through `NotifyEnv` (no Rust
+    // caller can build one yet: `make_brep_cache` needs `query.brep`)
+    brep_p2::notify(
+        b,
+        env,
+        None,
+        operation,
+        [data1, Some(brep), data3.map(BrepNotifyArg::Object)],
+    )
 }
 
 /// `SmBrep::GetInfiniteRegion` (unit `topology.brep_p1`).
@@ -372,12 +389,12 @@ impl<'c> OdeEdgeLength<'c> {
     ///
     /// The curve evaluation's; [`SolidError::InvalidInput`] when `dydx` has fewer than
     /// 28 entries (upstream writes out of bounds).
-    pub fn evaluate(&self, t: f64, dydx: &mut [f64]) -> Result<()> {
+    pub fn evaluate(&self, k: &Kernel, t: f64, dydx: &mut [f64]) -> Result<()> {
         for v in dydx.iter_mut() {
             *v = 0.0;
         }
 
-        let pv = self.curve.evaluate(t, 1, true, true)?;
+        let pv = self.curve.evaluate(k, t, 1, true, true)?;
         let (Some(&p0), Some(&p1)) = (pv.first(), pv.get(1)) else {
             return Err(null("SmODEEdgeLengthIFEO::Evaluate: short evaluation"));
         };
@@ -458,11 +475,11 @@ impl<'c> OdeEdgeLength<'c> {
 // ---- geometry queries -------------------------------------------------------------------
 
 /// `GetEndTangent`: the curve tangent at the interval's start (`at_start`) or end.
-pub fn end_tangent(b: &Brep, e: EdgeId, at_start: bool) -> Result<Vec3> {
+pub fn end_tangent(k: &Kernel, b: &Brep, e: EdgeId, at_start: bool) -> Result<Vec3> {
     let c = curve_deref(b, e, "GetEndTangent: edge without curve")?;
     let ivl = b.edge(e)?.interval;
     let param = if at_start { ivl.min() } else { ivl.max() };
-    let pv = c.evaluate(param, 1, true, true)?;
+    let pv = c.evaluate(k, param, 1, true, true)?;
     pv.get(1)
         .copied()
         .ok_or_else(|| null("GetEndTangent: short evaluation"))
@@ -1552,10 +1569,10 @@ pub fn is_seam_of_surface(
     // surface must be closed
     let dom = surface.natural_uv_domain();
     if !(surface
-        .is_closed(&dom, SurfParamType::U, Some(edge_tol), false)?
+        .is_closed(k, &dom, SurfParamType::U, Some(edge_tol), false)?
         .0
         || surface
-            .is_closed(&dom, SurfParamType::V, Some(edge_tol), false)?
+            .is_closed(k, &dom, SurfParamType::V, Some(edge_tol), false)?
             .0)
     {
         return Ok(false);
@@ -1740,7 +1757,7 @@ pub fn is_topological(
             }
         };
         let uv0 = Point2::new(p.x, p.y);
-        let norm1 = match surf1.evaluate_normal(uv0, Side::Right, Side::Right) {
+        let norm1 = match surf1.evaluate_normal(k, uv0, Side::Right, Side::Right) {
             Ok(n) => n,
             Err(err) => {
                 failed(err)?;
@@ -1756,7 +1773,7 @@ pub fn is_topological(
             }
         };
         let uv1 = Point2::new(p.x, p.y);
-        let norm2 = match surf2.evaluate_normal(uv1, Side::Right, Side::Right) {
+        let norm2 = match surf2.evaluate_normal(k, uv1, Side::Right, Side::Right) {
             Ok(n) => n,
             Err(err) => {
                 failed(err)?;
@@ -1779,8 +1796,8 @@ pub fn is_topological(
         let gap_tol = face2::tolerance(b, face1)? + face2::tolerance(b, face2_)?;
         // statuses ignored upstream; a failure leaves an uninitialised point there, so
         // the port returns the error
-        let pt1 = surf1.evaluate_point(uv0)?;
-        let pt2 = surf2.evaluate_point(uv1)?;
+        let pt1 = surf1.evaluate_point(k, uv0)?;
+        let pt2 = surf2.evaluate_point(k, uv1)?;
         if pt1.distance(pt2) > gap_tol {
             return Ok(out);
         }
@@ -1794,10 +1811,10 @@ pub fn is_topological(
             continue;
         };
         if let Some(c) = closed_u.get_mut(i) {
-            *c = s.is_closed(d, SurfParamType::U, None, false)?.0;
+            *c = s.is_closed(k, d, SurfParamType::U, None, false)?.0;
         }
         if let Some(c) = closed_v.get_mut(i) {
-            *c = s.is_closed(d, SurfParamType::V, None, false)?.0;
+            *c = s.is_closed(k, d, SurfParamType::V, None, false)?.0;
         }
     }
 
@@ -2176,7 +2193,7 @@ impl core::fmt::Debug for NotifyEnv<'_> {
 ///
 /// [`SolidError::InvalidInput`] where upstream dereferences null (a missing vertex use
 /// or mate, and those of the edge use notification); [`SolidError::Unported`] from
-/// `SmBrep::Notify`; those of the notification handlers.
+/// `SmBrep::Notify`'s unported callees; those of the notification handlers.
 pub fn notify(
     b: &mut Brep,
     e: EdgeId,
@@ -2192,8 +2209,10 @@ pub fn notify(
             None => brep(b, e)?.is_some(),
         };
         if has_brep {
-            brep_notify(N::RmFromBrep)?;
-            brep_notify(N::AddToBrep)?;
+            // this->GetCurve() is still the old geometry (data3)
+            let obj = |d: Option<ObjectRef>| d.map(BrepNotifyArg::Object);
+            brep_notify(b, env, N::RmFromBrep, obj(d3), d3)?;
+            brep_notify(b, env, N::AddToBrep, obj(d1), d3)?;
         }
     }
     if matches!(
@@ -2277,7 +2296,7 @@ impl Default for SetCurveOptions {
 ///
 /// # Errors
 ///
-/// Those of [`notify`]; [`SolidError::Unported`] from `SmBrep::Notify`.
+/// Those of [`notify`] and of `SmBrep::Notify` ([`crate::topology::brep::p2::notify`]).
 pub fn set_curve(
     b: &mut Brep,
     e: EdgeId,
@@ -2304,7 +2323,8 @@ pub fn set_curve(
         )?;
         if has_brep {
             // side effect: remove from spatial cache.
-            brep_notify(NotifyOperation::RmFromBrep)?;
+            let this = Some(BrepNotifyArg::Entity(EntityRef::Edge(e)));
+            brep_notify(b, env, NotifyOperation::RmFromBrep, this, old_ref)?;
         }
     }
 
@@ -2338,7 +2358,8 @@ pub fn set_curve(
 
     // side effect: Add to spatial cache.
     if options.call_notify && has_brep {
-        brep_notify(NotifyOperation::AddToBrep)?;
+        let this = Some(BrepNotifyArg::Entity(EntityRef::Edge(e)));
+        brep_notify(b, env, NotifyOperation::AddToBrep, this, new_ref)?;
     }
     Ok(returned)
 }
@@ -2611,6 +2632,7 @@ mod tests {
 
     #[test]
     fn wire_queries() {
+        let k = &Kernel::default();
         let (b, e, eus, v) = wire();
         assert_eq!(edgeuse_count(&b, e).unwrap(), 2);
         assert!(is_wire(&b, e).unwrap());
@@ -2627,7 +2649,7 @@ mod tests {
         assert_eq!(shells(&b, e, None).unwrap().len(), 1);
         assert!(is_connected_to(&b, e, Some(EntityRef::Vertex(v[1]))).unwrap());
         assert!(is_connected_to(&b, e, None).unwrap());
-        let t = end_tangent(&b, e, true).unwrap();
+        let t = end_tangent(k, &b, e, true).unwrap();
         assert_eq!(t, Vec3::new(1.0, 0.0, 0.0));
     }
 
@@ -2662,13 +2684,14 @@ mod tests {
 
     #[test]
     fn ode_evaluate_needs_room() {
+        let k = &Kernel::default();
         let (b, e, _, _) = wire();
         let c = b.edge(e).unwrap().curve.as_ref().unwrap();
         let ode = OdeEdgeLength::new(c, Vec3::new(0.0, 0.0, 0.0), 1.0);
         let mut short = vec![0.0; 10];
-        assert!(ode.evaluate(0.5, &mut short).is_err());
+        assert!(ode.evaluate(k, 0.5, &mut short).is_err());
         let mut dydx = vec![1.0; 28];
-        ode.evaluate(0.5, &mut dydx).unwrap();
+        ode.evaluate(k, 0.5, &mut dydx).unwrap();
         assert_eq!(dydx[1], 1.0);
         assert_eq!(dydx[0], 0.0);
         assert!((dydx[2] - 2.0 * PI).abs() < 1e-15);

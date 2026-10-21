@@ -100,10 +100,11 @@ fn linear_iso_param(s: &BSplineSurface) -> SurfParamType {
 }
 
 /// `pIsoCrv->IsArc(5, dScaledZero, ..)` of a plain B-spline iso curve.
-fn iso_arc(curve: &BSplineCurve, scaled_zero: f64) -> Result<Option<IsoArc>> {
+fn iso_arc(k: &Kernel, curve: &BSplineCurve, scaled_zero: f64) -> Result<Option<IsoArc>> {
     let arc = crate::curve::curve::p5::is_arc_base(
+        k,
         curve,
-        |c, tol| c.is_degenerate(tol, None),
+        |c, tol| c.is_degenerate(k, tol, None),
         5,
         scaled_zero,
     )?;
@@ -141,17 +142,17 @@ fn end_circles(
         .curve;
 
     // classify IsoparamCurves
-    let top_degenerate = top_iso.is_degenerate(scaled_zero, None)?;
-    let bot_degenerate = bot_iso.is_degenerate(scaled_zero, None)?;
+    let top_degenerate = top_iso.is_degenerate(k, scaled_zero, None)?;
+    let bot_degenerate = bot_iso.is_degenerate(k, scaled_zero, None)?;
     let top_arc = if top_degenerate {
         None
     } else {
-        iso_arc(&top_iso, scaled_zero)?
+        iso_arc(k, &top_iso, scaled_zero)?
     };
     let bot_arc = if bot_degenerate {
         None
     } else {
-        iso_arc(&bot_iso, scaled_zero)?
+        iso_arc(k, &bot_iso, scaled_zero)?
     };
 
     //  2 Arcs                       = were good, continue
@@ -584,7 +585,7 @@ impl Cone {
             .curve;
 
         // It must be circular.
-        let Some(mid) = iso_arc(&mid_iso, scaled_zero)? else {
+        let Some(mid) = iso_arc(k, &mid_iso, scaled_zero)? else {
             return Ok(None);
         };
 
@@ -879,9 +880,9 @@ enum Inside {
 /// # Errors
 ///
 /// Those of [`Ellipse::new`] and [`Cone::height`]; a seam line parallel to the
-/// ellipse plane or of zero length, and a failed NURB to STEP conversion of the domain
-/// corners (upstream then reads uninitialised values); a STEP inversion failing in the
-/// generator solve.
+/// ellipse plane or of zero length (upstream then reads uninitialised values); a STEP
+/// inversion failing in the generator solve. A failed NURB to STEP conversion of the
+/// domain corners is ignored as upstream does: the default-constructed domain is used.
 pub fn ellipse_trim_intervals(
     k: &Kernel,
     ellipse_origin: Point3,
@@ -924,21 +925,25 @@ pub fn ellipse_trim_intervals(
     let center_bot = cone.rev.position.origin() + cone.rev.anal_uv_domain.min().y * cone_axis;
     let center_top = center_bot + height * cone_axis;
 
-    // map given NurbDomain into StepDomain (SmSurface::ConvertDomainFromNURBSToSTEP:
-    // a reversed result is replaced by the NURB domain)
-    let min_step_uv = cone.convert_uv_from_nurbs_to_step(k, uv_domain.min())?;
-    let max_step_uv = cone.convert_uv_from_nurbs_to_step(k, uv_domain.max())?;
+    // map given NurbDomain into StepDomain (SmSurface::ConvertDomainFromNURBSToSTEP,
+    // status ignored: a failed corner conversion leaves the default-constructed
+    // domain, a reversed result is replaced by the NURB domain)
     let mut anal_uv_domain = Extent2d::new();
-    if anal_uv_domain
-        .set_min_max_coords(
-            min_step_uv.x,
-            min2(min_step_uv.y, max_step_uv.y),
-            max_step_uv.x,
-            max2(min_step_uv.y, max_step_uv.y),
-        )
-        .is_err()
-    {
-        anal_uv_domain = *uv_domain;
+    if let Some(min_step_uv) = ignored(cone.convert_uv_from_nurbs_to_step(k, uv_domain.min()))? {
+        if let Some(max_step_uv) = ignored(cone.convert_uv_from_nurbs_to_step(k, uv_domain.max()))?
+        {
+            if anal_uv_domain
+                .set_min_max_coords(
+                    min_step_uv.x,
+                    min2(min_step_uv.y, max_step_uv.y),
+                    max_step_uv.x,
+                    max2(min_step_uv.y, max_step_uv.y),
+                )
+                .is_err()
+            {
+                anal_uv_domain = *uv_domain;
+            }
+        }
     }
 
     // get cone corners [StartLine start, StartLine end, EndLine start EndLine end]

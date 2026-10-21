@@ -29,9 +29,10 @@
 //! **Deferred.** Every read that gets past `SmBrepData::ReadFromFile` (it now runs
 //! `MakeTopologyFromData` of `topology.brep_p10` on a B-rep with the infinite region
 //! and defers later: `sm_CheckAndFixUVTrimCurves`, analytic copies, `HealBrep`'s
-//! callees), every face made
-//! (`MakeShellVertex`, `MakeFaceTopology`, `GetInfiniteRegion`), every glue past its
-//! early returns, every copy (`SmBrep::SetTolerance`). The comparisons are the read
+//! callees), every face made (`MakeShellVertex`, `SmFace::SetTolerance` inside
+//! `MakeFaceTopology`), every glue past its early returns, every copy
+//! (`SmBrep::SetTolerance`). Every new B-rep is the shim's `new SmBrep()`, with its void
+//! infinite region (`native_brep`). The comparisons are the read
 //! errors of damaged files, the input errors of the face makers, the null-surface status
 //! of `MakeFace`, the glue no-ops and `MergeSelfIntersectionCurves` without curves.
 
@@ -62,7 +63,7 @@ use solidcore::surface::surface::Surface;
 use solidcore::topology::brep::{p10, p7};
 use solidcore::topology::database_io::FileType;
 use solidcore::topology::edge as ed;
-use solidcore::topology::{Brep, EdgeId, FaceId, Region};
+use solidcore::topology::{Brep, EdgeId, FaceId, RegionId};
 use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::topology_brep_data as bd;
 use solidcore_ffi::units::topology_brep_p7::{self as ffi, Op};
@@ -552,6 +553,16 @@ fn hfail(e: impl core::fmt::Display) -> Fail {
     Fail::Harness(harness(e.to_string()))
 }
 
+/// The shim's `new SmBrep()`: an empty B-rep that owns its void infinite region, the
+/// head of its region list (`SmBrep.cpp:532-536`).
+fn native_brep() -> Result<(Brep, RegionId), Fail> {
+    let b = Brep::new_with_infinite_region().map_err(hfail)?;
+    let infinite = b
+        .infinite_region()
+        .ok_or_else(|| hfail("new B-rep without infinite region"))?;
+    Ok((b, infinite))
+}
+
 /// A case the shim answers with `-2` (upstream would dereference null): both sides would
 /// only echo that constant, so it is deferred under the guard's `label`, never compared.
 fn cpp_null_deref(label: &str, symbol: &str) -> Fail {
@@ -716,7 +727,7 @@ fn brep_tolerances(b: &Brep) -> Vec<f64> {
 /// Whether `MakeFaceWithCurves` fails its input checks (`SmBrep.cpp:15722-15741`) on a
 /// face with 3D curves: no loops, or a surface degenerate to a curve or a point (the
 /// port's tests, which fail soft as upstream's flags).
-fn mfwc_input_error(surface: &SrfIn, loops: &[usize]) -> Result<bool, Fail> {
+fn mfwc_input_error(k: &Kernel, surface: &SrfIn, loops: &[usize]) -> Result<bool, Fail> {
     if loops.is_empty() {
         return Ok(true);
     }
@@ -732,8 +743,8 @@ fn mfwc_input_error(surface: &SrfIn, loops: &[usize]) -> Result<bool, Fail> {
     };
     let tol = solidcore::surface::surface::p1::DEGENERATE_TOL_3D;
     Ok(
-        flag(srf.is_degenerate_curve(solidcore::math::EFF_ZERO_DEG, None, tol))?
-            || flag(srf.is_degenerate_point(tol, None))?,
+        flag(srf.is_degenerate_curve(k, solidcore::math::EFF_ZERO_DEG, None, tol))?
+            || flag(srf.is_degenerate_point(k, tol, None))?,
     )
 }
 
@@ -802,24 +813,15 @@ fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
             // the shim's guard: upstream dereferences the null UV curve array once MakeFace
             // succeeds (the port returns InvalidInput there); its own input checks (no
             // loops, a degenerate surface) return first
-            if *crv_on_surf == 2 && !*has_uv && *has3d && !mfwc_input_error(surface, loops)? {
+            if *crv_on_surf == 2 && !*has_uv && *has3d && !mfwc_input_error(k, surface, loops)? {
                 return Err(cpp_null_deref(
                     "cpp-guard:ub-165",
                     "SmBrep::MakeFaceWithCurves",
                 ));
             }
-            let mut b = Brep::new();
-            let region = if *region_null {
-                None
-            } else {
-                Some(
-                    b.add_region_record(Region {
-                        in_brep: true,
-                        ..Region::default()
-                    })
-                    .map_err(hfail)?,
-                )
-            };
+            // (the shim passes the new B-rep's GetInfiniteRegion() unless null)
+            let (mut b, infinite) = native_brep()?;
+            let region = (!*region_null).then_some(infinite);
             let mut c3 = Vec::new();
             let mut uv = Vec::new();
             for c in curves {
@@ -851,7 +853,7 @@ fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
                 2 => Some(true),
                 _ => return Err(hfail("crv_on_surf code")),
             };
-let mut records = BTreeMap::new();
+            let mut records = BTreeMap::new();
             let mut attrs = AttributeStore::default();
             let mut env = ed::NotifyEnv {
                 records: &mut records,
@@ -892,16 +894,10 @@ let mut records = BTreeMap::new();
                         return Ok(vec![NOT_RUN]);
                     }
                 }
-                // The shim's loop starts with MakeShellVertex in a fresh B-rep's region;
-                // run it, then MakeWireEdgeVertex and MakeWireEdge (topology.brep_p3)
-                // come before MakeFace sees the loop.
-                let mut b = Brep::new();
-                let region = b
-                    .add_region_record(Region {
-                        in_brep: true,
-                        ..Region::default()
-                    })
-                    .map_err(hfail)?;
+                // The shim's loop starts with MakeShellVertex in a fresh B-rep's
+                // GetInfiniteRegion(); run it, then MakeWireEdgeVertex and MakeWireEdge
+                // (topology.brep_p3) come before MakeFace sees the loop.
+                let (mut b, region) = native_brep()?;
                 let mut records = BTreeMap::new();
                 let mut attrs = AttributeStore::default();
                 let mut env = ed::NotifyEnv {
@@ -926,18 +922,9 @@ let mut records = BTreeMap::new();
                     "SmBrep::MakeWireEdgeVertex",
                 ))));
             }
-            let mut b = Brep::new();
-            let region = if *region_null {
-                None
-            } else {
-                Some(
-                    b.add_region_record(Region {
-                        in_brep: true,
-                        ..Region::default()
-                    })
-                    .map_err(hfail)?,
-                )
-            };
+            // (the shim passes the new B-rep's GetInfiniteRegion() unless null)
+            let (mut b, infinite) = native_brep()?;
+            let region = (!*region_null).then_some(infinite);
             let surface = (*kind == 1).then(|| {
                 Surface::from(Plane::from_normal(
                     Vec3::new(0.0, 0.0, 0.0),
@@ -1022,8 +1009,8 @@ let mut records = BTreeMap::new();
             let ex = ex.ok_or_else(|| hfail("no export"))?;
             let (mut b, _) = shared::import(ex)?;
             let faces: Vec<FaceId> = b.faces().ids().take(*n as usize).collect();
-            let mut dest = Brep::new();
-let mut records = BTreeMap::new();
+            let (mut dest, _) = native_brep()?;
+            let mut records = BTreeMap::new();
             let mut attrs = AttributeStore::default();
             let mut env = ed::NotifyEnv {
                 records: &mut records,

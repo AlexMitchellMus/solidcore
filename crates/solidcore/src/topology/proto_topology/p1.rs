@@ -127,7 +127,8 @@
 //!   upstream) treats it as non-topology.
 //! - **Constructor tolerance.** `SmProtoTopologyManager` only reads the topology
 //!   intersector's `GetThisApproxTol3d`, passed as a value; the override tolerance is
-//!   overwritten by it, as upstream.
+//!   overwritten by it, as upstream. Each B-rep is passed as its handle and its
+//!   [`Brep`](crate::topology::Brep), read only by the fallback tolerance.
 //! - **Uninitialised members** of objects upstream allocates with `smos_Calloc` (the
 //!   final edges of an edge definition) start as `None`.
 //! - **Out-params** become return values: `IsInList`'s index, `FindProtoVertex`'s
@@ -198,14 +199,16 @@ mod tests {
     use crate::geom::attribute::{Attribute, AttributeStore, Behavior, ObjectKey};
     use crate::geom::axis2_placement::Axis2Placement;
     use crate::geom::extent1d::Extent1d;
+    use crate::geom::tol::zone_tol3d;
     use crate::intersect::point_class::{
         ClassGeometry, ClassObject, ClassObjectKind, PointClassType,
     };
     use crate::kernel::Kernel;
-    use crate::math::{Point3, Vec3};
+    use crate::math::{min2, Point3, Vec3, EFF_ZERO};
     use crate::surface::surface::Surface;
     use crate::surface::volume::Volume;
     use crate::topology::topology::{Topology, TopologyRecords};
+    use crate::topology::Brep;
 
     /// A store of owning objects keyed by index.
     #[derive(Default)]
@@ -470,7 +473,29 @@ mod tests {
 
     fn manager() -> ProtoTopologyManager<H> {
         let b = H(100, ClassObjectKind::Other);
-        ProtoTopologyManager::new(b, b, b, 1e-5, 1e-3, -1.0).unwrap()
+        let e = Brep::new();
+        ProtoTopologyManager::new(&Kernel::default(), (b, &e), (b, &e), b, 1e-5, 1e-3, -1.0)
+            .unwrap()
+    }
+
+    #[test]
+    fn manager_tolerance_falls_back_to_the_breps() {
+        let k = Kernel::default();
+        let b = H(100, ClassObjectKind::Other);
+        let e1 = Brep::new();
+        let mut e2 = Brep::new();
+        e2.set_tolerance(1e-4);
+        // no edges: both edge sizes are 0.001, so min(1.25 * tol, 0.0005)
+        let expect = (e1.tolerance() + e2.tolerance()) * 1.25;
+        for approx in [0.0, -1.0, 1e-13] {
+            let m = ProtoTopologyManager::new(&k, (b, &e1), (b, &e2), b, approx, 0.0, 0.5).unwrap();
+            assert_eq!(m.tolerance(&k), zone_tol3d(&k, min2(expect, 0.0005)));
+        }
+        let m = ProtoTopologyManager::new(&k, (b, &e1), (b, &e2), b, EFF_ZERO, 0.0, 0.5).unwrap();
+        assert_eq!(m.tolerance(&k), zone_tol3d(&k, EFF_ZERO));
+        e2.set_tolerance(1.0);
+        let m = ProtoTopologyManager::new(&k, (b, &e1), (b, &e2), b, 0.0, 0.0, 0.5).unwrap();
+        assert_eq!(m.tolerance(&k), zone_tol3d(&k, 0.0005));
     }
 
     #[test]
@@ -518,12 +543,14 @@ mod tests {
             .edge_definitions_mut()
             .extend([ed1, ed2]);
 
-        let (pos, tan) = m.proto_edge_evaluate_mid(&geo, pe, true, true).unwrap();
+        let (pos, tan) = m.proto_edge_evaluate_mid(&k, &geo, pe, true, true).unwrap();
         assert!((pos.unwrap() - Point3::new(1.0, 0.0, 0.0)).length() < 1e-12);
         assert!(tan.is_some());
-        let end = m.proto_edge_end_position_at(&geo, pe, Some(v1)).unwrap();
+        let end = m
+            .proto_edge_end_position_at(&k, &geo, pe, Some(v1))
+            .unwrap();
         assert!((end - Point3::new(2.0, 0.0, 0.0)).length() < 1e-12);
-        assert!(m.proto_edge_end_position_at(&geo, pe, None).is_err());
+        assert!(m.proto_edge_end_position_at(&k, &geo, pe, None).is_err());
         // same sources: drop the second
         assert_eq!(
             m.can_combine_edge_definitions(&k, &geo, ed1, ed2).unwrap(),
@@ -659,8 +686,8 @@ mod tests {
         assert!(proto::are_same_curve(&k, &geo, Some(C0), &ivl, Some(c1), &ivl, 1e-6).unwrap());
         assert!(!proto::are_same_curve(&k, &geo, Some(C0), &ivl, Some(c1), &ivl, 1e-12).unwrap());
         let dom = geo.0[0].natural_interval();
-        assert!(proto::is_interior(&geo, Some(C0), &dom, dom.mid(), 1e-6).unwrap());
-        assert!(!proto::is_interior(&geo, Some(C0), &dom, dom.min(), 1e-6).unwrap());
+        assert!(proto::is_interior(&k, &geo, Some(C0), &dom, dom.mid(), 1e-6).unwrap());
+        assert!(!proto::is_interior(&k, &geo, Some(C0), &dom, dom.min(), 1e-6).unwrap());
     }
 
     #[test]
@@ -674,7 +701,7 @@ mod tests {
         )
         .unwrap();
         let ivl = c.natural_interval();
-        let p = c.evaluate_point(ivl.min()).unwrap();
+        let p = c.evaluate_point(&k, ivl.min()).unwrap();
         assert!((p - Point3::new(1.0, 1.0, 0.0)).length() < 1e-12);
         api_transform::api_scale_by_pt(
             &mut k,
@@ -684,7 +711,7 @@ mod tests {
         )
         .unwrap();
         let ivl = c.natural_interval();
-        let q = c.evaluate_point(ivl.max()).unwrap();
+        let q = c.evaluate_point(&k, ivl.max()).unwrap();
         assert!((q - Point3::new(3.0, 1.0, 0.0)).length() < 1e-12);
 
         assert!(matches!(
@@ -711,7 +738,7 @@ mod tests {
         ));
         assert!(api_transform::api_translate(
             &mut k,
-            Some(TransformObject::Brep(&mut crate::topology::Brep::new())),
+            Some(TransformObject::Brep(&mut Brep::new())),
             Vec3::new(1.0, 0.0, 0.0)
         )
         .is_err_and(|e| e.is_unported()));
