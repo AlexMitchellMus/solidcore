@@ -12328,15 +12328,11 @@ New fixtures replicate upstream prog_test calls in `surface.surface_p2` (`ssi_ad
   pairs pass or defer (0 failures). The eight files are listed in
   `harness/fixturegen/ssi_adv.py` `PENDING_PR140`; remove the list and regenerate once #140
   is on `main`.
-- **`surface.surface_p11` `LiftCurve`: `PS_lift_crv2` on `PS_lift_srf2` disagrees**
-  (`smSurfaceTest.cpp:2587`, the "kinked UVTrimCurve" case upstream itself expects to trip
-  `AssertValid`; left out of the fixture). Same max distance 0.009390995684972677, type
-  14033, dim 3, degree 3, but C++ has 235 control points / 79 knots and Rust 232 / 78. The
-  C0 split segment [12.99999867340698, 13]: Rust's 10-sample degenerate check finds all
-  samples within tol/100 and skips it; C++ keeps it (extra knots 12.99999867332897,
-  12.99999999992199; later knots shift by about 1.3e-6). Suspected: the `SmCrvOnSurf`
-  evaluation near the kink inside the `GetDomainWithContinuity` segment (clamping), i.e.
-  `domain_with_continuity` or CrvOnSurf clamping. Open.
+- **`surface.surface_p11` `LiftCurve` `PS_lift_crv2` on `PS_lift_srf2`: fixed** (case
+  `lift_crv2_kinked_uv_trim_curve` added): `sm_IntersectAndSplit`'s plane intersection
+  solutions named no object, so `IdenticalSolutions` merged only within `100 * SM_EFF_ZERO`
+  instead of 1/10000th of the curve's natural interval and a duplicate split at the UV
+  curve's C0 knot 13 survived; `intersect_and_split` now takes the curve's handle.
 - **Upstream assertion that the C++ itself fails** (`surface.surface_p8`,
   `smSurfaceTest.cpp` `my_test_csi_tangency`): for the lines with y < 1 the test asserts 2
   hits, but C++ returns one range-of-values solution (e.g. `prog_csi_tangency_line_00`: t

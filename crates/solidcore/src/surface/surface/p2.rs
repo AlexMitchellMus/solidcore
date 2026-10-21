@@ -4281,6 +4281,11 @@ fn insert_split(split_params: &mut Vec<f64>, t: f64, tol: f64) {
 /// crosses the plane through `plane_pnt` with normal `plane_norm` to the sorted
 /// `split_params` (skipping values within `SM_EFF_ZERO_SQRT` of one there).
 ///
+/// `handle` is `uv_curve`'s handle in the solver's object space (upstream the
+/// solutions name the curve itself): `IdenticalSolutions` merges two solutions
+/// within 1/10000th of its natural interval, so it must report the curve's natural
+/// interval (`None` would merge only within `100 * SM_EFF_ZERO`).
+///
 /// # Errors
 ///
 /// Those of `SmCurve::GlobalPropertyAnalysis`.
@@ -4290,6 +4295,7 @@ pub fn intersect_and_split<O: SolutionObject>(
     interval: &Extent1d,
     plane_pnt: Point3,
     plane_norm: Vec3,
+    handle: Option<O>,
     split_params: &mut Vec<f64>,
 ) -> Result<()> {
     let plane_d = -plane_norm.dot(plane_pnt);
@@ -4303,7 +4309,7 @@ pub fn intersect_and_split<O: SolutionObject>(
             property_value: Some(plane_d),
             opt_vectors: &vectors,
             want_comb: false,
-            handle: None,
+            handle,
         },
     )?;
 
