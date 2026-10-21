@@ -1462,7 +1462,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes (ASan, in the fork's C API tests); not reproduced in the solidcore difftest.
 - **Severity:** crash/UB (use-after-free).
 - **Fix:** tangency-labs/smlib 93efd6d. `RemoveProtoEdge` drops every reference the listed proto faces and proto edges hold to the edge. `SplitIntersectingProtoEdges` first adds the surviving proto edge to the proto faces the removed one bounded. With the fix the shell above fails with `SM_ERR_NULL_POINTER` instead.
-- **Rust port:** carries the fix (`ProtoTopologyManager::remove_proto_edge`, `hand_over_coincident_proto_edge`; test `a_removed_proto_edge_leaves_every_face_and_overlap_list`). Without it nothing is freed (arena ids): the stale id names a deleted slot and the later passes fail with `InvalidInput`.
+- **Rust port:** carries the fix, at the delete rather than in `RemoveProtoEdge` (`ProtoTopologyManager::delete_proto_edge_object`, `hand_over_coincident_proto_edge`; test `a_deleted_proto_edge_leaves_every_face_and_overlap_list`): every library caller of `RemoveProtoEdge` deletes the edge next, and the difftest's script op that only unlists an edge keeps upstream's lists. Without it nothing is freed (arena ids): the stale id names a deleted slot and the later passes fail with `InvalidInput`.
 
 #### UB-169. `SmHCR(.., crViewVector, ..)` builds the view transform from uninitialised vectors for a zero view vector
 - **Location:** `source/SMLib/src/SmHCR.cpp:144` `SmHCR::SmHCR` (view-vector constructor).

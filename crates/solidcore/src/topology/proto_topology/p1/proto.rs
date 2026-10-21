@@ -2240,7 +2240,26 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
     }
 
     /// Deletes the proto edge `pe` (`delete pPE`, `~SmProtoEdge`): the curves deleted.
+    /// First drops every reference the listed proto faces (coincident proto edges)
+    /// and proto edges (overlapping proto edges) hold to it.
+    ///
+    /// That is the SolidCraft fix tangency-labs/smlib 93efd6d (UB-239), which does it
+    /// in `RemoveProtoEdge` because every caller there deletes the edge next. Upstream
+    /// keeps the references, and later passes over those lists
+    /// (`GlueCoincidentBrepVertices`, `Resolve`) read the edge after the free. Doing
+    /// it at the delete keeps `remove_proto_edge` itself as upstream's: a listed edge
+    /// that is only unlisted stays in those lists.
     pub fn delete_proto_edge_object(&mut self, pe: ProtoEdgeId) -> Vec<O> {
+        for pf in self.pfs.clone() {
+            if let Some(face) = self.proto_face_mut(pf) {
+                face.coinc_proto_edges_mut().retain(|&x| x != pe);
+            }
+        }
+        for other in self.pes.clone() {
+            if let Some(edge) = self.proto_edge_mut(other) {
+                edge.overlapping_pes.retain(|&x| x != pe);
+            }
+        }
         self.delete_proto_edge(pe)
     }
 
@@ -3003,10 +3022,8 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         }
     }
 
-    /// Unlists the first entry `pe`, drops every reference the listed proto faces
-    /// (coincident proto edges) and proto edges (overlapping proto edges) hold to it,
-    /// and unlists it at its end proto vertices (`RemoveProtoEdge`; nothing is
-    /// deleted).
+    /// Unlists the first entry `pe` and unlists it at its end proto vertices
+    /// (`RemoveProtoEdge`; nothing is deleted).
     ///
     /// # Errors
     ///
@@ -3018,21 +3035,6 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                 self.pes.remove(i);
             }
             None => return Err(SolidError::sm_err(OP)),
-        }
-
-        // SolidCraft change (tangency-labs/smlib 93efd6d): every caller deletes the PE
-        // next, so drop the references ProtoFaces and other ProtoEdges hold to it;
-        // upstream keeps them and later passes over those lists
-        // (GlueCoincidentBrepVertices, Resolve) read it after the free.
-        for pf in self.pfs.clone() {
-            if let Some(face) = self.proto_face_mut(pf) {
-                face.coinc_proto_edges_mut().retain(|&x| x != pe);
-            }
-        }
-        for other in self.pes.clone() {
-            if let Some(edge) = self.proto_edge_mut(other) {
-                edge.overlapping_pes.retain(|&x| x != pe);
-            }
         }
 
         // remove End PV->PE back pointers (statuses ignored)
@@ -3344,7 +3346,7 @@ mod tests {
     }
 
     #[test]
-    fn a_removed_proto_edge_leaves_every_face_and_overlap_list() {
+    fn a_deleted_proto_edge_leaves_every_face_and_overlap_list() {
         // 93efd6d (#369): SplitIntersectingProtoEdges deleted a combined-away proto
         // edge that proto faces and other proto edges still listed
         let k = Kernel::default();
@@ -3361,21 +3363,23 @@ mod tests {
         m.proto_edge_mut(other).unwrap().add_overlapping_pe(gone);
         m.proto_edge_mut(kept).unwrap().add_overlapping_pe(gone);
         m.proto_edge_mut(kept).unwrap().add_overlapping_pe(other);
-
-        // the faces gone bounded are bounded by kept, once
-        m.hand_over_coincident_proto_edge(kept, gone);
-        m.remove_proto_edge(gone).unwrap();
-
         let coinc = |m: &ProtoTopologyManager<H>, pf| {
             m.proto_face(pf).unwrap().coinc_proto_edges().to_vec()
         };
+
+        // the faces gone bounded are bounded by kept, once
+        m.hand_over_coincident_proto_edge(kept, gone);
+        assert_eq!(coinc(&m, f1), vec![gone, other, gone, kept]);
+        assert_eq!(coinc(&m, f2), vec![kept, gone]);
+        // unlisting alone keeps upstream's lists
+        m.remove_proto_edge(gone).unwrap();
+        assert_eq!(coinc(&m, f2), vec![kept, gone]);
+        assert_eq!(m.proto_edges(), &[kept, other]);
+        // the delete drops every reference
+        let _ = m.delete_proto_edge_object(gone);
         assert_eq!(coinc(&m, f1), vec![other, kept]);
         assert_eq!(coinc(&m, f2), vec![kept]);
         assert!(m.proto_edge(other).unwrap().overlapping_pes().is_empty());
         assert_eq!(m.proto_edge(kept).unwrap().overlapping_pes(), &[other]);
-        assert_eq!(m.proto_edges(), &[kept, other]);
-        // removing it again is SM_ERR (not listed) and changes nothing
-        assert!(m.remove_proto_edge(gone).is_err());
-        assert_eq!(coinc(&m, f1), vec![other, kept]);
     }
 }
