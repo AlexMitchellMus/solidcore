@@ -219,7 +219,7 @@ impl CurveBoundedSurface {
     ///
     /// [`SolidError::Unported`]: `SmSurface::operator==` (`surface.surface_p1`) for
     /// a different object; those of [`Curve::approx_eq`].
-    pub fn approx_eq(&self, other: &Surface) -> Result<bool> {
+    pub fn approx_eq(&self, k: &Kernel, other: &Surface) -> Result<bool> {
         // low work
         if let SurfaceKind::CurveBounded(o) = other.kind() {
             if core::ptr::eq(self, o) {
@@ -238,7 +238,7 @@ impl CurveBoundedSurface {
 
             // check equivalence of these objects
             rtn = (core::ptr::eq(&raw const *self.basis, &raw const *o.basis)
-                || surface_eq(&self.basis, &o.basis)?)
+                || surface_eq(k, &self.basis, &o.basis)?)
                 && self.boundaries_3d.len() == o.boundaries_3d.len()
                 && self.boundaries_uv.len() == o.boundaries_uv.len()
                 && self.implicit_outer == o.implicit_outer;
@@ -249,7 +249,7 @@ impl CurveBoundedSurface {
                     if !rtn {
                         break;
                     }
-                    rtn &= core::ptr::eq(a, b) || a.approx_eq(b)?;
+                    rtn &= core::ptr::eq(a, b) || a.approx_eq(k, b)?;
                 }
 
                 // upstream bound: the number of 3D boundaries
@@ -261,7 +261,7 @@ impl CurveBoundedSurface {
                     else {
                         break;
                     };
-                    rtn &= core::ptr::eq(a, b) || a.approx_eq(b)?;
+                    rtn &= core::ptr::eq(a, b) || a.approx_eq(k, b)?;
                 }
             }
         }
@@ -283,9 +283,15 @@ impl CurveBoundedSurface {
     /// # Errors
     ///
     /// Those of the basis surface's [`Surface::evaluate_normal`].
-    pub fn evaluate_normal(&self, uv: Point2, u_side: Side, v_side: Side) -> Result<Vec3> {
+    pub fn evaluate_normal(
+        &self,
+        k: &Kernel,
+        uv: Point2,
+        u_side: Side,
+        v_side: Side,
+    ) -> Result<Vec3> {
         // pass the call along
-        self.basis.evaluate_normal(uv, u_side, v_side)
+        self.basis.evaluate_normal(k, uv, u_side, v_side)
     }
 
     /// The basis surface's point and partial derivatives at `uv` (`Evaluate`).
@@ -295,13 +301,14 @@ impl CurveBoundedSurface {
     /// Those of the basis surface's [`Surface::evaluate`].
     pub fn evaluate(
         &self,
+        k: &Kernel,
         uv: Point2,
         highest_u_deriv: usize,
         highest_v_deriv: usize,
         flags: EvaluateFlags,
     ) -> Result<Vec<Vec<Vec3>>> {
         self.basis
-            .evaluate(uv, highest_u_deriv, highest_v_deriv, flags)
+            .evaluate(k, uv, highest_u_deriv, highest_v_deriv, flags)
     }
 
     /// The basis surface's derivatives at `uv` without zero-tangent adjustments
@@ -312,6 +319,7 @@ impl CurveBoundedSurface {
     /// Those of the basis surface's evaluation.
     pub fn evaluate_simple(
         &self,
+        k: &Kernel,
         uv: Point2,
         highest_u_deriv: usize,
         highest_v_deriv: usize,
@@ -320,6 +328,7 @@ impl CurveBoundedSurface {
         only_upper_half: bool,
     ) -> Result<Vec<Vec<Vec3>>> {
         self.basis.evaluate_simple(
+            k,
             uv,
             highest_u_deriv,
             highest_v_deriv,
@@ -358,11 +367,12 @@ impl CurveBoundedSurface {
     /// Those of the basis surface's [`Surface::evaluate_geometric`].
     pub fn evaluate_geometric(
         &self,
+        k: &Kernel,
         uv: Point2,
         u_side: Side,
         v_side: Side,
     ) -> Result<GeometricProperties> {
-        self.basis.evaluate_geometric(uv, u_side, v_side)
+        self.basis.evaluate_geometric(k, uv, u_side, v_side)
     }
 
     /// The basis surface's normal section in `direction` at `uv`
@@ -373,6 +383,7 @@ impl CurveBoundedSurface {
     /// Those of the basis surface's [`Surface::evaluate_normal_section`].
     pub fn evaluate_normal_section(
         &self,
+        k: &Kernel,
         uv: Point2,
         u_side: Side,
         v_side: Side,
@@ -380,7 +391,7 @@ impl CurveBoundedSurface {
     ) -> Result<NormalSection> {
         let section = self
             .basis
-            .evaluate_normal_section(uv, u_side, v_side, direction)?;
+            .evaluate_normal_section(k, uv, u_side, v_side, direction)?;
         Ok(NormalSection {
             tangent_plane_direction: section.tangent,
             curvature: section.curvature,
@@ -393,8 +404,8 @@ impl CurveBoundedSurface {
     /// # Errors
     ///
     /// Those of the basis surface's [`Surface::evaluate_point`].
-    pub fn evaluate_point(&self, uv: Point2) -> Result<Point3> {
-        self.basis.evaluate_point(uv)
+    pub fn evaluate_point(&self, k: &Kernel, uv: Point2) -> Result<Point3> {
+        self.basis.evaluate_point(k, uv)
     }
 
     /// The basis surface's derivatives at `uv` in its STEP parameterisation
@@ -405,6 +416,7 @@ impl CurveBoundedSurface {
     /// Those of the basis surface's evaluation.
     pub fn evaluate_step(
         &self,
+        k: &Kernel,
         uv: Point2,
         highest_u_deriv: usize,
         highest_v_deriv: usize,
@@ -413,6 +425,7 @@ impl CurveBoundedSurface {
         only_upper_half: bool,
     ) -> Result<Vec<Vec<Vec3>>> {
         self.basis.evaluate_step(
+            k,
             uv,
             highest_u_deriv,
             highest_v_deriv,
@@ -431,8 +444,8 @@ impl CurveBoundedSurface {
     /// # Errors
     ///
     /// Those of the basis surface's evaluation.
-    pub fn evaluate_step_point(&self, uv: Point2) -> Result<Point3> {
-        self.basis.evaluate_step_point(uv)
+    pub fn evaluate_step_point(&self, k: &Kernel, uv: Point2) -> Result<Point3> {
+        self.basis.evaluate_step_point(k, uv)
     }
 
     // ---- database -------------------------------------------------------------------
@@ -463,8 +476,8 @@ fn surface_base_eq(this: &CurveBoundedSurface, other: &Surface) -> bool {
 }
 
 /// `*a == *b` for two surfaces (the virtual `operator==`).
-fn surface_eq(a: &Surface, b: &Surface) -> Result<bool> {
-    a.approx_eq(b)
+fn surface_eq(k: &Kernel, a: &Surface, b: &Surface) -> Result<bool> {
+    a.approx_eq(k, b)
 }
 
 /// An ASCII count or flag: `0` when the extraction fails (C++11 `operator>>`).
@@ -605,15 +618,19 @@ mod tests {
 
     #[test]
     fn passes_evaluation_to_basis() {
+        let k = &Kernel::default();
         let b = patch();
         let c = cbs();
         let s = Surface::from(c.clone());
         assert_eq!(s.natural_uv_domain(), b.natural_uv_domain());
         let uv = Point2::new(0.25, 0.5);
-        assert_eq!(s.evaluate_point(uv).unwrap(), b.evaluate_point(uv).unwrap());
+        assert_eq!(
+            s.evaluate_point(k, uv).unwrap(),
+            b.evaluate_point(uv).unwrap()
+        );
         let f = EvaluateFlags::default();
         assert_eq!(
-            s.evaluate(uv, 1, 1, f).unwrap(),
+            s.evaluate(k, uv, 1, 1, f).unwrap(),
             b.evaluate(uv, 1, 1, f).unwrap()
         );
         // base-class defaults for what the class does not override
@@ -623,26 +640,27 @@ mod tests {
         );
         assert!(s.copy(&Kernel::default()).is_err());
         assert_eq!(
-            c.evaluate_normal(uv, Side::Left, Side::Left).unwrap(),
+            c.evaluate_normal(k, uv, Side::Left, Side::Left).unwrap(),
             Surface::from(b.clone())
-                .evaluate_normal(uv, Side::Left, Side::Left)
+                .evaluate_normal(k, uv, Side::Left, Side::Left)
                 .unwrap()
         );
         assert_eq!(
-            c.evaluate_step_point(uv).unwrap(),
+            c.evaluate_step_point(k, uv).unwrap(),
             b.evaluate_point(uv).unwrap()
         );
     }
 
     #[test]
     fn equality() {
+        let k = &Kernel::default();
         let c = cbs();
         let s = Surface::from(c.clone());
         let SurfaceKind::CurveBounded(inner) = s.kind() else {
             panic!("kind");
         };
-        assert!(inner.approx_eq(&s).unwrap());
-        assert!(c.approx_eq(&s).unwrap());
+        assert!(inner.approx_eq(k, &s).unwrap());
+        assert!(c.approx_eq(k, &s).unwrap());
         assert_eq!(c.boundaries_3d().len(), 1);
         assert_eq!(c.boundaries_uv().len(), 1);
         assert!(c.implicit_outer());

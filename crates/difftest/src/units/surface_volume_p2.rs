@@ -909,7 +909,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         } => {
             let mut d = Discontinuities3d::new();
             d.set_unaligned();
-            let r = tri!(o, v.has_discontinuities(want.then_some(&mut d), *geometric));
+            let r = tri!(o, v.has_discontinuities(&k, want.then_some(&mut d), *geometric));
             o.extend([0.0, b(r)]);
             put_disc(&mut o, &d);
         }
@@ -920,7 +920,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             let [w0, w1] = *want;
             tri!(
                 o,
-                v.evaluate_bounding_box_simple(
+                v.evaluate_bounding_box_simple(&k, 
                     &ext(bx),
                     ppb.as_ref(),
                     w0.then_some(&mut ob),

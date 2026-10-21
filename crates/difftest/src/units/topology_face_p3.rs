@@ -187,8 +187,10 @@ struct Built {
 fn build(i: &Inputs) -> Result<Result<Built, Output>, HarnessError> {
     let path = shared::path_of(&i.brep)?;
     let block = block(i)?;
-    let export = fixture::eval(FixtureOp::Export, &path, &block)
-        .map_err(|e| harness(format!("c++ export: {e}")))?;
+    let export = crate::export_memo::export("topology_vertexuse", &[&path], &block, || {
+        fixture::eval(FixtureOp::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))?;
     let Some(counts) = fixture::counts(&export) else {
         let status = export.get(1).copied().unwrap_or(0.0);
         return Ok(Err(Output::err(format!("brep_build_status_{status}"))));
@@ -375,7 +377,7 @@ fn put_samples(c: &SmCurve, out: &mut Vec<f64>) -> Result<(), SolidError> {
     let ivl = c.natural_interval();
     out.extend([ivl.min(), ivl.max()]);
     for k in 0..=2u8 {
-        match c.evaluate_point(ivl.evaluate(f64::from(k) / 2.0)) {
+        match c.evaluate_point(&Kernel::default(), ivl.evaluate(f64::from(k) / 2.0)) {
             Ok(p) => out.extend([0.0, p.x, p.y, p.z]),
             Err(SolidError::Upstream { code, .. }) => out.extend([f64::from(code), 0.0, 0.0, 0.0]),
             Err(e) => return Err(e),
