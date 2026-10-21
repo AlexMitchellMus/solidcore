@@ -98,7 +98,7 @@
 
 use crate::blend::fillet_custom_solver::{InitialValues, JacobianLoad, OffsetSurface, SurfaceId};
 use crate::blend::fillet_standard_solver::p1::{
-    BlendCurveCrossSectionFsg, CircularCrossSectionFsg, LinearCrossSectionFsg,
+    BlendCurveCrossSectionFsg, CircularCrossSectionFsg,
 };
 use crate::curve::curve::Curve;
 use crate::curve::iso_curve::IsoCurve;
@@ -126,7 +126,7 @@ use crate::surface::cone::Cone;
 use crate::surface::offset_surface::SS_UNKNOWN;
 use crate::surface::sphere::Sphere;
 use crate::surface::surface::p1::evaluate_1st_derivatives;
-use crate::surface::surface::p2::{drop_vectors, SurfaceKind};
+use crate::surface::surface::p2::drop_vectors;
 use crate::surface::surface::Surface;
 use crate::surface::torus::Torus;
 use crate::topology::edgeuse::p1 as eu;
@@ -311,8 +311,8 @@ impl FilletSurfaceGenerator {
     ///
     /// `SM_ERR` for [`FilletSurfaceGenerator::Base`]; those of
     /// `SmEiffelTowerCrossSectionFSG::CreateSurface` and
-    /// `SmLinearCrossSectionFSG::CreateSurface` ([`LinearCrossSectionFsg::create_surface`]);
-    /// [`SolidError::Unported`] for the circular and blend-curve generators.
+    /// `SmLinearCrossSectionFSG::CreateSurface`; [`SolidError::Unported`] for the
+    /// circular and blend-curve generators.
     pub fn create_surface(
         &self,
         k: &Kernel,
@@ -327,8 +327,8 @@ impl FilletSurfaceGenerator {
                 crate::blend::fillet_custom_solver::EiffelTowerCrossSectionFsg::new()
                     .create_surface(k, approx_tol_3d, rail1, rail2, points)
             }
-            // the ruled surface between the rails (SER)
-            Self::Linear => LinearCrossSectionFsg.create_surface(rail1, rail2),
+            Self::Linear => crate::blend::fillet_standard_solver::p1::LinearCrossSectionFsg
+                .create_surface(rail1, rail2),
             // UNPORTED(blend.fillet_standard_solver_p2): SmCircularCrossSectionFSG::CreateSurface
             Self::Circular(_) => Err(SolidError::unported(
                 "SmCircularCrossSectionFSG::CreateSurface",
@@ -2550,12 +2550,12 @@ pub enum AnalyticTestSurface<'a> {
 ///
 /// # Errors
 ///
-/// Those of `IsPlanar` and of the cone test (`SmCone::IsNurbSurfaceCone`), except a
-/// failing iso curve status, which upstream returns as the `SmBoolean` and which
-/// reads as `true`; `InvalidInput` for a surface kind that is not an
-/// `SmBSplineSurface`.
+/// Those of `IsPlanar` and `SmCone::IsNurbSurfaceCone`;
+/// [`SolidError::InvalidInput`] for a surface kind that is not an `SmBSplineSurface`
+/// (a plane is accepted by type before).
 pub fn test_analytic_surface(k: &Kernel, surface: AnalyticTestSurface<'_>) -> Result<bool> {
     use crate::surface::surface::p2::{CONE_TYPE, PLANE_TYPE};
+    use crate::surface::surface::SurfaceKind;
     let type_code = match surface {
         AnalyticTestSurface::Surface(s) => s.type_code(),
         AnalyticTestSurface::Cone(c) => c.type_code(),
@@ -2579,32 +2579,24 @@ pub fn test_analytic_surface(k: &Kernel, surface: AnalyticTestSurface<'_>) -> Re
     if planar.is_planar {
         return Ok(true);
     }
-    // test NurbSurface to see if its a canonical cone (the SmBSplineSurface part of the
-    // surface, default dToleranceScale = 1)
-    let bss = match surface {
+    // test NurbSurface to see if its a canonical cone (the SmBSplineSurface data of
+    // the tested surface; pSurface is an SmBSplineSurface*)
+    let nurb = match surface {
         AnalyticTestSurface::Surface(s) => match s.kind() {
             SurfaceKind::BSpline(b) => b,
-            SurfaceKind::Plane(p) => p.base(),
             SurfaceKind::SurfOfRevolution(r) => r.base(),
-            // not an SmBSplineSurface: upstream's parameter type excludes these
             _ => {
-                return Err(SolidError::InvalidInput {
-                    operation: "blend::fillet_solver::test_analytic_surface",
-                    reason: "surface is not an SmBSplineSurface",
-                })
+                return Err(SolidError::invalid_input(
+                    "blend::fillet_solver::test_analytic_surface",
+                    "not an SmBSplineSurface",
+                ))
             }
         },
         AnalyticTestSurface::Cone(c) => c.rev().base(),
         AnalyticTestSurface::Sphere(s) => s.base().base(),
-        AnalyticTestSurface::Torus(t) => t.base.base(),
+        AnalyticTestSurface::Torus(t) => t.base().base(),
     };
-    match Cone::is_nurb_surface_cone(k, bss, 1.0) {
-        Ok(None) => Ok(false),
-        // upstream returns the iso curve status as the SmBoolean: a failing (non-zero)
-        // status reads as TRUE
-        Ok(Some(_)) | Err(SolidError::Upstream { .. }) => Ok(true),
-        Err(e) => Err(e),
-    }
+    Ok(Cone::is_nurb_surface_cone(k, nurb, 1.0)?.is_some())
 }
 
 /// `SE(pEU->EvaluateBinormal(dParameter, FALSE, rPnt, rBinVec, NULL, &rFaceuseNormal))`
