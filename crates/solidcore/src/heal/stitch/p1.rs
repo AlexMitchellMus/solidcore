@@ -2527,8 +2527,11 @@ mod tests {
             seen.contains(&NotifyOperation::MergeInBrep),
             "{seen:?} {result:?}"
         );
+        // Past the notify this minimal fixture is degenerate (its loop use has no face
+        // use): part 7 stops at its face lookup, where upstream would dereference null
+        // (SmEdgeuse.cpp:336), not at a notification failure.
         assert!(
-            !matches!(&result, Err(SolidError::InvalidInput { reason, .. }) if reason.contains("not a topology object")),
+            matches!(&result, Err(SolidError::InvalidInput { reason, .. }) if reason.contains("loop use without face use")),
             "{result:?}"
         );
         assert!(k.context.user_notify_callback().is_some());
