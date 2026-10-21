@@ -5450,16 +5450,12 @@
       "values_compared": 182
     },
     {
-      "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
-      },
       "max_rel_err": 0.0,
       "name": "gen0163",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10468849173570791224",
-      "values_compared": 0
+      "values_compared": 292
     },
     {
       "max_rel_err": 0.0,
@@ -7770,16 +7766,12 @@
       "values_compared": 222
     },
     {
-      "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
-      },
       "max_rel_err": 0.0,
       "name": "gen0450",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10468849173570791511",
-      "values_compared": 0
+      "values_compared": 248
     },
     {
       "max_rel_err": 0.0,
@@ -7994,16 +7986,12 @@
       "values_compared": 246
     },
     {
-      "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
-      },
       "max_rel_err": 0.0,
       "name": "gen0477",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10468849173570791538",
-      "values_compared": 0
+      "values_compared": 179
     },
     {
       "max_rel_err": 0.0,
@@ -8258,16 +8246,12 @@
       "values_compared": 267
     },
     {
-      "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
-      },
       "max_rel_err": 0.0,
       "name": "gen0509",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10468849173570791570",
-      "values_compared": 0
+      "values_compared": 334
     },
     {
       "max_rel_err": 0.0,
@@ -9026,16 +9010,12 @@
       "values_compared": 271
     },
     {
-      "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
-      },
       "max_rel_err": 0.0,
       "name": "gen0604",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10468849173570791665",
-      "values_compared": 0
+      "values_compared": 310
     },
     {
       "max_rel_err": 0.0,
@@ -9238,16 +9218,12 @@
       "values_compared": 223
     },
     {
-      "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
-      },
       "max_rel_err": 0.0,
       "name": "gen0630",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10468849173570791691",
-      "values_compared": 0
+      "values_compared": 217
     },
     {
       "max_rel_err": 0.0,
@@ -10935,7 +10911,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
+        "symbol": "SmVertex::GetBrep",
         "unit": "topology.vertex"
       },
       "max_rel_err": 0.0,
@@ -11330,16 +11306,12 @@
       "values_compared": 193
     },
     {
-      "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
-      },
       "max_rel_err": 0.0,
       "name": "gen0889",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10468849173570791950",
-      "values_compared": 0
+      "values_compared": 111
     },
     {
       "max_rel_err": 0.0,
@@ -12830,16 +12802,12 @@
       "values_compared": 248
     },
     {
-      "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
-      },
       "max_rel_err": 0.0,
       "name": "gen1075",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10468849173570792136",
-      "values_compared": 0
+      "values_compared": 244
     },
     {
       "max_rel_err": 0.0,
@@ -13562,16 +13530,12 @@
       "values_compared": 336
     },
     {
-      "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
-      },
       "max_rel_err": 0.0,
       "name": "gen1165",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10468849173570792226",
-      "values_compared": 0
+      "values_compared": 203
     },
     {
       "max_rel_err": 0.0,
@@ -13986,16 +13950,12 @@
       "values_compared": 90
     },
     {
-      "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
-      },
       "max_rel_err": 0.0,
       "name": "gen1217",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10468849173570792278",
-      "values_compared": 0
+      "values_compared": 112
     },
     {
       "max_rel_err": 0.0,
@@ -16090,16 +16050,12 @@
       "values_compared": 133
     },
     {
-      "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
-      },
       "max_rel_err": 0.0,
       "name": "gen1477",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10468849173570792538",
-      "values_compared": 0
+      "values_compared": 270
     },
     {
       "max_rel_err": 0.0,
@@ -18474,16 +18430,12 @@
       "values_compared": 244
     },
     {
-      "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
-      },
       "max_rel_err": 0.0,
       "name": "gen1772",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10468849173570792833",
-      "values_compared": 0
+      "values_compared": 333
     },
     {
       "max_rel_err": 0.0,
@@ -19790,16 +19742,12 @@
       "values_compared": 248
     },
     {
-      "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
-      },
       "max_rel_err": 0.0,
       "name": "gen1935",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10468849173570792996",
-      "values_compared": 0
+      "values_compared": 223
     },
     {
       "max_rel_err": 0.0,
@@ -20030,16 +19978,12 @@
       "values_compared": 112
     },
     {
-      "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
-      },
       "max_rel_err": 0.0,
       "name": "gen1964",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=10468849173570793025",
-      "values_compared": 0
+      "values_compared": 248
     },
     {
       "max_rel_err": 0.0,
@@ -20327,15 +20271,15 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 59,
+  "cases_deferred": 45,
   "cases_failed": 0,
-  "cases_passed": 2452,
+  "cases_passed": 2466,
   "cases_total": 2511,
   "deferred_by_unit": {
-    "topology.edge": 9,
+    "topology.edge": 6,
     "topology.edgeuse_p1": 3,
     "topology.face_p4": 6,
-    "topology.vertex": 41
+    "topology.vertex": 30
   },
   "max_rel_err": 0.0,
   "pass": true,
