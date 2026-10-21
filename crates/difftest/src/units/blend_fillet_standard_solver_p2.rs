@@ -1096,6 +1096,16 @@ fn rust_record(i: &Inputs) -> Result<Rec, HarnessError> {
                     &k, None, *do2, *rail, &mut s1, *s1_index, &mut ivls, &mut per, &mut guess,
                 ),
             };
+            // (crSurface1 is *GetSurface(rail) when sel1 names the solver's own rail: C++
+            // evaluates the solver's offset itself, so the extension the guess outside
+            // its domain makes stays on it)
+            if *sel1 == 1 + *rail {
+                let cr = match &mut b.solver {
+                    Solver::Cr(c) => c,
+                    Solver::Ss(c) => &mut c.base,
+                };
+                cr.take_surface_extension(*rail, &s1).map_err(|e| he(&e))?;
+            }
             match &res {
                 Ok(Some(v)) => o.extend([0.0, v.surface2_rail as f64, v.surface2_index as f64]),
                 Ok(None) => o.extend([0.0, -1.0, 999.0]),

@@ -369,6 +369,22 @@ impl ConstantRadiusAssistedFs {
             .ok_or_else(|| SolidError::invalid_input(OP, "no offset surface for the rail"))
     }
 
+    /// Takes over the base extension of `copy`, a copy of `GetSurface(rail)` that a
+    /// caller evaluated in its place (`LoadInitialValues`' `crSurface1`): upstream
+    /// evaluates the solver's own offset surface, whose `m_pExtendedSurface` then holds
+    /// it. A caller that passes a copy of `GetSurface(i)` must hand it back this way
+    /// (as `point_on_plane_solve` does).
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::InvalidInput`] for a rail index above 1 or a missing surface.
+    pub fn take_surface_extension(&mut self, rail: usize, copy: &OffsetSurface) -> Result<()> {
+        self.surface_mut(rail)?
+            .surface
+            .take_extension_of(&copy.surface);
+        Ok(())
+    }
+
     pub(crate) fn surface_mut(&mut self, rail: usize) -> Result<&mut OffsetSurface> {
         self.solver
             .surface_mut(rail)?
