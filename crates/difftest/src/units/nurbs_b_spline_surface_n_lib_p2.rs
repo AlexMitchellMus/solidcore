@@ -672,7 +672,7 @@ fn side(left: bool) -> Side {
     }
 }
 
-fn rust(i: &Inputs) -> Result<Output, HarnessError> {
+fn rust(k: &solidcore::kernel::Kernel, i: &Inputs) -> Result<Output, HarnessError> {
     let mut o = vec![0.0];
     let res: solidcore::Result<()> = match (&i.op, &i.this) {
         (
@@ -759,7 +759,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                 deriv_surfs: ds.as_ref().map(|[a, b]| [a.as_ref(), b.as_ref()]),
                 degree: *degree,
             };
-            BSplineSurface::create_skinned_surface(&secs, opts).map(|s| {
+            BSplineSurface::create_skinned_surface(k, &secs, opts).map(|s| {
                 o.push(1.0);
                 dump_state(&mut o, &s);
             })
@@ -803,8 +803,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                         .map(|(b_spline, surface)| BlendNeighbour { surface, b_spline })
                 })
                 .collect();
-            let kernel = solidcore::kernel::Kernel::default();
-            BSplineSurface::create_corner_blend(&kernel, &c3, &ors, &uv, &sr, *tol, *ang, *bilinear)
+            BSplineSurface::create_corner_blend(k, &c3, &ors, &uv, &sr, *tol, *ang, *bilinear)
                 .map(|patches| {
                     o.push(patches.len() as f64);
                     for p in &patches {
@@ -1442,7 +1441,8 @@ impl UnitDiff for Runner {
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
-        rust(&case.parse()?)
+        let k = &solidcore::Kernel::default();
+        rust(k, &case.parse()?)
     }
 }
 
@@ -1454,6 +1454,7 @@ mod tests {
     /// The generators reach success and failure of every op on the Rust side.
     #[test]
     fn generated_cases_cover_every_op() {
+        let k = &solidcore::Kernel::default();
         let mut tally: BTreeMap<(String, String), usize> = BTreeMap::new();
         for seed in 0..600u64 {
             let mut rng = Rng::new(0x5eed_0000 + seed);
@@ -1474,7 +1475,7 @@ mod tests {
                 ),
                 _ => format!("{:?}", i.op.ffi()),
             };
-            let out = rust(&i).expect("harness");
+            let out = rust(k, &i).expect("harness");
             let kind = if let Some(d) = &out.deferred {
                 format!("deferred:{}", d.symbol)
             } else {
