@@ -708,19 +708,19 @@ fn rust_record(i: &Inputs) -> Result<Vec<f64>, Fail> {
         // (the out-parameters only after a success)
         _ if !ok => {}
         Inputs::InRegion { .. } => {
-            o.push(idx(1, made.shell.map(|x| x.index())));
-            o.push(idx(3, made.face.map(|x| x.index())));
+            o.push(idx(1, made.shell.map(solidcore::topology::ArenaId::index)));
+            o.push(idx(3, made.face.map(solidcore::topology::ArenaId::index)));
         }
         Inputs::FromSurface { .. } | Inputs::PlanarFace { .. } => {
-            o.push(idx(3, made.face.map(|x| x.index())));
+            o.push(idx(3, made.face.map(solidcore::topology::ArenaId::index)));
         }
         Inputs::FacesWithCurves { .. } => {
-            o.push(idx(1, made.shell.map(|x| x.index())));
+            o.push(idx(1, made.shell.map(solidcore::topology::ArenaId::index)));
             put_faces(&mut o, &made.faces);
         }
         Inputs::MakeFaces { .. } => {
-            o.push(idx(0, made.region.map(|x| x.index())));
-            o.push(idx(1, made.shell.map(|x| x.index())));
+            o.push(idx(0, made.region.map(solidcore::topology::ArenaId::index)));
+            o.push(idx(1, made.shell.map(solidcore::topology::ArenaId::index)));
             put_faces(&mut o, &made.faces);
         }
         Inputs::FacesFromSurface { .. } | Inputs::PlanarFaces { .. } => {
@@ -874,7 +874,7 @@ fn closed_u() -> SrfIn {
     ];
     let net = pts
         .iter()
-        .map(|&[x, y]| (0..3).map(|j| [x, y, j as f64 * 0.5, NOW]).collect())
+        .map(|&[x, y]| (0..3usize).map(|j| [x, y, j as f64 * 0.5, NOW]).collect())
         .collect();
     SrfIn::Bspline(BssIn {
         oob: false,
@@ -889,9 +889,9 @@ fn closed_u() -> SrfIn {
 
 /// A patch pinched at its `u = 0` side (a degenerate boundary).
 fn pinched() -> SrfIn {
-    let net = (0..3)
+    let net = (0..3usize)
         .map(|i| {
-            (0..3)
+            (0..3usize)
                 .map(|j| {
                     if i == 0 {
                         [0.0, 0.0, 0.0, NOW]
@@ -928,8 +928,9 @@ fn natural(s: &SrfIn) -> [f64; 4] {
 /// A UV loop (degree-1 B-spline lines, counter-clockwise) over `[u0, u1] x [v0, v1]`.
 fn uv_rect(u0: f64, v0: f64, u1: f64, v1: f64) -> Vec<CrvIn> {
     let p = [[u0, v0, 0.0], [u1, v0, 0.0], [u1, v1, 0.0], [u0, v1, 0.0]];
-    (0..4)
-        .map(|i| bline(2, p[i % 4], p[(i + 1) % 4]))
+    p.iter()
+        .zip(p.iter().cycle().skip(1))
+        .map(|(&a, &b)| bline(2, a, b))
         .collect()
 }
 
@@ -1085,6 +1086,15 @@ fn builtin() -> Vec<(String, Inputs)> {
         ),
         ("empty", Vec::new()),
     ];
+    // a zero-length line at a corner (SmLine makes the degenerate line)
+    planar_sets.push((
+        "degenerate_edge",
+        [
+            polygon(&square, false),
+            vec![line3([0.0, 0.0, 0.0], [0.0, 0.0, 0.0])],
+        ]
+        .concat(),
+    ));
     // a gap within / beyond tolerance
     let mut gap = polygon(&square, false);
     if let Some(C3In::Line { a, .. }) = gap.get_mut(0) {
@@ -1231,6 +1241,26 @@ fn builtin() -> Vec<(String, Inputs)> {
                         orient,
                     })
                     .collect(),
+                points: Vec::new(),
+            },
+        ));
+    }
+    // no curve arrays (MakeFaceWithCurves' input check; SmCurveLoops::IsValid when split)
+    for (name, s) in [
+        ("plane", plane_z(false)),
+        ("crease_u", patch(2, 1, 4, 1, 1.0, true, false, &ridge)),
+    ] {
+        v.push((
+            format!("make_faces_no_curves_{name}"),
+            Inputs::MakeFaces {
+                surface: s,
+                dom: [0.0, 0.0, 1.0, 1.0],
+                orient: 1,
+                region_null: false,
+                loops: vec![4],
+                has3d: false,
+                has_uv: false,
+                curves: Vec::new(),
                 points: Vec::new(),
             },
         ));

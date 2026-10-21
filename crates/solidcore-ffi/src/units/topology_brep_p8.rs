@@ -36,12 +36,13 @@
 //!
 //! [`eval`] accepts only what upstream handles without undefined behaviour: clamped
 //! B-splines of degree 1 to 5 with at most 33 control points, positive (or `NOW`)
-//! weights and finite values, planes with a non-zero normal, lines with distinct ends,
-//! loop counts that add up to at most the curves given, and none of the null
-//! dereferences listed per op: a null surface for `FacesWithCurves` (its
-//! `GetNaturalUVDomain` is read before any check) and for `MakeFaces` (its
-//! `FindKnotsByMaxContinuity`), and a null curve array (`has3d` and `has_uv` both off) or
-//! a curve array shorter than the loop counts for `MakeFaces` / `FacesWithCurves`.
+//! weights and finite values, and planes with a non-zero normal. It rejects the inputs
+//! upstream dereferences null or reads past an array for: a null surface for
+//! `FacesWithCurves` (its `GetNaturalUVDomain` is read before any check) and for
+//! `MakeFaces` (`FindKnotsByMaxContinuity`), and loop counts adding up to more than the
+//! curves given (with a curve array) for `FacesWithCurves` and `MakeFaces`. Null curve
+//! arrays, null surfaces of the other ops and degenerate lines are checked upstream and
+//! pass.
 
 use crate::{call_with_buffer, FfiError};
 
@@ -160,10 +161,9 @@ fn bspline_curve(rd: &mut Reader<'_>) -> Result<(), FfiError> {
 /// A 3D curve block (`0` B-spline, `1` line).
 fn curve(rd: &mut Reader<'_>) -> Result<(), FfiError> {
     if rd.index(1)? == 1 {
-        let a = [rd.finite()?, rd.finite()?, rd.finite()?];
-        let b = [rd.finite()?, rd.finite()?, rd.finite()?];
-        if a == b {
-            return Err(bad("line with equal ends"));
+        // (a line with ends closer than SM_EFF_ZERO is the degenerate line SmLine makes)
+        for _ in 0..6 {
+            rd.finite()?;
         }
         return Ok(());
     }
@@ -283,10 +283,8 @@ pub fn eval(op: Op, input: &[f64]) -> Result<Vec<f64>, FfiError> {
             let has3d = rd.flag()?;
             let hasuv = rd.flag()?;
             let nc = rd.index(MAX_CURVES)?;
-            if !has3d && !hasuv {
-                return Err(bad("no curve array"));
-            }
-            if total > nc {
+            // (without curve arrays upstream fails before reading the counts)
+            if (has3d || hasuv) && total > nc {
                 return Err(bad("loop counts exceed the curves"));
             }
             for _ in 0..nc {

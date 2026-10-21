@@ -391,9 +391,8 @@ pub fn create_pyramid(
     let mut state = crate::topology::brep::p2::ArenaNotifyState::new(&brep);
     let mut env = state.env(None);
     let mut marks = crate::topology::topology_traverser::Marks::default();
-    let this_face = |f: FaceId| {
-        crate::topology::loopuse::notify_ref(crate::error::EntityRef::Face(f))
-    };
+    let this_face =
+        |f: FaceId| crate::topology::loopuse::notify_ref(crate::error::EntityRef::Face(f));
     let mut fenv = crate::topology::brep::p8::FaceBuildEnv {
         env: &mut env,
         marks: &mut marks,
@@ -414,7 +413,9 @@ pub fn create_pyramid(
 
     // Four triangular side faces: c_i -> c_{i+1} -> apex.
     for ii in 0..4 {
-        let p0 = *base.get(ii).ok_or(SolidError::invalid_input(OP_PYRAMID, "corner"))?;
+        let p0 = *base
+            .get(ii)
+            .ok_or(SolidError::invalid_input(OP_PYRAMID, "corner"))?;
         let p1 = *base
             .get((ii + 1) % 4)
             .ok_or(SolidError::invalid_input(OP_PYRAMID, "corner"))?;
@@ -868,7 +869,12 @@ mod tests {
         let _ = create_cylinder_surface(&k, Point3::new(nan, inf, 0.0), 1.0, 1.0e17);
         let _ = create_cone_surface(&k, Point3::new(1.0e300, 0.0, 0.0), 1.0e17, 0.0, 1.0e-11);
         let _ = create_pyramid(&mut Kernel::default(), Point3::new(nan, 0.0, 0.0), nan, 1.0);
-        let _ = create_pyramid(&mut Kernel::default(), Point3::new(1.0e17, 0.0, 0.0), 1.0, 1.0);
+        let _ = create_pyramid(
+            &mut Kernel::default(),
+            Point3::new(1.0e17, 0.0, 0.0),
+            1.0,
+            1.0,
+        );
         let _ = create_cylindrical_box(o(), 1.0, 1.0, 2.0, 0.0, 360.0);
         let _ = create_sphere_no_pole(o(), 1.0e18);
     }

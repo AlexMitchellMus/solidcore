@@ -24,10 +24,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use solidcore::error::SolidError;
-use solidcore::geom::extent1d::Extent1d;
 use solidcore::geom::tools::{self, CoincidentEdgeQuery};
 use solidcore::math::{Point3, BIG_DOUBLE};
-use solidcore::topology::{Brep, EdgeId, VertexId};
+use solidcore::topology::{Brep, VertexId};
 use solidcore_ffi::units::geom_tools as ffi;
 
 use crate::case::CaseContext;

@@ -507,7 +507,7 @@ fn create_face_from_surface(
 ) -> Result<FaceId> {
     let mut state = crate::topology::brep::p2::ArenaNotifyState::new(brep);
     let mut env = state.env(None);
-    let mut marks = crate::topology::topology_traverser::Marks::default();
+    let mut marks = Marks::default();
     let this_face = |f: FaceId| crate::topology::loopuse::notify_ref(EntityRef::Face(f));
     let mut fenv = crate::topology::brep::p8::FaceBuildEnv {
         env: &mut env,
