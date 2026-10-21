@@ -1954,13 +1954,20 @@ mod tests {
         executive
             .build_side_wall_of_edgeuse(&mut kernel, &mut original_brep, Some(original))
             .unwrap();
-        // the ruled blend across the two B-reps runs; the closing face is next
+        // the ruled blend across the two B-reps runs; the closing face is made by
+        // topology.brep_p8 (CreateFaceFromSurface) on the offset B-rep, a bare
+        // `Brep::new()` here (no infinite region), and fails there
         executive.relate_edgeuses(original, offset);
-        assert_dependency(
-            executive.build_side_wall_of_edgeuse(&mut kernel, &mut original_brep, Some(original)),
-            "SmBrep::CreateFaceFromSurface",
-            "topology.brep_p8",
-        );
+        let r =
+            executive.build_side_wall_of_edgeuse(&mut kernel, &mut original_brep, Some(original));
+        assert!(r.is_err());
+        assert!(!matches!(
+            r,
+            Err(SolidError::Unported {
+                unit: "topology.brep_p8",
+                ..
+            })
+        ));
         executive.relate_edgeuses(original, EdgeuseId::from_index(2));
         executive
             .build_side_wall_of_edgeuse(&mut kernel, &mut original_brep, Some(original))

@@ -25,9 +25,8 @@
 //! - [`find_edge`] and [`find_face`] report "nothing found" (upstream `SM_ERR`) as
 //!   `Ok(None)`. Faces are returned as [`FaceId`]s.
 //! - **Edge and vertex queries** are those of `topology::edge` and `topology::vertex`.
-//! - **Unported callees.** `SmCurve::DropPoint` of an edge curve in [`find_edge`] and
-//!   exact B-rep cache dependencies of [`find_face`] return [`SolidError::Unported`]
-//!   (see the `UNPORTED` markers).
+//! - **Unported callees.** Exact B-rep cache dependencies of [`find_face`] return
+//!   [`SolidError::Unported`] (see the `UNPORTED` markers).
 //! - **Curve owner.** `pCurve->GetOwner()` of [`find_coincident_edge`]'s target is
 //!   [`CoincidentEdgeQuery::curve_owner`]: a [`Curve`] names its owner by the caller's
 //!   identity, which only the caller can map back to an edge.
@@ -317,14 +316,15 @@ pub fn find_coincident_edge(
 /// Returns `None` when no drop succeeds (upstream `SM_ERR`).
 ///
 /// # Errors
-/// [`SolidError::Unported`] while `SmBrep::GetEdges` and point drops are not ported.
-pub fn find_edge(brep: &Brep, point: Point3) -> Result<Option<EdgePick>> {
+/// Those of `SmBrep::GetEdges` and of the curve drops (`SER`); `SM_ERR_NULL_POINTER`
+/// for an edge without curve (upstream dereferences it).
+pub fn find_edge(k: &Kernel, brep: &Brep, point: Point3) -> Result<Option<EdgePick>> {
     let edges = brep_edges(brep)?;
     let mut best: Option<EdgePick> = None;
     let mut best_dist = BIG_DOUBLE;
     for (i, &e) in edges.iter().enumerate() {
         let ivl = edge_interval(brep, e)?;
-        let drop = edge_drop_point(brep, e, &ivl, point, edge_tolerance(brep, e)? * 10.0)?;
+        let drop = edge_drop_point(k, brep, e, &ivl, point, edge_tolerance(brep, e)? * 10.0)?;
         if drop.good && drop.distance < best_dist {
             best_dist = drop.distance;
             best = Some(EdgePick {
@@ -441,17 +441,19 @@ fn drop_point(
 /// `pE->GetCurve()->DropPoint(ivl, pt, NULL, tol, NULL, ...)` (global solve,
 /// `SM_SO_MINIMIZE`).
 fn edge_drop_point(
+    k: &Kernel,
     brep: &Brep,
     e: EdgeId,
-    _ivl: &Extent1d,
-    _pt: Point3,
-    _tol: f64,
+    ivl: &Extent1d,
+    pt: Point3,
+    tol: f64,
 ) -> Result<Drop> {
-    edge_curve(brep, e)?;
-    // UNPORTED(curve.curve_p6): SmCurve::DropPoint
-    Err(SolidError::Unported {
-        upstream: "SmCurve::DropPoint",
-        unit: "curve.curve_p6",
+    let d =
+        edge_curve(brep, e)?.drop_point(k, ivl, pt, None, tol, None, SolverOperation::Minimize)?;
+    Ok(Drop {
+        good: d.success,
+        parameter: d.parameter,
+        distance: d.distance,
     })
 }
 
@@ -623,15 +625,10 @@ mod tests {
         assert_eq!(find_coincident_edge(&k, &brep, &q, &[e], 1).unwrap(), None);
         q.curve_owner = Some(e);
         assert_eq!(find_coincident_edge(&k, &brep, &q, &[e], 0).unwrap(), None);
-        // SmBrep::GetEdges is ported (topology.brep_p1): the edge is reached and its
-        // drop (curve.curve_p6) is what defers
-        assert!(matches!(
-            find_edge(&brep, p(0.0, 0.0, 0.0)),
-            Err(SolidError::Unported {
-                unit: "curve.curve_p6",
-                ..
-            })
-        ));
+        // the edge's line is the nearest (and only) edge: the drop finds its start
+        let hit = find_edge(&k, &brep, p(0.0, 0.0, 0.0)).unwrap().unwrap();
+        assert_eq!(hit.index, 0);
+        assert!(hit.parameter.abs() < 1e-12);
         assert!(matches!(
             find_face(
                 &Kernel::default(),

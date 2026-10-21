@@ -6371,70 +6371,68 @@ mutated scales and accepted/reduced step counts are compared.
   `surface.surface_p4`), not seen in any case. The 398 review adversarial cases are
   `fixtures/query.face_p3/review_adversarial.json` (none is undefined in C++).
 
-## topology.brep_p8 (`SmBrep` face builders, blocked, 2026-10-14)
+## topology.brep_p8 (`SmBrep` face builders, PR #72, 2026-10-20; partial, no disagreements)
 
-Blocked: no output of this unit can be compared with the C++ yet. Checked against
-`bin/callgraph/graph.json` and `plan/modules.toml` on `main` at `8190c302`.
-
-- **Every success path ends in an unported topology builder.** The 7 owned functions
-  (`CreateFacesWithCurves`, `CreatePlanarFacesWith3DCurves`, `CreatePlanarFaceWith3DCurves`,
-  `CreateFaceInRegionFromSurface`, `CreateFaceFromSurface`, `CreateFacesFromSurface`,
-  `MakeFacesWithCurves`) only orchestrate. The B-rep they return is built by
-  `MakeFaceWithCurves` (`topology.brep_p7`), `MakeFaceTopology` (`brep_p6`),
-  `MakeEdgeInFace` (`brep_p5`), `MakeVertexLoop` (`brep_p9`), `DeleteFace` (`brep_p3`),
-  `DeleteEdge`/`DeleteVertex` (`brep_p4`) and `GetInfiniteRegion`/`GetTolerance`
-  (`brep_p1`). All of these are `todo` and none has an open PR. Before the builders run,
-  the inputs pass through more unported code: `CreateNaturalUVTrimCurves`
-  (`surface.surface_p6`), `FindKnotsByMaxContinuity` (`surface.surface_p8`),
-  `CreateIsoParametricCurve`/`DropPoint` (`surface.surface_p5`) and `SmCurveLoops` /
-  `SmTrimmingTools::FindOuterLoops` (`topology.trimming_tools`, 13 calls).
-- **Consequence for difftest.** Every case would be deferred, apart from input-validation
-  errors (a null surface, or a UV domain that `CreateFaceInRegionFromSurface` finds not
-  contained in the natural domain). The plane fit in `CreatePlanarFace(s)With3DCurves` is
-  `Surface::create_plane_with_3d_curves`, which `surface.surface_p2` already compares, so it
-  doesn't test this unit. A runner whose only non-deferred comparisons are error statuses
-  would pass the gate without checking anything this unit computes (AGENTS.md section 4,
-  item 5.7).
-- **Re-checked 2026-10-16** (`main` at `19adf830`): `topology.loopuse`, `edgeuse_p1`,
-  `surface_p5`, `surface_p6` and `trimming_tools` are now `partial` and the data model from
-  #55 has merged, but `brep_p1`, `brep_p3`, `brep_p4`, `brep_p5`, `brep_p6`, `brep_p7`,
-  `brep_p9` and `surface_p8` are still `todo`. `MakeFacesWithCurves` still reaches
-  `GetInfiniteRegion` (`brep_p1`) and `MakeFaceWithCurves` (`brep_p7`) on every success
-  path, and `CreateFaceFromSurface` goes through `GetInfiniteRegion` before anything else,
-  so the conclusion above is unchanged. Two `UNPORTED(topology.brep_p8)` stubs now exist
-  (`topology/trimming_tools.rs` `make_faces_with_curves`, difftest
-  `surface_trim_srf_cache.rs` on `CreateFaceFromSurface`); wire them when this unit lands.
-- **Unblock when** `brep_p1`, `brep_p5`, `brep_p6`, `brep_p7` and `brep_p9` are green or
-  partial. Then `CreateFaceInRegionFromSurface`
-  (for planes, B-spline surfaces and cylinders: natural, sub-domain and closed-seam
-  domains) and `CreateFacesFromSurface` (C0-split B-splines, once `surface_p8` lands) can be
-  compared as traversal-order topology plus vertex and edge geometry. `MakeFacesWithCurves`
-  also needs `topology.trimming_tools`.
-- **Re-checked again 2026-10-16** (`main` at `f31e73a6`): `brep_p3`, `brep_p4`, `brep_p5`,
-  `brep_p6`, `brep_p7` and `brep_p9` are still `todo` with no open PR. `brep_p1` (#145) is a
-  draft and `surface_p8` (#118) is open, neither merged. Still blocked.
-- **Re-checked a third time 2026-10-16** (`main` at `2bdd9f66`): `surface_p8` has merged
-  (`partial`), but `brep_p1`, `brep_p3`, `brep_p4`, `brep_p5`, `brep_p6`, `brep_p7` and
-  `brep_p9` are all still `todo` on `main`. Open PRs: `brep_p1` #145 (draft), `brep_p4`
-  #173 (draft), `brep_p6` #169 (ready, unmerged), `brep_p7` #155 (draft); `brep_p3`,
-  `brep_p5` and `brep_p9` have no PR. Still blocked.
-- **Re-checked a fourth time 2026-10-18** (`main` at `73649d48`): `brep_p6` has merged as
-  `partial` (#169), but `brep_p1`, `brep_p3`, `brep_p4`, `brep_p5`, `brep_p7` and `brep_p9`
-  are still `todo` on `main`. They all have open contributor PRs now: `brep_p1` #145,
-  `brep_p5` #194, `brep_p7` #155 and `brep_p9` #183 are ready, and `brep_p3` #204 and
-  `brep_p4` #173 are drafts. Merging those branches into this one would not unblock it.
-  Their own notes say that none of their successful construction paths is compared yet:
-  #155 says every `MakeFaceWithCurves` pass is a no-op, empty input or error status, #194
-  certifies 0 of its 12 successful mutation paths, #183's `MakeVertexLoop` defers at
-  `brep_p1`, and `brep_p6`'s `MakeFaceTopology` defers every non-null surface at
-  `SmFace::SetTolerance` (`topology.face_p3`). They also stop at `SmBrep::Notify`
-  (`topology.brep_p2`, #149 open) and `SmFace::Notify` (`topology.face_p3`, no PR).
-  Every path through this unit reaches those builders (the "new algorithm" branch of
-  `CreateFaceInRegionFromSurface` is dead code: `sbUseOldAlgorithm` is a `constexpr
-  TRUE`), so a runner would still compare nothing beyond input-validation statuses.
-  **Unblock when** `brep_p7`'s `MakeFaceWithCurves` (and so `brep_p2` `Notify` and
-  `face_p3` `SetTolerance`/`Notify`) completes a face for real, and `brep_p1`, `brep_p5`
-  and `brep_p9` are `partial` or better. Still blocked.
+- **Builds on PR #204** (`topology.brep_p3`, head `293ce7fc`, merged into the branch):
+  `MakeFaceWithCurves` makes its wire edges with #204's `MakeWireEdge` /
+  `MakeWireEdgeVertex`, and `CreateFacesWithCurves` deletes faces with its `DeleteFace`.
+  #72 cannot merge before #204.
+- **Every face construction stops in `MakeFaceTopology` (`topology.brep_p6`).** All seven
+  functions are ported (`topology::brep::p8`; the "new algorithm" branch of
+  `CreateFaceInRegionFromSurface` is dead code, `sbUseOldAlgorithm` is a `constexpr TRUE`).
+  Every path that makes a face goes `MakeFaceWithCurves` (`brep_p7`) -> `MakeFace` ->
+  `MakeFaceTopology` (`brep_p6`), whose port stops at its `SetTolerance` call: the stub
+  there is labelled `UNPORTED(topology.face_p3): SmFace::SetTolerance`, but
+  `face::p3::set_tolerance` is ported and the stub stands for the unported remainder of
+  `MakeFaceTopology` (face use / loop / edge use construction, radial sectors, trims,
+  `TestClosureSplitRegion`; `SmBrep.cpp:14141-14828`), which `topology.brep_p6` owns. So
+  every case that would build a face defers on `topology.face_p3` (298 of 339). **Unblock:**
+  finish `MakeFaceTopology` in `topology.brep_p6`; then the 298 deferred cases (faces on
+  planes and B-spline patches, natural and sub-domains, creased and closed surfaces,
+  planar loops with holes and several outer loops, the pyramid of
+  `primitive.api_primitives`) compare the whole B-rep they build.
+- **What is compared now** (41 cases, all with values): the status and the whole B-rep
+  after the op (counts, shell digest, the full topology graph of the `topology.brep_p3`
+  runner, and every vertex, edge, face and edge use's geometry): domains outside the
+  natural one, null surfaces and curve arrays, open, non-planar, empty and
+  degenerate-line planar curve sets, and three `MakeFacesWithCurves` split paths (a UV
+  loop with a hole on surfaces creased in `u`, `v` and both, 479 values each: the crease
+  iso curves are intersected with the loops, the loops split and the iso segments
+  inserted, the sub-patches made; each sub-patch's `MakeFaceWithCurves` fails, which
+  upstream ignores, leaving its wire edges in the B-rep). `--perturb` SENSITIVE 41/41;
+  `--fuzz 2000` FUZZ-PASS (rejected 474, malformed 822, ran 704, 0 differs/crashes).
+- **UB-119 behind the plane fit.** `CreatePlaneWith3DCurves` of loops far from the origin
+  relative to their size (the pyramid base at `1e9` with side 5) tessellates them to zero
+  area, and upstream `FindOuterLoops` reads past its arrays (UB-119); the C++ goes on with
+  garbage counts (and builds the pyramid). The port refuses it (`InvalidInput` from
+  `topology::trimming_tools`); the face builders pass that error through instead of
+  `SM_ERR`, and the runners of this unit and `primitive.api_primitives` defer such cases
+  as `cpp-guard:ub-119` (4 generated pyramids).
+- **`MakeFacesWithCurves` group counts** (WR-210): a sub-patch's second outer-loop group
+  is counted with the first group's loop counts; ported as is.
+- **Wired back-edges:** `topology.trimming_tools` (`MakeFacesWithCurves`),
+  `heal.heal_data_p3` (`CreateFaceInRegionFromSurface` under the edit tracker, its changes
+  kept also on failure), `boolean.merge_p3` and `offset.offset_executive_p1`
+  (`CreateFaceFromSurface`, arena-only notification stores; `build_side_wall_of_edgeuse`
+  now takes `&mut Kernel`) and `primitive.api_primitives` (`SmApiCreatePyramid` builds
+  its five faces and stitches them; it takes the kernel). Two remain:
+  `offset_executive` `CreatePlanarFaceWith3DCurves` (the 2D-boolean continuation around it,
+  `SmOffsetExecutive.cpp:3816-3928`, is unported and needs `Boolean2D`,
+  `primitive.primitive_creation_p1`), and the runner-side deferrals of
+  `mass.integrator` and `surface.trim_srf_cache` (their Rust sides build no face yet).
+- **Wired stale stubs in `geom.tools`** (`FindCoincidentEdge`, `FindEdge`): the curve
+  owner, evaluation, `DropPoint` and `CurveMaxDistanceBetween` of the green
+  `curve.curve_p2` / `curve.curve_p6`; `MakeFaceWithCurves` reached them for every
+  second curve of a loop. `CoincidentEdgeQuery` gets `curve_owner` (the caller resolves
+  `pCurve->GetOwner()`), and `find_coincident_edge` / `find_edge` take the kernel. The
+  `geom.tools` runner now compares the coincident-edge cases on the file B-rep.
+- **Shim bug fixed in `primitive.api_primitives`:** `put_brep(o, SmApiCreateX(.., b), b)`
+  read `b` before the call wrote it (unspecified argument order; GCC evaluates right to
+  left), so every successful C++ B-rep reported `has = 0`; `put_brep` now takes `b` by
+  reference. Unseen before, as every Rust B-rep entry point deferred.
+- **Analytic surfaces** (`SmCylinder`, `SmSphere`, `SmTorus`, `SmCone`) are not in the
+  shim: the Rust `Surface` has no such kinds (issue #76), so a face on one could not be
+  compared with its C++ overrides.
 
 ## intersect.curve_class_p6 (partial; PR #138)
 

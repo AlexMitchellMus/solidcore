@@ -245,7 +245,11 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                 Err(e) => Ok(rust_err(&e)),
             }
         }
-        Inputs::Edge { file, pnt } => match tools::find_edge(&file_brep(file)?, p3(*pnt)) {
+        Inputs::Edge { file, pnt } => match tools::find_edge(
+            &solidcore::kernel::Kernel::default(),
+            &file_brep(file)?,
+            p3(*pnt),
+        ) {
             Ok(Some(m)) => Ok(status_only(0)
                 .int("index", index_i64(m.index)?)
                 .scalar("param", m.parameter)),

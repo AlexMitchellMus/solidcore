@@ -36,7 +36,10 @@
 //!   `CreateBySplitCurve` (a null curve goes into the loops), a first
 //!   `EvaluatePoint` failure in the loop/patch association (an uninitialised point is
 //!   dropped), and a `MakeFaceWithCurves` that succeeds without a face (its
-//!   `m_bRectangularTrim` is set).
+//!   `m_bRectangularTrim` is set). A plane fit that fails with
+//!   [`SolidError::InvalidInput`] (an input `CreatePlaneWith3DCurves` mishandles
+//!   upstream, e.g. the zero-area loop of `FindOuterLoops`, UB-119) returns that error,
+//!   not `SM_ERR`.
 //! - **Upstream bug kept.** In `MakeFacesWithCurves` the curves of each outer loop group
 //!   are counted with `sThisPatchLoops.m_sLoopCounts[ll]` (the patch's loops from the
 //!   first) but read from the group's own curve list: for a patch's second group the
@@ -155,6 +158,16 @@ fn as_sm_err(e: SolidError) -> SolidError {
         e
     } else {
         SolidError::sm_err(OP)
+    }
+}
+
+/// `if(SM_SUCCESS != CreatePlaneWith3DCurves(..)) return SM_ERR`: `SM_ERR`, except that
+/// [`SolidError::Unported`] and [`SolidError::InvalidInput`] (the port's marker of an
+/// input upstream mishandles, e.g. `FindOuterLoops`' zero-area loop, UB-119) go through.
+fn plane_failed(e: SolidError) -> SolidError {
+    match e {
+        SolidError::InvalidInput { .. } => e,
+        other => as_sm_err(other),
     }
 }
 
@@ -379,7 +392,7 @@ pub fn create_planar_face_with_3d_curves(
     let region = region.or(b.infinite_region());
 
     // create the plane - returns an error for open, degenerate, or nonCoplanar curves
-    let plane = Surface::create_plane_with_3d_curves(k, curves, tol_3d).map_err(as_sm_err)?;
+    let plane = Surface::create_plane_with_3d_curves(k, curves, tol_3d).map_err(plane_failed)?;
     let plane_domain = plane.plane.natural_uv_domain();
 
     let mut next_loop = 0usize;
@@ -457,7 +470,7 @@ pub fn create_planar_faces_with_3d_curves(
 
     // create the plane - fails for non-planar curves, degenerate curves, open loops,
     // spine points
-    let plane = Surface::create_plane_with_3d_curves(k, curves, tol).map_err(as_sm_err)?;
+    let plane = Surface::create_plane_with_3d_curves(k, curves, tol).map_err(plane_failed)?;
 
     let mut ordered: Vec<Option<Curve>> = Vec::with_capacity(plane.ordered_curves.len());
     for &ci in &plane.ordered_curves {
@@ -1268,4 +1281,148 @@ fn map_curve_tol_to_1d(curve: &Curve, tol_3d: f64, param: f64) -> Result<f64> {
         .and_then(|d| d.get(1).copied())
         .unwrap_or(Vec3::new(0.0, 0.0, 0.0));
     Ok(tol::map_to_1d(tol_3d, deriv, &curve.natural_interval()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::{SM_ERR, SM_ERR_NULL_POINTER};
+    use crate::geom::attribute::AttributeStore;
+    use crate::math::Point2;
+    use crate::surface::plane::Plane;
+    use std::collections::BTreeMap;
+
+    fn code(e: &SolidError) -> Option<i32> {
+        match e {
+            SolidError::Upstream { code, .. } => Some(*code),
+            _ => None,
+        }
+    }
+
+    /// Runs `f` on a new B-rep (`new SmBrep()`) with an arena-only notification store.
+    fn with_brep<R>(
+        f: impl FnOnce(&mut Kernel, &mut Brep, &mut FaceBuildEnv<'_, '_>) -> R,
+    ) -> (R, Brep) {
+        let mut k = Kernel::default();
+        let mut b = p3::new_brep(&mut k, tol::USE_DEFAULT, tol::USE_DEFAULT).unwrap();
+        let mut records = BTreeMap::new();
+        let mut attributes = AttributeStore::default();
+        let mut env = NotifyEnv {
+            records: &mut records,
+            attributes: &mut attributes,
+            context: None,
+            key_of: &loopuse::notify_ref,
+        };
+        let mut marks = Marks::default();
+        let this_face = |f: FaceId| loopuse::notify_ref(EntityRef::Face(f));
+        let mut fenv = FaceBuildEnv {
+            env: &mut env,
+            marks: &mut marks,
+            this_face: &this_face,
+        };
+        let r = f(&mut k, &mut b, &mut fenv);
+        (r, b)
+    }
+
+    fn plane() -> Surface {
+        Surface::from(Plane::from_normal(
+            Point3::new(0.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+        ))
+    }
+
+    fn unit_box() -> Extent2d {
+        Extent2d::from_points(Point2::new(0.0, 0.0), Point2::new(1.0, 1.0))
+    }
+
+    fn line(a: [f64; 3], b: [f64; 3]) -> Curve {
+        Curve::from(
+            Line::create_line_segment(
+                3,
+                Point3::new(a[0], a[1], a[2]),
+                Point3::new(b[0], b[1], b[2]),
+                None,
+            )
+            .unwrap(),
+        )
+    }
+
+    #[test]
+    fn null_surfaces_and_curves_are_null_pointer_statuses() {
+        let (r, _) = with_brep(|k, b, fenv| {
+            create_face_in_region_from_surface(k, b, None, None, &unit_box(), fenv)
+        });
+        assert_eq!(code(&r.unwrap_err()), Some(SM_ERR_NULL_POINTER));
+        let (r, _) = with_brep(|k, b, fenv| {
+            create_faces_from_surface(k, b, None, &unit_box(), ContinuityType::C0, fenv)
+        });
+        assert_eq!(code(&r.unwrap_err()), Some(SM_ERR_NULL_POINTER));
+        let (r, _) = with_brep(|k, b, fenv| {
+            create_faces_with_curves(k, b, None, &[4], None, &[], Some(plane()), fenv)
+        });
+        assert_eq!(code(&r.unwrap_err()), Some(SM_ERR_NULL_POINTER));
+    }
+
+    #[test]
+    fn domain_outside_the_natural_one_is_sm_err_and_editing_is_untouched() {
+        // a bilinear patch over [0, 1]^2; [-0.5, 1] x [0, 1] is not contained
+        let bs = crate::nurbs::b_spline_surface::BSplineSurface::create_bilinear_surface(
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(0.0, 1.0, 0.0),
+            Point3::new(1.0, 1.0, 0.0),
+        )
+        .unwrap();
+        let dom = Extent2d::from_points(Point2::new(-0.5, 0.0), Point2::new(1.0, 1.0));
+        let (r, b) = with_brep(|k, b, fenv| {
+            create_face_in_region_from_surface(k, b, None, Some(Surface::from(bs)), &dom, fenv)
+        });
+        assert_eq!(code(&r.unwrap_err()), Some(SM_ERR));
+        assert!(!b.editing_enabled());
+    }
+
+    #[test]
+    fn open_or_empty_curve_sets_make_no_plane() {
+        let open = vec![
+            line([0.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
+            line([1.0, 0.0, 0.0], [1.0, 1.0, 0.0]),
+        ];
+        for curves in [open, Vec::new()] {
+            let (r, _) = with_brep(|k, b, fenv| {
+                create_planar_face_with_3d_curves(k, b, None, &curves, 1e-6, fenv)
+            });
+            assert_eq!(code(&r.unwrap_err()), Some(SM_ERR));
+            let (r, _) = with_brep(|k, b, fenv| {
+                create_planar_faces_with_3d_curves(k, b, None, &curves, 1e-6, fenv)
+            });
+            assert_eq!(code(&r.unwrap_err()), Some(SM_ERR));
+        }
+    }
+
+    #[test]
+    fn a_square_reaches_the_face_construction_and_restores_editing() {
+        let square = vec![
+            line([0.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
+            line([1.0, 0.0, 0.0], [1.0, 1.0, 0.0]),
+            line([1.0, 1.0, 0.0], [0.0, 1.0, 0.0]),
+            line([0.0, 1.0, 0.0], [0.0, 0.0, 0.0]),
+        ];
+        // the wire edges are made; the face itself stops in MakeFaceTopology
+        let (r, b) = with_brep(|k, b, fenv| {
+            create_planar_face_with_3d_curves(k, b, None, &square, 1e-6, fenv)
+        });
+        match r {
+            Ok(face) => assert!(face.is_some()),
+            Err(e) => assert!(e.is_unported(), "{e}"),
+        }
+        assert!(!b.editing_enabled());
+        let (r, b) = with_brep(|k, b, fenv| {
+            create_face_in_region_from_surface(k, b, None, Some(plane()), &unit_box(), fenv)
+        });
+        match r {
+            Ok(m) => assert_eq!(b.face(m.face).unwrap().rectangular_trim, 1),
+            Err(e) => assert!(e.is_unported(), "{e}"),
+        }
+        assert!(!b.editing_enabled());
+    }
 }

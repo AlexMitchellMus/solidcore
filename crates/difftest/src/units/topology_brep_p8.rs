@@ -19,7 +19,11 @@
 //! natural domain and sampled points (layout in the ffi module).
 //!
 //! **Guards.** The FFI wrapper rejects what upstream does not handle safely (see its
-//! docs); generated cases avoid those inputs.
+//! docs); generated cases avoid those inputs. A plane fit whose loop tessellation has
+//! zero area (curves far from the origin relative to their size) makes upstream
+//! `FindOuterLoops` read past its arrays (`plan/upstream-issues.md` UB-119); the port
+//! refuses it (`InvalidInput` from `topology::trimming_tools`) and the case defers as
+//! `cpp-guard:ub-119`: the shim cannot tell it before the call.
 //!
 //! **Deferred.** Calls into units that are not ported return `Unported` on the Rust side
 //! (`DeleteEdge` / `DeleteVertex` of `topology.brep_p4`, and further down the Euler
@@ -417,6 +421,16 @@ fn this_face(f: FaceId) -> ObjectRef {
 fn status<T>(r: &Result<T, SolidError>) -> Result<f64, Fail> {
     match r {
         Ok(_) => Ok(0.0),
+        // the port's refusal of FindOuterLoops' zero-area loop: upstream reads past its
+        // arrays there (plan/upstream-issues.md UB-119) and goes on with garbage counts,
+        // so the case is not comparable (the shim cannot tell it beforehand)
+        Err(SolidError::InvalidInput {
+            operation: "topology::trimming_tools",
+            ..
+        }) => Err(Fail::Deferred(Box::new(Output::deferred(
+            "cpp-guard:ub-119",
+            "SmTrimmingTools::FindOuterLoops",
+        )))),
         Err(SolidError::Upstream { code, .. }) => Ok(f64::from(*code)),
         Err(SolidError::InvalidInput { .. }) => Ok(1007.0),
         Err(e) => Err(match Output::unported(e) {

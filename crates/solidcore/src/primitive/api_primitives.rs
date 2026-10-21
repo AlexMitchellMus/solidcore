@@ -830,6 +830,11 @@ mod tests {
     fn valid_brep_inputs_reach_the_unported_kernel() {
         assert!(create_box(o(), 5.0, 10.0, 20.0).is_err_and(|e| e.is_unported()));
         assert!(create_sphere_no_pole(o(), -5.0).is_err_and(|e| e.is_unported()));
+        // the pyramid's faces are built (topology.brep_p8) until the face construction
+        // of MakeFaceTopology (topology.brep_p6) stops
+        assert!(
+            create_pyramid(&mut Kernel::default(), o(), 2.0, 3.0).is_err_and(|e| e.is_unported())
+        );
     }
 
     #[test]
