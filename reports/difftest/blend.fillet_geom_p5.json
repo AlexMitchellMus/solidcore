@@ -163,8 +163,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletGeom::FindEdgeTangentAtPoint",
-        "unit": "blend.fillet_geom_p6"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0020",
@@ -387,8 +387,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletGeom::FindEdgeTangentAtPoint",
-        "unit": "blend.fillet_geom_p6"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0047",
@@ -438,16 +438,12 @@
       "values_compared": 79
     },
     {
-      "deferred": {
-        "symbol": "SmFilletGeom::FindEdgeTangentAtPoint",
-        "unit": "blend.fillet_geom_p6"
-      },
       "max_rel_err": 0.0,
       "name": "gen0053",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=9207373017645818592",
-      "values_compared": 0
+      "values_compared": 2
     },
     {
       "max_rel_err": 0.0,
@@ -870,16 +866,12 @@
       "values_compared": 271
     },
     {
-      "deferred": {
-        "symbol": "SmFilletGeom::FindEdgeTangentAtPoint",
-        "unit": "blend.fillet_geom_p6"
-      },
       "max_rel_err": 0.0,
       "name": "gen0104",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=9207373017645818643",
-      "values_compared": 0
+      "values_compared": 2
     },
     {
       "max_rel_err": 0.0,
@@ -1163,8 +1155,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletGeom::FindEdgeTangentAtPoint",
-        "unit": "blend.fillet_geom_p6"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0139",
@@ -1183,8 +1175,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletGeom::FindEdgeTangentAtPoint",
-        "unit": "blend.fillet_geom_p6"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0141",
@@ -1314,16 +1306,12 @@
       "values_compared": 76
     },
     {
-      "deferred": {
-        "symbol": "SmFilletGeom::FindEdgeTangentAtPoint",
-        "unit": "blend.fillet_geom_p6"
-      },
       "max_rel_err": 0.0,
       "name": "gen0156",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=9207373017645818695",
-      "values_compared": 0
+      "values_compared": 2
     },
     {
       "max_rel_err": 0.0,
@@ -1383,8 +1371,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletGeom::FindEdgeTangentAtPoint",
-        "unit": "blend.fillet_geom_p6"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0164",
@@ -1435,8 +1423,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletGeom::FindEdgeTangentAtPoint",
-        "unit": "blend.fillet_geom_p6"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0169",
@@ -1491,8 +1479,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletGeom::FindEdgeTangentAtPoint",
-        "unit": "blend.fillet_geom_p6"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0175",
@@ -1987,8 +1975,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletGeom::FindEdgeTangentAtPoint",
-        "unit": "blend.fillet_geom_p6"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0236",
@@ -2519,15 +2507,14 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 29,
+  "cases_deferred": 26,
   "cases_failed": 0,
-  "cases_passed": 271,
+  "cases_passed": 274,
   "cases_total": 300,
   "deferred_by_unit": {
-    "blend.fillet_geom_p6": 11,
     "intersect.surface_intersector_p2": 7,
     "intersect.surface_intersector_p4": 1,
-    "topology.brep_p3": 10
+    "topology.brep_p3": 18
   },
   "max_rel_err": 0.0,
   "pass": true,

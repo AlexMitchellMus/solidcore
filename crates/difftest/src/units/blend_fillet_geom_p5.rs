@@ -38,9 +38,9 @@
 //! the constructor).
 //!
 //! Deferred on the Rust side (unported callees): every builder past its checks (the edge
-//! use constructor needs `SmBrep()`'s infinite region, `topology.brep_p3`); `SM_BT_BLEND`
-//! end curves at `FindEdgeTangentAtPoint` (`blend.fillet_geom_p6`). The split-face update
-//! and the surface/surface intersections (`blend.fillet_geom_p2`) are wired. The shim
+//! use constructor needs `SmBrep()`'s infinite region, `topology.brep_p3`). The split-face
+//! update, `FindEdgeTangentAtPoint` (`blend.fillet_geom_p6`) and the surface/surface
+//! intersections (`blend.fillet_geom_p2`) are wired. The shim
 //! refuses exactly the inputs that would make upstream dereference what the harness cannot
 //! build (a real fillet corner, a solver or rail it needs, a type-confused classification
 //! object; the list is in the FFI module docs); the generator keeps only inputs both sides
@@ -529,7 +529,7 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
             let gid = rm.geom(*g)?;
             let r = rm
                 .fb
-                .create_end_curve(&k, gid, *end, trim_type(*trim), &solvers);
+                .create_end_curve(&k, gid, *end, trim_type(*trim), &solvers, &rm.target);
             o.push(status_of!(r));
             o.push(rm.fb.edge_list().len() as f64);
             if r.is_ok() {

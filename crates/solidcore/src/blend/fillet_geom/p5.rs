@@ -73,9 +73,9 @@
 //!   (SmFilletGeom.cpp:10580-10645); [`Curve::drop_point`] and the solve here each build
 //!   their own. The results are bit-identical in every difftest case; a future
 //!   cache-dependent disagreement should look here first.
-//! - **Unported callees.** `SmFilletGeom::FindEdgeTangentAtPoint` and
-//!   `SmFilletGeom::Copy` (`blend.fillet_geom_p6`); `SmFilletExecutive::GetPseudoBrep`
-//!   (`blend.fillet_executive_p1`); the corner members above. Each stub replaces only
+//! - **Unported callees.** `SmFilletExecutive::GetPseudoBrep`
+//!   (`blend.fillet_executive_p1`); the corner members above. `FindEdgeTangentAtPoint`
+//!   and `SmFilletGeom::Copy` are part 6's (`blend.fillet_geom_p6`). Each stub replaces only
 //!   its call.
 //! - **User pointers.** `MakeRailEdgeuse` stores the two faces' surface pointers in the
 //!   new vertex use's `SmTsectPnt::m_apUserPointer` (never read in SMLib; not modelled
@@ -427,32 +427,6 @@ fn fillet_edge_update_split_face(
     corners: &[FilletCorner],
 ) -> Result<()> {
     ignore_non_unported(fb.update_edge_split_face(k, e, orig_face, new_face, target, corners))
-}
-
-/// `SmFilletGeom::FindEdgeTangentAtPoint(lRailIndex, lEndIndex, rbFound, rTangent)`
-/// (unit `blend.fillet_geom_p6`): whether a tangent was found, and the tangent.
-fn find_edge_tangent_at_point(
-    fb: &FilletBrep,
-    g: FilletGeomId,
-    rail_index: usize,
-    end_index: usize,
-) -> Result<(bool, Vec3)> {
-    // UNPORTED(blend.fillet_geom_p6): SmFilletGeom::FindEdgeTangentAtPoint
-    unported_on(
-        (fb.edge_list().len(), g, rail_index, end_index),
-        "SmFilletGeom::FindEdgeTangentAtPoint",
-        "blend.fillet_geom_p6",
-    )
-}
-
-/// `SmFilletGeom::Copy(pFilletGeomToCopy)` (unit `blend.fillet_geom_p6`).
-fn fillet_geom_copy(fb: &mut FilletBrep, g: FilletGeomId, src: FilletGeomId) -> Result<()> {
-    // UNPORTED(blend.fillet_geom_p6): SmFilletGeom::Copy
-    unported_on(
-        (fb.edge_list().len(), g, src),
-        "SmFilletGeom::Copy",
-        "blend.fillet_geom_p6",
-    )
 }
 
 /// `pFilletSolver->m_pExecutive->GetPseudoBrep()` (unit `blend.fillet_executive_p1`):
@@ -1180,7 +1154,7 @@ impl FilletBrep {
     ///
     /// `SM_ERR_NULL_POINTER` for a source without solver or a solver without executive
     /// (upstream dereferences them); [`SolidError::Unported`] for the executive's
-    /// pseudo B-rep (`blend.fillet_executive_p1`) and `Copy` (`blend.fillet_geom_p6`).
+    /// pseudo B-rep (`blend.fillet_executive_p1`).
     pub fn copy_fillet_geom(
         &mut self,
         k: &Kernel,
@@ -1207,7 +1181,7 @@ impl FilletBrep {
         for i in 0..2 {
             ignore_non_unported(self.make_rail_edge(k, g, i))?;
         }
-        ignore_non_unported(fillet_geom_copy(self, g, src))?;
+        ignore_non_unported(self.copy_geom(k, g, src, solvers))?;
         let gtype = self.geom(src)?.fillet_geom_type();
         self.geom_mut(g)?.set_fillet_geom_type(gtype);
         Ok(g)
@@ -1406,8 +1380,9 @@ impl FilletBrep {
     /// # Errors
     ///
     /// `SM_ERR_NULL_POINTER` without surface, rails, uses, solver; those of the
-    /// curve creations, the lift and [`FilletBrep::make_fillet_edge`];
-    /// [`SolidError::Unported`] for `FindEdgeTangentAtPoint` (`blend.fillet_geom_p6`).
+    /// curve creations, the lift, [`FilletBrep::make_fillet_edge`] and (for
+    /// `SM_BT_BLEND`) `FindEdgeTangentAtPoint`, which reads the rail end vertices'
+    /// classification edges in `target`.
     #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn create_end_curve(
         &mut self,
@@ -1416,6 +1391,7 @@ impl FilletBrep {
         end_index: usize,
         trim_type: BoundaryTrimmingType,
         solvers: &[FilletSolver],
+        target: &Brep,
     ) -> Result<EdgeId> {
         // Create a line between the two UV points and lift the curve.
         let fillet_surface = self
@@ -1471,8 +1447,12 @@ impl FilletBrep {
                 .distance(self.vertex_point(fv_end)?);
 
             // Find Edge Tangents
-            let (found1, mut tangent1) = find_edge_tangent_at_point(self, g, 0, end_index)?;
-            let (found2, mut tangent2) = find_edge_tangent_at_point(self, g, 1, end_index)?;
+            // (rbFound, rTangent): a tangent not found leaves SmVector3d() undefined
+            let found = |t: Option<Vec3>| (t.is_some(), t.unwrap_or(Vec3::UNDEF));
+            let (found1, mut tangent1) =
+                found(self.find_edge_tangent_at_point(k, g, 0, end_index, target)?);
+            let (found2, mut tangent2) =
+                found(self.find_edge_tangent_at_point(k, g, 1, end_index, target)?);
 
             // when 1st tangent was found
             if found1 {
