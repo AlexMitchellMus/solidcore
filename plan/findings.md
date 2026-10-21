@@ -4481,6 +4481,16 @@ a gap below 0.1 and a loose tolerance, so it only shows in large seed counts; th
 default 3,093-case set (which the gate and CI run) is clean, and the previous generator's
 30,055-case run was clean.
 
+**Handling (#94).** Logged as `UB-204` in `plan/upstream-issues.md`. The Rust side keeps zeroing
+`Matrix::new`: emulating a stack slot is neither possible nor deterministic, and the port's goal is
+deterministic results. The unit's generator skips the shape, so `--seeds 30000` no longer reports
+`gen21507`: `reads_uninitialised_jacobian` in `crates/difftest/src/units/curve_curve_p9.rs` drops
+op 9 cases where a Hermite end tangent of length zero is reached and the other curve is within 0.1
+of that end. Measured over the default 30,093 cases it matches 4 (the failing one and 3
+pairs that touch exactly at that end and pass); the other 38 cases with a zero end tangent are 0.5 or more
+apart. It is deliberately narrower than "any zero tangent", which the generator keeps drawing
+(8% of Hermite `d2`, 10% of `d1`) as degenerate coverage.
+
 ## intersect.surface_intersector_p5 (`SmSurfaceIntersector::DoIntersection`, 2026-10-14; partial, no disagreements)
 
 - **Dispatch.** Every upstream caller runs `DoIntersection` on an
@@ -12384,6 +12394,20 @@ mechanical:
   `allow_removal_of_ends = false` or the runner's record after the squeeze op.
 
 `SmCurveInterval::GetMinUV` / `GetMaxUV` are wired (no case reaches them yet).
+
+**Resolved (wire/curve-class-p4, PR #365):** both back-edges are now wired.
+
+- The 4 `ConnectIntervals` disagreements are upstream undefined behaviour, not a port
+  bug. Each case squeezes the only interval out of a classification (`ConnectIntervals`
+  removes it, leaving size 0) and then runs `GetLoopCrossings` over loops, whose
+  `GetPointClassifiesConnectedTo` reads `m_pData[0]` of the empty classification.
+  Upstream reads a stale or missing interval there, while Rust reports `InvalidInput`.
+  The p4 shim now rejects `GetLoopCrossings` over loops on an empty classification.
+- `merge_plane10_line` defers as `topology.brep_p2`
+  (`MergeCurvesOnSurface: topology handles of the merged B-rep`), because the brep_p2
+  runner's `MergeObjects` resolves only the case curves.
+  `merge_curves_on_surface` holds the B-rep as `&mut`, so no `ClassGeometry` adapter can
+  lend it to `topology_entity` without a change to brep_p2's objects trait.
 
 ## topology.edge — inexact geometry import reporting (issue #294, PR #356)
 
