@@ -12301,9 +12301,10 @@ operation, not to the whole B-rep.
   with the derived class's `EvaluateSTEPPoint` / `LocalPointSolve`.
 - `topology.vertexuse` +151 deferrals on `SmFace::GetTolerance` (`topology.face_p2`):
   exact sphere/torus faces now reach the face tolerance, as #304's revolution faces did.
-- Possible #313 leftover (not changed here): `plane::p2::global_surface_intersect`'s
-  `Cone` arm calls the cone's `SmSurfOfRevolution::IntersectWithPlane`, while upstream
-  `SmPlane::GlobalSurfaceIntersect` calls `SmCone::IntersectWithPlane`.
+- `plane::p2::global_surface_intersect`'s `Cone` arm (from #313) calls the cone's
+  `SmSurfOfRevolution::IntersectWithPlane`, while upstream calls
+  `SmCone::IntersectWithPlane` (a different, conic-section body): confirmed by
+  difftest (2 failures with real cones) and fixed separately in #440.
 - `SurfOfRevolution::is_nurb_surface_surf_of_revolution` returns `None` for a cone,
   sphere or torus; upstream's `IsKindOf(SmSurfOfRevolution_TYPE)` copies them.
 - `topology.vertex` has its own fixture export (`support/topology_fixture.h`), which does
