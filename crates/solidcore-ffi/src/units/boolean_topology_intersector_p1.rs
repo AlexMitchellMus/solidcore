@@ -90,11 +90,13 @@ pub const MAX_INDEX: usize = 32;
 pub const MAX_DEGREE: usize = 5;
 /// Largest coordinate magnitude.
 pub const MAX_COORD: f64 = 1.0e300;
-/// Bound (exclusive) on surface control point coordinates: from about `1e154`, where
-/// their squares overflow, upstream's face/face, edge/face and coincidence
-/// intersections do not finish (HANG-29, `SmCurve::GlobalCoincidenceChecker` splitting
-/// a face boundary forever; below `1e150` they return at once).
-pub const MAX_SURFACE_COORD: f64 = 1.0e154;
+/// Bound (exclusive) on B-spline surface and curve control point coordinates: from
+/// about `1e154`, where their squares overflow, upstream's face/face, edge/face,
+/// coincidence and full intersections do not finish (HANG-29,
+/// `SmCurve::GlobalCoincidenceChecker` splitting a boundary forever; a surface point of
+/// `1e154` gave no result in 60 s, `1e150` returned in 0.1 s; a curve point of `-1e155`
+/// took 27 s, `-1e154` none).
+pub const MAX_GEOMETRY_COORD: f64 = 1.0e154;
 /// Most ops in a script.
 pub const MAX_OPS: usize = 64;
 /// Most handles in one list.
@@ -429,7 +431,7 @@ fn surface(rd: &mut Reader<'_>) -> Result<Domain, FfiError> {
             "surface: need 1 <= p <= n, 1 <= q <= m, r = n+p+1, s = m+q+1",
         ));
     }
-    check_points(rd, (n + 1) * (m + 1), false, MAX_SURFACE_COORD, "surface")?;
+    check_points(rd, (n + 1) * (m + 1), false, MAX_GEOMETRY_COORD, "surface")?;
     let u = rd.finites(r + 1)?;
     let v = rd.finites(s + 1)?;
     let (u0, u1) = check_knots(&u, p, "surface u")?;
@@ -449,7 +451,7 @@ fn curve(rd: &mut Reader<'_>) -> Result<(f64, f64), FfiError> {
     if p == 0 || p > n || m != n + p + 1 {
         return Err(bad("curve: need 1 <= p <= n and m = n + p + 1"));
     }
-    check_points(rd, n + 1, dim == 2, f64::INFINITY, "curve")?;
+    check_points(rd, n + 1, dim == 2, MAX_GEOMETRY_COORD, "curve")?;
     let knots = rd.finites(m + 1)?;
     check_knots(&knots, p, "curve")
 }

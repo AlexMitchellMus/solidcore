@@ -4846,10 +4846,11 @@ mod tests {
     use super::*;
     use crate::case::CaseSource;
 
-    /// HANG-29: the `--fuzz 30000` inputs whose surface control point of `1e300` kept
-    /// the C++ intersection busy past the timeout, for this unit and `_p2` (which
-    /// shares this reader). They cannot be fixtures (a harness error always fails a
-    /// case), so this test keeps them: the FFI refuses each before any construction.
+    /// HANG-29: the `--fuzz 30000` inputs whose surface or curve control point of
+    /// `+-1e300` kept the C++ intersection busy past the timeout, for this unit and `_p2`
+    /// (which shares this reader), and UB-166's v knot snap (`ub166` in the name: the
+    /// shim refuses the B-rep). They cannot be fixtures (a harness error always fails a
+    /// case), so this test keeps them: each is refused before the intersection runs.
     #[cfg(feature = "cpp")]
     #[test]
     fn ffi_refuses_surface_points_in_the_hang_range() {
@@ -4874,7 +4875,13 @@ mod tests {
                     inputs: recorded["inputs"].clone(),
                 };
                 let error = runner.run_cpp(&case).unwrap_err().to_string();
-                assert!(error.contains("surface: point out of range"), "{}: {error}", case.name);
+                let expected = if case.name.contains("ub166") {
+                    // the shim's UB-166 refusal (SC_ERR_ARG)
+                    "shim_rejected_args"
+                } else {
+                    "point out of range"
+                };
+                assert!(error.contains(expected), "{}: {error}", case.name);
             }
         }
     }
