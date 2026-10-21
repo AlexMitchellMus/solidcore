@@ -33,7 +33,9 @@
 //! # `calc_geom`
 //!
 //! [`calc_geom`] builds `SmPrimitiveCreation::CreateRectangle(ctx, tol, w, h, frame)`
-//! (exported in traversal order by [`calc_target`], layout of `topology.edgeuse_p1`), a
+//! (with [`CalcProgram::uv_curves`] its face's UV trim curves made first by
+//! `SmFace::CreateUVTrimCurves(FALSE, ..)`; exported in traversal order by
+//! [`calc_target`], layout of `topology.edgeuse_p1`), a
 //! solver derived from `SmConstantRadiusFS` (surface-only constructor over the face's
 //! surface for both rails) whose only override is `SetExtensionFlags` (it sets the given
 //! flags: the base version dereferences the executive, unset here), sets its edge uses to
@@ -43,7 +45,10 @@
 //! calls `CalcFilletGeom`. The record is `status solver_status extend_before extend_after
 //! n_g1 g1[n_g1] knots_in[n_g1]` (the G1 knots after the call; the knots it was given).
 //!
-//! Guards: every input finite and at most [`MAX_COORD`] in magnitude; well-formed clamped
+//! Guards: every input finite and at most [`MAX_COORD`] in magnitude (the trace
+//! direction `dir` only finite: upstream merely scales a cross product of unit normals
+//! by it before a length test, `Unitize` and a sign test, so any finite value is
+//! defined); well-formed clamped
 //! B-spline surfaces (non-rational weights [`NOW`]); surfaces of revolution as unit
 //! `surface.surf_of_revolution_p1` accepts them; point type codes in range. For
 //! `calc_geom`: a B-spline edge curve (no Hermite replacement) needs the fillet geometry
@@ -168,6 +173,9 @@ pub struct CalcProgram {
     pub h: f64,
     /// B-rep tolerance.
     pub tol: f64,
+    /// Make the face's UV trim curves first (`SmFace::CreateUVTrimCurves(FALSE, ..)`,
+    /// status ignored), before the export and the call.
+    pub uv_curves: bool,
     /// Edge index in traversal order (0..4).
     pub edge: usize,
     /// `m_pEdgeuses[1]` is `m_pEdgeuses[0]` (else the edge's second edge use when it has
@@ -262,6 +270,14 @@ impl Enc {
     fn nums(&mut self, xs: &[f64]) -> Result<(), FfiError> {
         xs.iter().try_for_each(|&x| self.num(x))
     }
+    /// A value guarded by finiteness only (any finite magnitude is well defined).
+    fn any_finite(&mut self, x: f64) -> Result<(), FfiError> {
+        if !x.is_finite() {
+            return Err(bad("value not finite"));
+        }
+        self.v.push(x);
+        Ok(())
+    }
     fn int(&mut self, x: usize) {
         self.v.push(x as f64);
     }
@@ -316,7 +332,10 @@ impl Enc {
                 let mut block = Vec::new();
                 push_surf(&mut block, r)?;
                 // the revolution guard bounds coordinates only by finiteness
-                if block.iter().any(|&x| x != NOW && !(x.is_finite() && x.abs() <= MAX_COORD)) {
+                if block
+                    .iter()
+                    .any(|&x| x != NOW && !(x.is_finite() && x.abs() <= MAX_COORD))
+                {
                     return Err(bad("revolution value too large"));
                 }
                 self.int(3);
@@ -365,7 +384,11 @@ pub fn encode_point(prog: &PointProgram) -> Result<Vec<f64>, FfiError> {
     for uv in &prog.uv {
         e.nums(uv)?;
     }
-    e.num(prog.dir)?;
+    // dCurveTraceDirection only scales the normals' cross product (and the stepped-off
+    // one) before a length test, Unitize and a sign test: any finite value is defined
+    // (an overflowing length is inf, Unitize then gives zeros; inf * 0 is NaN, which
+    // only fails comparisons), so it is bounded by finiteness alone.
+    e.any_finite(prog.dir)?;
     e.point(&prog.point)?;
     match &prog.prev {
         None => e.flag(false),
@@ -416,7 +439,7 @@ pub fn static_step() -> Result<f64, FfiError> {
     Ok(step)
 }
 
-fn rect(e: &mut Enc, w: f64, h: f64, tol: f64) -> Result<(), FfiError> {
+fn rect(e: &mut Enc, w: f64, h: f64, tol: f64, uv_curves: bool) -> Result<(), FfiError> {
     let sized = |x: f64| x.is_finite() && (1e-6..=1e6).contains(&x);
     if !sized(w) || !sized(h) {
         return Err(bad("rectangle size"));
@@ -424,7 +447,9 @@ fn rect(e: &mut Enc, w: f64, h: f64, tol: f64) -> Result<(), FfiError> {
     if !(tol.is_finite() && tol > 0.0 && tol <= 0.01 * w.min(h)) {
         return Err(bad("rectangle tolerance"));
     }
-    e.nums(&[w, h, tol])
+    e.nums(&[w, h, tol])?;
+    e.flag(uv_curves);
+    Ok(())
 }
 
 /// The flat program [`calc_geom`] sends (validated).
@@ -434,7 +459,7 @@ fn rect(e: &mut Enc, w: f64, h: f64, tol: f64) -> Result<(), FfiError> {
 /// [`FfiError::InvalidArgument`] for anything [`calc_geom`] rejects (module docs).
 pub fn encode_calc(prog: &CalcProgram) -> Result<Vec<f64>, FfiError> {
     let mut e = Enc::default();
-    rect(&mut e, prog.w, prog.h, prog.tol)?;
+    rect(&mut e, prog.w, prog.h, prog.tol, prog.uv_curves)?;
     if prog.edge >= 4 {
         return Err(bad("edge index"));
     }
@@ -469,19 +494,28 @@ fn run_buffer(
     call_with_buffer(1024, |buf: &mut [f64], len| {
         // SAFETY: `input` is valid for `n_in` reads; `buf` for `buf.len()` writes; `len`
         // is a valid i64; nothing is retained.
-        unsafe { f(input.as_ptr(), n_in, buf.as_mut_ptr(), buf.len() as i64, &raw mut *len) }
+        unsafe {
+            f(
+                input.as_ptr(),
+                n_in,
+                buf.as_mut_ptr(),
+                buf.len() as i64,
+                &raw mut *len,
+            )
+        }
     })
 }
 
-/// The rectangle B-rep of a `calc_geom` program, exported as unit `topology.edgeuse_p1`
+/// The rectangle B-rep of a `calc_geom` program (with its UV trim curves made first when
+/// `uv_curves`, as [`CalcProgram::uv_curves`]), exported as unit `topology.edgeuse_p1`
 /// does (`0` then the graph).
 ///
 /// # Errors
 ///
 /// [`FfiError::InvalidArgument`] for bad sizes; [`FfiError::Status`] for a shim failure.
-pub fn calc_target(w: f64, h: f64, tol: f64) -> Result<Vec<f64>, FfiError> {
+pub fn calc_target(w: f64, h: f64, tol: f64, uv_curves: bool) -> Result<Vec<f64>, FfiError> {
     let mut e = Enc::default();
-    rect(&mut e, w, h, tol)?;
+    rect(&mut e, w, h, tol, uv_curves)?;
     run_buffer(&e.v, sys::sc_blend_fillet_solver_p4_calc_target)
 }
 
@@ -492,5 +526,8 @@ pub fn calc_target(w: f64, h: f64, tol: f64) -> Result<Vec<f64>, FfiError> {
 /// [`FfiError::InvalidArgument`] for a rejected program; [`FfiError::Status`] for a shim
 /// failure.
 pub fn calc_geom(prog: &CalcProgram) -> Result<Vec<f64>, FfiError> {
-    run_buffer(&encode_calc(prog)?, sys::sc_blend_fillet_solver_p4_calc_geom)
+    run_buffer(
+        &encode_calc(prog)?,
+        sys::sc_blend_fillet_solver_p4_calc_geom,
+    )
 }

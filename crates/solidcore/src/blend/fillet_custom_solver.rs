@@ -17,8 +17,8 @@
 //! | [`SecantConstantRadiusFs::load_initial_values`]   | `SmSecantConstantRadiusFS::LoadInitialValues`     |
 //! | [`SecantConstantRadiusFs::load_jacobian`]         | `SmSecantConstantRadiusFS::LoadJacobian`          |
 //! | [`ConstantRadiusAssistedFs`] (CO-PORTED)          | `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` over the `SmFilletSolver` base ([`FilletSolver`]) |
-//! | `impl FilletSolverOps` for both solvers            | their `LoadJacobian` / `LoadInitialValues` / `OffsetRadiiCanChange` overrides; the inherited `SmConstantRadiusFS::SetupOffsetValues` (delegated to the base) |
-//! | `impl FilletSolverOps for ConstantRadiusAssistedFs` (CO-PORTED) | `SmConstantRadiusFS::SetupOffsetValues`, `SmConstantRadiusFS::OffsetRadiiCanChange` (unit `blend.fillet_standard_solver_p1`) |
+//! | `impl FilletSolverOps` for both solvers            | their `LoadJacobian` / `LoadInitialValues` overrides; the inherited `SmConstantRadiusFS` overrides `SetupOffsetValues`, `OffsetRadiiCanChange` and `GetJacobianSize` (those of `ConstantRadiusAssistedFs`, unit `blend.fillet_standard_solver_p1`); the inherited `GetType`, `IsKindOf` return [`SolidError::Unported`] (units `blend.fillet_standard_solver_p1` / `_p2`) |
+//! | `impl FilletSolverOps for ConstantRadiusAssistedFs` | the `SmConstantRadiusFS` overrides `SetupOffsetValues`, `OffsetRadiiCanChange`, `GetJacobianSize` (the inherent methods of unit `blend.fillet_standard_solver_p1`) |
 //! | [`OffsetSurface`], [`SurfaceId`]                  | an `SmOffsetSurface*` rail surface (unit `surface.offset_surface`) and the identity of its base pointer |
 //! | [`JacobianLoad`], [`InitialValues`]               | the in/out arguments of `LoadJacobian`, `LoadInitialValues` |
 //!
@@ -32,8 +32,9 @@
 //!   missing surface or an out-of-range rail index (upstream dereferences `NULL` or
 //!   indexes past the two-element arrays) is [`SolidError::InvalidInput`]. The
 //!   base-class constructor from an edge use ([`ConstantRadiusAssistedFs::from_edgeuse`])
-//!   belongs to `blend.fillet_standard_solver_p1` and returns
-//!   [`SolidError::Unported`]; [`ConstantRadiusAssistedFs::from_parts`] builds the
+//!   is `blend.fillet_standard_solver_p1`'s `constant_radius_from_edgeuse` (it takes the
+//!   B-rep mutably: `SmEdgeuse::EvaluateBinormal` may create UV trim curves);
+//!   [`ConstantRadiusAssistedFs::from_parts`] builds the
 //!   members directly with the base-class defaults.
 //! - **Offset surfaces.** A rail surface is an [`OffsetSurface`]: the ported
 //!   `SmOffsetSurface` ([`offset_surface::OffsetSurface`], which owns a copy of its
@@ -183,25 +184,28 @@ impl OffsetSurface {
 }
 
 /// `SmOffsetSurface::EvaluatePoint`.
-fn offset_evaluate_point(s: &mut OffsetSurface, uv: Point2) -> Result<Point3> {
+pub(crate) fn offset_evaluate_point(s: &mut OffsetSurface, uv: Point2) -> Result<Point3> {
     s.surface.evaluate_point_extending(uv)
 }
 
 /// `SmOffsetSurface::GetNaturalUVDomain`.
-fn offset_natural_uv_domain(s: &OffsetSurface) -> Extent2d {
+pub(crate) fn offset_natural_uv_domain(s: &OffsetSurface) -> Extent2d {
     s.surface.natural_uv_domain()
 }
 
 /// `Evaluate1stDerivatives(uv, TRUE, TRUE, ..)` of an offset surface:
 /// `(P, S_u, S_v)`.
-fn offset_evaluate_1st(s: &mut OffsetSurface, uv: Point2) -> Result<(Point3, Vec3, Vec3)> {
+pub(crate) fn offset_evaluate_1st(
+    s: &mut OffsetSurface,
+    uv: Point2,
+) -> Result<(Point3, Vec3, Vec3)> {
     s.surface
         .with_evaluator(|e| evaluate_1st_derivatives(e, uv, Side::Left, Side::Left))
 }
 
 /// `Evaluate2ndDerivatives(uv, TRUE, TRUE, ..)` of an offset surface:
 /// `(P, S_u, S_v, S_uv, S_uu, S_vv)`.
-fn offset_evaluate_2nd(s: &mut OffsetSurface, uv: Point2) -> Result<[Vec3; 6]> {
+pub(crate) fn offset_evaluate_2nd(s: &mut OffsetSurface, uv: Point2) -> Result<[Vec3; 6]> {
     let d = s
         .surface
         .with_evaluator(|e| evaluate_2nd_derivatives(e, uv, Side::Left, Side::Left))?;
@@ -210,7 +214,7 @@ fn offset_evaluate_2nd(s: &mut OffsetSurface, uv: Point2) -> Result<[Vec3; 6]> {
 
 /// `SmSurface::ComputeInwardVector` of an offset surface (it evaluates the offset
 /// surface).
-fn offset_compute_inward_vector(s: &mut OffsetSurface, uv: Point2) -> Result<Vec3> {
+pub(crate) fn offset_compute_inward_vector(s: &mut OffsetSurface, uv: Point2) -> Result<Vec3> {
     s.surface.with_evaluator(|e| compute_inward_vector(e, uv))
 }
 
@@ -219,7 +223,7 @@ fn offset_compute_inward_vector(s: &mut OffsetSurface, uv: Point2) -> Result<Vec
 /// `None` when no answer was found. The solve runs on a copy of the offset (the solver
 /// is borrowed shared), so a base extension it makes is not kept (see the module
 /// deviations).
-fn offset_local_point_solve(
+pub(crate) fn offset_local_point_solve(
     k: &Kernel,
     s: &OffsetSurface,
     domain: &Extent2d,
@@ -248,7 +252,7 @@ fn offset_local_point_solve(
 
 /// `GlobalPointSolve(domain, SM_SO_MINIMIZE, point, SM_EFF_ZERO_SQ, NULL, SM_SR_SINGLE,
 /// ..)` of a base surface: the UV points of the solutions.
-fn surface_global_point_solve(
+pub(crate) fn surface_global_point_solve(
     k: &Kernel,
     s: &Surface,
     domain: &Extent2d,
@@ -281,6 +285,9 @@ pub struct ConstantRadiusAssistedFs {
     pub solver: FilletSolver,
     /// `m_dFilletRadii`: the offset radius of each surface.
     pub fillet_radii: [f64; 2],
+    /// `m_dSavedOffsets`: the offsets `SetSurfacesToZeroOffset` saved (uninitialised
+    /// upstream until then; `0` here). CO-PORTED in `blend.fillet_intersector`.
+    pub saved_offsets: [f64; 2],
 }
 
 impl ConstantRadiusAssistedFs {
@@ -309,6 +316,7 @@ impl ConstantRadiusAssistedFs {
         Self {
             solver,
             fillet_radii,
+            saved_offsets: [0.0; 2],
         }
     }
 
@@ -318,22 +326,29 @@ impl ConstantRadiusAssistedFs {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] (`SmConstantRadiusFS::SmConstantRadiusFS`, unit
-    /// `blend.fillet_standard_solver_p1`).
+    /// Those of `SmConstantRadiusFS::SmConstantRadiusFS`
+    /// ([`crate::blend::fillet_standard_solver::p1::constant_radius_from_edgeuse`]).
+    #[allow(clippy::too_many_arguments)]
     pub fn from_edgeuse(
-        _brep: &Brep,
-        _approx_tol_3d: f64,
-        _ang_tol_rad: f64,
-        _tangency_tolerance: f64,
-        _fillet_radius1: f64,
-        _fillet_radius2: f64,
-        _edgeuse: EdgeuseId,
+        k: &Kernel,
+        brep: &mut Brep,
+        approx_tol_3d: f64,
+        ang_tol_rad: f64,
+        tangency_tolerance: f64,
+        fillet_radius1: f64,
+        fillet_radius2: f64,
+        edgeuse: EdgeuseId,
     ) -> Result<Self> {
-        // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusFS::SmConstantRadiusFS
-        Err(SolidError::Unported {
-            upstream: "SmConstantRadiusFS::SmConstantRadiusFS",
-            unit: "blend.fillet_standard_solver_p1",
-        })
+        crate::blend::fillet_standard_solver::p1::constant_radius_from_edgeuse(
+            k,
+            brep,
+            approx_tol_3d,
+            ang_tol_rad,
+            tangency_tolerance,
+            fillet_radius1,
+            edgeuse,
+            Some(fillet_radius2),
+        )
     }
 
     /// `GetSurface(lRailIndex)`.
@@ -348,7 +363,7 @@ impl ConstantRadiusAssistedFs {
             .ok_or_else(|| SolidError::invalid_input(OP, "no offset surface for the rail"))
     }
 
-    fn surface_mut(&mut self, rail: usize) -> Result<&mut OffsetSurface> {
+    pub(crate) fn surface_mut(&mut self, rail: usize) -> Result<&mut OffsetSurface> {
         self.solver
             .surface_mut(rail)?
             .map(|slot| &mut slot.surface)
@@ -1576,6 +1591,12 @@ macro_rules! fillet_solver_ops {
                 &mut self.base.solver
             }
 
+            /// `SmConstantRadiusFS::GetJacobianSize` (inherited through
+            /// `SmConstantRadiusAssistedFS`).
+            fn jacobian_size(&self) -> Result<usize> {
+                <ConstantRadiusAssistedFs as FilletSolverOps>::jacobian_size(&self.base)
+            }
+
             /// `SmConstantRadiusFS::SetupOffsetValues` (inherited through
             /// `SmConstantRadiusAssistedFS`).
             fn setup_offset_values(
@@ -1590,9 +1611,30 @@ macro_rules! fillet_solver_ops {
                 )
             }
 
-            /// `SmConstantRadiusFS::OffsetRadiiCanChange`: `FALSE`.
-            fn offset_radii_can_change(&self) -> bool {
-                false
+            /// `SmConstantRadiusFS::OffsetRadiiCanChange` (inherited through
+            /// `SmConstantRadiusAssistedFS`): `FALSE`.
+            fn offset_radii_can_change(&self) -> Result<bool> {
+                <ConstantRadiusAssistedFs as FilletSolverOps>::offset_radii_can_change(&self.base)
+            }
+
+            /// `SmConstantRadiusAssistedFS::GetType` (`SM_COMMON`, unit
+            /// `blend.fillet_standard_solver_p1`, not ported).
+            fn type_code(&self) -> Result<i64> {
+                // UNPORTED(blend.fillet_standard_solver_p1): SmConstantRadiusAssistedFS::GetType
+                Err(SolidError::unported(
+                    "SmConstantRadiusAssistedFS::GetType",
+                    "blend.fillet_standard_solver_p1",
+                ))
+            }
+
+            /// `SmConstantRadiusAssistedFS::IsKindOf` (unit
+            /// `blend.fillet_standard_solver_p2`, not ported).
+            fn is_kind_of(&self, _t: i64) -> Result<bool> {
+                // UNPORTED(blend.fillet_standard_solver_p2): SmConstantRadiusAssistedFS::IsKindOf
+                Err(SolidError::unported(
+                    "SmConstantRadiusAssistedFS::IsKindOf",
+                    "blend.fillet_standard_solver_p2",
+                ))
             }
 
             fn load_jacobian(
@@ -1638,8 +1680,12 @@ macro_rules! fillet_solver_ops {
 fillet_solver_ops!(EiffelTowerFs);
 fillet_solver_ops!(SecantConstantRadiusFs);
 
-/// The `SmConstantRadiusFS` virtuals the fillet solver base calls (CO-PORTED from
-/// `blend.fillet_standard_solver_p1`): constant offsets, so no analytic restriction.
+/// The `SmConstantRadiusFS` virtuals the fillet solver base calls: the inherent
+/// `SetupOffsetValues`, `OffsetRadiiCanChange` and `GetJacobianSize` of unit
+/// `blend.fillet_standard_solver_p1` (`blend::fillet_standard_solver::p1`). Its
+/// `LoadJacobian` there takes the rail and surfaces explicitly, not a
+/// [`JacobianLoad`]; this trait's `load_jacobian` keeps the base version (only the
+/// unported `StepSolve` would reach it).
 impl FilletSolverOps for ConstantRadiusAssistedFs {
     fn solver(&self) -> &FilletSolver {
         &self.solver
@@ -1649,24 +1695,29 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
         &mut self.solver
     }
 
+    /// `SmConstantRadiusFS::GetJacobianSize`: 4.
+    fn jacobian_size(&self) -> Result<usize> {
+        Ok(Self::jacobian_size(self))
+    }
+
     /// `SmConstantRadiusFS::SetupOffsetValues(rTsectPnt, pOffsetDist)`: the radius of
     /// surface 0 (`pOffsetDist`), and each offset surface's distance set to its radius
     /// times its orientation.
     fn setup_offset_values(
         &mut self,
-        _tsect: &TsectPnt,
+        tsect: &TsectPnt,
         offset_dist: Option<&mut f64>,
     ) -> Result<()> {
-        if let Some(d) = offset_dist {
-            *d = self.radius(0)?;
+        let d = Self::setup_offset_values(self, tsect)?;
+        if let Some(o) = offset_dist {
+            *o = d;
         }
-        self.reset_offset(0)?;
-        self.reset_offset(1)
+        Ok(())
     }
 
     /// `SmConstantRadiusFS::OffsetRadiiCanChange`: `FALSE`.
-    fn offset_radii_can_change(&self) -> bool {
-        false
+    fn offset_radii_can_change(&self) -> Result<bool> {
+        Ok(Self::offset_radii_can_change(self))
     }
 }
 
@@ -1811,9 +1862,10 @@ mod tests {
         let _ = NurbCircleParam::Quadratic;
     }
 
-    /// Both subclasses inherit `SmConstantRadiusFS::SetupOffsetValues`.
+    /// Both subclasses inherit `SmConstantRadiusFS::SetupOffsetValues`,
+    /// `OffsetRadiiCanChange` and `GetJacobianSize`.
     #[test]
-    fn subclasses_inherit_setup_offset_values() {
+    fn subclasses_inherit_the_constant_radius_virtuals() {
         let k = Kernel::default();
         let o = Vec3::new(0.0, 0.0, 0.0);
         let (x, y, z) = (
@@ -1850,7 +1902,11 @@ mod tests {
             };
             assert_eq!(off(0), 2.0);
             assert_eq!(off(1), -1.0);
+            assert!(!ops.offset_radii_can_change().unwrap());
+            assert!(ops.can_make_analytic().unwrap());
+            assert_eq!(ops.jacobian_size().unwrap(), 4);
         };
+        check(&mut base());
         check(&mut EiffelTowerFs::new(base(), 0.3));
         check(&mut SecantConstantRadiusFs::new(base(), 0.2));
     }

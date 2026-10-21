@@ -26,12 +26,15 @@
 //!   fillet geometry (no rails; G1 knots and split flag optional), which stops at the first
 //!   rail at the latest. Compared: status, solver status, extension flags, the G1 knots
 //!   after the call and the knots given. The Rust solver replays `SetExtensionFlags` (the
-//!   C++ override) and imports the rectangle exported by the shim.
+//!   C++ override) and imports the rectangle exported by the shim. With `uv_curves` the
+//!   shim makes the face's UV trim curves first (`SmFace::CreateUVTrimCurves`), so both
+//!   sides find them (and the G1 / split knots reach `EvaluateBinormal`); without, both
+//!   sides build them (`GetOrCreateUVTrimCurve`, `topology.edgeuse_p3`).
 //!
-//! Deferred: the
-//! finite-difference cases on `StepSolve` (`blend.fillet_solver_p3`) and the `calc_geom`
-//! cases on the unported callees (`EvaluateBinormal` / `GetOrCreateUVTrimCurve` creation,
-//! `topology.edgeuse_p3`; `sm_FindFilletTsectPnt`, `blend.fillet_solver_p3`).
+//! Deferred: the finite-difference cases on `StepSolve` (`blend.fillet_solver_p3`) and the
+//! `calc_geom` cases on the unported callees (`SmSurface::DropCurve` of the UV trim curve
+//! creation, `intersect.surface_drop_lib_p3`; `sm_FindFilletTsectPnt` after
+//! `EvaluateBinormal`, `blend.fillet_solver_p3`).
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -154,6 +157,10 @@ struct CalcCase {
     w: f64,
     h: f64,
     tol: f64,
+    /// The rectangle's UV trim curves are made before the export and the call (both
+    /// sides then find them instead of building them).
+    #[serde(default)]
+    uv_curves: bool,
     edge: usize,
     eu1_same: bool,
     hermite: bool,
@@ -250,6 +257,7 @@ fn ffi_calc_program(c: &CalcCase) -> ffi::CalcProgram {
         w: c.w,
         h: c.h,
         tol: c.tol,
+        uv_curves: c.uv_curves,
         edge: c.edge,
         eu1_same: c.eu1_same,
         hermite: c.hermite,
@@ -320,8 +328,8 @@ fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
             point_output(&rec)
         }
         Inputs::CalcGeom(c) => {
-            let rec = ffi::calc_geom(&ffi_calc_program(c))
-                .map_err(|e| harness(format!("C++: {e}")))?;
+            let rec =
+                ffi::calc_geom(&ffi_calc_program(c)).map_err(|e| harness(format!("C++: {e}")))?;
             calc_output(&rec, c.g1.len())
         }
     }
@@ -458,7 +466,12 @@ fn rust_point(v: &[f64]) -> Result<TsectPnt, HarnessError> {
 
 fn put_point(o: &mut Vec<f64>, t: &TsectPnt) {
     o.push(f64::from(t.point_type.code()));
-    o.extend(t.uv_param_type.iter().flatten().map(|pt| f64::from(pt.code())));
+    o.extend(
+        t.uv_param_type
+            .iter()
+            .flatten()
+            .map(|pt| f64::from(pt.code())),
+    );
     for uv in t.uv_curve_pv.iter().flatten() {
         o.extend([uv.x, uv.y]);
     }
@@ -475,7 +488,10 @@ fn put_point(o: &mut Vec<f64>, t: &TsectPnt) {
 /// A rail offset as `SmConstantRadiusFS` builds it (default `lSingularities`,
 /// `SM_SS_UNKNOWN`, extension allowed).
 fn rail_offset(k: &Kernel, d: f64, base: Surface, id: SurfaceId) -> Result<OffsetSurface, Fail> {
-    let mut s = setup(OffsetSurface::new(k, d, base, id, SS_UNKNOWN), "offset surface")?;
+    let mut s = setup(
+        OffsetSurface::new(k, d, base, id, SS_UNKNOWN),
+        "offset surface",
+    )?;
     s.surface.set_allow_extension(true);
     Ok(s)
 }
@@ -526,8 +542,8 @@ impl FilletSolverOps for ShimSolver {
         self.inner.solver_mut()
     }
 
-    fn jacobian_size(&self) -> usize {
-        self.inner.jacobian_size()
+    fn jacobian_size(&self) -> solidcore::Result<usize> {
+        <ConstantRadiusAssistedFs as FilletSolverOps>::jacobian_size(&self.inner)
     }
 
     fn setup_offset_values(
@@ -535,14 +551,18 @@ impl FilletSolverOps for ShimSolver {
         tsect: &TsectPnt,
         offset_dist: Option<&mut f64>,
     ) -> solidcore::Result<()> {
-        self.inner.setup_offset_values(tsect, offset_dist)
+        <ConstantRadiusAssistedFs as FilletSolverOps>::setup_offset_values(
+            &mut self.inner,
+            tsect,
+            offset_dist,
+        )
     }
 
-    fn offset_radii_can_change(&self) -> bool {
+    fn offset_radii_can_change(&self) -> solidcore::Result<bool> {
         if self.fd {
-            true
+            Ok(true)
         } else {
-            self.inner.offset_radii_can_change()
+            <ConstantRadiusAssistedFs as FilletSolverOps>::offset_radii_can_change(&self.inner)
         }
     }
 
@@ -554,8 +574,14 @@ impl FilletSolverOps for ShimSolver {
         f: &mut [f64],
         jacobian: Option<&mut solidcore::geom::matrix::Matrix>,
     ) -> solidcore::Result<bool> {
-        self.inner
-            .load_jacobian(num_equations, num_parameters, load, f, jacobian)
+        <ConstantRadiusAssistedFs as FilletSolverOps>::load_jacobian(
+            &mut self.inner,
+            num_equations,
+            num_parameters,
+            load,
+            f,
+            jacobian,
+        )
     }
 
     fn set_extension_flags(&mut self, b: &Brep) -> solidcore::Result<()> {
@@ -573,9 +599,8 @@ impl FilletSolverOps for ShimSolver {
 
 fn rust_point_case(i: &PointCase) -> Result<Output, Fail> {
     let k = Kernel::default();
-    let may_step = i.fd
-        || i.point.t == IntersectionPointType::TangentPoint.code() as u8
-        || i.prev.is_some();
+    let may_step =
+        i.fd || i.point.t == IntersectionPointType::TangentPoint.code() as u8 || i.prev.is_some();
     if may_step {
         let step = ffi::static_step().map_err(|e| harness(format!("static step probe: {e}")))?;
         k.fillet_point_step.set(Some(step));
@@ -631,7 +656,10 @@ fn rust_point_case(i: &PointCase) -> Result<Output, Fail> {
         .solver()
         .surfaces
         .iter()
-        .map(|s| s.as_ref().map_or(ffi::UNSET, |s| s.surface.offset_distance()))
+        .map(|s| {
+            s.as_ref()
+                .map_or(ffi::UNSET, |s| s.surface.offset_distance())
+        })
         .collect();
     Ok(Output::new()
         .int("status", st)
@@ -641,14 +669,18 @@ fn rust_point_case(i: &PointCase) -> Result<Output, Fail> {
 
 fn rust_calc_case(c: &CalcCase) -> Result<Output, Fail> {
     let k = Kernel::default();
-    let ex = ffi::calc_target(c.w, c.h, c.tol).map_err(|e| harness(format!("C++ target: {e}")))?;
+    let ex = ffi::calc_target(c.w, c.h, c.tol, c.uv_curves)
+        .map_err(|e| harness(format!("C++ target: {e}")))?;
     let mut target = import(&ex)?;
     let edge_id = EdgeId::from_index(u32::try_from(c.edge).map_err(|_| harness("edge"))?);
     let edge = target
         .edge(edge_id)
         .map_err(|e| harness(format!("edge: {e}")))?
         .clone();
-    let eu0 = *edge.edgeuses.first().ok_or_else(|| harness("edge without edge uses"))?;
+    let eu0 = *edge
+        .edgeuses
+        .first()
+        .ok_or_else(|| harness("edge without edge uses"))?;
     let eu1 = if c.eu1_same {
         eu0
     } else {
@@ -688,7 +720,11 @@ fn rust_calc_case(c: &CalcCase) -> Result<Output, Fail> {
     let mut geoms: Vec<FilletGeomId> = Vec::new();
     if c.geom {
         let mut g = setup(
-            FilletGeom::new(&k, Some((FilletSolverId(0), &inner)), FilletGeomType::Default),
+            FilletGeom::new(
+                &k,
+                Some((FilletSolverId(0), &inner)),
+                FilletGeomType::Default,
+            ),
             "fillet geometry",
         )?;
         g.need_split = c.split;
@@ -839,7 +875,11 @@ fn gen_bspline(rng: &mut Rng, s: f64, mode: u64) -> SurfaceIn {
             let fi = i as f64 / (nu - 1) as f64;
             let fj = j as f64 / (nv - 1) as f64;
             let (x, y, z) = match mode {
-                1 => (s * fi, s * fi * (fj - 0.5), s * rng.uniform(-bend, bend) * fi),
+                1 => (
+                    s * fi,
+                    s * fi * (fj - 0.5),
+                    s * rng.uniform(-bend, bend) * fi,
+                ),
                 2 => (s * fj, 0.0, 0.0),
                 _ => (s * fi, s * fj, s * rng.uniform(-bend, bend)),
             };
@@ -1003,11 +1043,15 @@ fn gen_prev(rng: &mut Rng, uv: [[f64; 2]; 2], s: f64) -> Option<PointIn> {
     Some(p)
 }
 
+/// The trace direction: mostly `+-1`, sometimes `0`, other scales, or huge / tiny
+/// magnitudes (the FFI bounds `dir` by finiteness only).
 fn gen_dir(rng: &mut Rng) -> f64 {
     match rng.below(12) {
         0 => 0.0,
         1 => 0.5,
         2 => -2.0,
+        3 => 1.0e300,
+        5 => -1.0e-300,
         n if n % 2 == 0 => 1.0,
         _ => -1.0,
     }
@@ -1131,8 +1175,13 @@ fn gen_calc_case(rng: &mut Rng) -> CalcCase {
         split: rng.chance(0.4),
         extend: [rng.chance(0.5), rng.chance(0.5)],
         g1,
-        radii: if rng.chance(0.8) { [r, r] } else { [r, 0.5 * r] },
+        radii: if rng.chance(0.8) {
+            [r, r]
+        } else {
+            [r, 0.5 * r]
+        },
         orient: [rng.chance(0.5), rng.chance(0.5)],
+        uv_curves: rng.chance(0.5),
     }
 }
 
@@ -1145,7 +1194,9 @@ fn gen_case(rng: &mut Rng) -> Option<Inputs> {
 
 fn encodable(i: &Inputs) -> bool {
     match i {
-        Inputs::PointValues(p) => ffi_point_program(p).is_ok_and(|prog| ffi::encode_point(&prog).is_ok()),
+        Inputs::PointValues(p) => {
+            ffi_point_program(p).is_ok_and(|prog| ffi::encode_point(&prog).is_ok())
+        }
         Inputs::CalcGeom(c) => ffi::encode_calc(&ffi_calc_program(c)).is_ok(),
     }
 }
@@ -1192,7 +1243,13 @@ fn edge_cases(k: &Kernel) -> Vec<(String, Value)> {
     };
     let ns = nat(&sphere);
     let nc = nat(&cone);
-    let pc = |a: &Value, b: Option<&Value>, uv: [[f64; 2]; 2], t: u8, prev: Option<Value>, fd: bool, dir: f64| {
+    let pc = |a: &Value,
+              b: Option<&Value>,
+              uv: [[f64; 2]; 2],
+              t: u8,
+              prev: Option<Value>,
+              fd: bool,
+              dir: f64| {
         let da = nat(a);
         let db = b.map_or(da, nat);
         json!({"op": "point_values", "a": a, "b": b, "dom1": da, "dom2": db,
@@ -1209,25 +1266,141 @@ fn edge_cases(k: &Kernel) -> Vec<(String, Value)> {
     let apex = [[nc[0] + 0.25 * (nc[2] - nc[0]), nc[1]], [0.2, 0.2]];
     let apex_v = [[nc[0], nc[1] + 0.25 * (nc[3] - nc[1])], [0.2, 0.2]];
     let mut v = vec![
-        ("edge_crossing_xy_xz".to_string(), pc(&xy, Some(&xz), mid, 2, None, false, 1.0)),
-        ("edge_crossing_dir_minus".into(), pc(&xy, Some(&xz), mid, 1, None, false, -1.0)),
-        ("edge_crossing_dir_zero".into(), pc(&xy, Some(&xz), mid, 2, None, false, 0.0)),
-        ("edge_parallel_no_prev".into(), pc(&xy, Some(&xy2), mid, 2, None, false, 1.0)),
-        ("edge_parallel_prev_unit".into(), pc(&xy, Some(&xy2), mid, 2, prev_unit.clone(), false, 1.0)),
-        ("edge_parallel_prev_zero".into(), pc(&xy, Some(&xy2), mid, 2, prev_zero.clone(), false, 1.0)),
-        ("edge_parallel_prev_undef".into(), pc(&xy, Some(&xy2), mid, 2, prev_undef, false, 1.0)),
-        ("edge_antiparallel".into(), pc(&xy, Some(&anti), mid, 2, None, false, 1.0)),
-        ("edge_same_surface_same_uv".into(), pc(&xy, None, mid, 2, None, false, 1.0)),
-        ("edge_same_surface_prev".into(), pc(&xy, None, mid, 3, prev_unit.clone(), false, 1.0)),
-        ("edge_degenerate_plane".into(), pc(&degen, Some(&xz), mid, 2, None, false, 1.0)),
-        ("edge_incoming_tangent_cr".into(), pc(&xy, Some(&xz), mid, 3, None, false, 1.0)),
-        ("edge_fd_crossing".into(), pc(&xy, Some(&xz), mid, 2, None, true, 1.0)),
-        ("edge_fd_tangent_prev".into(), pc(&xy, Some(&xy2), mid, 2, prev_zero, true, 1.0)),
-        ("edge_sphere_pole".into(), pc(&sphere, Some(&xz), pole, 2, None, false, 1.0)),
-        ("edge_sphere_south_pole".into(), pc(&sphere, Some(&xz), south, 2, None, false, 1.0)),
-        ("edge_cone_apex_u".into(), pc(&cone, Some(&xz), apex, 2, None, false, 1.0)),
-        ("edge_cone_apex_v".into(), pc(&cone, Some(&xz), apex_v, 2, None, false, 1.0)),
-        ("edge_sphere_fd".into(), pc(&sphere, Some(&xz), [[ns[0] + 0.3 * (ns[2] - ns[0]), ns[1] + 0.5 * (ns[3] - ns[1])], [0.2, 0.2]], 2, None, true, 1.0)),
+        (
+            "edge_crossing_xy_xz".to_string(),
+            pc(&xy, Some(&xz), mid, 2, None, false, 1.0),
+        ),
+        (
+            "edge_crossing_dir_minus".into(),
+            pc(&xy, Some(&xz), mid, 1, None, false, -1.0),
+        ),
+        (
+            "edge_crossing_dir_zero".into(),
+            pc(&xy, Some(&xz), mid, 2, None, false, 0.0),
+        ),
+        (
+            "edge_parallel_no_prev".into(),
+            pc(&xy, Some(&xy2), mid, 2, None, false, 1.0),
+        ),
+        (
+            "edge_parallel_prev_unit".into(),
+            pc(&xy, Some(&xy2), mid, 2, prev_unit.clone(), false, 1.0),
+        ),
+        (
+            "edge_parallel_prev_zero".into(),
+            pc(&xy, Some(&xy2), mid, 2, prev_zero.clone(), false, 1.0),
+        ),
+        (
+            "edge_parallel_prev_undef".into(),
+            pc(&xy, Some(&xy2), mid, 2, prev_undef, false, 1.0),
+        ),
+        (
+            "edge_antiparallel".into(),
+            pc(&xy, Some(&anti), mid, 2, None, false, 1.0),
+        ),
+        (
+            "edge_same_surface_same_uv".into(),
+            pc(&xy, None, mid, 2, None, false, 1.0),
+        ),
+        (
+            "edge_same_surface_prev".into(),
+            pc(&xy, None, mid, 3, prev_unit.clone(), false, 1.0),
+        ),
+        (
+            "edge_degenerate_plane".into(),
+            pc(&degen, Some(&xz), mid, 2, None, false, 1.0),
+        ),
+        (
+            "edge_incoming_tangent_cr".into(),
+            pc(&xy, Some(&xz), mid, 3, None, false, 1.0),
+        ),
+        (
+            "edge_fd_crossing".into(),
+            pc(&xy, Some(&xz), mid, 2, None, true, 1.0),
+        ),
+        (
+            "edge_fd_tangent_prev".into(),
+            pc(&xy, Some(&xy2), mid, 2, prev_zero, true, 1.0),
+        ),
+        (
+            "edge_sphere_pole".into(),
+            pc(&sphere, Some(&xz), pole, 2, None, false, 1.0),
+        ),
+        (
+            "edge_sphere_south_pole".into(),
+            pc(&sphere, Some(&xz), south, 2, None, false, 1.0),
+        ),
+        (
+            "edge_cone_apex_u".into(),
+            pc(&cone, Some(&xz), apex, 2, None, false, 1.0),
+        ),
+        (
+            "edge_cone_apex_v".into(),
+            pc(&cone, Some(&xz), apex_v, 2, None, false, 1.0),
+        ),
+        (
+            "edge_crossing_dir_huge".into(),
+            pc(&xy, Some(&xz), mid, 2, None, false, 1.0e300),
+        ),
+        (
+            "edge_crossing_dir_minus_huge".into(),
+            pc(&xy, Some(&xz), mid, 2, None, false, -1.0e300),
+        ),
+        (
+            "edge_crossing_dir_max".into(),
+            pc(&xy, Some(&xz), mid, 2, None, false, f64::MAX),
+        ),
+        (
+            "edge_crossing_dir_sq_overflow".into(),
+            pc(&xy, Some(&xz), mid, 2, None, false, 1.0e155),
+        ),
+        (
+            "edge_crossing_dir_sq_finite".into(),
+            pc(&xy, Some(&xz), mid, 2, None, false, 1.0e153),
+        ),
+        (
+            "edge_crossing_dir_tiny".into(),
+            pc(&xy, Some(&xz), mid, 2, None, false, 1.0e-300),
+        ),
+        (
+            "edge_crossing_dir_subnormal".into(),
+            pc(&xy, Some(&xz), mid, 2, None, false, -5.0e-324),
+        ),
+        (
+            "edge_crossing_dir_tiny_prev".into(),
+            pc(&xy, Some(&xz), mid, 2, prev_unit.clone(), false, 1.0e-300),
+        ),
+        (
+            "edge_parallel_prev_dir_huge".into(),
+            pc(&xy, Some(&xy2), mid, 2, prev_unit.clone(), false, 1.0e300),
+        ),
+        (
+            "edge_fd_crossing_dir_huge".into(),
+            pc(&xy, Some(&xz), mid, 2, None, true, 1.0e300),
+        ),
+        (
+            "edge_fd_tangent_dir_max".into(),
+            pc(&xy, Some(&xy2), mid, 2, prev_unit.clone(), true, -f64::MAX),
+        ),
+        (
+            "edge_sphere_pole_dir_huge".into(),
+            pc(&sphere, Some(&xz), pole, 2, None, false, 1.0e300),
+        ),
+        (
+            "edge_sphere_fd".into(),
+            pc(
+                &sphere,
+                Some(&xz),
+                [
+                    [ns[0] + 0.3 * (ns[2] - ns[0]), ns[1] + 0.5 * (ns[3] - ns[1])],
+                    [0.2, 0.2],
+                ],
+                2,
+                None,
+                true,
+                1.0,
+            ),
+        ),
     ];
     // calc_geom: every edge, Hermite and B-spline curves
     for e in 0..4 {
@@ -1246,6 +1419,29 @@ fn edge_cases(k: &Kernel) -> Vec<(String, Value)> {
                    "orient": [true, false]}),
         ));
     }
+    // the same with the UV trim curves made first: the trim-curve fetch finds them
+    for e in 0..4 {
+        v.push((
+            format!("edge_calc_rails_uv_e{e}"),
+            json!({"op": "calc_geom", "w": 5.0, "h": 10.0, "tol": 1e-5, "uv_curves": true,
+                   "edge": e, "eu1_same": e == 3, "hermite": false, "geom": true,
+                   "split": false, "extend": [false, true], "g1": [], "radii": [0.5, 0.5],
+                   "orient": [true, false]}),
+        ));
+    }
+    v.push((
+        "edge_calc_split_uv".into(),
+        json!({"op": "calc_geom", "w": 5.0, "h": 10.0, "tol": 1e-5, "uv_curves": true,
+               "edge": 1, "eu1_same": false, "hermite": false, "geom": true, "split": true,
+               "extend": [true, true], "g1": [], "radii": [0.5, 0.5], "orient": [true, true]}),
+    ));
+    v.push((
+        "edge_calc_g1_uv".into(),
+        json!({"op": "calc_geom", "w": 2.0e-3, "h": 1.0e-3, "tol": 1e-8, "uv_curves": true,
+               "edge": 2, "eu1_same": false, "hermite": false, "geom": true, "split": false,
+               "extend": [false, false], "g1": [0.25, 0.5], "radii": [1.0e-4, 1.0e-4],
+               "orient": [false, true]}),
+    ));
     v.push((
         "edge_calc_split_no_g1".into(),
         json!({"op": "calc_geom", "w": 5.0, "h": 10.0, "tol": 1e-5, "edge": 1,
@@ -1330,11 +1526,15 @@ mod tests {
         let (mut ok, mut total) = (0, 0);
         let mut statuses = std::collections::BTreeMap::new();
         for _ in 0..300 {
-            let Some(v) = Runner.generate(&mut rng) else { continue };
+            let Some(v) = Runner.generate(&mut rng) else {
+                continue;
+            };
             let i: Inputs = serde_json::from_value(v).expect("inputs");
             let out = cpp(&i).expect("C++ ran");
             let op = match &i {
-                Inputs::PointValues(p) if p.fd || p.point.t == 3 || p.prev.is_some() => "point-may-step",
+                Inputs::PointValues(p) if p.fd || p.point.t == 3 || p.prev.is_some() => {
+                    "point-may-step"
+                }
                 Inputs::PointValues(p) => match &p.a {
                     SurfaceIn::Plane { .. } => "point-nofd-plane",
                     SurfaceIn::BSpline { .. } => "point-nofd-bsp",

@@ -27,8 +27,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "circular_fillet_box_edge_no_rails",
@@ -130,21 +130,17 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0011",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561855086053995280",
-      "values_compared": 0
+      "values_compared": 82
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "sm_FindFilletTsectPnt",
+        "unit": "blend.fillet_solver_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0012",
@@ -162,14 +158,10 @@
       "values_compared": 82
     },
     {
-      "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0014",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561855086053995283",
       "values_compared": 0
     },
@@ -322,16 +314,12 @@
       "values_compared": 82
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0031",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561855086053995300",
-      "values_compared": 0
+      "values_compared": 82
     },
     {
       "deferred": {
@@ -867,8 +855,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "sm_FindFilletTsectPnt",
+        "unit": "blend.fillet_solver_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0088",
@@ -879,8 +867,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "sm_FindFilletTsectPnt",
+        "unit": "blend.fillet_solver_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0089",
@@ -986,16 +974,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0101",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561855086053995370",
-      "values_compared": 0
+      "values_compared": 82
     },
     {
       "deferred": {
@@ -1134,16 +1118,12 @@
       "values_compared": 82
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0116",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561855086053995385",
-      "values_compared": 0
+      "values_compared": 82
     },
     {
       "max_rel_err": 0.0,
@@ -1170,12 +1150,16 @@
       "values_compared": 82
     },
     {
+      "deferred": {
+        "symbol": "SmFilletSolver::StepSolve",
+        "unit": "blend.fillet_solver_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen0120",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=2561855086053995389",
-      "values_compared": 82
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -1250,16 +1234,12 @@
       "values_compared": 82
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0129",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561855086053995398",
-      "values_compared": 0
+      "values_compared": 82
     },
     {
       "max_rel_err": 0.0,
@@ -1319,8 +1299,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "sm_FindFilletTsectPnt",
+        "unit": "blend.fillet_solver_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0136",
@@ -1426,12 +1406,16 @@
       "values_compared": 82
     },
     {
+      "deferred": {
+        "symbol": "SmFilletSolver::StepSolve",
+        "unit": "blend.fillet_solver_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen0147",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=2561855086053995416",
-      "values_compared": 82
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -1630,12 +1614,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFilletSolver::StepSolve",
+        "unit": "blend.fillet_solver_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen0169",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=2561855086053995438",
-      "values_compared": 82
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -1691,8 +1679,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0175",
@@ -1811,8 +1799,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "sm_FindFilletTsectPnt",
+        "unit": "blend.fillet_solver_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0188",
@@ -1930,12 +1918,16 @@
       "values_compared": 82
     },
     {
+      "deferred": {
+        "symbol": "SmFilletSolver::StepSolve",
+        "unit": "blend.fillet_solver_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen0201",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=2561855086053995470",
-      "values_compared": 82
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -2002,24 +1994,24 @@
       "values_compared": 0
     },
     {
-      "max_rel_err": 0.0,
-      "name": "gen0208",
-      "outcome": "pass",
-      "pass": true,
-      "source": "generated:seed=2561855086053995477",
-      "values_compared": 82
-    },
-    {
       "deferred": {
         "symbol": "SmFilletSolver::StepSolve",
         "unit": "blend.fillet_solver_p3"
       },
       "max_rel_err": 0.0,
-      "name": "gen0209",
+      "name": "gen0208",
       "outcome": "deferred",
       "pass": false,
-      "source": "generated:seed=2561855086053995478",
+      "source": "generated:seed=2561855086053995477",
       "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0209",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=2561855086053995478",
+      "values_compared": 82
     },
     {
       "deferred": {
@@ -2091,8 +2083,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "sm_FindFilletTsectPnt",
+        "unit": "blend.fillet_solver_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0217",
@@ -2399,8 +2391,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0249",
@@ -2514,12 +2506,16 @@
       "values_compared": 6
     },
     {
+      "deferred": {
+        "symbol": "SmFilletSolver::StepSolve",
+        "unit": "blend.fillet_solver_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen0260",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=2561855086053995529",
-      "values_compared": 82
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -2767,8 +2763,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "sm_FindFilletTsectPnt",
+        "unit": "blend.fillet_solver_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0287",
@@ -2911,8 +2907,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "sm_FindFilletTsectPnt",
+        "unit": "blend.fillet_solver_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0304",
@@ -2930,16 +2926,12 @@
       "values_compared": 82
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0306",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561855086053995575",
-      "values_compared": 0
+      "values_compared": 82
     },
     {
       "max_rel_err": 0.0,
@@ -3031,8 +3023,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0317",
@@ -3098,12 +3090,16 @@
       "values_compared": 82
     },
     {
+      "deferred": {
+        "symbol": "SmFilletSolver::StepSolve",
+        "unit": "blend.fillet_solver_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen0324",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=2561855086053995593",
-      "values_compared": 82
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -3190,16 +3186,12 @@
       "values_compared": 82
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0334",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561855086053995603",
-      "values_compared": 0
+      "values_compared": 82
     },
     {
       "max_rel_err": 0.0,
@@ -3523,8 +3515,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0370",
@@ -3542,14 +3534,10 @@
       "values_compared": 82
     },
     {
-      "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0372",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561855086053995641",
       "values_compared": 0
     },
@@ -3579,8 +3567,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "sm_FindFilletTsectPnt",
+        "unit": "blend.fillet_solver_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0375",
@@ -3782,16 +3770,12 @@
       "values_compared": 82
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0397",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561855086053995666",
-      "values_compared": 0
+      "values_compared": 82
     },
     {
       "max_rel_err": 0.0,
@@ -3803,8 +3787,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0399",
@@ -3838,16 +3822,12 @@
       "values_compared": 82
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0403",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561855086053995672",
-      "values_compared": 0
+      "values_compared": 82
     },
     {
       "deferred": {
@@ -3915,8 +3895,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "sm_FindFilletTsectPnt",
+        "unit": "blend.fillet_solver_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0410",
@@ -4027,8 +4007,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "sm_FindFilletTsectPnt",
+        "unit": "blend.fillet_solver_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0422",
@@ -4095,8 +4075,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0429",
@@ -4166,14 +4146,10 @@
       "values_compared": 82
     },
     {
-      "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0436",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561855086053995705",
       "values_compared": 0
     },
@@ -4243,8 +4219,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "sm_FindFilletTsectPnt",
+        "unit": "blend.fillet_solver_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0443",
@@ -4254,16 +4230,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0444",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561855086053995713",
-      "values_compared": 0
+      "values_compared": 82
     },
     {
       "max_rel_err": 0.0,
@@ -4274,12 +4246,16 @@
       "values_compared": 82
     },
     {
+      "deferred": {
+        "symbol": "SmFilletSolver::StepSolve",
+        "unit": "blend.fillet_solver_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen0446",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=2561855086053995715",
-      "values_compared": 82
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4350,12 +4326,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFilletSolver::StepSolve",
+        "unit": "blend.fillet_solver_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen0455",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=2561855086053995724",
-      "values_compared": 82
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4447,8 +4427,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0465",
@@ -4486,16 +4466,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0469",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561855086053995738",
-      "values_compared": 0
+      "values_compared": 82
     },
     {
       "max_rel_err": 0.0,
@@ -4563,8 +4539,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "sm_FindFilletTsectPnt",
+        "unit": "blend.fillet_solver_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0477",
@@ -4687,8 +4663,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0490",
@@ -4895,8 +4871,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0512",
@@ -4935,8 +4911,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0516",
@@ -4975,8 +4951,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "sm_FindFilletTsectPnt",
+        "unit": "blend.fillet_solver_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0520",
@@ -5111,8 +5087,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0535",
@@ -5270,16 +5246,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFilletSolver::StepSolve",
-        "unit": "blend.fillet_solver_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0552",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561855086053995821",
-      "values_compared": 0
+      "values_compared": 82
     },
     {
       "max_rel_err": 0.0,
@@ -5398,12 +5370,16 @@
       "values_compared": 82
     },
     {
+      "deferred": {
+        "symbol": "SmFilletSolver::StepSolve",
+        "unit": "blend.fillet_solver_p3"
+      },
       "max_rel_err": 0.0,
       "name": "gen0567",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=2561855086053995836",
-      "values_compared": 82
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -5451,8 +5427,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0573",
@@ -5870,6 +5846,118 @@
       "values_compared": 82
     },
     {
+      "max_rel_err": 0.0,
+      "name": "edge_crossing_dir_huge",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "edge_crossing_dir_minus_huge",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "edge_crossing_dir_max",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "edge_crossing_dir_sq_overflow",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "edge_crossing_dir_sq_finite",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "edge_crossing_dir_tiny",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "edge_crossing_dir_subnormal",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 82
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::StepSolve",
+        "unit": "blend.fillet_solver_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "edge_crossing_dir_tiny_prev",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "inline",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::StepSolve",
+        "unit": "blend.fillet_solver_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "edge_parallel_prev_dir_huge",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "inline",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::StepSolve",
+        "unit": "blend.fillet_solver_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "edge_fd_crossing_dir_huge",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "inline",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFilletSolver::StepSolve",
+        "unit": "blend.fillet_solver_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "edge_fd_tangent_dir_max",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "inline",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "edge_sphere_pole_dir_huge",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 82
+    },
+    {
       "deferred": {
         "symbol": "SmFilletSolver::StepSolve",
         "unit": "blend.fillet_solver_p3"
@@ -5891,8 +5979,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "edge_calc_rails_e0",
@@ -5911,8 +5999,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "edge_calc_rails_e1",
@@ -5931,8 +6019,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "edge_calc_rails_e2",
@@ -5951,8 +6039,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "edge_calc_rails_e3",
@@ -5962,9 +6050,65 @@
       "values_compared": 0
     },
     {
+      "max_rel_err": 0.0,
+      "name": "edge_calc_rails_uv_e0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "edge_calc_rails_uv_e1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "edge_calc_rails_uv_e2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "edge_calc_rails_uv_e3",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 0
+    },
+    {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "sm_FindFilletTsectPnt",
+        "unit": "blend.fillet_solver_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "edge_calc_split_uv",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "inline",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "sm_FindFilletTsectPnt",
+        "unit": "blend.fillet_solver_p3"
+      },
+      "max_rel_err": 0.0,
+      "name": "edge_calc_g1_uv",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "inline",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "edge_calc_split_no_g1",
@@ -5975,8 +6119,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdgeuse::GetOrCreateUVTrimCurve",
-        "unit": "topology.edgeuse_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "edge_calc_split_g1",
@@ -5989,11 +6133,11 @@
   "cases_both_errored": 0,
   "cases_deferred": 230,
   "cases_failed": 0,
-  "cases_passed": 403,
-  "cases_total": 633,
+  "cases_passed": 421,
+  "cases_total": 651,
   "deferred_by_unit": {
-    "blend.fillet_solver_p3": 194,
-    "topology.edgeuse_p3": 36
+    "blend.fillet_solver_p3": 211,
+    "intersect.surface_drop_lib_p3": 19
   },
   "max_rel_err": 0.0,
   "pass": true,

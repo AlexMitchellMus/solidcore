@@ -12,7 +12,7 @@
 //! | [`FilletSolver::compute_point_values`]      | `SmFilletSolver::ComputePointValues`              |
 //! | [`FilletGeomResolver`]                      | the `SmFilletGeom*` entries of `m_vFilletGeoms` (pointer identity) |
 //! | `TsRef`, `TsectStore` (private)             | `SmTArray<SmTsectPnt*> sTsectPnts` / `sDeletePnts` (pointers into `SmFilletVertexuse::m_vTsectPnt` or to `new SmTsectPnt`) |
-//! | `get_or_create_uv_trim_curve` (private)     | `SmEdgeuse::GetOrCreateUVTrimCurve` (existing-curve path only; unit `topology.edgeuse_p3`) |
+//! | `get_or_create_uv_trim_curve`, `evaluate_binormal` (private) | `SmEdgeuse::GetOrCreateUVTrimCurve` and `SmEdgeuse::EvaluateBinormal` with the defaults `CalcFilletGeom` passes (unit `topology.edgeuse_p3`) |
 //!
 //! Deviations:
 //! - **Object model.** The solver's virtuals are the [`FilletSolverOps`] trait object
@@ -49,17 +49,19 @@
 //!   [`SolidError::Unported`]): `CalcCylinderFilletGeom`, `CalcTorusFilletGeom`,
 //!   `RecordFilletError` (`blend.fillet_solver_p2`); `sm_FindFilletTsectPnt`,
 //!   `StepSolve` (`blend.fillet_solver_p3`); `SmFilletGeom::TopologySplit`
-//!   (`blend.fillet_geom_p3`); `SmFilletGeom::CalcBlendingGeom`
-//!   (`blend.fillet_geom_p4`); `SmFilletEdge::CalcCrossSection`
-//!   (`blend.fillet_geom_p5`); `SmEdgeuse::EvaluateBinormal` and the creating path of
-//!   `SmEdgeuse::GetOrCreateUVTrimCurve` (`topology.edgeuse_p3`).
+//!   (`blend.fillet_geom_p3`); `SmFilletEdge::CalcCrossSection`
+//!   (`blend.fillet_geom_p5`). `SmEdgeuse::EvaluateBinormal` and
+//!   `GetOrCreateUVTrimCurve` are those of `topology.edgeuse_p3` (whose own unported
+//!   paths, e.g. `SmSurface::DropCurve`, still return [`SolidError::Unported`]);
+//!   `SmFilletGeom::CalcBlendingGeom` is `blend.fillet_geom_p4`'s, given this solver
+//!   as the geometry's `GetFilletSolver()`.
 //! - **`sFI.DoPointIntersection`** is [`FilletIntersector::do_point_intersection`]
 //!   (the base driver with the `SmFilletIntersector` overrides) on a copy of the
 //!   points in the intersector's arena, copied back afterwards. The intersector sees
 //!   this solver through a private adapter implementing the intersector's
-//!   `FilletSolverOps`; of its writes into the fillet geometry, the rail curve's
-//!   `SmEdge::SetCurve` (B-rep notification, `topology.brep_p2`) is unported, and
-//!   `FlushCurve` stops before it at the unported self-intersection handler
+//!   `FilletSolverOps`; its writes into the fillet geometry go to the pseudo B-rep (the
+//!   rail curve's `SmEdge::SetCurve` with its notification, the mate's UV curve), but
+//!   `FlushCurve` stops before them at the unported self-intersection handler
 //!   (`blend.fillet_executive_p1`). `m_pEndPoint` keeps pointing at the previous
 //!   call's point when a call does not set it (upstream: the caller's live point;
 //!   here: the arena copy).
@@ -76,7 +78,6 @@ use crate::error::{Result, SolidError};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::vector2d::Point2;
-use crate::intersect::surface_drop_lib::p1::SM_SUCCESS;
 use crate::intersect::surface_intersector::p1::TsectPnt;
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3};
@@ -86,6 +87,8 @@ use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::p7::drop_vectors_at;
 use crate::surface::surface::{Surface, SurfaceKind};
 use crate::topology::edgeuse::p1 as eu;
+use crate::topology::edgeuse::p2::BinormalEval;
+use crate::topology::edgeuse::p3::{self as edgeuse_p3, BinormalOptions};
 use crate::topology::{Brep, EdgeId, EdgeuseId, VertexuseId};
 
 const OP: &str = "blend::fillet_solver::p4";
@@ -683,7 +686,7 @@ fn c1_collect_points(
         .solver()
         .edgeuse(which_surf)?
         .ok_or_else(|| SolidError::null_pointer(OP))?;
-    let uv_curve = get_or_create_uv_trim_curve(cx.target, eu_filleted_edge)?;
+    let uv_curve = get_or_create_uv_trim_curve(cx.k, cx.target, eu_filleted_edge)?;
 
     // special case: don't sort SmTsectPnts on closed UVTrimCurves
     if uv_curve.is_closed(&st.ivl, 0.0)? {
@@ -1117,7 +1120,7 @@ mod tests_c1 {
     }
 
     #[test]
-    fn g1_knot_points_defer_and_split_knot_stays_on_error() {
+    fn g1_knot_point_error_leaves_the_split_knot() {
         let k = Kernel::default();
         let (mut tb, eus) = target(Some(line_curve([0.0, 0.0, 0.0], [2.0, 0.0, 0.0], 3)));
         let (mut fb, g, _) = fillets(&k, ROWS);
@@ -1132,10 +1135,18 @@ mod tests_c1 {
         };
         let mut st = c1_setup(&mut ops, &mut cx).unwrap();
         assert!(st.split_original_fillet);
-        // split without G1 knots: sIvl.Evaluate(0.5) is pushed, then the knot loop
-        // reaches the unported EvaluateBinormal and returns before RemoveLast
+        // split without G1 knots: sIvl.Evaluate(0.5) is pushed, then the knot loop's
+        // EvaluateBinormal fails (the edge use is in no loop: SM_ERR_INVALID_INPUT) and
+        // returns before RemoveLast
         let e = c1_collect_points(&mut ops, &mut cx, &mut st, 0).unwrap_err();
-        assert!(e.is_unported());
+        assert_eq!(
+            e,
+            SolidError::Upstream {
+                operation: "topology::edgeuse::p3",
+                code: crate::error::SM_ERR_INVALID_INPUT,
+                entity: None,
+            }
+        );
         assert_eq!(ops.0.g1_knots, vec![0.5]);
         assert_eq!(st.split_tsect_pnt, None);
     }
@@ -1186,7 +1197,7 @@ mod tests_c1 {
     }
 
     #[test]
-    fn missing_trim_curve_defers() {
+    fn missing_trim_curve_creation_status_is_returned() {
         let k = Kernel::default();
         let (mut tb, eus) = target(Some(line_curve([0.0, 0.0, 0.0], [2.0, 0.0, 0.0], 3)));
         for eu in eus {
@@ -1202,8 +1213,17 @@ mod tests_c1 {
             geoms: &mut geoms,
         };
         let mut st = c1_setup(&mut ops, &mut cx).unwrap();
+        // GetOrCreateUVTrimCurve builds the missing curve; CreateUVTrimCurve's failing
+        // status (here NER) is SER'd
         let e = c1_collect_points(&mut ops, &mut cx, &mut st, 0).unwrap_err();
-        assert!(e.is_unported());
+        assert_eq!(
+            e,
+            SolidError::Upstream {
+                operation: "topology::edgeuse::p3",
+                code: crate::error::SM_ERR_NULL_POINTER,
+                entity: None,
+            }
+        );
     }
 }
 
@@ -1582,10 +1602,10 @@ fn c3_try_analytic(
     cx: &mut Cx<'_>,
     st: &mut CalcState,
 ) -> Result<bool> {
-    use super::p1::test_analytic_surface;
+    use super::p1::{test_analytic_surface, AnalyticTestSurface};
 
     // when building a fillet that can be analytic
-    if !ops.can_make_analytic() {
+    if !ops.can_make_analytic()? {
         return Ok(false);
     }
 
@@ -1595,7 +1615,8 @@ fn c3_try_analytic(
 
     // when both surfaces are analytic (planes or cones); `&&` short-circuits as
     // upstream's does (the second test only runs when the first passes)
-    let both_analytic = test_analytic_surface(cx.k, base1)? && test_analytic_surface(cx.k, base2)?;
+    let both_analytic = test_analytic_surface(cx.k, AnalyticTestSurface::Surface(base1))?
+        && test_analytic_surface(cx.k, AnalyticTestSurface::Surface(base2))?;
     if !both_analytic {
         return Ok(false);
     }
@@ -2744,7 +2765,7 @@ fn c5_self_intersection_patches(ops: &mut dyn FilletSolverOps, cx: &mut Cx<'_>) 
     for g in fillet_geom_ids(ops, &*cx.geoms)? {
         if cx.fillets.geom(g)?.fillet_geom_type() == FilletGeomType::Blends {
             // Calculate the surface for blending patch
-            calc_blending_geom(cx, g)?;
+            calc_blending_geom(&*ops, cx, g)?;
         }
     }
     Ok(())
@@ -2753,7 +2774,6 @@ fn c5_self_intersection_patches(ops: &mut dyn FilletSolverOps, cx: &mut Cx<'_>) 
 /// :2630-2662: reverses every geometry's rails (3D curve, and the mate UV trim curve
 /// over the 3D curve's new interval), centre line and fillet surface (`Reverse(U)`).
 fn c5_undo_reversal(ops: &mut dyn FilletSolverOps, cx: &mut Cx<'_>) -> Result<()> {
-    use crate::error::ignore_status;
     use crate::nurbs::b_spline_surface::SurfParamType;
     use crate::topology::edge as edge_unit;
 
@@ -2776,9 +2796,17 @@ fn c5_undo_reversal(ops: &mut dyn FilletSolverOps, cx: &mut Cx<'_>) -> Result<()
                 .ok_or_else(|| invalid("reverse: rail without primary edge use"))?;
             let mate_eu = eu::mate(b, prim_eu)?
                 .ok_or_else(|| invalid("reverse: rail edge use without mate"))?;
-            // pMateEU->GetOrCreateUVTrimCurve(pUVCurve): status ignored; the curve
-            // attached to the edge use or its mate is reversed in place
-            ignore_status(get_or_create_uv_trim_curve(cx.fillets.brep_mut(), mate_eu))?;
+            // pMateEU->GetOrCreateUVTrimCurve(pUVCurve) (defaults): status ignored; the
+            // curve attached to the edge use or its mate is reversed in place
+            let _ = edgeuse_p3::get_or_create_uv_trim_curve(
+                cx.k,
+                cx.fillets.brep_mut(),
+                mate_eu,
+                false,
+                false,
+                true,
+            )?
+            .status;
             let (uv_curve, uv_owner) = eu::uv_trim_curve(cx.fillets.brep(), mate_eu)?;
             let (Some(_), Some(uv_owner)) = (uv_curve, uv_owner) else {
                 return Err(SolidError::null_pointer(OP));
@@ -3084,15 +3112,16 @@ mod tests_c5 {
     }
 
     #[test]
-    fn reversed_trace_without_uv_trim_curve_defers_on_its_creation() {
+    fn reversed_trace_ignores_a_failed_uv_trim_curve_creation() {
         let mut f = Fixture::new();
         f.st.trace.reverse_tracing = true;
         f.fb.brep_mut()
             .edgeuse_mut(f.mates[0])
             .unwrap()
             .uv_trim_curve = None;
+        // the creation's status is ignored; NER(pUVCurve) then fails
         let e = f.run().unwrap_err();
-        assert_eq!(unported_unit(&e), Some("topology.edgeuse_p3"));
+        assert_eq!(e, SolidError::null_pointer(OP));
     }
 
     #[test]
@@ -3133,11 +3162,15 @@ mod tests_c5 {
         f.add_geom(FilletGeomType::Default);
         f.run().unwrap();
 
-        // a blends geometry: CalcBlendingGeom
+        // a blends geometry: CalcBlendingGeom (the fixture's geometry has no
+        // GetFilletSolver(): NER)
         let mut f = Fixture::new();
         f.add_geom(FilletGeomType::Blends);
         let e = f.run().unwrap_err();
-        assert_eq!(unported_unit(&e), Some("blend.fillet_geom_p4"));
+        assert_eq!(
+            e,
+            SolidError::null_pointer("blend::fillet_geom::p4::FilletBrep::calc_blending_geom")
+        );
 
         // a cross-section edge of a default geometry comes first: CalcCrossSection
         let mut f = Fixture::new();
@@ -3225,7 +3258,7 @@ fn c6_compute_point_values(
     c6_unitize(point.crv_deriv_mut())?;
 
     // :3596 finite differences for variable radii or at a surface/surface tangency
-    if ops.offset_radii_can_change() || point.point_type == IntersectionPointType::TangentPoint {
+    if ops.offset_radii_can_change()? || point.point_type == IntersectionPointType::TangentPoint {
         // :3600
         compute_uv_vectors(point)?;
 
@@ -3239,13 +3272,16 @@ fn c6_compute_point_values(
 
         // :3615 forward step (StepSolve may shorten `dStep`, passed by reference)
         let mut step_forw = TsectPnt::new();
-        let flags = step_solve(
+        // bFoundForw, bClipped, bBoundaryHit
+        let mut flags = StepSolveFlags::default();
+        step_solve(
             ops,
             k,
             point,
             &mut step,
             uv_domain1,
             uv_domain2,
+            &mut flags,
             &mut step_forw,
         )?;
         let mut found_forw = flags.found_answer;
@@ -3254,13 +3290,14 @@ fn c6_compute_point_values(
         // `dBigStep` (ported as written), into the same `sStepForw`
         if !found_forw && step < 1.0e-4 {
             let big_step = 1.0e-3;
-            let flags = step_solve(
+            step_solve(
                 ops,
                 k,
                 point,
                 &mut step,
                 uv_domain1,
                 uv_domain2,
+                &mut flags,
                 &mut step_forw,
             )?;
             found_forw = flags.found_answer;
@@ -3281,16 +3318,22 @@ fn c6_compute_point_values(
         // :3640 backward step
         step = -step;
         let mut step_back = TsectPnt::new();
-        let flags = step_solve(
+        // bFoundBack (a new local), and the same bClipped, bBoundaryHit
+        let mut back_flags = StepSolveFlags {
+            found_answer: false,
+            ..flags
+        };
+        step_solve(
             ops,
             k,
             point,
             &mut step,
             uv_domain1,
             uv_domain2,
+            &mut back_flags,
             &mut step_back,
         )?;
-        let found_back = flags.found_answer;
+        let found_back = back_flags.found_answer;
 
         let back_pts = if found_back {
             let p0 = offset_evaluate_point(ops, 0, step_back.uv_pos(SrfIndex::First))?;
@@ -3618,10 +3661,11 @@ fn find_fillet_tsect_pnt(
 }
 
 /// `StepSolve(rTsectPnt, rdStep, crUVDomain1, crUVDomain2, rbFoundAnswer,
-/// rbClipped, rbBoundaryHit, rNextPoint)`: the flags; writes the next point into
-/// `next` (its UV positions, `m_adUserDoubles`, or all of it through
-/// `PointOnPlaneSolve`) and may shorten `step` (`double & rdStep`, in/out). Changes the
-/// offset surfaces' offsets.
+/// rbClipped, rbBoundaryHit, rNextPoint)`: writes the flags into `flags` (as upstream
+/// writes its out-params, so they keep what was set before a failure) and the next
+/// point into `next` (its UV positions, `m_adUserDoubles`, or all of it through
+/// `PointOnPlaneSolve`), and may shorten `step` (`double & rdStep`, in/out). Changes
+/// the offset surfaces' offsets.
 fn step_solve(
     ops: &mut dyn FilletSolverOps,
     k: &Kernel,
@@ -3629,9 +3673,10 @@ fn step_solve(
     step: &mut f64,
     uv_domain1: &Extent2d,
     uv_domain2: &Extent2d,
+    flags: &mut StepSolveFlags,
     next: &mut TsectPnt,
-) -> Result<StepSolveFlags> {
-    let _ = (ops, k, point, step, uv_domain1, uv_domain2, next);
+) -> Result<()> {
+    let _ = (ops, k, point, step, uv_domain1, uv_domain2, flags, next);
     // UNPORTED(blend.fillet_solver_p3): SmFilletSolver::StepSolve
     Err(SolidError::unported(
         "SmFilletSolver::StepSolve",
@@ -3653,14 +3698,16 @@ fn topology_split(
     ))
 }
 
-/// `pFilletGeom->CalcBlendingGeom()`.
-fn calc_blending_geom(cx: &mut Cx<'_>, geom: FilletGeomId) -> Result<()> {
-    let _ = (cx, geom);
-    // UNPORTED(blend.fillet_geom_p4): SmFilletGeom::CalcBlendingGeom
-    Err(SolidError::unported(
-        "SmFilletGeom::CalcBlendingGeom",
-        "blend.fillet_geom_p4",
-    ))
+/// `pFilletGeom->CalcBlendingGeom()` ([`FilletBrep::calc_blending_geom_of_solver`],
+/// unit `blend.fillet_geom_p4`): the geometry's `GetFilletSolver()` is this solver
+/// (every geometry of `m_vFilletGeoms` is made by it or split from one of its own).
+fn calc_blending_geom(
+    ops: &dyn FilletSolverOps,
+    cx: &mut Cx<'_>,
+    geom: FilletGeomId,
+) -> Result<()> {
+    cx.fillets
+        .calc_blending_geom_of_solver(cx.k, geom, ops.solver(), cx.target)
 }
 
 /// `pFilletEdge->CalcCrossSection(m_crContext)` (a pseudo-B-rep edge).
@@ -3673,60 +3720,34 @@ fn calc_cross_section(cx: &mut Cx<'_>, edge: EdgeId) -> Result<()> {
     ))
 }
 
-/// `SmEdgeuse::GetOrCreateUVTrimCurve(rpUVTrimCurve)` (defaults: no distances,
-/// `bUVSpaceOkay = TRUE`): a copy of the trim curve of the edge use or its mate
-/// (`GetUVTrimCurve`), failing with this edge use's own drop-curve failure status
-/// when it has one (upstream reads `this->m_pDropCurveFail` directly, not the mate's
-/// record through `GetDropCurveFail`); building a missing curve (`CreateUVTrimCurve`,
-/// which would attach it to `brep`) is unported.
-fn get_or_create_uv_trim_curve(brep: &mut Brep, edgeuse: EdgeuseId) -> Result<Curve> {
-    let (curve, _) = eu::uv_trim_curve(brep, edgeuse)?;
-    let Some(curve) = curve.cloned() else {
-        // UNPORTED(topology.edgeuse_p3): SmEdgeuse::GetOrCreateUVTrimCurve
-        return Err(SolidError::unported(
-            "SmEdgeuse::GetOrCreateUVTrimCurve",
-            "topology.edgeuse_p3",
-        ));
-    };
-    if let Some(fail) = brep.edgeuse(edgeuse)?.drop_curve_fail.as_deref() {
-        if fail.fail_status != SM_SUCCESS {
-            return Err(SolidError::Upstream {
-                operation: OP,
-                code: fail.fail_status,
-                entity: None,
-            });
-        }
-    }
-    Ok(curve)
+// =====================================================================================
+// CALLEES of topology.edgeuse_p3 (ported): thin adapters with upstream's defaults
+// =====================================================================================
+
+/// `SER(pEU->GetOrCreateUVTrimCurve(rpUVTrimCurve))` with the defaults
+/// (`pdOptDistToSurf = pdOptDeviation = NULL`, `bOKToMakeUVTrimCurve = TRUE`,
+/// `SmEdgeuse.h:127-136`): [`edgeuse_p3::get_or_create_uv_trim_curve`] (which builds
+/// and attaches a missing curve to `brep`), its failing status returned, then a copy
+/// of the curve attached to the edge use or its mate (`GetUVTrimCurve`).
+fn get_or_create_uv_trim_curve(k: &Kernel, brep: &mut Brep, edgeuse: EdgeuseId) -> Result<Curve> {
+    edgeuse_p3::get_or_create_uv_trim_curve(k, brep, edgeuse, false, false, true)?.status?;
+    // a successful fetch with bOKToMakeUVTrimCurve = TRUE always leaves a curve
+    eu::uv_trim_curve(brep, edgeuse)?
+        .0
+        .cloned()
+        .ok_or_else(|| SolidError::null_pointer(OP))
 }
 
-/// The outputs of `SmEdgeuse::EvaluateBinormal(t, FALSE, rPnt, rBinVec, &tangent,
-/// NULL, &uv)` that `CalcFilletGeom` reads (`rBinormalPoint` is overwritten by the
-/// guess-point evaluation before any read, so it is not returned).
-#[derive(Debug, Clone, Copy)]
-struct EdgeuseBinormal {
-    /// `rBinormalVec`: unit vector into the face.
-    binormal: Vec3,
-    /// `pOptTangent`: the (non-unit) edge-use tangent.
-    tangent: Vec3,
-    /// `pOptUVParameter`: the surface parameter of the point.
-    uv: Point2,
-}
-
-/// `SmEdgeuse::EvaluateBinormal(t, FALSE, ..)` (`FALSE`: get or create the UV trim
-/// curve, so the target B-rep may change).
+/// `SmEdgeuse::EvaluateBinormal(t, FALSE, rPnt, rBinVec, &sTangent, NULL, &sUVParameter)`
+/// ([`edgeuse_p3::evaluate_binormal`]; `bUse3DOnly = FALSE`: get or create the UV trim
+/// curve, so the target B-rep may change; no `pOptUVDir`).
 fn evaluate_binormal(
     k: &Kernel,
     brep: &mut Brep,
     edgeuse: EdgeuseId,
     t: f64,
-) -> Result<EdgeuseBinormal> {
-    let _ = (k, brep, edgeuse, t);
-    // UNPORTED(topology.edgeuse_p3): SmEdgeuse::EvaluateBinormal
-    Err(SolidError::unported(
-        "SmEdgeuse::EvaluateBinormal",
-        "topology.edgeuse_p3",
-    ))
+) -> Result<BinormalEval> {
+    edgeuse_p3::evaluate_binormal(k, brep, edgeuse, t, false, &BinormalOptions::default())
 }
 
 /// The inputs of `sFI.DoPointIntersection(m_crContext, sTsectPnts, bExtendBefore,
@@ -3892,8 +3913,9 @@ impl crate::blend::fillet_intersector::FilletSolverOps for IntersectorSolver<'_,
         super::p1::compute_uv_vectors(point)
     }
 
-    /// `StepSolve` (the stub of this file), writing into `next` and `step_size` as
-    /// upstream writes `rNextTSP` and the caller's `dStepSize`.
+    /// `StepSolve` (the stub of this file), writing into `flags`, `next` and
+    /// `step_size` as upstream writes its flags, `rNextTSP` and the caller's
+    /// `dStepSize`.
     fn step_solve(
         &mut self,
         k: &Kernel,
@@ -3901,8 +3923,9 @@ impl crate::blend::fillet_intersector::FilletSolverOps for IntersectorSolver<'_,
         step_size: &mut f64,
         uv_domain1: &Extent2d,
         uv_domain2: &Extent2d,
+        flags: &mut StepSolveFlags,
         next: &mut TsectPnt,
-    ) -> Result<StepSolveFlags> {
+    ) -> Result<()> {
         let r = step_solve(
             &mut *self.ops,
             k,
@@ -3910,6 +3933,7 @@ impl crate::blend::fillet_intersector::FilletSolverOps for IntersectorSolver<'_,
             step_size,
             uv_domain1,
             uv_domain2,
+            flags,
             next,
         );
         self.synced(r)
@@ -3925,42 +3949,24 @@ impl crate::blend::fillet_intersector::FilletSolverOps for IntersectorSolver<'_,
         self.synced(r)
     }
 
-    /// `GetSurface(rail)->Evaluate1stDerivatives(uv, TRUE, TRUE, ..)` on a copy of the
-    /// offset surface (a base extension the evaluation makes is not kept), as
-    /// `ComputeSurfaceValues` evaluates it.
+    /// `GetSurface(rail)->Evaluate1stDerivatives(uv, TRUE, TRUE, ..)` on the solver's
+    /// own offset surface (a base extension the evaluation makes is kept, as
+    /// upstream's `const` evaluators store it), as `ComputeSurfaceValues` evaluates it.
     fn rail_surface_evaluate_1st_derivatives(
-        &self,
+        &mut self,
         rail: usize,
         uv: Point2,
     ) -> Result<(Point3, Vec3, Vec3)> {
-        let mut s = offset_surface(&*self.ops, rail)?.clone();
-        s.surface.with_evaluator(|e| {
-            crate::surface::surface::p1::evaluate_1st_derivatives(e, uv, Side::Left, Side::Left)
-        })
+        crate::blend::fillet_custom_solver::offset_evaluate_1st(
+            offset_surface_mut(&mut *self.ops, rail)?,
+            uv,
+        )
     }
 
     /// `SetStatus` (the intersector's co-ported `SmFilStatus` mapped onto the
     /// solver's, value for value).
     fn set_status(&mut self, status: crate::blend::fillet_intersector::FilStatus) -> Result<()> {
-        use super::p1::FilStatus as S;
-        use crate::blend::fillet_intersector::FilStatus as I;
-
-        let status = match status {
-            I::Unprocessed => S::Unprocessed,
-            I::Processed => S::Processed,
-            I::Failure => S::Failure,
-            I::SurfIntFailure => S::SurfIntFailure,
-            I::EndPntDropFailure => S::EndPntDropFailure,
-            I::ToBeSqueezed => S::ToBeSqueezed,
-            I::CubicRailRailInterpolate => S::CubicRailRailInterpolate,
-            I::NoIntRailEu => S::NoIntRailEu,
-            I::SolverNotConverge => S::SolverNotConverge,
-            I::ToBeDeleted => S::ToBeDeleted,
-            I::SurfTracingFailure => S::SurfTracingFailure,
-            I::SelfIntHandlingFailure => S::SelfIntHandlingFailure,
-            I::SurfSkinningFailure => S::SurfSkinningFailure,
-        };
-        self.ops.solver_mut().set_status(status);
+        self.ops.solver_mut().set_status(status.into());
         Ok(())
     }
 
@@ -4025,17 +4031,32 @@ impl crate::blend::fillet_intersector::FilletSolverOps for IntersectorSolver<'_,
         Ok(())
     }
 
-    /// `pRail->SetCurve(curve, TRUE)`: `SmEdge::SetCurve` notifies the B-rep of the
-    /// geometry change.
+    /// `pRail = GetRail(rail); pRail->GetPrimaryEdgeuse()->GetMate()` (dereferenced
+    /// unchecked upstream, before the write), `pRail->SetCurve(curve, TRUE)`
+    /// (`SmEdge::SetCurve` with its `SM_NO_CHANGE_GEOMETRY` notification:
+    /// [`set_rail_curve`](crate::blend::fillet_geom::p1::set_rail_curve)),
+    /// `curve->SetOwner(pRail)` (owner identities are not modelled here) and
+    /// `pRail->SetInterval(curve->GetNaturalInterval())`.
     fn set_rail_curve(
         &mut self,
         geom: &FilletGeomRef,
         rail: usize,
         curve: BSplineCurve,
     ) -> Result<()> {
-        let _ = (geom, rail, curve);
-        // UNPORTED(topology.brep_p2): SmBrep::Notify
-        Err(SolidError::unported("SmBrep::Notify", "topology.brep_p2"))
+        use crate::topology::edge as edge_unit;
+
+        let rail_edge = self
+            .geom_mut(*geom)?
+            .rail(rail)
+            .ok_or_else(|| invalid("fillet geometry without the rail"))?;
+        let brep = self.fillets.brep();
+        let primary = eu::primary_edgeuse(brep, rail_edge)?
+            .ok_or_else(|| invalid("rail without an edge use"))?;
+        eu::mate(brep, primary)?.ok_or_else(|| invalid("rail edge use without a mate"))?;
+        let curve = Curve::from(curve);
+        let ivl = curve.natural_interval();
+        crate::blend::fillet_geom::p1::set_rail_curve(self.fillets.brep_mut(), rail_edge, curve)?;
+        edge_unit::set_interval(self.fillets.brep_mut(), rail_edge, &ivl)
     }
 
     /// `pRail->GetPrimaryEdgeuse()->GetMate()->SetUVCurve(uv, TRUE)` (a missing rail,

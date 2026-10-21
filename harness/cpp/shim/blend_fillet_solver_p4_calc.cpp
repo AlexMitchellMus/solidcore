@@ -12,8 +12,9 @@
 //
 // Entry points (layouts in crates/solidcore-ffi/src/units/blend_fillet_solver_p4.rs, which
 // validates every input; reads are bounds checked here as well):
-//  * sc_blend_fillet_solver_p4_calc_target(in, n_in, out, cap, out_len): the rectangle,
-//    exported in traversal order (sc_edgeuse_graph.h, unit topology.edgeuse_p1).
+//  * sc_blend_fillet_solver_p4_calc_target(in, n_in, out, cap, out_len): the rectangle
+//    (`w h tol uv_curves`, see p4_rectangle), exported in traversal order
+//    (sc_edgeuse_graph.h, unit topology.edgeuse_p1).
 //  * sc_blend_fillet_solver_p4_calc_geom(in, n_in, out, cap, out_len).
 #include "sc_shim.h"
 #include "sc_edgeuse_graph.h"
@@ -56,12 +57,27 @@ struct CRd
     bool flag() { return idx(0, 1) != 0; }
 };
 
+// `w h tol uv_curves`: the rectangle; with `uv_curves` its face's UV trim curves are made
+// first (SmFace::CreateUVTrimCurves without tolerance adjustment, status ignored), so
+// CalcFilletGeom finds them instead of creating them (SmSurface::DropCurve).
 SmBrep* p4_rectangle(const SmContext& ctx, CRd& rd)
 {
     double w = rd.num();
     double h = rd.num();
     double tol = rd.num();
-    return SmPrimitiveCreation::CreateRectangle(ctx, tol, w, h, SmAxis2Placement());
+    bool uv_curves = rd.flag();
+    SmBrep* brep = SmPrimitiveCreation::CreateRectangle(ctx, tol, w, h, SmAxis2Placement());
+    if (brep != NULL && uv_curves)
+    {
+        Graph g;
+        walk(brep, g);
+        for (SmFace* f : g.faces)
+        {
+            double m1, m2, m3, m4, m5, m6;
+            f->CreateUVTrimCurves(FALSE, NULL, NULL, m1, m2, m3, m4, m5, m6); // status ignored
+        }
+    }
+    return brep;
 }
 
 // The solver: SmConstantRadiusFS with SetExtensionFlags replaced by the given flags.
@@ -101,7 +117,7 @@ SC_EXPORT int32_t sc_blend_fillet_solver_p4_calc_target(const double* in, int64_
                                                         double* out, int64_t cap,
                                                         int64_t* out_len)
 {
-    if (in == NULL || n_in != 3 || out_len == NULL || cap < 0 || (cap > 0 && out == NULL))
+    if (in == NULL || n_in != 4 || out_len == NULL || cap < 0 || (cap > 0 && out == NULL))
         return SC_ERR_ARG;
     try
     {
@@ -126,13 +142,13 @@ SC_EXPORT int32_t sc_blend_fillet_solver_p4_calc_target(const double* in, int64_
     }
 }
 
-// Program: `w h tol edge eu1_same hermite geom split extend_before extend_after n_g1
+// Program: `w h tol uv_curves edge eu1_same hermite geom split extend_before extend_after n_g1
 // g1_fractions[n_g1] r0 r1 orient0 orient1`. Output: `status solver_status extend_before
 // extend_after n_g1 g1[n_g1] knots_in[n_in]`.
 SC_EXPORT int32_t sc_blend_fillet_solver_p4_calc_geom(const double* in, int64_t n_in,
                                                       double* out, int64_t cap, int64_t* out_len)
 {
-    if (in == NULL || n_in < 3 || out_len == NULL || cap < 0 || (cap > 0 && out == NULL))
+    if (in == NULL || n_in < 4 || out_len == NULL || cap < 0 || (cap > 0 && out == NULL))
         return SC_ERR_ARG;
     try
     {
