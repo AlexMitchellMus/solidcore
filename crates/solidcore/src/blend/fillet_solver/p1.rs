@@ -2571,9 +2571,10 @@ pub enum AnalyticTestSurface<'a> {
 /// Those of `IsPlanar` and of the cone test (`SmCone::IsNurbSurfaceCone`), except a
 /// failing iso curve status, which upstream returns as the `SmBoolean` and which
 /// reads as `true`; `InvalidInput` for a surface kind that is not an
-/// `SmBSplineSurface`.
+/// `SmBSplineSurface` (a plane is accepted by type before).
 pub fn test_analytic_surface(k: &Kernel, surface: AnalyticTestSurface<'_>) -> Result<bool> {
     use crate::surface::surface::p2::{CONE_TYPE, PLANE_TYPE};
+    use crate::surface::surface::SurfaceKind;
     let type_code = match surface {
         AnalyticTestSurface::Surface(s) => s.type_code(),
         AnalyticTestSurface::Cone(c) => c.type_code(),
