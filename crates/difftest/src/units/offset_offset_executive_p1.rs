@@ -3323,8 +3323,8 @@ mod tests {
     fn face_tail_fixture_reaches_the_kernel_face_constructor() {
         // The shared MakeFaceWithCurves fixture builds its wire edges
         // (SmBrep::MakeWireEdgeVertex, topology.brep_p3) and defers in
-        // MakeFaceTopology at SmFace::SetTolerance rather than failing as a
-        // harness error.
+        // MakeFaceTopology (ported in full, topology.brep_p6) at the UV trim
+        // curve's SmSurface::DropCurve rather than failing as a harness error.
         let input: Inputs = serde_json::from_value(serde_json::json!({
             "op": "face_tail",
             "offset_distance": 0.25,
@@ -3340,7 +3340,7 @@ mod tests {
         let deferred = output.deferred.unwrap();
         assert_eq!(
             (deferred.unit.as_str(), deferred.symbol.as_str()),
-            ("topology.face_p3", "SmFace::SetTolerance")
+            ("intersect.surface_drop_lib_p3", "SmSurface::DropCurve")
         );
     }
 
