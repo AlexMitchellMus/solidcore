@@ -1455,7 +1455,7 @@ fn classify_seam<O: LoopObject, M: CurveOnClassifyObjects<O>>(
     get_loop_crossings(k, &objects, &class, loops, props, dir)?;
 
     // Find and Fix False SeamEdge EndPoint Classifications (status ignored)
-    match review_start_and_stop_on_seam_crv_classifies(&objects, &mut class) {
+    match review_start_and_stop_on_seam_crv_classifies(k, &objects, &mut class) {
         Err(e) if must_propagate(&e) => return Err(e),
         _ => {}
     }

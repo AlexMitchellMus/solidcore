@@ -1001,6 +1001,7 @@ pub struct SeamCrvReview<O> {
 /// [`SolidError::InvalidInput`] for an empty classification; those of
 /// `SmCurveInterval::GetIvlBound_EdgeuseObj`.
 pub fn review_start_and_stop_on_seam_crv_classifies<O: ClassObject>(
+    k: &Kernel,
     geometry: &impl ClassGeometry<O>,
     classification: &mut CurveClassification<O>,
 ) -> Result<SeamCrvReview<O>> {
@@ -1011,8 +1012,8 @@ pub fn review_start_and_stop_on_seam_crv_classifies<O: ClassObject>(
         .ok_or_else(|| null("ReviewStartAndStopOnSeamCrvClassifies: empty classification"))?;
 
     // init output
-    let edge_first_side = classification.ivl_bound_edgeuse_obj(geometry, 0, true)?;
-    let edge_last_side = classification.ivl_bound_edgeuse_obj(geometry, last, false)?;
+    let edge_first_side = classification.ivl_bound_edgeuse_obj(k, geometry, 0, true)?;
+    let edge_last_side = classification.ivl_bound_edgeuse_obj(k, geometry, last, false)?;
     let mut out = SeamCrvReview {
         first_kept: true,
         last_kept: true,
@@ -2875,6 +2876,11 @@ mod tests {
     fn review_of_an_empty_classification_is_rejected() {
         let k = Kernel::default();
         let mut cc: CurveClassification<H> = CurveClassification::new(&k);
-        assert!(review_start_and_stop_on_seam_crv_classifies(&NoGeometry, &mut cc).is_err());
+        assert!(review_start_and_stop_on_seam_crv_classifies(
+            &Kernel::default(),
+            &NoGeometry,
+            &mut cc
+        )
+        .is_err());
     }
 }

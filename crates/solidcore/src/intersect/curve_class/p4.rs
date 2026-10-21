@@ -226,14 +226,15 @@ fn connect_intervals<O: ClassObject>(
 /// output starts as an undefined `SmPoint2d`).
 fn interval_end_uv<O: ClassObject>(
     cc: &CurveClassification<O>,
+    k: &Kernel,
     geometry: &impl ClassGeometry<O>,
     index: usize,
     do_min: bool,
 ) -> Result<Point2> {
     if do_min {
-        cc.interval_min_uv(geometry, index, Vec2::UNDEF)
+        cc.interval_min_uv(k, geometry, index, Vec2::UNDEF)
     } else {
-        cc.interval_max_uv(geometry, index, Vec2::UNDEF)
+        cc.interval_max_uv(k, geometry, index, Vec2::UNDEF)
     }
 }
 
@@ -797,6 +798,7 @@ impl<O: ClassObject> CurveClassification<O> {
     /// evaluations it reaches.
     pub fn ivl_bound_edgeuse_obj<G: ClassGeometry<O>>(
         &self,
+        k: &Kernel,
         geometry: &G,
         index: usize,
         do_min: bool,
@@ -841,7 +843,7 @@ impl<O: ClassObject> CurveClassification<O> {
 
         // CrvClassification Face locals (statuses ignored)
         let tgt_classify_surf_uv =
-            ignored(interval_end_uv(self, geometry, index, do_min))?.unwrap_or(Vec2::UNDEF);
+            ignored(interval_end_uv(self, k, geometry, index, do_min))?.unwrap_or(Vec2::UNDEF);
         let tgt_classify_surf_norm = ignored(classify_surface.evaluate_normal(
             tgt_classify_surf_uv,
             Side::Left,
