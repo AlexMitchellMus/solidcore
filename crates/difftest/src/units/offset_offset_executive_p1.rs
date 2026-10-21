@@ -2638,27 +2638,31 @@ mod tests {
 
     #[test]
     fn each_highlevel_probe_calls_its_real_method() {
-        for (branch, dependency, status) in [
-            (Probe::ReplaceEmpty, Some("topology.brep_p4"), 1000),
-            (Probe::RemoveNoMerge, None, 1000),
+        // `status, counts[4], has offset B-rep`: no counts, the offset B-rep kept
+        let plain = |status: i64| [status, 0, 0, 0, 0, 1];
+        for (branch, dependency, record) in [
+            (Probe::ReplaceEmpty, Some("topology.brep_p4"), plain(1000)),
+            (Probe::RemoveNoMerge, None, plain(1000)),
             // The editing-flag adapter defers (main's committed report agrees).
-            (Probe::RemoveEmpty, Some("topology.brep_p1"), 1000),
-            (Probe::SideWallNull, None, 1000),
-            (Probe::SideWallUnmapped, None, 1000),
-            (Probe::FillEmpty, None, 1000),
-            (Probe::VertexNull, None, 1006),
+            (Probe::RemoveEmpty, Some("topology.brep_p1"), plain(1000)),
+            (Probe::SideWallNull, None, plain(1000)),
+            (Probe::SideWallUnmapped, None, plain(1000)),
+            (Probe::FillEmpty, None, plain(1000)),
+            (Probe::VertexNull, None, plain(1006)),
             (
                 Probe::VertexIsolated,
                 Some("offset.offset_geometry_creation"),
-                1000,
+                plain(1000),
             ),
-            (Probe::FaceuseNull, None, 1006),
-            (Probe::FaceuseNoSurface, None, 1000),
-            (Probe::PiecewiseEmpty, Some("query.brep"), 1000),
+            (Probe::FaceuseNull, None, plain(1006)),
+            (Probe::FaceuseNoSurface, None, plain(1000)),
+            // PiecewiseMerge succeeds on the empty B-rep (its B-rep box is
+            // query.brep's) and hands the offset B-rep on
+            (Probe::PiecewiseEmpty, None, [1000, 0, 0, 0, 1, 0]),
             // MapEdgeuses now evaluates through topology.edgeuse_p3, which must
             // build the hand-made plane face's missing UV trim curve.
-            (Probe::MapPlane, Some("intersect.surface_drop_lib_p3"), 1000),
-            (Probe::EdgeusesUnmapped, None, 1000),
+            (Probe::MapPlane, Some("intersect.surface_drop_lib_p3"), plain(1000)),
+            (Probe::EdgeusesUnmapped, None, plain(1000)),
         ] {
             let input = Inputs::Probe {
                 branch,
@@ -2668,15 +2672,16 @@ mod tests {
             if let Some(unit) = dependency {
                 assert_eq!(output.deferred.unwrap().unit, unit);
             } else {
-                assert_eq!(output.ints["probe"], [status, 0, 0, 0, 0, 1]);
+                assert_eq!(output.ints["probe"], record, "{branch:?}");
             }
         }
     }
 
     #[test]
     fn face_tail_fixture_reaches_the_kernel_face_constructor() {
-        // Until topology.brep_p2 lands, the shared MakeFaceWithCurves fixture defers
-        // at its vertex-shell construction rather than failing as a harness error.
+        // The shared MakeFaceWithCurves fixture builds its vertex shell
+        // (SmBrep::MakeShellVertex) and defers at the unported
+        // SmBrep::MakeWireEdgeVertex rather than failing as a harness error.
         let input: Inputs = serde_json::from_value(serde_json::json!({
             "op": "face_tail",
             "offset_distance": 0.25,
@@ -2689,7 +2694,11 @@ mod tests {
         }))
         .unwrap();
         let output = Runner.run_rust(&case(&input)).unwrap();
-        assert_eq!(output.deferred.unwrap().unit, "topology.brep_p2");
+        let deferred = output.deferred.unwrap();
+        assert_eq!(
+            (deferred.unit.as_str(), deferred.symbol.as_str()),
+            ("topology.brep_p3", "SmBrep::MakeWireEdgeVertex")
+        );
     }
 
     #[test]
