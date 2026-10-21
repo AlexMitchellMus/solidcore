@@ -54,6 +54,7 @@ use crate::geom::context::{MarkLock, MarkType, ALL_MARKS};
 use crate::geom::object::{NotifyOperation, ObjectRef};
 use crate::kernel::Kernel;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::surface::surface::Surface;
 use crate::topology::brep::p2::{self as brep_p2, NotifyArg};
 use crate::topology::edge::NotifyEnv;
@@ -1224,10 +1225,10 @@ fn split_closed(
 
     // We will use this bbox a few times times.
     // just need a rough bound for the radius of the brep.
-    let brep_bbox = crate::query::brep::calculate_bounding_box(
+    let brep_bbox = qbrep::calculate_bounding_box(
         k,
         brep,
-        crate::query::brep::BoundingBoxOptions {
+        BoundingBoxOptions {
             approx: true,
             tight: false,
             expand_by_zone_tol_3d: true,

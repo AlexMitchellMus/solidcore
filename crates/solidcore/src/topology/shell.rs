@@ -57,6 +57,7 @@ use crate::error::{Result, SolidError};
 use crate::geom::context::{with_mark_lock, ALL_MARKS};
 use crate::geom::object::Shape;
 use crate::kernel::Kernel;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::topology::proto_topology::p1::owning_topology;
 use crate::topology::topology_traverser::{Entity, Marks};
 use crate::topology::{
@@ -973,13 +974,9 @@ where
         } else {
             shell_brep(brep, shell_id)?.ok_or(SolidError::null_pointer(OP))?;
             // pBrep->CalculateBoundingBox(sBBox) (unit `query.brep`, default arguments)
-            crate::query::brep::calculate_bounding_box(
-                kernel,
-                brep,
-                crate::query::brep::BoundingBoxOptions::default(),
-            )?
-            .sphere_bound()
-            .radius
+            qbrep::calculate_bounding_box(kernel, brep, BoundingBoxOptions::default())?
+                .sphere_bound()
+                .radius
         };
         let end = input.start + input.direction * (3.01 * radius);
         let direction = (end - input.start)

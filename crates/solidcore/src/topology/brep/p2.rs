@@ -94,6 +94,7 @@ use crate::math::{Point2, Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT, PI}
 use crate::nurbs::b_spline_curve::{BSplineCurve, BoundingBoxRequest};
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::query::edge as qedge;
 use crate::query::face::p1 as qface1;
 use crate::query::face::p2::{curve_on_classify, CurveOnClassifyObjects};
@@ -347,7 +348,12 @@ pub fn set_tolerance(
     // when sZoneTol3d <= 0.0 compute tol from Bounding box size
     if new_tol <= 0.0 {
         // (status ignored: a failure leaves the initialised box)
-        let bbox = crate::error::ignored(brep_bounding_box(k, b))?.unwrap_or_default();
+        let bbox = crate::error::ignored(qbrep::calculate_bounding_box(
+            k,
+            b,
+            BoundingBoxOptions::default(),
+        ))?
+        .unwrap_or_default();
         let mut size = bbox.size().length();
         if size >= 1.0e15 || size <= 0.0 {
             size = 1.0;
@@ -506,15 +512,6 @@ fn check_uv_trim_curve(k: &Kernel, b: &Brep, eu: EdgeuseId) -> Result<bool> {
         Err(SolidError::Upstream { code: SM_ERR, .. }) => Ok(false),
         Err(e) => Err(e),
     }
-}
-
-/// `SmBrep::CalculateBoundingBox(rBox)` (unit `query.brep`, default arguments).
-fn brep_bounding_box(k: &Kernel, b: &Brep) -> Result<Extent3d> {
-    crate::query::brep::calculate_bounding_box(
-        k,
-        b,
-        crate::query::brep::BoundingBoxOptions::default(),
-    )
 }
 
 /// `SmFace::SetTolerance(tol, bUpdateOnlyIfLarger, FALSE)` ([`face3::set_tolerance`]).
@@ -1328,7 +1325,7 @@ pub fn ray_fire(
     answer_limit: Option<f64>,
 ) -> Result<RayFireResult> {
     // get Brep BoundingBox and BoundingSphere
-    let bbox = brep_bounding_box(k, b)?;
+    let bbox = qbrep::calculate_bounding_box(k, b, BoundingBoxOptions::default())?;
     let sphere = bbox.sphere_bound();
     let radius = sphere.radius;
 

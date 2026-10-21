@@ -46,7 +46,7 @@ use crate::intersect::point_class::{PointClassType, PointClassification};
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3};
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
-use crate::query::brep::BrepQuery;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions, BrepQuery};
 use crate::topology::edgeuse::p1 as eu;
 use crate::topology::shell;
 use crate::topology::topology::{self as topo, Topology};
@@ -734,8 +734,18 @@ pub fn temporary_brep_transform(
     other: &Brep,
 ) -> Result<TemporaryBrepShift> {
     // get parts bbox
-    let bbox1 = ignore_failure(brep_bounding_box(primary_kernel, brep))?.unwrap_or_default();
-    let bbox2 = ignore_failure(brep_bounding_box(other_kernel, other))?.unwrap_or_default();
+    let bbox1 = ignore_failure(qbrep::calculate_bounding_box(
+        primary_kernel,
+        brep,
+        BoundingBoxOptions::default(),
+    ))?
+    .unwrap_or_default();
+    let bbox2 = ignore_failure(qbrep::calculate_bounding_box(
+        other_kernel,
+        other,
+        BoundingBoxOptions::default(),
+    ))?
+    .unwrap_or_default();
     let bbox = bbox1.union(&bbox2);
 
     // when bbox is very large - translate its center to the origin
@@ -782,15 +792,6 @@ impl TemporaryBrepShift {
             inverse: Some(inverse),
         })
     }
-}
-
-/// `SmBrep::CalculateBoundingBox(rBox)` (unit `query.brep`, default arguments).
-fn brep_bounding_box(k: &Kernel, b: &Brep) -> Result<crate::geom::extent3d::Extent3d> {
-    crate::query::brep::calculate_bounding_box(
-        k,
-        b,
-        crate::query::brep::BoundingBoxOptions::default(),
-    )
 }
 
 #[cfg(test)]

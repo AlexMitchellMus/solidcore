@@ -87,6 +87,7 @@ use crate::kernel::Kernel;
 use crate::math::{max2, Point3, Vec3, BIG_DOUBLE, EFF_ZERO};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::surface::surface::Surface;
 use crate::topology::brep::p1;
 use crate::topology::brep::p6;
@@ -1859,15 +1860,6 @@ fn face_edges(b: &Brep, f: FaceId) -> Result<Vec<EdgeId>> {
     crate::topology::face::p4::edges(b, f, None, false, None)
 }
 
-/// `SmBrep::CalculateBoundingBox(rBox)` (unit `query.brep`, default arguments).
-fn brep_bounding_box(k: &Kernel, b: &Brep) -> Result<Extent3d> {
-    crate::query::brep::calculate_bounding_box(
-        k,
-        b,
-        crate::query::brep::BoundingBoxOptions::default(),
-    )
-}
-
 /// `sm_GetPointFromSol(sSol, start)` ([`crate::topology::brep::p2::point_from_solution`]).
 fn point_from_solution(
     k: &Kernel,
@@ -2046,7 +2038,7 @@ fn faces_to_delete(
             let shape = Shape::new(&[], &[(env.brep_id, face)], &edge_keys, &vertex_keys)?;
 
             // Find a ray to determine which face needs to be kept or deleted
-            let bbox = brep_bounding_box(k, b)?;
+            let bbox = qbrep::calculate_bounding_box(k, b, BoundingBoxOptions::default())?;
             let sphere = bbox.sphere_bound();
             let param = line_closest_point(reference, direction, sphere.center);
             let projected_center = reference + direction * param;

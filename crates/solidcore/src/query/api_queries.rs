@@ -45,6 +45,7 @@ use crate::kernel::Kernel;
 use crate::math::{Point2, Point3, Vec3};
 use crate::nurbs::b_spline_curve::BoundingBoxRequest;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::query::brep::{BrepClassifier, BrepIdentity};
 use crate::surface::surface::p1::zone_tol_3d;
 use crate::surface::surface::p4::NoObject;
@@ -614,11 +615,7 @@ pub fn brep_bounding_box(k: &Kernel, brep: &Brep, tight: bool) -> Result<Extent3
     if tight {
         crate::query::brep::calculate_tight_bounding_box(k, brep)
     } else {
-        crate::query::brep::calculate_bounding_box(
-            k,
-            brep,
-            crate::query::brep::BoundingBoxOptions::default(),
-        )
+        qbrep::calculate_bounding_box(k, brep, BoundingBoxOptions::default())
     }
 }
 

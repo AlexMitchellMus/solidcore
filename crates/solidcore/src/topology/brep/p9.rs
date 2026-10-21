@@ -40,6 +40,7 @@ use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3, EFF_ZERO_PARAM};
 use crate::nurbs::b_spline_surface::p1::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::query::brep::{BrepIdentity, BrepQuery};
 use crate::surface::surface::{Surface, SurfaceKind};
 use crate::topology::edge;
@@ -115,8 +116,12 @@ where
         };
         let bounds = match supplied_box {
             Some(bounds) => bounds,
-            None => crate::error::ignored(brep_bounds(k, b))?
-                .unwrap_or_else(crate::geom::extent3d::Extent3d::new),
+            None => crate::error::ignored(qbrep::calculate_bounding_box(
+                k,
+                b,
+                BoundingBoxOptions::default(),
+            ))?
+            .unwrap_or_else(crate::geom::extent3d::Extent3d::new),
         };
         let ray_start = bounds.max() + (bounds.max() - bounds.min()) * 0.5;
         let mut direction = Vec3::new(1.0, 1.0, 1.0);
@@ -331,15 +336,6 @@ fn brep_regions(b: &Brep) -> Result<Vec<RegionId>> {
 
 fn brep_edges(b: &Brep) -> Result<Vec<EdgeId>> {
     crate::topology::brep::p1::edges(b, None)
-}
-
-/// `SmBrep::CalculateBoundingBox(rBox)` (unit `query.brep`, default arguments).
-fn brep_bounds(k: &Kernel, b: &Brep) -> Result<crate::geom::extent3d::Extent3d> {
-    crate::query::brep::calculate_bounding_box(
-        k,
-        b,
-        crate::query::brep::BoundingBoxOptions::default(),
-    )
 }
 
 /// `this->RayFire(start, direction, tolerance, pRegion, sPC)` (unit `topology.brep_p2`)

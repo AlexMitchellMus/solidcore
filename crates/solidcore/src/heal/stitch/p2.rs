@@ -59,6 +59,7 @@ use crate::kernel::Kernel;
 use crate::math::{Vec3, BIG_DOUBLE};
 use crate::nurbs::b_spline_curve::p2::BoundingBoxRequest;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::topology::brep::p1::{self as bp1, SetRegionVoidType};
 use crate::topology::{edge, vertex, Brep, EdgeId, FaceId, RegionId, ShellId, VertexId};
 use crate::{Result, SolidError};
@@ -340,8 +341,12 @@ impl Stitch<'_> {
             // Check for Vertices coincident with Edges if asked.
             if self.split_edges_with_vertices {
                 // get modified Brep Bounding box (status not checked)
-                let brep_bbox =
-                    ignored(brep_bounding_box(k, b, false, false, true))?.unwrap_or_default();
+                let brep_bbox = ignored(qbrep::calculate_bounding_box(
+                    k,
+                    b,
+                    BoundingBoxOptions::default(),
+                ))?
+                .unwrap_or_default();
 
                 // build modified Brep Edge spatial tree (lNumPerNode only sizes the
                 // memory blocks)
@@ -1305,7 +1310,14 @@ fn glue_or_squeeze(
 ///
 /// Those of `CalculateBoundingBox`.
 pub fn solid_stitch_start(k: &Kernel, b: &Brep) -> Result<(f64, f64)> {
-    let bbox = brep_bounding_box(k, b, true, false, true)?; // TRUE: Approx is fine [B259]
+    let bbox = qbrep::calculate_bounding_box(
+        k,
+        b,
+        BoundingBoxOptions {
+            approx: true,
+            ..BoundingBoxOptions::default()
+        },
+    )?; // TRUE: Approx is fine [B259]
     let dist = bbox.size().length();
     // This tol will be iteratively increased:
     Ok((b.tolerance() / 10.0, dist))
@@ -1438,26 +1450,6 @@ pub fn stitch_into_shell(
 }
 
 // ---- unported callees ----------------------------------------------------------------
-
-/// `SmBrep::CalculateBoundingBox(rBox, bApprox, bTight, bExpandByZoneTol3d)` (unit
-/// `query.brep`; upstream defaults `FALSE`, `FALSE`, `TRUE`).
-fn brep_bounding_box(
-    k: &Kernel,
-    b: &Brep,
-    approx: bool,
-    tight: bool,
-    expand_by_zone_tol: bool,
-) -> Result<Extent3d> {
-    crate::query::brep::calculate_bounding_box(
-        k,
-        b,
-        crate::query::brep::BoundingBoxOptions {
-            approx,
-            tight,
-            expand_by_zone_tol_3d: expand_by_zone_tol,
-        },
-    )
-}
 
 /// `SmBrep::DeleteFace(face, bDeleteEdgesVertices, bDoRegionNesting,
 /// pOptDeletedEdgesVertices, pOptRegionToKeep)` (unit `topology.brep_p3`; upstream
