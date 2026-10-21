@@ -80,7 +80,9 @@
 //!   a topology handle's B-rep entity through its defaulted hooks
 //!   [`ClassGeometry::topology_entity`] / [`ClassGeometry::topology_handle`]
 //!   (CO-PORTED by `intersect.curve_class_p4`, which calls the topology members
-//!   through them). `SM_PC_POINT` stores an `SmPoint3d*` cast to `SmObject*`; here it is a handle of
+//!   through them). `SmEdge::GetCurve` and `SmVertex::GetPoint` go through them (the
+//!   vertex point first through [`ClassGeometry::classification_vertex_point`]); a
+//!   handle the adapter cannot resolve to a B-rep stays an `Unported` deferral. `SM_PC_POINT` stores an `SmPoint3d*` cast to `SmObject*`; here it is a handle of
 //!   kind [`ClassObjectKind::Point`]. Upstream calls virtual `SmObject` methods on that
 //!   pointer in `ComputePointParameters` (`SmTol::GetZoneTol3d`), `IsConnectedTo` and
 //!   `MergeIntoObject` (`GetType`), which is undefined behaviour; the port treats a
@@ -607,8 +609,9 @@ impl<O: ClassObject> PointClassification<O> {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] for edges and edgeuses (the topology units);
-    /// [`SolidError::InvalidInput`] when `geometry` cannot resolve a curve handle.
+    /// [`SolidError::Unported`] for edgeuses (`SmEdgeuse::GetEdge`) and edge handles
+    /// `geometry` cannot resolve to its B-rep; [`SolidError::InvalidInput`] when
+    /// `geometry` cannot resolve a curve handle.
     pub fn curve_object<'g>(
         &self,
         geometry: &'g impl ClassGeometry<O>,
@@ -1147,7 +1150,8 @@ impl<O: ClassObject> PointClassification<O> {
     ///
     /// `SM_ERR` when the parameters are not set or the classification has no point
     /// (unknown, nothing, region); the errors of the evaluations;
-    /// [`SolidError::Unported`] for topology objects.
+    /// [`SolidError::Unported`] for edge uses, faces and vertex or edge handles
+    /// `geometry` cannot resolve to its B-rep.
     pub fn find_obj_point_3d(&self, geometry: &impl ClassGeometry<O>) -> Result<Point3> {
         if !self.are_parameters_set() {
             return Err(SolidError::sm_err(OP_FIND));
@@ -1177,6 +1181,9 @@ impl<O: ClassObject> PointClassification<O> {
             }
             PointClassType::Vertex => {
                 let o = self.cast(ClassObjectKind::Vertex)?;
+                if let Some(p) = geometry.classification_vertex_point(o) {
+                    return Ok(p);
+                }
                 match topology_of(geometry, o, "SmVertex::GetPoint", "topology.vertex")? {
                     (b, EntityRef::Vertex(v)) => vertex::point(b, v),
                     _ => Err(wrong_entity(OP_FIND)),

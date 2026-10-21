@@ -59,7 +59,7 @@
 //!   case this file needs (an explicit tolerance).
 
 use crate::curve::curve::p2::Curve;
-use crate::error::{ignore_status, Result, SolidError};
+use crate::error::{ignore_status, EntityRef, Result, SolidError};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::geom_utility::p1::line_closest_point;
 use crate::geom::global_solver::SolverOperation;
@@ -80,7 +80,6 @@ use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3, BIG_DOUBLE};
 use crate::surface::surface::Surface;
 use crate::topology::{edge as topo_edge, vertex as topo_vertex, VertexId};
-use crate::EntityRef;
 
 const OP_FIND: &str = "intersect::curve_class::p3::CurveClassification::find_interval";
 const OP_FIND_PC: &str = "intersect::curve_class::p3::CurveClassification::find_point_class";
