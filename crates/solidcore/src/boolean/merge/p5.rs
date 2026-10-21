@@ -11,7 +11,7 @@
 //! Deviations: operands, marks and mate maps are borrowed explicitly instead of
 //! reading `SmMerge::m_vTI`; ids replace pointers. Output stays mutable because
 //! upstream preserves its partial contents on failure. Classification goes through
-//! `query.brep` ([`p1::classify_point_editing_disabled`]); graph deletion waits
+//! `query.brep` (`p1::classify_point_editing_disabled`); graph deletion waits
 //! for `topology.brep_p4`; edge copying waits for `boolean.merge_p2`. Vertex
 //! copying delegates to [`p1::merge_vertex`]. B-rep
 //! caches are not attached to arena B-reps yet, so the optional cache resizing is
