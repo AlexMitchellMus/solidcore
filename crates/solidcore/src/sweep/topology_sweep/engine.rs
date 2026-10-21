@@ -285,7 +285,7 @@ impl TopologySweep {
                 continue;
             };
             let interval = curve.natural_interval();
-            let point = curve.evaluate_point(interval.max())?;
+            let point = curve.evaluate_point(a.kernel(region.0)?, interval.max())?;
             // bNewVtxNeeded is unconditionally TRUE in the active upstream code.
             let point0 = vertex::point(a.brep(original.0)?, original.1)?;
             let (_, start) = a.make_shell_vertex(region, point0)?;
@@ -406,8 +406,8 @@ impl TopologySweep {
         if swept.trim_curves.is_empty() {
             return Err(SolidError::sm_err(OP));
         }
-        if surface.is_degenerate_curve(1.0e-4, None, ZONE_TOL_3D / 10.0)?
-            || surface.is_degenerate_point(ZONE_TOL_3D / 10.0, None)?
+        if surface.is_degenerate_curve(a.kernel(region.0)?, 1.0e-4, None, ZONE_TOL_3D / 10.0)?
+            || surface.is_degenerate_point(a.kernel(region.0)?, ZONE_TOL_3D / 10.0, None)?
         {
             return Err(SolidError::invalid_input(
                 OP,
@@ -688,8 +688,8 @@ impl TopologySweep {
     ) -> Result<EdgeRef> {
         let tolerance = a.brep(face.0)?.tolerance();
         let interval = curve.natural_interval();
-        let start = curve.evaluate_point(interval.min())?;
-        let end = curve.evaluate_point(interval.max())?;
+        let start = curve.evaluate_point(a.kernel(face.0)?, interval.min())?;
+        let end = curve.evaluate_point(a.kernel(face.0)?, interval.max())?;
         let mut vs = None;
         let mut vt = None;
         for id in a.face_vertices(face)? {
