@@ -277,11 +277,13 @@ impl PrimitiveCreation {
             ..Default::default()
         };
         let surface = a.with_primitive_brep(brep, |kernel, model| {
+            // Both edge uses are in this B-rep (`None`: no second B-rep).
             crate::topology::brep::p1::create_edge_edge_blend(
                 kernel,
-                model,
                 flag,
+                model,
                 first,
+                None,
                 second,
                 options.curves_direction,
                 Some(&mut derivatives),
