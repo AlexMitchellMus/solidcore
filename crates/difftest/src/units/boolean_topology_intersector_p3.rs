@@ -668,7 +668,7 @@ fn run_rust_merge(i: &Inputs, p: Prepared) -> Result<Vec<f64>, SolidError> {
                     None => true,
                     Some(c) => {
                         let degenerate = ClassGeometry::curve(&two, c)
-                            .map(|cv| cv.is_degenerate(tol, None))
+                            .map(|cv| cv.is_degenerate(&k, tol, None))
                             .transpose()?
                             .unwrap_or(false);
                         !degenerate

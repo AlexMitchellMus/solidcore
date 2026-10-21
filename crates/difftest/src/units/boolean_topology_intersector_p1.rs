@@ -771,7 +771,7 @@ fn vertexuse_ref(vu: VertexuseId) -> ObjectRef {
 /// The two B-reps, the registered curves (kind 5) and the port's curve copies (kind
 /// 7).
 pub(crate) struct Two {
-    breps: [Option<Brep>; 2],
+    pub(super) breps: [Option<Brep>; 2],
     curves: Vec<SmCurve>,
     extra: Vec<SmCurve>,
     env: [NotifyEnv; 2],
@@ -817,7 +817,7 @@ impl Two {
         Ok(())
     }
 
-    fn brep(&self, h: H) -> Option<&Brep> {
+    pub(super) fn brep(&self, h: H) -> Option<&Brep> {
         self.breps.get(usize::try_from(h.b).ok()?)?.as_ref()
     }
 
