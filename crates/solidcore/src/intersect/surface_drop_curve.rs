@@ -183,6 +183,7 @@ fn is_singularity(k: &Kernel, surface: &Surface, uv: Point2) -> Result<(bool, Su
         SurfaceKind::Plane(p) => Ok(p.is_singularity()),
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
@@ -259,6 +260,7 @@ fn is_on_seam(k: &Kernel, surface: &Surface, uv: Point2) -> Result<Option<Vec<Po
         }),
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
@@ -291,6 +293,9 @@ fn create_iso_parametric_curve(
                 .curve,
         )),
         SurfaceKind::Cone(s) => Ok(s
+            .create_iso_parametric_curve(k, param, value, None, false)?
+            .curve),
+        SurfaceKind::Sphere(s) => Ok(s
             .create_iso_parametric_curve(k, param, value, None, false)?
             .curve),
         SurfaceKind::SurfOfRevolution(s) => {
@@ -370,6 +375,7 @@ fn surface_drop_curve(
         }
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)

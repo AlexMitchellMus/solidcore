@@ -1947,6 +1947,7 @@ impl Surface {
         let bss = match self.kind() {
             SurfaceKind::BSpline(b) => b,
             SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
             | SurfaceKind::Plane(_)
             | SurfaceKind::SurfOfRevolution(_)
             | SurfaceKind::CurveBounded(_)

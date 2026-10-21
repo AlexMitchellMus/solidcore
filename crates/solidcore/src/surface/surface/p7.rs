@@ -774,6 +774,8 @@ impl Surface {
     ) -> Result<Vec3> {
         match self.kind() {
             SurfaceKind::Cone(_) => base_evaluate_normal(k, self, uv, u_side, v_side),
+            // SmSphere::EvaluateNormal (the side flags are not used)
+            SurfaceKind::Sphere(s) => s.evaluate_normal(uv),
             SurfaceKind::BSpline(_) | SurfaceKind::SurfOfRevolution(_) | SurfaceKind::Step(_) => {
                 base_evaluate_normal(k, self, uv, u_side, v_side)
             }
@@ -786,7 +788,7 @@ impl Surface {
 
     /// Whether the surface is closed over `uv_domain` in direction `param`, and the
     /// continuity across the seam when `want_continuity` (`IsClosed`, virtual: a plane
-    /// is never closed; the others run [`base_is_closed`]).
+    /// is never closed, a sphere runs its override; the others run [`base_is_closed`]).
     ///
     /// # Errors
     ///
@@ -802,6 +804,11 @@ impl Surface {
         match self.kind() {
             SurfaceKind::Plane(p) => {
                 let (closed, continuity) = p.is_closed();
+                Ok((closed, want_continuity.then_some(continuity)))
+            }
+            // SmSphere::IsClosed (the tolerance is not used)
+            SurfaceKind::Sphere(s) => {
+                let (closed, continuity) = s.is_closed(uv_domain, param);
                 Ok((closed, want_continuity.then_some(continuity)))
             }
 
@@ -852,6 +859,9 @@ impl Surface {
             // SmSurfOfRevolution inherits SmBSplineSurface::CalculateBoundingBox
             SurfaceKind::Cone(s) => {
                 Ok(planar_of(k, s.rev().base(), &self.natural_uv_domain())?.is_planar(tol_3d))
+            }
+            SurfaceKind::Sphere(s) => {
+                Ok(planar_of(k, s.base().base(), &self.natural_uv_domain())?.is_planar(tol_3d))
             }
             SurfaceKind::SurfOfRevolution(s) => {
                 Ok(planar_of(k, s.base(), &self.natural_uv_domain())?.is_planar(tol_3d))

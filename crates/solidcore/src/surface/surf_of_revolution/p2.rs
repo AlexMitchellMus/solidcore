@@ -625,8 +625,18 @@ impl SurfOfRevolution {
                 need_nurb_intersection = more;
                 out = found;
             }
-            // (IntersectWithSphere once that kind exists; an SmCylinder is not
-            // SmCone_TYPE: the default branch)
+            SurfaceKind::Sphere(o) => {
+                let (more, found) = self.intersect_with_sphere(
+                    k,
+                    uv_domain,
+                    o.as_ref(),
+                    other_uv_domain,
+                    approx_tol_3d,
+                )?;
+                need_nurb_intersection = more;
+                out = found;
+            }
+            // (an SmCylinder is not SmCone_TYPE: the default branch)
             SurfaceKind::BSpline(_)
             | SurfaceKind::Cone(_)
             | SurfaceKind::CurveBounded(_)
@@ -696,6 +706,7 @@ impl SurfOfRevolution {
             }
 
             SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
             | SurfaceKind::SurfOfRevolution(_)
             | SurfaceKind::CurveBounded(_)
             | SurfaceKind::Step(_)

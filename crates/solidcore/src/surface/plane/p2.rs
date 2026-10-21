@@ -1409,8 +1409,20 @@ pub(crate) fn global_surface_intersect(
             core::mem::swap(&mut x.surface1_uv_curves, &mut x.surface2_uv_curves);
             (need_nurb_intersection, out) = (need, x);
         }
-        // (the cone, cylinder, sphere and extrusion special cases need surface kinds
-        // that are not ported yet)
+        // sphere/plane special case intersection: the orders and the UV curves are
+        // swapped
+        SurfaceKind::Sphere(sphere) => {
+            // the plane's boxes take its face's tolerance (taken as without owner
+            // there; see the module header)
+            if this.face()?.is_some() {
+                zone_tolerance(true)?;
+            }
+            let (need, mut x) =
+                sphere.intersect_with_plane(k, other_uv_domain, plane, uv_domain, approx_tol_3d)?;
+            core::mem::swap(&mut x.surface1_uv_curves, &mut x.surface2_uv_curves);
+            (need_nurb_intersection, out) = (need, x);
+        }
+        // (the extrusion special case needs a surface kind that is not ported yet)
         SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)

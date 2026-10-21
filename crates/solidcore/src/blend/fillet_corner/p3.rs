@@ -1438,6 +1438,9 @@ impl FilletCorner {
                     SurfaceKind::Cone(c) => {
                         *c.base_mut().out_of_bounds_enabled_mut() = true;
                     }
+                    SurfaceKind::Sphere(c) => {
+                        *c.base.base_mut().out_of_bounds_enabled_mut() = true;
+                    }
                     SurfaceKind::CurveBounded(_)
                     | SurfaceKind::Step(_)
                     | SurfaceKind::OffsetSurface(_)

@@ -548,7 +548,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         // node's subdomain.
         let cache_surface = self.surface().clone();
         let surface_to_test: Option<&Surface> = match cache_surface.kind() {
-            SurfaceKind::Cone(_) => None,
+            SurfaceKind::Cone(_) | SurfaceKind::Sphere(_) => None,
             SurfaceKind::BSpline(_) | SurfaceKind::Plane(_) | SurfaceKind::SurfOfRevolution(_) => {
                 None
             }
@@ -935,6 +935,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
                     SurfaceKind::BSpline(b) => b.copy_sub_patch(&node_uv),
                     SurfaceKind::Plane(p) => p.base().copy_sub_patch(&node_uv),
                     SurfaceKind::Cone(s) => s.rev().base().copy_sub_patch(&node_uv),
+                    SurfaceKind::Sphere(s) => s.base().base().copy_sub_patch(&node_uv),
                     SurfaceKind::SurfOfRevolution(s) => s.base().copy_sub_patch(&node_uv),
                     SurfaceKind::CurveBounded(_)
                     | SurfaceKind::Step(_)

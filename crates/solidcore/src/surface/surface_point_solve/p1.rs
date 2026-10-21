@@ -284,6 +284,7 @@ fn b_spline_part(surface: &Surface) -> Option<&BSplineSurface> {
         SurfaceKind::BSpline(b) => Some(b),
         SurfaceKind::Plane(p) => Some(p.base()),
         SurfaceKind::Cone(s) => Some(s.rev().base()),
+        SurfaceKind::Sphere(s) => Some(s.base().base()),
         SurfaceKind::SurfOfRevolution(s) => Some(s.base()),
         SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
@@ -1289,6 +1290,7 @@ fn is_on_seam(k: &Kernel, surface: &Surface, uv: Point2) -> Result<bool> {
         SurfaceKind::Plane(p) => Ok(p.is_on_seam().0),
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)

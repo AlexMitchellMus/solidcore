@@ -819,6 +819,7 @@ fn is_singularity(
         SurfaceKind::Plane(p) => Ok(p.is_singularity()),
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
@@ -838,6 +839,7 @@ fn is_on_seam(k: &Kernel, surface: &Surface, uv: Point2) -> Result<(bool, SurfPa
         SurfaceKind::Plane(p) => Ok(p.is_on_seam()),
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)

@@ -1886,6 +1886,10 @@ pub(super) fn create_iso_parametric_curve(
             let iso = s.create_iso_parametric_curve(k, dir, value, domain, false)?;
             Ok((iso.curve, iso.max_gap_3d))
         }
+        SurfaceKind::Sphere(s) => {
+            let iso = s.create_iso_parametric_curve(k, dir, value, domain, false)?;
+            Ok((iso.curve, iso.max_gap_3d))
+        }
         SurfaceKind::SurfOfRevolution(s) => {
             let iso = s.create_iso_parametric_curve(k, dir, value, domain)?;
             Ok((iso.curve, iso.max_gap_3d))
@@ -1913,6 +1917,7 @@ fn is_singularity(
         SurfaceKind::Plane(p) => Ok(p.is_singularity()),
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SrfInVolume(_)
@@ -1932,6 +1937,7 @@ fn is_on_seam(k: &Kernel, surface: &Surface, uv: Point2) -> Result<bool> {
         SurfaceKind::Plane(p) => Ok(p.is_on_seam().0),
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SrfInVolume(_)

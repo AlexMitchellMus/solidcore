@@ -190,6 +190,7 @@ fn surface_drop_curve(
         }
         SurfaceKind::BSpline(_)
         | SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SrfInVolume(_)
         | SurfaceKind::SurfOfRevolution(_)
