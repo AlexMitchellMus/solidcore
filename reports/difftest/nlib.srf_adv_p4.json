@@ -1243,6 +1243,78 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "cov_coons_boundary_derivative_end_mismatch_1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_adv_p4/coverage.json#0 (upstream source/SMLib/src/NL_SrfAdv.cpp:17715 N_CreateCoonsBoundaryCrvs cpf: derivative at the far end differs -> NL_INP_ERR (coverage: nurbs/srf_adv/p4.rs:1034))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_coons_boundary_derivative_end_mismatch_3",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_adv_p4/coverage.json#1 (upstream source/SMLib/src/NL_SrfAdv.cpp:17715 N_CreateCoonsBoundaryCrvs cpf: derivative at the far end differs -> NL_INP_ERR (coverage: nurbs/srf_adv/p4.rs:1034))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_coons_boundary_derivative_end_mismatch_5",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_adv_p4/coverage.json#2 (upstream source/SMLib/src/NL_SrfAdv.cpp:17715 N_CreateCoonsBoundaryCrvs cpf: derivative at the far end differs -> NL_INP_ERR (coverage: nurbs/srf_adv/p4.rs:1034))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_coons_boundary_derivative_end_mismatch_7",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_adv_p4/coverage.json#3 (upstream source/SMLib/src/NL_SrfAdv.cpp:17715 N_CreateCoonsBoundaryCrvs cpf: derivative at the far end differs -> NL_INP_ERR (coverage: nurbs/srf_adv/p4.rs:1034))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_coons_boundary_twist_mismatch_1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_adv_p4/coverage.json#4 (upstream source/SMLib/src/NL_SrfAdv.cpp:17715 N_CreateCoonsBoundaryCrvs cpf: twist vectors differ -> NL_INP_ERR (coverage: nurbs/srf_adv/p4.rs:1045))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_coons_boundary_twist_mismatch_3",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_adv_p4/coverage.json#5 (upstream source/SMLib/src/NL_SrfAdv.cpp:17715 N_CreateCoonsBoundaryCrvs cpf: twist vectors differ -> NL_INP_ERR (coverage: nurbs/srf_adv/p4.rs:1045))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_coons_boundary_twist_mismatch_5",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_adv_p4/coverage.json#6 (upstream source/SMLib/src/NL_SrfAdv.cpp:17715 N_CreateCoonsBoundaryCrvs cpf: twist vectors differ -> NL_INP_ERR (coverage: nurbs/srf_adv/p4.rs:1045))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_coons_boundary_twist_mismatch_7",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_adv_p4/coverage.json#7 (upstream source/SMLib/src/NL_SrfAdv.cpp:17715 N_CreateCoonsBoundaryCrvs cpf: twist vectors differ -> NL_INP_ERR (coverage: nurbs/srf_adv/p4.rs:1045))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_coons_boundary_consistent",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_adv_p4/coverage.json#8 (upstream source/SMLib/src/NL_SrfAdv.cpp:17715 N_CreateCoonsBoundaryCrvs cpf with consistent data)",
+      "values_compared": 303
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -25245,8 +25317,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 3155,
-  "cases_total": 3155,
+  "cases_passed": 3164,
+  "cases_total": 3164,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

@@ -195,6 +195,86 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "cov_tiny_v_span_total_cap",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_offset/coverage.json#0 (upstream source/SMLib/src/NL_SrfOffset.cpp:969 patch narrower than du/dv -> np=1; totalmax rescale nv<q (coverage: nurbs/srf_offset.rs:402,485))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_tiny_v_span_chordlength",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_offset/coverage.json#1 (upstream source/SMLib/src/NL_SrfOffset.cpp:969 patch narrower than du/dv -> np=1 (coverage: nurbs/srf_offset.rs:402))",
+      "values_compared": 476
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_lsq_fewer_samples_than_cpts",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_offset/coverage.json#2 (upstream source/SMLib/src/NL_SrfOffset.cpp:1115 nnn>mu, mmm>mv (coverage: nurbs/srf_offset.rs:493,496))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_lsq_fewer_samples_than_cpts_uniform",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_offset/coverage.json#3 (upstream source/SMLib/src/NL_SrfOffset.cpp:1115 nnn>mu, mmm>mv (coverage: nurbs/srf_offset.rs:493,496))",
+      "values_compared": 87
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_revolution_rot_in_u_pp3_qq2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_offset/coverage.json#4 (upstream source/SMLib/src/NL_SrfOffset.cpp:809 surface of revolution, pq from dir (coverage: nurbs/srf_offset.rs:293))",
+      "values_compared": 198
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_revolution_rot_in_u_pp2_qq4",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_offset/coverage.json#5 (upstream source/SMLib/src/NL_SrfOffset.cpp:809 surface of revolution, pq from dir (coverage: nurbs/srf_offset.rs:293))",
+      "values_compared": 252
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_revolution_rot_in_v_pp3_qq2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_offset/coverage.json#6 (upstream source/SMLib/src/NL_SrfOffset.cpp:809 surface of revolution, pq from dir (coverage: nurbs/srf_offset.rs:293))",
+      "values_compared": 212
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_revolution_rot_in_v_pp2_qq4",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_offset/coverage.json#7 (upstream source/SMLib/src/NL_SrfOffset.cpp:809 surface of revolution, pq from dir (coverage: nurbs/srf_offset.rs:293))",
+      "values_compared": 198
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_extrusion_tiny_start_derivative_d0.0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_offset/coverage.json#8 (upstream source/SMLib/src/NL_SrfOffset.cpp:872 extrusion, unchecked N_SrfEvalPtPtDerivNormalFast failing at the corner (coverage: nurbs/srf_offset.rs:82-177))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_extrusion_small_start_derivative_d0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_offset/coverage.json#9 (upstream source/SMLib/src/NL_SrfOffset.cpp:872 extrusion, unchecked normal (coverage: nurbs/srf_offset.rs:82-177))",
+      "values_compared": 141
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -3397,8 +3477,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 424,
-  "cases_total": 424,
+  "cases_passed": 434,
+  "cases_total": 434,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

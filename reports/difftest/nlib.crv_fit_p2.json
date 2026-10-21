@@ -851,6 +851,30 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "cov_weighted_lst_sq_degree_above_n2_p3",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_fit_p2/coverage.json#0 (upstream source/SMLib/src/NL_CrvFit.cpp:13320 N_FitCrvWeightedLstSqKnots p > n -> NL_INP_ERR (coverage: nurbs/crv_fit/p2.rs:445))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_weighted_lst_sq_degree_above_n1_p2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_fit_p2/coverage.json#1 (upstream source/SMLib/src/NL_CrvFit.cpp:13320 N_FitCrvWeightedLstSqKnots p > n -> NL_INP_ERR (coverage: nurbs/crv_fit/p2.rs:445))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_weighted_lst_sq_degree_above_n3_p4",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_fit_p2/coverage.json#2 (upstream source/SMLib/src/NL_CrvFit.cpp:13320 N_FitCrvWeightedLstSqKnots p > n -> NL_INP_ERR (coverage: nurbs/crv_fit/p2.rs:445))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -16853,8 +16877,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 2106,
-  "cases_total": 2106,
+  "cases_passed": 2109,
+  "cases_total": 2109,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

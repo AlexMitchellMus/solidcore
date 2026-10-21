@@ -947,6 +947,54 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "cov_remove_all_rational_weights_out_of_range_extreme_dir1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_tool_p3/coverage.json#0 (upstream source/SMLib/src/NL_SrfTool.cpp:3597 N_SrfRemoveAllKnots new weights outside [NL_WMIN, NL_WMAX] -> no removal (coverage: nurbs/srf_tool/p3.rs:642,656))",
+      "values_compared": 60
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_remove_all_rational_weights_out_of_range_extreme_dir3",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_tool_p3/coverage.json#1 (upstream source/SMLib/src/NL_SrfTool.cpp:3597 N_SrfRemoveAllKnots new weights outside [NL_WMIN, NL_WMAX] -> no removal (coverage: nurbs/srf_tool/p3.rs:642,656))",
+      "values_compared": 60
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_remove_all_rational_weights_out_of_range_high_dir1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_tool_p3/coverage.json#2 (upstream source/SMLib/src/NL_SrfTool.cpp:3597 N_SrfRemoveAllKnots new weights outside [NL_WMIN, NL_WMAX] -> no removal (coverage: nurbs/srf_tool/p3.rs:642,656))",
+      "values_compared": 60
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_remove_all_rational_weights_out_of_range_high_dir3",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_tool_p3/coverage.json#3 (upstream source/SMLib/src/NL_SrfTool.cpp:3597 N_SrfRemoveAllKnots new weights outside [NL_WMIN, NL_WMAX] -> no removal (coverage: nurbs/srf_tool/p3.rs:642,656))",
+      "values_compared": 60
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_remove_all_rational_weights_out_of_range_low_dir1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_tool_p3/coverage.json#4 (upstream source/SMLib/src/NL_SrfTool.cpp:3597 N_SrfRemoveAllKnots new weights outside [NL_WMIN, NL_WMAX] -> no removal (coverage: nurbs/srf_tool/p3.rs:642,656))",
+      "values_compared": 60
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_remove_all_rational_weights_out_of_range_low_dir3",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_tool_p3/coverage.json#5 (upstream source/SMLib/src/NL_SrfTool.cpp:3597 N_SrfRemoveAllKnots new weights outside [NL_WMIN, NL_WMAX] -> no removal (coverage: nurbs/srf_tool/p3.rs:642,656))",
+      "values_compared": 60
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -20149,8 +20197,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 2518,
-  "cases_total": 2518,
+  "cases_passed": 2524,
+  "cases_total": 2524,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

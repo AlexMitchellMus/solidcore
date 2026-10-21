@@ -3,6 +3,46 @@
   "cases": [
     {
       "max_rel_err": 0.0,
+      "name": "cov_reparam_end_weights_huge_start_weight",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_adv_p2/coverage.json#0 (upstream source/SMLib/src/NL_CrvAdv.cpp:13887 N_SrfReparamWeights alf*del-bet*gam < NL_PTOL -> NL_INP_ERR (coverage: nurbs/crv_adv/p2.rs:983))",
+      "values_compared": 28
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_reparam_end_weights_huge_end_weight",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_adv_p2/coverage.json#1 (upstream source/SMLib/src/NL_CrvAdv.cpp:13887 N_SrfReparamWeights alf*del-bet*gam < NL_PTOL -> NL_INP_ERR (coverage: nurbs/crv_adv/p2.rs:983))",
+      "values_compared": 28
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_reparam_end_weights_subnormal_inner_weight",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_adv_p2/coverage.json#2 (upstream source/SMLib/src/NL_CrvAdv.cpp:13887 N_SrfReparamWeights 1/w bad -> NL_WGT_ERR (coverage: nurbs/crv_adv/p2.rs:993))",
+      "values_compared": 28
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_non_rat_deriv_subnormal_knot_span_d1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_adv_p2/coverage.json#3 (upstream source/SMLib/src/NL_CrvAdv.cpp:10995 N_CrvNonRatGetFirstDeriv (p-k+1)/(U[i+p+1]-U[i+k]) bad -> NL_NUM_ERR (coverage: nurbs/crv_adv/p2.rs:632))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_non_rat_deriv_subnormal_knot_span_d2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_adv_p2/coverage.json#4 (upstream source/SMLib/src/NL_CrvAdv.cpp:10995 N_CrvNonRatGetFirstDeriv (p-k+1)/(U[i+p+1]-U[i+k]) bad -> NL_NUM_ERR (coverage: nurbs/crv_adv/p2.rs:632))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "rect0_xdist_g1",
       "outcome": "pass",
       "pass": true,
@@ -22525,8 +22565,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 2815,
-  "cases_total": 2815,
+  "cases_passed": 2820,
+  "cases_total": 2820,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

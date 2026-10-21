@@ -1619,6 +1619,78 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "cov_normal_pole_both_partials_vanish_11",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_nurb/coverage.json#0 (upstream source/SMLib/src/NL_SrfNurb.cpp:5418 N_SrfEvalPtNormalAtPole both partials zero -> NL_GEO_ERR (coverage: nurbs/srf_nurb.rs:1363))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_normal_pole_both_partials_vanish_22",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_nurb/coverage.json#1 (upstream source/SMLib/src/NL_SrfNurb.cpp:5418 N_SrfEvalPtNormalAtPole both partials zero -> NL_GEO_ERR (coverage: nurbs/srf_nurb.rs:1363))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_normal_fast_parallel_partials",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_nurb/coverage.json#2 (upstream source/SMLib/src/NL_SrfNurb.cpp:2382 N_SrfEvalPtPtDerivNormalFast |SU x SV| <= NL_LTOL -> pole evaluator (coverage: nurbs/srf_nurb.rs:915))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_normal_pole_parallel_partials",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_nurb/coverage.json#3 (upstream source/SMLib/src/NL_SrfNurb.cpp:5418 N_SrfEvalPtNormalAtPole (coverage: nurbs/srf_nurb.rs:1333))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_type_flat_patch_curved_last_boundary",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_nurb/coverage.json#4 (upstream source/SMLib/src/NL_SrfNurb.cpp:3811 N_SrfType plane check, boundary u=1 not straight (coverage: nurbs/srf_nurb.rs:1621))",
+      "values_compared": 82
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_type_coaxial_arcs_sweep_differs_90.01_0.001",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_nurb/coverage.json#5 (upstream source/SMLib/src/NL_SrfNurb.cpp:3811 N_SrfType revolution, iso-circle angles differ (coverage: nurbs/srf_nurb.rs:1716))",
+      "values_compared": 49
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_type_coaxial_arcs_sweep_differs_90.01_0.0001",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_nurb/coverage.json#6 (upstream source/SMLib/src/NL_SrfNurb.cpp:3811 N_SrfType revolution, iso-circle angles differ (coverage: nurbs/srf_nurb.rs:1716))",
+      "values_compared": 70
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_type_coaxial_arcs_sweep_differs_90.1_0.001",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_nurb/coverage.json#7 (upstream source/SMLib/src/NL_SrfNurb.cpp:3811 N_SrfType revolution, iso-circle angles differ (coverage: nurbs/srf_nurb.rs:1716))",
+      "values_compared": 70
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_type_coaxial_arcs_sweep_differs_90.1_0.0001",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_nurb/coverage.json#8 (upstream source/SMLib/src/NL_SrfNurb.cpp:3811 N_SrfType revolution, iso-circle angles differ (coverage: nurbs/srf_nurb.rs:1716))",
+      "values_compared": 70
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -21621,8 +21693,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 2702,
-  "cases_total": 2702,
+  "cases_passed": 2711,
+  "cases_total": 2711,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

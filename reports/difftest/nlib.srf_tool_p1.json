@@ -1059,6 +1059,14 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "cov_extract_patch_v_below_start",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.srf_tool_p1/coverage.json#0 (upstream source/SMLib/src/NL_SrfTool.cpp:1814 N_SrfExtractPatch rectangle ending at the domain start (n < 0) -> NL_INP_ERR (coverage: nurbs/srf_tool/p1.rs:1332))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -25061,8 +25069,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 3132,
-  "cases_total": 3132,
+  "cases_passed": 3133,
+  "cases_total": 3133,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

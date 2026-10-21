@@ -1387,6 +1387,30 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "cov_isect_line_line_tiny_direction_param_overflow",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.geom/coverage.json#0 (upstream source/SMLib/src/NL_Geom.cpp:1272 N_IsectLineLine alpha/m1 NL_NUM_ERR (coverage: nurbs/geom.rs:411))",
+      "values_compared": 7
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_isect_line_line_tiny_second_direction",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.geom/coverage.json#1 (upstream source/SMLib/src/NL_Geom.cpp:1272 N_IsectLineLine beta/m2 NL_NUM_ERR (coverage: nurbs/geom.rs:411))",
+      "values_compared": 7
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_isect_line_plane_far_plane_overflow",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.geom/coverage.json#2 (upstream source/SMLib/src/NL_Geom.cpp:1592 N_IsectLinePlane num/den NL_NUM_ERR (coverage: nurbs/geom.rs:469))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -25389,8 +25413,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 3173,
-  "cases_total": 3173,
+  "cases_passed": 3176,
+  "cases_total": 3176,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

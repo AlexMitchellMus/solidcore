@@ -6971,6 +6971,126 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "cov_degen_segs_closed_bezier_loop",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_nurb/coverage.json#0 (upstream source/SMLib/src/NL_CrvNurb.cpp:3375 N_CrvGetDegenSegs Bezier with coincident ends, midpoint far (coverage: nurbs/crv_nurb.rs:933))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_degen_segs_closed_bezier_loop_tol0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_nurb/coverage.json#1 (upstream source/SMLib/src/NL_CrvNurb.cpp:3375 N_CrvGetDegenSegs (coverage: nurbs/crv_nurb.rs:933))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_curvature_deriv_huge_overflow_u0.0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_nurb/coverage.json#2 (upstream source/SMLib/src/NL_CrvNurb.cpp:4022 N_CrvGetCurvatureDeriv NL_NUM_ERR (coverage: nurbs/crv_nurb.rs:1239))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_curvature_deriv_huge_overflow_u0.5",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_nurb/coverage.json#3 (upstream source/SMLib/src/NL_CrvNurb.cpp:4022 N_CrvGetCurvatureDeriv NL_NUM_ERR (coverage: nurbs/crv_nurb.rs:1239))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_closed_g2_huge_curvature_overflow",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_nurb/coverage.json#4 (upstream source/SMLib/src/NL_CrvNurb.cpp:4140 N_CrvIsClosedContinuity NL_NUM_ERR (coverage: nurbs/crv_nurb.rs:1285))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_closed_g2_curvature_mismatch",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_nurb/coverage.json#5 (upstream source/SMLib/src/NL_CrvNurb.cpp:4153 N_CrvIsClosedContinuity kappa differs (coverage: nurbs/crv_nurb.rs:1292))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_get_type_two_unit_arcs_different_centres_0.001",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_nurb/coverage.json#6 (upstream source/SMLib/src/NL_CrvNurb.cpp:3872 N_CrvGetType sample radius about the average centre differs (coverage: nurbs/crv_nurb.rs:1171))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_get_type_two_unit_arcs_different_centres_0.1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_nurb/coverage.json#7 (upstream source/SMLib/src/NL_CrvNurb.cpp:3872 N_CrvGetType sample radius about the average centre differs (coverage: nurbs/crv_nurb.rs:1171))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_get_type_arc_with_shifted_last_quarter_0.002",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_nurb/coverage.json#8 (upstream source/SMLib/src/NL_CrvNurb.cpp:3874 N_CrvGetType sample radius about the average centre (coverage: nurbs/crv_nurb.rs:1171,1174))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_get_type_arc_with_shifted_last_quarter_0.003",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_nurb/coverage.json#9 (upstream source/SMLib/src/NL_CrvNurb.cpp:3874 N_CrvGetType sample radius about the average centre (coverage: nurbs/crv_nurb.rs:1171,1174))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_get_type_arc_with_shifted_last_quarter_0.004",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_nurb/coverage.json#10 (upstream source/SMLib/src/NL_CrvNurb.cpp:3874 N_CrvGetType sample radius about the average centre (coverage: nurbs/crv_nurb.rs:1171,1174))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_get_type_arc_with_shifted_last_quarter_0.005",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_nurb/coverage.json#11 (upstream source/SMLib/src/NL_CrvNurb.cpp:3874 N_CrvGetType sample radius about the average centre (coverage: nurbs/crv_nurb.rs:1171,1174))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_get_type_arc_with_shifted_last_quarter_0.006",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_nurb/coverage.json#12 (upstream source/SMLib/src/NL_CrvNurb.cpp:3874 N_CrvGetType sample radius about the average centre (coverage: nurbs/crv_nurb.rs:1171,1174))",
+      "values_compared": 16
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_get_type_arc_with_shifted_last_quarter_0.007",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_nurb/coverage.json#13 (upstream source/SMLib/src/NL_CrvNurb.cpp:3874 N_CrvGetType sample radius about the average centre (coverage: nurbs/crv_nurb.rs:1171,1174))",
+      "values_compared": 16
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_get_type_arc_with_shifted_last_quarter_0.008",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_nurb/coverage.json#14 (upstream source/SMLib/src/NL_CrvNurb.cpp:3874 N_CrvGetType sample radius about the average centre (coverage: nurbs/crv_nurb.rs:1171,1174))",
+      "values_compared": 16
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -22973,8 +23093,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 2871,
-  "cases_total": 2871,
+  "cases_passed": 2886,
+  "cases_total": 2886,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

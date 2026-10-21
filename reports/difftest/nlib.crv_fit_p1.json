@@ -675,6 +675,46 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "cov_knots_and_derivs_wrong_knot_count",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_fit_p1/coverage.json#0 (upstream source/SMLib/src/NL_CrvFit.cpp:3063 N_FitCrvKnotsAndDerivs m != n+p+1 -> NL_INP_ERR (coverage: nurbs/crv_fit/p1.rs:567))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_knots_and_derivs_too_many_knots",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_fit_p1/coverage.json#1 (upstream source/SMLib/src/NL_CrvFit.cpp:3063 N_FitCrvKnotsAndDerivs m != n+p+1 -> NL_INP_ERR (coverage: nurbs/crv_fit/p1.rs:567))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_knots_and_deriv_wrong_knot_count_whr1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_fit_p1/coverage.json#2 (upstream source/SMLib/src/NL_CrvFit.cpp:3313 N_FitCrvKnotsAndDeriv m != n+p+1 -> NL_INP_ERR (coverage: nurbs/crv_fit/p1.rs:646))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_knots_and_deriv_wrong_knot_count_whr2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_fit_p1/coverage.json#3 (upstream source/SMLib/src/NL_CrvFit.cpp:3313 N_FitCrvKnotsAndDeriv m != n+p+1 -> NL_INP_ERR (coverage: nurbs/crv_fit/p1.rs:646))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_approx_knots_n_below_degree",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_fit_p1/coverage.json#4 (upstream source/SMLib/src/NL_CrvFit.cpp:5461 N_FitCrvApproxKnots n < p -> NL_INP_ERR (coverage: nurbs/crv_fit/p1.rs:822))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -16677,8 +16717,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 2084,
-  "cases_total": 2084,
+  "cases_passed": 2089,
+  "cases_total": 2089,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

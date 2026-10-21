@@ -995,6 +995,22 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "cov_adj_knots_bezier_pair_last_span_within_tol",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_tool_p2/coverage.json#0 (upstream source/SMLib/src/NL_CrvTool.cpp:5325 N_CrvsMakeCompatibleAdjKnots Bezier whose last span <= tol -> NL_INP_ERR (coverage: nurbs/crv_tool/p2.rs:1436))",
+      "values_compared": 55
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_adj_knots_bspline_then_bezier_within_tol",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_tool_p2/coverage.json#1 (upstream source/SMLib/src/NL_CrvTool.cpp:5325 N_CrvsMakeCompatibleAdjKnots Bezier whose last span <= tol -> NL_INP_ERR (coverage: nurbs/crv_tool/p2.rs:1436))",
+      "values_compared": 55
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -16997,8 +17013,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 2124,
-  "cases_total": 2124,
+  "cases_passed": 2126,
+  "cases_total": 2126,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

@@ -1099,6 +1099,30 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "cov_quartic_circ_arc_tiny_sweep_1.2e-06",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_common/coverage.json#0 (upstream source/SMLib/src/NL_CrvCommon.cpp:405 N_CreateQuarticCircArc root v1 in [0,1] (coverage: nurbs/crv_common.rs:291))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_quartic_circ_arc_tiny_sweep_2e-06",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_common/coverage.json#1 (upstream source/SMLib/src/NL_CrvCommon.cpp:405 N_CreateQuarticCircArc root v1 in [0,1] (coverage: nurbs/crv_common.rs:291))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_quartic_circ_arc_tiny_sweep_2.4e-06",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_common/coverage.json#2 (upstream source/SMLib/src/NL_CrvCommon.cpp:405 N_CreateQuarticCircArc root v1 in [0,1] (coverage: nurbs/crv_common.rs:291))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -17101,8 +17125,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 2137,
-  "cases_total": 2137,
+  "cases_passed": 2140,
+  "cases_total": 2140,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

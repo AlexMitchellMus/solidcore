@@ -3,6 +3,22 @@
   "cases": [
     {
       "max_rel_err": 0.0,
+      "name": "cov_closest_closed_newton_step_far_below_domain",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_geom/coverage.json#0 (upstream source/SMLib/src/NL_CrvGeom.cpp:64 N_CrvClosestPt closed curve, step beyond 100 periods -> NL_CON_ERR (coverage: nurbs/crv_geom.rs:228,241))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_closest_closed_newton_step_far_above_domain",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.crv_geom/coverage.json#1 (upstream source/SMLib/src/NL_CrvGeom.cpp:64 N_CrvClosestPt closed curve, step beyond 100 periods -> NL_CON_ERR (coverage: nurbs/crv_geom.rs:228,241))",
+      "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "circle_closest_wrap_low",
       "outcome": "pass",
       "pass": true,
@@ -13789,8 +13805,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 1723,
-  "cases_total": 1723,
+  "cases_passed": 1725,
+  "cases_total": 1725,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

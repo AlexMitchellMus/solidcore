@@ -617,6 +617,95 @@
       "values_compared": 4
     },
     {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "cov_quadratic_linear_div_overflow",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.math/coverage.json#0 (upstream source/SMLib/src/NL_Math.cpp:2574 N_SolveQuadraticEq NL_NUM_ERR (coverage: nurbs/math.rs:688))",
+      "values_compared": 0
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "cov_quadratic_b0_div_overflow",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.math/coverage.json#1 (upstream source/SMLib/src/NL_Math.cpp:2588 N_SolveQuadraticEq NL_NUM_ERR (coverage: nurbs/math.rs:695))",
+      "values_compared": 0
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "cov_quadratic_c0_div_overflow",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.math/coverage.json#2 (upstream source/SMLib/src/NL_Math.cpp:2608 N_SolveQuadraticEq NL_NUM_ERR (coverage: nurbs/math.rs:707))",
+      "values_compared": 0
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "cov_quadratic_q_over_a_bad",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.math/coverage.json#3 (upstream source/SMLib/src/NL_Math.cpp:2653 N_SolveQuadraticEq NL_NUM_ERR (coverage: nurbs/math.rs:725))",
+      "values_compared": 0
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "cov_quadratic_c_over_q_bad",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.math/coverage.json#4 (upstream source/SMLib/src/NL_Math.cpp:2656 N_SolveQuadraticEq NL_NUM_ERR (coverage: nurbs/math.rs:728))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_float_op_mul_second_bound",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.math/coverage.json#5 (upstream source/SMLib/src/NL_Math.cpp:2708 N_FloatOpIsBad multiplication, y > BIGD/x but x <= BIGD/y (coverage: nurbs/math.rs:798))",
+      "values_compared": 0
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "cov_for_back_pts_lower_left_input_error",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.math/coverage.json#6 (upstream source/SMLib/src/NL_Math.cpp:7605 N_RealMatrixForBack triangular type NL_INP_ERR (coverage: nurbs/math.rs:1665))",
+      "values_compared": 0
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "cov_for_back_pts_upper_right_input_error",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.math/coverage.json#7 (upstream source/SMLib/src/NL_Math.cpp:7605 N_RealMatrixForBack triangular type NL_INP_ERR (coverage: nurbs/math.rs:1665))",
+      "values_compared": 0
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "cov_for_back_cpts_lower_left_input_error",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.math/coverage.json#8 (upstream source/SMLib/src/NL_Math.cpp:7605 N_RealMatrixForBack triangular type NL_INP_ERR (coverage: nurbs/math.rs:1665))",
+      "values_compared": 0
+    },
+    {
+      "both_errored": true,
+      "max_rel_err": 0.0,
+      "name": "cov_right_for_back_upper_right_input_error",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nlib.math/coverage.json#9 (upstream source/SMLib/src/NL_Math.cpp:7852 N_RealMatrixRightForBack triangular type NL_INP_ERR (coverage: nurbs/math.rs:1665))",
+      "values_compared": 0
+    },
+    {
       "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
@@ -24885,11 +24974,11 @@
       "values_compared": 5
     }
   ],
-  "cases_both_errored": 275,
+  "cases_both_errored": 284,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 3076,
-  "cases_total": 3076,
+  "cases_passed": 3086,
+  "cases_total": 3086,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,
