@@ -10426,6 +10426,12 @@ face is still not run by the `offset.offset_geometry_creation` shim (HANG-26). T
 also reads its own appended `WriteToDB` records (main's #156 follow-up ed40f92c, which landed
 the same HANG-26 keying independently), so its counts are unchanged by this export; the two
 imports of a revolution face agree.
+`topology.face_p4` (landed on main after this export was written) builds seam curves on face
+surfaces: with revolution faces exact, 32 `seam` cases (torus / toruswvy) reach
+`Surface::create_seam_curve` on an `SmSurfOfRevolution`, which returned `InvalidInput` (the
+ported `CrvOnSurf` holds only a B-spline surface) while the C++ builds the curve. It now
+returns `Unported(curve.crv_on_surf)` with the same DISPATCH GAP marker as
+`surface::surface::p11`, so those cases defer (face_p4 3957 pass unchanged, 0 failed).
 
 ## boolean.topology_intersector_p1: B-rep cache of the difftest adapter (exposed by topology.brep_p1)
 
