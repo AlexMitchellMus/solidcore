@@ -26,7 +26,14 @@
 //! closed Nx1 and Nx2 corners, which run this unit's `GetTangentFilletSolver` overrides
 //! through the virtual call: 40 built-in, drawn from that runner's generator with a fixed
 //! seed and kept when they are such cases with registered solvers; run and compared by
-//! that runner unchanged.
+//! that runner unchanged. Most of them return `NULL` on both sides (no G1 pair), so 16
+//! more are built from the first of them with two or more targets, its target curves,
+//! filleted edge uses, solver registrations, query and tangency tolerance replaced so
+//! that every branch returns: Nx2 on two collinear lines (G1) or two perpendicular ones,
+//! each solver and a foreign one queried, and with only the first edge use registered;
+//! closed Nx1 on a line (its end tangents are parallel: G1) or a quadratic whose end
+//! tangents are 90 degrees apart, its solver and a foreign one queried, and with the
+//! solver registered on another edge use.
 //!
 //! **Cases.** `find_concave` on a real B-rep (unit `topology.edgeuse_p1`'s B-rep block:
 //! the box-like fillet test files of `TestFiles/pt_TestFiles/Fillet` that unit
@@ -95,6 +102,133 @@ const TANGENT_SEED: u64 = 0x7a46_e275;
 
 /// Draws to find [`TANGENT_CASES`] (generous: about 1 in 70 draws qualifies).
 const TANGENT_DRAWS: usize = 200_000;
+
+/// A degree-1 target curve from `a` to `b` (the shape of `blend.fillet_geom_p1`'s
+/// `Crv`).
+fn line_target(a: [f64; 3], b: [f64; 3]) -> Value {
+    serde_json::json!({
+        "dim": 3,
+        "cpts": [[a[0], a[1], a[2], 1.0], [b[0], b[1], b[2], 1.0]],
+        "p": 1,
+        "u": [0.0, 0.0, 1.0, 1.0],
+    })
+}
+
+/// A quadratic target curve whose end tangents are 90 degrees apart.
+fn bent_target() -> Value {
+    serde_json::json!({
+        "dim": 3,
+        "cpts": [[0.0, 0.0, 0.0, 1.0], [1.0, 1.0, 0.0, 1.0], [2.0, 0.0, 0.0, 1.0]],
+        "p": 2,
+        "u": [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+    })
+}
+
+/// `base` (a `blend.fillet_corner_p1` `solvers` case with two or more targets) on a
+/// corner of `kind` at the start of target 0, filleted edge uses `eus` (primary edge
+/// uses of targets), targets 0 and 1 replaced by `t0`, `t1`, solvers registered on
+/// `regs` (targets) and solver `query` asked about (`regs.len()`: an unregistered one).
+fn tangent_variant(
+    base: &Value,
+    kind: u64,
+    t0: Value,
+    t1: Value,
+    eus: &[usize],
+    regs: &[usize],
+    query: usize,
+) -> Option<Value> {
+    let mut v = base.clone();
+    let targets = v.get_mut("model")?.get_mut("targets")?.as_array_mut()?;
+    *targets.get_mut(0)? = t0;
+    *targets.get_mut(1)? = t1;
+    let corner = v.get_mut("corner")?.as_object_mut()?;
+    corner.insert("kind".into(), kind.into());
+    corner.insert("v_edge".into(), 0.into());
+    corner.insert("v_sub".into(), 0.into());
+    corner.insert("tan".into(), 1e-2.into());
+    corner.insert(
+        "solver".into(),
+        eus.iter().map(|&e| serde_json::json!([e, 0])).collect(),
+    );
+    let regs: Vec<Value> = regs
+        .iter()
+        .map(|&e| serde_json::json!({"e": e, "which": 0, "approx": 1e-3, "tang": 1e-2}))
+        .collect();
+    let obj = v.as_object_mut()?;
+    obj.insert("solvers".into(), regs.into());
+    obj.insert("query".into(), query.into());
+    Some(v)
+}
+
+/// The built-in tangent-solver cases drawn from unit `blend.fillet_corner_p1`'s
+/// generator ([`TANGENT_SEED`]), and the first of them with two or more targets (the
+/// base of [`tangent_variants`]).
+fn tangent_cases() -> (Vec<Value>, Option<Value>) {
+    let mut rng = Rng::new(TANGENT_SEED);
+    let mut drawn = Vec::new();
+    let mut base = None;
+    for _ in 0..TANGENT_DRAWS {
+        if drawn.len() == TANGENT_CASES {
+            break;
+        }
+        let Some(inner) = p1::Runner.generate(&mut rng) else {
+            continue;
+        };
+        if !is_tangent_case(&inner) {
+            continue;
+        }
+        let two_targets = inner
+            .get("model")
+            .and_then(|m| m.get("targets"))
+            .and_then(Value::as_array)
+            .is_some_and(|t| t.len() >= 2);
+        if base.is_none() && two_targets {
+            base = Some(inner.clone());
+        }
+        drawn.push(inner);
+    }
+    (drawn, base)
+}
+
+/// The 16 targeted tangent-solver variants of `base` (named).
+fn tangent_variants(base: &Value) -> Vec<(String, Value)> {
+    let x = line_target([0.0, 0.0, 0.0], [1.0, 0.0, 0.0]);
+    let collinear = line_target([0.0, 0.0, 0.0], [-2.0, 0.0, 0.0]);
+    let perpendicular = line_target([0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+    let mut out = Vec::new();
+    let mut add = |name: String, v: Option<Value>| {
+        if let Some(v) = v {
+            out.push((name, v));
+        }
+    };
+    for (g1, t1) in [("g1", &collinear), ("not_g1", &perpendicular)] {
+        for q in 0..3 {
+            add(
+                format!("nx2_{g1}_query{q}"),
+                tangent_variant(base, 7, x.clone(), t1.clone(), &[0, 1], &[0, 1], q),
+            );
+        }
+        for q in 0..2 {
+            add(
+                format!("nx2_{g1}_one_registered_query{q}"),
+                tangent_variant(base, 7, x.clone(), t1.clone(), &[0, 1], &[0], q),
+            );
+        }
+    }
+    for (g1, t0) in [("g1", &x), ("not_g1", &bent_target())] {
+        for q in 0..2 {
+            add(
+                format!("nx1_closed_{g1}_query{q}"),
+                tangent_variant(base, 2, t0.clone(), perpendicular.clone(), &[0], &[0], q),
+            );
+        }
+        add(
+            format!("nx1_closed_{g1}_other_registered"),
+            tangent_variant(base, 2, t0.clone(), perpendicular.clone(), &[0], &[1], 0),
+        );
+    }
+    out
+}
 
 /// The corner method of a `corner` case.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -588,22 +722,17 @@ impl UnitDiff for Runner {
                 i,
             )?;
         }
-        let mut rng = Rng::new(TANGENT_SEED);
-        let mut n = 0;
-        for _ in 0..TANGENT_DRAWS {
-            if n == TANGENT_CASES {
-                break;
-            }
-            let Some(inner) = p1::Runner.generate(&mut rng) else {
-                continue;
-            };
-            if !is_tangent_case(&inner) {
-                continue;
-            }
+        let (drawn, base) = tangent_cases();
+        for (n, inner) in drawn.into_iter().enumerate() {
             let name = format!("p1_corner_tangent_solver_{n:02}");
             let src = "SmFilletCorner.cpp (blend.fillet_corner_p1 corner model)";
             push(&mut v, name, src, Inputs::P1Corner { inner })?;
-            n += 1;
+        }
+        let base = base.ok_or_else(|| harness("no tangent-solver base case"))?;
+        for (name, inner) in tangent_variants(&base) {
+            let name = format!("p1_corner_tangent_{name}");
+            let src = "SmFilletCorner.cpp:5141, :6869 (targeted G1 cases)";
+            push(&mut v, name, src, Inputs::P1Corner { inner })?;
         }
         Ok(v)
     }
@@ -612,6 +741,40 @@ impl UnitDiff for Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The targeted variants reach every return of both overrides (Rust side; the
+    /// difftest compares the C++ side): the solver's registration index, `-1` for NULL.
+    #[test]
+    fn tangent_variants_return_solvers() {
+        let (_, base) = tangent_cases();
+        let base = base.unwrap();
+        let expect = [
+            ("nx2_g1_query0", 1.0),
+            ("nx2_g1_query1", 0.0),
+            ("nx2_g1_query2", -1.0),
+            ("nx2_g1_one_registered_query0", -1.0),
+            ("nx2_g1_one_registered_query1", -1.0),
+            ("nx2_not_g1_query0", -1.0),
+            ("nx2_not_g1_query1", -1.0),
+            ("nx2_not_g1_query2", -1.0),
+            ("nx2_not_g1_one_registered_query0", -1.0),
+            ("nx2_not_g1_one_registered_query1", -1.0),
+            ("nx1_closed_g1_query0", 0.0),
+            ("nx1_closed_g1_query1", -1.0),
+            ("nx1_closed_g1_other_registered", -1.0),
+            ("nx1_closed_not_g1_query0", -1.0),
+            ("nx1_closed_not_g1_query1", -1.0),
+            ("nx1_closed_not_g1_other_registered", -1.0),
+        ];
+        let variants = tangent_variants(&base);
+        assert_eq!(variants.len(), expect.len());
+        for ((name, inner), (want_name, want)) in variants.into_iter().zip(expect) {
+            assert_eq!(name, want_name);
+            let o = run_rust(&Inputs::P1Corner { inner }).unwrap();
+            let got = o.values.get("solvers").and_then(|v| v.first().copied());
+            assert_eq!(got, Some(want), "{name}: {o:?}");
+        }
+    }
 
     #[test]
     fn inputs_round_trip() {
