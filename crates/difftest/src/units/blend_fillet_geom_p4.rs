@@ -451,9 +451,7 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
                 context: None,
                 key_of: &key_of,
             };
-            let r = rm
-                .fb
-                .make_face_brep(&mut k, gid, &solvers, &mut brep, &mut env);
+            let r = rm.fb.make_face_brep(&mut k, gid, &solvers, &mut brep, &mut env);
             o.push(status_of!(r));
         }
         Query::Blending { g } => {
@@ -532,9 +530,9 @@ pub(crate) fn gen_analytic(rng: &mut Rng, scale: f64) -> AnalyticSrf {
 }
 
 /// The UV point at fractions `(a, b)` of the surface's domain and its 3D point.
-fn on_surface(s: &Surface, a: f64, b: f64) -> Option<[f64; 3]> {
+fn on_surface(k: &Kernel, s: &Surface, a: f64, b: f64) -> Option<[f64; 3]> {
     let d = s.natural_uv_domain();
-    s.evaluate_point(d.evaluate(a, b)).ok().map(v3a)
+    s.evaluate_point(k, d.evaluate(a, b)).ok().map(v3a)
 }
 
 /// A `uv_curve` case: a surface, two vertex points (on it, near it, on its seam or
@@ -573,7 +571,7 @@ fn gen_uv_curve(rng: &mut Rng) -> Option<Inputs> {
             1.0
         };
         let u = if rng.chance(0.5) { 0.0 } else { 1.0 };
-        let (p, q) = (on_surface(&rs, u, v0)?, on_surface(&rs, u, v1)?);
+        let (p, q) = (on_surface(&k, &rs, u, v0)?, on_surface(&k, &rs, u, v1)?);
         if rng.chance(0.5) {
             (p, q)
         } else {
@@ -586,7 +584,7 @@ fn gen_uv_curve(rng: &mut Rng) -> Option<Inputs> {
                 1 => (rng.uniform(0.0, 1.0), frac(rng)),
                 _ => (rng.uniform(0.0, 1.0), rng.uniform(0.0, 1.0)),
             };
-            on_surface(&rs, u, v)
+            on_surface(&k, &rs, u, v)
         };
         let p = pick(rng)?;
         let mut q = pick(rng)?;
@@ -594,14 +592,7 @@ fn gen_uv_curve(rng: &mut Rng) -> Option<Inputs> {
             // an iso line in u or v
             0 => {
                 let u = rng.uniform(0.0, 1.0);
-                return Some(gen_uv_from(
-                    rng,
-                    surface,
-                    scale,
-                    on_surface(&rs, u, 0.1)?,
-                    on_surface(&rs, u, 0.8)?,
-                    false,
-                ));
+                return Some(gen_uv_from(rng, surface, scale, on_surface(&k, &rs, u, 0.1)?, on_surface(&k, &rs, u, 0.8)?, false));
             }
             1 => q = p, // coincident
             2 => {

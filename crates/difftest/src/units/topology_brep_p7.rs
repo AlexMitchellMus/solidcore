@@ -749,7 +749,7 @@ fn brep_tolerances(b: &Brep) -> Vec<f64> {
 /// Whether `MakeFaceWithCurves` fails its input checks (`SmBrep.cpp:15722-15741`) on a
 /// face with 3D curves: no loops, or a surface degenerate to a curve or a point (the
 /// port's tests, which fail soft as upstream's flags).
-fn mfwc_input_error(surface: &SrfIn, loops: &[usize]) -> Result<bool, Fail> {
+fn mfwc_input_error(k: &Kernel, surface: &SrfIn, loops: &[usize]) -> Result<bool, Fail> {
     if loops.is_empty() {
         return Ok(true);
     }
@@ -765,8 +765,8 @@ fn mfwc_input_error(surface: &SrfIn, loops: &[usize]) -> Result<bool, Fail> {
     };
     let tol = solidcore::surface::surface::p1::DEGENERATE_TOL_3D;
     Ok(
-        flag(srf.is_degenerate_curve(solidcore::math::EFF_ZERO_DEG, None, tol))?
-            || flag(srf.is_degenerate_point(tol, None))?,
+        flag(srf.is_degenerate_curve(k, solidcore::math::EFF_ZERO_DEG, None, tol))?
+            || flag(srf.is_degenerate_point(k, tol, None))?,
     )
 }
 
@@ -835,7 +835,7 @@ fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
             // the shim's guard: upstream dereferences the null UV curve array once MakeFace
             // succeeds (the port returns InvalidInput there); its own input checks (no
             // loops, a degenerate surface) return first
-            if *crv_on_surf == 2 && !*has_uv && *has3d && !mfwc_input_error(surface, loops)? {
+            if *crv_on_surf == 2 && !*has_uv && *has3d && !mfwc_input_error(k, surface, loops)? {
                 return Err(cpp_null_deref(
                     "cpp-guard:ub-165",
                     "SmBrep::MakeFaceWithCurves",
@@ -1013,6 +1013,7 @@ fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
                     orient_of(*orient)?,
                     &p7::MakeFaceOptions::default(),
                     &this_face,
+                    &mut env,
                 );
                 return new_face_record(&b, &r);
             }
@@ -1026,6 +1027,14 @@ fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
                 ))
             });
             let dom = Extent2d::from_points(Point2::new(0.0, 0.0), Point2::new(1.0, 1.0));
+            let mut records = BTreeMap::new();
+            let mut attrs = AttributeStore::default();
+            let mut env = ed::NotifyEnv {
+                records: &mut records,
+                attributes: &mut attrs,
+                context: None,
+                key_of: &key_of,
+            };
             let r = p7::make_face(
                 k,
                 &mut b,
@@ -1038,6 +1047,7 @@ fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
                 orient_of(*orient)?,
                 &p7::MakeFaceOptions::default(),
                 &this_face,
+                &mut env,
             );
             new_face_record(&b, &r)
         }

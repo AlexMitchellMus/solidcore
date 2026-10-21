@@ -78,10 +78,11 @@
 //!   `topology.brep_p10`'s (`ReadFromFile` takes that unit's [`TopologyEnv`]).
 //!   `GetInfiniteRegion` is the inline read [`Brep::infinite_region`], and the glue's
 //!   removal of an emptied region walks `topology.brep_p1`'s region list.
-//!   That `MakeFaceTopology` names the face for its surface's owner before the face
-//!   exists, so it gets the key `this_face` gives the next face id (arenas only append);
-//!   it builds the face on a copy of the surface, which `MakeFace` then replaces with
-//!   its own (upstream: one shared surface whose owner `MakeFace` restores).
+//!   `MakeFaceTopology` names the face by the notification environment's identity
+//!   and builds it on a copy of the surface (with no surface identity: its owner
+//!   changes are not notified), which `MakeFace` then replaces with its own
+//!   (upstream: one shared surface whose owner `MakeFace` restores). It claims its
+//!   marks through a fresh [`Marks`] record per call, as each call takes a new mark.
 //! - **`MakeFace`** returns nothing when `MakeFaceTopology` fails; upstream still hands
 //!   back the region and shell it may have made (`MakeFaceWithCurves` warns about it).
 //! - **`GlueEdgesGeneral`**: the arena cannot share one curve between two edges, so
@@ -619,7 +620,7 @@ pub struct NewFace {
 /// first).
 #[allow(clippy::too_many_arguments)]
 pub fn make_face(
-    _k: &Kernel,
+    k: &mut Kernel,
     b: &mut Brep,
     region: Option<RegionId>,
     loops: &[usize],
@@ -630,6 +631,7 @@ pub fn make_face(
     orientation: OrientType,
     opts: &MakeFaceOptions<'_>,
     this_face: &dyn Fn(FaceId) -> ObjectRef,
+    env: &mut ed::NotifyEnv<'_>,
 ) -> Result<NewFace> {
     let Some(mut surface) = surface else {
         return Err(SolidError::null_pointer(OP));
@@ -639,16 +641,14 @@ pub fn make_face(
 
     // get preexisting surface owner
     let old_owner = surface.owner();
-    // the face p6 allocates next (arenas only append)
-    let next_face = FaceId::from_index(
-        u32::try_from(b.faces().len())
-            .map_err(|_| SolidError::invalid_input(OP, "too many faces"))?,
-    );
+    // MakeFaceTopology claims a new mark: a fresh mark record serves (see p10)
     let built = p6::make_face_topology(
+        k,
         b,
+        &mut Marks::default(),
+        env,
         Some(surface.clone()),
         orientation,
-        this_face(next_face).key,
         &p6::FaceTopologyOptions {
             region,
             edge_loops: loops,
@@ -657,6 +657,7 @@ pub fn make_face(
             verify_radial_sectors: opts.verify_radial_sectors,
             calculate_trims: opts.calculate_trims,
             uv_curves: opts.uv_curves,
+            surface_key: None,
         },
     );
     // restore the preexisting surface owner, whether the build fails or succeeds
@@ -708,8 +709,14 @@ fn at<T>(v: &[T], i: usize) -> Result<&T> {
 }
 
 /// The start of `c` as oriented by `orient` (`GetEnds`, status ignored: `prev` kept).
-fn oriented_end(c: &Curve, orient: OrientType, start: bool, prev: Point3) -> Result<Point3> {
-    Ok(match ignored(c.ends())? {
+fn oriented_end(
+    k: &Kernel,
+    c: &Curve,
+    orient: OrientType,
+    start: bool,
+    prev: Point3,
+) -> Result<Point3> {
+    Ok(match ignored(c.ends(k))? {
         Some(e) => {
             if (orient == OrientType::Same) == start {
                 e.start
@@ -766,14 +773,15 @@ pub fn make_face_with_curves(
     // GetInfiniteRegion() (an inline field read; NULL when unset)
     let region = region.or(b.infinite_region());
     // (the surface tests return flags upstream: a failed test is "no")
-    if ignored(surface.is_degenerate_curve(EFF_ZERO_DEG, None, DEGENERATE_TOL_3D))?.unwrap_or(false)
+    if ignored(surface.is_degenerate_curve(k, EFF_ZERO_DEG, None, DEGENERATE_TOL_3D))?
+        .unwrap_or(false)
     {
         return Err(SolidError::invalid_input(
             OP,
             "surface degenerates to a curve",
         ));
     }
-    if ignored(surface.is_degenerate_point(DEGENERATE_TOL_3D, None))?.unwrap_or(false) {
+    if ignored(surface.is_degenerate_point(k, DEGENERATE_TOL_3D, None))?.unwrap_or(false) {
         return Err(SolidError::invalid_input(
             OP,
             "surface degenerates to a point",
@@ -827,7 +835,7 @@ pub fn make_face_with_curves(
                         let c = CrvOnSurf::new(k, uv_curve, base, Some(*uv_domain), 2)?;
                         let c = Curve::from(c);
                         // (IsDegenerate returns a flag upstream: a failed test is "no")
-                        if ignored(c.is_degenerate(EFF_ZERO, None))?.unwrap_or(false) {
+                        if ignored(c.is_degenerate(k, EFF_ZERO, None))?.unwrap_or(false) {
                             None
                         } else {
                             Some(c)
@@ -877,8 +885,8 @@ pub fn make_face_with_curves(
                     let cw = at(&s3d, cwi)?
                         .as_ref()
                         .ok_or_else(|| null("missing curve"))?;
-                    start = oriented_end(c, o, true, start)?;
-                    cw_end = oriented_end(cw, cwo, false, cw_end)?;
+                    start = oriented_end(k, c, o, true, start)?;
+                    cw_end = oriented_end(k, cw, cwo, false, cw_end)?;
                     if start.distance_squared(cw_end) > tol2 {
                         if let Some(slot) = new_points.get_mut(jj) {
                             *slot = Some((start + cw_end) / 2.0);
@@ -950,8 +958,8 @@ pub fn make_face_with_curves(
                 continue;
             };
             let ivl = curve.natural_interval();
-            let is_degen = ignored(curve.is_degenerate(EFF_ZERO, None))?.unwrap_or(false);
-            let approx_len = curve.approximate_length(&ivl, 5, false)?.0;
+            let is_degen = ignored(curve.is_degenerate(k, EFF_ZERO, None))?.unwrap_or(false);
+            let approx_len = curve.approximate_length(k, &ivl, 5, false)?.0;
             if is_degen || approx_len < zone_tol {
                 degenerate += 1;
                 continue;
@@ -965,7 +973,7 @@ pub fn make_face_with_curves(
                 };
 
             // find or make the start vertex
-            let start_pt = curve.evaluate_point(start_param)?;
+            let start_pt = curve.evaluate_point(k, start_param)?;
             let mut m = find_first_vertex_within_tol_to_pnt(b, &vertices, start_pt, zone_tol)?;
             if !vertices.is_empty() && !m.found {
                 if m.distance < zone_tol * 100.0 {
@@ -994,7 +1002,7 @@ pub fn make_face_with_curves(
             };
 
             // the end vertex
-            let end_pt = curve.evaluate_point(end_param)?;
+            let end_pt = curve.evaluate_point(k, end_param)?;
             if end_pt.distance_squared(start_pt) < zone_tol * zone_tol && approx_len < zone_tol {
                 return Err(SolidError::sm_err(OP));
             }
@@ -1023,7 +1031,7 @@ pub fn make_face_with_curves(
                         interval: ivl,
                         tolerance: zone_tol,
                     };
-                    if let Some(c) = find_coincident_edge(b, &query, &edges, 0)? {
+                    if let Some(c) = find_coincident_edge(k, b, &query, &edges, 0)? {
                         if c.max_deviation < zone_tol * 1.0e-3 {
                             // share the coincident edge (the curve is dropped)
                             let coin = *at(&edges, c.index)?;
@@ -1109,6 +1117,7 @@ pub fn make_face_with_curves(
         orientation,
         &MakeFaceOptions::default(),
         this_face,
+        env,
     )?;
     out.region = made.region;
     if made.shell.is_some() && out.shell.is_some() {
@@ -1245,8 +1254,8 @@ pub fn glue_edges_general(
                     )?;
                     if md.distance < surv_tol / 1000.00 {
                         let t_mid = surv_ivl.evaluate(0.45678);
-                        let sp = sc.evaluate_point(t_mid)?;
-                        let dp = dc.evaluate_point(t_mid)?;
+                        let sp = sc.evaluate_point(k, t_mid)?;
+                        let dp = dc.evaluate_point(k, t_mid)?;
                         let tolerance = EFF_ZERO * (1.0 + sp.max_dimension());
                         if sp.distance(dp) < tolerance {
                             same_geometry = true;
@@ -1790,11 +1799,19 @@ mod tests {
 
     #[test]
     fn make_face_needs_a_surface() {
-        let k = Kernel::default();
+        let mut k = Kernel::default();
         let mut b = Brep::new();
         let opts = MakeFaceOptions::default();
+        let mut records = std::collections::BTreeMap::new();
+        let mut attrs = AttributeStore::default();
+        let mut env = ed::NotifyEnv {
+            records: &mut records,
+            attributes: &mut attrs,
+            context: None,
+            key_of: &key_of,
+        };
         let e = make_face(
-            &k,
+            &mut k,
             &mut b,
             None,
             &[],
@@ -1805,6 +1822,7 @@ mod tests {
             OrientType::Same,
             &opts,
             &face_ref,
+            &mut env,
         );
         assert!(matches!(
             e,
@@ -1814,7 +1832,7 @@ mod tests {
             })
         ));
         let e = make_face(
-            &k,
+            &mut k,
             &mut b,
             None,
             &[],
@@ -1825,6 +1843,7 @@ mod tests {
             OrientType::Same,
             &opts,
             &face_ref,
+            &mut env,
         );
         // no infinite region: MakeFaceTopology's NULL region
         assert!(matches!(
@@ -1842,7 +1861,7 @@ mod tests {
             .unwrap();
         b.set_infinite_region_record(Some(inf));
         let e = make_face(
-            &k,
+            &mut k,
             &mut b,
             None,
             &[],
@@ -1853,9 +1872,19 @@ mod tests {
             OrientType::Same,
             &opts,
             &face_ref,
+            &mut env,
         );
-        // the infinite region: MakeFaceTopology reaches SmFace::SetTolerance (unported)
-        assert!(e.unwrap_err().is_unported());
+        // the infinite region: an edgeless face in a new shell of that region
+        let made = e.unwrap();
+        let face = made.face.unwrap();
+        let shell = made.shell.unwrap();
+        assert_eq!(made.region, None);
+        assert_eq!(b.region(inf).unwrap().shells, vec![shell]);
+        assert_eq!(b.face(face).unwrap().uv_domain, dom());
+        assert_eq!(
+            b.face(face).unwrap().surface.as_ref().unwrap().owner(),
+            Some(face_ref(face))
+        );
     }
 
     #[test]
@@ -1909,8 +1938,8 @@ mod tests {
             run(&mut b, input, Some(r)),
             Err(SolidError::InvalidInput { .. })
         ));
-        // a NULL region is the infinite region: a degenerate curve only reaches
-        // unported topology
+        // a NULL region is the infinite region: a degenerate curve only leaves no
+        // edges, so MakeFace makes an edgeless face
         b.set_infinite_region_record(Some(r));
         let input = FaceCurvesInput {
             loops: vec![1],
@@ -1918,9 +1947,10 @@ mod tests {
             orientations: vec![OrientType::Same],
             ..Default::default()
         };
-        assert!(run(&mut b, input.clone(), None).unwrap_err().is_unported());
-        // a degenerate curve only: the face topology is unported
-        assert!(run(&mut b, input, Some(r)).unwrap_err().is_unported());
+        let first = run(&mut b, input.clone(), None).unwrap();
+        let second = run(&mut b, input, Some(r)).unwrap();
+        assert_eq!(first.face, Some(FaceId::from_index(0)));
+        assert_eq!(second.face, Some(FaceId::from_index(1)));
         // more loop entries than curves
         let input = FaceCurvesInput {
             loops: vec![3],

@@ -305,6 +305,7 @@ pub trait CurveEvaluate {
     /// replaced by a tolerance-sized one along the limiting direction.
     fn evaluate(
         &self,
+        k: &Kernel,
         t: f64,
         num_derivs: usize,
         from_left: bool,
@@ -312,7 +313,7 @@ pub trait CurveEvaluate {
     ) -> Result<Vec<Vec3>>;
 
     /// The point at `t` (`EvaluatePoint`).
-    fn evaluate_point(&self, t: f64) -> Result<Point3>;
+    fn evaluate_point(&self, k: &Kernel, t: f64) -> Result<Point3>;
 
     /// The virtual `IsClosed(crInterval, dTol)`: the base class
     /// ([`crate::curve::curve::p4::is_closed_base`]) unless the kind overrides it.
@@ -320,8 +321,8 @@ pub trait CurveEvaluate {
     /// # Errors
     ///
     /// Those of the evaluations.
-    fn is_closed_virtual(&self, interval: &Extent1d, tol: f64) -> Result<bool> {
-        crate::curve::curve::p4::is_closed_base(self, interval, tol)
+    fn is_closed_virtual(&self, k: &Kernel, interval: &Extent1d, tol: f64) -> Result<bool> {
+        crate::curve::curve::p4::is_closed_base(k, self, interval, tol)
     }
 
     /// `SM_CAST_PTR(SmCrvOnSurf, this)`: the curve as a curve on a surface, if it is
@@ -342,6 +343,7 @@ impl CurveEvaluate for BSplineCurve {
 
     fn evaluate(
         &self,
+        _k: &Kernel,
         t: f64,
         num_derivs: usize,
         from_left: bool,
@@ -350,7 +352,7 @@ impl CurveEvaluate for BSplineCurve {
         Self::evaluate(self, t, num_derivs, from_left, non_zero_tangents)
     }
 
-    fn evaluate_point(&self, t: f64) -> Result<Point3> {
+    fn evaluate_point(&self, _k: &Kernel, t: f64) -> Result<Point3> {
         Self::evaluate_point(self, t)
     }
 }
@@ -366,6 +368,7 @@ impl CurveEvaluate for HermiteCurve {
 
     fn evaluate(
         &self,
+        _k: &Kernel,
         t: f64,
         num_derivs: usize,
         _from_left: bool,
@@ -374,7 +377,7 @@ impl CurveEvaluate for HermiteCurve {
         Ok(Self::evaluate(self, t, num_derivs, non_zero_tangents))
     }
 
-    fn evaluate_point(&self, t: f64) -> Result<Point3> {
+    fn evaluate_point(&self, _k: &Kernel, t: f64) -> Result<Point3> {
         Ok(Self::evaluate_point(self, t))
     }
 }
@@ -390,6 +393,7 @@ impl CurveEvaluate for Conic {
 
     fn evaluate(
         &self,
+        _k: &Kernel,
         t: f64,
         num_derivs: usize,
         _from_left: bool,
@@ -398,7 +402,7 @@ impl CurveEvaluate for Conic {
         Self::evaluate(self, t, num_derivs, non_zero_tangents)
     }
 
-    fn evaluate_point(&self, t: f64) -> Result<Point3> {
+    fn evaluate_point(&self, _k: &Kernel, t: f64) -> Result<Point3> {
         Ok(Self::evaluate_point(self, t))
     }
 }
@@ -414,16 +418,17 @@ impl CurveEvaluate for IsoCurve {
 
     fn evaluate(
         &self,
+        k: &Kernel,
         t: f64,
         num_derivs: usize,
         from_left: bool,
         non_zero_tangents: bool,
     ) -> Result<Vec<Vec3>> {
-        Self::evaluate(self, t, num_derivs, from_left, non_zero_tangents)
+        Self::evaluate(self, k, t, num_derivs, from_left, non_zero_tangents)
     }
 
-    fn evaluate_point(&self, t: f64) -> Result<Point3> {
-        Self::evaluate_point(self, t)
+    fn evaluate_point(&self, k: &Kernel, t: f64) -> Result<Point3> {
+        Self::evaluate_point(self, k, t)
     }
 }
 
@@ -438,16 +443,17 @@ impl CurveEvaluate for ProjectedCurve {
 
     fn evaluate(
         &self,
+        k: &Kernel,
         t: f64,
         num_derivs: usize,
         from_left: bool,
         non_zero_tangents: bool,
     ) -> Result<Vec<Vec3>> {
-        Self::evaluate(self, t, num_derivs, from_left, non_zero_tangents)
+        Self::evaluate(self, k, t, num_derivs, from_left, non_zero_tangents)
     }
 
-    fn evaluate_point(&self, t: f64) -> Result<Point3> {
-        Self::evaluate_point(self, t)
+    fn evaluate_point(&self, k: &Kernel, t: f64) -> Result<Point3> {
+        Self::evaluate_point(self, k, t)
     }
 }
 
@@ -462,16 +468,17 @@ impl CurveEvaluate for OffsetCurve {
 
     fn evaluate(
         &self,
+        k: &Kernel,
         t: f64,
         num_derivs: usize,
         from_left: bool,
         non_zero_tangents: bool,
     ) -> Result<Vec<Vec3>> {
-        Self::evaluate(self, t, num_derivs, from_left, non_zero_tangents)
+        Self::evaluate(self, k, t, num_derivs, from_left, non_zero_tangents)
     }
 
-    fn evaluate_point(&self, t: f64) -> Result<Point3> {
-        Self::evaluate_point(self, t)
+    fn evaluate_point(&self, k: &Kernel, t: f64) -> Result<Point3> {
+        Self::evaluate_point(self, k, t)
     }
 }
 
@@ -486,20 +493,21 @@ impl CurveEvaluate for Curve {
 
     fn evaluate(
         &self,
+        k: &Kernel,
         t: f64,
         num_derivs: usize,
         from_left: bool,
         non_zero_tangents: bool,
     ) -> Result<Vec<Vec3>> {
-        Self::evaluate(self, t, num_derivs, from_left, non_zero_tangents)
+        Self::evaluate(self, k, t, num_derivs, from_left, non_zero_tangents)
     }
 
-    fn evaluate_point(&self, t: f64) -> Result<Point3> {
-        Self::evaluate_point(self, t)
+    fn evaluate_point(&self, k: &Kernel, t: f64) -> Result<Point3> {
+        Self::evaluate_point(self, k, t)
     }
 
-    fn is_closed_virtual(&self, interval: &Extent1d, tol: f64) -> Result<bool> {
-        Self::is_closed(self, interval, tol)
+    fn is_closed_virtual(&self, k: &Kernel, interval: &Extent1d, tol: f64) -> Result<bool> {
+        Self::is_closed(self, k, interval, tol)
     }
 
     fn as_crv_on_surf(&self) -> Option<&CrvOnSurf> {
@@ -788,7 +796,7 @@ impl Curve {
     ///
     /// [`SolidError::Unported`] from [`CrvInVolume::approx_eq`] (the volume
     /// comparison).
-    pub fn approx_eq(&self, other: &Self) -> Result<bool> {
+    pub fn approx_eq(&self, k: &Kernel, other: &Self) -> Result<bool> {
         // low work
         if core::ptr::eq(self, other) {
             return Ok(true);
@@ -798,17 +806,17 @@ impl Curve {
             (CurveKind::Hermite(a), CurveKind::Hermite(b)) => Ok(a.approx_eq(b)),
             (CurveKind::Hyperbola(a), CurveKind::Hyperbola(b)) => Ok(a.approx_eq(b)),
             (CurveKind::Conic(a), CurveKind::Conic(b)) => Ok(a.approx_eq(b)),
-            (CurveKind::Projected(a), CurveKind::Projected(b)) => a.approx_eq(b),
-            (CurveKind::Iso(a), CurveKind::Iso(b)) => a.approx_eq(b),
-            (CurveKind::Offset(a), CurveKind::Offset(b)) => a.approx_eq(b),
-            (CurveKind::CrvInVolume(a), CurveKind::CrvInVolume(b)) => a.approx_eq(b),
-            (CurveKind::CrvOnSurf(a), CurveKind::CrvOnSurf(b)) => a.approx_eq(b),
+            (CurveKind::Projected(a), CurveKind::Projected(b)) => a.approx_eq(k, b),
+            (CurveKind::Iso(a), CurveKind::Iso(b)) => a.approx_eq(k, b),
+            (CurveKind::Offset(a), CurveKind::Offset(b)) => a.approx_eq(k, b),
+            (CurveKind::CrvInVolume(a), CurveKind::CrvInVolume(b)) => a.approx_eq(k, b),
+            (CurveKind::CrvOnSurf(a), CurveKind::CrvOnSurf(b)) => a.approx_eq(k, b),
             (CurveKind::Line(a), CurveKind::Line(b)) => Ok(a.approx_eq(b)),
             (CurveKind::Ellipse(a), CurveKind::Ellipse(b)) => {
                 Ok(a.type_code() == b.type_code() && a.approx_eq(b))
             }
             (CurveKind::Parabola(a), CurveKind::Parabola(b)) => Ok(a.approx_eq(b)),
-            (CurveKind::Composite(a), CurveKind::Composite(b)) => a.approx_eq(b),
+            (CurveKind::Composite(a), CurveKind::Composite(b)) => a.approx_eq(k, b),
             // GetType() differs
             _ => Ok(false),
         }
@@ -995,12 +1003,12 @@ impl Curve {
     /// # Errors
     ///
     /// Those of [`BSplineCurve::has_repeated_end_control_points`].
-    pub fn has_repeated_end_control_points(&self, tol: f64) -> Result<bool> {
+    pub fn has_repeated_end_control_points(&self, k: &Kernel, tol: f64) -> Result<bool> {
         match &self.kind {
-            CurveKind::BSpline(c) => c.has_repeated_end_control_points(tol),
-            CurveKind::Hyperbola(c) => c.base().has_repeated_end_control_points(tol),
-            CurveKind::Ellipse(c) => c.base().has_repeated_end_control_points(tol),
-            CurveKind::Parabola(c) => c.base().has_repeated_end_control_points(tol),
+            CurveKind::BSpline(c) => c.has_repeated_end_control_points(k, tol),
+            CurveKind::Hyperbola(c) => c.base().has_repeated_end_control_points(k, tol),
+            CurveKind::Ellipse(c) => c.base().has_repeated_end_control_points(k, tol),
+            CurveKind::Parabola(c) => c.base().has_repeated_end_control_points(k, tol),
             CurveKind::Hermite(_)
             | CurveKind::Conic(_)
             | CurveKind::Projected(_)
@@ -1009,7 +1017,7 @@ impl Curve {
             | CurveKind::CrvInVolume(_)
             | CurveKind::CrvOnSurf(_)
             | CurveKind::Composite(_) => Ok(false),
-            CurveKind::Line(c) => c.base_with_nurb()?.has_repeated_end_control_points(tol),
+            CurveKind::Line(c) => c.base_with_nurb()?.has_repeated_end_control_points(k, tol),
         }
     }
 
@@ -1098,6 +1106,7 @@ impl Curve {
     /// Those of the kind's evaluator.
     pub fn evaluate(
         &self,
+        k: &Kernel,
         t: f64,
         num_derivs: usize,
         from_left: bool,
@@ -1119,11 +1128,11 @@ impl Curve {
                 c.base()
                     .evaluate(t, num_derivs, from_left, non_zero_tangents)
             }
-            CurveKind::Projected(c) => c.evaluate(t, num_derivs, from_left, non_zero_tangents),
-            CurveKind::Iso(c) => c.evaluate(t, num_derivs, from_left, non_zero_tangents),
-            CurveKind::Offset(c) => c.evaluate(t, num_derivs, from_left, non_zero_tangents),
-            CurveKind::CrvInVolume(c) => c.evaluate(t, num_derivs, from_left, non_zero_tangents),
-            CurveKind::CrvOnSurf(c) => c.evaluate(t, num_derivs, from_left, non_zero_tangents),
+            CurveKind::Projected(c) => c.evaluate(k, t, num_derivs, from_left, non_zero_tangents),
+            CurveKind::Iso(c) => c.evaluate(k, t, num_derivs, from_left, non_zero_tangents),
+            CurveKind::Offset(c) => c.evaluate(k, t, num_derivs, from_left, non_zero_tangents),
+            CurveKind::CrvInVolume(c) => c.evaluate(k, t, num_derivs, from_left, non_zero_tangents),
+            CurveKind::CrvOnSurf(c) => c.evaluate(k, t, num_derivs, from_left, non_zero_tangents),
             CurveKind::Line(c) => Ok(c.evaluate(t, num_derivs)),
         }
     }
@@ -1133,7 +1142,7 @@ impl Curve {
     /// # Errors
     ///
     /// Those of the kind's evaluator.
-    pub fn evaluate_point(&self, t: f64) -> Result<Point3> {
+    pub fn evaluate_point(&self, k: &Kernel, t: f64) -> Result<Point3> {
         match &self.kind {
             CurveKind::Composite(_) => Err(base_err()),
             CurveKind::BSpline(c) => c.evaluate_point(t),
@@ -1142,11 +1151,11 @@ impl Curve {
             CurveKind::Ellipse(c) => c.base().evaluate_point(t),
             CurveKind::Conic(c) => Ok(c.evaluate_point(t)),
             CurveKind::Parabola(c) => c.base().evaluate_point(t),
-            CurveKind::Projected(c) => c.evaluate_point(t),
-            CurveKind::Iso(c) => c.evaluate_point(t),
-            CurveKind::Offset(c) => c.evaluate_point(t),
-            CurveKind::CrvInVolume(c) => c.evaluate_point(t),
-            CurveKind::CrvOnSurf(c) => c.evaluate_point(t),
+            CurveKind::Projected(c) => c.evaluate_point(k, t),
+            CurveKind::Iso(c) => c.evaluate_point(k, t),
+            CurveKind::Offset(c) => c.evaluate_point(k, t),
+            CurveKind::CrvInVolume(c) => c.evaluate_point(k, t),
+            CurveKind::CrvOnSurf(c) => c.evaluate_point(k, t),
             CurveKind::Line(c) => Ok(c.evaluate_point(t)),
         }
     }
@@ -1159,22 +1168,23 @@ impl Curve {
     /// Those of [`BSplineCurve::calculate_continuities`].
     pub fn calculate_continuities(
         &self,
+        k: &Kernel,
         angle_tol: f64,
     ) -> Result<(ContinuityType, Vec<ContinuityType>)> {
         match &self.kind {
             CurveKind::Composite(_) => Err(base_err()),
-            CurveKind::BSpline(c) => c.calculate_continuities(angle_tol),
-            CurveKind::Hyperbola(c) => c.base().calculate_continuities(angle_tol),
-            CurveKind::Ellipse(c) => c.base().calculate_continuities(angle_tol),
+            CurveKind::BSpline(c) => c.calculate_continuities(k, angle_tol),
+            CurveKind::Hyperbola(c) => c.base().calculate_continuities(k, angle_tol),
+            CurveKind::Ellipse(c) => c.base().calculate_continuities(k, angle_tol),
             CurveKind::Hermite(c) => Ok(c.calculate_continuities()),
             CurveKind::Conic(c) => Ok(c.calculate_continuities()),
-            CurveKind::Parabola(c) => c.base().calculate_continuities(angle_tol),
-            CurveKind::Projected(c) => c.calculate_continuities(angle_tol),
-            CurveKind::Iso(c) => c.calculate_continuities(),
-            CurveKind::Offset(c) => c.calculate_continuities(angle_tol),
-            CurveKind::CrvInVolume(c) => c.calculate_continuities_ref(angle_tol),
-            CurveKind::CrvOnSurf(c) => c.calculate_continuities_ref(angle_tol),
-            CurveKind::Line(c) => c.base_with_nurb()?.calculate_continuities(angle_tol),
+            CurveKind::Parabola(c) => c.base().calculate_continuities(k, angle_tol),
+            CurveKind::Projected(c) => c.calculate_continuities(k, angle_tol),
+            CurveKind::Iso(c) => c.calculate_continuities(k),
+            CurveKind::Offset(c) => c.calculate_continuities(k, angle_tol),
+            CurveKind::CrvInVolume(c) => c.calculate_continuities_ref(k, angle_tol),
+            CurveKind::CrvOnSurf(c) => c.calculate_continuities_ref(k, angle_tol),
+            CurveKind::Line(c) => c.base_with_nurb()?.calculate_continuities(k, angle_tol),
         }
     }
 
@@ -1214,20 +1224,20 @@ impl Curve {
     /// # Errors
     ///
     /// `SM_ERR` for a B-spline without NURB.
-    pub fn ends(&self) -> Result<Ends> {
+    pub fn ends(&self, k: &Kernel) -> Result<Ends> {
         match &self.kind {
-            CurveKind::Composite(c) => base_ends(c),
+            CurveKind::Composite(c) => base_ends(k, c),
             CurveKind::BSpline(c) => c.ends(),
             CurveKind::Hyperbola(c) => c.base().ends(),
             CurveKind::Ellipse(c) => c.base().ends(),
-            CurveKind::Hermite(c) => base_ends(c),
-            CurveKind::Conic(c) => base_ends(c),
+            CurveKind::Hermite(c) => base_ends(k, c),
+            CurveKind::Conic(c) => base_ends(k, c),
             CurveKind::Parabola(c) => c.base().ends(),
-            CurveKind::Projected(c) => base_ends(c),
-            CurveKind::Iso(c) => base_ends(c),
-            CurveKind::Offset(c) => base_ends(c),
-            CurveKind::CrvInVolume(c) => base_ends(c.as_ref()),
-            CurveKind::CrvOnSurf(c) => base_ends(c.as_ref()),
+            CurveKind::Projected(c) => base_ends(k, c),
+            CurveKind::Iso(c) => base_ends(k, c),
+            CurveKind::Offset(c) => base_ends(k, c),
+            CurveKind::CrvInVolume(c) => base_ends(k, c.as_ref()),
+            CurveKind::CrvOnSurf(c) => base_ends(k, c.as_ref()),
             CurveKind::Line(c) => c.ends_copy(),
         }
     }
@@ -1252,10 +1262,10 @@ impl Curve {
     /// # Errors
     ///
     /// Those of [`Ellipse::convert_t_from_step_to_nurbs`].
-    pub fn convert_t_from_step_to_nurbs(&self, step_param: f64) -> Result<f64> {
+    pub fn convert_t_from_step_to_nurbs(&self, k: &Kernel, step_param: f64) -> Result<f64> {
         match &self.kind {
             CurveKind::Line(c) => Ok(c.convert_t_from_step_to_nurbs(step_param)),
-            CurveKind::Ellipse(c) => c.convert_t_from_step_to_nurbs(step_param),
+            CurveKind::Ellipse(c) => c.convert_t_from_step_to_nurbs(k, step_param),
             _ => Ok(step_param),
         }
     }
@@ -1269,13 +1279,14 @@ impl Curve {
     /// [`SolidError::Unported`] from an evaluator.
     pub fn approximate_length(
         &self,
+        k: &Kernel,
         interval: &Extent1d,
         samples: usize,
         want_turn_angle: bool,
     ) -> Result<(f64, Option<f64>)> {
         match &self.kind {
             CurveKind::Line(c) => Ok(c.approximate_length(interval, want_turn_angle)),
-            _ => approximate_length(self, interval, samples, want_turn_angle),
+            _ => approximate_length(k, self, interval, samples, want_turn_angle),
         }
     }
 
@@ -1310,6 +1321,7 @@ impl Curve {
     /// `SM_ERR` for kinds without the fast drop and for unsupported operations.
     pub fn drop_point_fast(
         &self,
+        k: &Kernel,
         interval: &Extent1d,
         operation: SolverOperation,
         point: Point3,
@@ -1323,6 +1335,7 @@ impl Curve {
                 c.drop_point_fast(interval, operation, point, tol, target_distance, None)
             }
             CurveKind::Ellipse(c) => c.drop_point_fast(
+                k,
                 interval,
                 operation,
                 point,
@@ -1650,18 +1663,18 @@ impl Curve {
             let per = ii as f64 / (num_samples as f64 - 1.0);
             let mut param = interval.evaluate(per);
 
-            let crv_pt = ignored(self.evaluate_point(param))?.unwrap_or(Vec3::UNDEF);
+            let crv_pt = ignored(self.evaluate_point(k, param))?.unwrap_or(Vec3::UNDEF);
             let mut drop = surface_drop_point(k, surface, crv_pt, domain, guess_uv)?;
 
             // If drop failed for first or last point, try moving a small distance from the end.
             if drop.is_none() && ii == 0 {
                 param = interval.evaluate(0.001);
-                let crv_pt = self.evaluate_point(param)?;
+                let crv_pt = self.evaluate_point(k, param)?;
                 drop = surface_drop_point(k, surface, crv_pt, domain, guess_uv)?;
             }
             if drop.is_none() && ii + 1 == num_samples {
                 param = interval.evaluate(0.999);
-                let crv_pt = self.evaluate_point(param)?;
+                let crv_pt = self.evaluate_point(k, param)?;
                 drop = surface_drop_point(k, surface, crv_pt, domain, guess_uv)?;
             }
 
@@ -1688,15 +1701,15 @@ impl Curve {
 
         // Done sampling the curve. If we're doing precise calculation, call a solver
         // with our best guesses, unless the curve appears to be coincident with the surface.
-        let crv_pt = self.evaluate_point(max_param)?;
+        let crv_pt = self.evaluate_point(k, max_param)?;
         let scaled_zero = EFF_ZERO * (1.0 + crv_pt.max_dimension());
         if do_precise && max_dist > scaled_zero {
             // Find the gap maximum near the largest sampled gap point.
             if let Some((param, uv)) =
-                surface.local_curve_maximize(self, domain, interval, max_uv, max_param)?
+                surface.local_curve_maximize(k, self, domain, interval, max_uv, max_param)?
             {
-                let crv_pt = self.evaluate_point(param)?;
-                let srf_pt = surface.evaluate_point(uv)?;
+                let crv_pt = self.evaluate_point(k, param)?;
+                let srf_pt = surface.evaluate_point(k, uv)?;
                 let dist = crv_pt.distance(srf_pt);
 
                 // save largest gap seen
@@ -1809,10 +1822,11 @@ pub fn notify<T>(
 /// # Errors
 ///
 /// [`SolidError::Unported`] from the evaluator.
-pub fn base_ends<C: CurveEvaluate + ?Sized>(curve: &C) -> Result<Ends> {
+pub fn base_ends<C: CurveEvaluate + ?Sized>(k: &Kernel, curve: &C) -> Result<Ends> {
     let ivl = curve.natural_interval();
-    let point =
-        |t: f64| -> Result<Point3> { Ok(ignored(curve.evaluate_point(t))?.unwrap_or(Vec3::UNDEF)) };
+    let point = |t: f64| -> Result<Point3> {
+        Ok(ignored(curve.evaluate_point(k, t))?.unwrap_or(Vec3::UNDEF))
+    };
     Ok(Ends {
         start: point(ivl.min())?,
         end: point(ivl.max())?,
@@ -1824,12 +1838,13 @@ pub fn base_ends<C: CurveEvaluate + ?Sized>(curve: &C) -> Result<Ends> {
 /// Evaluation whose failure upstream ignores: `None` keeps the caller's previous
 /// values; [`SolidError::Unported`] is propagated.
 fn eval_ignored<C: CurveEvaluate + ?Sized>(
+    k: &Kernel,
     curve: &C,
     t: f64,
     num_derivs: usize,
     non_zero_tangents: bool,
 ) -> Result<Option<Vec<Vec3>>> {
-    ignored(curve.evaluate(t, num_derivs, true, non_zero_tangents))
+    ignored(curve.evaluate(k, t, num_derivs, true, non_zero_tangents))
 }
 
 /// `SmCurve::ApproximateLength`: the length of the polygon through the curve
@@ -1842,6 +1857,7 @@ fn eval_ignored<C: CurveEvaluate + ?Sized>(
 ///
 /// [`SolidError::Unported`] from the evaluator.
 pub fn approximate_length<C: CurveEvaluate + ?Sized>(
+    k: &Kernel,
     curve: &C,
     interval: &Extent1d,
     samples: usize,
@@ -1858,10 +1874,10 @@ pub fn approximate_length<C: CurveEvaluate + ?Sized>(
         let mut turn_ang_rad = 0.0;
 
         // Get Start and end Points
-        if let Some(v) = eval_ignored(curve, interval.min(), 1, true)? {
+        if let Some(v) = eval_ignored(k, curve, interval.min(), 1, true)? {
             last = [at(&v, 0), at(&v, 1)];
         }
-        if let Some(v) = eval_ignored(curve, interval.max(), 1, true)? {
+        if let Some(v) = eval_ignored(k, curve, interval.max(), 1, true)? {
             curr = [at(&v, 0), at(&v, 1)];
         }
 
@@ -1878,7 +1894,7 @@ pub fn approximate_length<C: CurveEvaluate + ?Sized>(
             };
 
             // Evaluate and accumulate distance
-            if let Some(v) = eval_ignored(curve, param, 1, true)? {
+            if let Some(v) = eval_ignored(k, curve, param, 1, true)? {
                 curr = [at(&v, 0), at(&v, 1)];
             }
             ret += curr[0].distance(last[0]);
@@ -1899,7 +1915,7 @@ pub fn approximate_length<C: CurveEvaluate + ?Sized>(
         Ok((ret, Some(turn_deg)))
     } else {
         let point = |t: f64, prev: Point3| -> Result<Point3> {
-            Ok(ignored(curve.evaluate_point(t))?.unwrap_or(prev))
+            Ok(ignored(curve.evaluate_point(k, t))?.unwrap_or(prev))
         };
 
         // Get Start Point
@@ -1932,13 +1948,14 @@ pub fn approximate_length<C: CurveEvaluate + ?Sized>(
 ///
 /// Those of the evaluator.
 pub fn evaluate_step<C: CurveEvaluate + ?Sized>(
+    k: &Kernel,
     curve: &C,
     step_param: f64,
     num_derivs: usize,
     from_left: bool,
 ) -> Result<Vec<Vec3>> {
     // pass the call along
-    curve.evaluate(step_param, num_derivs, from_left, false)
+    curve.evaluate(k, step_param, num_derivs, from_left, false)
 }
 
 /// `SmCurve::EvaluateGeometric`: `[position, first derivative, curvature vector,
@@ -1949,6 +1966,7 @@ pub fn evaluate_step<C: CurveEvaluate + ?Sized>(
 /// [`SolidError::InvalidInput`] for `num_vectors > 3` (an upstream assert); those of
 /// the evaluator and of [`frenet_from_derivatives`].
 pub fn evaluate_geometric<C: CurveEvaluate + ?Sized>(
+    k: &Kernel,
     curve: &C,
     param: f64,
     num_vectors: usize,
@@ -1960,7 +1978,7 @@ pub fn evaluate_geometric<C: CurveEvaluate + ?Sized>(
             reason: "at most 3 geometric vectors",
         });
     }
-    let pvvv = curve.evaluate(param, num_vectors, from_left, false)?;
+    let pvvv = curve.evaluate(k, param, num_vectors, from_left, false)?;
     // pass the call along
     frenet_from_derivatives(&pvvv, num_vectors)
 }
@@ -1985,6 +2003,7 @@ pub struct CurveContinuity {
 ///
 /// Those of the evaluators and of [`evaluate_curve_continuity`].
 pub fn evaluate_continuity<A, B>(
+    k: &Kernel,
     this: &A,
     this_param: f64,
     this_from_left: bool,
@@ -1998,8 +2017,8 @@ where
     B: CurveEvaluate + ?Sized,
 {
     // evaluate the curves (exact tangent values)
-    let left = this.evaluate(this_param, 3, this_from_left, false)?;
-    let right = other.evaluate(other_param, 3, other_from_left, false)?;
+    let left = this.evaluate(k, this_param, 3, this_from_left, false)?;
+    let right = other.evaluate(k, other_param, 3, other_from_left, false)?;
 
     let eval_left = CurveEval {
         position: at(&left, 0),
@@ -2044,6 +2063,7 @@ pub struct StepOff {
 ///
 /// Those of the evaluator.
 pub fn euclidian_step_off<C: CurveEvaluate + ?Sized>(
+    k: &Kernel,
     curve: &C,
     interval: &Extent1d,
     start_param: f64,
@@ -2064,7 +2084,7 @@ pub fn euclidian_step_off<C: CurveEvaluate + ?Sized>(
     }
 
     // get start evaluation point
-    let pv = curve.evaluate(start_param, 1, true, true)?;
+    let pv = curve.evaluate(k, start_param, 1, true, true)?;
     let sign = if forward { 1.0 } else { -1.0 };
 
     // guess param value expected to be dStepOffDistance from initial point
@@ -2089,7 +2109,7 @@ pub fn euclidian_step_off<C: CurveEvaluate + ?Sized>(
         }
 
         // check the guessed distance
-        let pv2 = curve.evaluate(end_param, 1, true, true)?;
+        let pv2 = curve.evaluate(k, end_param, 1, true, true)?;
         let dist = at(&pv2, 0).distance(at(&pv, 0));
 
         // success stop: distance is less than tolerance
@@ -2404,6 +2424,7 @@ pub fn flush_crv(
 ///
 /// Those of the evaluator.
 pub fn snap_sol_to_specified_endpoint<C: CurveEvaluate + ?Sized>(
+    k: &Kernel,
     curve: &C,
     interval: &Extent1d,
     vec_to_inside: Option<Vec3>,
@@ -2421,10 +2442,10 @@ pub fn snap_sol_to_specified_endpoint<C: CurveEvaluate + ?Sized>(
     };
 
     // The given point on the curve:
-    let sol_pnt = curve.evaluate_point(solution)?;
+    let sol_pnt = curve.evaluate_point(k, solution)?;
 
     // Check the start point
-    let pv = curve.evaluate(interval.min(), 1, true, true)?;
+    let pv = curve.evaluate(k, interval.min(), 1, true, true)?;
     let min_gap = at(&pv, 0).distance(sol_pnt);
 
     // when MinBoundary/Solution gap is less than tolerance
@@ -2441,7 +2462,7 @@ pub fn snap_sol_to_specified_endpoint<C: CurveEvaluate + ?Sized>(
     }
 
     // get MaxBoundaryPoint and gap
-    let pv = curve.evaluate(interval.max(), 1, true, true)?;
+    let pv = curve.evaluate(k, interval.max(), 1, true, true)?;
     let max_gap = at(&pv, 0).distance(sol_pnt);
 
     // when MaxBoundary/Solution gap is less than tolerance and we haven't snapped to the minBoundary
@@ -2706,6 +2727,9 @@ impl<'a> LengthIntegrand<'a> {
 /// (`SmFindCurveDistanceExtremaEFO`; its `Evaluate` is unit `curve.curve_p4`).
 #[derive(Debug, Clone, Copy)]
 pub struct FindCurveDistanceExtrema<'a> {
+    /// Caller context for virtual evaluations.
+    pub kernel: &'a Kernel,
+
     /// `m_pCurve1`.
     pub curve1: &'a Curve,
     /// `m_pCurve2`.
@@ -2719,8 +2743,15 @@ pub struct FindCurveDistanceExtrema<'a> {
 impl<'a> FindCurveDistanceExtrema<'a> {
     /// `SmFindCurveDistanceExtremaEFO(pCurve1, pCurve2, rsDomain, dTol)`.
     #[must_use]
-    pub const fn new(curve1: &'a Curve, curve2: &'a Curve, domain: Extent1d, tol: f64) -> Self {
+    pub const fn new(
+        k: &'a Kernel,
+        curve1: &'a Curve,
+        curve2: &'a Curve,
+        domain: Extent1d,
+        tol: f64,
+    ) -> Self {
         Self {
+            kernel: k,
             curve1,
             curve2,
             domain,
@@ -3053,6 +3084,9 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for CcGlobalSolver<'t, O> {
 /// one parameter.
 #[derive(Debug, Clone)]
 pub struct CpGlobalSolver<'t, O> {
+    /// Caller context for virtual evaluations.
+    pub kernel: &'t Kernel,
+
     /// The `SmGlobalSolver` state.
     pub base: GlobalSolver<'t, O>,
     /// `m_crInterval`: the curve interval to query.
@@ -3066,8 +3100,14 @@ pub struct CpGlobalSolver<'t, O> {
 impl<'t, O: SolutionObject + 't> CpGlobalSolver<'t, O> {
     /// `SmCPGlobalSolver(rContext, pPointTree, pCurveTree, crInterval)`.
     #[must_use]
-    pub fn new(point_tree: &'t Tree<O>, curve_tree: &'t Tree<O>, interval: Extent1d) -> Self {
+    pub fn new(
+        k: &'t Kernel,
+        point_tree: &'t Tree<O>,
+        curve_tree: &'t Tree<O>,
+        interval: Extent1d,
+    ) -> Self {
         Self {
+            kernel: k,
             base: GlobalSolver::with_trees(point_tree, curve_tree, 1),
             interval,
             curve: None,
@@ -3151,7 +3191,8 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for CpGlobalSolver<'t, O> {
     }
 
     fn local_solve(&mut self, branch: &Branch) -> Result<bool> {
-        self.local_solve_branch(branch)
+        let k = self.kernel;
+        self.local_solve_branch(k, branch)
     }
 }
 
@@ -3159,6 +3200,9 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for CpGlobalSolver<'t, O> {
 /// parameter.
 #[derive(Debug, Clone)]
 pub struct CurvePropertyGs<'t, O> {
+    /// Caller context for virtual evaluations.
+    pub kernel: &'t Kernel,
+
     /// The `SmGlobalSolver` state.
     pub base: GlobalSolver<'t, O>,
     /// `m_crInterval`: the curve interval to examine.
@@ -3203,6 +3247,7 @@ impl<'t, O: SolutionObject + 't> CurvePropertyGs<'t, O> {
     /// cpOptVectors)`.
     #[must_use]
     pub fn new(
+        k: &'t Kernel,
         curve_tree: &'t Tree<O>,
         interval: Extent1d,
         property: CurvePropertyType,
@@ -3210,6 +3255,7 @@ impl<'t, O: SolutionObject + 't> CurvePropertyGs<'t, O> {
         opt_vectors: Vec<Vec3>,
     ) -> Self {
         Self {
+            kernel: k,
             base: GlobalSolver::with_tree(curve_tree, 1),
             interval,
             property,
@@ -3551,7 +3597,8 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for CurvePropertyGs<'t, O> {
     }
 
     fn local_solve(&mut self, branch: &Branch) -> Result<bool> {
-        self.local_solve_branch(branch)
+        let k = self.kernel;
+        self.local_solve_branch(k, branch)
     }
 }
 
@@ -3674,6 +3721,7 @@ mod tests {
 
     #[test]
     fn type_queries() {
+        let k = &Kernel::default();
         let h = hermite();
         assert_eq!(h.type_code(), HERMITE_CURVE_TYPE);
         assert!(h.is_kind_of(TYPE) && h.is_kind_of(HERMITE_CURVE_TYPE));
@@ -3684,7 +3732,7 @@ mod tests {
         assert_eq!(h.number_natural_knots().unwrap(), 2);
         assert!(!h.is_rational().unwrap());
         let b = cubic();
-        assert!(b.approx_eq(&b.clone()).unwrap() && !b.approx_eq(&h).unwrap());
+        assert!(b.approx_eq(k, &b.clone()).unwrap() && !b.approx_eq(k, &h).unwrap());
         let k = Kernel::default();
         assert!(h.copy(&k).is_err() && b.copy(&k).is_ok());
     }
@@ -3718,21 +3766,23 @@ mod tests {
 
     #[test]
     fn length_and_step_off() {
+        let k = &Kernel::default();
         let b = cubic();
         let ivl = b.natural_interval();
-        let (len, turn) = b.approximate_length(&ivl, 64, false).unwrap();
+        let (len, turn) = b.approximate_length(k, &ivl, 64, false).unwrap();
         assert!(len > 3.0 && turn.is_none());
-        let s = euclidian_step_off(&b, &ivl, 0.0, true, 1.0, 1e-10).unwrap();
+        let s = euclidian_step_off(k, &b, &ivl, 0.0, true, 1.0, 1e-10).unwrap();
         assert!(s.converged);
-        let p0 = b.evaluate_point(0.0).unwrap();
-        let p1 = b.evaluate_point(s.end_param).unwrap();
+        let p0 = b.evaluate_point(k, 0.0).unwrap();
+        let p1 = b.evaluate_point(k, s.end_param).unwrap();
         assert!((p0.distance(p1) - 1.0).abs() < 1e-8);
     }
 
     #[test]
     fn continuity_of_a_curve_with_itself() {
+        let k = &Kernel::default();
         let b = cubic();
-        let c = evaluate_continuity(&b, 0.5, true, &b, 0.5, false, 0.5).unwrap();
+        let c = evaluate_continuity(k, &b, 0.5, true, &b, 0.5, false, 0.5).unwrap();
         assert!(c.continuity as i32 >= ContinuityType::C1 as i32);
     }
 

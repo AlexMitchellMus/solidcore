@@ -266,16 +266,12 @@
       "values_compared": 1121
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "copy_box_with_large_fillet_api0_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#31 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 1121
     },
     {
       "max_rel_err": 0.0,
@@ -286,16 +282,12 @@
       "values_compared": 1121
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "merge_box_with_large_fillet_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#33 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 2216
     },
     {
       "max_rel_err": 0.0,
@@ -362,16 +354,12 @@
       "values_compared": 150
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "copy_cone_api0_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#41 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 150
     },
     {
       "max_rel_err": 0.0,
@@ -382,16 +370,12 @@
       "values_compared": 150
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "merge_cone_an1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/copy.json#43 (upstream tests/SM_API_test/src/TestSmBrepCopy.cpp (TestSmBrepCopyRepresentation))",
-      "values_compared": 0
+      "values_compared": 274
     },
     {
       "max_rel_err": 0.0,
@@ -1818,40 +1802,28 @@
       "values_compared": 515
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_Mouse_e1_d0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#3 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 426
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_Mouse_e1_d1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#4 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion's DeleteFace(face, TRUE, TRUE) with editing on, here on face 0 of Mouse.smb))",
-      "values_compared": 0
+      "values_compared": 426
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_Mouse_e1_nonest",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#5 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 384
     },
     {
       "max_rel_err": 0.0,
@@ -1926,21 +1898,17 @@
       "values_compared": 95
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_Endcap_e1_d0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#15 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 76
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_Endcap_e1_d1",
@@ -1950,16 +1918,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_Endcap_e1_nonest",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#17 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 76
     },
     {
       "max_rel_err": 0.0,
@@ -2034,40 +1998,28 @@
       "values_compared": 1124
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_box_with_large_fillet_e1_d0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#27 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 979
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_box_with_large_fillet_e1_d1",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#28 (upstream tests/SM_API_test/src/TestSmBrep.cpp (TestSmDeleteFaceKeepsInfiniteRegion's DeleteFace(face, TRUE, TRUE) with editing on, here on face 0 of box_with_large_fillet.smb))",
-      "values_compared": 0
+      "values_compared": 979
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_box_with_large_fillet_e1_nonest",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#29 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 993
     },
     {
       "max_rel_err": 0.0,
@@ -2142,21 +2094,17 @@
       "values_compared": 153
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_cone_e1_d0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#39 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 106
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_cone_e1_d1",
@@ -2166,16 +2114,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_cone_e1_nonest",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#41 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 106
     },
     {
       "max_rel_err": 0.0,
@@ -2250,21 +2194,17 @@
       "values_compared": 125
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_disk_e1_d0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#51 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 106
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_disk_e1_d1",
@@ -2274,16 +2214,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_disk_e1_nonest",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#53 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 106
     },
     {
       "max_rel_err": 0.0,
@@ -2358,21 +2294,17 @@
       "values_compared": 755
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_ellips_ts2_e1_d0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#63 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 722
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_ellips_ts2_e1_d1",
@@ -2382,16 +2314,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_ellips_ts2_e1_nonest",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#65 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 706
     },
     {
       "max_rel_err": 0.0,
@@ -2466,21 +2394,17 @@
       "values_compared": 95
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_plane_circ_e1_d0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#75 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 76
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_plane_circ_e1_d1",
@@ -2490,16 +2414,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_plane_circ_e1_nonest",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#77 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 76
     },
     {
       "max_rel_err": 0.0,
@@ -2574,21 +2494,17 @@
       "values_compared": 185
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_plane_square_e1_d0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#87 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 166
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_plane_square_e1_d1",
@@ -2598,16 +2514,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_plane_square_e1_nonest",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#89 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 166
     },
     {
       "max_rel_err": 0.0,
@@ -2682,21 +2594,17 @@
       "values_compared": 138
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_sphere_e1_d0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#99 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 77
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_sphere_e1_d1",
@@ -2706,16 +2614,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_sphere_e1_nonest",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#101 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 91
     },
     {
       "max_rel_err": 0.0,
@@ -2790,21 +2694,17 @@
       "values_compared": 185
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_surf_extrude_e1_d0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#111 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 166
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_surf_extrude_e1_d1",
@@ -2814,16 +2714,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_surf_extrude_e1_nonest",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#113 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 166
     },
     {
       "max_rel_err": 0.0,
@@ -2898,21 +2794,17 @@
       "values_compared": 185
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_surf_rev_e1_d0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#123 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 166
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_surf_rev_e1_d1",
@@ -2922,16 +2814,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_surf_rev_e1_nonest",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#125 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 166
     },
     {
       "max_rel_err": 0.0,
@@ -3006,21 +2894,17 @@
       "values_compared": 125
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_surf_sphere150_e1_d0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#135 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 106
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_surf_sphere150_e1_d1",
@@ -3030,16 +2914,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_surf_sphere150_e1_nonest",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#137 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 106
     },
     {
       "max_rel_err": 0.0,
@@ -3114,21 +2994,17 @@
       "values_compared": 194
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_torus_e1_d0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#147 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 105
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_torus_e1_d1",
@@ -3138,16 +3014,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_torus_e1_nonest",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#149 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 119
     },
     {
       "max_rel_err": 0.0,
@@ -3222,21 +3094,17 @@
       "values_compared": 194
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_toruswvy_e1_d0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#159 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 105
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_toruswvy_e1_d1",
@@ -3246,16 +3114,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_toruswvy_e1_nonest",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#161 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 119
     },
     {
       "max_rel_err": 0.0,
@@ -3330,21 +3194,17 @@
       "values_compared": 182
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_vase_rev_e1_d0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#171 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 135
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "delface_vase_rev_e1_d1",
@@ -3354,16 +3214,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "delface_vase_rev_e1_nonest",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/edit.json#173 (upstream source/SMLib/src/SmBrep.cpp (SmBrep::DeleteFace))",
-      "values_compared": 0
+      "values_compared": 135
     },
     {
       "max_rel_err": 0.0,
@@ -4486,21 +4342,17 @@
       "values_compared": 184
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "gen0000",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119065",
-      "values_compared": 0
+      "values_compared": 135
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0001",
@@ -5102,16 +4954,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "gen0073",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119138",
-      "values_compared": 0
+      "values_compared": 166
     },
     {
       "max_rel_err": 0.0,
@@ -5502,16 +5350,12 @@
       "values_compared": 76
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0121",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119186",
-      "values_compared": 0
+      "values_compared": 274
     },
     {
       "max_rel_err": 0.0,
@@ -5546,16 +5390,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0125",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119190",
-      "values_compared": 0
+      "values_compared": 2216
     },
     {
       "deferred": {
@@ -5570,16 +5410,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0127",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119192",
-      "values_compared": 0
+      "values_compared": 150
     },
     {
       "max_rel_err": 0.0,
@@ -5926,16 +5762,12 @@
       "values_compared": 350
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "gen0170",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119235",
-      "values_compared": 0
+      "values_compared": 106
     },
     {
       "max_rel_err": 0.0,
@@ -5970,16 +5802,12 @@
       "values_compared": 285
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "gen0175",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119240",
-      "values_compared": 0
+      "values_compared": 166
     },
     {
       "max_rel_err": 0.0,
@@ -6107,8 +5935,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0190",
@@ -6175,8 +6003,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0198",
@@ -6826,16 +6654,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "gen0275",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119340",
-      "values_compared": 0
+      "values_compared": 722
     },
     {
       "max_rel_err": 0.0,
@@ -6959,8 +6783,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0291",
@@ -7115,8 +6939,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0309",
@@ -7175,8 +6999,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0315",
@@ -7390,16 +7214,12 @@
       "values_compared": 274
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetVertices",
-        "unit": "topology.face_p4"
-      },
       "max_rel_err": 0.0,
       "name": "gen0341",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119406",
-      "values_compared": 0
+      "values_compared": 370
     },
     {
       "max_rel_err": 0.0,
@@ -7798,16 +7618,12 @@
       "values_compared": 101
     },
     {
-      "deferred": {
-        "symbol": "SmCone as SmSurface",
-        "unit": "surface.surface_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0388",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119453",
-      "values_compared": 0
+      "values_compared": 150
     },
     {
       "max_rel_err": 0.0,
@@ -7907,15 +7723,15 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 182,
+  "cases_deferred": 136,
   "cases_failed": 0,
-  "cases_passed": 715,
+  "cases_passed": 761,
   "cases_total": 897,
   "deferred_by_unit": {
     "query.brep": 57,
-    "surface.surface_p2": 21,
-    "topology.face_p3": 47,
-    "topology.face_p4": 57
+    "surface.surface_p2": 13,
+    "topology.brep_p4": 19,
+    "topology.face_p3": 47
   },
   "max_rel_err": 0.0,
   "pass": true,
