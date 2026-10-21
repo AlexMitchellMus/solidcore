@@ -1007,6 +1007,7 @@ impl DatabaseReader {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     #[test]
     fn nesting_is_bounded() {
@@ -1098,7 +1099,6 @@ mod tests {
             );
         }
     }
-    use super::*;
 
     fn ascii(s: &str) -> InputStream {
         InputStream::new(s.as_bytes().to_vec())

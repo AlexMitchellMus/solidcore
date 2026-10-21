@@ -4954,8 +4954,9 @@ there is no new SSI implementation or external corpus use.
   offset distance: the revolution polar-box reproducer is rejected, while nonzero plane
   offset `(hu=2,hv=0,upper)` stays covered. Shim roots/intermediates/borrowed bases use
   scoped ownership.
-- **Rust nesting:** construction/restoration checks a maximum of 64 surface wrappers,
-  including STEP/bounded wrappers and extended bases, before recursive queries.
+- **Rust nesting:** construction/restoration checks a maximum of `MAX_SURFACE_NESTING`
+  (32) surface wrappers, including STEP/bounded wrappers and extended bases, before
+  recursive queries.
 
 - **Extension cache.** Upstream's `const` evaluators (`EvaluatePoint`, `Evaluate`,
   `EvaluateSimple`, and `EvaluateNormal` through the `SmSurface` body) build an extended
