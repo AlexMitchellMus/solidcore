@@ -2607,7 +2607,7 @@ mod tests {
         // runs the plane's DropCurve (wired by intersect.surface_drop_lib_p3, #136)
         // before the domain boolean; the fixture's edge use then has no vertex use to
         // set the curve on.
-        match build_face(&mut executive, &mut original, Some(faceuse), &mut offset).unwrap_err() {
+        match build_face(&mut executive, &mut original, faceuse, &mut offset).unwrap_err() {
             SolidError::InvalidInput { operation, reason } => {
                 assert_eq!(operation, "topology::edgeuse::p1");
                 assert!(reason.starts_with("SetUVTrimCurve"), "{reason}");
