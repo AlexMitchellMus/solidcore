@@ -3,6 +3,22 @@
   "cases": [
     {
       "max_rel_err": 0.0,
+      "name": "cov_property_comb_zero_speed_start_p3",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.curve_p7/coverage.json#0 (upstream source/SMLib/src/SmCurve.cpp:13084 (coverage: crates/solidcore/src/curve/curve/p7.rs:1224))",
+      "values_compared": 916
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_property_comb_zero_speed_start_p11",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.curve_p7/coverage.json#1 (upstream source/SMLib/src/SmCurve.cpp:13084 (coverage: crates/solidcore/src/curve/curve/p7.rs:1224))",
+      "values_compared": 916
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "coincident_segments_solve",
       "outcome": "pass",
       "pass": true,
@@ -11791,7 +11807,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7577092825472747628",
-      "values_compared": 2333
+      "values_compared": 2320
     },
     {
       "max_rel_err": 0.0,
@@ -24517,8 +24533,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 3064,
-  "cases_total": 3064,
+  "cases_passed": 3066,
+  "cases_total": 3066,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,
