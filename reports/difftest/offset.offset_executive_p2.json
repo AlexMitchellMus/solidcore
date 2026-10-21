@@ -179,8 +179,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "api_offset_box_upstream",
@@ -191,8 +191,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "static_offset_box_round_outset",
@@ -215,8 +215,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "static_offset_real_plane_sheet_round",
@@ -227,8 +227,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "static_offset_real_plane_sheet_extended",
@@ -239,8 +239,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "static_shell_sheet_sidewalls",
@@ -263,8 +263,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "member_sheet_round_skip_true_still_real_geometry",
@@ -275,8 +275,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "member_sheet_extended_dispatch_ignores_skip",
@@ -287,8 +287,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "extended_sheet_direct_independent_flags",
@@ -379,8 +379,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "member_box_round_skip_true",
@@ -996,8 +996,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "shell_boundary_exactly_two_tol",
@@ -1008,8 +1008,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "shell_boundary_above_two_tol",
@@ -1020,8 +1020,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "shell_boundary_negative_exactly_two_tol",
@@ -1100,8 +1100,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "tiny_tolerance_sheet_exact_boundary",
@@ -1112,8 +1112,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "tiny_tolerance_sheet_above_boundary",
@@ -1168,8 +1168,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0000",
@@ -1196,8 +1196,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0003",
@@ -1216,8 +1216,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0005",
@@ -1264,8 +1264,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0010",
@@ -1276,8 +1276,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0011",
@@ -1316,8 +1316,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0015",
@@ -1328,8 +1328,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0016",
@@ -1372,8 +1372,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0021",
@@ -1476,8 +1476,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0031",
@@ -1516,8 +1516,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0035",
@@ -1536,8 +1536,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0037",
@@ -1548,8 +1548,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0038",
@@ -1560,8 +1560,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0039",
@@ -1572,8 +1572,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0040",
@@ -1600,8 +1600,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0043",
@@ -1612,8 +1612,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0044",
@@ -1624,8 +1624,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0045",
@@ -1636,8 +1636,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0046",
@@ -1680,8 +1680,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0050",
@@ -1712,8 +1712,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0053",
@@ -1724,8 +1724,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0054",
@@ -1764,8 +1764,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0058",
@@ -1840,8 +1840,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0066",
@@ -1904,8 +1904,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0073",
@@ -1924,8 +1924,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0075",
@@ -1968,8 +1968,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0080",
@@ -1996,8 +1996,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0083",
@@ -2008,8 +2008,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0084",
@@ -2028,8 +2028,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0086",
@@ -2040,8 +2040,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0087",
@@ -2064,8 +2064,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0089",
@@ -2076,8 +2076,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0090",
@@ -2128,8 +2128,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0096",
@@ -2140,8 +2140,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0097",
@@ -2152,8 +2152,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0098",
@@ -2176,8 +2176,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0100",
@@ -2268,8 +2268,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0110",
@@ -2280,8 +2280,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0111",
@@ -2292,8 +2292,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0112",
@@ -2424,8 +2424,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0126",
@@ -2452,8 +2452,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0129",
@@ -2472,8 +2472,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0131",
@@ -2500,8 +2500,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0134",
@@ -2512,8 +2512,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0135",
@@ -2548,8 +2548,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0139",
@@ -2560,8 +2560,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0140",
@@ -2580,8 +2580,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0142",
@@ -2592,8 +2592,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0143",
@@ -2604,8 +2604,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0144",
@@ -2616,8 +2616,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0145",
@@ -2648,8 +2648,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0148",
@@ -2668,8 +2668,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0150",
@@ -2680,8 +2680,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0151",
@@ -2700,8 +2700,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0153",
@@ -2720,8 +2720,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0155",
@@ -2772,8 +2772,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0161",
@@ -2784,8 +2784,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0162",
@@ -2824,8 +2824,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0166",
@@ -2852,8 +2852,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0169",
@@ -2864,8 +2864,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0170",
@@ -2888,8 +2888,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0172",
@@ -2900,8 +2900,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0173",
@@ -2920,8 +2920,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0175",
@@ -2932,8 +2932,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0176",
@@ -2956,8 +2956,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0178",
@@ -2988,8 +2988,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0181",
@@ -3000,8 +3000,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0182",
@@ -3012,8 +3012,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0183",
@@ -3048,8 +3048,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0186",
@@ -3060,8 +3060,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0187",
@@ -3072,8 +3072,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0188",
@@ -3136,8 +3136,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0194",
@@ -3148,8 +3148,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0195",
@@ -3192,8 +3192,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0200",
@@ -3204,8 +3204,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0201",
@@ -3232,8 +3232,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0204",
@@ -3252,8 +3252,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0206",
@@ -3288,8 +3288,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0210",
@@ -3308,8 +3308,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0212",
@@ -3372,8 +3372,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0218",
@@ -3404,8 +3404,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0221",
@@ -3452,8 +3452,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0225",
@@ -3476,8 +3476,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0227",
@@ -3504,8 +3504,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmBrep::MakeWireEdgeVertex",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0230",
@@ -3560,8 +3560,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0235",
@@ -3596,8 +3596,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
-        "unit": "offset.offset_executive_p2"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0239",
@@ -3614,9 +3614,9 @@
   "cases_rejected": 17,
   "cases_total": 322,
   "deferred_by_unit": {
-    "offset.offset_executive_p2": 100,
+    "curve.crv_on_surf": 50,
     "query.brep": 7,
-    "topology.brep_p3": 47,
+    "topology.brep_p3": 97,
     "topology.brep_p4": 10
   },
   "max_rel_err": 0.0,

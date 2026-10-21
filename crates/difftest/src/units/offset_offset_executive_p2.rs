@@ -2401,19 +2401,20 @@ mod tests {
                 Operation::Solid,
                 sheet([0.0; 3], 1.0, 0),
                 false,
-                "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+                "SmBrep::MakeWireEdgeVertex",
             ),
             (
                 Operation::Extended,
                 sheet([0.0; 3], 1.0, 0),
                 true,
-                "SmOffsetExecutive::FaceuseOffset (geometry/SSI adapter)",
+                "SmBrep::MakeWireEdgeVertex",
             ),
         ] {
             for distance in [0.0, 1.9999999999999995e-6, 2e-6, 2.0000000000000003e-6] {
                 let mut input = input(operation);
                 input.source = Some(fixture.clone());
                 input.config.offset_distance = distance;
+                input.config.member_distance = distance;
                 input.config.extend_convex = extend;
                 let output = Runner.run_rust(&case(&input)).unwrap();
                 assert_eq!(output.deferred.unwrap().symbol, symbol);
@@ -2480,6 +2481,47 @@ mod tests {
                 .symbol,
             "SmBrep::SmBrep"
         );
+    }
+
+    #[test]
+    fn face_geometry_paths_reach_distinct_actual_callees() {
+        let context = CaseContext {
+            root: repo_root(),
+            seeds: 0,
+        };
+        let fixtures = context.fixture_cases(Runner.id()).unwrap();
+        for (name, owner, symbol) in [
+            (
+                "static_offset_real_plane_sheet_round",
+                "curve.crv_on_surf",
+                "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+            ),
+            (
+                "static_offset_real_plane_sheet_extended",
+                "topology.brep_p3",
+                "SmBrep::MakeWireEdgeVertex",
+            ),
+            (
+                "member_sheet_round_skip_true_still_real_geometry",
+                "curve.crv_on_surf",
+                "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+            ),
+            (
+                "member_sheet_extended_dispatch_ignores_skip",
+                "topology.brep_p3",
+                "SmBrep::MakeWireEdgeVertex",
+            ),
+            (
+                "extended_sheet_direct_independent_flags",
+                "curve.crv_on_surf",
+                "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+            ),
+        ] {
+            let case = fixtures.iter().find(|case| case.name == name).unwrap();
+            let deferred = Runner.run_rust(case).unwrap().deferred.unwrap();
+            assert_eq!(deferred.unit, owner, "{name}");
+            assert_eq!(deferred.symbol, symbol, "{name}");
+        }
     }
 
     #[test]
