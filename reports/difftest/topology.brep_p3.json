@@ -3611,7 +3611,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#0 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 535
+      "values_compared": 539
     },
     {
       "max_rel_err": 0.0,
@@ -3619,7 +3619,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#1 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 535
+      "values_compared": 539
     },
     {
       "deferred": {
@@ -3646,16 +3646,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "orient_Mouse_swap0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#4 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 0
+      "values_compared": 535
     },
     {
       "max_rel_err": 0.0,
@@ -3663,7 +3659,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#5 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 535
+      "values_compared": 539
     },
     {
       "max_rel_err": 0.0,
@@ -3671,7 +3667,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#6 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 100
+      "values_compared": 101
     },
     {
       "max_rel_err": 0.0,
@@ -3679,7 +3675,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#7 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 100
+      "values_compared": 101
     },
     {
       "deferred": {
@@ -3706,16 +3702,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "orient_Endcap_swap0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#10 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 0
+      "values_compared": 97
     },
     {
       "max_rel_err": 0.0,
@@ -3723,7 +3715,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#11 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 100
+      "values_compared": 101
     },
     {
       "max_rel_err": 0.0,
@@ -3731,7 +3723,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#12 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 1159
+      "values_compared": 1166
     },
     {
       "max_rel_err": 0.0,
@@ -3739,7 +3731,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#13 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 1159
+      "values_compared": 1166
     },
     {
       "deferred": {
@@ -3766,16 +3758,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "orient_box_with_large_fillet_swap0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#16 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 0
+      "values_compared": 1162
     },
     {
       "max_rel_err": 0.0,
@@ -3783,7 +3771,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#17 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 1159
+      "values_compared": 1166
     },
     {
       "max_rel_err": 0.0,
@@ -3791,7 +3779,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#18 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 158
+      "values_compared": 159
     },
     {
       "max_rel_err": 0.0,
@@ -3799,7 +3787,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#19 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 158
+      "values_compared": 159
     },
     {
       "deferred": {
@@ -3826,16 +3814,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "orient_cone_swap0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#22 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 0
+      "values_compared": 155
     },
     {
       "max_rel_err": 0.0,
@@ -3843,7 +3827,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#23 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 158
+      "values_compared": 159
     },
     {
       "max_rel_err": 0.0,
@@ -3851,7 +3835,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#24 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 130
+      "values_compared": 131
     },
     {
       "max_rel_err": 0.0,
@@ -3859,7 +3843,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#25 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 130
+      "values_compared": 131
     },
     {
       "deferred": {
@@ -3886,16 +3870,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "orient_disk_swap0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#28 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 0
+      "values_compared": 127
     },
     {
       "max_rel_err": 0.0,
@@ -3903,7 +3883,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#29 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 130
+      "values_compared": 131
     },
     {
       "max_rel_err": 0.0,
@@ -3911,7 +3891,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#30 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 760
+      "values_compared": 761
     },
     {
       "max_rel_err": 0.0,
@@ -3919,7 +3899,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#31 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 760
+      "values_compared": 761
     },
     {
       "deferred": {
@@ -3946,16 +3926,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "orient_ellips_ts2_swap0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#34 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 0
+      "values_compared": 757
     },
     {
       "max_rel_err": 0.0,
@@ -3963,7 +3939,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#35 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 760
+      "values_compared": 761
     },
     {
       "max_rel_err": 0.0,
@@ -3971,7 +3947,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#36 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 100
+      "values_compared": 101
     },
     {
       "max_rel_err": 0.0,
@@ -3979,7 +3955,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#37 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 100
+      "values_compared": 101
     },
     {
       "deferred": {
@@ -4006,16 +3982,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "orient_plane_circ_swap0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#40 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 0
+      "values_compared": 97
     },
     {
       "max_rel_err": 0.0,
@@ -4023,7 +3995,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#41 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 100
+      "values_compared": 101
     },
     {
       "max_rel_err": 0.0,
@@ -4031,7 +4003,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#42 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
       "max_rel_err": 0.0,
@@ -4039,7 +4011,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#43 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
       "deferred": {
@@ -4066,16 +4038,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "orient_plane_square_swap0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#46 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 0
+      "values_compared": 187
     },
     {
       "max_rel_err": 0.0,
@@ -4083,7 +4051,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#47 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
       "max_rel_err": 0.0,
@@ -4091,7 +4059,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#48 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 143
+      "values_compared": 144
     },
     {
       "max_rel_err": 0.0,
@@ -4099,7 +4067,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#49 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 143
+      "values_compared": 144
     },
     {
       "deferred": {
@@ -4126,16 +4094,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "orient_sphere_swap0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#52 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 0
+      "values_compared": 140
     },
     {
       "max_rel_err": 0.0,
@@ -4143,7 +4107,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#53 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 143
+      "values_compared": 144
     },
     {
       "max_rel_err": 0.0,
@@ -4151,7 +4115,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#54 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
       "max_rel_err": 0.0,
@@ -4159,7 +4123,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#55 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
       "deferred": {
@@ -4186,16 +4150,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "orient_surf_extrude_swap0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#58 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 0
+      "values_compared": 187
     },
     {
       "max_rel_err": 0.0,
@@ -4203,7 +4163,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#59 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
       "max_rel_err": 0.0,
@@ -4211,7 +4171,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#60 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
       "max_rel_err": 0.0,
@@ -4219,7 +4179,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#61 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
       "deferred": {
@@ -4246,16 +4206,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "orient_surf_rev_swap0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#64 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 0
+      "values_compared": 187
     },
     {
       "max_rel_err": 0.0,
@@ -4263,7 +4219,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#65 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
       "max_rel_err": 0.0,
@@ -4271,7 +4227,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#66 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 130
+      "values_compared": 131
     },
     {
       "max_rel_err": 0.0,
@@ -4279,7 +4235,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#67 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 130
+      "values_compared": 131
     },
     {
       "deferred": {
@@ -4306,16 +4262,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "orient_surf_sphere150_swap0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#70 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 0
+      "values_compared": 127
     },
     {
       "max_rel_err": 0.0,
@@ -4323,7 +4275,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#71 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 130
+      "values_compared": 131
     },
     {
       "max_rel_err": 0.0,
@@ -4331,7 +4283,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#72 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 199
+      "values_compared": 200
     },
     {
       "max_rel_err": 0.0,
@@ -4339,7 +4291,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#73 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 199
+      "values_compared": 200
     },
     {
       "deferred": {
@@ -4366,16 +4318,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "orient_torus_swap0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#76 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 0
+      "values_compared": 196
     },
     {
       "max_rel_err": 0.0,
@@ -4383,7 +4331,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#77 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 199
+      "values_compared": 200
     },
     {
       "max_rel_err": 0.0,
@@ -4391,7 +4339,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#78 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 199
+      "values_compared": 200
     },
     {
       "max_rel_err": 0.0,
@@ -4399,7 +4347,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#79 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 199
+      "values_compared": 200
     },
     {
       "deferred": {
@@ -4426,16 +4374,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "orient_toruswvy_swap0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#82 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 0
+      "values_compared": 196
     },
     {
       "max_rel_err": 0.0,
@@ -4443,7 +4387,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#83 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 199
+      "values_compared": 200
     },
     {
       "max_rel_err": 0.0,
@@ -4451,7 +4395,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#84 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 187
+      "values_compared": 188
     },
     {
       "max_rel_err": 0.0,
@@ -4459,7 +4403,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#85 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 187
+      "values_compared": 188
     },
     {
       "deferred": {
@@ -4486,16 +4430,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "orient_vase_rev_swap0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#88 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 0
+      "values_compared": 184
     },
     {
       "max_rel_err": 0.0,
@@ -4503,7 +4443,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/topology.brep_p3/orient.json#89 (upstream tests/prog_test/src/smOffsetTest.cpp / smMergeTest.cpp (OrientTrimmedSurfaces))",
-      "values_compared": 187
+      "values_compared": 188
     },
     {
       "max_rel_err": 0.0,
@@ -4631,7 +4571,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119074",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
       "deferred": {
@@ -4774,16 +4714,12 @@
       "values_compared": 152
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "gen0027",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119092",
-      "values_compared": 0
+      "values_compared": 97
     },
     {
       "max_rel_err": 0.0,
@@ -4794,16 +4730,12 @@
       "values_compared": 130
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "gen0029",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119094",
-      "values_compared": 0
+      "values_compared": 187
     },
     {
       "max_rel_err": 0.0,
@@ -4835,7 +4767,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119098",
-      "values_compared": 130
+      "values_compared": 131
     },
     {
       "max_rel_err": 0.0,
@@ -4843,7 +4775,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119099",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
       "max_rel_err": 0.0,
@@ -4918,16 +4850,12 @@
       "values_compared": 185
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "gen0043",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119108",
-      "values_compared": 0
+      "values_compared": 187
     },
     {
       "max_rel_err": 0.0,
@@ -4943,7 +4871,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119110",
-      "values_compared": 760
+      "values_compared": 761
     },
     {
       "max_rel_err": 0.0,
@@ -4959,7 +4887,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119112",
-      "values_compared": 187
+      "values_compared": 188
     },
     {
       "max_rel_err": 0.0,
@@ -4983,7 +4911,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119115",
-      "values_compared": 760
+      "values_compared": 761
     },
     {
       "max_rel_err": 0.0,
@@ -4994,16 +4922,12 @@
       "values_compared": 181
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "gen0052",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119117",
-      "values_compared": 0
+      "values_compared": 187
     },
     {
       "deferred": {
@@ -5031,7 +4955,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119120",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
       "max_rel_err": 0.0,
@@ -5058,16 +4982,12 @@
       "values_compared": 336
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "gen0059",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119124",
-      "values_compared": 0
+      "values_compared": 187
     },
     {
       "max_rel_err": 0.0,
@@ -5202,16 +5122,12 @@
       "values_compared": 338
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "gen0075",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119140",
-      "values_compared": 0
+      "values_compared": 187
     },
     {
       "max_rel_err": 0.0,
@@ -5351,7 +5267,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119157",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
       "max_rel_err": 0.0,
@@ -5362,16 +5278,12 @@
       "values_compared": 125
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "gen0094",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119159",
-      "values_compared": 0
+      "values_compared": 187
     },
     {
       "max_rel_err": 0.0,
@@ -5607,7 +5519,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119187",
-      "values_compared": 130
+      "values_compared": 131
     },
     {
       "deferred": {
@@ -5678,16 +5590,12 @@
       "values_compared": 193
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "gen0129",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119194",
-      "values_compared": 0
+      "values_compared": 187
     },
     {
       "max_rel_err": 0.0,
@@ -5695,7 +5603,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119195",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
       "max_rel_err": 0.0,
@@ -5819,7 +5727,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119210",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
       "max_rel_err": 0.0,
@@ -5915,7 +5823,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119222",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
       "max_rel_err": 0.0,
@@ -6102,16 +6010,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "gen0179",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119244",
-      "values_compared": 0
+      "values_compared": 187
     },
     {
       "max_rel_err": 0.0,
@@ -6170,16 +6074,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "gen0186",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119251",
-      "values_compared": 0
+      "values_compared": 196
     },
     {
       "max_rel_err": 0.0,
@@ -6271,7 +6171,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119262",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
       "deferred": {
@@ -6575,7 +6475,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119298",
-      "values_compared": 760
+      "values_compared": 761
     },
     {
       "max_rel_err": 0.0,
@@ -6706,16 +6606,12 @@
       "values_compared": 823
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "gen0249",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119314",
-      "values_compared": 0
+      "values_compared": 184
     },
     {
       "max_rel_err": 0.0,
@@ -6746,16 +6642,12 @@
       "values_compared": 150
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "gen0253",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119318",
-      "values_compared": 0
+      "values_compared": 196
     },
     {
       "max_rel_err": 0.0,
@@ -6791,7 +6683,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119322",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
       "max_rel_err": 0.0,
@@ -6799,7 +6691,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119323",
-      "values_compared": 535
+      "values_compared": 539
     },
     {
       "max_rel_err": 0.0,
@@ -6970,16 +6862,12 @@
       "values_compared": 185
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "gen0279",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119344",
-      "values_compared": 0
+      "values_compared": 155
     },
     {
       "max_rel_err": 0.0,
@@ -7051,7 +6939,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119353",
-      "values_compared": 1159
+      "values_compared": 1166
     },
     {
       "max_rel_err": 0.0,
@@ -7311,7 +7199,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119382",
-      "values_compared": 187
+      "values_compared": 188
     },
     {
       "max_rel_err": 0.0,
@@ -7327,7 +7215,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119384",
-      "values_compared": 130
+      "values_compared": 131
     },
     {
       "max_rel_err": 0.0,
@@ -7359,7 +7247,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119388",
-      "values_compared": 130
+      "values_compared": 131
     },
     {
       "max_rel_err": 0.0,
@@ -7375,19 +7263,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119390",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "gen0326",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119391",
-      "values_compared": 0
+      "values_compared": 187
     },
     {
       "max_rel_err": 0.0,
@@ -7403,7 +7287,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119393",
-      "values_compared": 190
+      "values_compared": 191
     },
     {
       "max_rel_err": 0.0,
@@ -7442,16 +7326,12 @@
       "values_compared": 193
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "gen0333",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119398",
-      "values_compared": 0
+      "values_compared": 187
     },
     {
       "max_rel_err": 0.0,
@@ -7551,7 +7431,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119410",
-      "values_compared": 1159
+      "values_compared": 1166
     },
     {
       "max_rel_err": 0.0,
@@ -7723,7 +7603,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119429",
-      "values_compared": 158
+      "values_compared": 159
     },
     {
       "max_rel_err": 0.0,
@@ -7803,19 +7683,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119439",
-      "values_compared": 535
+      "values_compared": 539
     },
     {
-      "deferred": {
-        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        "unit": "harness:surface-notify-identity"
-      },
       "max_rel_err": 0.0,
       "name": "gen0375",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427433955023119440",
-      "values_compared": 0
+      "values_compared": 127
     },
     {
       "max_rel_err": 0.0,
@@ -7971,7 +7847,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=16427433955023119458",
-      "values_compared": 100
+      "values_compared": 101
     },
     {
       "max_rel_err": 0.0,
@@ -8031,12 +7907,11 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 213,
+  "cases_deferred": 182,
   "cases_failed": 0,
-  "cases_passed": 684,
+  "cases_passed": 715,
   "cases_total": 897,
   "deferred_by_unit": {
-    "harness:surface-notify-identity": 31,
     "query.brep": 57,
     "surface.surface_p2": 21,
     "topology.face_p3": 47,

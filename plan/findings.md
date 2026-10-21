@@ -11476,3 +11476,15 @@ mechanical:
   surface swap in `swap_uv_with_notifications`. Have the runner issue each face
   surface's identity before the op, with the face as owner for the tracker's owner
   walk (as it does for edge curves). Then remove the deferral.
+- **Update (re-check of `766472a1`).** The whole-case deferral was decided from the
+  Rust side alone, so a Rust-only wrong swap would have been hidden, and the 31 cases
+  compared nothing. `harness:surface-notify-identity` is gone. Both the shim and the
+  runner now end an `Orient` output with a trailer: each pre-op face's `SmFace::SwapUV`
+  `POST_EDIT` count from that side's own tracker events, the face count, and the
+  tracker's offset. The runner splits it into `out` (status, flag, face domains and
+  upward face uses, counts), `swapped` and `tracker`. `out` and `swapped` are always
+  compared. Only a side whose own events show a swap leaves out `tracker`, so a swap on
+  one side only fails on `swapped`, and on `tracker`'s presence too.
+- **MakeWireEdge (above): Shared is wireable.** `MergeContext::Shared(&mut Kernel)` does
+  carry a mutable kernel, so that path could be wired now. Only `Split` needs the
+  signature change. Both are left for the follow-up.

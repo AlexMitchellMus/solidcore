@@ -19,13 +19,16 @@
 //! (`pOptDeletedEdgesVertices`); the header default `NULL` only skips its `Add`s and
 //! is not compared.
 //!
-//! An `Orient` case in which a face's `SwapUV` runs defers under
-//! [`HARNESS_SURFACE_NOTIFY`]: upstream the surface's own `SwapUV` notifies
-//! `SM_NO_PRE_EDIT` / `SM_NO_POST_EDIT` on the surface (`SmBSplineSurface::SwapUV` through
-//! `SetCanonical`, `SmBSplineSurface.cpp:4585`/`:4592`; `SmOffsetSurface` through its base
-//! surface; `SmSrfInVolume` itself), which the tracker records and turns into a `Chg` of
-//! the owning face. A Rust `Surface` has no notification identity yet, so that event
-//! cannot be produced; the deferral lifts once `Surface` carries one.
+//! `Orient` outputs three values ([`split_orient`]): `out` (status, flag, face domains
+//! and upward face uses, counts), `swapped` (each face's `SmFace::SwapUV` `POST_EDIT`
+//! count, from that side's own tracker events) and `tracker` (the tracker's lists and
+//! events). `out` and `swapped` are always compared. A side whose events show a swap
+//! leaves out `tracker`: upstream the surface's own `SwapUV` notifies `SM_NO_PRE_EDIT` /
+//! `SM_NO_POST_EDIT` on the surface (`SmBSplineSurface::SwapUV` through `SetCanonical`,
+//! `SmBSplineSurface.cpp:4585`/`:4592`; `SmOffsetSurface` through its base surface;
+//! `SmSrfInVolume` itself), which the tracker records and turns into a `Chg` of the
+//! owning face, and a Rust `Surface` has no notification identity yet to send it under.
+//! A swap on one side only differs in `swapped` (and in `tracker`'s presence).
 
 use std::collections::BTreeMap;
 
@@ -333,6 +336,9 @@ fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
     };
     input.extend(args);
     let out = ffi::eval(op, &path, &input).map_err(|e| ffi_err(&e))?;
+    if matches!(i.op, OpIn::Orient { .. }) {
+        return Ok(split_orient(out));
+    }
     Ok(Output::new().values("out", out))
 }
 
@@ -506,11 +512,6 @@ fn ix<I: ArenaId>(x: Option<I>) -> Option<u32> {
 
 /// `SmUnknown_TYPE`, the type a use without an owner kind reports.
 const UNKNOWN_TYPE: i64 = 16999;
-
-/// The deferral label of an `Orient` case that swaps a face's UV: upstream's surface
-/// `SwapUV` notifies the surface's own edit, and a Rust `Surface` has no notification
-/// identity to notify it under (see the module docs).
-const HARNESS_SURFACE_NOTIFY: &str = "harness:surface-notify-identity";
 
 /// The shim's `Graph` over the Rust arena: every object reached by [`walk`], per kind
 /// (`0` regions, `1` shells, `2` face uses, `3` faces, `4` loop uses, `5` loops, `6` edge
@@ -1190,18 +1191,6 @@ fn run_rust_op(
     tracker.finish(Some(&mut ctx));
     drop(must(ctx.take_notify_lease())?);
     let mut out = r?;
-    // SmFace::SwapUV ran (its face POST_EDIT): upstream its surface's SwapUV notified
-    // the surface's own edit too, which Rust cannot name yet
-    let swapped = lists.notify_events.iter().any(|e| {
-        e.operation == solidcore::geom::object::NotifyOperation::PostEdit
-            && e.caller.is_some_and(|c| c.type_code == 16002)
-    });
-    if matches!(op, OpIn::Orient { .. }) && swapped {
-        return Err(Fail::Deferred(Box::new(Output::deferred(
-            HARNESS_SURFACE_NOTIFY,
-            "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
-        ))));
-    }
     let geometry_seen = seen
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -1228,8 +1217,55 @@ fn run_rust_op(
         geometry: &geometry_seen,
         numbered: Vec::new(),
     };
+    let tracker_at = out.len();
     put_tracker(&mut out, &lists, &mut t);
+    if matches!(op, OpIn::Orient { .. }) {
+        // the shim's trailer: each pre-op face's SmFace::SwapUV POST_EDIT count, the
+        // face count and where the tracker's values start (see split_orient)
+        for i in 0..pre[3] {
+            let face = key_of(EntityRef::Face(FaceId::from_index(i as u32))).key;
+            let swaps = lists
+                .notify_events
+                .iter()
+                .filter(|e| {
+                    e.operation == solidcore::geom::object::NotifyOperation::PostEdit
+                        && e.caller.is_some_and(|c| c.key == face)
+                })
+                .count();
+            out.push(swaps as f64);
+        }
+        out.push(pre[3] as f64);
+        out.push(tracker_at as f64);
+    }
     Ok(out)
+}
+
+/// An `Orient` output (either side) from its trailer: `out` before the tracker,
+/// `swapped` (each face's `SwapUV` count) and, unless that side swapped a face,
+/// `tracker` (see the module docs). An output without a trailer (a B-rep that did not
+/// build) stays whole in `out`.
+fn split_orient(v: Vec<f64>) -> Output {
+    let trailer = match v.as_slice() {
+        [.., n, at] if *n >= 0.0 && *at >= 0.0 => Some((*n as usize, *at as usize)),
+        _ => None,
+    };
+    let Some((n, at)) = trailer else {
+        return Output::new().values("out", v);
+    };
+    let body = v.len() - 2;
+    let Some(swaps_at) = body.checked_sub(n).filter(|&x| x >= at) else {
+        return Output::new().values("out", v);
+    };
+    let mut v = v;
+    v.truncate(body);
+    let swapped = v.split_off(swaps_at);
+    let tracker = v.split_off(at);
+    let o = Output::new().values("out", v);
+    if swapped.iter().all(|&x| x == 0.0) {
+        o.values("swapped", swapped).values("tracker", tracker)
+    } else {
+        o.values("swapped", swapped)
+    }
 }
 
 #[allow(clippy::too_many_lines)]
@@ -1472,6 +1508,7 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
         _ => None,
     };
     match run_rust_op(&mut k, &mut b, second.as_mut(), &i.op, &args) {
+        Ok(out) if matches!(i.op, OpIn::Orient { .. }) => Ok(split_orient(out)),
         Ok(out) => Ok(Output::new().values("out", out)),
         Err(Fail::Deferred(o)) => Ok(*o),
         Err(Fail::Harness(e)) => Err(e),

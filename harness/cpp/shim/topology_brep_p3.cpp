@@ -704,7 +704,26 @@ void run(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
     if (trk)
     {
         trk->StopTracking();
+        const size_t tracker_at = o.size();
         put_tracker(o, *trk, tracked);
+        if (op == P3_ORIENT)
+        {
+            // the trailer the runner splits on: for each face before the op the number of
+            // its SmFace::SwapUV POST_EDITs among the events, the face count and where
+            // the tracker's values start (a swap's surface edit is not comparable: the
+            // runner drops the tracker's values of a side whose events show a swap)
+            SmTArray<SmNotifyEvent>* ev = trk->GetNotifyEvents();
+            for (SmFace* f : g.faces)
+            {
+                int64_t swaps = 0;
+                for (ULONG i = 0; i < ev->GetSize(); i++)
+                    if ((*ev)[i].m_eAction == SM_NO_POST_EDIT && (*ev)[i].m_pCaller == (SmObject*)f)
+                        swaps++;
+                o.push_back((double)swaps);
+            }
+            o.push_back((double)g.faces.size());
+            o.push_back((double)tracker_at);
+        }
     }
 }
 } // namespace
