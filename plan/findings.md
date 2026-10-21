@@ -3968,6 +3968,16 @@ cases, 169 deferred; `SmSurface::EvaluateNormal` and `DropVectors` now call the
   `CalculateBoundingBox` of curve-bounded and STEP surfaces (called while that cache is
   being built), and the `SmIsoCurve` / `SmCrvOnSurf` readers of non-B-spline surfaces
   (those curves hold an `SmBSplineSurface`).
+- **`CreateSilhouetteCurves` (2026-10-21).** Ported in full; the `Sil` difftest op
+  compares every 3D/UV curve bit for bit (27 of the 34 `my_test_sil_adv` faces; 7 defer
+  on `SmSurface::DropCurve`). Two things a later agent should know: (1) a generated
+  B-spline at `1e-4` scale with a collapsed row made the Rust surface cache stop at
+  `MAX_SUBDIVISION_NODES` (`InvalidInput`, 1007) where the C++ returned success with no
+  curves (the documented `surface.surface_cache_p3` bound, not a port error); the
+  generator skips surfaces smaller than `1e-2`. (2) The Rust trace is 100-250x slower
+  than the C++ (`sil_adv_28_toruswvy`: 0.06 s C++, 13.9 s Rust): `perf` puts ~70 % in
+  NURBS curve evaluation and fresh `CurveCache` tree builds, i.e. the per-call caches
+  (upstream keeps them on the object), not the silhouette code.
 
 ## topology.edgeuse_p1 (`SmEdgeuse` / `SmFaceuse` part 1, 2026-10-14; partial, no disagreements)
 
