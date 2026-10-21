@@ -418,11 +418,8 @@ fn checked_surface<'s>(
 
     // Negated in-range test so a NaN parameter is rejected too.
     let domain = surface.natural_uv_domain();
-    if !(uv.x >= domain.min().x
-        && uv.x <= domain.max().x
-        && uv.y >= domain.min().y
-        && uv.y <= domain.max().y)
-    {
+    let (lo, hi) = (domain.min(), domain.max());
+    if !(uv.x >= lo.x && uv.x <= hi.x && uv.y >= lo.y && uv.y <= hi.y) {
         return Err(SolidError::invalid_input(
             op,
             "parameter outside the natural domain",
