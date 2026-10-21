@@ -16,12 +16,13 @@
 //!
 //! Deferred cases: `TestSpanAccuracy` spans that reach `smsurf_IsPointOnNormal`
 //! (`surface.surface_p3`), `DropAndTrimCurve`s whose trace reaches unported code
-//! (the plane and surface-of-revolution iso curves of the surface cache tree,
-//! `surface.surface_cache_p1`; non-plane `SmSurface::DropCurve`,
-//! `intersect.surface_drop_lib_p3`), and surface evaluations of kinds whose evaluators
-//! are not ported yet.
+//! (an `SmCrvOnSurf` over a plane or surface of revolution, `curve.crv_on_surf`;
+//! non-plane `SmSurface::DropCurve`, `intersect.surface_drop_lib_p3`; the classification
+//! `ReSet` / `ConnectIntervals` stubs, `intersect.curve_class_p2`), and surface
+//! evaluations of kinds whose evaluators are not ported yet.
 //!
-//! At least [`MIN_GENERATED`] generated cases run.
+//! At least [`MIN_GENERATED`] generated cases run, then [`TRIM_CASES`] fixed-seed
+//! `DropAndTrimCurve` cases (`trim0000` ..).
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -53,12 +54,18 @@ use solidcore::topology::ObjectHandle;
 use solidcore::SolidError;
 use solidcore_ffi::units::intersect_surface_drop_lib_p1 as ffi;
 
-use crate::case::CaseContext;
+use crate::case::{CaseContext, CaseSource};
 use crate::runner::default_cases;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
 
 /// Generated cases per run, whatever `--seeds` says (it can only raise this).
 pub const MIN_GENERATED: usize = 1500;
+
+/// `DropAndTrimCurve` cases appended after the generated ones ([`trim_cases`]).
+pub const TRIM_CASES: u64 = 400;
+
+/// First seed of the [`trim_cases`] (seed `TRIM_SEED + i` for case `trim{i:04}`).
+const TRIM_SEED: u64 = 0x5d1b_7a1c_0000_0000;
 
 /// `intersect.surface_drop_lib_p1` runner.
 pub struct Runner;
@@ -931,6 +938,8 @@ fn run_op(k: &Kernel, i: &Inputs, o: &mut Vec<f64>) -> Result<(), Fail> {
                         r.uv_curves.len() as f64,
                     ]);
                     for cv in &r.uv_curves {
+                        // the curve's GetType() (an SmLine or an SmBSplineCurve), then its data
+                        o.push(cv.type_code() as f64);
                         let put = put_uv_curve(o, cv).ok_or_else(|| harness("trim curve kind"))?;
                         st(put)?.map_err(|_| harness("trim curve data"))?;
                     }
@@ -1744,6 +1753,31 @@ fn gen_trim_plane_line(rng: &mut Rng, k: &Kernel) -> Option<Inputs> {
     })
 }
 
+/// The fixed-seed `DropAndTrimCurve` cases ([`gen_trim`]), appended after the generated
+/// cases so that adding them leaves every generated case's inputs unchanged. Case `i`
+/// takes the first trim input of seed `TRIM_SEED + i` that the shim accepts.
+fn trim_cases(unit: &str) -> Vec<Case> {
+    let k = Kernel::default();
+    let mut out = Vec::new();
+    for i in 0..TRIM_CASES {
+        let seed = TRIM_SEED + i;
+        let mut rng = Rng::new(seed);
+        let got = (0..64).find_map(|_| {
+            gen_trim(&mut rng, &k).filter(|t| ffi::encode(&ffi_op(t)).is_ok())
+        });
+        let Some(inputs) = got.and_then(|t| serde_json::to_value(t).ok()) else {
+            continue;
+        };
+        out.push(Case {
+            unit: unit.to_string(),
+            name: format!("trim{i:04}"),
+            source: CaseSource::Generated { seed },
+            inputs,
+        });
+    }
+    out
+}
+
 fn gen_inputs(rng: &mut Rng) -> Inputs {
     let k = Kernel::default();
     loop {
@@ -1778,8 +1812,8 @@ fn gen_inputs(rng: &mut Rng) -> Inputs {
             75..=78 => Some(gen_stack(rng)),
             79..=83 => Some(gen_fix_curves(rng)),
             84..=87 => Some(gen_dups(rng)),
-            88..=94 => gen_iso(rng, &k),
-            _ => gen_trim(rng, &k),
+            88..=98 => gen_iso(rng, &k),
+            _ => gen_trim_plane_line(rng, &k),
         };
         if let Some(i) = got {
             if ffi::encode(&ffi_op(&i)).is_ok() {
@@ -1799,7 +1833,9 @@ impl UnitDiff for Runner {
             seeds: ctx.seeds.max(MIN_GENERATED),
             ..ctx.clone()
         };
-        default_cases(self, &ctx)
+        let mut cases = default_cases(self, &ctx)?;
+        cases.extend(trim_cases(self.id()));
+        Ok(cases)
     }
 
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
