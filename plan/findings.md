@@ -10454,6 +10454,41 @@ report, which stop at `SetOffsetSurface`, are the first to run). That signature 
 to a follow-up. The two sites that were wireable are wired: `SmFilletSolver::FindIndexOfRailOnFace` (`blend/fillet_geom/p1.rs`, 
 `sm_CreateCubicRailRailInterpolant`) and the `SmCircularCrossSectionFSG` constructor (`offset/offset_geometry_creation.rs`).
 
+## blend.fillet_solver_p1: fillet geometries in the pseudo B-rep (glue cluster, 2026-10-20)
+
+Follow-up to the section above. The solver's `FilletGeomRef` stand-in is gone: `FilletSolver::fillet_geoms` /
+`fg_for_surfaces` hold `blend.fillet_geom_p1`'s `FilletGeomId`s, the geometries live in the executive's pseudo B-rep
+(`FilletBrep`), and the functions that reach them take it (`pseudo: &mut FilletBrep`). Wired (35 sites):
+`FinishConstruction` (`SetOffsetSurface`; the 7 deferred `finish` cases now run), `SplitFilletGeomAtSideEdge` (all
+`SmFilletGeom` / `SmFilletEdge` / `SmFilletVertex` accessors, plus its `SmVertex::SetPoint` on the pseudo B-rep through
+`FilletBrep::set_vertex_point`), `SplitFilletGeom` (`GetRail`, `SmFilletVertex::SetStatus`) and the four geometry writes of
+`SmFilletIntersector::FlushCurve` (`SetFilletSurface`, `m_pCenterLineCurve`, the rails' `SetCurve` + `SetInterval`, the mate
+edge uses' `SetUVCurve`; the trait methods now take the pseudo B-rep, `flush_curve` passes it). No compared value changes
+besides the 7 `finish` cases: `SplitFilletGeomAtSideEdge` stops at its first call (`GetRailIndexOfVertexuse`,
+`blend.fillet_geom_p6`), `SplitFilletGeom` at `GetRailVertex` (`_p6`) and `FlushCurve` at the executive before the writes.
+
+- **Constructor.** `SmFilletSolver()` runs `m_vFilletGeoms.Add(new SmFilletGeom(this))`; the geometry needs the pseudo B-rep
+  and the solver's identity (`FilletSolverId`). `FilletSolver::new_in(k, pseudo, id, ..)` is the full constructor;
+  `FilletSolver::new` (still called by the derived solvers' constructors of `blend.fillet_standard_solver_p1` /
+  `blend.fillet_custom_solver`, whose porters thread the pseudo B-rep later) has no geometry, and
+  `FilletSolver::add_constructor_fillet_geom` adds it. A solver made by `new` alone returns `InvalidInput` from
+  `GetFirst/LastFilletGeom`, where upstream returns the constructor's geometry; no compared case reads it (the intersector and
+  solver runners now add it, as the shims' solvers have it).
+- **`FilletGeom::new` / `offset_surface`** take the `FilletSolver` base instead of `ConstantRadiusAssistedFs` (all callers passed
+  `None`). `GetOffsetSurface`'s fallback `m_pFilletSolver->GetSurface` is the calling solver (the geometries are its own).
+
+## blend.fillet_solver_p1: the geometry for the surfaces
+
+`SmFilletSolver::GetSurface` / `SetSurface` defer to `m_pFGForSurfaces->Get/SetOffsetSurface` while a geometry is set for the
+surfaces (`SetFilletGeomForSurfaces`, called only by `SmFilletGeom::ReCalcFilletGeom` and `SmFilletCorner`, all unported).
+`FilletSolver::surface` / `surface_mut` / `set_surface` do not take the pseudo B-rep that geometry lives in, and return the
+solver's `OffsetSurfaceSlot` (with the identity key `SetOffsetsData` compares) where the geometry stores a plain
+`OffsetSurface`. Threading the pseudo B-rep through `GetSurface` touches every solver (474 upstream call sites), so these three
+sites stay `UNPORTED(blend.fillet_geom_p1)` marked `justified:` with this section; nothing in Rust sets the geometry yet. Note for
+their porter: upstream `GetSurface` recurses without bound when the set geometry has no own surface and its solver is this
+solver (`GetOffsetSurface` falls back to `m_pFilletSolver->GetSurface`, which asks the geometry again); `FinishConstruction`
+gives every geometry its own copies, so the normal flow does not reach it (`plan/upstream-issues.md` UB-204).
+
 ## blend.fillet_solver_p1: one type per class after #168 (merged main after #168/#263, 2026-10-20)
 
 #168 (`blend.fillet_standard_solver_p1`) co-ported `SmFilletSolver` members (`FilletSolverData`), `SmFilletSolverType`,
@@ -12007,6 +12042,31 @@ evidence only. See STATUS for the exact handoff, artifact paths and resume steps
   has `m_lLoopIndx >= n_target`, though upstream reads `rClassifyLoopIOs[m_lLoopIndx]`
   only when it walks the selected list. It over-rejects about 3% of generated cases;
   narrowing it means replaying upstream's list selection and early returns in the shim.
+
+## Classification shims: topology handles resolve to B-rep records (2026-10-20; harness gap, no port disagreement)
+
+- **Gap.** The shims of `intersect.curve_class_p1/p2/p3/p7` and `intersect.point_class` build
+  their vertex, edge and face objects as default-constructed `SmVertex` / `SmEdge` / `SmFace`
+  with only `m_pCurve` / `m_pSurface` set, never joined to a B-rep; `intersect.curve_class_p6`
+  uses the first face, edge, vertex and region of an `SmApiCreateBox` B-rep. Their Rust
+  adapters answered none of the `ClassGeometry` topology hooks, so every topology member
+  reached through them deferred as `topology.edge` / `topology.vertex` / `topology.face_p2`.
+- **Fix (harness).** `BareTopology` (`crates/difftest/src/units/intersect_curve_class_p1.rs`)
+  holds those objects as records of one `Brep` in exactly the state the shims give them
+  (`Vertex::default()`, an edge with the curve, `Extent1d::new()` interval and tolerance 0,
+  `Face::new` with the surface; an edge follows edits of the pool curve it shares). The p6
+  runner imports the same box through `heal.stitch_p1`'s export and `topology.brep_p1`'s
+  importer. The C++ shims are unchanged: every op they run needs only the bare object (the
+  shims reject walks over the missing topology), so the compared values did not change.
+- **Library.** The `ClassGeometry` wiring this PR first carried (`compute_point_parameters`
+  edge / face, `interval_min_uv` / `interval_max_uv`) landed on main with #347 /
+  wire/point-class-topology, in the same shape; main's version is kept.
+- **Combined with main's adapter (2026-10-21, main 215f690e1).** #347 gives some generated
+  scripts a real one-face B-rep (`PoolTopology`); when a case has it, the hooks answer from it
+  only (main's behaviour, stand-ins stay deferred, so handle lookups never mix two B-reps);
+  otherwise the stand-ins answer from `BareTopology`. Gains over main: curve_class_p1
+  2054 -> 2070, p2 1495 -> 1627, p7 1327 -> 1474, point_class 2411 -> 2466, all
+  `max_rel_err 0`.
 
 ## surface.cone_p3 / surface.cone_p2: ignored trim-domain conversion status (fuzz after PR #226, 2026-10-20)
 

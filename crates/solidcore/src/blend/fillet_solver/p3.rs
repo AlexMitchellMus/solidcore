@@ -38,8 +38,8 @@
 //!   `dRadius` (when `SetupOffsetValues` writes nothing) starts at `0.0`.
 //! - **Fillet geometries and the pseudo B-rep.** Upstream's `SmFilletGeom*`,
 //!   `SmFilletEdge*` and `SmFilletVertex*` are [`FilletGeomId`]s and ids of the
-//!   [`FilletBrep`] (`blend.fillet_geom_p1`); the solver's opaque [`FilletGeomRef`]s
-//!   are resolved by a caller-supplied `geometry_id` (as `blend.fillet_solver_p5`).
+//!   [`FilletBrep`] (`blend.fillet_geom_p1`); the solver's geometries are
+//!   [`FilletGeomId`]s in that pseudo B-rep.
 //!   `GetFilletExecutive()->GetPseudoBrep()` (unit `blend.fillet_executive_p1`) is the
 //!   `fillets` argument; the target B-rep is `target`.
 //! - **Statuses.** `SE(...)` statuses are ignored, as upstream (debug builds only
@@ -51,8 +51,7 @@
 
 use super::p1::{
     compute_support_edge, find_next_good_interval, split_rail, test_manifold_tangent_rollover,
-    FilletGeomRef, FilletSolver, FilletSolverOps, FilletSolverType, FilletSphereSolveEnfo,
-    FindClippedRadiusEfo,
+    FilletSolver, FilletSolverOps, FilletSolverType, FilletSphereSolveEnfo, FindClippedRadiusEfo,
 };
 use crate::blend::fillet_geom::p1::{
     BoundaryTrimmingType, FilStatus, FilletBrep, FilletCornerId, FilletEdgeType, FilletGeomId,
@@ -757,8 +756,8 @@ impl FilletSolver {
     /// classifications that overlap and whose trimmed lengths (`ApproximateLength`, 5
     /// samples) reach the solver's approximation tolerance, then splits the geometry
     /// along the pairs (`SplitFilletGeom`); with no overlapping pair the fillet surface
-    /// is deleted. `geometry_id` resolves the solver's geometry handles into
-    /// `fillets`; `geometry` resolves the classifications' curves.
+    /// is deleted. The solver's geometries live in `fillets` (the pseudo B-rep);
+    /// `geometry` resolves the classifications' curves.
     ///
     /// # Errors
     ///
@@ -772,16 +771,14 @@ impl FilletSolver {
         k: &Kernel,
         fillets: &mut FilletBrep,
         geometry: &impl ClassGeometry<EntityRef>,
-        geometry_id: &impl Fn(FilletGeomRef) -> Result<FilletGeomId>,
         fillet_geom_index: usize,
         trim_type: BoundaryTrimmingType,
     ) -> Result<()> {
         const OP_T: &str = "blend::fillet_solver::p3::split_and_trim_fillet_surface";
-        let fillet_geom_ref = *self
+        let fillet_geom = *self
             .fillet_geoms
             .get(fillet_geom_index)
             .ok_or_else(|| invalid("fillet geometry index out of range"))?;
-        let fillet_geom = geometry_id(fillet_geom_ref)?;
         let rail_class = |fillets: &FilletBrep, which: usize| -> Result<_> {
             let rail = fillets
                 .geom(fillet_geom)?
@@ -883,7 +880,7 @@ impl FilletSolver {
         if found_intersection {
             self.split_fillet_geom(
                 k,
-                fillets.brep_mut(),
+                fillets,
                 geometry,
                 fillet_geom_index,
                 trim_type as i32,
@@ -1241,8 +1238,8 @@ impl FilletSolver {
     /// (`CreateCliffRollOverSideFG`); the new vertices are then computed (rail/edge
     /// intersection when trimming side faces, else the support edges) and the cliff
     /// rails trimmed. Side faces are trimmed unless the solver's edge use is a convex
-    /// radial sector. `fillet_geom` is the solver's handle of the geometry, resolved
-    /// into `fillets` (the executive's pseudo B-rep) by `geometry_id`. Tangent
+    /// radial sector. `fillet_geom` is the geometry in `fillets` (the executive's pseudo
+    /// B-rep). Tangent
     /// rollover is not handled (upstream: "Unimplemented Tangent Rollover Case").
     ///
     /// # Errors
@@ -1263,13 +1260,12 @@ impl FilletSolver {
         k: &Kernel,
         target: &mut Brep,
         fillets: &mut FilletBrep,
-        geometry_id: &impl Fn(FilletGeomRef) -> Result<FilletGeomId>,
-        fillet_geom: FilletGeomRef,
+        fillet_geom: FilletGeomId,
         roll_over_rail_index: usize,
     ) -> Result<()> {
         const OP_P: &str = "blend::fillet_solver::p3::process_full_roll_over";
         let nul = || SolidError::null_pointer(OP_P);
-        let geom = geometry_id(fillet_geom)?;
+        let geom = fillet_geom;
 
         let solver_eu = self
             .edgeuse(0)?
@@ -1423,7 +1419,7 @@ impl FilletSolver {
                 .offset_distance()
                 .abs();
             // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::CreateCliffRollOverSideFG
-            let _new_side_fg: FilletGeomRef = unported_on(
+            let _new_side_fg: FilletGeomId = unported_on(
                 (rail, side_edge, side_face, trim_side_faces, extension_dist),
                 "SmFilletSolver::CreateCliffRollOverSideFG",
                 "blend.fillet_solver_p2",
@@ -1880,11 +1876,11 @@ mod tests {
             ],
         );
         let mut fs = FilletSolver::new(1e-6, 0.1, 0.01);
+        fs.fillet_geoms.push(g);
         fs.split_and_trim_fillet_surface(
             &k,
             &mut fb,
             &OneCurve(curve),
-            &|_| Ok(g),
             0,
             BoundaryTrimmingType::Minimal,
         )
@@ -1901,11 +1897,11 @@ mod tests {
             [&[(0.0, 0.6, face)], &[(0.2, 1.0, PointClassType::Edge)]],
         );
         let mut fs = FilletSolver::new(1e-6, 0.1, 0.01);
+        fs.fillet_geoms.push(g);
         let r = fs.split_and_trim_fillet_surface(
             &k,
             &mut fb,
             &OneCurve(curve),
-            &|_| Ok(g),
             0,
             BoundaryTrimmingType::Maximal,
         );
@@ -1921,11 +1917,11 @@ mod tests {
         let rail = fb.geom(g).unwrap().rail(1).unwrap();
         fb.fillet_edge_mut(rail).unwrap().curve_class = None;
         let mut fs = FilletSolver::new(1e-6, 0.1, 0.01);
+        fs.fillet_geoms.push(g);
         let r = fs.split_and_trim_fillet_surface(
             &k,
             &mut fb,
             &OneCurve(curve),
-            &|_| Ok(g),
             0,
             BoundaryTrimmingType::None,
         );
@@ -1983,9 +1979,9 @@ mod tests {
         let k = Kernel::default();
         let (mut fb, g, _) = geometry_with_rails(&k, [&[], &[]]);
         let mut fs = FilletSolver::new(1e-6, 0.1, 0.01);
-        let fg = fs.fillet_geoms()[0];
+        fs.fillet_geoms.push(g);
         let mut target = Brep::new();
-        let r = fs.process_full_roll_over(&k, &mut target, &mut fb, &|_| Ok(g), fg, 0);
+        let r = fs.process_full_roll_over(&k, &mut target, &mut fb, g, 0);
         assert!(matches!(r, Err(SolidError::InvalidInput { .. })), "{r:?}");
     }
 }

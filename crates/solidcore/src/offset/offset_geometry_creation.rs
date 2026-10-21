@@ -53,7 +53,6 @@
 //!   reports the `rbDelete*` flags).
 //! - **Callees not ported yet** are private stubs returning [`SolidError::Unported`],
 //!   each tagged `UNPORTED(<unit>)`:
-//!   `SmCrvOnSurf::SmCrvOnSurf` on a non-B-spline surface (`curve.crv_on_surf`).
 //!   `SmCircularCrossSectionFSG::CreateSurfaceFromCurves` is
 //!   `blend.fillet_standard_solver_p1`'s, on the centre line's `SmBSplineCurve` part.
 //!   The code after a stub is ported in full;
