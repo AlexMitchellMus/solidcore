@@ -1210,7 +1210,7 @@ mod tests {
     #[test]
     fn failed_static_circle_geometry_reports_native_sm_err() {
         let frame = Axis2Placement::default();
-        for radius in [-1.0, 0.0, crate::math::EFF_ZERO * 0.5] {
+        for radius in [-1.0, 0.0, EFF_ZERO * 0.5] {
             let error = circle_curve(radius, &frame).unwrap_err();
             assert!(matches!(
                 error,
