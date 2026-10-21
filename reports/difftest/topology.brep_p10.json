@@ -467,8 +467,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CalculateBoundingBox",
-        "unit": "query.brep"
+        "symbol": "SmBrep::TestClosureSplitRegion (after CalculateBoundingBox, SmBrep.cpp:27966-28583)",
+        "unit": "topology.brep_p6"
       },
       "max_rel_err": 0.0,
       "name": "adv_spine_doubled_p_manifold3_closure",
@@ -695,8 +695,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CalculateBoundingBox",
-        "unit": "query.brep"
+        "symbol": "SmBrep::TestClosureSplitRegion (after CalculateBoundingBox, SmBrep.cpp:27966-28583)",
+        "unit": "topology.brep_p6"
       },
       "max_rel_err": 0.0,
       "name": "adv_spine_doubled_a_manifold3_closure",
@@ -3399,8 +3399,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CalculateBoundingBox",
-        "unit": "query.brep"
+        "symbol": "SmBrep::TestClosureSplitRegion (after CalculateBoundingBox, SmBrep.cpp:27966-28583)",
+        "unit": "topology.brep_p6"
       },
       "max_rel_err": 0.0,
       "name": "closure_noinf_spine_doubled",
@@ -3411,8 +3411,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CalculateBoundingBox",
-        "unit": "query.brep"
+        "symbol": "SmBrep::TestClosureSplitRegion (after CalculateBoundingBox, SmBrep.cpp:27966-28583)",
+        "unit": "topology.brep_p6"
       },
       "max_rel_err": 0.0,
       "name": "closure_inf_spine_doubled",
@@ -3863,8 +3863,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CalculateBoundingBox",
-        "unit": "query.brep"
+        "symbol": "SmBrep::TestClosureSplitRegion (after CalculateBoundingBox, SmBrep.cpp:27966-28583)",
+        "unit": "topology.brep_p6"
       },
       "max_rel_err": 0.0,
       "name": "review_spine_doubled_m1_closure_False",
@@ -3875,8 +3875,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CalculateBoundingBox",
-        "unit": "query.brep"
+        "symbol": "SmBrep::TestClosureSplitRegion (after CalculateBoundingBox, SmBrep.cpp:27966-28583)",
+        "unit": "topology.brep_p6"
       },
       "max_rel_err": 0.0,
       "name": "review_spine_doubled_m1_closure_True",
@@ -10126,48 +10126,26 @@
       "values_compared": 2841
     },
     {
-      "inputs": {
-        "file": "Solids/mouse_3.smb",
-        "op": "make",
-        "options": [false, true, true, false, true, true],
-        "patches": [
-          {
-            "borrowed": true
-          },
-          {
-            "set": {
-              "field": 4,
-              "index": 3,
-              "value": 0
-            }
-          }
-        ]
+      "deferred": {
+        "symbol": "SmSurfOfExtrusion as SmSurface",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0022",
-      "outcome": "rejected",
+      "outcome": "deferred",
       "pass": false,
-      "rejected": "guard: healing after a set patch walks malformed indices",
       "source": "generated:seed=13374710602729021167",
       "values_compared": 0
     },
     {
-      "inputs": {
-        "file": "Fillet/cyl_on_box_w_fillet1.smb",
-        "op": "make",
-        "options": [true, false, false, false, false, true],
-        "patches": [
-          {
-            "stamp": 683288
-          },
-          "iges"
-        ]
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0023",
-      "outcome": "rejected",
+      "outcome": "deferred",
       "pass": false,
-      "rejected": "guard: healing a face use the iges patch left without a shell",
       "source": "generated:seed=13374710602729021168",
       "values_compared": 0
     },
@@ -10468,25 +10446,10 @@
       "values_compared": 0
     },
     {
-      "inputs": {
-        "file": "Fillet/brick.smb",
-        "op": "make",
-        "options": [false, false, true, false, false, true],
-        "patches": [
-          {
-            "set": {
-              "field": 7,
-              "index": 3,
-              "value": 999999
-            }
-          }
-        ]
-      },
       "max_rel_err": 0.0,
       "name": "gen0056",
-      "outcome": "rejected",
-      "pass": false,
-      "rejected": "guard: healing after a set patch walks malformed indices",
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13374710602729021201",
       "values_compared": 0
     },
@@ -10547,28 +10510,10 @@
       "values_compared": 0
     },
     {
-      "inputs": {
-        "file": "Solids/OffsetBoxWithBoss.smb",
-        "op": "make",
-        "options": [true, false, true, true, true, true],
-        "patches": [
-          {
-            "set": {
-              "field": 6,
-              "index": 2,
-              "value": -5
-            }
-          },
-          {
-            "borrowed": true
-          }
-        ]
-      },
       "max_rel_err": 0.0,
       "name": "gen0063",
-      "outcome": "rejected",
-      "pass": false,
-      "rejected": "guard: healing after a set patch walks malformed indices",
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13374710602729021208",
       "values_compared": 0
     },
@@ -10641,25 +10586,10 @@
       "values_compared": 2317
     },
     {
-      "inputs": {
-        "file": "Fillet/nurb_plane_w_notch2.smb",
-        "op": "make",
-        "options": [false, false, true, false, true, true],
-        "patches": [
-          {
-            "set": {
-              "field": 6,
-              "index": 3,
-              "value": 4
-            }
-          }
-        ]
-      },
       "max_rel_err": 0.0,
       "name": "gen0071",
-      "outcome": "rejected",
-      "pass": false,
-      "rejected": "guard: healing after a set patch walks malformed indices",
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13374710602729021216",
       "values_compared": 0
     },
@@ -10816,21 +10746,14 @@
       "values_compared": 0
     },
     {
-      "inputs": {
-        "file": "Fillet/0311.smb",
-        "op": {
-          "remove_all": {
-            "editing": false
-          }
-        },
-        "options": [false, false, true, false, false, true],
-        "patches": ["iges"]
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0089",
-      "outcome": "rejected",
+      "outcome": "deferred",
       "pass": false,
-      "rejected": "guard: healing a face use the iges patch left without a shell",
       "source": "generated:seed=13374710602729021234",
       "values_compared": 0
     },
@@ -11019,28 +10942,10 @@
       "values_compared": 1309
     },
     {
-      "inputs": {
-        "file": "Solids/mouse_4.smb",
-        "op": "make",
-        "options": [false, false, true, false, true, true],
-        "patches": [
-          {
-            "set": {
-              "field": 6,
-              "index": 0,
-              "value": -5
-            }
-          },
-          {
-            "borrowed": true
-          }
-        ]
-      },
       "max_rel_err": 0.0,
       "name": "gen0111",
-      "outcome": "rejected",
-      "pass": false,
-      "rejected": "guard: healing after a set patch walks malformed indices",
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13374710602729021256",
       "values_compared": 0
     },
@@ -11253,26 +11158,14 @@
       "values_compared": 0
     },
     {
-      "inputs": {
-        "file": "Fillet/torii_unioned.smb",
-        "op": "make",
-        "options": [false, false, true, false, true, true],
-        "patches": [
-          "iges",
-          {
-            "set": {
-              "field": 4,
-              "index": 0,
-              "value": 0
-            }
-          }
-        ]
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0135",
-      "outcome": "rejected",
+      "outcome": "deferred",
       "pass": false,
-      "rejected": "guard: healing after a set patch walks malformed indices",
       "source": "generated:seed=13374710602729021280",
       "values_compared": 0
     },
@@ -11285,22 +11178,14 @@
       "values_compared": 4294
     },
     {
-      "inputs": {
-        "file": "Fillet/nurb_cone.smb",
-        "op": "make",
-        "options": [false, true, false, false, false, true],
-        "patches": [
-          {
-            "drop_uv": 1
-          },
-          "iges"
-        ]
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0137",
-      "outcome": "rejected",
+      "outcome": "deferred",
       "pass": false,
-      "rejected": "guard: healing a face use the iges patch left without a shell",
       "source": "generated:seed=13374710602729021282",
       "values_compared": 0
     },
@@ -11357,28 +11242,10 @@
       "values_compared": 0
     },
     {
-      "inputs": {
-        "file": "Shell/problemShell9.smb",
-        "op": "make",
-        "options": [false, false, false, false, false, true],
-        "patches": [
-          {
-            "set": {
-              "field": 0,
-              "index": 2,
-              "value": -1
-            }
-          },
-          {
-            "scale": 2.0
-          }
-        ]
-      },
       "max_rel_err": 0.0,
       "name": "gen0144",
-      "outcome": "rejected",
-      "pass": false,
-      "rejected": "guard: healing after a set patch walks malformed indices",
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13374710602729021289",
       "values_compared": 0
     },
@@ -11439,25 +11306,10 @@
       "values_compared": 0
     },
     {
-      "inputs": {
-        "file": "Fillet/nurb_plane_w_notch1.smb",
-        "op": "make",
-        "options": [false, false, true, false, true, true],
-        "patches": [
-          {
-            "set": {
-              "field": 7,
-              "index": 1,
-              "value": -1
-            }
-          }
-        ]
-      },
       "max_rel_err": 0.0,
       "name": "gen0152",
-      "outcome": "rejected",
-      "pass": false,
-      "rejected": "guard: healing after a set patch walks malformed indices",
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13374710602729021297",
       "values_compared": 0
     },
@@ -11706,28 +11558,14 @@
       "values_compared": 1655
     },
     {
-      "inputs": {
-        "file": "Shell/problemShell10.smb",
-        "op": "make",
-        "options": [false, true, false, false, false, true],
-        "patches": [
-          {
-            "manifold": 2
-          },
-          {
-            "set": {
-              "field": 8,
-              "index": 0,
-              "value": 5
-            }
-          }
-        ]
+      "deferred": {
+        "symbol": "SmSurfOfExtrusion as SmSurface",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0182",
-      "outcome": "rejected",
+      "outcome": "deferred",
       "pass": false,
-      "rejected": "guard: healing after a set patch walks malformed indices",
       "source": "generated:seed=13374710602729021327",
       "values_compared": 0
     },
@@ -11848,26 +11686,10 @@
       "values_compared": 897
     },
     {
-      "inputs": {
-        "file": "Fillet/test8.smb",
-        "op": "make",
-        "options": [true, false, true, true, false, true],
-        "patches": [
-          {
-            "set": {
-              "field": 10,
-              "index": 0,
-              "value": 3
-            }
-          },
-          "iges"
-        ]
-      },
       "max_rel_err": 0.0,
       "name": "gen0195",
-      "outcome": "rejected",
-      "pass": false,
-      "rejected": "guard: healing after a set patch walks malformed indices",
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13374710602729021340",
       "values_compared": 0
     },
@@ -11948,28 +11770,10 @@
       "values_compared": 1515
     },
     {
-      "inputs": {
-        "file": "Fillet/test6.smb",
-        "op": "make",
-        "options": [true, false, true, false, false, true],
-        "patches": [
-          {
-            "set": {
-              "field": 13,
-              "index": 3,
-              "value": -9223372036854775808
-            }
-          },
-          {
-            "scale": 1000000.0
-          }
-        ]
-      },
       "max_rel_err": 0.0,
       "name": "gen0204",
-      "outcome": "rejected",
-      "pass": false,
-      "rejected": "guard: healing after a set patch walks malformed indices",
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13374710602729021349",
       "values_compared": 0
     },
@@ -12082,28 +11886,14 @@
       "values_compared": 1515
     },
     {
-      "inputs": {
-        "file": "Solids/nurb_fillet.smb",
-        "op": "make",
-        "options": [false, true, true, true, false, true],
-        "patches": [
-          {
-            "set": {
-              "field": 4,
-              "index": 1,
-              "value": 1
-            }
-          },
-          {
-            "borrowed": true
-          }
-        ]
+      "deferred": {
+        "symbol": "SmSphere as SmSurface",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0218",
-      "outcome": "rejected",
+      "outcome": "deferred",
       "pass": false,
-      "rejected": "guard: healing after a set patch walks malformed indices",
       "source": "generated:seed=13374710602729021363",
       "values_compared": 0
     },
@@ -12224,28 +12014,10 @@
       "values_compared": 0
     },
     {
-      "inputs": {
-        "file": "Fillet/vase2.smb",
-        "op": "make",
-        "options": [false, true, true, false, false, true],
-        "patches": [
-          {
-            "set": {
-              "field": 6,
-              "index": 0,
-              "value": 6
-            }
-          },
-          {
-            "borrowed": true
-          }
-        ]
-      },
       "max_rel_err": 0.0,
       "name": "gen0233",
-      "outcome": "rejected",
-      "pass": false,
-      "rejected": "guard: healing after a set patch walks malformed indices",
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13374710602729021378",
       "values_compared": 0
     },
@@ -12834,45 +12606,26 @@
       "values_compared": 0
     },
     {
-      "inputs": {
-        "file": "Fillet/torii_fillet.smb",
-        "op": "make",
-        "options": [false, false, false, true, true, true],
-        "patches": [
-          {
-            "drop_uv": 2
-          },
-          {
-            "set": {
-              "field": 6,
-              "index": 0,
-              "value": 6
-            }
-          }
-        ]
-      },
       "max_rel_err": 0.0,
       "name": "gen0299",
-      "outcome": "rejected",
-      "pass": false,
-      "rejected": "guard: healing after a set patch walks malformed indices",
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=13374710602729021444",
       "values_compared": 0
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 338,
+  "cases_deferred": 345,
   "cases_failed": 0,
-  "cases_passed": 1049,
-  "cases_rejected": 17,
+  "cases_passed": 1059,
   "cases_total": 1404,
   "deferred_by_unit": {
     "geom.tol": 5,
-    "query.brep": 6,
     "surface.surf_of_extrusion_p2": 10,
-    "surface.surface_p2": 146,
+    "surface.surface_p2": 149,
     "topology.brep_p3": 9,
-    "topology.face_p2": 162
+    "topology.brep_p6": 6,
+    "topology.face_p2": 166
   },
   "max_rel_err": 0.0,
   "pass": true,

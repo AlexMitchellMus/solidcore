@@ -47,6 +47,7 @@
 //! | [`evaluate_mate`]                               | `sm_EvaluateMate`                          |
 //! | [`surface_drop_point`]                          | `sm_SurfaceDropPoint`                      |
 //! | [`two_pnts_intersection`]                       | `sm_TwoPntsIntersection`                   |
+//! | [`SurfaceHandle`] (private `CliffHandle` for `CalcCliffRailIntEdge`) | the surface object `SmSolution` names in a surface point solve |
 //! | [`find_stepoff_uv`]                             | `sm_FindStepoffUV`                         |
 //! | [`classify_face_point`]                         | `sm_ClassifyFacePoint`                     |
 //! | [`interpolate_endpts_and_tangents`]             | `sm_InterpolateEndptsAndTangents`          |
@@ -104,7 +105,8 @@
 //!   `sm_TwoPntsIntersection` takes the start and end *points* of its `SmVertex`
 //!   arguments. The `SmFilletSolver` of `sm_FindStepoffUV` is the co-ported
 //!   [`ConstantRadiusAssistedFs`] (its edge uses and `GetThisApproxTol3d`);
-//!   [`FilletGeom::offset_surface`] takes the solver it falls back to explicitly.
+//!   [`FilletGeom::new`] and [`FilletGeom::offset_surface`] take the solver base
+//!   ([`FilletSolver`]) they copy from or fall back to explicitly.
 //!   `SmSurfParamType` closures are [`SurfParamType`]. `sm_IsOrderCorrect` indexes a
 //!   slice of [`TsectPnt`] values (upstream: an array of pointers) and fails on an index
 //!   out of range. `sm_FindMarkForContext2` searches a slice of [`MarkLock`] for a
@@ -114,9 +116,9 @@
 //!   values; a geometry whose adjusting path needs a solver it does not have is a
 //!   null-pointer error (upstream dereferences it). Upstream's `pAdjustFS` is any
 //!   `SmFilletSolver` and only base members are read (`GetSurface(k)`, `m_pSurfaces`);
-//!   the signature commits to the one solver kind on main until `blend.
-//!   fillet_standard_solver_p1` (PR #168) lands its `FilletSolverData` base-member
-//!   struct, which this argument should then take.
+//!   the signature commits to the one solver kind; it could take the
+//!   [`crate::blend::fillet_solver::p1::FilletSolver`] base that every solver of
+//!   `blend.fillet_standard_solver_p1` and `blend.fillet_custom_solver` now holds.
 //! - **Surface cache flags.** `sm_SurfaceDropPoint` and `sm_FindStepoffUV` temporarily
 //!   turn off the surface cache's point test (`m_bPointTestEnabled`) and turn on its
 //!   boundary-curve processing around `GlobalPointSolve`, so every solution is kept
@@ -186,6 +188,7 @@
 use std::collections::BTreeMap;
 
 use crate::blend::fillet_custom_solver::{ConstantRadiusAssistedFs, OffsetSurface};
+use crate::blend::fillet_solver::p1::FilletSolver;
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::Curve;
 use crate::curve::hermite_curve::HermiteCurve;
@@ -1070,16 +1073,16 @@ impl FilletGeom {
     /// (`SmOffsetSurface::Copy`); any other failed copy leaves that slot `None`.
     pub fn new(
         k: &Kernel,
-        solver: Option<(FilletSolverId, &ConstantRadiusAssistedFs)>,
+        solver: Option<(FilletSolverId, &FilletSolver)>,
         geom_type: FilletGeomType,
     ) -> Result<Self> {
         let mut off_surfs = [None, None];
         for (slot, i) in off_surfs.iter_mut().zip(0..2usize) {
             if let Some((_, fs)) = solver {
-                *slot = match fs.solver.surface(i)?.map(|slot| &slot.surface) {
+                *slot = match fs.surface(i)? {
                     // SmOffsetSurface::Copy() returns an SmSurface*, not SmOffsetSurface*;
                     // its status is ignored, so a failed copy leaves NULL
-                    Some(off_srf) => match offset_surface_copy(k, off_srf) {
+                    Some(off_srf) => match offset_surface_copy(k, &off_srf.surface) {
                         Ok(new_surf) => Some(new_surf),
                         Err(e) if e.is_unported() => return Err(e),
                         Err(_) => None,
@@ -1173,7 +1176,7 @@ impl FilletGeom {
 
     /// `GetOffsetSurface(lRailIndex)`: this geometry's offset surface for the rail,
     /// else the solver's (`SmFilletSolver::GetSurface`, read from the co-ported
-    /// [`ConstantRadiusAssistedFs::surfaces`] of `solver`).
+    /// `solver`, the geometry's [`FilletSolver`]).
     ///
     /// # Errors
     ///
@@ -1183,7 +1186,7 @@ impl FilletGeom {
     pub fn offset_surface<'a>(
         &'a self,
         rail_index: usize,
-        solver: Option<&'a ConstantRadiusAssistedFs>,
+        solver: Option<&'a FilletSolver>,
     ) -> Result<Option<&'a OffsetSurface>> {
         let own = self
             .off_surfs
@@ -1193,7 +1196,7 @@ impl FilletGeom {
             return Ok(Some(s));
         }
         let fs = solver.ok_or_else(|| SolidError::null_pointer(OP_OFFSET))?;
-        Ok(fs.solver.surface(rail_index)?.map(|slot| &slot.surface))
+        Ok(fs.surface(rail_index)?.map(|slot| &slot.surface))
     }
 
     /// `SetOffsetSurface(lWhichSrf, pNewOffSrf)`: replaces (deleting) the rail's offset
@@ -1615,7 +1618,7 @@ impl FilletBrep {
 
     /// `SmVertex::SetPoint`: `Notify(SM_NO_CHANGE_GEOMETRY)` resets the cached gaps of
     /// every vertex use of the vertex, then the point is stored.
-    fn set_vertex_point(&mut self, v: VertexId, point: Point3) -> Result<()> {
+    pub(crate) fn set_vertex_point(&mut self, v: VertexId, point: Point3) -> Result<()> {
         for vu in self.brep.vertex(v)?.vertexuses.clone() {
             let vu = self.brep.vertexuse_mut(vu)?;
             vu.vertex_edge_gap.reset();
@@ -2217,6 +2220,63 @@ impl SolutionObject for CliffHandle<'_> {
     }
 }
 
+/// The surface the point solves of `sm_SurfaceDropPoint` (and so of
+/// `sm_TwoPntsIntersection`) name: upstream's solutions point at `pSurface`
+/// (`SmSurface::GlobalPointSolve`, `this`, SmFilletGeom.cpp:161), whose natural UV domain
+/// `SmSolution::GetParameterInterval` reads back. `SmGlobalSolver::IdenticalSolutions`
+/// (SmGlobalSolver.cpp:1910-1931) merges two solutions whose parameters differ by less
+/// than `1e-4` of that domain's sides, so a seam point dropped onto a closed surface keeps
+/// exactly the solutions upstream keeps (`sm_TwoPntsIntersection` branches on
+/// `GetSize() == 2`, SmFilletGeom.cpp:286). Compares by identity, like a pointer.
+#[derive(Debug, Clone, Copy)]
+pub struct SurfaceHandle<'a>(pub &'a Surface);
+
+impl PartialEq for SurfaceHandle<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(self.0, other.0)
+    }
+}
+
+impl SolutionObject for SurfaceHandle<'_> {
+    fn kind(&self) -> ObjectKind {
+        ObjectKind::Surface
+    }
+
+    fn natural_uv_domain(&self) -> Option<Extent2d> {
+        Some(self.0.natural_uv_domain())
+    }
+}
+
+/// The curve object a curve solve's solutions name (upstream the curve itself, `this`
+/// of `SmCurve::GlobalPointSolve` / `GlobalCurveIntersect`, or the analytic replacement
+/// its curve cache may make of it), with the natural interval
+/// `SmSolution::GetParameterInterval` reads back from it. `SmGlobalSolver::IdenticalSolutions`
+/// (SmGlobalSolver.cpp:1910-1931) merges two solutions whose parameters differ by less
+/// than `1e-4` of that interval, so the solutions must name the curve, as upstream's do.
+///
+/// `id` tells the objects of one solve apart (two curves, and their analytic
+/// replacements). Assumption: an analytic replacement carries the same interval as its
+/// curve (`ivl` of the handle for it is the curve's own). That holds only if the curve
+/// cache's analytic replacement keeps the B-spline's parameterisation; upstream reads the
+/// replacement's own `GetNaturalInterval()`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CurveObjectHandle {
+    /// Which object of the solve this is.
+    pub id: u8,
+    /// Its natural parameter interval.
+    pub ivl: Extent1d,
+}
+
+impl SolutionObject for CurveObjectHandle {
+    fn kind(&self) -> ObjectKind {
+        ObjectKind::Curve
+    }
+
+    fn natural_interval(&self) -> Option<Extent1d> {
+        Some(self.ivl)
+    }
+}
+
 // ---- static helpers ---------------------------------------------------------------------
 
 /// The UV point of a surface point-solve solution.
@@ -2332,6 +2392,12 @@ fn is_closed(
 /// seam copy on the side `direction` points to), then `PointBasedSurfaceIntersect` traces
 /// the curve at `tol_3d` with a 30 degree angle tolerance.
 ///
+/// The drops' solutions name their surface ([`SurfaceHandle`]), as upstream's do
+/// (`sm_SurfaceDropPoint`, SmFilletGeom.cpp:161): `SmGlobalSolver::IdenticalSolutions`
+/// then merges seam near-duplicates within `1e-4` of the surface's UV domain, and the
+/// `solutions.len() == 2` seam test (cpp:286) counts what upstream counts (review of
+/// #264; with the object-less handle the tolerance was only `100 * EFF_ZERO * (1 + |s|)`).
+///
 /// # Errors
 ///
 /// Those of the point drops ([`surface_drop_point`]) and of
@@ -2360,10 +2426,11 @@ pub fn two_pnts_intersection(
     // Drop start point onto surf1 - watch for closed surfaces
     let mut surface1_points: Vec<Point2> = Vec::new();
     let mut surface2_points: Vec<Point2> = Vec::new();
-    let solutions = drop_or_bad(surface_drop_point::<NoObject>(
+    // (the solutions name the surface they were dropped onto, as upstream's do)
+    let solutions = drop_or_bad(surface_drop_point(
         k,
         surf1,
-        Some(NoObject),
+        Some(SurfaceHandle(surf1)),
         start_pnt,
         dropping_tol,
     ))?;
@@ -2382,10 +2449,10 @@ pub fn two_pnts_intersection(
     let uv11 = solution_uv(&solutions, index11);
 
     // Drop start point onto surf2 - watch for closed surfaces
-    let solutions = drop_or_bad(surface_drop_point::<NoObject>(
+    let solutions = drop_or_bad(surface_drop_point(
         k,
         surf2,
-        Some(NoObject),
+        Some(SurfaceHandle(surf2)),
         start_pnt,
         dropping_tol,
     ))?;
@@ -2410,7 +2477,7 @@ pub fn two_pnts_intersection(
     if let Some(end_pnt) = opt_end_pnt {
         // Drop end point onto surf1 - watch for closed surfaces
         let solutions =
-            surface_drop_point::<NoObject>(k, surf1, Some(NoObject), end_pnt, dropping_tol)?;
+            surface_drop_point(k, surf1, Some(SurfaceHandle(surf1)), end_pnt, dropping_tol)?;
         let mut index12 = 0;
         if solutions.len() == 2 {
             // Closed surface
@@ -2427,7 +2494,7 @@ pub fn two_pnts_intersection(
 
         // Drop end point onto surf2 - watch for closed surfaces
         let solutions =
-            surface_drop_point::<NoObject>(k, surf2, Some(NoObject), end_pnt, dropping_tol)?;
+            surface_drop_point(k, surf2, Some(SurfaceHandle(surf2)), end_pnt, dropping_tol)?;
         let mut index22 = 0;
         if solutions.len() == 2 {
             // Closed surface
@@ -2472,7 +2539,7 @@ pub fn two_pnts_intersection(
 
 /// The start-point drops of `sm_TwoPntsIntersection`: an empty success is
 /// `SM_ERR_BAD_INTERSECTIONS`, any other status passes through.
-fn drop_or_bad(r: Result<SolutionArray<NoObject>>) -> Result<SolutionArray<NoObject>> {
+fn drop_or_bad<O: SolutionObject>(r: Result<SolutionArray<O>>) -> Result<SolutionArray<O>> {
     let solutions = r?;
     if solutions.is_empty() {
         return Err(upstream(OP_TWO_PNTS, SM_ERR_BAD_INTERSECTIONS));
@@ -3301,7 +3368,7 @@ fn b_spline_net_mut(surface: &mut Surface) -> Option<&mut BSplineSurface> {
 /// notification clears each edge use's UV trim curve and drop-curve record and resets
 /// its cached edge/face gap (its mate's too) and the cached gaps of the edge's vertex
 /// uses; then the curve replaces the old one.
-fn set_rail_curve(brep: &mut Brep, rail: EdgeId, curve: Curve) -> Result<()> {
+pub(crate) fn set_rail_curve(brep: &mut Brep, rail: EdgeId, curve: Curve) -> Result<()> {
     for eu in edge_unit::edgeuses(brep, rail, None, None)? {
         let mate_eu = mate(brep, eu)?;
         let rec = brep.edgeuse_mut(eu)?;
