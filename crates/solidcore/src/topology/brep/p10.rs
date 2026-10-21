@@ -87,6 +87,7 @@ use crate::kernel::Kernel;
 use crate::math::{max2, Point3, Vec3, BIG_DOUBLE, EFF_ZERO};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::surface::surface::Surface;
 use crate::topology::brep::p1;
 use crate::topology::brep::p6;
@@ -1027,8 +1028,8 @@ fn edge_curve(
                     None,
                 )?;
                 let ends_match = |t: f64| -> Result<bool> {
-                    let or = src.object.evaluate_point(t)?;
-                    let an = c.evaluate_point(t)?;
+                    let or = src.object.evaluate_point(k, t)?;
+                    let an = c.evaluate_point(k, t)?;
                     let too_far = or.distance(an) > EFF_ZERO * (1.0 + or.max_dimension());
                     Ok(!too_far)
                 };
@@ -1791,18 +1792,21 @@ fn merge_curves_world(
     _curves_3d: &[Curve],
     _uv_curves: &[Curve],
 ) -> Result<(CacheMergeWorld, Vec<CacheHandle>, Vec<CacheHandle>)> {
-    // UNPORTED(query.brep): MergeCurvesObjects world over the B-rep cache
+    // DISPATCH GAP: SmBrep::MergeCurvesOnSurface is ported
+    // (`topology::brep::p2::merge_curves_on_surface`, topology.brep_p2 partial; no
+    // UNPORTED marker), but its classification world over the B-rep cache (handles for
+    // the 3D and UV curves next to the cached B-rep geometry) is not built here.
     Err(SolidError::Unported {
         upstream: "SmBrep::MergeCurvesOnSurface classification world over the B-rep cache",
-        unit: "query.brep",
+        unit: "topology.brep_p2",
     })
 }
 
 /// `MergeCurvesOnSurface(*pSurf, dTol, s3DCurves, &sUVCurves, sNewFaces, sCurveEdges,
 /// bUseProjection)` with the header defaults for the rest (no intersection surface,
 /// `bUVSpaceOkay = TRUE`): [`crate::topology::brep::p2::merge_curves_on_surface`]
-/// through the B-rep cache's classification world, which only `query.brep` provides
-/// ([`merge_curves_world`]). Called here (`SmBrep.cpp:25074`, default
+/// through the B-rep cache's classification world ([`merge_curves_world`], not built
+/// yet). Called here (`SmBrep.cpp:25074`, default
 /// `bUseProjection = FALSE`) and by `blend.hcr` (`SmHCR.cpp:1229`, `TRUE`).
 pub(crate) fn merge_curves_on_surface(
     k: &mut Kernel,
@@ -1846,33 +1850,24 @@ fn brep_faces(b: &Brep) -> Result<Vec<FaceId>> {
     p1::faces(b, None)
 }
 
-fn face_vertices(_b: &Brep, _f: FaceId) -> Result<Vec<VertexId>> {
-    // UNPORTED(topology.face_p4): SmFace::GetVertices
-    Err(SolidError::Unported {
-        upstream: "SmFace::GetVertices",
-        unit: "topology.face_p4",
-    })
+/// `SmFace::GetVertices(rVertices)` (unit `topology.face_p4`; default arguments).
+fn face_vertices(b: &Brep, f: FaceId) -> Result<Vec<VertexId>> {
+    crate::topology::face::p4::vertices(b, f, None, false, None)
 }
 
-fn face_edges(_b: &Brep, _f: FaceId) -> Result<Vec<EdgeId>> {
-    // UNPORTED(topology.face_p4): SmFace::GetEdges
-    Err(SolidError::Unported {
-        upstream: "SmFace::GetEdges",
-        unit: "topology.face_p4",
-    })
-}
-
-fn brep_bounding_box(_k: &Kernel, _b: &Brep) -> Result<Extent3d> {
-    // UNPORTED(query.brep): SmBrep::CalculateBoundingBox
-    Err(SolidError::Unported {
-        upstream: "SmBrep::CalculateBoundingBox",
-        unit: "query.brep",
-    })
+/// `SmFace::GetEdges(rEdges)` (unit `topology.face_p4`; default arguments).
+fn face_edges(b: &Brep, f: FaceId) -> Result<Vec<EdgeId>> {
+    crate::topology::face::p4::edges(b, f, None, false, None)
 }
 
 /// `sm_GetPointFromSol(sSol, start)` ([`crate::topology::brep::p2::point_from_solution`]).
-fn point_from_solution(b: &Brep, solution: &Solution<CacheObject>, start: usize) -> Result<Point3> {
-    crate::topology::brep::p2::point_from_solution(b, solution, start)
+fn point_from_solution(
+    k: &Kernel,
+    b: &Brep,
+    solution: &Solution<CacheObject>,
+    start: usize,
+) -> Result<Point3> {
+    crate::topology::brep::p2::point_from_solution(k, b, solution, start)
 }
 
 fn remove_faces(k: &mut Kernel, b: &mut Brep, faces: &[FaceId]) -> Result<()> {
@@ -2023,7 +2018,7 @@ fn faces_to_delete(
                     .as_ref()
                     .ok_or(SolidError::null_pointer(OP_PROJECT))?;
                 let tol1 = 5.0 * (rec.tolerance + tol);
-                let p = c.evaluate_point(rec.interval.evaluate(0.5))?;
+                let p = c.evaluate_point(k, rec.interval.evaluate(0.5))?;
                 if let Some(side) = ignored(find_side_of_curve(k, curve, p, direction, tol1))? {
                     if side != 0 {
                         right_votes += 1;
@@ -2043,7 +2038,7 @@ fn faces_to_delete(
             let shape = Shape::new(&[], &[(env.brep_id, face)], &edge_keys, &vertex_keys)?;
 
             // Find a ray to determine which face needs to be kept or deleted
-            let bbox = brep_bounding_box(k, b)?;
+            let bbox = qbrep::calculate_bounding_box(k, b, BoundingBoxOptions::default())?;
             let sphere = bbox.sphere_bound();
             let param = line_closest_point(reference, direction, sphere.center);
             let projected_center = reference + direction * param;
@@ -2085,7 +2080,7 @@ fn faces_to_delete(
             let Some(first) = solutions.as_slice().first() else {
                 continue;
             };
-            let p = point_from_solution(b, first, 1)?;
+            let p = point_from_solution(k, b, first, 1)?;
             let tol1 = 5.0 * (b.face(face)?.tolerance + tol);
             match ignored(find_side_of_curve(k, curve, p, direction, tol1))? {
                 Some(side) => face_right_side = side,

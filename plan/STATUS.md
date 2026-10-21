@@ -2,12 +2,38 @@
 
 Last updated: 2026-10-16, PR #127 (`sweep.trans_sweep_geometry` partial: 719 bit-identical passes, 50 deferred on `surface.cone_p2`, 19 rejected native fixtures). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
+Latest unit: `topology.face_p4` partial (port: topology.face_p4, taking over the #134 claim): 5506 cases, 3957 bit-identical passes, 0 failed, 1549 deferred (mostly the tolerance of face-owned surfaces: `SmTol::GetZoneTol3d` in the surface cache, tagged `geom.tol`, and `SmFace::GetTolerance`, `topology.face_p2`); 26 of its 44 back-edge stubs wired, including those of `heal.stitch_p1`, `topology.brep_p5`/`p7`/`p9`/`p10` and `topology.face_p3` (169 more `face_p3` passes); the rest take generic handles without a B-rep, or (one in `brep_p5`) no kernel; its own calls into `query.face_p3` (`sm_FaceClassifyUVLine`, `SectorClassifyCurveOn`) are wired since #132; `HasSeamProblem` returns `SM_SUCCESS` as TRUE upstream (`plan/upstream-issues.md` WR-176); 238 units (main after #229), 116 green and 122 partial.
+
+Latest fuzz sweep (2026-10-20): `--fuzz 2000` over all 233 green/partial units; 148 re-fuzzed after fixes, FUZZ-FAIL 113 -> 26; PRs fuzz/geom, fuzz/curve, fuzz/nurbs-surface, fuzz/nlib-curve, fuzz/topology-query; findings in `plan/findings.md` ("Fuzz sweep over all green/partial units"), UB-221..UB-237 and HANG-40..HANG-45 in `plan/upstream-issues.md`.
+
 Latest topology integration: `topology.brep_p6` partial (PR #169, after its dependency #154: 498 cases, 450 pass, 48 deferred, 0 failed; 206 units, 113 green and 93 partial); before: `topology.shell` partial (PR #154, continuing @0xlillith's PR #80: 192 ported units, 109 green and 83 partial); before: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green); before: `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
 
-Latest main integration: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green).
+Latest main integration: issue #76 kernel-aware Surface dispatch (PR #313, #133 revived, `SurfaceKind::Cone`): 234 units, 117 green / 117 partial, 0 failed; 534,436 cases, 510,383 pass, 23,933 deferred (before 493,865 / 24,694); `intersect.surface_intersector_p1`, `intersect.surface_intersector_p4`, `surface.surface_p11` promoted to green. Before: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green).
+
+Latest fillet unit: `blend.fillet_geom_p5` (PR #264) is partial: all 13 functions ported, 300 generated cases with 245 bit-identical passes and 55 deferred (`blend.fillet_geom_p6` 37, `intersect.surface_intersector_p2` 7 and `_p4` 1, `topology.brep_p3` 10); round 2 traced the tiny-scale disagreements to solves without a solution object (upstream merges near-duplicate solutions by the object's parameter interval, `plan/findings.md`).
+
+Latest unit: `boolean.merge_p2` ([PR #229](https://github.com/tangency-labs/solidcore/pull/229)) is partial: 45 differential cases, 30 bit-identical passes, 15 dependency deferrals, zero failures (`--seeds 1000`: 631 passes, 398 deferrals). It ports the `SmMerge` B-rep constructor, `MergeEdge`, `MakeFaceuse`, `MergeAddedFace` and `MergeAddedTopology`, with its stitch (`heal.stitch_p1` / `_p2`), intersector (`boolean.topology_intersector_p2`), `MakeFace` (`topology.brep_p7`), region and `topology.brep_p2` calls wired, and wires the `boolean.merge_p2` back-edges of `boolean.merge_p3`, `boolean.merge_p4`, `boolean.merge_p5`, `boolean.api_brep`, `heal.stitch_p1` and `topology.brep_p7`; its constructor builds `boolean.merge_p3`'s `MergeEngine` (#287), so the two-B-rep API booleans now run `ManifoldBoolean` (`boolean.merge_p4`) and stop at `query.brep`. It confirms UB-176 on the reference build (through `MergeAddedTopology`) and adds WR-197. The manifest has 235 ported units (114 green, 121 partial).
 
 Latest unit: `surface.surf_of_revolution_p3` partial -> green (difftest runner builds the `SmCone` operand and runs `IntersectWithCone`: 26705 cases, 26705 bit-identical, 0 deferred; 233 ported units, 115 green and 118 partial). Before: `intersect.curve_class_p9` ([PR #151](https://github.com/bherbruck/solidcore/pull/151)) is partial on a standalone official-main base: review validation has 424 differential cases, 225 bit-identical passes, 197 dependency deferrals, 2 native setup rejections and zero failures. It ports edge and trim-boundary intersections with concrete query handle mappings. Pole lookup now matches the native FALSE default; collapsed caches, wider input ranges and positive endpoint classification are covered. Interior partition insertion awaits part 2. No open dependency PR is bundled. The manifest has 195 ported units (108 green, 87 partial); final integration results are recorded in the PR checks.
 
+
+## Handoff: `query.brep` (2026-10-21, PR #329)
+
+`query.brep` is partial (B-rep boxes, `LockBoundingBox`, `Point3DClassify`, the
+decimation attributes and `SmApiEvaluateSurface*`); `geom.a_object` and
+`topology.brep_cache` were promoted to green. Coverage and the remaining deferrals are in
+`plan/modules.toml` and `plan/findings.md` (section `query.brep`). For callers:
+
+- **Classify through a `BrepQuery`.** It holds the B-rep's identities and builds the
+  `SM_OC_BREP` cache on the first solve that needs it. Keep one per B-rep state (a loop
+  that does not edit the B-rep shares one) and make a fresh one after an edit. Callers that
+  hold the B-rep shared use `BrepClassifier`, which copies it on the first ray fire only.
+  The merge passes go through `boolean::merge::p1::classify_point_editing_disabled`.
+- **Lone B-reps** use `BrepIdentity::default()`; B-reps in a store pass their own
+  `BrepIdentity`.
+- **Open follow-ups** (no PR yet): `topology::brep::p10::merge_curves_world` is a
+  `DISPATCH GAP` until the merge-curves world can own the B-rep (`topology.brep_p2`), and
+  `geom.object`'s `Shape` cannot reach the B-rep box without a store.
 
 ## Port review note (2026-10-18, issue #210)
 
@@ -46,7 +72,7 @@ for the remaining topology, bounding-box and offset dependencies. Detailed cover
 and the scalar wrapper's failure-masking behavior are in `plan/findings.md`.
 
 
-Latest unit: `surface.cone_p3` ([PR #131](https://github.com/bherbruck/solidcore/pull/131)) adds analytic cone/cylinder plane sections and cone/cone intersections: 1308 differential cases, 1187 bit-identical passes, 121 dependency deferrals, zero failures. Ellipse trimming awaits `surface.cone_p2`; coincident boundaries now await the Cone/Cylinder `SurfaceKind` adapter in #76/#133, because #120 merged but its boundary API requires typed `Surface` operands. Shared cone/sphere enum dispatch remains coordinated in issue #76. Review follow-up narrows the native guard to exact cone dispatch, adds tolerance/constructor/flag regressions with native FFI safety tests validated locally.
+Latest unit: `surface.cone_p3` ([PR #131](https://github.com/bherbruck/solidcore/pull/131)) adds analytic cone/cylinder plane sections and cone/cone intersections: 1308 differential cases, 1187 bit-identical passes, 121 dependency deferrals, zero failures. Ellipse trimming awaits `surface.cone_p2`; coincident boundaries await common Cone/Cylinder boundary adapters in #76/#133. The enum now retains both types, while analytic iso/boundary integration remains deferred. Shared cone/sphere enum dispatch remains coordinated in issue #76. Review follow-up narrows the native guard to exact cone dispatch, adds tolerance/constructor/flag regressions with native FFI safety tests validated locally.
 
 ## Handoff (2026-10-13): from one local swarm to pull requests
 
@@ -1037,3 +1063,5 @@ adapters.
 Review verification: the extended 256-seed run has 380 cases, 291 bit-identical
 passes, zero failures and 89 query deferrals. Perturbation detects every compared
 case (108/108 default, 291/291 extended).
+
+`blend.fillet_solver_p1` partial -> green (PR #303, glue with `blend.fillet_geom_p1`): 346/346 pass, 0 deferred.

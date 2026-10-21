@@ -101,8 +101,10 @@ impl OpIn {
 fn setup(i: &Inputs) -> Result<Result<Setup, Output>, HarnessError> {
     let path = path_of(Some(&i.brep))?;
     let block = brep_block_of(Some(&i.brep), i.validate_only, i.init_gaps)?;
-    let ex = ffi1::eval(ffi1::Op::Export, &path, &block)
-        .map_err(|e| harness(format!("c++ export: {e}")))?;
+    let ex = crate::export_memo::export("topology_edgeuse_p1", &[&path], &block, || {
+        ffi1::eval(ffi1::Op::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))?;
     let Some(c) = ffi1::counts(&ex) else {
         let st = ex.get(1).copied().unwrap_or(0.0);
         return Ok(Err(Output::err(format!("brep_build_status_{st}"))));
@@ -200,7 +202,7 @@ fn output_of(i: &Inputs, mut body: Vec<f64>) -> Output {
 // ---- Rust side --------------------------------------------------------------------------
 
 /// A curve's fingerprint as the shim's `put_curve_id`.
-fn put_curve_id(o: &mut Vec<f64>, c: Option<&SmCurve>) {
+fn put_curve_id(k: &Kernel, o: &mut Vec<f64>, c: Option<&SmCurve>) {
     let Some(c) = c else {
         o.push(-1.0);
         return;
@@ -209,7 +211,7 @@ fn put_curve_id(o: &mut Vec<f64>, c: Option<&SmCurve>) {
     let ivl = c.natural_interval();
     o.extend([ivl.min(), ivl.max()]);
     for t in [ivl.min(), ivl.mid(), ivl.max()] {
-        let p = c.evaluate_point(t).unwrap_or(Vec3::UNDEF);
+        let p = c.evaluate_point(k, t).unwrap_or(Vec3::UNDEF);
         o.extend([p.x, p.y, p.z]);
     }
 }
@@ -223,10 +225,10 @@ fn status_of(e: &SolidError) -> Option<f64> {
 }
 
 /// The tail every op reports: the edge use's and its mate's state and the edge state.
-fn put_states(o: &mut Vec<f64>, b: &Brep, eu: EdgeuseId) -> Result<(), SolidError> {
+fn put_states(k: &Kernel, o: &mut Vec<f64>, b: &Brep, eu: EdgeuseId) -> Result<(), SolidError> {
     let mate = eu1::mate(b, eu).ok().flatten();
-    put_eu_state(o, b, Some(eu))?;
-    put_eu_state(o, b, mate)?;
+    put_eu_state(k, o, b, Some(eu))?;
+    put_eu_state(k, o, b, mate)?;
     match eu1::edge(b, eu)? {
         Some(e) => {
             let r = b.edge(e)?;
@@ -248,7 +250,7 @@ fn run_rust_op(
     let k = Kernel::default();
     // a failing upstream status is reported with the state, like the shim
     let finish = |b: &Brep, mut v: Vec<f64>| -> Result<Vec<f64>, SolidError> {
-        put_states(&mut v, b, eu)?;
+        put_states(&k, &mut v, b, eu)?;
         Ok(v)
     };
     match op {
@@ -272,12 +274,12 @@ fn run_rust_op(
                         c.max_dist_to_surf,
                         c.max_deviation.filter(|_| *want_dev).unwrap_or(-1.0),
                     ]);
-                    put_curve_id(&mut v, Some(&c.curve));
+                    put_curve_id(&k, &mut v, Some(&c.curve));
                 }
                 Err(e) => {
                     v.push(status_of(&e).ok_or(e)?);
                     v.extend([-1.0, -1.0]);
-                    put_curve_id(&mut v, None);
+                    put_curve_id(&k, &mut v, None);
                 }
             }
             v.push(rec.as_ref().map_or(-1.0, |f| f64::from(f.create_path_type as i32)));

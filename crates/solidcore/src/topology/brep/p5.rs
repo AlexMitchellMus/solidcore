@@ -34,9 +34,8 @@
 //! notifications reach no context callback. Curves have no identity in the port: `SetCurve`'s new/old curve
 //! data are null and a curve's own `SM_NO_CHANGE_OWNER` is not delivered.
 //! `SmBrep::Notify` is owned by `topology.brep_p2`, not this unit. Owning-list
-//! traversal and editing state belong to `topology.brep_p1`: arena allocation order
-//! is not substituted for list order. Callers supply the actual editing flag where
-//! it is tested before any missing call. Pointer inputs are optional typed ids;
+//! traversal (`GetRegions`, `GetFaces`, `GetEdges`, `GetVertices`) and the editing
+//! flag are `topology.brep_p1`'s list-order collections and `Brep` member. Pointer inputs are optional typed ids;
 //! out-parameters are mutable outputs where failure must clear them. The old-tol
 //! target calculation is factored out for direct numerical-stage verification;
 //! that verification does not certify vertex deletion or gluing. The internal
@@ -45,8 +44,7 @@
 //! Its reader integration remains uncertified until `MakeTopologyFromData` lands.
 //! Aliased `CombineCoincidentVertices` takes the native path in every case,
 //! including an isolated vertex, which upstream deletes along with its survivor
-//! before returning success. Explicit editing arguments are temporary: part 1's
-//! owning record/accessor will replace them without assuming that editing is on.
+//! before returning success.
 //! Shell/region queries and transfers use the landed shell port. Stable shell,
 //! vertex and vertex-use record erasure requires part 4's owning-storage lifecycle: the shared
 //! arena is append-only, so shifting ids or leaving a visible dummy is invalid.
@@ -481,12 +479,12 @@ pub fn create_wire_edge_from_curve(
     curve: Curve,
     interval: Extent1d,
 ) -> Result<EdgeId> {
-    let start = curve.evaluate_point(interval.min())?;
-    let end = curve.evaluate_point(interval.max())?;
+    let start = curve.evaluate_point(k, interval.min())?;
+    let end = curve.evaluate_point(k, interval.max())?;
     let region = b
         .infinite_region()
         .ok_or_else(|| SolidError::null_pointer(OP))?;
-    let (_, first) = make_shell_vertex(b, region, start)?;
+    let (_, first) = make_shell_vertex(k, b, region, start)?;
     let (edge, last) =
         make_wire_edge_vertex(b, region, first, curve, interval, OrientType::Same, end)?;
     if start.distance(end) < b.tolerance() {
@@ -495,9 +493,15 @@ pub fn create_wire_edge_from_curve(
     Ok(edge)
 }
 
-fn make_shell_vertex(_b: &mut Brep, _r: RegionId, _point: Point3) -> Result<(ShellId, VertexId)> {
-    // UNPORTED(topology.brep_p9): SmBrep::MakeShellVertex
-    missing("SmBrep::MakeShellVertex", "topology.brep_p9")
+fn make_shell_vertex(
+    k: &mut Kernel,
+    b: &mut Brep,
+    r: RegionId,
+    point: Point3,
+) -> Result<(ShellId, VertexId)> {
+    with_notifications(b, None, Some(&mut k.context), |b, env, _| {
+        crate::topology::brep::p9::make_shell_vertex(b, Some(r), point, env)
+    })
 }
 
 fn make_wire_edge_vertex(
@@ -545,10 +549,10 @@ pub fn delete_topological_vertex_with_notifications(
         edge
     } else {
         let length1 = edge_curve(b, *first)?
-            .approximate_length(&b.edge(*first)?.interval, 5, false)?
+            .approximate_length(k, &b.edge(*first)?.interval, 5, false)?
             .0;
         let length2 = edge_curve(b, *last)?
-            .approximate_length(&b.edge(*last)?.interval, 5, false)?
+            .approximate_length(k, &b.edge(*last)?.interval, 5, false)?
             .0;
         if length2 < length1 {
             *last
@@ -630,7 +634,7 @@ pub fn delete_topological_vertex_with_notifications(
                             // Native ignores EvaluatePoint's status. Its defined
                             // SM_UNDEF_DOUBLE sentinel remains explicit when an ordinary evaluation fails.
                             let evaluated =
-                                crate::error::ignored(survive_curve.evaluate_point(far))?
+                                crate::error::ignored(survive_curve.evaluate_point(k, far))?
                                     .unwrap_or(Vec3::UNDEF);
                             if evaluated.closer_than(max_gap, point) {
                                 same_geometry = true;
@@ -759,6 +763,7 @@ fn join_copied_curves(
             owner,
         ),
         _ => bspline_curve_base_mut(survivor)?.join_with(
+            k,
             survivor_end,
             bspline_curve_base_mut(deleted)?,
             deleted_end,
@@ -1649,13 +1654,13 @@ pub fn remove_faces(
     result.and(released)
 }
 
-fn face_edges(_b: &Brep, _face: FaceId) -> Result<Vec<EdgeId>> {
-    // UNPORTED(topology.face_p4): SmFace::GetEdges
-    missing("SmFace::GetEdges", "topology.face_p4")
+/// `SmFace::GetEdges(rEdges)` (unit `topology.face_p4`; default arguments).
+fn face_edges(b: &Brep, face: FaceId) -> Result<Vec<EdgeId>> {
+    crate::topology::face::p4::edges(b, face, None, false, None)
 }
-fn face_vertices(_b: &Brep, _face: FaceId) -> Result<Vec<VertexId>> {
-    // UNPORTED(topology.face_p4): SmFace::GetVertices
-    missing("SmFace::GetVertices", "topology.face_p4")
+/// `SmFace::GetVertices(rVertices)` (unit `topology.face_p4`; default arguments).
+fn face_vertices(b: &Brep, face: FaceId) -> Result<Vec<VertexId>> {
+    crate::topology::face::p4::vertices(b, face, None, false, None)
 }
 
 /// Stitching and orientation options with the native defaults.
@@ -1773,7 +1778,9 @@ pub fn squeeze_face(
     *output = SqueezedFace::default();
     require_editing(editing_enabled)?;
     b.face(face)?;
-    lock_bounding_box(b)?;
+    // `SmLockBrepBox`: unlocks when it goes out of scope, whatever the result
+    let mut lock = crate::topology::brep::p1::LockBrepBox::new(k, b)?;
+    let b = lock.brep();
     let result = (|| {
         let tolerance = stitch_tolerance.unwrap_or_else(|| {
             crate::geom::tol::xsect_tol_3d_from_zones(k, b.tolerance(), b.tolerance())
@@ -1886,19 +1893,9 @@ pub fn squeeze_face(
             Ok(())
         }
     })();
-    // Upstream unlocks in a destructor; an unlock failure never hides `result`.
-    let unlocked = unlock_bounding_box(b);
-    result.and(unlocked)
+    result
 }
 
-fn lock_bounding_box(_b: &mut Brep) -> Result<()> {
-    // UNPORTED(topology.brep_p1): SmLockBrepBox::SmLockBrepBox
-    missing("SmLockBrepBox::SmLockBrepBox", "topology.brep_p1")
-}
-fn unlock_bounding_box(_b: &mut Brep) -> Result<()> {
-    // UNPORTED(topology.brep_p1): SmLockBrepBox::~SmLockBrepBox
-    missing("SmLockBrepBox::~SmLockBrepBox", "topology.brep_p1")
-}
 fn shell_size(b: &Brep, shell: ShellId) -> Result<usize> {
     crate::topology::shell::shell_list_size(b, shell)
 }
@@ -2092,7 +2089,7 @@ pub fn transform_with_notifications(
     }
     if scale.is_some() && scale_tolerances {
         let size = bbox.size().length();
-        let zone = set_brep_model_size(b, size)?;
+        let zone = b.set_this_model_size_estimate(k, size);
         crate::geom::tol::set_context_model_size_estimate(&mut k.context, size);
         for vertex in vertices {
             crate::error::ignore_status(vertex::set_tolerance(b, vertex, zone, false, false))?;
@@ -2172,6 +2169,12 @@ fn transformed_surface_base(
             }
             Some(revolution.base().clone())
         }
+        SurfaceKind::Cone(cone) => {
+            if cone.rev().base().gw_nurb().is_none() {
+                crate::error::ignore_status(cone.make_nurb(k))?;
+            }
+            Some(cone.rev().base().clone())
+        }
         SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)
@@ -2217,12 +2220,6 @@ fn reverse_reflection_edgeuses(b: &mut Brep, edge: EdgeId) -> Result<()> {
 }
 fn swap_reflection_shells(b: &mut Brep, face: FaceId) -> Result<()> {
     crate::topology::brep::p1::swap_reflection_shells(b, face)
-}
-fn set_brep_model_size(_b: &mut Brep, _size: f64) -> Result<f64> {
-    // SmTol::SetModelSizeEstimate's arithmetic belongs to geom.tol; the
-    // missing owning B-rep fields, not that already ported routine, block it.
-    // UNPORTED(topology.brep_p1): SmBrep::SetThisModelSizeEstimate
-    missing("SmBrep::SetThisModelSizeEstimate", "topology.brep_p1")
 }
 fn set_face_tolerance(
     b: &mut Brep,

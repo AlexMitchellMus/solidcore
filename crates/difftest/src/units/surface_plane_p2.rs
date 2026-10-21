@@ -26,6 +26,7 @@ use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::nurbs::b_spline_surface::BSplineSurface;
 use solidcore::nurbs::math::{CPoint, NOW};
 use solidcore::nurbs::srf_basic::Surface as NurbSurface;
+use solidcore::surface::cone::Cone;
 use solidcore::surface::plane::Plane;
 use solidcore::surface::surface::p2::SurfaceIntersection;
 use solidcore::surface::surface::Surface;
@@ -127,6 +128,20 @@ enum OtherIn {
     Same,
     Plane { plane: PlaneIn },
     BSpline { surface: SurfaceIn },
+    /// A real `SmCone` / `SmCylinder` (`CreateCanonical`), over its natural domain when
+    /// `natural`.
+    Cone {
+        frame: [[f64; 3]; 3],
+        #[serde(default)]
+        cylinder: bool,
+        bot: f64,
+        #[serde(default)]
+        top: f64,
+        #[serde(default)]
+        height: f64,
+        #[serde(default)]
+        natural: bool,
+    },
 }
 
 /// A database stream: the plane header, then the B-spline part from `surface`, as
@@ -410,6 +425,21 @@ fn ffi_op(i: &Inputs) -> Result<ffi::Op, HarnessError> {
                 OtherIn::Same => ffi::OtherIn::Same,
                 OtherIn::Plane { plane } => ffi::OtherIn::Plane(ffi_plane(plane)),
                 OtherIn::BSpline { surface } => ffi::OtherIn::BSpline(ffi_surface(surface)),
+                OtherIn::Cone {
+                    frame,
+                    cylinder,
+                    bot,
+                    top,
+                    height,
+                    natural,
+                } => ffi::OtherIn::Cone {
+                    frame: *frame,
+                    cylinder: *cylinder,
+                    bot: *bot,
+                    top: *top,
+                    height: *height,
+                    natural: *natural,
+                },
             },
             db: *db,
             tol: *tol,
@@ -760,14 +790,14 @@ fn rust_op(k: &Kernel, i: &Inputs, o: &mut Vec<f64>) -> Result<(), Fail> {
     match i {
         Inputs::Offset { a, dist } => {
             let a = rust_plane(a)?;
-            if let Some(p) = st(o, a.create_offset_surface(*dist))? {
+            if let Some(p) = st(o, a.create_offset_surface(k, *dist))? {
                 put_state(o, &p);
             }
         }
         Inputs::Transform { a, frame, scale } => {
             let mut a = rust_plane(a)?;
             let f = Axis2Placement::new(v3(frame[0]), v3(frame[1]), v3(frame[2]));
-            st(o, a.transform(&f, scale.map(v3)))?;
+            st(o, a.transform(k, &f, scale.map(v3)))?;
             put_state(o, &a);
         }
         Inputs::TrimDomain { a, dom } => {
@@ -778,7 +808,7 @@ fn rust_op(k: &Kernel, i: &Inputs, o: &mut Vec<f64>) -> Result<(), Fail> {
         Inputs::IsNurbPlane { s, scale } => {
             let s = rust_surface(s)?;
             o.push(0.0);
-            match defer(Plane::is_nurb_surface_plane(&s, *scale))? {
+            match defer(Plane::is_nurb_surface_plane(k, &s, *scale))? {
                 Ok(Some(p)) => {
                     o.extend([1.0, 1.0]);
                     put_state(o, &p);
@@ -801,17 +831,45 @@ fn rust_op(k: &Kernel, i: &Inputs, o: &mut Vec<f64>) -> Result<(), Fail> {
             let a = rust_plane(a)?;
             if *global {
                 let sa = Surface::from(a);
+                let mut natural_db = false;
                 let other = match b {
                     OtherIn::Same => None,
                     OtherIn::Plane { plane } => Some(Surface::from(rust_plane(plane)?)),
                     OtherIn::BSpline { surface } => Some(Surface::from(rust_surface(surface)?)),
+                    OtherIn::Cone {
+                        frame,
+                        cylinder,
+                        bot,
+                        top,
+                        height,
+                        natural,
+                    } => {
+                        natural_db = *natural;
+                        let f = Axis2Placement::new(v3(frame[0]), v3(frame[1]), v3(frame[2]));
+                        let c = if *cylinder {
+                            Cone::create_canonical_cylinder(k, &f, *bot)
+                        } else {
+                            Cone::create_canonical(k, &f, *bot, *top, *height, false, false)
+                        };
+                        let Ok(c) = defer(c)? else {
+                            // the cone's construction status (both sides report it alone)
+                            o.push(-2.0);
+                            return Ok(());
+                        };
+                        Some(Surface::from(c))
+                    }
                 };
                 let other_ref = other.as_ref().unwrap_or(&sa);
+                let db = if natural_db {
+                    other_ref.natural_uv_domain()
+                } else {
+                    ext(*db)
+                };
                 let r = sa.global_surface_intersect(
                     k,
                     &ext(*da),
                     other_ref,
-                    &ext(*db),
+                    &db,
                     [true, true],
                     tol,
                     None,
@@ -823,12 +881,12 @@ fn rust_op(k: &Kernel, i: &Inputs, o: &mut Vec<f64>) -> Result<(), Fail> {
                 let other = match b {
                     OtherIn::Same => None,
                     OtherIn::Plane { plane } => Some(rust_plane(plane)?),
-                    OtherIn::BSpline { .. } => {
+                    OtherIn::BSpline { .. } | OtherIn::Cone { .. } => {
                         return Err(Fail::Harness(harness("IntersectWithPlane needs a plane")))
                     }
                 };
                 let other_ref = other.as_ref().unwrap_or(&a);
-                let r = a.intersect_with_plane(&ext(*da), other_ref, &ext(*db), tol);
+                let r = a.intersect_with_plane(k, &ext(*da), other_ref, &ext(*db), tol);
                 if let Some((more, x)) = st(o, r)? {
                     o.push(fl(more));
                     put_intersection(o, &x)?;
