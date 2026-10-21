@@ -3,6 +3,126 @@
   "cases": [
     {
       "max_rel_err": 0.0,
+      "name": "cov_trimmed_almost_straight_corner_ends_meet",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.composite_curve_p2/coverage.json#0 (upstream source/SMLib/src/SmCompositeCurve.cpp:2864 (coverage: crates/solidcore/src/curve/composite_curve/p2.rs:556))",
+      "values_compared": 117
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_read_ascii_hermite_segment_transition_0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.composite_curve_p2/coverage.json#1 (upstream source/SMLib/src/SmCompositeCurve.cpp:164 (coverage: crates/solidcore/src/curve/composite_curve/p2.rs:110))",
+      "values_compared": 32
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_read_ascii_hermite_segment_transition_1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.composite_curve_p2/coverage.json#2 (upstream source/SMLib/src/SmCompositeCurve.cpp:164 (coverage: crates/solidcore/src/curve/composite_curve/p2.rs:111))",
+      "values_compared": 32
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_read_ascii_hermite_segment_transition_2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.composite_curve_p2/coverage.json#3 (upstream source/SMLib/src/SmCompositeCurve.cpp:164 (coverage: crates/solidcore/src/curve/composite_curve/p2.rs:112))",
+      "values_compared": 32
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_read_ascii_hermite_segment_transition_3",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.composite_curve_p2/coverage.json#4 (upstream source/SMLib/src/SmCompositeCurve.cpp:164 (coverage: crates/solidcore/src/curve/composite_curve/p2.rs:113))",
+      "values_compared": 32
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_read_ascii_hermite_segment_transition_4",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.composite_curve_p2/coverage.json#5 (upstream source/SMLib/src/SmCompositeCurve.cpp:164 (coverage: crates/solidcore/src/curve/composite_curve/p2.rs:114))",
+      "values_compared": 32
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_read_ascii_hermite_segment_transition_5",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.composite_curve_p2/coverage.json#6 (upstream source/SMLib/src/SmCompositeCurve.cpp:164 (coverage: crates/solidcore/src/curve/composite_curve/p2.rs:115))",
+      "values_compared": 32
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_read_ascii_hermite_segment_transition_6",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.composite_curve_p2/coverage.json#7 (upstream source/SMLib/src/SmCompositeCurve.cpp:164 (coverage: crates/solidcore/src/curve/composite_curve/p2.rs:116))",
+      "values_compared": 32
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_read_ascii_hermite_segment_transition_7",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.composite_curve_p2/coverage.json#8 (upstream source/SMLib/src/SmCompositeCurve.cpp:164 (coverage: crates/solidcore/src/curve/composite_curve/p2.rs:117))",
+      "values_compared": 32
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_read_ascii_hermite_segment_transition_8",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.composite_curve_p2/coverage.json#9 (upstream source/SMLib/src/SmCompositeCurve.cpp:164 (coverage: crates/solidcore/src/curve/composite_curve/p2.rs:118))",
+      "values_compared": 32
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_read_ascii_hermite_segment_transition_9",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.composite_curve_p2/coverage.json#10 (upstream source/SMLib/src/SmCompositeCurve.cpp:164 (coverage: crates/solidcore/src/curve/composite_curve/p2.rs:119))",
+      "values_compared": 32
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_read_ascii_hermite_segment_transition_10",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.composite_curve_p2/coverage.json#11 (upstream source/SMLib/src/SmCompositeCurve.cpp:164 (coverage: crates/solidcore/src/curve/composite_curve/p2.rs:120))",
+      "values_compared": 32
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_read_ascii_hermite_segment_transition_11",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.composite_curve_p2/coverage.json#12 (upstream source/SMLib/src/SmCompositeCurve.cpp:164 (coverage: crates/solidcore/src/curve/composite_curve/p2.rs:121))",
+      "values_compared": 32
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_read_ascii_hermite_segment_transition_12",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.composite_curve_p2/coverage.json#13 (upstream source/SMLib/src/SmCompositeCurve.cpp:164 (coverage: crates/solidcore/src/curve/composite_curve/p2.rs:122))",
+      "values_compared": 32
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_read_ascii_hermite_segment_transition_13",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.composite_curve_p2/coverage.json#14 (upstream source/SMLib/src/SmCompositeCurve.cpp:164 (coverage: crates/solidcore/src/curve/composite_curve/p2.rs:123))",
+      "values_compared": 32
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "read_ascii_empty",
       "outcome": "pass",
       "pass": true,
@@ -5293,8 +5413,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 661,
-  "cases_total": 661,
+  "cases_passed": 676,
+  "cases_total": 676,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

@@ -3,6 +3,30 @@
   "cases": [
     {
       "max_rel_err": 0.0,
+      "name": "cov_approx_interior_gap",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.composite_curve_p1/coverage.json#0 (upstream source/SMLib/src/SmCompositeCurve.cpp:645 (coverage: crates/solidcore/src/curve/composite_curve/p1.rs:787))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_corner_chamfer_vertex_beyond_corner_reversed_trim",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.composite_curve_p1/coverage.json#1 (upstream source/SMLib/src/SmCompositeCurve.cpp:2012 (coverage: crates/solidcore/src/curve/composite_curve/p1.rs:1729))",
+      "values_compared": 117
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_corner_chamfer_vertex_beyond_corner_open_sides",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.composite_curve_p1/coverage.json#2 (upstream source/SMLib/src/SmCompositeCurve.cpp:2012 (coverage: crates/solidcore/src/curve/composite_curve/p1.rs:1729))",
+      "values_compared": 117
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "empty_info",
       "outcome": "pass",
       "pass": true,
@@ -24749,8 +24773,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 3093,
-  "cases_total": 3093,
+  "cases_passed": 3096,
+  "cases_total": 3096,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

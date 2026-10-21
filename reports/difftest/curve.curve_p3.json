@@ -3,6 +3,46 @@
   "cases": [
     {
       "max_rel_err": 0.0,
+      "name": "cov_arc_length_back_through_cusp_off_start",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.curve_p3/coverage.json#0 (upstream source/SMLib/src/SmCurve.cpp:4113 (coverage: crates/solidcore/src/curve/curve/p3.rs:619))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_arc_length_zigzag_off_end",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.curve_p3/coverage.json#1 (upstream source/SMLib/src/SmCurve.cpp:4121 (coverage: crates/solidcore/src/curve/curve/p3.rs:629))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_arc_length_zigzag_damped",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.curve_p3/coverage.json#2 (upstream source/SMLib/src/SmCurve.cpp:4132 (coverage: crates/solidcore/src/curve/curve/p3.rs:635))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_arc_length_large_curve_no_movement",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.curve_p3/coverage.json#3 (upstream source/SMLib/src/SmCurve.cpp:4096 (coverage: crates/solidcore/src/curve/curve/p3.rs:603))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_arc_length_huge_curve_no_movement_from_start",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.curve_p3/coverage.json#4 (upstream source/SMLib/src/SmCurve.cpp:4096 (coverage: crates/solidcore/src/curve/curve/p3.rs:603))",
+      "values_compared": 2
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "rect_normal",
       "outcome": "pass",
       "pass": true,
@@ -24613,8 +24653,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 3076,
-  "cases_total": 3076,
+  "cases_passed": 3081,
+  "cases_total": 3081,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

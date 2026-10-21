@@ -3,6 +3,46 @@
   "cases": [
     {
       "max_rel_err": 0.0,
+      "name": "cov_angle_to_nurb_negative_determinant",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.ellipse_p2/coverage.json#0 (upstream source/SMLib/src/SmEllipse.cpp:1352 (coverage: crates/solidcore/src/curve/ellipse/p2.rs:530))",
+      "values_compared": 89
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_angle_to_nurb_no_root_in_span",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.ellipse_p2/coverage.json#1 (upstream source/SMLib/src/SmEllipse.cpp:1362 (coverage: crates/solidcore/src/curve/ellipse/p2.rs:538))",
+      "values_compared": 89
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_angle_to_nurb_no_root_in_span_reversed",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.ellipse_p2/coverage.json#2 (upstream source/SMLib/src/SmEllipse.cpp:1362 (coverage: crates/solidcore/src/curve/ellipse/p2.rs:538))",
+      "values_compared": 89
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_set_up_knot_at_minus_360",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.ellipse_p2/coverage.json#3 (upstream source/SMLib/src/SmEllipse.cpp:395 (coverage: crates/solidcore/src/curve/ellipse/p2.rs:2168))",
+      "values_compared": 135
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_set_up_knot_at_minus_360_circle",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.ellipse_p2/coverage.json#4 (upstream source/SMLib/src/SmEllipse.cpp:395 (coverage: crates/solidcore/src/curve/ellipse/p2.rs:2168))",
+      "values_compared": 161
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "analytic_curves_circle",
       "outcome": "pass",
       "pass": true,
@@ -16821,8 +16861,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 2102,
-  "cases_total": 2102,
+  "cases_passed": 2107,
+  "cases_total": 2107,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

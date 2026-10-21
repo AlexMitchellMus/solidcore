@@ -3,6 +3,30 @@
   "cases": [
     {
       "max_rel_err": 0.0,
+      "name": "cov_join_ellipse_tilted_normal",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.ellipse_p1/coverage.json#0 (upstream source/SMLib/src/SmEllipse.cpp:3420 (coverage: crates/solidcore/src/curve/ellipse/p1.rs:1732))",
+      "values_compared": 52
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_join_ellipse_rotated_axes",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.ellipse_p1/coverage.json#1 (upstream source/SMLib/src/SmEllipse.cpp:3427 (coverage: crates/solidcore/src/curve/ellipse/p1.rs:1739))",
+      "values_compared": 52
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_offset_noncircular_ellipse",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.ellipse_p1/coverage.json#2 (upstream source/SMLib/src/SmBSplineCurve.cpp:2475 (coverage: crates/solidcore/src/curve/ellipse/p1.rs:914))",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "analytic_curves_circle",
       "outcome": "pass",
       "pass": true,
@@ -16229,8 +16253,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 2028,
-  "cases_total": 2028,
+  "cases_passed": 2031,
+  "cases_total": 2031,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

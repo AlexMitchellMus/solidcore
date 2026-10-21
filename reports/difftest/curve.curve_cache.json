@@ -307,6 +307,38 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "cov_tess_tiny_curvy_span_null_halves",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.curve_cache/coverage.json#0 (upstream source/SMLib/src/SmCurveCache.cpp:1736 (coverage: crates/solidcore/src/curve/curve_cache.rs:721))",
+      "values_compared": 46
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_tess_tiny_curvy_span_null_halves_full_tree",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.curve_cache/coverage.json#1 (upstream source/SMLib/src/SmCurveCache.cpp:1736 (coverage: crates/solidcore/src/curve/curve_cache.rs:721))",
+      "values_compared": 48
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_tess_aux_parents_min_param_ratio_0.3",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.curve_cache/coverage.json#2 (upstream source/SMLib/src/SmCurveCache.cpp:534 (coverage: crates/solidcore/src/curve/curve_cache.rs:952))",
+      "values_compared": 510
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "cov_tess_aux_parents_min_param_ratio_0.5",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/curve.curve_cache/coverage.json#3 (upstream source/SMLib/src/SmCurveCache.cpp:534 (coverage: crates/solidcore/src/curve/curve_cache.rs:952))",
+      "values_compared": 398
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -5109,8 +5141,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 638,
-  "cases_total": 638,
+  "cases_passed": 642,
+  "cases_total": 642,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,
