@@ -1536,7 +1536,7 @@ impl FilletBrep {
         self.fillet_edge_mut(fillet_edge)?
             .set_fillet_edge_type(FilletEdgeType::CrossSection);
         let ivl = curve_3d.natural_interval();
-        set_edge_curve(self.brep_mut(), fillet_edge, Some(Curve::from(curve_3d)))?;
+        set_edge_curve(self.brep_mut(), fillet_edge, Some(curve_3d))?;
         edge::set_interval(self.brep_mut(), fillet_edge, &ivl)?;
         let eu = primary_edgeuse(self.brep(), fillet_edge)?
             .ok_or_else(|| SolidError::null_pointer(OP_END))?;
