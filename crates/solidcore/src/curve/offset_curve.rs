@@ -721,12 +721,18 @@ mod tests {
         let c = offset(0.5);
         for n in [crate::curve::MAX_EVAL_DERIVS + 1, 1 << 31, usize::MAX] {
             assert!(matches!(
-                c.evaluate(0.25, n, true, true),
+                c.evaluate(&Kernel::default(), 0.25, n, true, true),
                 Err(SolidError::InvalidInput { .. })
             ));
         }
         let e = c
-            .evaluate(0.25, crate::curve::MAX_EVAL_DERIVS, true, true)
+            .evaluate(
+                &Kernel::default(),
+                0.25,
+                crate::curve::MAX_EVAL_DERIVS,
+                true,
+                true,
+            )
             .unwrap();
         assert_eq!(e.len(), crate::curve::MAX_EVAL_DERIVS + 1);
     }

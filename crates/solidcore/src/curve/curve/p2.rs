@@ -3717,11 +3717,16 @@ mod tests {
         let h = hermite();
         for n in [crate::curve::MAX_EVAL_DERIVS + 1, 1 << 31, usize::MAX] {
             assert!(matches!(
-                h.evaluate(0.5, n, true, true),
+                h.evaluate(&Kernel::default(), 0.5, n, true, true),
                 Err(SolidError::InvalidInput { .. })
             ));
         }
-        assert_eq!(h.evaluate(0.5, 6, true, true).unwrap().len(), 7);
+        assert_eq!(
+            h.evaluate(&Kernel::default(), 0.5, 6, true, true)
+                .unwrap()
+                .len(),
+            7
+        );
     }
 
     #[test]

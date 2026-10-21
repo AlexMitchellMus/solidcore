@@ -1247,7 +1247,7 @@ mod tests {
         let c = civ(0);
         for n in [crate::curve::MAX_EVAL_DERIVS + 1, 1 << 31, usize::MAX] {
             assert!(matches!(
-                c.evaluate(0.3, n, true, false),
+                c.evaluate(&Kernel::default(), 0.3, n, true, false),
                 Err(SolidError::InvalidInput { .. })
             ));
         }
