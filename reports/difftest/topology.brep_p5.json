@@ -186,26 +186,28 @@
       "values_compared": 13
     },
     {
-      "diagnostics": {
-        "unreached_records": 1
+      "deferred": {
+        "symbol": "SmBrep::~SmBrep (stable owning record erasure)",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "isolated_op13_editing_False",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p5/branches.json#19 (upstream source/SMLib/src/SmBrep.cpp)",
-      "values_compared": 28
+      "values_compared": 0
     },
     {
-      "diagnostics": {
-        "unreached_records": 1
+      "deferred": {
+        "symbol": "SmBrep::~SmBrep (stable owning record erasure)",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "isolated_op13_editing_True",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.brep_p5/branches.json#20 (upstream source/SMLib/src/SmBrep.cpp)",
-      "values_compared": 28
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -6589,13 +6591,13 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 51,
+  "cases_deferred": 53,
   "cases_failed": 0,
-  "cases_passed": 746,
+  "cases_passed": 744,
   "cases_total": 797,
   "deferred_by_unit": {
     "topology.brep_p1": 35,
-    "topology.brep_p4": 14,
+    "topology.brep_p4": 16,
     "topology.brep_p9": 2
   },
   "max_rel_err": 0.0,

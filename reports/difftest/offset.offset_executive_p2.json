@@ -203,8 +203,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "static_shell_box_inset_duplicate_selected_face",
@@ -1384,8 +1384,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0022",
@@ -1396,8 +1396,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0023",
@@ -1488,8 +1488,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0032",
@@ -1736,8 +1736,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0055",
@@ -2396,8 +2396,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0123",
@@ -2876,8 +2876,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0171",
@@ -2944,8 +2944,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0177",
@@ -3036,8 +3036,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0185",
@@ -3084,8 +3084,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0189",
@@ -3384,8 +3384,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0219",
@@ -3428,8 +3428,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0223",
@@ -3440,8 +3440,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0224",
@@ -3516,8 +3516,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0231",
@@ -3528,8 +3528,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0232",
@@ -3615,8 +3615,9 @@
   "cases_total": 322,
   "deferred_by_unit": {
     "harness:offset-result-adapter": 6,
+    "intersect.surface_drop_lib_p3": 15,
     "offset.offset_executive_p2": 100,
-    "topology.brep_p3": 47,
+    "topology.brep_p3": 32,
     "topology.brep_p4": 11
   },
   "max_rel_err": 0.0,

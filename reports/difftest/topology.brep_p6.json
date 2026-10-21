@@ -4358,177 +4358,121 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "copy_[0]_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p6/operations.json#377 (upstream source/SMLib/src/SmBrep.cpp:1851)",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "copy_[0]_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p6/operations.json#378 (upstream source/SMLib/src/SmBrep.cpp:1851)",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "copy_[1]_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p6/operations.json#379 (upstream source/SMLib/src/SmBrep.cpp:1851)",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "copy_[1]_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p6/operations.json#380 (upstream source/SMLib/src/SmBrep.cpp:1851)",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "copy_[4]_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p6/operations.json#381 (upstream source/SMLib/src/SmBrep.cpp:1851)",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "copy_[4]_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p6/operations.json#382 (upstream source/SMLib/src/SmBrep.cpp:1851)",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "copy_[2, 0]_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p6/operations.json#383 (upstream source/SMLib/src/SmBrep.cpp:1851)",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "copy_[2, 0]_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p6/operations.json#384 (upstream source/SMLib/src/SmBrep.cpp:1851)",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "copy_[1, 1]_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p6/operations.json#385 (upstream source/SMLib/src/SmBrep.cpp:1851)",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "copy_[1, 1]_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p6/operations.json#386 (upstream source/SMLib/src/SmBrep.cpp:1851)",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "copy_[3, 1, 4]_0",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p6/operations.json#387 (upstream source/SMLib/src/SmBrep.cpp:1851)",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "copy_[3, 1, 4]_2",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p6/operations.json#388 (upstream source/SMLib/src/SmBrep.cpp:1851)",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "copy_real_geometry_disk.smb",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p6/operations.json#389 (upstream source/SMLib/src/SmBrep.cpp:1851)",
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "copy_real_geometry_ellips_ts2.smb",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p6/operations.json#390 (upstream source/SMLib/src/SmBrep.cpp:1851)",
       "values_compared": 0
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "copy_real_geometry_plane_circ.smb",
@@ -4538,21 +4482,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "copy_real_geometry_sphere.smb",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p6/operations.json#392 (upstream source/SMLib/src/SmBrep.cpp:1851)",
       "values_compared": 0
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "copy_real_geometry_torus.smb",
@@ -4914,14 +4854,10 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0011",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=16427437253558003709",
       "values_compared": 0
     },
@@ -4963,14 +4899,14 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 66,
+  "cases_deferred": 50,
   "cases_failed": 0,
-  "cases_passed": 521,
+  "cases_passed": 537,
   "cases_total": 587,
   "deferred_by_unit": {
     "curve.crv_on_surf": 2,
     "intersect.surface_drop_lib_p3": 37,
-    "topology.brep_p3": 18,
+    "topology.brep_p1": 2,
     "topology.brep_p6": 9
   },
   "max_rel_err": 0.0,
