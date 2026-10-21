@@ -5447,14 +5447,142 @@
       "pass": true,
       "source": "fixture:built-in: blend.fillet_corner_p2 cases#451 (upstream SmFilletCorner.cpp (blend.fillet_corner_p1 corner model))",
       "values_compared": 5
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_nx2_g1_query0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#452 (upstream SmFilletCorner.cpp:5141, :6869 (targeted G1 cases))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_nx2_g1_query1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#453 (upstream SmFilletCorner.cpp:5141, :6869 (targeted G1 cases))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_nx2_g1_query2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#454 (upstream SmFilletCorner.cpp:5141, :6869 (targeted G1 cases))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_nx2_g1_one_registered_query0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#455 (upstream SmFilletCorner.cpp:5141, :6869 (targeted G1 cases))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_nx2_g1_one_registered_query1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#456 (upstream SmFilletCorner.cpp:5141, :6869 (targeted G1 cases))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_nx2_not_g1_query0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#457 (upstream SmFilletCorner.cpp:5141, :6869 (targeted G1 cases))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_nx2_not_g1_query1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#458 (upstream SmFilletCorner.cpp:5141, :6869 (targeted G1 cases))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_nx2_not_g1_query2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#459 (upstream SmFilletCorner.cpp:5141, :6869 (targeted G1 cases))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_nx2_not_g1_one_registered_query0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#460 (upstream SmFilletCorner.cpp:5141, :6869 (targeted G1 cases))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_nx2_not_g1_one_registered_query1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#461 (upstream SmFilletCorner.cpp:5141, :6869 (targeted G1 cases))",
+      "values_compared": 4
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_nx1_closed_g1_query0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#462 (upstream SmFilletCorner.cpp:5141, :6869 (targeted G1 cases))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_nx1_closed_g1_query1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#463 (upstream SmFilletCorner.cpp:5141, :6869 (targeted G1 cases))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_nx1_closed_g1_other_registered",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#464 (upstream SmFilletCorner.cpp:5141, :6869 (targeted G1 cases))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_nx1_closed_not_g1_query0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#465 (upstream SmFilletCorner.cpp:5141, :6869 (targeted G1 cases))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_nx1_closed_not_g1_query1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#466 (upstream SmFilletCorner.cpp:5141, :6869 (targeted G1 cases))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "p1_corner_tangent_nx1_closed_not_g1_other_registered",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:built-in: blend.fillet_corner_p2 cases#467 (upstream SmFilletCorner.cpp:5141, :6869 (targeted G1 cases))",
+      "values_compared": 3
     }
   ],
   "cases_both_errored": 6,
   "cases_deferred": 183,
   "cases_failed": 0,
-  "cases_passed": 266,
+  "cases_passed": 282,
   "cases_rejected": 3,
-  "cases_total": 452,
+  "cases_total": 468,
   "deferred_by_unit": {
     "blend.fillet_corner_p2": 1,
     "blend.fillet_executive_p1": 1,
