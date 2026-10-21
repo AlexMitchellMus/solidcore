@@ -29,8 +29,8 @@
 //!   `topology::brep::p3::copy_brep`) notifies through the caller's notification
 //!   environment, naming the copy's objects by its `key_of` and `brep`'s by `source_key`
 //!   (upstream objects are known by address), so [`Hcr::new`] and [`Hcr::with_transform`]
-//!   take the kernel mutably with both. The scene's transformation and infinite region
-//!   (`Transform`, `FindAndSetInfiniteRegion`) and its bounding box
+//!   take the kernel mutably with both. The scene's transformation (`Transform`) and
+//!   its bounding box
 //!   (`SmBrep::CalculateBoundingBox`) belong to unported units, so [`Hcr::with_transform`]
 //!   stops there; [`Hcr::from_scene`] is the rest of `ConstructorInit` for a caller that
 //!   already holds the transformed scene and its box.
@@ -215,14 +215,16 @@ fn transform_brep(brep: &mut Brep, transform: &Axis2Placement) -> Result<()> {
     ))
 }
 
-/// `SmBrep::FindAndSetInfiniteRegion` (unit `topology.brep_p5`).
+/// `SmBrep::FindAndSetInfiniteRegion()` with upstream's default arguments (no shell to
+/// test, `SM_VS_INFINITEREGION_SWAP`, no bounding box).
 fn find_and_set_infinite_region(brep: &mut Brep) -> Result<()> {
-    let _ = brep;
-    // UNPORTED(topology.brep_p5): SmBrep::FindAndSetInfiniteRegion
-    Err(SolidError::unported(
-        "SmBrep::FindAndSetInfiniteRegion",
-        "topology.brep_p5",
-    ))
+    const SM_VS_INFINITEREGION_SWAP: i32 = 2;
+    crate::topology::brep::p5::find_and_set_infinite_region(
+        brep,
+        None,
+        SM_VS_INFINITEREGION_SWAP,
+        None,
+    )
 }
 
 /// `SmBrep::CalculateBoundingBox` (unit `query.brep`).

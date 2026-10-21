@@ -399,6 +399,8 @@ impl Context {
     /// Context while geometry APIs borrow Kernel; both refer to one upstream
     /// context. The callbacks travel with their identity domain
     /// ([`Context::lend_notify`]), and are restored on every returned error as well.
+    /// The snapshot `Context` is read-only apart from its callbacks: mark, mark-lock
+    /// and doing-Boolean changes the action makes to it are dropped on return.
     ///
     /// # Errors
     ///
