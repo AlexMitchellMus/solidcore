@@ -76,7 +76,7 @@ fn swung_curve_scale(
     profile: &Curve,
     approx_tol: f64,
 ) -> Result<f64> {
-    let mut point = profile.evaluate_point(profile.natural_interval().min())?;
+    let mut point = profile.evaluate_point(kernel, profile.natural_interval().min())?;
     let normal = Vec3::Y;
     let d = -point.dot(normal);
     let property = path.global_property_analysis(
@@ -92,7 +92,7 @@ fn swung_curve_scale(
         },
     )?;
     if let Some(solution) = property.solutions.get(0) {
-        point = path.evaluate_point(solution.start.param(0)?)?;
+        point = path.evaluate_point(kernel, solution.start.param(0)?)?;
     }
     Ok((1.0 / point.x).abs())
 }
@@ -207,6 +207,7 @@ impl PrimitiveCreation {
         for (i, &face) in faces.iter().enumerate() {
             let domain = crate::topology::face::p2::uv_domain(a.brep(face.0)?, face.1)?;
             face_surface(a, face)?.evaluate_normal(
+                a.kernel(brep)?,
                 domain.evaluate(0.5, 0.5),
                 Side::Left,
                 Side::Left,
@@ -236,6 +237,7 @@ impl PrimitiveCreation {
                 .map(|(c, _)| c.clone())
                 .collect();
             let surface = BSplineSurface::create_skinned_surface(
+                a.kernel(brep)?,
                 &curves,
                 SkinnedSurfaceOptions {
                     approx_tol,
@@ -334,6 +336,7 @@ impl PrimitiveCreation {
             let count = prepared.profiles.len();
             let curves = prepared.profiles.into_iter().map(Curve::from).collect();
             let composites = CompositeCurve::build_composites_from_curves(
+                a.kernel(brep)?,
                 curves,
                 a.brep(brep)?.tolerance(),
                 0.0,
@@ -481,7 +484,10 @@ mod tests {
             for i in 0..=4 {
                 for j in 0..=4 {
                     let uv = domain.evaluate(f64::from(i) / 4.0, f64::from(j) / 4.0);
-                    assert_eq!(surface.evaluate_point(uv)?, expected.evaluate_point(uv)?,);
+                    assert_eq!(
+                        surface.evaluate_point(&Kernel::default(), uv)?,
+                        expected.evaluate_point(&Kernel::default(), uv)?,
+                    );
                 }
             }
         }
@@ -495,7 +501,7 @@ mod tests {
         let path = Curve::from(Line::from_points(Vec3::X, Vec3::X + Vec3::Y, 3));
         let surface = Surface::from(swung_surface(&kernel, &path, &profile, 1.0)?);
         let uv = surface.natural_uv_domain().min();
-        let point = surface.evaluate_point(uv)?;
+        let point = surface.evaluate_point(&kernel, uv)?;
         // Surface construction uses the existing NURB, even though scale
         // initialization above must use the original analytic evaluations.
         assert_eq!(point.x, f64::from_bits(2.0_f64.to_bits() + 2));

@@ -238,13 +238,13 @@ impl PrimitiveCreation {
             if length < EFF_ZERO {
                 return Err(SolidError::invalid_input(OP, "degenerate revolved curve"));
             }
-            let ends = curve.ends()?;
+            let ends = curve.ends(a.kernel(brep)?)?;
             let (start_dist, _) = line_point_distance(axis_base, axis, ends.start);
             let (end_dist, _) = line_point_distance(axis_base, axis, ends.end);
             let length_scale = max4(start_dist, end_dist, length, EFF_ZERO_SQRT);
             let angle_tol = a.brep(brep)?.tolerance() / length_scale * (180.0 / PI);
             let mut face = None;
-            if curve.is_linear(EFF_ZERO, false)?.linear {
+            if curve.is_linear(a.kernel(brep)?, EFF_ZERO, false)?.linear {
                 let mut tangent = ends.end - ends.start;
                 tangent /= tangent.length();
                 if tangent.is_perpendicular_to(axis, angle_tol) {

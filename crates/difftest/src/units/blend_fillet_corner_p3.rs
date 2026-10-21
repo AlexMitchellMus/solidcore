@@ -248,8 +248,10 @@ fn create_setup(
 ) -> Result<Result<CreateSetup, Output>, HarnessError> {
     let path = path_of(Some(brep))?;
     let block = brep_block_of(Some(brep), validate_only, init_gaps)?;
-    let ex = ffi1::eval(ffi1::Op::Export, &path, &block)
-        .map_err(|e| harness(format!("c++ export: {e}")))?;
+    let ex = crate::export_memo::export("topology_edgeuse_p1", &[&path], &block, || {
+        ffi1::eval(ffi1::Op::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))?;
     let Some(c) = ffi1::counts(&ex) else {
         let st = ex.get(1).copied().unwrap_or(0.0);
         return Ok(Err(Output::err(format!("brep_build_status_{st}"))));
@@ -562,7 +564,7 @@ fn corner_cpp(op: CornerOp, model: &Model, c: &CornerIn) -> Result<Output, Harne
     corner_output(&flat)
 }
 
-fn corner_rust(op: CornerOp, model: &Model, ci: &CornerIn) -> Result<Output, HarnessError> {
+fn corner_rust(k: &Kernel, op: CornerOp, model: &Model, ci: &CornerIn) -> Result<Output, HarnessError> {
     let h = |e: SolidError| harness(e.to_string());
     let mut rm = RustModel::build(model)?;
     let kind = *KINDS.get(ci.kind).ok_or_else(|| harness("kind"))?;
@@ -665,7 +667,7 @@ fn corner_rust(op: CornerOp, model: &Model, ci: &CornerIn) -> Result<Output, Har
             .curve
             .as_ref()
             .ok_or_else(|| harness("line edge without curve"))?
-            .ends()
+            .ends(k)
             .map_err(h)?;
         let mut l = solidcore::curve::line::Line::from_points(ends.start, ends.end, 3);
         let _ = l.make_nurb();
@@ -695,10 +697,10 @@ fn corner_rust(op: CornerOp, model: &Model, ci: &CornerIn) -> Result<Output, Har
             tsect_surfaces: &surfaces,
         };
         match op {
-            CornerOp::CalcGeom => c.calc_corner_geom(&mut env),
-            CornerOp::Patch => c.create_corner_patch(&mut env),
-            CornerOp::AdjustTopology => c.adjust_topology(&mut env),
-            CornerOp::AdjustTangent => c.adjust_tangent_corner(&mut env),
+            CornerOp::CalcGeom => c.calc_corner_geom(k, &mut env),
+            CornerOp::Patch => c.create_corner_patch(k, &mut env),
+            CornerOp::AdjustTopology => c.adjust_topology(k, &mut env),
+            CornerOp::AdjustTangent => c.adjust_tangent_corner(k, &mut env),
         }
     };
     let st = match r {
@@ -1248,7 +1250,7 @@ fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
     }
 }
 
-fn rust(i: &Inputs) -> Result<Output, HarnessError> {
+fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
     match i {
         Inputs::Create {
             brep,
@@ -1260,7 +1262,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         } => create_rust(brep, *validate_only, *init_gaps, *eu, more, solvers),
         Inputs::Corner { op, model, corner } => {
             ffi::validate_corner(&corner_input(model, corner)?).map_err(|e| harness(e.to_string()))?;
-            corner_rust(*op, model, corner)
+            corner_rust(k, *op, model, corner)
         }
     }
 }
@@ -1275,7 +1277,8 @@ impl UnitDiff for Runner {
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
-        rust(&case.parse::<Inputs>()?)
+        let k = &Kernel::default();
+        rust(k, &case.parse::<Inputs>()?)
     }
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {

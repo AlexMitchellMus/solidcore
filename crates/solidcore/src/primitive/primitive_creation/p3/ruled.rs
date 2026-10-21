@@ -16,6 +16,7 @@ use crate::curve::curve::Curve;
 use crate::error::{ignore_status, ignored, Result, SolidError};
 use crate::geom::axis2_placement::Axis2Placement;
 use crate::geom::geom_utility::p1::circle_from_3_points;
+use crate::kernel::Kernel;
 use crate::math::{Vec3, EFF_ZERO};
 use crate::nurbs::b_spline_curve::p1::{BSplineCurve, BSplineCurveForm};
 use crate::nurbs::b_spline_surface::p1::{BSplineSurface, SurfParamType};
@@ -44,6 +45,7 @@ pub struct OffsetRuleOptions {
 /// `unmarried` records whether each original generator remains unused.
 /// A missing map returns `SM_ERR` after reducing the offset's degree.
 pub fn ruled_surface_from_offset(
+    k: &Kernel,
     offset_curve: &mut BSplineCurve,
     map: Option<OffsetMapAttribute>,
     generators: &mut [BSplineCurve],
@@ -126,11 +128,11 @@ pub fn ruled_surface_from_offset(
     }
     let [domain0, domain1] = intervals;
     let length0 = Curve::from(first.clone())
-        .approximate_length(&domain0, 3, false)?
+        .approximate_length(k, &domain0, 3, false)?
         .0;
     if length0 < 2.0 * options.tolerance
         && Curve::from(second.clone())
-            .approximate_length(&domain1, 3, false)?
+            .approximate_length(k, &domain1, 3, false)?
             .0
             < 2.0 * options.tolerance
     {
@@ -151,9 +153,9 @@ pub fn ruled_surface_from_offset(
     compatible?;
     let [first, second] = &mut rules;
     if map.corner_offset && first_input_rational {
-        if first.is_degenerate(EFF_ZERO, None)? {
+        if first.is_degenerate(k, EFF_ZERO, None)? {
             ignore_status(first.match_weights(second))?;
-        } else if second.is_degenerate(EFF_ZERO, None)? {
+        } else if second.is_degenerate(k, EFF_ZERO, None)? {
             ignore_status(second.match_weights(first))?;
         }
     }
@@ -181,7 +183,9 @@ mod tests {
         let mut missing = false;
         let mut movement = Axis2Placement::IDENTITY;
         movement.translate(2.0 * Vec3::Z);
+        let k = Kernel::default();
         let result = ruled_surface_from_offset(
+            &k,
             &mut offset,
             Some(map),
             &mut generators,

@@ -98,7 +98,9 @@ fn ruled(data: &[f64]) -> Result<Vec<f64>> {
             0.,
         )
     });
+    let k = Kernel::default();
     let result = api::ruled_surface_from_offset(
+        &k,
         &mut offset,
         map,
         &mut generators,
@@ -147,7 +149,7 @@ fn ruled(data: &[f64]) -> Result<Vec<f64>> {
             for v in 0..=4 {
                 out.extend(
                     surface
-                        .evaluate_point(domain.evaluate(f64::from(u) / 4.0, f64::from(v) / 4.0))?
+                        .evaluate_point(&k, domain.evaluate(f64::from(u) / 4.0, f64::from(v) / 4.0))?
                         .to_array(),
                 );
             }
