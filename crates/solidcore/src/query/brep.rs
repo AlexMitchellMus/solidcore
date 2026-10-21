@@ -11,7 +11,9 @@
 //! | [`calculate_tight_bounding_box`]             | `SmBrep::CalculateTightBoundingBox`            |
 //! | [`lock_bounding_box`]                        | `SmBrep::LockBoundingBox`                      |
 //! | [`unlock_bounding_box`]                      | `SmBrep::UnLockBoundingBox`                    |
-//! | [`point_3d_classify`]                        | `SmBrep::Point3DClassify`                      |
+//! | [`BrepQuery::point_3d_classify`]             | `SmBrep::Point3DClassify`                      |
+//! | [`BrepQuery`], [`BrepIdentity`]              | the B-rep's `SM_OC_BREP` cache (`CacheMakeOrValidate`) and pointer identities |
+//! | [`BrepClassifier`]                           | `Point3DClassify` on a B-rep held `const` (its lazily made UV trim curves on a copy) |
 //! | [`evaluate_surface_point`]                   | `SmApiEvaluateSurfacePoint`                    |
 //! | [`evaluate_surface_normal`]                  | `SmApiEvaluateSurfaceNormal`                   |
 //! | [`evaluate_surface_derivatives`]             | `SmApiEvaluateSurfaceDerivatives`              |
@@ -38,12 +40,12 @@
 //!   after a failed tight edge box. A failed loose edge box leaves the freshly
 //!   initialised (empty) box: the curve boxes write their output once their
 //!   computation succeeded. [`SolidError::Unported`] still propagates.
-//! - **Point classification.** [`point_3d_classify`] returns the classification
-//!   instead of filling the caller's (every upstream caller constructs a fresh one just
-//!   before and drops it on failure), with [`EntityRef`] objects. Its boundary solve and
-//!   ray fires need the B-rep's cache and object identities, which upstream reaches
-//!   through the B-rep (`CacheMakeOrValidate`): they are the caller's, as for
-//!   [`bp2::ray_fire`]. A ray fire that fails with an ordinary error moves on to the
+//! - **Point classification.** [`BrepQuery::point_3d_classify`] returns the
+//!   classification instead of filling the caller's (every upstream caller constructs a
+//!   fresh one just before and drops it on failure), with [`EntityRef`] objects. Its
+//!   boundary solve and ray fires need the B-rep's cache and object identities, which
+//!   upstream reaches through the B-rep (`CacheMakeOrValidate`): a [`BrepQuery`] holds
+//!   them, built once by the caller. A ray fire that fails with an ordinary error moves on to the
 //!   next direction, as a failing status does upstream; [`SolidError::Unported`]
 //!   propagates.
 //! - **Out-params.** The evaluated point, normal or point and derivatives are the
@@ -61,6 +63,8 @@
 //!   ([`QuadricEdgeData::sort_index`]). `SmPolyVertexClass` (`SmPoly.h`) is defined
 //!   here, the only place that uses it so far.
 
+use core::cell::OnceCell;
+
 use crate::error::{ignore_status, ignored, EntityRef, Result, SolidError};
 use crate::geom::attribute::{Attribute, AttributeValue, Behavior};
 use crate::geom::extent3d::Extent3d;
@@ -77,10 +81,12 @@ use crate::query::edge as qe;
 use crate::query::face::{p1 as qf1, p3 as qf3};
 use crate::surface::surface::Surface;
 use crate::topology::brep::{p1 as bp1, p2 as bp2};
-use crate::topology::brep_cache::{BrepCache, BrepObjects, CacheObject};
+use crate::topology::brep_cache::{
+    arena_identity, make_brep_cache, BrepCache, BrepObjects, CacheObject, CacheSource,
+};
 use crate::topology::{edge, face, vertex, Brep, BrepId, RegionId};
 
-const OP_CLASSIFY: &str = "query::brep::point_3d_classify";
+const OP_CLASSIFY: &str = "query::brep::BrepQuery::point_3d_classify";
 const OP_EVAL_POINT: &str = "query::brep::evaluate_surface_point";
 const OP_EVAL_NORMAL: &str = "query::brep::evaluate_surface_normal";
 const OP_EVAL_DERIVS: &str = "query::brep::evaluate_surface_derivatives";
@@ -285,128 +291,276 @@ pub fn unlock_bounding_box(b: &mut Brep) {
 
 // ---- point classification -----------------------------------------------------------
 
-/// `SmBrep::Point3DClassify`: classifies `point` (zone tolerance `point_zone_tol_3d`)
-/// against the B-rep. With `do_boundary_intersections` the lowest dimensional vertex,
-/// edge or face the point lies on (`BrepPointSolve`, `SM_SO_INTERSECT`, single solution)
-/// is the answer when there is one. Otherwise the region: the only one when there is
-/// one, else the region a ray fire from the point finds along `+x` (then `-x` when that
-/// fails), then `+y`/`-y`, then `+z`/`-z` while none was found. `brep_id`, `cache`,
-/// `keys` and `owner_of` are the B-rep's cache and identities, as for
-/// [`bp2::ray_fire`].
-///
-/// # Errors
-///
-/// `SM_ERR` when no ray finds a region; those of the boundary solve, the region list
-/// and the classification load; [`SolidError::Unported`] from the ray fires.
-#[allow(clippy::too_many_arguments)] // one upstream routine
-pub fn point_3d_classify(
-    k: &Kernel,
-    b: &mut Brep,
-    brep_id: BrepId,
-    cache: &BrepCache,
-    keys: &dyn Fn(CacheObject) -> ObjectRef,
-    owner_of: &dyn Fn(ObjectRef) -> Option<ObjectRef>,
-    point: Point3,
-    point_zone_tol_3d: f64,
-    do_boundary_intersections: bool,
-) -> Result<PointClassification<EntityRef>> {
-    // init output
-    let mut pc = PointClassification::new(point_zone_tol_3d);
-    pc.set_class_object(PointClassType::Unknown, None);
-    pc.set_src_zone_tol_3d(point_zone_tol_3d);
+/// The identities a B-rep's cache is keyed by (upstream: the B-rep's own pointers):
+/// the B-rep in the caller's shape store, the key of each of its cache objects, and
+/// the owners of intermediate geometry (as for `Curve::edge`).
+#[derive(Clone, Copy)]
+pub struct BrepIdentity<'a> {
+    /// The B-rep in the caller's shape store.
+    pub brep_id: BrepId,
+    /// The identity of each cache object.
+    pub keys: &'a dyn Fn(CacheObject) -> ObjectRef,
+    /// The owner of an intermediate generated curve or edge use.
+    pub owner_of: &'a dyn Fn(ObjectRef) -> Option<ObjectRef>,
+}
 
-    // Intersect the point with the boundary elements of the Brep
-    if do_boundary_intersections {
-        let objects = BrepObjects {
-            brep: b,
+impl core::fmt::Debug for BrepIdentity<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("BrepIdentity")
+            .field("brep_id", &self.brep_id)
+            .finish_non_exhaustive()
+    }
+}
+
+/// No intermediate geometry owners.
+fn no_owner(_: ObjectRef) -> Option<ObjectRef> {
+    None
+}
+
+impl BrepIdentity<'static> {
+    /// The identities of a B-rep whose geometry is owned by its records'
+    /// [`arena_identity`] (as the B-reps this crate builds and imports), without
+    /// intermediate owners.
+    #[must_use]
+    pub fn arena(brep_id: BrepId) -> Self {
+        Self {
             brep_id,
-            cache,
+            keys: &arena_identity,
+            owner_of: &no_owner,
+        }
+    }
+}
+
+/// The ray directions of [`BrepQuery::point_3d_classify`], in firing order: each axis
+/// forward, then backward when the forward ray fails.
+const CLASSIFY_RAYS: [(Vec3, Vec3); 3] = [
+    (Vec3::new(1.0, 0.0, 0.0), Vec3::new(-1.0, 0.0, 0.0)),
+    (Vec3::new(0.0, 1.0, 0.0), Vec3::new(0.0, -1.0, 0.0)),
+    (Vec3::new(0.0, 0.0, 1.0), Vec3::new(0.0, 0.0, -1.0)),
+];
+
+/// A B-rep's queries over its cache: the identities and the `SM_OC_BREP` cache, which
+/// upstream builds when a query first needs it and keeps on the B-rep
+/// (`SmSAGObject::CacheMakeOrValidate`). Keep one per B-rep state and reuse it across
+/// queries; edits to the B-rep invalidate it.
+#[derive(Debug)]
+pub struct BrepQuery<'a> {
+    identity: BrepIdentity<'a>,
+    cache: OnceCell<BrepCache>,
+}
+
+impl<'a> BrepQuery<'a> {
+    /// The queries of the B-rep with `identity`; its cache is built on first use.
+    #[must_use]
+    pub const fn new(identity: BrepIdentity<'a>) -> Self {
+        Self {
+            identity,
+            cache: OnceCell::new(),
+        }
+    }
+
+    /// The queries over a cache the caller already holds for the B-rep.
+    #[must_use]
+    pub fn with_cache(identity: BrepIdentity<'a>, cache: BrepCache) -> Self {
+        Self {
+            identity,
+            cache: OnceCell::from(cache),
+        }
+    }
+
+    /// The identities.
+    #[must_use]
+    pub const fn identity(&self) -> BrepIdentity<'a> {
+        self.identity
+    }
+
+    /// The cache of `b`, built keyed by the identities when first asked for.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`make_brep_cache`].
+    pub fn cache(&self, k: &Kernel, b: &Brep) -> Result<&BrepCache> {
+        if let Some(cache) = self.cache.get() {
+            return Ok(cache);
+        }
+        let cache = make_brep_cache(k, CacheSource::Brep(b), self.identity.keys)?;
+        Ok(self.cache.get_or_init(|| cache))
+    }
+
+    /// `SmBrep::Point3DClassify`: classifies `point` (zone tolerance
+    /// `point_zone_tol_3d`) against `b`, the B-rep this query was built for. With
+    /// `do_boundary_intersections` the lowest dimensional vertex, edge or face the point
+    /// lies on (`BrepPointSolve`, `SM_SO_INTERSECT`, single solution) is the answer when
+    /// there is one. Otherwise the region: the only one when there is one, else the
+    /// region a ray fire ([`bp2::ray_fire`]) from the point finds along `+x` (then `-x`
+    /// when that fails), then `+y`/`-y`, then `+z`/`-z` while none was found. The ray
+    /// fires may make missing UV trim curves on `b` (upstream's `const` method makes them
+    /// too); a caller holding the B-rep shared classifies on a copy.
+    ///
+    /// # Errors
+    ///
+    /// `SM_ERR` when no ray finds a region; those of the boundary solve, the region list
+    /// and the classification load; [`SolidError::Unported`] from the ray fires.
+    pub fn point_3d_classify(
+        &self,
+        k: &Kernel,
+        b: &mut Brep,
+        point: Point3,
+        point_zone_tol_3d: f64,
+        do_boundary_intersections: bool,
+    ) -> Result<PointClassification<EntityRef>> {
+        let BrepIdentity {
+            brep_id,
             keys,
             owner_of,
-        };
-        // XSects point with the Brep verts, edges, and faces returning lowest dim
-        // topology intersection found.
-        let solutions = TopologySolver::brep_point_solve(
-            k,
-            &objects,
-            Some(CacheObject::Brep),
-            point,
-            TopologySolveOptions {
-                operation: SolverOperation::Intersect,
-                requested: SolutionRequested::Single,
-                tolerance_3d: point_zone_tol_3d,
-                best_answer_so_far_sq: 0.0,
-                opt_vectors: &[],
-            },
-        )?;
+        } = self.identity;
 
-        // when the point is on a Brep Face
-        if let Some(sol) = solutions.get(0) {
-            // Just grab the first one -- we asked for Single.
-            let object = sol.objects[0].ok_or(SolidError::null_pointer(OP_CLASSIFY))?;
-            pc.load_from_intersection(
-                point_zone_tol_3d,
-                bp2::cache_entity(object)?,
-                &sol.start,
-                0,
-                BIG_DOUBLE,
+        // init output
+        let mut pc = PointClassification::new(point_zone_tol_3d);
+        pc.set_class_object(PointClassType::Unknown, None);
+        pc.set_src_zone_tol_3d(point_zone_tol_3d);
+
+        // Intersect the point with the boundary elements of the Brep
+        if do_boundary_intersections {
+            let objects = BrepObjects {
+                brep: b,
+                brep_id,
+                cache: self.cache(k, b)?,
+                keys,
+                owner_of,
+            };
+            // XSects point with the Brep verts, edges, and faces returning lowest dim
+            // topology intersection found.
+            let solutions = TopologySolver::brep_point_solve(
+                k,
+                &objects,
+                Some(CacheObject::Brep),
+                point,
+                TopologySolveOptions {
+                    operation: SolverOperation::Intersect,
+                    requested: SolutionRequested::Single,
+                    tolerance_3d: point_zone_tol_3d,
+                    best_answer_so_far_sq: 0.0,
+                    opt_vectors: &[],
+                },
             )?;
+
+            // when the point is on a Brep Face
+            if let Some(sol) = solutions.get(0) {
+                // Just grab the first one -- we asked for Single.
+                let object = sol.objects[0].ok_or(SolidError::null_pointer(OP_CLASSIFY))?;
+                pc.load_from_intersection(
+                    point_zone_tol_3d,
+                    bp2::cache_entity(object)?,
+                    &sol.start,
+                    0,
+                    BIG_DOUBLE,
+                )?;
+                return Ok(pc);
+            }
+        } // end bDoBoundaryIntersections check
+
+        // get Brep->Regions
+        let regions = bp1::regions(b, None)?;
+
+        // Check for special case where only one region exists then we
+        // do not have to do any ray firing.
+        if let [region] = regions.as_slice() {
+            pc.set_class_object(PointClassType::Region, Some(EntityRef::Region(*region)));
+            pc.set_gap_3d(0.0);
+            pc.set_pre_snap_param(BIG_DOUBLE);
             return Ok(pc);
         }
-    } // end bDoBoundaryIntersections check
 
-    // get Brep->Regions
-    let regions = bp1::regions(b, None)?;
-
-    // Check for special case where only one region exists then we
-    // do not have to do any ray firing.
-    if let [region] = regions.as_slice() {
-        pc.set_class_object(PointClassType::Region, Some(EntityRef::Region(*region)));
-        pc.set_gap_3d(0.0);
-        pc.set_pre_snap_param(BIG_DOUBLE);
-        return Ok(pc);
-    }
-
-    // Now do a ray fire to determine which region this lies in. Fire extra rays only
-    // if the first rays fail: `Some(region)` on success (the region may be none),
-    // `None` on failure.
-    let mut fire = |direction: Vec3| -> Result<Option<Option<RegionId>>> {
-        Ok(ignored(bp2::ray_fire(
-            k,
-            b,
-            brep_id,
-            cache,
-            keys,
-            owner_of,
-            point,
-            direction,
-            point_zone_tol_3d,
-            None,
-        ))?
-        .map(|r| r.region))
-    };
-    let mut region = None;
-    for (forward, backward) in [
-        (Vec3::new(1.0, 0.0, 0.0), Vec3::new(-1.0, 0.0, 0.0)), // X-Dir
-        (Vec3::new(0.0, 1.0, 0.0), Vec3::new(0.0, -1.0, 0.0)), // Y-Dir
-        (Vec3::new(0.0, 0.0, 1.0), Vec3::new(0.0, 0.0, -1.0)), // Z-Dir
-    ] {
-        region = match fire(forward)? {
-            Some(r) => r,
-            None => fire(backward)?.flatten(),
+        // Now do a ray fire to determine which region this lies in. Fire extra rays
+        // only if the first rays fail: `Some(region)` on success (the region may be
+        // none), `None` on failure.
+        // (the solve of each ray fire builds the cache when needed)
+        let mut fire = |direction: Vec3| -> Result<Option<Option<RegionId>>> {
+            let fired = self.cache(k, b).and_then(|cache| {
+                bp2::ray_fire(
+                    k,
+                    b,
+                    brep_id,
+                    cache,
+                    keys,
+                    owner_of,
+                    point,
+                    direction,
+                    point_zone_tol_3d,
+                    None,
+                )
+            });
+            Ok(ignored(fired)?.map(|r| r.region))
         };
-        if region.is_some() {
-            break;
+        let mut region = None;
+        for (forward, backward) in CLASSIFY_RAYS {
+            region = match fire(forward)? {
+                Some(r) => r,
+                None => fire(backward)?.flatten(),
+            };
+            if region.is_some() {
+                break;
+            }
+        }
+
+        let region = region.ok_or(SolidError::sm_err(OP_CLASSIFY))?;
+
+        // load output
+        pc.set_class_object(PointClassType::Region, Some(EntityRef::Region(region)));
+        pc.set_deviation(0.0); // SM_USE_OLDTOL
+        pc.set_pre_snap_param(BIG_DOUBLE);
+        Ok(pc)
+    }
+}
+
+/// Point classification against a B-rep the caller holds shared: its [`BrepQuery`] and a
+/// private copy for the ray fires, which may add missing UV trim curves (upstream's
+/// `const` `Point3DClassify` adds them to the B-rep itself). Keep one per B-rep state
+/// and classify every point through it: the copy and the cache are made once.
+#[derive(Debug)]
+pub struct BrepClassifier<'a> {
+    query: BrepQuery<'a>,
+    brep: Brep,
+}
+
+impl<'a> BrepClassifier<'a> {
+    /// The classifier of `brep` with `identity` (copies the B-rep; the cache is built
+    /// on first use).
+    #[must_use]
+    pub fn new(brep: &Brep, identity: BrepIdentity<'a>) -> Self {
+        Self {
+            query: BrepQuery::new(identity),
+            brep: brep.clone(),
         }
     }
 
-    let region = region.ok_or(SolidError::sm_err(OP_CLASSIFY))?;
+    /// The private copy the classifications run on (its regions are the caller's).
+    #[must_use]
+    pub const fn brep(&self) -> &Brep {
+        &self.brep
+    }
 
-    // load output
-    pc.set_class_object(PointClassType::Region, Some(EntityRef::Region(region)));
-    pc.set_deviation(0.0); // SM_USE_OLDTOL
-    pc.set_pre_snap_param(BIG_DOUBLE);
-    Ok(pc)
+    /// [`BrepQuery::point_3d_classify`] on the private copy.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`BrepQuery::point_3d_classify`].
+    pub fn point_3d_classify(
+        &mut self,
+        k: &Kernel,
+        point: Point3,
+        point_zone_tol_3d: f64,
+        do_boundary_intersections: bool,
+    ) -> Result<PointClassification<EntityRef>> {
+        self.query.point_3d_classify(
+            k,
+            &mut self.brep,
+            point,
+            point_zone_tol_3d,
+            do_boundary_intersections,
+        )
+    }
 }
 
 // ---- SM_API surface evaluation ------------------------------------------------------
@@ -676,6 +830,26 @@ mod tests {
         unlock_bounding_box(&mut b);
         assert_eq!(b.locked_bounding_box(), None);
         assert_eq!(calculate_bounding_box(&k, &b, plain).unwrap().min().x, -9.0);
+    }
+
+    #[test]
+    fn classification_builds_the_cache_only_when_a_solve_needs_it() {
+        let k = Kernel::default();
+        let mut b = Brep::new_with_infinite_region().unwrap();
+        let query = BrepQuery::new(BrepIdentity::arena(BrepId::from_index(0)));
+        let p = Point3::new(1.0, 2.0, 3.0);
+        // one region: no ray fire, no cache (as upstream)
+        let pc = query.point_3d_classify(&k, &mut b, p, 1e-6, false).unwrap();
+        assert_eq!(pc.point_class(), PointClassType::Region);
+        assert!(query.cache.get().is_none());
+        // the boundary solve builds it; an empty B-rep has no boundary to hit
+        let pc = query.point_3d_classify(&k, &mut b, p, 1e-6, true).unwrap();
+        assert_eq!(pc.point_class(), PointClassType::Region);
+        assert!(query.cache.get().is_some());
+
+        let mut classifier = BrepClassifier::new(&b, BrepIdentity::arena(BrepId::from_index(0)));
+        let pc = classifier.point_3d_classify(&k, p, 1e-6, true).unwrap();
+        assert_eq!(pc.object(), b.infinite_region().map(EntityRef::Region));
     }
 
     #[test]

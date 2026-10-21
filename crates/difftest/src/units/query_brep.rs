@@ -40,7 +40,6 @@ use solidcore::geom::extent3d::Extent3d;
 use solidcore::geom::tol::zone_tol3d;
 use solidcore::intersect::point_class::{PointClassType, PointClassification};
 use solidcore::kernel::Kernel;
-use solidcore::topology::brep_cache::{arena_identity, make_brep_cache, CacheSource};
 use solidcore::topology::{Brep, BrepId, FaceId, VertexId};
 use solidcore::{EntityRef, SolidError};
 
@@ -622,28 +621,9 @@ fn rust_classify(i: &ClassifyIn) -> Result<Output, Fail> {
     let k = Kernel::default();
     let mut b = m.brep;
     crate::util::own_arena_geometry(&mut b);
-    let cache = match make_brep_cache(&k, CacheSource::Brep(&b), &arena_identity) {
-        Ok(c) => c,
-        Err(e) => {
-            return Err(Output::unported(&e).map_or_else(
-                || Fail::Harness(harness(format!("rust brep cache: {e}"))),
-                |d| Fail::Deferred(Box::new(d)),
-            ))
-        }
-    };
+    let query = qb::BrepQuery::new(qb::BrepIdentity::arena(BrepId::from_index(0)));
     let tol = zone_tol3d(&k, i.tol);
-    let owners = |_: solidcore::geom::object::ObjectRef| None;
-    let r = qb::point_3d_classify(
-        &k,
-        &mut b,
-        BrepId::from_index(0),
-        &cache,
-        &arena_identity,
-        &owners,
-        Vec3::new(p[0], p[1], p[2]),
-        tol,
-        i.do_bnd,
-    );
+    let r = query.point_3d_classify(&k, &mut b, Vec3::new(p[0], p[1], p[2]), tol, i.do_bnd);
     let (status, pc) = match r {
         Ok(pc) => (SUCCESS, pc),
         Err(e) => {
