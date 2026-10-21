@@ -1013,6 +1013,37 @@ pub fn remove_uv_trim_curves(b: &mut Brep, f: FaceId) -> Result<()> {
 /// without loop or mate, an edge use without mate; those of the mirror and surface
 /// swap and of the edit notifications.
 pub fn swap_uv(k: &Kernel, b: &mut Brep, f: FaceId) -> Result<()> {
+    swap_uv_notifying(k, b, f, &mut |b, op| face_notify(b, f, op))
+}
+
+/// [`swap_uv`] with its `SM_NO_PRE_EDIT` / `SM_NO_POST_EDIT` (`this`,
+/// `SM_NO_GET_BREP(this)`, `NULL`) sent through the caller's notification environment
+/// (`env.key_of` names the face, [`brep_p2::brep_ref`] the B-rep; the context's
+/// callbacks see them, as upstream's B-rep context's do).
+///
+/// # Errors
+///
+/// Those of [`swap_uv`].
+pub fn swap_uv_with_notifications(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    env: &mut crate::topology::edge::NotifyEnv<'_>,
+) -> Result<()> {
+    swap_uv_notifying(k, b, f, &mut |b, op| {
+        let this = (env.key_of)(EntityRef::Face(f));
+        let brep = brep_p2::brep_ref(b);
+        fp3::notify(b, f, env, None, op, [Some(this), Some(brep), None])
+    })
+}
+
+/// [`swap_uv`]'s body, `notify` sending the face's edit notifications.
+fn swap_uv_notifying(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    notify: &mut dyn FnMut(&mut Brep, NotifyOperation) -> Result<()>,
+) -> Result<()> {
     // GetBrep()->GetContext()
     if !has_brep(b, f)? {
         return Err(null(
@@ -1036,7 +1067,7 @@ pub fn swap_uv(k: &Kernel, b: &mut Brep, f: FaceId) -> Result<()> {
     let upward = upward_loopuses(b, f)?;
 
     // prepare to Edit
-    face_notify(b, f, NotifyOperation::PreEdit)?;
+    notify(b, NotifyOperation::PreEdit)?;
 
     let mut to_set: Vec<(EdgeuseId, Curve)> = Vec::new();
     for lu in upward {
@@ -1119,7 +1150,7 @@ pub fn swap_uv(k: &Kernel, b: &mut Brep, f: FaceId) -> Result<()> {
     b.faceuse_mut(fu_mate)?.orientation = OrientType::Same;
     b.face_mut(f)?.faceuse = Some(fu_mate);
 
-    face_notify(b, f, NotifyOperation::PostEdit)?;
+    notify(b, NotifyOperation::PostEdit)?;
     Ok(())
 }
 

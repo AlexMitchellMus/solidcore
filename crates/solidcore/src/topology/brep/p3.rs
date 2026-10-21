@@ -3168,13 +3168,13 @@ fn orient_body(
         // If this face needs swapping, do it. Aids in bookkeeping later.
         if in_swap(face) {
             // (no SER upstream)
-            ignore_soft(face1::swap_uv(k, b, face))?;
+            ignore_soft(face1::swap_uv_with_notifications(k, b, face, env))?;
         }
 
         let (reverse_votes, same_votes) = if just_unify_normals {
             (0u32, 10u32)
         } else {
-            match orient_ray_votes(k, b, marks, mark, face, normals_outward, tolerance)? {
+            match orient_ray_votes(k, b, env, marks, mark, face, normals_outward, tolerance)? {
                 RayVotes::Skip => continue,
                 RayVotes::Votes {
                     reverse,
@@ -3274,7 +3274,7 @@ fn orient_body(
         [brep_arg(b), None, None],
     ))?;
     for f in swap_faces {
-        face1::swap_uv(k, b, f)?;
+        face1::swap_uv_with_notifications(k, b, f, env)?;
     }
     Ok(OrientResult {
         maybe_not_closed_solid: maybe_not_closed,
@@ -3298,9 +3298,11 @@ enum RayVotes {
 /// ray pairs from points inside the face (on trimmed iso curves through test points
 /// of its edge uses), each voting whether the face normal points into the solid.
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+#[allow(clippy::too_many_arguments)]
 fn orient_ray_votes(
     k: &Kernel,
     b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
     marks: &mut Marks,
     mark: MarkType,
     face: FaceId,
@@ -3329,7 +3331,7 @@ fn orient_ray_votes(
             return Ok(RayVotes::Skip);
         }
         // point into different Regions and the first is NOT the infinite region
-        face1::swap_uv(k, b, face)?;
+        face1::swap_uv_with_notifications(k, b, face, env)?;
         marks.mark(k, Entity::Face(face), mark);
         return Ok(RayVotes::Skip);
     }
