@@ -618,7 +618,8 @@ fn row_curve(s: &Srf, last: bool) -> Crv {
 
 fn eval(c: &Crv, t: f64) -> Option<[f64; 3]> {
     let b = curve_of(c).ok()?;
-    let p = Curve::from(b).evaluate_point(t).ok()?;
+    let k = Kernel::default();
+    let p = Curve::from(b).evaluate_point(&k, t).ok()?;
     Some([p.x, p.y, p.z])
 }
 
@@ -629,7 +630,8 @@ fn surface_point(s: &Srf, u: f64, v: f64) -> Option<[f64; 3]> {
         d.min().x + u * (d.max().x - d.min().x),
         d.min().y + v * (d.max().y - d.min().y),
     );
-    let p = srf.evaluate_point(uv).ok()?;
+    let k = Kernel::default();
+    let p = srf.evaluate_point(&k, uv).ok()?;
     Some([p.x, p.y, p.z])
 }
 
