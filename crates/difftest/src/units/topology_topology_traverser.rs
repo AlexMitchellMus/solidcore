@@ -359,34 +359,54 @@ mod tests {
     fn generator_requires_nonempty_entity_kinds() {
         assert!(eligible_ops([0; 10]).is_empty());
         assert_eq!(eligible_ops([1, 1, 0, 0, 0, 0, 2, 1, 2, 2]), vec![1, 4]);
-        assert_eq!(eligible_ops([1, 1, 2, 1, 2, 1, 8, 4, 8, 4]), vec![0, 1, 2, 3, 4, 5, 7]);
-        assert_eq!(eligible_ops([1, 2, 4, 2, 4, 2, 16, 8, 16, 8]), (0..8).collect::<Vec<_>>());
+        assert_eq!(
+            eligible_ops([1, 1, 2, 1, 2, 1, 8, 4, 8, 4]),
+            vec![0, 1, 2, 3, 4, 5, 7]
+        );
+        assert_eq!(
+            eligible_ops([1, 2, 4, 2, 4, 2, 16, 8, 16, 8]),
+            (0..8).collect::<Vec<_>>()
+        );
     }
 
     #[test]
     fn generated_shell_removal_uses_distinct_shells() {
         let mut rng = Rng::new(7);
         for shells in [2, 3] {
-          let counts = [1, shells, 0, 0, 0, 0, 0, 0, 0, 0];
-          for _ in 0..100 {
-            let mut i = Inputs {
-                brep: BrepIn::Network, op: 0, start: 0, target: 0,
-                mask: 1, want: 3, pre: 0, prefill: false, repeat: 1,
-            };
-            select_generated_op(&mut i, counts, &mut rng);
-            let r = request(&i, counts);
-            assert_eq!(r.op, 6);
-            assert_ne!(r.start, r.target);
-            assert!(available(r));
-          }
+            let counts = [1, shells, 0, 0, 0, 0, 0, 0, 0, 0];
+            for _ in 0..100 {
+                let mut i = Inputs {
+                    brep: BrepIn::Network,
+                    op: 0,
+                    start: 0,
+                    target: 0,
+                    mask: 1,
+                    want: 3,
+                    pre: 0,
+                    prefill: false,
+                    repeat: 1,
+                };
+                select_generated_op(&mut i, counts, &mut rng);
+                let r = request(&i, counts);
+                assert_eq!(r.op, 6);
+                assert_ne!(r.start, r.target);
+                assert!(available(r));
+            }
         }
     }
 
     #[test]
     fn empty_graph_keeps_the_original_case() {
         let mut i = Inputs {
-            brep: BrepIn::Network, op: 6, start: 8, target: 3,
-            mask: 2, want: 1, pre: 4, prefill: true, repeat: 2,
+            brep: BrepIn::Network,
+            op: 6,
+            start: 8,
+            target: 3,
+            mask: 2,
+            want: 1,
+            pre: 4,
+            prefill: true,
+            repeat: 2,
         };
         let before = serde_json::to_value(&i).unwrap();
         select_generated_op(&mut i, [0; 10], &mut Rng::new(7));
