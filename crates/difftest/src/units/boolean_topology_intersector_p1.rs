@@ -1985,7 +1985,13 @@ fn resolve_prefix(
 /// Resolves every op of `ops` against the imported B-reps; `Err(name)` names the
 /// first op that cannot be run.
 #[allow(clippy::too_many_lines)]
-fn resolve(k: &Kernel, ops: &[OpIn], c: &Counts, two: &Two, start: Start) -> Result<Vec<ROp>, String> {
+fn resolve(
+    k: &Kernel,
+    ops: &[OpIn],
+    c: &Counts,
+    two: &Two,
+    start: Start,
+) -> Result<Vec<ROp>, String> {
     let i_ctor = start.ctor;
     let mut approx = start.approx;
     let mut out = Vec::new();

@@ -50,9 +50,9 @@ use solidcore::kernel::Kernel;
 use solidcore::math::Point3;
 use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use solidcore::query::face::p1 as qf1;
-use solidcore::topology::face::p4 as fp4;
 use solidcore::topology::edge as ed;
 use solidcore::topology::edgeuse::p1 as eu1;
+use solidcore::topology::face::p4 as fp4;
 use solidcore::topology::loopuse as lu;
 use solidcore::topology::proto_topology::ProtoBrep;
 use solidcore::topology::{Brep, EdgeId, EdgeuseId, FaceuseId, LoopuseId, VertexId, VertexuseId};
@@ -911,20 +911,24 @@ impl IntersectorBrepP3<H> for Two {
         if face.kind != K_FACE {
             return Err(invalid("not a face"));
         }
-        Ok(fp4::edges(self.brep_r(face)?, fid(face), None, false, None)?
-            .into_iter()
-            .map(|e| hd(face.b, K_EDGE, e.index()))
-            .collect())
+        Ok(
+            fp4::edges(self.brep_r(face)?, fid(face), None, false, None)?
+                .into_iter()
+                .map(|e| hd(face.b, K_EDGE, e.index()))
+                .collect(),
+        )
     }
 
     fn face_upward_loopuses(&self, face: H) -> solidcore::Result<Vec<H>> {
         if face.kind != K_FACE {
             return Err(invalid("not a face"));
         }
-        Ok(fp4::upward_loopuses(self.brep_r(face)?, fid(face), false, None)?
-            .into_iter()
-            .map(|lu| hd(face.b, K_LOOPUSE, lu.index()))
-            .collect())
+        Ok(
+            fp4::upward_loopuses(self.brep_r(face)?, fid(face), false, None)?
+                .into_iter()
+                .map(|lu| hd(face.b, K_LOOPUSE, lu.index()))
+                .collect(),
+        )
     }
 
     fn face_bounding_box(&self, k: &Kernel, face: H) -> solidcore::Result<Extent3d> {
