@@ -1067,7 +1067,7 @@ fn rollover_topology_split_preserves_actual_solver_id_and_partial_edits() {
     for rail in f.fb.geom(id).unwrap().rails.into_iter().flatten() {
         f.fb.fillet_edge_mut(rail)
             .unwrap()
-            .set_fillet_edge_type(crate::blend::fillet_geom::p1::FilletEdgeType::Rail);
+            .set_fillet_edge_type(FilletEdgeType::Rail);
         let uses = f.fb.brep().edge(rail).unwrap().edgeuses.clone();
         for eu in uses {
             f.fb.set_edgeuse_fillet_geom(eu, Some(id)).unwrap();
