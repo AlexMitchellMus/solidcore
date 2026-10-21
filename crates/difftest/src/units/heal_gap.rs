@@ -1065,12 +1065,14 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
             f1,
             uv,
         } => {
-            let (_, _, ex) = topo_graph(brep)?;
+            let (_, block, ex) = topo_graph(brep)?;
             let Some(c) = counts(&ex) else {
                 return Ok(state(vec![-1.0, ex.get(1).copied().unwrap_or(0.0)]));
             };
             let (mut b, _) = import(&ex)?;
             let args = topo_args(&b, c, *kind, *sel0, *sel1, *f0, *f1, *uv)?;
+            // (the check `ffi::topo` runs at this point on the C++ side)
+            ffi::check_topo_block(&block).map_err(|e| harness(format!("c++: {e}")))?;
             match topo_rust(&k, &mut b, &args) {
                 Ok(v) => o = v,
                 Err(SolidError::InvalidInput { .. }) => o.push(NULL_DEREF),
@@ -1459,5 +1461,28 @@ impl UnitDiff for Runner {
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
         serde_json::to_value(gen_inputs(rng)).ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// HANG-29: fuzz14876, a topology op on a face whose B-spline surface has a control
+    /// point of `-1e300` (no native result in 60 s). Both sides refuse its block. It
+    /// cannot be a fixture (a harness error always fails a case).
+    #[test]
+    fn both_sides_refuse_a_topo_block_in_the_overflow_range() {
+        let recorded: Value = serde_json::from_str(include_str!(
+            "../../tests/fuzz_regressions/heal.gap.json"
+        ))
+        .unwrap();
+        for recorded in recorded["cases"].as_array().unwrap() {
+            let i: Inputs = serde_json::from_value(recorded["inputs"].clone()).unwrap();
+            for error in [run_rust(&i), run_cpp(&i)] {
+                let error = error.unwrap_err().to_string();
+                assert!(error.contains("overflow range"), "{}: {error}", recorded["name"]);
+            }
+        }
     }
 }

@@ -92,7 +92,8 @@ pub const MAX_DEGREE: usize = 5;
 pub const MAX_COORD: f64 = 1.0e300;
 /// Bound (exclusive) on surface control point coordinates: from about `1e154`, where
 /// their squares overflow, upstream's face/face, edge/face and coincidence
-/// intersections do not finish (HANG-46; below `1e150` they return at once).
+/// intersections do not finish (HANG-29, `SmCurve::GlobalCoincidenceChecker` splitting
+/// a face boundary forever; below `1e150` they return at once).
 pub const MAX_SURFACE_COORD: f64 = 1.0e154;
 /// Most ops in a script.
 pub const MAX_OPS: usize = 64;

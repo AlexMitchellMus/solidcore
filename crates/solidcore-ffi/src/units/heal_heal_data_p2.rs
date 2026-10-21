@@ -139,6 +139,12 @@ fn raw(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
     })
 }
 
+/// Bound (exclusive) on the values of a B-rep block of kinds `0..=3`: from about
+/// `1e154`, where squares overflow, the healer's edge and face caching does not return
+/// (HANG-29, `SmCurve::GlobalCoincidenceChecker`; `--fuzz 30000` cases with one surface
+/// control point of `+-1e300`).
+pub const MAX_BLOCK_VALUE: f64 = 1.0e154;
+
 /// Checks a B-rep block (all of `block`).
 pub(crate) fn check_block(path: &str, block: &[f64]) -> Result<(), FfiError> {
     let kind = block.first().copied().ok_or_else(|| bad("empty block"))?;
@@ -166,6 +172,13 @@ pub(crate) fn check_block(path: &str, block: &[f64]) -> Result<(), FfiError> {
         rd.flag()?;
         rd.flag()?;
         return rd.done();
+    }
+    // (the block format's NOW / NOZ markers are +-f64::MAX)
+    if block
+        .iter()
+        .any(|v| v.abs() < f64::MAX && v.abs() >= MAX_BLOCK_VALUE)
+    {
+        return Err(bad("B-rep value in the overflow range"));
     }
     // kinds 0..=3: the topology.vertexuse validator (it builds the export once)
     vu::eval(vu::Op::Export, path, block).map(|_| ())

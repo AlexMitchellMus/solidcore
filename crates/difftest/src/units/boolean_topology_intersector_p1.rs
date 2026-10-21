@@ -4846,7 +4846,7 @@ mod tests {
     use super::*;
     use crate::case::CaseSource;
 
-    /// HANG-46: the `--fuzz 30000` inputs whose surface control point of `1e300` kept
+    /// HANG-29: the `--fuzz 30000` inputs whose surface control point of `1e300` kept
     /// the C++ intersection busy past the timeout, for this unit and `_p2` (which
     /// shares this reader). They cannot be fixtures (a harness error always fails a
     /// case), so this test keeps them: the FFI refuses each before any construction.

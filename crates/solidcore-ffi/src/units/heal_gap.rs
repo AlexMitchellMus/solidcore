@@ -411,6 +411,30 @@ pub fn eval(op: Op, input: &[f64]) -> Result<Vec<f64>, FfiError> {
     raw(op, "", input)
 }
 
+/// Bound (exclusive) on the values of a topology op's B-rep block: from about `1e154`,
+/// where squares overflow, the native topology op does not always return (HANG-29,
+/// `SmCurve::GlobalCoincidenceChecker`: a B-spline control point of `-1e155` or
+/// `-1e300` gave no result in 60 s, while `-1e154`, `-1e160` and `-1e200` returned at
+/// once).
+pub const MAX_TOPO_BLOCK_VALUE: f64 = 1.0e154;
+
+/// The check [`topo`] runs on its B-rep block (the difftest runner's Rust side runs it
+/// too): every value below [`MAX_TOPO_BLOCK_VALUE`] in magnitude, except the `+-f64::MAX`
+/// markers of the block format.
+///
+/// # Errors
+///
+/// [`FfiError::InvalidArgument`] for a value in the overflow range.
+pub fn check_topo_block(block: &[f64]) -> Result<(), FfiError> {
+    if block
+        .iter()
+        .any(|v| v.abs() < f64::MAX && v.abs() >= MAX_TOPO_BLOCK_VALUE)
+    {
+        return Err(bad("B-rep value in the overflow range"));
+    }
+    Ok(())
+}
+
 /// The export of `block` (a B-rep block as [`super::topology_vertexuse`] reads it):
 /// the graph the topology op runs on.
 ///
@@ -430,6 +454,7 @@ pub fn export(path: &str, block: &[f64]) -> Result<Vec<f64>, FfiError> {
 /// [`FfiError::InvalidArgument`] for a malformed input; [`FfiError::Status`] for a shim
 /// failure.
 pub fn topo(path: &str, block: &[f64], args: &[f64]) -> Result<Vec<f64>, FfiError> {
+    check_topo_block(block)?;
     let ex = export(path, block)?;
     let mut rd = Reader::new(args);
     let kind = rd.index(5)?;

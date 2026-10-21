@@ -2006,6 +2006,24 @@ impl UnitDiff for Runner {
 mod tests {
     use super::*;
 
+    /// HANG-29: `--fuzz 30000` fuzz22334, a surface control point of `-1e300` in the
+    /// B-rep block; the healer's caching did not return. Both sides refuse the block
+    /// (the Rust side imports through the same validated export).
+    #[test]
+    fn both_sides_refuse_a_block_in_the_overflow_range() {
+        let recorded: Value = serde_json::from_str(include_str!(
+            "../../tests/fuzz_regressions/heal.heal_data_p2.json"
+        ))
+        .unwrap();
+        for recorded in recorded["cases"].as_array().unwrap() {
+            let i: Inputs = serde_json::from_value(recorded["inputs"].clone()).unwrap();
+            for error in [run_cpp(&i), run_rust(&i)] {
+                let error = error.unwrap_err().to_string();
+                assert!(error.contains("overflow range"), "{}: {error}", recorded["name"]);
+            }
+        }
+    }
+
     /// Object counts the C++ guard refuses are a harness error on the Rust side too,
     /// not a capacity-overflow panic or a 32 GiB object list (issue #181).
     #[test]
