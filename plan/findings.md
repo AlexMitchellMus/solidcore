@@ -12315,8 +12315,9 @@ The audit covers the code merged through main `67e321cd` plus the review fixes
 in this PR. Wrapper constructors and setters check owned curves, surfaces and
 volume chains with a non-recursive walk before
 adding another ownership edge (maximum depth 64, root at depth 0). The base global
-solver limits traversal to 2048 nested calls; the advanced intersector uses the
-same ceiling. Spatial-tree top-box rebuilds are limited to one nested rebuild,
+solver limits traversal to `MAX_SOLVE_DEPTH + 1` nested calls (main later set
+`MAX_SOLVE_DEPTH` to 1000 and checks tree heights up front in `solve_it`; the counter
+covers overrides and direct callers); the advanced intersector uses the same ceiling. Spatial-tree top-box rebuilds are limited to one nested rebuild,
 and tessellation refuses a missing-tree build re-entry. Numeric formulas and
 child visitation order are retained.
 
@@ -12381,6 +12382,27 @@ set to `Stage2A` before the callback, and the nested call passes those props, so
 it skips the re-run. No new curve, surface or volume variant or wrapper
 constructor. No new bound needed; fmt, workspace clippy, 1562 solidcore tests and
 the wasm check pass.
+
+Re-audit through main `7e3f324e` (2026-10-22): 31 PRs, 202 changed kernel files,
+including #267 `blend.fillet_executive_p2`, #363 `topology.brep_p6` (make face
+topology), the #281/#317 co-ports and the #313 surface-dispatch refactor, which adds
+`SurfaceKind::Cone` and threads `Kernel` through evaluation. Main independently
+bounded `SolveBranch` with an up-front tree-height check (`MAX_SOLVE_DEPTH` = 1000).
+The merge keeps it and keeps this audit's per-call counter (it also covers overrides
+and direct callers), allowing `MAX_SOLVE_DEPTH + 1` nested calls so every tree set
+the check accepts still runs. The advanced intersector's cap is now the same. The shared
+nesting walker follows the cone's generator curve; cones are built from parameters
+only, so no constructor check is needed. Main's deep-wrapper evaluation test, which
+built 70-deep STEP and curve-bounded chains, now builds until a constructor refuses
+(at most 64), because such chains can no longer be constructed. No new self-recursion
+was found: the hits in new functions (`Curve::approximate_polar_box`,
+`Curve::is_periodic`) forward to free functions. Validation: fmt, workspace clippy,
+1625 solidcore tests, 38 difftest tests and the wasm check pass locally; C++-feature
+clippy passes, and difftest of the 12 touched units (`geom.global_solver`,
+`intersect.adv_surface_intersector`, `surface.offset_surface`, `surface.surface_p2`,
+`surface.volume_p2`, `curve.offset_curve`, `surface.cone_p1`-`p3`, `geom.tree`,
+`query.tess`, `intersect.topology_solver_p1`) gives 4 passed, 8 partial, 0 failed,
+`max_rel_err` 0 throughout.
 
 The green audit status applies to this merged snapshot. Direct audit dependencies
 `blend.fillet_corner_p2` and `offset.offset_executive_p2` remain unported;
