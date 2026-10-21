@@ -23088,12 +23088,16 @@
       "values_compared": 0
     },
     {
-      "max_rel_err": 8.993477006235843e-14,
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
       "name": "cone_so0",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.edgeuse_p2/upstream_files.json#486 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 15
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -23960,12 +23964,16 @@
       "values_compared": 0
     },
     {
-      "max_rel_err": 8.993477006235843e-14,
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
       "name": "cone_so9",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.edgeuse_p2/upstream_files.json#578 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 15
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -29772,12 +29780,16 @@
       "values_compared": 0
     },
     {
-      "max_rel_err": 6.938897373356713e-15,
+      "deferred": {
+        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
       "name": "sphere_so0",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.edgeuse_p2/upstream_files.json#1246 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 15
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -30644,12 +30656,16 @@
       "values_compared": 0
     },
     {
-      "max_rel_err": 1.533233152603649e-13,
+      "deferred": {
+        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
       "name": "sphere_so9",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.edgeuse_p2/upstream_files.json#1338 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 15
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -34116,12 +34132,16 @@
       "values_compared": 0
     },
     {
-      "max_rel_err": 1.452903815620385e-13,
+      "deferred": {
+        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
       "name": "surf_sphere150_so0",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.edgeuse_p2/upstream_files.json#1702 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 15
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -34988,12 +35008,16 @@
       "values_compared": 0
     },
     {
-      "max_rel_err": 1.7805513589745123e-13,
+      "deferred": {
+        "symbol": "SurfaceKind::Sphere (SmSphere dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
       "name": "surf_sphere150_so9",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.edgeuse_p2/upstream_files.json#1794 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 15
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -40188,12 +40212,16 @@
       "values_compared": 0
     },
     {
-      "max_rel_err": 8.993477006235843e-14,
+      "deferred": {
+        "symbol": "SurfaceKind::Cone (SmCone dispatch)",
+        "unit": "surface.surface_p2"
+      },
+      "max_rel_err": 0.0,
       "name": "cone_vo_so3",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "fixture:fixtures/topology.edgeuse_p2/upstream_files.json#2342 (upstream tests/prog_test/src/smFeatureTest.cpp:63)",
-      "values_compared": 15
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -40480,18 +40508,18 @@
     }
   ],
   "cases_both_errored": 85,
-  "cases_deferred": 932,
+  "cases_deferred": 939,
   "cases_failed": 0,
-  "cases_passed": 3651,
+  "cases_passed": 3644,
   "cases_total": 4583,
   "deferred_by_unit": {
     "intersect.curve_class_p2": 296,
     "intersect.surface_drop_lib_p3": 75,
     "surface.surf_of_extrusion_p2": 162,
-    "surface.surface_p2": 174,
+    "surface.surface_p2": 181,
     "topology.brep_p10": 225
   },
-  "max_rel_err": 1.7805513589745123e-13,
+  "max_rel_err": 0.0,
   "pass": true,
   "rel_tol": 1e-9,
   "seeds": 16,

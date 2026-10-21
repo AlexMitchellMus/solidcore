@@ -59,9 +59,12 @@
 //!   when missing.
 //! - **Approximation work.** The Hermite approximation keeps upstream's depth-first
 //!   span order, but stops with `SM_ERR` after 8192 subdivisions or when the native
-//!   midpoint formula cannot produce a finite, distinct parameter. Upstream's
-//!   natural-interval / 1500 stopping rule permits at most 2047 subdivisions for
-//!   one in-domain interval; far-outside breaks can otherwise require trillions of
+//!   midpoint formula cannot produce a finite, distinct parameter. The subdivision
+//!   count is total across break intervals: upstream's natural-interval / 1500
+//!   stopping rule permits at most 2047 subdivisions for one in-domain interval.
+//!   Across a partition of the natural interval, the total stays below roughly
+//!   2 x 1500 plus the break count, rather than 2047 per break, leaving margin under
+//!   the 8192 cap. Far-outside breaks can otherwise require trillions of
 //!   spans. The bound limits the pending stack and generated polygon growth, not
 //!   the supplied breaks (including duplicates), which are still visited in order.
 //! - `SM_ASSERT`, `WARN` and the `SM_DEBUG_CODE` drawing blocks are not ported;
