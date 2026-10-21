@@ -196,12 +196,13 @@ fn surface_read_from_db(
             "curve.crv_on_surf",
         )),
 
-        SurfaceKind::Cone(_) | SurfaceKind::Sphere(_) | SurfaceKind::SurfOfRevolution(_) => {
-            Err(SolidError::unported(
-                "SmSurface virtuals of an SmSurfOfRevolution",
-                "curve.crv_on_surf",
-            ))
-        }
+        SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
+        | SurfaceKind::SurfOfRevolution(_) => Err(SolidError::unported(
+            "SmSurface virtuals of an SmSurfOfRevolution",
+            "curve.crv_on_surf",
+        )),
         SurfaceKind::OffsetSurface(_) => Err(SolidError::unported(
             "SmSurface virtuals of an SmOffsetSurface",
             "curve.crv_on_surf",

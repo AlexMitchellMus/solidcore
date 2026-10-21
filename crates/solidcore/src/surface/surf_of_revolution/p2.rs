@@ -636,8 +636,10 @@ impl SurfOfRevolution {
                 need_nurb_intersection = more;
                 out = found;
             }
-            // (an SmCylinder is not SmCone_TYPE: the default branch)
-            SurfaceKind::BSpline(_)
+            // (an SmCylinder is not SmCone_TYPE, an SmTorus not SmSurfOfRevolution_TYPE:
+            // the default branch)
+            SurfaceKind::Torus(_)
+            | SurfaceKind::BSpline(_)
             | SurfaceKind::Cone(_)
             | SurfaceKind::CurveBounded(_)
             | SurfaceKind::Step(_)
@@ -707,6 +709,7 @@ impl SurfOfRevolution {
 
             SurfaceKind::Cone(_)
             | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_)
             | SurfaceKind::SurfOfRevolution(_)
             | SurfaceKind::CurveBounded(_)
             | SurfaceKind::Step(_)

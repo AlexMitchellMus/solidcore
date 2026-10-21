@@ -1948,6 +1948,7 @@ impl Surface {
             SurfaceKind::BSpline(b) => b,
             SurfaceKind::Cone(_)
             | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_)
             | SurfaceKind::Plane(_)
             | SurfaceKind::SurfOfRevolution(_)
             | SurfaceKind::CurveBounded(_)

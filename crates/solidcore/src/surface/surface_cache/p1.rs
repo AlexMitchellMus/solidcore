@@ -204,6 +204,7 @@ pub(super) const fn bspline_of(surface: &Surface) -> Option<&BSplineSurface> {
         SurfaceKind::Plane(p) => Some(p.base()),
         SurfaceKind::Cone(s) => Some(s.rev().base()),
         SurfaceKind::Sphere(s) => Some(s.base().base()),
+        SurfaceKind::Torus(s) => Some(s.base().base()),
         SurfaceKind::SurfOfRevolution(s) => Some(s.base()),
         SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
@@ -249,12 +250,13 @@ fn create_iso_parametric_curve(
         // (surface.surf_of_revolution_p1), but it makes an SmCircle in the sweep
         // direction and this cache holds its iso curves as BSplineCurve, which would drop
         // the SmEllipse overrides; wiring it needs Curve storage here.
-        SurfaceKind::Cone(_) | SurfaceKind::Sphere(_) | SurfaceKind::SurfOfRevolution(_) => {
-            Err(SolidError::unported(
-                "SmSurfOfRevolution::CreateIsoParametricCurve",
-                "surface.surface_cache_p1",
-            ))
-        }
+        SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
+        | SurfaceKind::SurfOfRevolution(_) => Err(SolidError::unported(
+            "SmSurfOfRevolution::CreateIsoParametricCurve",
+            "surface.surface_cache_p1",
+        )),
         // the SmSurface body (surface.surface_p5); tolerance 0.0 as upstream's callers
         SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
@@ -300,6 +302,7 @@ pub(super) fn calculate_bounding_box(
         // inherited from SmBSplineSurface: none of its virtual calls is overridden
         SurfaceKind::Cone(s) => s.rev().base().calculate_bounding_box(k, domain, req),
         SurfaceKind::Sphere(s) => s.base().base().calculate_bounding_box(k, domain, req),
+        SurfaceKind::Torus(s) => s.base().base().calculate_bounding_box(k, domain, req),
         SurfaceKind::SurfOfRevolution(s) => s.base().calculate_bounding_box(k, domain, req),
         SurfaceKind::Plane(p) => crate::surface::surface::p1::plane_bounding_box(k, p, domain, req),
         SurfaceKind::CurveBounded(_) | SurfaceKind::Step(_) | SurfaceKind::SrfInVolume(_) => {
@@ -344,6 +347,7 @@ fn is_singularity(k: &Kernel, surface: &Surface, uv: Point2) -> Result<bool> {
         SurfaceKind::Plane(p) => Ok(p.is_singularity().0),
         SurfaceKind::Cone(_)
         | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)

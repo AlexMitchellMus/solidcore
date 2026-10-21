@@ -172,7 +172,7 @@ pub fn calculate_bounding_box(k: &Kernel, b: &Brep, f: FaceId, tight: bool) -> R
 
 /// `pSurface->CalculateBoundingBox(GetUVDomain(), &box)` of a face's surface (expanded by
 /// the zone tolerance, the default): the B-spline override (also that of planes, cones,
-/// spheres and surfaces of revolution) expands its normal box by the face tolerance as its last
+/// spheres, tori and surfaces of revolution) expands its normal box by the face tolerance as its last
 /// step; the other kinds dispatch as is.
 fn surface_box(
     k: &Kernel,
@@ -186,7 +186,8 @@ fn surface_box(
         | SurfaceKind::Plane(_)
         | SurfaceKind::SurfOfRevolution(_)
         | SurfaceKind::Cone(_)
-        | SurfaceKind::Sphere(_) => {
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_) => {
             let mut normal = surface
                 .calculate_bounding_box(k, uv_domain, [true, false, false], false)?
                 .normal_box

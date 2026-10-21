@@ -252,6 +252,7 @@ fn has_b_spline_box(s: &Surface) -> bool {
             | SurfaceKind::SurfOfRevolution(_)
             | SurfaceKind::Cone(_)
             | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_)
     )
 }
 
@@ -273,6 +274,7 @@ fn surface_is_planar(k: &Kernel, b: &Brep, f: FaceId, s: &Surface, tol_3d: f64) 
         SurfaceKind::SurfOfRevolution(r) => Some(r.base()),
         SurfaceKind::Cone(c) => Some(c.rev().base()),
         SurfaceKind::Sphere(s) => Some(s.base().base()),
+        SurfaceKind::Torus(s) => Some(s.base().base()),
         _ => None,
     };
     if let (Some(bs), Some(face_tol)) = (base, owning_face_tolerance(b, f, s)?) {

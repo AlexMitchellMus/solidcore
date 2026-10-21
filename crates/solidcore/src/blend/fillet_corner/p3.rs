@@ -1441,6 +1441,9 @@ impl FilletCorner {
                     SurfaceKind::Sphere(c) => {
                         *c.base.base_mut().out_of_bounds_enabled_mut() = true;
                     }
+                    SurfaceKind::Torus(c) => {
+                        *c.base.base_mut().out_of_bounds_enabled_mut() = true;
+                    }
                     SurfaceKind::CurveBounded(_)
                     | SurfaceKind::Step(_)
                     | SurfaceKind::OffsetSurface(_)

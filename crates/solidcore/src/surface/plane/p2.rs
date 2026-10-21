@@ -1422,8 +1422,10 @@ pub(crate) fn global_surface_intersect(
             core::mem::swap(&mut x.surface1_uv_curves, &mut x.surface2_uv_curves);
             (need_nurb_intersection, out) = (need, x);
         }
-        // (the extrusion special case needs a surface kind that is not ported yet)
-        SurfaceKind::BSpline(_)
+        // (the extrusion special case needs a surface kind that is not ported yet; an
+        // SmTorus has no special case: the default branch)
+        SurfaceKind::Torus(_)
+        | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)

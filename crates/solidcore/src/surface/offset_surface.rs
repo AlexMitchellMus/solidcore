@@ -1780,6 +1780,7 @@ fn check_surface_nesting(surface: &Surface, depth: usize, op: &'static str) -> R
         | SurfaceKind::Plane(_)
         | SurfaceKind::Cone(_)
         | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
         | SurfaceKind::SurfOfRevolution(_) => {}
     }
     Ok(())

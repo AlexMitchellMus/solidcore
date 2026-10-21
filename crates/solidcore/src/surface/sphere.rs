@@ -81,10 +81,10 @@
 //!   kind (plane, cone, sphere, surface of revolution); the fallback
 //!   `SmSurface::GlobalSurfaceIntersect` runs on the [`Surface`] holding the sphere
 //!   ([`Sphere::global_surface_intersect_with`] takes it from the caller;
-//!   [`Sphere::global_surface_intersect`] wraps an unowned copy). `DropPointFast` and
-//!   `TrimWithDomain` through [`SurfaceKind::Sphere`] still return
-//!   [`SolidError::Unported`] (the inherited bodies need the sphere's virtual
-//!   overrides, as for the cone).
+//!   [`Sphere::global_surface_intersect`] wraps an unowned copy). `DropPointFast`
+//!   through [`SurfaceKind::Sphere`] runs the inherited body with the sphere's
+//!   `EvaluateSTEPPoint`; `TrimWithDomain` still returns [`SolidError::Unported`] (the
+//!   inherited body needs the sphere's virtual overrides, as for the cone).
 //! - **Cone intersection.** The cone's iso circle through a point
 //!   (`SmCone::CreateIsoCircleFromPoint`) is [`Cone::create_iso_circle_from_point`];
 //!   the cone is taken without owner (its zone tolerance finds no face).
@@ -420,6 +420,11 @@ impl Sphere {
     #[must_use]
     pub const fn base(&self) -> &SurfOfRevolution {
         &self.base
+    }
+
+    /// The `SmSurfOfRevolution` base object, mutable.
+    pub fn base_mut(&mut self) -> &mut SurfOfRevolution {
+        &mut self.base
     }
 
     /// The radius (`GetRadius`).
@@ -937,6 +942,7 @@ impl Sphere {
             }
             SurfaceKind::BSpline(_)
             | SurfaceKind::Cone(_)
+            | SurfaceKind::Torus(_)
             | SurfaceKind::CurveBounded(_)
             | SurfaceKind::Step(_)
             | SurfaceKind::SrfInVolume(_)

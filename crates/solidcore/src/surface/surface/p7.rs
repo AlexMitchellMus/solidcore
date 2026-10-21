@@ -773,12 +773,13 @@ impl Surface {
         v_side: Side,
     ) -> Result<Vec3> {
         match self.kind() {
-            SurfaceKind::Cone(_) => base_evaluate_normal(k, self, uv, u_side, v_side),
             // SmSphere::EvaluateNormal (the side flags are not used)
             SurfaceKind::Sphere(s) => s.evaluate_normal(uv),
-            SurfaceKind::BSpline(_) | SurfaceKind::SurfOfRevolution(_) | SurfaceKind::Step(_) => {
-                base_evaluate_normal(k, self, uv, u_side, v_side)
-            }
+            SurfaceKind::Cone(_)
+            | SurfaceKind::Torus(_)
+            | SurfaceKind::BSpline(_)
+            | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::Step(_) => base_evaluate_normal(k, self, uv, u_side, v_side),
             SurfaceKind::CurveBounded(s) => s.evaluate_normal(k, uv, u_side, v_side),
             SurfaceKind::SrfInVolume(s) => s.evaluate_normal(k, uv, u_side, v_side),
             SurfaceKind::Plane(p) => Ok(p.evaluate_normal()),
@@ -813,6 +814,7 @@ impl Surface {
             }
 
             SurfaceKind::Cone(_)
+            | SurfaceKind::Torus(_)
             | SurfaceKind::BSpline(_)
             | SurfaceKind::CurveBounded(_)
             | SurfaceKind::SurfOfRevolution(_)
@@ -861,6 +863,9 @@ impl Surface {
                 Ok(planar_of(k, s.rev().base(), &self.natural_uv_domain())?.is_planar(tol_3d))
             }
             SurfaceKind::Sphere(s) => {
+                Ok(planar_of(k, s.base().base(), &self.natural_uv_domain())?.is_planar(tol_3d))
+            }
+            SurfaceKind::Torus(s) => {
                 Ok(planar_of(k, s.base().base(), &self.natural_uv_domain())?.is_planar(tol_3d))
             }
             SurfaceKind::SurfOfRevolution(s) => {

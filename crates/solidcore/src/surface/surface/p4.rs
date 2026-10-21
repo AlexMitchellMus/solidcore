@@ -40,7 +40,8 @@
 //! - **Seam curves of planes.** `SmPlane` is an `SmBSplineSurface` upstream, so with
 //!   `known_closed` the C++ builds a seam curve for it; [`Surface::create_seam_curve`]
 //!   returns `InvalidInput` for a plane (its base is not a stored B-spline surface here),
-//!   and `Unported` (`curve.crv_on_surf` dispatch gap) for an `SmSurfOfRevolution`.
+//!   and `Unported` (`curve.crv_on_surf` dispatch gap) for an `SmSurfOfRevolution`,
+//!   `SmSphere` or `SmTorus`.
 //! - **Owner checks.** Only an owner of type `SmFace` (surface) or `SmEdge` (curve) takes
 //!   the topology path, as upstream's `SM_CAST_PTR`.
 //! - **Co-ported callees.** `smsurf_IsPointOnNormal` and `SmSurfaceEval::EvalNormal` are
@@ -1133,7 +1134,7 @@ impl Surface {
     /// # Errors
     ///
     /// Those of [`Surface::is_closed`] and of the curve construction;
-    /// [`SolidError::Unported`] for a closed surface of revolution (the dispatch gap of
+    /// [`SolidError::Unported`] for a closed surface of revolution, sphere or torus (the dispatch gap of
     /// a [`CrvOnSurf`] over a non-B-spline surface); [`SolidError::InvalidInput`] for
     /// any other closed surface that is not a B-spline surface (a [`CrvOnSurf`] lives
     /// on a [`BSplineSurface`]).
@@ -1168,8 +1169,8 @@ impl Surface {
         };
         let base = match self.kind() {
             SurfaceKind::BSpline(base) => base,
-            SurfaceKind::SurfOfRevolution(_) => {
-                // DISPATCH GAP: SmCrvOnSurf over an SmSurfOfRevolution (the ported
+            SurfaceKind::SurfOfRevolution(_) | SurfaceKind::Sphere(_) | SurfaceKind::Torus(_) => {
+                // DISPATCH GAP: SmCrvOnSurf over an SmSurfOfRevolution (or a sphere or torus) (the ported
                 // CrvOnSurf holds an SmBSplineSurface and would drop the revolution's
                 // evaluation overrides), as in surface::surface::p11.
                 // UNPORTED(curve.crv_on_surf): SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)
