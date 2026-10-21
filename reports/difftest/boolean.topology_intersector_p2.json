@@ -1641,8 +1641,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "gen0174",
@@ -2597,8 +2597,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "gen0282",
@@ -3173,8 +3173,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "gen0345",
@@ -3381,8 +3381,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "gen0369",
@@ -4149,8 +4149,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "gen0456",
@@ -4237,8 +4237,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "gen0466",
@@ -4865,8 +4865,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::CurveOnClassify",
+        "unit": "query.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0541",
@@ -5325,8 +5325,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "gen0594",
@@ -5725,8 +5725,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "gen0640",
@@ -6161,8 +6161,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "gen0690",
@@ -6481,8 +6481,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::CurveOnClassify",
+        "unit": "query.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0727",
@@ -6577,8 +6577,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "gen0736",
@@ -7549,8 +7549,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::CurveOnClassify",
+        "unit": "query.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "close_loop_crossed_mates",
@@ -7561,8 +7561,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::CurveOnClassify",
+        "unit": "query.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "close_loop_other_side",
@@ -7901,8 +7901,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::CurveOnClassify",
+        "unit": "query.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "close_loop_gen40",
@@ -7975,9 +7975,10 @@
   "cases_total": 910,
   "deferred_by_unit": {
     "geom.tol": 11,
-    "intersect.curve_class_p2": 15,
+    "query.face_p2": 5,
     "topology.brep_p1": 4,
     "topology.brep_p3": 8,
+    "topology.edge": 10,
     "topology.face_p2": 90,
     "topology.face_p3": 12,
     "topology.face_p4": 31

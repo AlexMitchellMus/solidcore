@@ -801,7 +801,11 @@ const fn fid(h: H) -> FaceId {
 }
 
 impl Two {
-    pub(crate) fn new(a: Brep, b: Option<Brep>) -> Self {
+    pub(crate) fn new(mut a: Brep, mut b: Option<Brep>) -> Self {
+        own_geometry(&mut a, 0);
+        if let Some(b) = b.as_mut() {
+            own_geometry(b, 1);
+        }
         let env = [NotifyEnv::new(Some(&a)), NotifyEnv::new(b.as_ref())];
         Self {
             breps: [Some(a), b],
@@ -1707,6 +1711,27 @@ fn glue_key_of(e: EntityRef) -> ObjectRef {
     ObjectRef {
         type_code,
         key: ObjectKey(key),
+    }
+}
+
+/// Gives the imported B-rep in operand `slot` the geometry owners a native B-rep has
+/// (each curve its edge and the B-rep, each surface its face), under the identities the
+/// B-rep cache is built with ([`query_key`]): the cache indexes only owned geometry.
+fn own_geometry(b: &mut Brep, slot: usize) {
+    let edges: Vec<_> = b.edges().ids().collect();
+    for e in edges {
+        if let Some(curve) = b.edge_mut(e).ok().and_then(|x| x.curve.as_mut()) {
+            let _ = curve.set_owner(
+                Some(query_key(slot, CacheObject::Edge(e))),
+                Some(query_key(slot, CacheObject::Brep)),
+            );
+        }
+    }
+    let faces: Vec<_> = b.faces().ids().collect();
+    for f in faces {
+        if let Some(surface) = b.face_mut(f).ok().and_then(|x| x.surface.as_mut()) {
+            let _ = surface.set_owner(Some(query_key(slot, CacheObject::Face(f))));
+        }
     }
 }
 

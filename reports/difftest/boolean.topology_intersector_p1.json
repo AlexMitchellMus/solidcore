@@ -4240,8 +4240,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::CurveOnClassify",
+        "unit": "query.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0490",
@@ -7018,8 +7018,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmFace::CurveOnClassify",
+        "unit": "query.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "files_manager_shell_vertices",
@@ -7092,8 +7092,8 @@
   "cases_total": 830,
   "deferred_by_unit": {
     "geom.tol": 2,
-    "intersect.curve_class_p2": 2,
     "intersect.surface_drop_lib_p3": 1,
+    "query.face_p2": 2,
     "topology.face_p2": 94,
     "topology.face_p4": 11
   },
