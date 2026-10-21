@@ -1886,6 +1886,10 @@ impl Surface {
                     Err(_) => return Err(SolidError::null_pointer(OP_LIFT)),
                 };
 
+                // the solutions of sm_IntersectAndSplit name crUVCurveToLift (the
+                // curve tree's owner), whose natural interval IdenticalSolutions reads
+                let lift_handle = BoundaryCurveHandle(0, uv_curve.natural_interval());
+
                 // for every U knot (SER: checked)
                 let (knots, _) = self.knots(SurfParamType::U, None)?;
                 let u_conts = cache.u_continuities();
@@ -1897,12 +1901,13 @@ impl Surface {
                     {
                         // split the UVcurve at the Surface discontinuity (SER: checked)
                         let knot = *knots.get(iu).ok_or(SolidError::sm_err(OP_LIFT))?;
-                        intersect_and_split(
+                        intersect_and_split::<BoundaryCurveHandle>(
                             k,
                             uv_curve,
                             interval,
                             Point3::new(knot, 0.0, 0.0),
                             Vec3::new(1.0, 0.0, 0.0),
+                            Some(lift_handle),
                             &mut segments,
                         )?;
                     }
@@ -1919,12 +1924,13 @@ impl Surface {
                     {
                         // (SER: checked)
                         let knot = *knots.get(iv).ok_or(SolidError::sm_err(OP_LIFT))?;
-                        intersect_and_split(
+                        intersect_and_split::<BoundaryCurveHandle>(
                             k,
                             uv_curve,
                             interval,
                             Point3::new(0.0, knot, 0.0),
                             Vec3::new(0.0, 1.0, 0.0),
+                            Some(lift_handle),
                             &mut segments,
                         )?;
                     }
