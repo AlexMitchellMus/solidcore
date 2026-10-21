@@ -16,7 +16,7 @@ export RUSTC_WRAPPER=sccache              # optional: also caches the ~200 shim 
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --list
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --unit harness.selftest
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --unit harness.selftest --perturb   # sensitivity check
-nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --green          # every status=green|partial unit
+nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --green          # every status=green|partial unit (~35 min on 16 threads; C++ topology units dominate)
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --green --jobs 4 # same, 4 units at a time (below)
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --status-of nlib.knots   # prints green|partial|fail
 nice -n 10 cargo test -p difftest --features cpp                     # harness self-tests
@@ -37,6 +37,7 @@ nice -n 10 cargo test -p difftest --features cpp                     # harness s
 | `--fuzz N` | with `--unit`: probe the unit's FFI guard with N mutated cases, each run in a child process (below). No report written. |
 | `--fuzz-out D` | where `--fuzz` writes failing inputs (default `bin/fuzz/`; files go to `D/<unit>/`) |
 | `--ssi-corpus [--tol T] [--jobs N] [glob]` | score both engines against the SSI corpus (see [below](#--ssi-corpus-exact-ground-truth-ssi-corpus)); not a gate |
+| `--solidcraft-cases [glob]` | score the Rust port on SolidCraft's whole-operation regression cases (see [below](#--solidcraft-cases-solidcraft-regression-cases)); not a gate, no `cpp` feature needed |
 
 Exit status: `0` no failures (deferred cases are not failures), `1` any
 failure, `2` usage or setup error. Output: one summary line per unit,
@@ -50,6 +51,28 @@ then the first few failing cases and `reports/difftest/<unit>.json`.
 at least one float, integer or topology entry and those that compared nothing
 (both sides returned the same error, or empty outputs). A unit whose passes are
 mostly `no_values` proves little: make the generator reach the success path.
+
+**Timing** (stderr, one line per unit; diagnostic only, not in the report):
+
+```
+TIME <unit> n=<cases> cases=<s> cpp=<s> rust=<s> compare=<s> ratio=<rust/cpp> slowest_rust=<case>:<s>
+```
+
+**Output digest** (opt-in): with `DIFFTEST_RUST_DIGEST=<dir>` set, each unit
+writes `<dir>/<unit>.digest` with one `<case>\t<fnv1a64>` line per case, the
+hash of the Rust output's `Debug` form (f64 `Debug` is the shortest round-trip
+form). Equal digest files from two builds mean bit-identical Rust outputs, which
+is how a refactor or optimisation proves it changed no value.
+
+**Profiling without perf/sudo**: `scripts/perf/sampler.py` (ptrace sampler,
+frame-pointer unwinding) and `scripts/perf/analyze.py` (self/inclusive tables):
+
+```sh
+CARGO_TARGET_DIR=bin/prof CARGO_PROFILE_DIFFTEST_DEBUG=line-tables-only \
+RUSTFLAGS="-C force-frame-pointers=yes" cargo build --profile difftest -p difftest --features cpp
+python3 scripts/perf/sampler.py out.json 2 -- bin/prof/difftest/difftest --unit <u> --no-report
+python3 scripts/perf/analyze.py out.json --focus solidcore --libc
+```
 
 **Perturbation** (`--perturb`): per case, in order of preference: the error
 string if the Rust side errored (gets `~perturbed` appended); else the first
@@ -131,6 +154,49 @@ Rust port), then copy the case into `fixtures/<unit>/` as a regression case
 (fixture paths from `$upstream_file` appear expanded). Exit status `1` on any
 failure. A `differs` case is printed as a `note (differs)` line with its file and
 is written the same way (so it can be re-run), but does not fail the run.
+
+## Fuzzing the `.smb` readers (`examples/reader_fuzz.rs`)
+
+A mutation fuzzer for the Rust database readers only (no C++, not part of the
+gate). Build and run it with the difftest profile, so arithmetic overflow
+panics and is reported. Unix-only (the code is in `examples/reader_fuzz/fuzz.rs`;
+on other platforms the example only prints a notice and exits 2):
+
+```sh
+X="nice -n 10 cargo run --profile difftest -p difftest --example reader_fuzz --"
+$X sweep --seeds-dir upstream/TestFiles/pt_TestFiles --cases 2000 --jobs 4 \
+    --out reader-fuzz-out --tag read [--stage read|topo|full|persist] [--filter <substr>]
+$X repro --seed <seed file> --case <i> [--write out.smb]     # rebuild one case
+$X run --input f.smb [--binary] [--stage ..] [--stack-kb N]  # run one file in-process
+$X minimize --input f.smb [--binary] --expect <verdict prefix> [--output f.min]
+$X stats --seeds-dir <dir> --cases N [--stage ..]            # error-site histogram
+```
+
+* **Stages.** `read`: `BrepData::read_from_file`. `full`:
+  `topology::brep::p7::read_from_file`. `topo`: read, then
+  `p10::make_topology_from_data` without analytics, healing or UV checks.
+  `persist`: `BrepData::read_from_db` with persisted attributes and a small
+  attribute table. `selftest` checks that every bad verdict is detected.
+* **Cases.** Case `i` of a seed applies 1 to 5 mutations (bit and byte flips,
+  truncation, integer and float token swaps, line and section edits, type-code
+  swaps, nesting wrappers, raw 8-byte overwrites for binary files) chosen by
+  splitmix64 seeded from the seed's relative path and `i`, so `repro` rebuilds
+  any case. A seed under a directory named `corpus-bin` is read as binary.
+* **Isolation.** Batches (`--batch`, default 250) run in child processes under
+  `ulimit -v` (`--mem-mb`, default 3072), one thread per case with a fixed
+  stack (`--stack-kb`, default 8192), with a per-case timeout (`--timeout`,
+  default 20 s).
+* **Verdicts.** `ok`, `err`, `unported` are fine; `panic`, `oom`,
+  `stack-overflow`, `crash` and `timeout` are bad. Each bad case is written to
+  `<out>/crashes/` (mutated file plus a `.txt` with seed, case and mutations);
+  each sweep writes `<tag>-summary.txt`, `<tag>-findings.tsv` and
+  `<tag>-per-seed.tsv`. Exit status `1` on any bad verdict.
+* `stats` runs in-process (use it only after a clean sweep) and counts the
+  error site each case ended at, as a coverage proxy.
+* Binary and persisted-attribute seeds must be written by upstream
+  (`SmBrepData::WriteToFile(SM_BINARY)`, `WriteToDB(.., bPersistAttribs)`).
+  The tool that does this is not in the repo; it would go in `harness/cpp/`
+  as a small program (or shim functions) linked against the reference build.
 
 ## Deferred cases, `partial` units
 
@@ -420,6 +486,48 @@ errors (unreadable case, report not writable); verdicts never fail the run.
 
   grades the same raw files (without `SSI_SC_RAW` it reruns the shim per case).
 
+## `--solidcraft-cases`: SolidCraft regression cases
+
+A correctness report, separate from the gate like `--ssi-corpus`: it never changes a
+unit's status and verdicts never fail the run. `fixtures/solidcraft/` holds one file per
+SolidCraft issue that was found and fixed on SolidCraft's earlier kernel (the issue, the
+fixing PR and the test the cases come from). Each case is a list of `SM_API`-level steps
+and the values its `result` body must have, known in closed form, so the bugs stay
+fixed once the operations run end to end here. Geometry and tolerances are those of the
+SolidCraft PR's own test wherever it has one.
+
+```sh
+nice -n 10 cargo run -p difftest -- --solidcraft-cases                 # all cases (Rust only)
+nice -n 10 cargo run -p difftest -- --solidcraft-cases '3526-*'        # ids (<file stem>/<name>) matching a glob
+```
+
+* **Steps** (`"op"`): `box`, `sphere`, `cylinder` (`axis`, default +Z), `union`,
+  `difference` (optional `pattern`: the tool cut once per grid position, one cut after
+  the other), `intersection`, `fillet` (edges by a point on each), `offset_faces` (faces
+  by a point on each). Each writes the body `id`; the last writes `result`.
+* **Expectations** (`expect`): `lumps` (bounded regions; `0` = nothing left), `volume`
+  (`value`, absolute `tol`, the `formula` it came from), `cylinder_faces_max`.
+* **Verdicts**: `PASS`, `FAIL`, `UNCHECKED` (no check failed but one cannot be measured
+  yet: `cylinder_faces_max` until solidcore has a cylinder surface kind), `ERROR` (a step
+  returned an error other than `Unported`), `DEFERRED`. A step that reaches unported code
+  defers the case on the unit in its `SolidError::Unported`; `fillet` has no Rust
+  `SmApiFilletEdges` yet and defers on `blend.fillet_executive_p1`; `offset_faces` defers
+  on `no SM_API entry point`, since `SM_API` only offsets or shells whole bodies
+  (`SmApiOffsetBrepFull`, `SmApiShellBrepFull`).
+* **Engines.** Rust only for now. A C++ engine (a shim running the same steps through
+  `SM_API`) would show which of these bugs upstream SMLib has.
+* **Output.** One line per case, then
+
+  ```
+  SOLIDCRAFT-CASES rust: PASS=… FAIL=… UNCHECKED=… ERROR=… DEFERRED=… (cases=…)
+  SOLIDCRAFT-CASES rust: blocked_by=<unit>(<cases>),…
+  ```
+
+  and `reports/solidcraft-cases.json` (`reports/solidcraft-cases_<glob>.json` for a
+  glob): per case its source links, verdict, deferral, measured values and checks.
+* `cargo test -p difftest --lib solidcraft` checks that every case file loads, every
+  case runs to a verdict, and every deferral names a plan unit.
+
 ## Notes
 
 * Cases run sequentially in one process: the C++ kernel has global state. A
@@ -427,7 +535,7 @@ errors (unreadable case, report not writable); verdicts never fail the run.
   its cases in child processes instead).
 * Rust panics in a runner are caught and reported as a failing case.
 * `solidcore-ffi` without feature `cpp` is an empty crate that builds for
-  `wasm32-unknown-unknown`; the difftest binary refuses to run without `cpp`.
+  `wasm32-unknown-unknown`; the difftest binary refuses to run without `cpp`, except for `--solidcraft-cases` (Rust only).
 * Debugging: the binary is `bin/debug/difftest`; set breakpoints with
   mcp-debugger (the C++ kernel is built with `-g`).
 * Reports: `reports/difftest/<unit>.json` — sorted keys, no timestamps,

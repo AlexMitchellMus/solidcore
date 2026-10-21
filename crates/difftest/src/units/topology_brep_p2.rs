@@ -16,12 +16,6 @@
 //! `Notify` is compared without it. `DeleteStaleCaches` first seeds trimmed-surface
 //! caches by face-index masks on both sides (C++: `SmCacheMgr`; Rust: the caller-held
 //! map) and compares which survive.
-//!
-//! `MergeCurvesOnSurface` classifies through [`MergeObjects`], which names the case's
-//! curves only: every face, edge and vertex is one placeholder handle without
-//! geometry. A classification that needs such an object's geometry (reachable since
-//! part 4's `ReSet` is wired to part 2) defers under `harness:merge-objects`, a gap of
-//! this runner, not of the port.
 
 use std::collections::BTreeMap;
 
@@ -80,10 +74,6 @@ const TYPES: [i64; 10] = [
     16012, 16013, 16022, 16002, 16004, 16003, 16005, 16016, 16006, 16021,
 ];
 const BREP_TYPE: i64 = 16011;
-
-/// The deferral label of a `Merge` case whose classification needs a topology object
-/// [`MergeObjects`] cannot name.
-const HARNESS_MERGE_OBJECTS: &str = "harness:merge-objects";
 
 // ---- inputs -----------------------------------------------------------------------------
 
@@ -975,14 +965,18 @@ fn merge_rust(
                 SolidError::Upstream { code, .. } => {
                     Ok(Output::new().values("out", vec![0.0, f64::from(code), 0.0, 0.0]))
                 }
-                // a classification object MergeObjects has no geometry for
-                SolidError::InvalidInput {
-                    reason: "classification object handle does not resolve",
-                    ..
-                } => Ok(Output::deferred(
-                    HARNESS_MERGE_OBJECTS,
-                    "MergeObjects topology handles",
-                )),
+                // CurveOnClassify reached the face's topology through `MergeObjects`, which
+                // resolves only the case's curves: `merge_curves_on_surface` holds the
+                // B-rep mutably, so no adapter can hand the classification its topology
+                // (ClassGeometry::topology_entity) yet
+                SolidError::InvalidInput { operation, .. }
+                    if operation.starts_with("intersect::point_class") =>
+                {
+                    Ok(Output::deferred(
+                        "topology.brep_p2",
+                        "MergeCurvesOnSurface: topology handles of the merged B-rep",
+                    ))
+                }
                 other => Err(harness(format!("rust: {other}"))),
             },
         },

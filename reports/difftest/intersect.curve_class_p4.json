@@ -487,8 +487,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0053",
@@ -855,8 +855,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0093",
@@ -915,8 +915,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0099",
@@ -975,8 +975,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0106",
@@ -1427,8 +1427,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0155",
@@ -1667,8 +1667,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0183",
@@ -1719,8 +1719,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0189",
@@ -1751,8 +1751,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0192",
@@ -2215,8 +2215,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0243",
@@ -2239,8 +2239,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0245",
@@ -2251,8 +2251,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0246",
@@ -2343,8 +2343,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0256",
@@ -2383,8 +2383,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0260",
@@ -2839,8 +2839,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0309",
@@ -2995,8 +2995,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0325",
@@ -3319,8 +3319,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0360",
@@ -3363,8 +3363,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0365",
@@ -3671,8 +3671,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0399",
@@ -3703,8 +3703,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0402",
@@ -4175,8 +4175,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0454",
@@ -4319,8 +4319,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0468",
@@ -4514,16 +4514,12 @@
       "values_compared": 2651
     },
     {
-      "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
-      },
       "max_rel_err": 0.0,
       "name": "gen0491",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12816356984701947928",
-      "values_compared": 0
+      "values_compared": 3221
     },
     {
       "deferred": {
@@ -5175,8 +5171,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0562",
@@ -5671,8 +5667,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0614",
@@ -5771,8 +5767,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0625",
@@ -5811,8 +5807,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0629",
@@ -5955,8 +5951,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0646",
@@ -6407,8 +6403,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0694",
@@ -6839,8 +6835,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0741",
@@ -6859,8 +6855,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0743",
@@ -7055,8 +7051,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0765",
@@ -7199,8 +7195,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0780",
@@ -7263,8 +7259,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0787",
@@ -8219,8 +8215,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0890",
@@ -8395,8 +8391,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0908",
@@ -8431,8 +8427,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0912",
@@ -8883,8 +8879,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0961",
@@ -9019,8 +9015,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0977",
@@ -9179,8 +9175,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0994",
@@ -9315,8 +9311,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1009",
@@ -9483,8 +9479,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1027",
@@ -9687,8 +9683,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1049",
@@ -9815,8 +9811,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1063",
@@ -9927,8 +9923,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1074",
@@ -9991,8 +9987,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1081",
@@ -10103,8 +10099,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1093",
@@ -10575,8 +10571,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1147",
@@ -10795,8 +10791,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1170",
@@ -11043,8 +11039,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1198",
@@ -11255,8 +11251,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1221",
@@ -11487,8 +11483,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1246",
@@ -11647,8 +11643,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1264",
@@ -11931,8 +11927,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1294",
@@ -12047,8 +12043,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1307",
@@ -12379,8 +12375,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1343",
@@ -12507,8 +12503,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1357",
@@ -12519,8 +12515,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1358",
@@ -12567,8 +12563,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1363",
@@ -13127,8 +13123,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1423",
@@ -13179,8 +13175,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1429",
@@ -13223,8 +13219,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1433",
@@ -13339,8 +13335,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1445",
@@ -13411,8 +13407,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1452",
@@ -13447,8 +13443,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1456",
@@ -13495,8 +13491,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1461",
@@ -13515,8 +13511,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1463",
@@ -13535,8 +13531,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1465",
@@ -13979,8 +13975,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1514",
@@ -14315,8 +14311,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1553",
@@ -15327,8 +15323,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1666",
@@ -15383,8 +15379,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1672",
@@ -16655,8 +16651,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1810",
@@ -16955,8 +16951,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1842",
@@ -17055,8 +17051,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1853",
@@ -17115,8 +17111,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1859",
@@ -17635,8 +17631,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1917",
@@ -17703,8 +17699,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1924",
@@ -18003,8 +17999,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen1956",
@@ -18791,8 +18787,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2045",
@@ -18867,8 +18863,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2053",
@@ -19423,8 +19419,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2114",
@@ -19507,8 +19503,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2123",
@@ -19627,8 +19623,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2134",
@@ -20103,8 +20099,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2186",
@@ -20383,8 +20379,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2215",
@@ -20454,16 +20450,12 @@
       "values_compared": 3900
     },
     {
-      "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
-      },
       "max_rel_err": 0.0,
       "name": "gen2222",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12816356984701949659",
-      "values_compared": 0
+      "values_compared": 30640
     },
     {
       "max_rel_err": 0.0,
@@ -20855,8 +20847,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2264",
@@ -20991,8 +20983,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2279",
@@ -21099,8 +21091,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2291",
@@ -21243,8 +21235,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2306",
@@ -21391,8 +21383,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2320",
@@ -21475,8 +21467,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2329",
@@ -21643,8 +21635,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2346",
@@ -21751,8 +21743,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2358",
@@ -21851,8 +21843,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2368",
@@ -22071,8 +22063,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2392",
@@ -22139,8 +22131,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2399",
@@ -22207,8 +22199,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2406",
@@ -22339,8 +22331,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2420",
@@ -22383,8 +22375,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2424",
@@ -22431,8 +22423,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2429",
@@ -22683,8 +22675,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2455",
@@ -22791,8 +22783,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2466",
@@ -22803,8 +22795,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2467",
@@ -22903,8 +22895,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2477",
@@ -23091,8 +23083,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2496",
@@ -23143,8 +23135,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2501",
@@ -23379,8 +23371,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2529",
@@ -23479,8 +23471,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2540",
@@ -23591,8 +23583,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2553",
@@ -23639,8 +23631,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2558",
@@ -23807,8 +23799,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2577",
@@ -24279,8 +24271,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2629",
@@ -24487,8 +24479,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2651",
@@ -24779,8 +24771,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2684",
@@ -24963,8 +24955,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2703",
@@ -25263,8 +25255,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2734",
@@ -25623,8 +25615,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2773",
@@ -25787,8 +25779,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2791",
@@ -26259,8 +26251,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2841",
@@ -26303,8 +26295,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2845",
@@ -26343,8 +26335,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2849",
@@ -26355,8 +26347,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2850",
@@ -26375,8 +26367,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2852",
@@ -26423,8 +26415,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2857",
@@ -26547,8 +26539,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2871",
@@ -26659,8 +26651,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::IsConnectedTo",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2883",
@@ -26943,8 +26935,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmVertex::IsConnectedTo",
-        "unit": "topology.vertex"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2913",
@@ -27711,8 +27703,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen2997",
@@ -27775,8 +27767,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_unit_plane_edge_min",
@@ -27787,8 +27779,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_unit_plane_edge_max",
@@ -27891,8 +27883,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_unit_cylinder_edge_min",
@@ -27903,8 +27895,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_unit_cylinder_edge_max",
@@ -27999,8 +27991,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_unit_half_cylinder_edge_min",
@@ -28011,8 +28003,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_unit_half_cylinder_edge_max",
@@ -28375,8 +28367,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_huge_plane_edge_min",
@@ -28387,8 +28379,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_huge_plane_edge_max",
@@ -28487,8 +28479,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_huge_cylinder_edge_min",
@@ -28499,8 +28491,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_huge_cylinder_edge_max",
@@ -28591,8 +28583,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_huge_half_cylinder_edge_min",
@@ -28603,8 +28595,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_huge_half_cylinder_edge_max",
@@ -28959,8 +28951,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_tiny_plane_edge_min",
@@ -28971,8 +28963,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_tiny_plane_edge_max",
@@ -29075,8 +29067,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_tiny_cylinder_edge_min",
@@ -29087,8 +29079,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_tiny_cylinder_edge_max",
@@ -29183,8 +29175,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_tiny_half_cylinder_edge_min",
@@ -29195,8 +29187,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmEdge::GetCurve",
-        "unit": "topology.edge"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "edge_ivl_bound_tiny_half_cylinder_edge_max",
@@ -29527,15 +29519,13 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 979,
+  "cases_deferred": 977,
   "cases_failed": 0,
-  "cases_passed": 2222,
+  "cases_passed": 2224,
   "cases_total": 3201,
   "deferred_by_unit": {
-    "topology.edge": 90,
-    "topology.face_p2": 421,
-    "topology.face_p4": 411,
-    "topology.vertex": 57
+    "topology.face_p2": 566,
+    "topology.face_p4": 411
   },
   "max_rel_err": 0.0,
   "pass": true,

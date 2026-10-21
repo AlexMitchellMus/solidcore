@@ -59,11 +59,13 @@
 //!   `pbOptCrvOnSurf` without UV curves (upstream loops over a null array).
 //! - **Unported callees** return [`SolidError::Unported`]: `MakeWireEdge`,
 //!   `MakeWireEdgeVertex` (`topology.brep_p3`); `DeleteEdge` (`topology.brep_p4`);
-//!   `SmFace::GetBrep`, `GetEdges`
-//!   (`topology.face_p4`); `SmMerge` (`boolean.merge_p2`); the curve constructor of
+//!   the curve constructor of
 //!   `SmCurveClassification` (`intersect.curve_class_p4`), which
 //!   `MergeSelfIntersectionCurves` reaches first. `GlueVertices` calls
-//!   `topology.brep_p5` with the caller's notification environment. Its classification of a UV curve
+//!   `topology.brep_p5` with the caller's notification environment. `CopyFaces` with the
+//!   merge builds `boolean.merge_p2`'s merge and calls its `MakeFaceuse` (so it takes the
+//!   kernel mutably, for the context's `DoingBoolean`); its copies are notified in `env`'s
+//!   one identity space. Its classification of a UV curve
 //!   against the faces and the `SetCurve` + `MergeIntervals` that follows are two stubs
 //!   (`classify_on_faces`, `set_curve_and_merge`) over a stand-in interval type; the
 //!   upstream interval loop around them is ported (`GetSize() != 1` skips before the
@@ -74,10 +76,11 @@
 //!   `topology.brep_p10`'s (`ReadFromFile` takes that unit's [`TopologyEnv`]).
 //!   `GetInfiniteRegion` is the inline read [`Brep::infinite_region`], and the glue's
 //!   removal of an emptied region walks `topology.brep_p1`'s region list.
-//!   That `MakeFaceTopology` names the face for its surface's owner before the face
-//!   exists, so it gets the key `this_face` gives the next face id (arenas only append);
-//!   it builds the face on a copy of the surface, which `MakeFace` then replaces with
-//!   its own (upstream: one shared surface whose owner `MakeFace` restores).
+//!   `MakeFaceTopology` names the face by the notification environment's identity
+//!   and builds it on a copy of the surface (with no surface identity: its owner
+//!   changes are not notified), which `MakeFace` then replaces with its own
+//!   (upstream: one shared surface whose owner `MakeFace` restores). It claims its
+//!   marks through a fresh [`Marks`] record per call, as each call takes a new mark.
 //! - **`MakeFace`** returns nothing when `MakeFaceTopology` fails; upstream still hands
 //!   back the region and shell it may have made (`MakeFaceWithCurves` warns about it).
 //! - **`GlueEdgesGeneral`**: the arena cannot share one curve between two edges, so
@@ -87,6 +90,9 @@
 //!   it from `m_pEdgeListHead`).
 //! - **Bounds.** No recursion; every loop is over input arrays or B-rep lists.
 
+use crate::boolean::merge::p1::{MergeState, VertexCopy};
+use crate::boolean::merge::p2::{make_faceuse, MergeOperand, TopologyCopy};
+use crate::boolean::topology_intersector::p1::{Relations, TopologyIntersector};
 use crate::curve::crv_on_surf::CrvOnSurf;
 use crate::curve::curve::p2::CurveKind;
 use crate::curve::curve::Curve;
@@ -98,7 +104,7 @@ use crate::geom::tools::{
     find_coincident_edge, find_first_vertex_within_tol_to_pnt, CoincidentEdgeQuery,
 };
 use crate::kernel::Kernel;
-use crate::math::{Point3, EFF_ZERO, EFF_ZERO_DEG};
+use crate::math::{Point3, EFF_ZERO, EFF_ZERO_DEG, PI};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_curve_n_lib::InValueType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
@@ -353,28 +359,84 @@ fn face_create_uv_trim_curves(
     .map(|_| ())
 }
 
-/// `pFace->GetBrep() == this`.
-fn face_in_brep(_b: &Brep, _f: FaceId) -> Result<bool> {
-    // UNPORTED(topology.face_p4): SmFace::GetBrep
-    Err(SolidError::unported("SmFace::GetBrep", "topology.face_p4"))
+/// `pFace->GetBrep() == this` (unit `topology.face_p4`): a face of this arena whose
+/// shell's region is in the B-rep.
+fn face_in_brep(b: &Brep, f: FaceId) -> Result<bool> {
+    Ok(crate::topology::face::p4::brep(b, f)?.is_some())
 }
 
-/// `pFace->GetEdges(sEdges)`.
-fn face_edges(_b: &Brep, _f: FaceId) -> Result<Vec<EdgeId>> {
-    // UNPORTED(topology.face_p4): SmFace::GetEdges
-    Err(SolidError::unported("SmFace::GetEdges", "topology.face_p4"))
+/// `pFace->GetEdges(sEdges)` (unit `topology.face_p4`; default arguments).
+fn face_edges(b: &Brep, f: FaceId) -> Result<Vec<EdgeId>> {
+    crate::topology::face::p4::edges(b, f, None, false, None)
 }
 
-/// `SmMerge(ctx, dest, src, tol, 20 deg)`, then per face the `GetBrep() == this` check
-/// (`SM_ERR`) and its `MakeFaceuse`.
+/// `SmMerge sMerge(ctx, pDestinationBrep, this, pDestinationBrep->GetTolerance(), 20 deg)`,
+/// then per face the `GetBrep() == this` check (`SM_ERR`) and its
+/// `MakeFaceuse(pFace->GetUpwardFaceuse(), .., NULL, &sNewFaceList)` with the context's
+/// `DoingBoolean` set (`SmTemporaryChangeValue`); `MakeFaceuse`'s status is ignored (`SE`).
+/// The copy notifications name source and destination entities through the one identity
+/// space of `env` (`this_face` for the new faces): entities whose arena ids coincide share
+/// an identity.
 fn merge_copy_faces(
-    _k: &Kernel,
-    _src: &Brep,
-    _dest: &mut Brep,
-    _faces: &[FaceId],
+    k: &mut Kernel,
+    src: &mut Brep,
+    dest: &mut Brep,
+    faces: &[FaceId],
+    this_face: &dyn Fn(FaceId) -> ObjectRef,
+    env: &mut ed::NotifyEnv<'_>,
 ) -> Result<Vec<FaceId>> {
-    // UNPORTED(boolean.merge_p2): SmMerge::SmMerge
-    Err(SolidError::unported("SmMerge::SmMerge", "boolean.merge_p2"))
+    let _merge = MergeState::<TopologyIntersector<MergeOperand>>::with_breps(
+        k,
+        (&*dest, MergeOperand::Primary),
+        Some((&*src, MergeOperand::Other)),
+        dest.tolerance(),
+        20.0 * PI / 180.0,
+        None,
+    )?;
+    // The new merge's mate maps start empty.
+    let mut relations = Relations::default();
+    let key_of = env.key_of;
+    let vertex_key = |v: VertexId| key_of(EntityRef::Vertex(v));
+    let edge_key = |e: EdgeId| key_of(EntityRef::Edge(e));
+    let face_key = |f: FaceId| key_of(EntityRef::Face(f));
+    let mut copy = TopologyCopy {
+        vertices: VertexCopy {
+            records: &mut *env.records,
+            attributes: &mut *env.attributes,
+            source_key: &vertex_key,
+            destination_key: key_of,
+        },
+        edge_source_key: &edge_key,
+        edge_destination_key: &edge_key,
+        face_source_key: &face_key,
+        face_destination_key: this_face,
+    };
+    let mut new_faces = Vec::new();
+    for &f in faces {
+        if !face_in_brep(src, f)? {
+            return Err(SolidError::sm_err(OP));
+        }
+        let faceuse = fp2::upward_faceuse(src, f)?
+            .ok_or(SolidError::invalid_input(OP, "face without face use"))?;
+        let doing_boolean = k.context.doing_boolean();
+        k.context.set_doing_boolean(true);
+        let mut list = Vec::new();
+        let made = make_faceuse(
+            k,
+            dest,
+            src,
+            faceuse,
+            None,
+            &mut relations,
+            &mut copy,
+            env.context.as_deref_mut(),
+            Some(&mut list),
+        );
+        k.context.set_doing_boolean(doing_boolean);
+        ignored(made)?;
+        new_faces.extend(list);
+    }
+    Ok(new_faces)
 }
 
 /// One interval of a self-intersection curve's classification: its parameter interval
@@ -552,7 +614,7 @@ pub struct NewFace {
 /// first).
 #[allow(clippy::too_many_arguments)]
 pub fn make_face(
-    _k: &Kernel,
+    k: &mut Kernel,
     b: &mut Brep,
     region: Option<RegionId>,
     loops: &[usize],
@@ -563,6 +625,7 @@ pub fn make_face(
     orientation: OrientType,
     opts: &MakeFaceOptions<'_>,
     this_face: &dyn Fn(FaceId) -> ObjectRef,
+    env: &mut ed::NotifyEnv<'_>,
 ) -> Result<NewFace> {
     let Some(mut surface) = surface else {
         return Err(SolidError::null_pointer(OP));
@@ -572,16 +635,14 @@ pub fn make_face(
 
     // get preexisting surface owner
     let old_owner = surface.owner();
-    // the face p6 allocates next (arenas only append)
-    let next_face = FaceId::from_index(
-        u32::try_from(b.faces().len())
-            .map_err(|_| SolidError::invalid_input(OP, "too many faces"))?,
-    );
+    // MakeFaceTopology claims a new mark: a fresh mark record serves (see p10)
     let built = p6::make_face_topology(
+        k,
         b,
+        &mut Marks::default(),
+        env,
         Some(surface.clone()),
         orientation,
-        this_face(next_face).key,
         &p6::FaceTopologyOptions {
             region,
             edge_loops: loops,
@@ -590,6 +651,7 @@ pub fn make_face(
             verify_radial_sectors: opts.verify_radial_sectors,
             calculate_trims: opts.calculate_trims,
             uv_curves: opts.uv_curves,
+            surface_key: None,
         },
     );
     // restore the preexisting surface owner, whether the build fails or succeeds
@@ -641,8 +703,14 @@ fn at<T>(v: &[T], i: usize) -> Result<&T> {
 }
 
 /// The start of `c` as oriented by `orient` (`GetEnds`, status ignored: `prev` kept).
-fn oriented_end(c: &Curve, orient: OrientType, start: bool, prev: Point3) -> Result<Point3> {
-    Ok(match ignored(c.ends())? {
+fn oriented_end(
+    k: &Kernel,
+    c: &Curve,
+    orient: OrientType,
+    start: bool,
+    prev: Point3,
+) -> Result<Point3> {
+    Ok(match ignored(c.ends(k))? {
         Some(e) => {
             if (orient == OrientType::Same) == start {
                 e.start
@@ -669,7 +737,7 @@ fn oriented_end(c: &Curve, orient: OrientType, start: bool, prev: Point3) -> Res
 /// evaluations; [`SolidError::Unported`] (see the module docs).
 #[allow(clippy::too_many_lines)] // one upstream routine
 pub fn make_face_with_curves(
-    k: &Kernel,
+    k: &mut Kernel,
     b: &mut Brep,
     region: Option<RegionId>,
     input: FaceCurvesInput,
@@ -699,14 +767,15 @@ pub fn make_face_with_curves(
     // GetInfiniteRegion() (an inline field read; NULL when unset)
     let region = region.or(b.infinite_region());
     // (the surface tests return flags upstream: a failed test is "no")
-    if ignored(surface.is_degenerate_curve(EFF_ZERO_DEG, None, DEGENERATE_TOL_3D))?.unwrap_or(false)
+    if ignored(surface.is_degenerate_curve(k, EFF_ZERO_DEG, None, DEGENERATE_TOL_3D))?
+        .unwrap_or(false)
     {
         return Err(SolidError::invalid_input(
             OP,
             "surface degenerates to a curve",
         ));
     }
-    if ignored(surface.is_degenerate_point(DEGENERATE_TOL_3D, None))?.unwrap_or(false) {
+    if ignored(surface.is_degenerate_point(k, DEGENERATE_TOL_3D, None))?.unwrap_or(false) {
         return Err(SolidError::invalid_input(
             OP,
             "surface degenerates to a point",
@@ -760,7 +829,7 @@ pub fn make_face_with_curves(
                         let c = CrvOnSurf::new(k, uv_curve, base, Some(*uv_domain), 2)?;
                         let c = Curve::from(c);
                         // (IsDegenerate returns a flag upstream: a failed test is "no")
-                        if ignored(c.is_degenerate(EFF_ZERO, None))?.unwrap_or(false) {
+                        if ignored(c.is_degenerate(k, EFF_ZERO, None))?.unwrap_or(false) {
                             None
                         } else {
                             Some(c)
@@ -810,8 +879,8 @@ pub fn make_face_with_curves(
                     let cw = at(&s3d, cwi)?
                         .as_ref()
                         .ok_or_else(|| null("missing curve"))?;
-                    start = oriented_end(c, o, true, start)?;
-                    cw_end = oriented_end(cw, cwo, false, cw_end)?;
+                    start = oriented_end(k, c, o, true, start)?;
+                    cw_end = oriented_end(k, cw, cwo, false, cw_end)?;
                     if start.distance_squared(cw_end) > tol2 {
                         if let Some(slot) = new_points.get_mut(jj) {
                             *slot = Some((start + cw_end) / 2.0);
@@ -883,8 +952,8 @@ pub fn make_face_with_curves(
                 continue;
             };
             let ivl = curve.natural_interval();
-            let is_degen = ignored(curve.is_degenerate(EFF_ZERO, None))?.unwrap_or(false);
-            let approx_len = curve.approximate_length(&ivl, 5, false)?.0;
+            let is_degen = ignored(curve.is_degenerate(k, EFF_ZERO, None))?.unwrap_or(false);
+            let approx_len = curve.approximate_length(k, &ivl, 5, false)?.0;
             if is_degen || approx_len < zone_tol {
                 degenerate += 1;
                 continue;
@@ -898,7 +967,7 @@ pub fn make_face_with_curves(
                 };
 
             // find or make the start vertex
-            let start_pt = curve.evaluate_point(start_param)?;
+            let start_pt = curve.evaluate_point(k, start_param)?;
             let mut m = find_first_vertex_within_tol_to_pnt(b, &vertices, start_pt, zone_tol)?;
             if !vertices.is_empty() && !m.found {
                 if m.distance < zone_tol * 100.0 {
@@ -927,7 +996,7 @@ pub fn make_face_with_curves(
             };
 
             // the end vertex
-            let end_pt = curve.evaluate_point(end_param)?;
+            let end_pt = curve.evaluate_point(k, end_param)?;
             if end_pt.distance_squared(start_pt) < zone_tol * zone_tol && approx_len < zone_tol {
                 return Err(SolidError::sm_err(OP));
             }
@@ -956,7 +1025,7 @@ pub fn make_face_with_curves(
                         interval: ivl,
                         tolerance: zone_tol,
                     };
-                    if let Some(c) = find_coincident_edge(b, &query, &edges, 0)? {
+                    if let Some(c) = find_coincident_edge(k, b, &query, &edges, 0)? {
                         if c.max_deviation < zone_tol * 1.0e-3 {
                             // share the coincident edge (the curve is dropped)
                             let coin = *at(&edges, c.index)?;
@@ -1023,6 +1092,7 @@ pub fn make_face_with_curves(
         orientation,
         &MakeFaceOptions::default(),
         this_face,
+        env,
     )?;
     out.region = made.region;
     if made.shell.is_some() && out.shell.is_some() {
@@ -1159,8 +1229,8 @@ pub fn glue_edges_general(
                     )?;
                     if md.distance < surv_tol / 1000.00 {
                         let t_mid = surv_ivl.evaluate(0.45678);
-                        let sp = sc.evaluate_point(t_mid)?;
-                        let dp = dc.evaluate_point(t_mid)?;
+                        let sp = sc.evaluate_point(k, t_mid)?;
+                        let dp = dc.evaluate_point(k, t_mid)?;
                         let tolerance = EFF_ZERO * (1.0 + sp.max_dimension());
                         if sp.distance(dp) < tolerance {
                             same_geometry = true;
@@ -1386,7 +1456,7 @@ pub fn glue_edges_general(
 ///
 /// `SM_ERR` for a face of another B-rep; [`SolidError::Unported`] (see the module docs).
 pub fn copy_faces(
-    k: &Kernel,
+    k: &mut Kernel,
     src: &mut Brep,
     faces: &[FaceId],
     dest: &mut Brep,
@@ -1405,7 +1475,7 @@ pub fn copy_faces(
     if use_merge {
         // (the merge object is made before the face loop; MakeFaceuse's status is
         // ignored)
-        if let Some(made) = ignored(merge_copy_faces(k, src, dest, faces))? {
+        if let Some(made) = ignored(merge_copy_faces(k, src, dest, faces, this_face, env))? {
             new_faces = made;
         }
         return Ok((new_faces, all_ok));
@@ -1704,11 +1774,19 @@ mod tests {
 
     #[test]
     fn make_face_needs_a_surface() {
-        let k = Kernel::default();
+        let mut k = Kernel::default();
         let mut b = Brep::new();
         let opts = MakeFaceOptions::default();
+        let mut records = std::collections::BTreeMap::new();
+        let mut attrs = AttributeStore::default();
+        let mut env = ed::NotifyEnv {
+            records: &mut records,
+            attributes: &mut attrs,
+            context: None,
+            key_of: &key_of,
+        };
         let e = make_face(
-            &k,
+            &mut k,
             &mut b,
             None,
             &[],
@@ -1719,6 +1797,7 @@ mod tests {
             OrientType::Same,
             &opts,
             &face_ref,
+            &mut env,
         );
         assert!(matches!(
             e,
@@ -1728,7 +1807,7 @@ mod tests {
             })
         ));
         let e = make_face(
-            &k,
+            &mut k,
             &mut b,
             None,
             &[],
@@ -1739,6 +1818,7 @@ mod tests {
             OrientType::Same,
             &opts,
             &face_ref,
+            &mut env,
         );
         // no infinite region: MakeFaceTopology's NULL region
         assert!(matches!(
@@ -1756,7 +1836,7 @@ mod tests {
             .unwrap();
         b.set_infinite_region_record(Some(inf));
         let e = make_face(
-            &k,
+            &mut k,
             &mut b,
             None,
             &[],
@@ -1767,14 +1847,24 @@ mod tests {
             OrientType::Same,
             &opts,
             &face_ref,
+            &mut env,
         );
-        // the infinite region: MakeFaceTopology reaches SmFace::SetTolerance (unported)
-        assert!(e.unwrap_err().is_unported());
+        // the infinite region: an edgeless face in a new shell of that region
+        let made = e.unwrap();
+        let face = made.face.unwrap();
+        let shell = made.shell.unwrap();
+        assert_eq!(made.region, None);
+        assert_eq!(b.region(inf).unwrap().shells, vec![shell]);
+        assert_eq!(b.face(face).unwrap().uv_domain, dom());
+        assert_eq!(
+            b.face(face).unwrap().surface.as_ref().unwrap().owner(),
+            Some(face_ref(face))
+        );
     }
 
     #[test]
     fn face_with_curves_input_errors() {
-        let k = Kernel::default();
+        let mut k = Kernel::default();
         let mut b = Brep::new();
         let r = b
             .add_region_record(Region {
@@ -1792,7 +1882,7 @@ mod tests {
         };
         let mut run = |b: &mut Brep, input: FaceCurvesInput, region| {
             make_face_with_curves(
-                &k,
+                &mut k,
                 b,
                 region,
                 input,
@@ -1823,8 +1913,8 @@ mod tests {
             run(&mut b, input, Some(r)),
             Err(SolidError::InvalidInput { .. })
         ));
-        // a NULL region is the infinite region: a degenerate curve only reaches
-        // unported topology
+        // a NULL region is the infinite region: a degenerate curve only leaves no
+        // edges, so MakeFace makes an edgeless face
         b.set_infinite_region_record(Some(r));
         let input = FaceCurvesInput {
             loops: vec![1],
@@ -1832,9 +1922,10 @@ mod tests {
             orientations: vec![OrientType::Same],
             ..Default::default()
         };
-        assert!(run(&mut b, input.clone(), None).unwrap_err().is_unported());
-        // a degenerate curve only: the face topology is unported
-        assert!(run(&mut b, input, Some(r)).unwrap_err().is_unported());
+        let first = run(&mut b, input.clone(), None).unwrap();
+        let second = run(&mut b, input, Some(r)).unwrap();
+        assert_eq!(first.face, Some(FaceId::from_index(0)));
+        assert_eq!(second.face, Some(FaceId::from_index(1)));
         // more loop entries than curves
         let input = FaceCurvesInput {
             loops: vec![3],
@@ -1903,7 +1994,7 @@ mod tests {
         };
         // no faces to copy: past SetTolerance (topology.brep_p2) and the infinite region
         // (topology.brep_p1, #246) nothing runs
-        let r = copy_faces(&k, &mut src, &[], &mut dest, false, &face_ref, &mut env);
+        let r = copy_faces(&mut k, &mut src, &[], &mut dest, false, &face_ref, &mut env);
         assert!(
             matches!(&r, Ok((faces, true)) if faces.is_empty()),
             "copy: {r:?}"

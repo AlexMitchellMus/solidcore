@@ -48,7 +48,8 @@ use crate::nurbs::math::CPoint;
 use crate::nurbs::srf_basic::{Direction, Surface, WEIGHT_MAX, WEIGHT_MIN};
 
 use super::p1::{
-    at, at2, check_interior, ix, oob, put, put2, span_mult, surface, sx, zeros1, zeros2, Local, Net,
+    at, at2, check_interior, ix, oob, put, put2, span_mult, surface, sx, twice, zeros1, zeros2,
+    Local, Net,
 };
 
 /// Upstream `sto`: relative parameter tolerance of the basis maxima searched by
@@ -264,11 +265,11 @@ fn remove_conditional_rows(
     let degu = ix(deg, op)?;
     let rows = sx(lines.len(), op)? - 1;
 
-    let mut alf: Vec<f64> = zeros1(2 * a, op)?;
-    let mut oma: Vec<f64> = zeros1(2 * a, op)?;
-    let mut bet: Vec<f64> = zeros1(2 * a, op)?;
-    let mut omb: Vec<f64> = zeros1(2 * a, op)?;
-    let mut rw: Vec<CPoint> = zeros1(2 * a, op)?;
+    let mut alf: Vec<f64> = zeros1(twice(a, op)?, op)?;
+    let mut oma: Vec<f64> = zeros1(twice(a, op)?, op)?;
+    let mut bet: Vec<f64> = zeros1(twice(a, op)?, op)?;
+    let mut omb: Vec<f64> = zeros1(twice(a, op)?, op)?;
+    let mut rw: Vec<CPoint> = zeros1(twice(a, op)?, op)?;
 
     let fout = (2 * spn - mlt - deg) / 2;
     let mut rmf = true;
@@ -488,25 +489,38 @@ pub fn remove_one_knot(
     mr: f64,
 ) -> Result<f64> {
     const OP: &str = "nurbs::srf_tool::p2::remove_one_knot";
-    let Local { p, q, pw, u, v, .. } = Local::of(sur, OP)?;
+    // Local notation; the net is read in place below (upstream reads `Pw` directly),
+    // not copied and transposed.
+    let idx = sur.indices();
+    let (p, q) = (sx(idx.p, OP)?, sx(idx.q, OP)?);
+    let (u, v) = (sur.u_knots(), sur.v_knots());
     let (r, s, f, l) = (sx(r, OP)?, sx(s, OP)?, sx(f, OP)?, sx(l, OP)?);
 
     let a = p.max(q);
-    let mut alf: Vec<f64> = zeros1(2 * a, OP)?;
-    let mut oma: Vec<f64> = zeros1(2 * a, OP)?;
-    let mut bet: Vec<f64> = zeros1(2 * a, OP)?;
-    let mut omb: Vec<f64> = zeros1(2 * a, OP)?;
-    let mut rw: Vec<CPoint> = zeros1(2 * a, OP)?;
+    let mut alf: Vec<f64> = zeros1(twice(a, OP)?, OP)?;
+    let mut oma: Vec<f64> = zeros1(twice(a, OP)?, OP)?;
+    let mut bet: Vec<f64> = zeros1(twice(a, OP)?, OP)?;
+    let mut omb: Vec<f64> = zeros1(twice(a, OP)?, OP)?;
+    let mut rw: Vec<CPoint> = zeros1(twice(a, OP)?, OP)?;
 
     let mut mr = mr;
     if mr == f64::MAX {
         mr = -1.0;
     }
 
-    let (lines, deg, kn) = match dir {
-        Direction::U => (transpose(&pw), p, u),
-        Direction::V => (pw, q, v),
+    let (deg, kn) = match dir {
+        Direction::U => (p, u),
+        Direction::V => (q, v),
         Direction::UV => return Err(SolidError::nlib(OP, NlibCode::Call)),
+    };
+    // Entry `i` of line `row`: `Pw[i][row]` in u (a column), `Pw[row][i]` in v.
+    let line_at = |row: isize, i: isize| -> Result<CPoint> {
+        let (a, b) = if dir == Direction::U {
+            (i, row)
+        } else {
+            (row, i)
+        };
+        at(sur.row(ix(a, OP)?).map_err(|_| oob(OP))?, b, OP)
     };
 
     let first = r - deg;
@@ -542,27 +556,26 @@ pub fn remove_one_knot(
 
     // Update maximum error for the requested rows.
     for row in f..=l {
-        let line = lines.get(ix(row, OP)?).ok_or_else(|| oob(OP))?;
         let mut i = first;
         let mut j = last;
         let mut ii: isize = 1;
         let mut jj = last - off;
 
-        put(&mut rw, 0, at(line, off, OP)?, OP)?;
-        put(&mut rw, last + 1 - off, at(line, last + 1, OP)?, OP)?;
+        put(&mut rw, 0, line_at(row, off)?, OP)?;
+        put(&mut rw, last + 1 - off, line_at(row, last + 1)?, OP)?;
 
         // Get new control points for one removal step.
         while j - i > 0 {
             let c = CPoint::combine2(
                 at(&alf, i - first, OP)?,
-                at(line, i, OP)?,
+                line_at(row, i)?,
                 at(&oma, i - first, OP)?,
                 at(&rw, ii - 1, OP)?,
             );
             put(&mut rw, ii, c, OP)?;
             let c = CPoint::combine2(
                 at(&bet, j - first, OP)?,
-                at(line, j, OP)?,
+                line_at(row, j)?,
                 at(&omb, j - first, OP)?,
                 at(&rw, jj + 1, OP)?,
             );
@@ -578,7 +591,7 @@ pub fn remove_one_knot(
             dist_cpt_cpt_homo(at(&rw, ii - 1, OP)?, at(&rw, jj + 1, OP)?)
         } else {
             let c = CPoint::combine2(del, at(&rw, jj + 1, OP)?, omd, at(&rw, ii - 1, OP)?);
-            dist_cpt_cpt_homo(at(line, i, OP)?, c)
+            dist_cpt_cpt_homo(line_at(row, i)?, c)
         };
 
         if dw > mr {
@@ -702,10 +715,10 @@ fn elevate_rows(
     let mut bw: Net = zeros2(rows, pp, op)?;
     let mut nw: Net = zeros2(rows, pp, op)?;
     let mut dw: Net = zeros2(rows, pq, op)?;
-    let mut ralf: Vec<Vec<f64>> = zeros2(asz, 2 * asz, op)?;
-    let mut roma: Vec<Vec<f64>> = zeros2(asz, 2 * asz, op)?;
-    let mut rbet: Vec<Vec<f64>> = zeros2(asz, 2 * asz, op)?;
-    let mut romb: Vec<Vec<f64>> = zeros2(asz, 2 * asz, op)?;
+    let mut ralf: Vec<Vec<f64>> = zeros2(asz, twice(asz, op)?, op)?;
+    let mut roma: Vec<Vec<f64>> = zeros2(asz, twice(asz, op)?, op)?;
+    let mut rbet: Vec<Vec<f64>> = zeros2(asz, twice(asz, op)?, op)?;
+    let mut romb: Vec<Vec<f64>> = zeros2(asz, twice(asz, op)?, op)?;
     let mut alfs: Vec<f64> = zeros1(asz, op)?;
     let mut omas: Vec<f64> = zeros1(asz, op)?;
 
@@ -1020,5 +1033,15 @@ mod tests {
         let mr2 = remove_one_knot(&s, 4, 1, 0, 3, Direction::U, 1e9).unwrap();
         assert_eq!(mr2, 1e9);
         assert!(remove_one_knot(&s, 3, 1, 0, 9, Direction::V, -1.0).is_err());
+    }
+
+    #[test]
+    fn absurd_degree_is_an_error() {
+        // fuzz (nlib.srf_tool_p2 fuzz00301): `2 * max(p, q)` overflowed.
+        let s = sample();
+        let (u, v) = (s.u_knots().to_vec(), s.v_knots().to_vec());
+        let bad = Surface::new(s.cpts(), i64::MAX as usize, s.q(), u, v).unwrap();
+        assert!(remove_one_knot(&bad, 4, 1, 0, 1, Direction::U, f64::MAX).is_err());
+        assert!(elevate_degree(&bad, 1, Direction::V).is_err());
     }
 }

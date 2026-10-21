@@ -53,9 +53,9 @@
 //!   point classifications as `SmZoneTol3d` (`zone_tol3d`), as upstream's implicit
 //!   conversion does.
 //! - **Callees not ported yet** are private stubs returning [`SolidError::Unported`],
-//!   each tagged `UNPORTED(<unit>)`: `SmFace::GetUpwardLoopuses` (`topology.face_p4`),
-//!   `SmBrep::DeleteEdge` (`topology.brep_p4`), and the stub of [`p1`](super::p1) for
-//!   `SmFace::GetEdges` (`topology.face_p4`). The code after a stub is ported in full.
+//!   each tagged `UNPORTED(<unit>)`: `SmBrep::DeleteEdge` (`topology.brep_p4`). The
+//!   code after it is ported in full. `SmFace::GetEdges` and `GetUpwardLoopuses`
+//!   (`topology.face_p4`) are [`IntersectorBrepP3`] hooks.
 //! - **Undefined behaviour upstream** (a null or deleted object dereferenced, a
 //!   classification object of the wrong kind used as an edge or vertex, an index past
 //!   a list) is [`SolidError::InvalidInput`].
@@ -88,7 +88,7 @@ use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::surface::surface::SurfaceKind;
 
 use super::p1::{
-    add_unique, contains, dangling, face_edges, ignore_soft, set_edge_class, IntersectorBrep,
+    add_unique, contains, dangling, ignore_soft, set_edge_class, IntersectorBrep,
     TopologyIntersector,
 };
 use super::p2::{IntersectorBrepP2, SqueezeVertices};
@@ -189,18 +189,26 @@ pub trait IntersectorBrepP3<O>: IntersectorBrepP2<O> {
     /// Those of `calculate_bounding_box`; [`SolidError::InvalidInput`] for a handle
     /// that is not a face of a known B-rep.
     fn face_bounding_box(&self, k: &Kernel, face: O) -> Result<Extent3d>;
+    /// `SmFace::GetEdges(rEdges)` with its defaults (no attribute, all loops; unit
+    /// `topology.face_p4`: `topology::face::p4::edges`): the edges of every loop use of
+    /// the face's upward face use, loop by loop.
+    ///
+    /// # Errors
+    ///
+    /// Those of `edges`; [`SolidError::InvalidInput`] for a handle that is not a face of
+    /// a known B-rep.
+    fn face_edges(&self, face: O) -> Result<Vec<O>>;
+    /// `SmFace::GetUpwardLoopuses(rLoopuses)` (all loops; unit `topology.face_p4`:
+    /// `topology::face::p4::upward_loopuses`).
+    ///
+    /// # Errors
+    ///
+    /// Those of `upward_loopuses`; [`SolidError::InvalidInput`] for a handle that is
+    /// not a face of a known B-rep.
+    fn face_upward_loopuses(&self, face: O) -> Result<Vec<O>>;
 }
 
 // ---- unported callees -----------------------------------------------------------------------
-
-/// `SmFace::GetUpwardLoopuses(rLoopuses)`.
-fn face_upward_loopuses<O>(_face: O) -> Result<Vec<O>> {
-    // UNPORTED(topology.face_p4): SmFace::GetUpwardLoopuses
-    Err(SolidError::unported(
-        "SmFace::GetUpwardLoopuses",
-        "topology.face_p4",
-    ))
-}
 
 /// `SmBrep::DeleteEdge(pEdge)`.
 fn brep_delete_edge<O>(_brep: O, _edge: O) -> Result<()> {
@@ -258,9 +266,9 @@ fn edge_curve_interval<O: Copy>(
 }
 
 /// `pE->GetCurve()->ApproximateLength(pE->GetInterval(), 5)`.
-fn edge_length<O: Copy>(brep: &impl IntersectorBrep<O>, edge: O) -> Result<f64> {
+fn edge_length<O: Copy>(k: &Kernel, brep: &impl IntersectorBrep<O>, edge: O) -> Result<f64> {
     let (curve, interval) = edge_curve_interval(brep, edge)?;
-    Ok(curve.approximate_length(&interval, 5, false)?.0)
+    Ok(curve.approximate_length(k, &interval, 5, false)?.0)
 }
 
 /// `(SmEdge*)` / `(SmVertex*)` of a classification object: the object when it is of
@@ -501,11 +509,11 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                 {
                     // get curve length
                     let curve = curve_of(brep, crv_class1.curve())?;
-                    let leng = curve.approximate_length(&ivl1.interval, 5, false)?.0;
+                    let leng = curve.approximate_length(k, &ivl1.interval, 5, false)?.0;
 
                     // get the target edge and its length
                     let e = object_of(&ivl1.mid, ClassObjectKind::Edge)?;
-                    let leng_edge1 = edge_length(brep, e)?;
+                    let leng_edge1 = edge_length(k, brep, e)?;
 
                     // skip curves which are smaller than the edge
                     if leng < leng_edge1 / 20.0 {
@@ -515,7 +523,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                     // when interval2 classifies to an edge
                     if ivl2.mid.point_class() == PointClassType::Edge {
                         let e2 = object_of(&ivl2.mid, ClassObjectKind::Edge)?;
-                        let leng_edge2 = edge_length(brep, e2)?;
+                        let leng_edge2 = edge_length(k, brep, e2)?;
 
                         // skip curves smaller than the edge length
                         if leng < leng_edge2 / 20.0 {
@@ -542,16 +550,16 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                     && ivl1.end.point_class() == PointClassType::Vertex)
                 {
                     let curve = curve_of(brep, crv_class2.curve())?;
-                    let leng = curve.approximate_length(&ivl2.interval, 5, false)?.0;
+                    let leng = curve.approximate_length(k, &ivl2.interval, 5, false)?.0;
                     let e = object_of(&ivl2.mid, ClassObjectKind::Edge)?;
-                    let leng_edge1 = edge_length(brep, e)?;
+                    let leng_edge1 = edge_length(k, brep, e)?;
                     if leng < leng_edge1 / 20.0 {
                         return Ok(out);
                     }
 
                     if ivl1.mid.point_class() == PointClassType::Edge {
                         let e2 = object_of(&ivl1.mid, ClassObjectKind::Edge)?;
-                        let leng_edge2 = edge_length(brep, e2)?;
+                        let leng_edge2 = edge_length(k, brep, e2)?;
                         if leng < leng_edge2 / 20.0 {
                             return Ok(out);
                         }
@@ -760,7 +768,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         let (curve, ivl) = edge_curve_interval(brep, edge)?;
         let mut best_dist = BIG_DOUBLE;
         let mut best_edge = None;
-        let mid_pnt = curve.evaluate_point(ivl.evaluate(0.5))?;
+        let mid_pnt = curve.evaluate_point(k, ivl.evaluate(0.5))?;
 
         // for all candidate edges - find the closest to the midPoint
         for &cand in candidates {
@@ -788,7 +796,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
             }
 
             // drop the candidate->MidPoint back onto edge->Curve
-            let mid_pnt2 = cand_curve.evaluate_point(cand_ivl.evaluate(0.5))?;
+            let mid_pnt2 = cand_curve.evaluate_point(k, cand_ivl.evaluate(0.5))?;
             let drop2 = curve.drop_point(
                 k,
                 &ivl,
@@ -970,14 +978,14 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
 
         // when 3D curve is short
         let natural = curve_of(brep, Some(input.curve))?.natural_interval();
-        if curve_of(brep, Some(input.curve))?.is_degenerate(input.curve_tolerance, None)? {
+        if curve_of(brep, Some(input.curve))?.is_degenerate(k, input.curve_tolerance, None)? {
             // Don't allow degenerate cases when using edges
             if input.surface.is_none() || input.other_surface.is_none() {
                 return Err(SolidError::sm_err(OP_ON_SURFACES));
             }
 
             // get curve point
-            let pnt = curve_of(brep, Some(input.curve))?.evaluate_point(natural.min())?;
+            let pnt = curve_of(brep, Some(input.curve))?.evaluate_point(k, natural.min())?;
 
             // classify point against both faces (in/out trimmed face region)
             // (dCurveTolerance converts to SmZoneTol3d at both)
@@ -1372,7 +1380,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         let b_face = Self::face_of_surface(brep, b_surface)?;
 
         // for every BFace->Loop
-        for lu in face_upward_loopuses(b_face)? {
+        for lu in brep.face_upward_loopuses(b_face)? {
             if brep.loopuse_is_vertex_loopuse(lu)? {
                 continue;
             }
@@ -1409,8 +1417,8 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                         .ok_or(SolidError::null_pointer(OP_COINCIDENT))?;
 
                     // get face->edges
-                    let edges_o = face_edges(o_face_match, None, false, None)?;
-                    let edges_b = face_edges(b_face_match, None, false, None)?;
+                    let edges_o = brep.face_edges(o_face_match)?;
+                    let edges_b = brep.face_edges(b_face_match)?;
 
                     // when edge counts are the same - note if any edges don't have a match
                     if edges_o.len() == edges_b.len() {
@@ -1474,12 +1482,8 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
             Side::Other => o,
         };
 
-        let mut edges = face_edges(
-            this_face_of(b_face, o_face).ok_or(dangling("no face"))?,
-            None,
-            false,
-            None,
-        )?;
+        let mut edges =
+            brep.face_edges(this_face_of(b_face, o_face).ok_or(dangling("no face"))?)?;
         let num_edges = edges.len();
         for ii in 0..num_edges {
             // skip edges already mated to the other side
@@ -1576,7 +1580,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
 
                 // if there is a face - note if its edge count has changed
                 if let Some(f) = this_face_of(b_face, o_face) {
-                    edges = face_edges(f, None, false, None)?;
+                    edges = brep.face_edges(f)?;
                     if edges.len() != edges_count {
                         topology_changed = true;
                     }
@@ -1669,7 +1673,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                             Side::Brep => edges.len(),
                             Side::Other => edges_count,
                         };
-                        edges = face_edges(f, None, false, None)?;
+                        edges = brep.face_edges(f)?;
                         if edges.len() != num_brep_edges {
                             topology_changed = true;
                         }

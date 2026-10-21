@@ -16,11 +16,15 @@
 // Reject negative extension distances before geometry construction as SC_ERR_ARG;
 // both signed zeros remain valid. Config only observes state, so stays sign-agnostic.
 // probe -> independent safe topology paths; not a replacement for arithmetic tests.
+// face tail -> BuildOffsetOfFaceuse's contained-domain branch on a MakeFaceWithCurves
+//              plane face, including MapEdgeuses and self-intersection merging.
+// map twin -> MapEdgeuses alone, between two MakeFaceWithCurves rectangle faces.
 // Deviations: bounded plain-C fixture protocol, traversal IDs instead of pointers;
 // extension-only nonnegative-distance validation. Native array ordering is unchanged.
 // No implementation file is included; no native numerical/helper code is copied.
 #include "sc_shim.h"
 #include "StdAfx.h"
+#include <SmAxis2Placement.h>
 #include <SmBSplineCurve.h>
 #include <SmBSplineSurface.h>
 #include <SmBrep.h>
@@ -30,13 +34,17 @@
 #include <SmFace.h>
 #include <SmFaceuse.h>
 #include <SmLine.h>
+#include <SmLoop.h>
 #include <SmNurbsCrv.h>
 #include <SmNurbsSrf.h>
 #include <SmOffsetExecutive.h>
 #include <SmOffsetGeometryCreation.h>
 #include <SmPlane.h>
+#include <SmRegion.h>
+#include <SmShell.h>
 #include <SmSSIData.h>
 #include <SmVertex.h>
+#include <SmVertexuse.h>
 #include <nurbs.h>
 #include <algorithm>
 #include <cmath>
@@ -132,12 +140,14 @@ public:
     void install(std::unique_ptr<SmBrep> offset) { m_pOffsetBrep = offset.release(); }
     SmStatus relate(SmEdgeuse* a, SmEdgeuse* b) { return m_vEUToEU.RelatePair(a, b); }
     void seconds(SmEdgeuse* a, SmTArray<SmEdgeuse*>& b) { m_vEUToEU.GetSeconds(a, b); }
+    SmStatus relate_face(SmFaceuse* a, SmFace* b) { return m_vFUToF.RelatePair(a, b); }
     bool merge() const { return m_bMergeResults != FALSE; }
     bool solid() const { return m_bCreateOffsetSolid != FALSE; }
     SmSurface* cached(SmSurface* base) { return m_vSurfExtSurf.At(base); }
     void forget(SmSurface* base) { m_vSurfExtSurf.Remove(base); }
     void clear() { m_vSurfExtSurf.RemoveAll(); }
     ULONG cache_count() const { return m_vSurfExtSurf.Count(); }
+    void faces_of(SmFaceuse* use, SmTArray<SmFace*>& faces) { m_vFUToF.GetSeconds(use, faces); }
 };
 
 std::unique_ptr<SmCurve> read_curve(Reader& rd, SmContext& ctx) {
@@ -579,6 +589,224 @@ void extend(Reader& rd, std::vector<double>& out) {
     rd.done();
 }
 
+// All new geometry remains locally owned even if construction/evaluation throws.
+// This guard is created before BuildOffsetOfVertex so partial native outputs are
+// cleaned on operation failure as well as on snapshot-allocation exceptions.
+struct VertexResult {
+    SmTArray<SmCurve*> curves;
+    SmTArray<SmOrientType> orientations;
+    SmSurface* surface = nullptr;
+    ~VertexResult() {
+        for (ULONG i=0; i<curves.GetSize(); ++i) delete curves[i];
+        delete surface;
+    }
+};
+
+SmFace* face_on_edges(SmBrep* target, std::unique_ptr<SmSurface> surface,
+                      const SmTArray<SmEdgeuse*>& uses) {
+    struct Pending {
+        SmSurface* p;
+        ~Pending() { if (p && !p->GetOwner()) delete p; }
+    } pending{surface.release()};
+    SmTArray<ULONG> loops;
+    loops.Add(uses.GetSize());
+    SmTArray<SmVertex*> vertices;
+    SmRegion* region = nullptr;
+    SmShell* shell = nullptr;
+    SmFace* face = nullptr;
+    constructed(target->MakeFace(nullptr, loops, uses, vertices, pending.p,
+                                pending.p->GetNaturalUVDomain(), SM_OT_SAME,
+                                region, shell, face, FALSE, FALSE));
+    if (!face) throw Argument{};
+    return face;
+}
+
+// A bounded plane, an interior vertex-loop, and a genuine new edge joining it
+// to the outer boundary. The interior endpoint has exactly one incident edge
+// and IsStrut is true. No source/result cap is preseeded.
+SmVertex* source_strut(SmContext& ctx, SmBrep* target, const SmPoint3d& point,
+                       SmFaceuse*& source_use) {
+    SmExtent2d domain(SmPoint2d(-2,-2), SmPoint2d(2,2));
+    struct Pending {
+        SmSurface* p;
+        ~Pending() { if (p && !p->GetOwner()) delete p; }
+    } pending{new (ctx) SmPlane(point, SmVector3d(1,0,0), SmVector3d(0,1,0),
+                               SmVector2d(1,1), domain, &ctx)};
+    SmFace* face = nullptr;
+    constructed(target->CreateFaceFromSurface(pending.p, domain, face));
+    if (!face) throw Argument{};
+    SmTArray<SmVertex*> boundary;
+    face->GetVertices(boundary);
+    if (!boundary.GetSize()) throw Argument{};
+    SmVertex* start = boundary[0];
+    if (!start) throw Argument{};
+    SmVertex* vertex = nullptr;
+    SmLoop* loop = nullptr;
+    target->m_bEditingEnabled = TRUE;
+    constructed(target->MakeVertexLoop(face, point, loop, vertex));
+    if (!vertex) throw Argument{};
+    SmBSplineCurve* curve = nullptr;
+    SmStatus curve_status = SmBSplineCurve::CreateLineSegment(ctx, 3, start->GetPoint(), point, curve);
+    struct PendingCurve {
+        SmCurve* p;
+        ~PendingCurve() { if (p && !p->GetOwner()) delete p; }
+    } pending_curve{curve};
+    constructed(curve_status);
+    if (!curve) throw Argument{};
+    SmEdge* edge = nullptr;
+    SmFace* split_face = nullptr;
+    constructed(target->MakeEdgeInFace(face, start, vertex, curve, nullptr,
+                                      curve->GetNaturalInterval(), SM_OT_SAME, 0.0,
+                                      edge, loop, split_face));
+    if (!edge || !edge->GetPrimaryEdgeuse()) throw Argument{};
+    SmEdgeuse* use = edge->GetPrimaryEdgeuse();
+    if (!use->GetVertexuse()) throw Argument{};
+    if (use->GetVertexuse()->GetVertex() != vertex) use = use->GetRadial();
+    // Safety invariant of this constructor, not an arithmetic parity assertion.
+    if (!use || !use->IsStrut() || !use->GetFaceuse()) throw Argument{};
+    source_use = use->GetFaceuse();
+    return vertex;
+}
+
+SmFace* circular_disk(SmContext& ctx, SmBrep* target, const SmPoint3d& center,
+                      double radius) {
+    SmAxis2Placement placement;
+    placement.Translate(center);
+    SmBSplineCurve* circle = nullptr;
+    SmStatus status = SmBSplineCurve::CreateCircleSegment(ctx, 3, placement, radius,
+                                                        0.0, 360.0, SM_CO_QUADRATIC, circle);
+    std::unique_ptr<SmCurve> circle_owner(circle);
+    constructed(status);
+    if (!circle) throw Argument{};
+    SmPoint3d point(0,0,0);
+    constructed(circle->EvaluatePoint(circle->GetNaturalInterval().GetMin(), point));
+    SmShell* shell = nullptr;
+    SmVertex* vertex = nullptr;
+    constructed(target->MakeShellVertex(nullptr, point, shell, vertex));
+    struct Pending {
+        SmCurve* p;
+        ~Pending() { if (p && !p->GetOwner()) delete p; }
+    } pending{circle_owner.release()};
+    SmEdge* edge = nullptr;
+    constructed(target->MakeWireEdge(nullptr, vertex, vertex, pending.p,
+                                    circle->GetNaturalInterval(), SM_OT_SAME, edge));
+    if (!edge || !edge->GetPrimaryEdgeuse()) throw Argument{};
+    SmTArray<SmEdgeuse*> uses;
+    uses.Add(edge->GetPrimaryEdgeuse());
+    SmExtent2d domain(SmPoint2d(-radius,-radius), SmPoint2d(radius,radius));
+    std::unique_ptr<SmSurface> plane(new (ctx) SmPlane(center, SmVector3d(1,0,0),
+                                                     SmVector3d(0,1,0), SmVector2d(1,1),
+                                                     domain, &ctx));
+    return face_on_edges(target, std::move(plane), uses);
+}
+
+void put_vertex_surface(std::vector<double>& out, SmSurface* surface,
+                        const std::vector<SmPoint2d>& samples) {
+    out.push_back(surface->GetType());
+    SmExtent2d domain = surface->GetNaturalUVDomain();
+    put_domain(out, domain);
+    // GetType is compared separately: never turn an analytic Sphere into a
+    // B-spline merely to make the samples agree.
+    SmBSplineSurface* spline = SM_CAST_PTR(SmBSplineSurface, surface);
+    gw_SURFACE* nurb = spline ? spline->GetGwNurbPointer() : nullptr;
+    out.push_back(nurb ? 1.0 : 0.0);
+    if (nurb) {
+        gw_INDEX n=nurb->net->n, m=nurb->net->m, r=nurb->knu->m, s=nurb->knv->m;
+        out.insert(out.end(), {(double)n, (double)m, (double)nurb->p,
+                               (double)nurb->q, (double)r, (double)s});
+        for (gw_INDEX i=0; i<=n; ++i) for (gw_INDEX j=0; j<=m; ++j) {
+            const auto& point = nurb->net->Pw[i][j];
+            out.insert(out.end(), {point.x,point.y,point.z,point.w});
+        }
+        for (gw_INDEX i=0; i<=r; ++i) out.push_back(nurb->knu->U[i]);
+        for (gw_INDEX i=0; i<=s; ++i) out.push_back(nurb->knv->U[i]);
+    }
+    out.push_back(samples.size());
+    for (const auto& sample : samples) {
+        SmPoint2d uv((1.0-sample.x)*domain.GetMin().x + sample.x*domain.GetMax().x,
+                     (1.0-sample.y)*domain.GetMin().y + sample.y*domain.GetMax().y);
+        SmPoint3d point(0,0,0);
+        SmVector3d du(0,0,0), dv(0,0,0), duv(0,0,0), duu(0,0,0), dvv(0,0,0);
+        SmStatus status = surface->Evaluate2ndDerivatives(uv, TRUE, TRUE,
+                                                        point, du, dv, duv, duu, dvv);
+        out.push_back(status);
+        if (status != SM_SUCCESS) {
+            out.insert(out.end(), 18, 0.0);
+        } else {
+            put_point(out, point); put_point(out, du); put_point(out, dv);
+            put_point(out, duv); put_point(out, duu); put_point(out, dvv);
+        }
+    }
+}
+
+void vertex(Reader& rd, std::vector<double>& out) {
+    SmPoint3d point = rd.point();
+    double distance=rd.number(), approx_tol=rd.number();
+    double original_tol=rd.number(), result_tol=rd.number();
+    bool has_strut=rd.flag();
+    double radius=0.0, height=0.0;
+    bool map_mate=false;
+    if (has_strut) {
+        radius=rd.number(); height=rd.number(); map_mate=rd.flag();
+        for (double value : {point.x-2.0, point.x+2.0, point.y-2.0, point.y+2.0,
+                             point.z+height, point.x+radius, point.x-radius,
+                             point.y+radius, point.y-radius})
+            if (!std::isfinite(value)) throw Argument{};
+    }
+    std::vector<SmPoint2d> samples;
+    int64_t count=rd.index();
+    for (int64_t i=0; i<count; ++i) {
+        SmPoint2d sample=rd.uv();
+        if (sample.x<0 || sample.x>1 || sample.y<0 || sample.y>1) throw Argument{};
+        samples.push_back(sample);
+    }
+    rd.done();
+    SmContext ctx;
+    auto original=brep(ctx), offset=brep(ctx);
+    original->SetTolerance(original_tol, FALSE, FALSE);
+    offset->SetTolerance(result_tol, FALSE, FALSE);
+    SmVertex* source=nullptr;
+    SmFaceuse* source_use=nullptr;
+    SmFace* mapped_face=nullptr;
+    if (has_strut) {
+        source=source_strut(ctx, original.get(), point, source_use);
+        mapped_face=circular_disk(ctx, offset.get(), SmPoint3d(point.x,point.y,point.z+height), radius);
+    } else {
+        SmShell* shell=nullptr;
+        constructed(original->MakeShellVertex(nullptr, point, shell, source));
+    }
+    SmOffsetGeometryCreation geometry(distance, approx_tol);
+    Executive executive(ctx, SM_OO_SOLID_OFFSET, geometry, original.get());
+    executive.install(std::move(offset));
+    if (has_strut) {
+        if (map_mate) source_use=source_use->GetMate();
+        if (executive.relate_face(source_use, mapped_face) != SM_SUCCESS) throw Argument{};
+    }
+    VertexResult result;
+    SmStatus status=executive.BuildOffsetOfVertex(source, result.curves, result.orientations,
+                                                 result.surface);
+    out.insert(out.end(), {0, (double)status, original->GetTolerance(),
+                           executive.GetOffsetBrep()->GetTolerance(),
+                           (double)result.curves.GetSize(), (double)result.orientations.GetSize(),
+                           result.surface ? 1.0 : 0.0});
+    for (ULONG i=0; i<result.orientations.GetSize(); ++i) out.push_back(result.orientations[i]);
+    for (ULONG i=0; i<result.curves.GetSize(); ++i) {
+        SmCurve* curve=result.curves[i];
+        if (!curve) throw Argument{};
+        SmExtent1d interval=curve->GetNaturalInterval();
+        out.insert(out.end(), {(double)curve->GetType(), interval.GetMin(), interval.GetMax(), 4});
+        for (double fraction : {0.113,0.371,0.729,0.913}) {
+            double parameter=(1.0-fraction)*interval.GetMin()+fraction*interval.GetMax();
+            SmPoint3d point(0,0,0);
+            SmStatus status=curve->EvaluatePoint(parameter,point);
+            out.push_back(status);
+            if (status==SM_SUCCESS) put_point(out,point);
+            else out.insert(out.end(),3,0.0);
+        }
+    }
+    if (result.surface) put_vertex_surface(out, result.surface, samples);
+}
+
 void probe(Reader& rd, std::vector<double>& out) {
     int64_t operation = rd.index(12);
     double tol = rd.number();
@@ -649,9 +877,245 @@ void probe(Reader& rd, std::vector<double>& out) {
         out.push_back(id(offsets, executive.GetOffsetEdgeuse(originals[i])));
     for (ULONG i=0; i<curves.GetSize(); ++i) delete curves[i];
 }
+// Geometry handed to native constructors that may or may not adopt it: anything
+// still unowned when the scope ends is the fixture's to delete.
+struct Unowned {
+    std::vector<SmCurve*> curves;
+    SmSurface* surface = nullptr;
+    Unowned() = default;
+    Unowned(const Unowned&) = delete;
+    Unowned& operator=(const Unowned&) = delete;
+    ~Unowned() {
+        for (SmCurve* c : curves) if (c && !c->GetOwner()) delete c;
+        if (surface && !surface->GetOwner()) delete surface;
+    }
+};
+
+SmPoint3d vertex_point(SmEdgeuse* use) {
+    if (!use || !use->GetVertexuse() || !use->GetVertexuse()->GetVertex()) throw Argument{};
+    return use->GetVertexuse()->GetVertex()->GetPoint();
+}
+
+// A plane face made by MakeFaceWithCurves from explicit 3D and UV lines
+// (CreateFaceFromSurface's natural trim curves have no Rust fixture twin): the
+// straight-edged loop `points` at height z on the plane with axes X, Y (or Y, X
+// when `flip`, so its normal points down and UV is (y, x)), the plane's domain =
+// the loop's UV bounding box.
+SmFace* curve_face(SmContext& ctx, SmBrep* target, const std::vector<SmPoint2d>& points, double z,
+                   bool flip) {
+    const size_t n = points.size();
+    if (n < 3) throw Argument{};
+    double x0 = points[0].x, y0 = points[0].y, x1 = x0, y1 = y0;
+    for (const SmPoint2d& p : points) {
+        x0 = std::min(x0, p.x); y0 = std::min(y0, p.y); x1 = std::max(x1, p.x); y1 = std::max(y1, p.y);
+    }
+    Unowned owned;
+    SmTArray<SmCurve*> curves3d;
+    SmTArray<SmBSplineCurve*> uv;
+    // MakeFaceWithCurves deletes the UV curves it is given (SmObjsDelete,
+    // SmBrep.cpp:15743), so they leave this guard when the call is made.
+    struct UvGuard {
+        SmTArray<SmBSplineCurve*>* list;
+        ~UvGuard() { if (list) for (ULONG i=0; i<list->GetSize(); ++i) delete (*list)[i]; }
+    } uv_guard{&uv};
+    SmTArray<SmOrientType> orients;
+    SmTArray<SmPoint3d> vertex_points; // MakeFaceWithCurves loop points (none)
+    SmTArray<ULONG> loops;
+    SmExtent1d unit(0,1);
+    auto uv_of = [flip](double x, double y) { return flip ? SmPoint3d(y, x, 0) : SmPoint3d(x, y, 0); };
+    for (size_t i=0; i<n; ++i) {
+        const SmPoint2d& pa = points[i];
+        const SmPoint2d& pb = points[(i+1) % n];
+        SmPoint3d a(pa.x, pa.y, z), b(pb.x, pb.y, z);
+        SmLine* line = nullptr;
+        SmStatus status = SmLine::CreateLineSegment(ctx, 3, a, b, line, &unit);
+        owned.curves.push_back(line);
+        constructed(status);
+        SmBSplineCurve* trim = nullptr;
+        status = SmBSplineCurve::CreateLineSegment(ctx, 2, uv_of(a.x, a.y), uv_of(b.x, b.y), trim);
+        uv.Add(trim); // deleted with the array until handed to MakeFaceWithCurves
+        constructed(status);
+        if (!line || !trim) throw std::bad_alloc();
+        curves3d.Add(line); orients.Add(SM_OT_SAME);
+    }
+    loops.Add((ULONG)n);
+    SmExtent2d domain = flip ? SmExtent2d(SmPoint2d(y0, x0), SmPoint2d(y1, x1))
+                             : SmExtent2d(SmPoint2d(x0, y0), SmPoint2d(x1, y1));
+    owned.surface = new (ctx) SmPlane(SmPoint3d(0,0,z), flip ? SmVector3d(0,1,0) : SmVector3d(1,0,0),
+                                      flip ? SmVector3d(1,0,0) : SmVector3d(0,1,0),
+                                      SmVector2d(1,1), domain, &ctx);
+    SmRegion* region = nullptr;
+    SmShell* shell = nullptr;
+    SmFace* face = nullptr;
+    uv_guard.list = nullptr;
+    constructed(target->MakeFaceWithCurves(target->GetInfiniteRegion(), loops, &curves3d, &uv,
+                                           orients, vertex_points, owned.surface, domain, SM_OT_SAME,
+                                           region, shell, face));
+    if (!face || !face->GetUpwardFaceuse() || !face->GetUpwardFaceuse()->GetMate())
+        throw Argument{};
+    return face;
+}
+// The loop of a rectangle, counter-clockwise from its lower-left corner, with the
+// bottom edge split at `split` when given.
+std::vector<SmPoint2d> rectangle_loop(const SmExtent2d& rect, const double* split) {
+    const double x0 = rect.GetMin().x, y0 = rect.GetMin().y, x1 = rect.GetMax().x, y1 = rect.GetMax().y;
+    std::vector<SmPoint2d> points{SmPoint2d(x0, y0)};
+    if (split) points.push_back(SmPoint2d(*split, y0));
+    points.insert(points.end(), {SmPoint2d(x1, y0), SmPoint2d(x1, y1), SmPoint2d(x0, y1)});
+    return points;
+}
+SmFace* curve_face(SmContext& ctx, SmBrep* target) {
+    return curve_face(ctx, target, rectangle_loop(SmExtent2d(SmPoint2d(0,0), SmPoint2d(1,1)), nullptr),
+                      0.0, false);
+}
+
+// Per original edge use of `use`, sorted by the use's own start point (GetEdgeuses
+// starts a loop at a construction-dependent use): start xyz, then -1 when
+// GetOffsetEdgeuse is null, else 1 and the start points of the offset use and of
+// its mate.
+void put_mapped_uses(std::vector<double>& out, Executive& executive, SmFaceuse* use) {
+    SmTArray<SmEdgeuse*> uses;
+    use->GetEdgeuses(uses);
+    std::vector<std::vector<double>> records;
+    for (ULONG i=0; i<uses.GetSize(); ++i) {
+        std::vector<double> record;
+        put_point(record, vertex_point(uses[i]));
+        SmEdgeuse* mapped = executive.GetOffsetEdgeuse(uses[i]);
+        if (!mapped) { record.push_back(-1); }
+        else {
+            record.push_back(1);
+            put_point(record, vertex_point(mapped));
+            put_point(record, vertex_point(mapped->GetMate()));
+        }
+        records.push_back(record);
+    }
+    std::sort(records.begin(), records.end());
+    out.push_back((double)records.size());
+    for (auto& r : records) out.insert(out.end(), r.begin(), r.end());
+}
+
+// BuildOffsetOfFaceuse with a real offset plane z = distance over the given domain.
+// Input: distance, approx_tol, domain, local, extend, merge, mate, then a selector
+// 0 / 1 / 2 and that many UV segments of one self-intersection: the 3D line at
+// z = distance runs along the first segment; the second UV curve is the same line
+// (selector 1) or the second segment (selector 2). Output: status, the related
+// faces (edge count and UV domain each, sorted by domain), offset B-rep
+// face/edge/vertex counts, its sorted vertex points, then per original edge use
+// (sorted by its start point) GetOffsetEdgeuse's end points.
+void face_tail(Reader& rd, std::vector<double>& out) {
+    double distance = rd.number(), tol = rd.number();
+    SmExtent2d domain = rd.domain();
+    bool local = rd.flag(), extend = rd.flag(), merge = rd.flag(), mate = rd.flag();
+    int64_t segments = rd.index(2);
+    bool has_ssi = segments > 0;
+    SmPoint2d s0(0,0), s1(0,0), t0(0,0), t1(0,0);
+    if (has_ssi) { s0 = rd.uv(); s1 = rd.uv(); t0 = s0; t1 = s1; }
+    if (segments == 2) { t0 = rd.uv(); t1 = rd.uv(); }
+    rd.done();
+    SmContext ctx;
+    auto original = brep(ctx), offset = brep(ctx);
+    SmFace* face = curve_face(ctx, original.get());
+    SmFaceuse* use = face->GetUpwardFaceuse();
+    if (mate) use = use->GetMate();
+    SmOffsetGeometryCreation geometry(distance, tol);
+    Executive executive(ctx, local ? SM_OO_LOCAL_OPERATION : SM_OO_SOLID_OFFSET, geometry,
+                        original.get());
+    executive.install(std::move(offset));
+    executive.SetExtendConvexEdges(extend ? TRUE : FALSE);
+    executive.SetMergeResults(merge ? TRUE : FALSE);
+    // Declared after the executive: checks ownership before the offset B-rep dies.
+    Unowned owned;
+    SmSSIData intersections;
+    if (has_ssi) {
+        SmExtent1d unit(0,1);
+        SmLine* line = nullptr;
+        SmStatus status = SmLine::CreateLineSegment(ctx, 3, SmPoint3d(s0.x, s0.y, distance),
+                                                    SmPoint3d(s1.x, s1.y, distance), line, &unit);
+        owned.curves.push_back(line);
+        constructed(status);
+        intersections.m_v3DCurves.Add(line);
+        for (int i=0; i<2; ++i) {
+            SmBSplineCurve* trim = nullptr;
+            const SmPoint2d& a = i ? t0 : s0;
+            const SmPoint2d& b = i ? t1 : s1;
+            status = SmBSplineCurve::CreateLineSegment(ctx, 2, SmPoint3d(a.x, a.y, 0),
+                                                       SmPoint3d(b.x, b.y, 0), trim);
+            owned.curves.push_back(trim);
+            constructed(status);
+            (i ? intersections.m_vUVCurves2 : intersections.m_vUVCurves1).Add(trim);
+        }
+    }
+    owned.surface = new (ctx) SmPlane(SmPoint3d(0,0,distance), SmVector3d(1,0,0),
+                                      SmVector3d(0,1,0), SmVector2d(1,1), domain, &ctx);
+    SmSurface* surface = owned.surface;
+    SmStatus status = executive.BuildOffsetOfFaceuse(use, surface, intersections);
+    out.insert(out.end(), {0, (double)status});
+    SmTArray<SmFace*> related;
+    executive.faces_of(use, related);
+    std::vector<std::vector<double>> summaries;
+    for (ULONG i=0; i<related.GetSize(); ++i) {
+        SmTArray<SmEdge*> edges;
+        related[i]->GetEdges(edges);
+        SmExtent2d d = related[i]->GetUVDomain();
+        summaries.push_back({d.GetMin().x, d.GetMin().y, d.GetMax().x, d.GetMax().y,
+                             (double)edges.GetSize()});
+    }
+    std::sort(summaries.begin(), summaries.end());
+    out.push_back((double)summaries.size());
+    for (auto& v : summaries) out.insert(out.end(), v.begin(), v.end());
+    SmBrep* result = executive.GetOffsetBrep();
+    if (!result) throw Argument{};
+    SmTArray<SmFace*> faces;
+    SmTArray<SmEdge*> edges;
+    SmTArray<SmVertex*> vertices;
+    result->GetFaces(faces); result->GetEdges(edges); result->GetVertices(vertices);
+    out.insert(out.end(), {(double)faces.GetSize(), (double)edges.GetSize(),
+                           (double)vertices.GetSize()});
+    std::vector<std::vector<double>> points;
+    for (ULONG i=0; i<vertices.GetSize(); ++i) {
+        SmPoint3d p = vertices[i]->GetPoint();
+        points.push_back({p.x, p.y, p.z});
+    }
+    std::sort(points.begin(), points.end());
+    for (auto& p : points) out.insert(out.end(), p.begin(), p.end());
+    put_mapped_uses(out, executive, use);
+}
+
+// MapEdgeuses alone, on two MakeFaceWithCurves faces: the original rectangle at
+// z = 0 and an offset rectangle at z = distance (its plane flipped when asked),
+// matching the upward or downward original use. Input: distance, original rect,
+// offset rect, flip, mate, then a flag and optionally the x at which the offset
+// rectangle's bottom edge is split into two collinear edges. Output: status, then
+// per original edge use (sorted by its start point) GetOffsetEdgeuse's end points
+// as in face_tail.
+void map_twin(Reader& rd, std::vector<double>& out) {
+    double distance = rd.number();
+    SmExtent2d original_rect = rd.domain(), offset_rect = rd.domain();
+    bool flip = rd.flag(), mate = rd.flag(), has_split = rd.flag();
+    double split = 0;
+    if (has_split) {
+        split = rd.number();
+        if (!(offset_rect.GetMin().x < split && split < offset_rect.GetMax().x)) throw Argument{};
+    }
+    rd.done();
+    SmContext ctx;
+    auto original = brep(ctx), offset = brep(ctx);
+    SmFace* face = curve_face(ctx, original.get(), rectangle_loop(original_rect, nullptr), 0.0, false);
+    SmFace* twin = curve_face(ctx, offset.get(), rectangle_loop(offset_rect, has_split ? &split : nullptr),
+                              distance, flip);
+    SmFaceuse* use = face->GetUpwardFaceuse();
+    if (mate) use = use->GetMate();
+    SmOffsetGeometryCreation geometry(distance, 1e-6);
+    Executive executive(ctx, SM_OO_SOLID_OFFSET, geometry, original.get());
+    executive.install(std::move(offset));
+    SmStatus status = executive.MapEdgeuses(use, twin);
+    out.insert(out.end(), {0, (double)status});
+    put_mapped_uses(out, executive, use);
+}
 } // namespace
 
-// Plain-C ABI, mode 0 config / 1 synchronize / 2 extend / 3 probe.
+// Plain-C ABI, mode 0 config / 1 synchronize / 2 extend / 3 probe / 4 face tail /
+// 5 map twin / 6 vertex.
 // Caller owns every buffer; no native allocation or object address crosses it.
 SC_EXPORT int32_t sc_offset_offset_executive_p1_eval(
     int32_t mode, const double* input, int64_t input_len,
@@ -667,6 +1131,9 @@ SC_EXPORT int32_t sc_offset_offset_executive_p1_eval(
             case 1: synchronize(rd, result); break;
             case 2: extend(rd, result); break;
             case 3: probe(rd, result); break;
+            case 6: vertex(rd, result); break;
+            case 4: face_tail(rd, result); break;
+            case 5: map_twin(rd, result); break;
             default: throw Argument{};
             }
         } catch (const Rejected& rejection) {

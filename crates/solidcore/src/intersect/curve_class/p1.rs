@@ -136,7 +136,7 @@ use std::borrow::Cow;
 use crate::curve::crv_on_surf::CrvOnSurf;
 use crate::curve::curve::p2::{Curve, CurveKind};
 use crate::curve::curve::p3::{local_curve_intersect, PointSolveOptions};
-use crate::error::{ignored, EntityRef, Result, SolidError, SM_ERR};
+use crate::error::{ignored, Result, SolidError, SM_ERR};
 use crate::geom::assert_array::labels::CURVE_CLASSIFICATION_TYPE;
 use crate::geom::extent1d::Extent1d;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
@@ -157,6 +157,7 @@ use crate::nurbs::b_spline_surface_n_lib::p2::{EvaluateFlags, OrientType};
 use crate::surface::surface::p1::map_to_2d_on_curve;
 use crate::surface::surface::p2::surface_cache;
 use crate::surface::surface::{Surface, SurfaceKind};
+use crate::EntityRef;
 
 const OP_CC: &str = "intersect::curve_class::p1::CurveClassification";
 const OP_TOUCH: &str = "intersect::curve_class::p1::get_winding_count";
@@ -954,6 +955,7 @@ impl<O: ClassObject> CurveClassification<O> {
     /// `geometry` cannot resolve it.
     pub fn classify_crv_loc(
         &self,
+        k: &Kernel,
         geometry: &impl ClassGeometry<O>,
         point_class: &PointClassification<O>,
         param: f64,
@@ -965,7 +967,7 @@ impl<O: ClassObject> CurveClassification<O> {
 
         // compute curve point at pointClassification parameter (status ignored)
         let curve = self.curve_geometry(geometry)?;
-        Ok(ignored(curve.evaluate_point(param))?.unwrap_or(Vec3::UNDEF))
+        Ok(ignored(curve.evaluate_point(k, param))?.unwrap_or(Vec3::UNDEF))
     }
 
     /// Makes sure every start and end point classification (and every interior one
@@ -1007,7 +1009,7 @@ impl<O: ClassObject> CurveClassification<O> {
             if !start_set {
                 if ii == 0 {
                     let param = self.at(ii)?.interval.min();
-                    match self.curve_geometry(geometry)?.evaluate_point(param) {
+                    match self.curve_geometry(geometry)?.evaluate_point(k, param) {
                         Ok(p) => pt = p,
                         Err(e) => record(Err(e))?,
                     }
@@ -1025,7 +1027,7 @@ impl<O: ClassObject> CurveClassification<O> {
             // End:
             if !self.at(ii)?.end.are_parameters_set() {
                 let param = self.at(ii)?.interval.max();
-                match self.curve_geometry(geometry)?.evaluate_point(param) {
+                match self.curve_geometry(geometry)?.evaluate_point(k, param) {
                     Ok(p) => pt = p,
                     Err(e) => record(Err(e))?,
                 }
@@ -1039,7 +1041,7 @@ impl<O: ClassObject> CurveClassification<O> {
             // Mid:
             if set_mids && !self.at(ii)?.mid.are_parameters_set() {
                 let param = self.at(ii)?.interval.mid();
-                match self.curve_geometry(geometry)?.evaluate_point(param) {
+                match self.curve_geometry(geometry)?.evaluate_point(k, param) {
                     Ok(p) => pt = p,
                     Err(e) => record(Err(e))?,
                 }
@@ -1185,6 +1187,12 @@ fn out_of_bounds(surface: &Surface) -> Cow<'_, Surface> {
             *p.out_of_bounds_enabled_mut() = true;
             Cow::Owned(Surface::from(p))
         }
+        SurfaceKind::Cone(s) => {
+            // the SmBSplineSurface base flag only (not SetOutOfBoundsEnabled)
+            let mut c = s.as_ref().clone();
+            *c.rev.base_mut().out_of_bounds_enabled_mut() = true;
+            Cow::Owned(Surface::from(c))
+        }
         SurfaceKind::SurfOfRevolution(s) => {
             // the SmBSplineSurface base flag only (not SetOutOfBoundsEnabled)
             let mut s = s.as_ref().clone();
@@ -1201,9 +1209,10 @@ fn out_of_bounds(surface: &Surface) -> Cow<'_, Surface> {
 /// `SmSurface::Evaluate(uv, 1, 1, TRUE, TRUE, TRUE, vals)` (status ignored upstream):
 /// `vals[i][j]`, the upper half; `[1][1]` and the values of a failed evaluation stay
 /// undefined.
-fn surface_evaluate_11(surface: &Surface, uv: Vec2) -> Result<(bool, [[Vec3; 2]; 2])> {
+fn surface_evaluate_11(k: &Kernel, surface: &Surface, uv: Vec2) -> Result<(bool, [[Vec3; 2]; 2])> {
     let mut vals = [[Vec3::UNDEF; 2]; 2];
     let r = surface.evaluate(
+        k,
         uv,
         1,
         1,
@@ -1226,9 +1235,9 @@ fn surface_evaluate_11(surface: &Surface, uv: Vec2) -> Result<(bool, [[Vec3; 2];
 
 /// `SmCurve::Evaluate(t, 1, TRUE, pv)` (status ignored upstream): the point and
 /// tangent, undefined for a failed evaluation.
-fn curve_evaluate_1(curve: &Curve, t: f64) -> Result<[Vec3; 2]> {
+fn curve_evaluate_1(k: &Kernel, curve: &Curve, t: f64) -> Result<[Vec3; 2]> {
     let mut pv = [Vec3::UNDEF; 2];
-    if let Some(d) = ignored(curve.evaluate(t, 1, true, true))? {
+    if let Some(d) = ignored(curve.evaluate(k, t, 1, true, true))? {
         for (slot, v) in pv.iter_mut().zip(d) {
             *slot = v;
         }
@@ -1323,8 +1332,8 @@ pub fn set_xsect_curve_through_point(
     let s1 = out_of_bounds(orig1);
 
     // evaluate each surface at the given intersection parameter points
-    let (ok0, mut surf_val0) = surface_evaluate_11(&s0, uv0)?;
-    let (_, mut surf_val1) = surface_evaluate_11(&s1, uv1)?;
+    let (ok0, mut surf_val0) = surface_evaluate_11(k, &s0, uv0)?;
+    let (_, mut surf_val1) = surface_evaluate_11(k, &s1, uv1)?;
 
     // tolerances
     let xsect_obj_zone_tol_3d = max2(
@@ -1351,6 +1360,7 @@ pub fn set_xsect_curve_through_point(
     let natural = src_curve.natural_interval();
     out.param = natural.clamp_value(out.param);
     let projection = ignored(src_curve.local_point_solve::<usize>(
+        k,
         &natural,
         SolverOperation::Minimize,
         out.point_3d,
@@ -1375,7 +1385,7 @@ pub fn set_xsect_curve_through_point(
     }
 
     // evaluate the curve at the param value for pos and tangent information
-    let src_crv_pt = curve_evaluate_1(src_curve, out.param)?;
+    let src_crv_pt = curve_evaluate_1(k, src_curve, out.param)?;
 
     surf_val0[1][0] = surf_val0[1][0].unitize_or_z();
     surf_val0[0][1] = surf_val0[0][1].unitize_or_z();
@@ -1533,12 +1543,12 @@ pub fn get_cci_surface_gaps<S: Copy>(
             } else {
                 solution.start.param(1)?
             };
-            let guess = ignored(uv_curve.evaluate_point(t_param))?.unwrap_or(Vec3::UNDEF);
+            let guess = ignored(uv_curve.evaluate_point(k, t_param))?.unwrap_or(Vec3::UNDEF);
             surface_local_point_solve(k, surface, point, Point2::new(guess.x, guess.y))?
         } else {
             // get classCurvePoint/surf dist without checking trim boundaries
             let _cache = surface_cache::<()>(k, surface, None)?;
-            let size = surface_approximate_size(surface)?;
+            let size = surface_approximate_size(k, surface)?;
             match surface_global_point_solve(k, surface, size, point)? {
                 Some(s) => Some(s),
                 None => return Ok(out),
@@ -1700,14 +1710,14 @@ pub fn apply_point_solution<O, S: Copy>(
     // let rSSSPoint = pClassCurveSurface1 evaluation at the intersection point
     let has_src = src_curve.is_some();
     let eval = if let (true, Some((s, uv))) = (has_src, input.class_curve_surface1) {
-        Some(s.evaluate_point(uv))
+        Some(s.evaluate_point(k, uv))
     } else if let (true, Some((s, uv))) = (has_src, input.class_curve_surface2) {
-        Some(s.evaluate_point(uv))
+        Some(s.evaluate_point(k, uv))
     } else if let (true, Some((s, uv))) = (
         input.edge.is_some() || input.emate.is_some(),
         input.edge_curve_surface1,
     ) {
-        Some(s.evaluate_point(uv))
+        Some(s.evaluate_point(k, uv))
     } else {
         None
     };
@@ -1767,101 +1777,62 @@ pub fn apply_point_solution<O, S: Copy>(
 
 /// Makes every interval whose interior classifies to an edge and whose start or end
 /// classifies to a vertex use a vertex of that edge
-/// (`sm_MakeConsistentClassifications`): when the end's vertex is not one of the
-/// edge's two vertices, the interior is moved to the first edge of that vertex onto
-/// which the interval's middle point drops (within the intersection tolerance of the
-/// classification and that edge), else the end is moved to the nearer of the edge's
-/// vertices. The start is fixed before the end, which then sees the fixed interior.
-///
-/// The edges and vertices are reached through [`ClassGeometry::topology_entity`] and
-/// [`ClassGeometry::topology_handle_in`]; an edge or vertex the adapter cannot resolve
-/// (no topology hooks, or a stand-in without a B-rep) keeps the deferral the call had
-/// before it was wired ([`SolidError::Unported`], `topology.edge` / `topology.vertex`).
+/// (`sm_MakeConsistentClassifications`): for a vertex that is not one of the edge's, the
+/// first edge of that vertex within the intersection tolerance of the interval midpoint
+/// becomes the interior's edge, else the edge vertex nearer the classified vertex becomes
+/// the end's vertex. The topology members (`SmEdge::GetVertex`, `SmVertex::GetEdges`,
+/// `GetPoint`, `SmEdge::GetCurve`, `GetInterval`) go through
+/// [`ClassGeometry::topology_entity`] and [`ClassGeometry::topology_handle`].
 ///
 /// # Errors
 ///
-/// `SER` of the middle point's evaluation and of the drops ([`SolidError::Unported`]
-/// for the global point solve, unit `curve.curve_p1`); [`SolidError::InvalidInput`]
-/// for an interior or end without object, a handle the adapter cannot resolve, an
-/// edge without vertices or curve, or a classification without curve (upstream
-/// dereferences them).
+/// [`SolidError::Unported`] for such an interval over handles the adapter cannot resolve
+/// to a B-rep; a null-pointer error for a missing classification curve, edge, vertex or
+/// edge curve upstream dereferences; those of the drop point.
 pub fn make_consistent_classifications<O: ClassObject>(
     k: &Kernel,
     geometry: &impl ClassGeometry<O>,
     classification: &mut CurveClassification<O>,
 ) -> Result<()> {
-    const OP_CONSISTENT: &str = "intersect::curve_class::p1::make_consistent_classifications";
-    let unresolved = |reason: &'static str| SolidError::invalid_input(OP_CONSISTENT, reason);
-
+    const OP: &str = "sm_MakeConsistentClassifications";
     // locals
-    let src_zone_tol_3d = src_zone_tol_3d_of(k, Some(classification));
+    let src_zone_tol_3d = classification.src_zone_tol_3d();
 
     // for every interval
     for i in 0..classification.size() {
-        // If interval classifies to an Edge: the start, then the end
+        // If interval classifies to an Edge
+        if classification.at(i)?.mid.point_class() != PointClassType::Edge {
+            continue;
+        }
+        // the startPoint, then the endPoint, when it classifies to a Vertex (the endPoint
+        // check reads the interior edge the startPoint fix may have substituted)
         for at_start in [true, false] {
-            let ivl = classification.at(i)?;
-            if ivl.mid.point_class() != PointClassType::Edge {
-                break;
-            }
-            let end = if at_start { &ivl.start } else { &ivl.end };
-
-            // if the end classifies to a Vertex
+            let ivl = *classification.at(i)?;
+            let end = if at_start { ivl.start } else { ivl.end };
             if end.point_class() != PointClassType::Vertex {
                 continue;
             }
-            let classify_edge = ivl
-                .mid
-                .object()
-                .ok_or_else(|| unresolved("edge class without edge"))?;
-            let classify_vertex = end
-                .object()
-                .ok_or_else(|| unresolved("vertex class without vertex"))?;
-            // (an adapter that cannot resolve the edge keeps the deferral this call had
-            // before it was wired)
-            let Some((eb, EntityRef::Edge(e))) = geometry.topology_entity(classify_edge) else {
-                // UNPORTED(topology.edge): an edge the adapter cannot resolve
-                return Err(SolidError::unported("SmEdge::GetVertex", "topology.edge"));
-            };
-            let v1 = crate::topology::edge::vertex(eb, e)?
-                .ok_or_else(|| unresolved("edge without vertex"))?;
-            let v2 = crate::topology::edge::other_vertex(eb, e, Some(v1))?
-                .ok_or_else(|| unresolved("edge without other vertex"))?;
-            let edge_vertex1 = geometry
-                .topology_handle_in(eb, EntityRef::Vertex(v1))
-                .ok_or_else(|| unresolved("vertex has no handle"))?;
-            let edge_vertex2 = geometry
-                .topology_handle_in(eb, EntityRef::Vertex(v2))
-                .ok_or_else(|| unresolved("vertex has no handle"))?;
+            let classify_edge = ivl.mid.object().ok_or(SolidError::null_pointer(OP))?;
+            let classify_vertex = end.object().ok_or(SolidError::null_pointer(OP))?;
+            let (edge_vertex1, edge_vertex2) = super::p3::edge_vertices(geometry, classify_edge)?;
 
             // check that classified vertex is one of the Edge's vertices
             if classify_vertex == edge_vertex1 || classify_vertex == edge_vertex2 {
                 continue;
             }
-            // (WARN: bad coincident-edge classification)
 
-            // Try 1 - Simple ClassifyEdge substitution: the first Edge attached to
-            // ClassifyVertex within XSectTol3d at the interval's middle point
-            let Some((vb, EntityRef::Vertex(cv))) = geometry.topology_entity(classify_vertex)
-            else {
-                // UNPORTED(topology.vertex): a vertex the adapter cannot resolve
-                return Err(SolidError::unported(
-                    "SmVertex::GetEdges",
-                    "topology.vertex",
-                ));
-            };
-            let t_mid = ivl.interval.evaluate(0.5);
-            let mut fixed = None;
-            for ve in crate::topology::vertex::edges(vb, cv, None)? {
-                // Ivl MidPoint, XSectTol3d(SrcCrv, VertexEdge)
-                let src_curve = classification
+            // Try 1 - Simple ClassifyEdge substitution: the first edge attached to the
+            // ClassifyVertex within XSectTol3d at the interval midpoint
+            let mut fixed_problem = false;
+            for vertex_edge in vertex_edges(geometry, classify_vertex)? {
+                let t_mid = ivl.interval.evaluate(0.5);
+
+                // Ivl MidPoint, XSectTol3d(SrcCrv,VertexEdge)
+                let curve = classification
                     .curve()
                     .and_then(|c| geometry.curve(c))
-                    .ok_or_else(|| unresolved("classification without curve"))?;
-                let mid_pnt = src_curve.evaluate_point(t_mid)?;
-                let vertex_edge = geometry
-                    .topology_handle_in(vb, EntityRef::Edge(ve))
-                    .ok_or_else(|| unresolved("edge has no handle"))?;
+                    .ok_or(SolidError::null_pointer(OP))?;
+                let mid_pnt = curve.evaluate_point(k, t_mid)?;
                 let xsect_tol_3d = xsect_tol_3d_from_zones(
                     k,
                     src_zone_tol_3d,
@@ -1869,14 +1840,11 @@ pub fn make_consistent_classifications<O: ClassObject>(
                 );
 
                 // drop a midInterval Point to this VertexEdge
-                let record = vb.edge(ve)?;
-                let edge_curve = record
-                    .curve
-                    .as_ref()
-                    .ok_or_else(|| unresolved("edge without curve"))?;
+                let edge_curve = super::p3::edge_curve(geometry, vertex_edge)?
+                    .ok_or(SolidError::null_pointer(OP))?;
                 let drop = edge_curve.drop_point(
                     k,
-                    &record.interval,
+                    &super::p3::edge_interval(geometry, vertex_edge)?,
                     mid_pnt,
                     None,
                     xsect_tol_3d,
@@ -1884,38 +1852,54 @@ pub fn make_consistent_classifications<O: ClassObject>(
                     SolverOperation::Minimize,
                 )?;
 
-                // if point was close enough to edge - substitute the ClassifyMid Edge
+                // if point was close enough to edge - substitute the ClassifyMid Edge target
                 if drop.success {
-                    fixed = Some(vertex_edge);
+                    classification
+                        .at_mut(i)?
+                        .mid
+                        .set_class_object(PointClassType::Edge, Some(vertex_edge));
+                    fixed_problem = true;
                     break;
                 }
             }
-            let ivl = classification.at_mut(i)?;
-            if let Some(vertex_edge) = fixed {
-                ivl.mid
-                    .set_class_object(PointClassType::Edge, Some(vertex_edge));
-                continue;
-            }
 
-            // Try 2 - simple ClassifyVertex substitution: the EdgeVertex closest to
+            // Try 2 - simple ClassifyVertex substitution: the EdgeVertex closest to the
             // ClassifyVertex
-            let p = vb.vertex(cv)?.point;
-            let p1 = eb.vertex(v1)?.point;
-            let p2 = eb.vertex(v2)?.point;
-            let nearer = if p.distance(p1) < p.distance(p2) {
-                edge_vertex1
-            } else {
-                edge_vertex2
-            };
-            let end = if at_start {
-                &mut ivl.start
-            } else {
-                &mut ivl.end
-            };
-            end.set_class_object(PointClassType::Vertex, Some(nearer));
+            if !fixed_problem {
+                let p = super::p3::vertex_point(geometry, classify_vertex)?;
+                let nearer = if p.distance(super::p3::vertex_point(geometry, edge_vertex1)?)
+                    < p.distance(super::p3::vertex_point(geometry, edge_vertex2)?)
+                {
+                    edge_vertex1
+                } else {
+                    edge_vertex2
+                };
+                let ivl_mut = classification.at_mut(i)?;
+                let pc = if at_start {
+                    &mut ivl_mut.start
+                } else {
+                    &mut ivl_mut.end
+                };
+                pc.set_class_object(PointClassType::Vertex, Some(nearer));
+            }
         }
     }
+
     Ok(())
+}
+
+/// `SmVertex::GetEdges`: the handles of the edges attached to vertex handle `vertex`.
+fn vertex_edges<O: ClassObject>(geometry: &impl ClassGeometry<O>, vertex: O) -> Result<Vec<O>> {
+    const UPSTREAM: &str = "SmVertex::GetEdges";
+    let (b, v) = super::p7::vertex_of(geometry, vertex, UPSTREAM)?;
+    crate::topology::vertex::edges(b, v, None)?
+        .into_iter()
+        .map(|e| {
+            geometry
+                .topology_handle_in(b, EntityRef::Edge(e))
+                .ok_or(SolidError::invalid_input(UPSTREAM, "edge without handle"))
+        })
+        .collect()
 }
 
 /// The angle in `[0, PI/2]` between the tangents of two curves at their parameters
@@ -1927,6 +1911,7 @@ pub fn make_consistent_classifications<O: ClassObject>(
 ///
 /// [`SolidError::Unported`] from the evaluations.
 pub fn get_curve_curve_angle(
+    k: &Kernel,
     this_curve: Option<&Curve>,
     this_param: f64,
     other_curve: Option<&Curve>,
@@ -1940,8 +1925,8 @@ pub fn get_curve_curve_angle(
     };
 
     // Evaluate the Curve locations
-    let this_pv = curve_evaluate_1(this_curve, this_param)?;
-    let other_pv = curve_evaluate_1(other_curve, other_param)?;
+    let this_pv = curve_evaluate_1(k, this_curve, this_param)?;
+    let other_pv = curve_evaluate_1(k, other_curve, other_param)?;
 
     // check for zero-length tangents.
     let scaled_zero = this_pv[0].scaled_zero();
@@ -2012,6 +1997,7 @@ pub fn cull_or_refine_cci_in_3d<S: SolutionObject>(
         if sol.solution_type == SolutionType::SingleValue {
             // get the 3dCurve/3Dcurve intersection
             let found = local_curve_intersect(
+                k,
                 &curve_1,
                 interval_1,
                 curve_2,
@@ -2207,8 +2193,8 @@ fn surface_local_point_solve(
 }
 
 /// `SmSurface::ApproximateSize`: upstream ignores the status, leaving the size zero.
-fn surface_approximate_size(surface: &Surface) -> Result<Vec2> {
-    match surface.approximate_size(None) {
+fn surface_approximate_size(k: &Kernel, surface: &Surface) -> Result<Vec2> {
+    match surface.approximate_size(k, None) {
         Ok(size) => Ok(size),
         Err(e @ SolidError::Unported { .. }) => Err(e),
         Err(_) => Ok(Vec2::ZERO),

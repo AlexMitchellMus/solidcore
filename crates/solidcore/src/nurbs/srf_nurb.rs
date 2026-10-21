@@ -43,6 +43,12 @@
 //! - Every array access is bounds checked: degrees above `NL_MAXDEG` (upstream's
 //!   scratch array size) and nets or knot vectors that do not match the degrees are
 //!   [`SolidError::InvalidInput`] where upstream would index outside its arrays.
+//!   The fixed scratch arrays are `SMALL_NP` (8) wide when both degrees are below 8
+//!   and `NL_MAXDEG + 1` otherwise (every index used is at most the degree, so the
+//!   values and errors are the same; this only avoids zeroing large stack arrays).
+//! - `N_SrfIsClosedSmooth`: a degree whose span index `+ 1` overflows (near
+//!   `isize::MAX`, upstream's signed overflow) is `InvalidInput`, as an index
+//!   outside the knot array.
 //! - `N_SrfReverse` keeps both forms: [`Surface::reverse`] in place,
 //!   [`Surface::reversed`] into a new surface sized as upstream sizes a NULL output.
 //! - `N_SrfType` points its curve outputs at its scratch curves, so a curve output
@@ -79,7 +85,7 @@ use crate::nurbs::geom::{
 use crate::nurbs::index::{get, get2, oob, set, set2, sx, ux};
 use crate::nurbs::knots::{KnotVector, Side, MAX_DEGREE};
 use crate::nurbs::math::{
-    combine4_pts, float_op_is_bad, pascal_triangle, CPoint, FloatOp, RealMatrix, MAX_DERIVATIVE,
+    combine4_pts, float_op_is_bad, pascal_entry, CPoint, FloatOp, RealMatrix, MAX_DERIVATIVE,
     MODEL_TOL, NOW, NOZ,
 };
 use crate::nurbs::srf_basic::{Direction, Surface};
@@ -89,11 +95,16 @@ use crate::nurbs::srf_tool::p1::extract_iso_crv;
 /// `NL_MAXDEG + 1`: size of upstream's fixed scratch rows.
 const NP: usize = MAX_DEGREE + 1;
 
-/// `NL_BASISFUNCTIONS`.
-type BasisFunctions = [[f64; NP]; NP];
+/// Scratch width used for degrees below it (performance only: every scratch index
+/// the evaluators touch is at most the degree, so width `SMALL_NP` gives the same
+/// values and errors as `NP` while zeroing far less stack per call).
+const SMALL_NP: usize = 8;
 
-/// `NL_DERIVATIVES`.
-type Derivatives = [[f64; NP]; MAX_DERIVATIVE + 1];
+/// `NL_BASISFUNCTIONS` (`N = NP`, or `SMALL_NP` for small degrees).
+type BasisFunctions<const N: usize> = [[f64; N]; N];
+
+/// `NL_DERIVATIVES` (`N = NP`, or `SMALL_NP` for small degrees).
+type Derivatives<const N: usize> = [[f64; N]; MAX_DERIVATIVE + 1];
 
 fn invalid(operation: &'static str, reason: &'static str) -> SolidError {
     SolidError::InvalidInput { operation, reason }
@@ -145,17 +156,47 @@ impl BasisDerivs {
         (self.p, self.q)
     }
 
+    #[inline]
     fn index(&self, k: isize, l: isize, i: isize, j: isize) -> Option<usize> {
-        let (k, l, i, j) = (
+        self.index_u(
             usize::try_from(k).ok()?,
             usize::try_from(l).ok()?,
             usize::try_from(i).ok()?,
             usize::try_from(j).ok()?,
-        );
+        )
+    }
+
+    /// [`BasisDerivs::index`] with unsigned indices (each bound checked).
+    #[inline]
+    fn index_u(&self, k: usize, l: usize, i: usize, j: usize) -> Option<usize> {
         if k > self.udr || l > self.vdr || i > self.p || j > self.q {
             return None;
         }
         Some(((k * (self.vdr + 1) + l) * (self.p + 1) + i) * (self.q + 1) + j)
+    }
+
+    /// `BD[k][l][i][j]` with unsigned indices; `oob` outside `[udr][vdr][p][q]`.
+    #[inline]
+    fn at_u(&self, k: usize, l: usize, i: usize, j: usize, op: &'static str) -> Result<f64> {
+        self.index_u(k, l, i, j)
+            .and_then(|x| self.values.get(x).copied())
+            .ok_or_else(|| oob(op))
+    }
+
+    /// `BD[k][l][i][j] = v` with unsigned indices; `oob` outside `[udr][vdr][p][q]`.
+    #[inline]
+    fn put_u(
+        &mut self,
+        k: usize,
+        l: usize,
+        i: usize,
+        j: usize,
+        v: f64,
+        op: &'static str,
+    ) -> Result<()> {
+        let x = self.index_u(k, l, i, j).ok_or_else(|| oob(op))?;
+        *self.values.get_mut(x).ok_or_else(|| oob(op))? = v;
+        Ok(())
     }
 
     /// `BD[k][l][i][j]`: the `(k, l)`-th derivative of the basis function
@@ -169,25 +210,6 @@ impl BasisDerivs {
             isize::try_from(j).ok()?,
         )?;
         self.values.get(idx).copied()
-    }
-
-    fn at(&self, k: isize, l: isize, i: isize, j: isize, op: &'static str) -> Result<f64> {
-        self.index(k, l, i, j)
-            .and_then(|x| self.values.get(x).copied())
-            .ok_or_else(|| oob(op))
-    }
-
-    fn put(
-        &mut self,
-        k: isize,
-        l: isize,
-        i: isize,
-        j: isize,
-        v: f64,
-        op: &'static str,
-    ) -> Result<()> {
-        let x = self.index(k, l, i, j).ok_or_else(|| oob(op))?;
-        set(&mut self.values, sx(x, op)?, v, op)
     }
 }
 
@@ -318,18 +340,19 @@ pub struct EllipticCone {
 // ---- basis functions --------------------------------------------------------------
 
 /// `N_ComputeBasisFunctions`: the triangular table `ndu` of algorithm A2.3.
-fn compute_basis_functions(
+#[allow(clippy::range_plus_one)] // exclusive ranges: `RangeInclusive` is measurably slower here
+fn compute_basis_functions<const N: usize>(
     p: isize,
     u: f64,
     uk: &[f64],
     ku: isize,
-    ndu: &mut BasisFunctions,
+    ndu: &mut BasisFunctions<N>,
     op: &'static str,
 ) -> Result<()> {
     // `left` and `right` are the rows of `a`, as upstream.
-    let mut a = [[0.0_f64; NP]; 2];
+    let mut a = [[0.0_f64; N]; 2];
     set2(ndu, 0, 0, 1.0, op)?;
-    for j in 1..=p {
+    for j in 1..p + 1 {
         set2(&mut a, 0, j, u - get(uk, ku + 1 - j, op)?, op)?;
         set2(&mut a, 1, j, get(uk, ku + j, op)? - u, op)?;
         let mut saved = 0.0;
@@ -348,19 +371,20 @@ fn compute_basis_functions(
 
 /// `N_ComputeDerivatives` / `N_ComputeDerivativesImpl`: rows `1..=mder` of `du`
 /// (before the factor `p!/(p-k)!`). `N_SwapRealPointers` is the swap of `s1`, `s2`.
-fn compute_derivatives(
+#[allow(clippy::range_plus_one)] // exclusive ranges: `RangeInclusive` is measurably slower here
+fn compute_derivatives<const N: usize>(
     p: isize,
     mder: isize,
-    ndu: &BasisFunctions,
-    du: &mut Derivatives,
+    ndu: &BasisFunctions<N>,
+    du: &mut Derivatives<N>,
     op: &'static str,
 ) -> Result<()> {
-    let mut a = [[0.0_f64; NP]; 2];
-    for r in 0..=p {
+    let mut a = [[0.0_f64; N]; 2];
+    for r in 0..p + 1 {
         let mut s1: isize = 0;
         let mut s2: isize = 1;
         set2(&mut a, s1, 0, 1.0, op)?;
-        for k in 1..=mder {
+        for k in 1..mder + 1 {
             let mut dd = 0.0;
             let rk = r - k;
             let pk = p - k;
@@ -371,7 +395,7 @@ fn compute_derivatives(
             }
             let j1 = if rk >= -1 { 1 } else { -rk };
             let j2 = if r - 1 <= pk { k - 1 } else { p - r };
-            for j in j1..=j2 {
+            for j in j1..j2 + 1 {
                 let v = (get2(&a, s1, j, op)? - get2(&a, s1, j - 1, op)?)
                     / get2(ndu, pk + 1, rk + j, op)?;
                 set2(&mut a, s2, j, v, op)?;
@@ -390,7 +414,8 @@ fn compute_derivatives(
 }
 
 /// One direction of `N_SrfBasisDerivs`: span index and `D[k][j]`, `k <= dr`.
-fn univariate_derivs(
+#[allow(clippy::range_plus_one)] // exclusive ranges: `RangeInclusive` is measurably slower here
+fn univariate_derivs<const N: usize>(
     uk: &[f64],
     m: usize,
     pu: usize,
@@ -398,10 +423,10 @@ fn univariate_derivs(
     side: Side,
     dr: isize,
     op: &'static str,
-) -> Result<(isize, Derivatives)> {
+) -> Result<(isize, Derivatives<N>)> {
     let p = sx(pu, op)?;
-    let mut du: Derivatives = [[0.0; NP]; MAX_DERIVATIVE + 1];
-    let mut ndu: BasisFunctions = [[0.0; NP]; NP];
+    let mut du: Derivatives<N> = [[0.0; N]; MAX_DERIVATIVE + 1];
+    let mut ndu: BasisFunctions<N> = [[0.0; N]; N];
 
     // Compute all non-vanishing basis functions.
     let knt = KnotVector::new(uk, m)?;
@@ -409,8 +434,8 @@ fn univariate_derivs(
 
     // Get maximum derivative index and set zero derivatives.
     let mder = p.min(dr);
-    for k in p + 1..=dr {
-        for j in 0..=p {
+    for k in p + 1..dr + 1 {
+        for j in 0..p + 1 {
             set2(&mut du, k, j, 0.0, op)?;
         }
     }
@@ -419,7 +444,7 @@ fn univariate_derivs(
     compute_basis_functions(p, t, uk, ku, &mut ndu, op)?;
 
     // Load the basis functions.
-    for j in 0..=p {
+    for j in 0..p + 1 {
         set2(&mut du, 0, j, get2(&ndu, j, p, op)?, op)?;
     }
 
@@ -428,8 +453,8 @@ fn univariate_derivs(
 
     // Multiply through by the correct factors.
     let mut r = p;
-    for k in 1..=mder {
-        for j in 0..=p {
+    for k in 1..mder + 1 {
+        for j in 0..p + 1 {
             let v = get2(&du, k, j, op)? * r as f64;
             set2(&mut du, k, j, v, op)?;
         }
@@ -469,8 +494,10 @@ fn to_euclid_spec(noz: bool, now: bool, pw: CPoint) -> Vec3 {
     }
 }
 
-/// `N_ComputeDerivativeMatrix` / `N_ComputeDerivativeMatrixSpec`.
-fn derivative_matrix(
+/// `N_ComputeDerivativeMatrix` / `N_ComputeDerivativeMatrixSpec`; `N` is the scratch
+/// width (above both degrees).
+#[allow(clippy::range_plus_one)] // exclusive ranges: `RangeInclusive` is measurably slower here
+fn derivative_matrix<const N: usize>(
     sur: &Surface,
     no_w: bool,
     no_z: bool,
@@ -484,23 +511,28 @@ fn derivative_matrix(
     bd: &BasisDerivs,
     op: &'static str,
 ) -> Result<Vec<Vec<Vec3>>> {
-    let mut pwl = [[Vec3::ZERO; NP]; NP];
-    for i in 0..=p {
-        for j in 0..=q {
+    let mut pwl = [[Vec3::ZERO; N]; N];
+    for i in 0..p + 1 {
+        for j in 0..q + 1 {
             let pw = sur.cpt(ux(i + l2, op)?, ux(j + l3, op)?)?;
             set2(&mut pwl, i, j, to_euclid_spec(no_z, no_w, pw), op)?;
         }
     }
 
     let mut sd = vec![vec![Vec3::ZERO; ux(vdr, op)? + 1]; ux(udr, op)? + 1];
-    for k in 0..=udr {
+    // (`p`, `q` are below `N`, so the scratch rows hold every `i <= p`, `j <= q`)
+    let (pu, qu) = (ux(p, op)?, ux(q, op)?);
+    for k in 0..udr + 1 {
         let lmax = if upper { udr - k } else { vdr };
-        for l in 0..=lmax {
+        let ku = ux(k, op)?;
+        for l in 0..lmax + 1 {
+            let lu = ux(l, op)?;
             let mut s = Vec3::ZERO;
-            for i in 0..=p {
-                for j in 0..=q {
-                    let pt = get2(&pwl, i, j, op)?;
-                    let alpha = bd.at(k, l, i, j, op)?;
+            for i in 0..pu + 1 {
+                let row = pwl.get(i).ok_or_else(|| oob(op))?;
+                for j in 0..qu + 1 {
+                    let pt = row.get(j).copied().ok_or_else(|| oob(op))?;
+                    let alpha = bd.at_u(ku, lu, i, j, op)?;
                     s.x += alpha * pt.x; // upstream: alpha * P.x + sd.x
                     s.y += alpha * pt.y; // upstream: alpha * P.y + sd.y
                     if !no_z {
@@ -537,7 +569,6 @@ impl Surface {
     ) -> Result<BasisDerivs> {
         const OP: &str = "nurbs::srf_nurb::Surface::basis_derivs";
         let (pu, qu) = self.degrees();
-        let (_, _, s1u, s2u) = self.array_sizes();
 
         // Check order of derivatives.
         if udr > MAX_DERIVATIVE || vdr > MAX_DERIVATIVE {
@@ -549,12 +580,35 @@ impl Surface {
                 "degree above NL_MAXDEG (upstream scratch array size)",
             ));
         }
+        if pu < SMALL_NP && qu < SMALL_NP {
+            self.basis_derivs_n::<SMALL_NP>(u, v, ufl, vfl, upper, udr, vdr)
+        } else {
+            self.basis_derivs_n::<NP>(u, v, ufl, vfl, upper, udr, vdr)
+        }
+    }
+
+    /// [`Surface::basis_derivs`] after its argument checks, with scratch width `N`
+    /// (above both degrees).
+    #[allow(clippy::range_plus_one)] // exclusive ranges: `RangeInclusive` is measurably slower here
+    fn basis_derivs_n<const N: usize>(
+        &self,
+        u: f64,
+        v: f64,
+        ufl: Side,
+        vfl: Side,
+        upper: bool,
+        udr: usize,
+        vdr: usize,
+    ) -> Result<BasisDerivs> {
+        const OP: &str = "nurbs::srf_nurb::Surface::basis_derivs";
+        let (pu, qu) = self.degrees();
+        let (_, _, s1u, s2u) = self.array_sizes();
         let (p, q) = (sx(pu, OP)?, sx(qu, OP)?);
         let (udri, vdri) = (sx(udr, OP)?, sx(vdr, OP)?);
 
         // u- then v-direction.
-        let (ku, du) = univariate_derivs(self.u_knots(), s1u, pu, u, ufl, udri, OP)?;
-        let (kv, dv) = univariate_derivs(self.v_knots(), s2u, qu, v, vfl, vdri, OP)?;
+        let (ku, du) = univariate_derivs::<N>(self.u_knots(), s1u, pu, u, ufl, udri, OP)?;
+        let (kv, dv) = univariate_derivs::<N>(self.v_knots(), s2u, qu, v, vfl, vdri, OP)?;
 
         let mut bd = BasisDerivs::zeros(udr, vdr, pu, qu, OP)?;
         bd.usp = ux(ku, OP)?;
@@ -562,7 +616,7 @@ impl Surface {
         let upper_half = upper && udr == vdr;
 
         if self.is_rational() {
-            let mut tu = [0.0_f64; NP];
+            let mut tu = [0.0_f64; N];
             let mut d = [[0.0_f64; MAX_DERIVATIVE + 1]; MAX_DERIVATIVE + 1];
             let s1 = ku - p;
             let s2 = kv - q;
@@ -590,55 +644,72 @@ impl Surface {
             }
 
             // Compute derivatives of rational basis.
-            let tri = pascal_triangle(MAX_DERIVATIVE)?;
-            let tri_at = |a: isize, b: isize| -> Result<f64> {
-                let row = tri.get(ux(a, OP)?).ok_or_else(|| oob(OP))?;
-                Ok(get(row, b, OP)? as f64)
-            };
             let d00 = get2(&d, 0, 0, OP)?;
             if float_op_is_bad(1.0, d00, FloatOp::Division) {
                 return Err(SolidError::nlib(OP, NlibCode::Convergence));
             }
             let inv_w00 = 1.0 / d00;
 
+            // (unsigned loop indices: every index here is non-negative by the loop
+            // bounds, so the signed conversions upstream's `NL_INDEX` needs are skipped;
+            // every access is still bounds checked)
+            // Upstream's static `NL_PascalTri` (the rows `0..=NL_MAXDER` this loop reads).
+            let tri_u =
+                |a: usize, b: usize| -> Result<f64> { pascal_entry(a, b).ok_or_else(|| oob(OP)) };
+            let at2u = |a: &[[f64; N]], i: usize, j: usize| -> Result<f64> {
+                a.get(i)
+                    .and_then(|r| r.get(j))
+                    .copied()
+                    .ok_or_else(|| oob(OP))
+            };
+            let d_at = |i: usize, j: usize| -> Result<f64> {
+                d.get(i)
+                    .and_then(|r| r.get(j))
+                    .copied()
+                    .ok_or_else(|| oob(OP))
+            };
             for n in 0..=p {
+                let nu = ux(n, OP)?;
                 for m in 0..=q {
+                    let mu = ux(m, OP)?;
                     let w = w_at(n, m)?;
-                    for k in 0..=udri {
-                        let lmax = if upper_half { udri - k } else { vdri };
-                        for l in 0..=lmax {
-                            let mut v1 = w * get2(&du, k, n, OP)? * get2(&dv, l, m, OP)?;
-                            for j in 1..=l {
-                                v1 -= tri_at(l, j)?
-                                    * get2(&d, 0, j, OP)?
-                                    * bd.at(k, l - j, n, m, OP)?;
+                    for k in 0..udr + 1 {
+                        let lmax = if upper_half { udr - k } else { vdr };
+                        for l in 0..lmax + 1 {
+                            let mut v1 = w * at2u(&du, k, nu)? * at2u(&dv, l, mu)?;
+                            for j in 1..l + 1 {
+                                v1 -= tri_u(l, j)? * d_at(0, j)? * bd.at_u(k, l - j, nu, mu, OP)?;
                             }
-                            for i in 1..=k {
-                                v1 -= tri_at(k, i)?
-                                    * get2(&d, i, 0, OP)?
-                                    * bd.at(k - i, l, n, m, OP)?;
+                            for i in 1..k + 1 {
+                                v1 -= tri_u(k, i)? * d_at(i, 0)? * bd.at_u(k - i, l, nu, mu, OP)?;
                                 let mut v2 = 0.0;
-                                for j in 1..=l {
-                                    v2 += tri_at(l, j)?
-                                        * get2(&d, i, j, OP)?
-                                        * bd.at(k - i, l - j, n, m, OP)?;
+                                for j in 1..l + 1 {
+                                    v2 += tri_u(l, j)?
+                                        * d_at(i, j)?
+                                        * bd.at_u(k - i, l - j, nu, mu, OP)?;
                                 }
-                                v1 -= tri_at(k, i)? * v2;
+                                v1 -= tri_u(k, i)? * v2;
                             }
-                            bd.put(k, l, n, m, v1 * inv_w00, OP)?;
+                            bd.put_u(k, l, nu, mu, v1 * inv_w00, OP)?;
                         }
                     }
                 }
             }
         } else {
             // Compute derivative matrix.
-            for k in 0..=udri {
-                let lmax = if upper_half { udri - k } else { vdri };
-                for l in 0..=lmax {
-                    for i in 0..=p {
-                        for j in 0..=q {
-                            let x = get2(&du, k, i, OP)? * get2(&dv, l, j, OP)?;
-                            bd.put(k, l, i, j, x, OP)?;
+            let at2u = |a: &[[f64; N]], i: usize, j: usize| -> Result<f64> {
+                a.get(i)
+                    .and_then(|r| r.get(j))
+                    .copied()
+                    .ok_or_else(|| oob(OP))
+            };
+            for k in 0..udr + 1 {
+                let lmax = if upper_half { udr - k } else { vdr };
+                for l in 0..lmax + 1 {
+                    for i in 0..pu + 1 {
+                        for j in 0..qu + 1 {
+                            let x = at2u(&du, k, i)? * at2u(&dv, l, j)?;
+                            bd.put_u(k, l, i, j, x, OP)?;
                         }
                     }
                 }
@@ -659,15 +730,17 @@ impl Surface {
         let (pu, qu) = self.degrees();
         let (knu, knv) = self.knot_vectors()?;
 
-        // Compute non-vanishing B-splines.
-        let bu = knu.basis_eval(pu, u, ufl)?;
-        let bv = knv.basis_eval(qu, v, vfl)?;
+        // Compute non-vanishing B-splines (on the stack, as upstream's `Nu`/`Nv`).
+        let mut nu = [0.0_f64; MAX_DEGREE + 2];
+        let mut nv = [0.0_f64; MAX_DEGREE + 2];
+        let u_span = knu.basis_eval_into(pu, u, ufl, &mut nu)?;
+        let v_span = knv.basis_eval_into(qu, v, vfl, &mut nv)?;
 
         // Compute the point on the surface.
         let (p, q) = (sx(pu, OP)?, sx(qu, OP)?);
         let mut sw = CPoint::ZERO;
-        let tmp1 = sx(bu.span, OP)? - p;
-        let tmp2 = sx(bv.span, OP)? - q;
+        let tmp1 = sx(u_span, OP)? - p;
+        let tmp2 = sx(v_span, OP)? - q;
         for i in 0..=p {
             let mut tw = CPoint::ZERO;
             let row = self.row(ux(tmp1 + i, OP)?)?;
@@ -675,12 +748,12 @@ impl Surface {
                 blend_spec(
                     pnoz,
                     pnow,
-                    get(&bv.values, j, OP)?,
+                    get(&nv, j, OP)?,
                     get(row, tmp2 + j, OP)?,
                     &mut tw,
                 );
             }
-            blend_spec(pnoz, pnow, get(&bu.values, i, OP)?, tw, &mut sw);
+            blend_spec(pnoz, pnow, get(&nu, i, OP)?, tw, &mut sw);
         }
         Ok(to_euclid_spec(pnoz, pnow, sw))
     }
@@ -713,7 +786,12 @@ impl Surface {
         let p00 = self.cpt(0, 0)?;
         let no_w = p00.w == NOW;
         let no_z = p00.z == NOZ;
-        derivative_matrix(
+        let dm = if pu < SMALL_NP && qu < SMALL_NP {
+            derivative_matrix::<SMALL_NP>
+        } else {
+            derivative_matrix::<NP>
+        };
+        dm(
             self,
             no_w,
             no_z,
@@ -1104,7 +1182,7 @@ impl Surface {
         if do_u {
             let mut ii = q; // check u-closure
             loop {
-                let dv = (get(vk, ii + 1, OP)? - get(vk, ii, OP)?) / q as f64;
+                let dv = (get(vk, succ(ii, OP)?, OP)? - get(vk, ii, OP)?) / q as f64;
                 let mut broke = false;
                 for jj in 0..=q {
                     let (d1, d2) = if jj == q {
@@ -1166,7 +1244,7 @@ impl Surface {
         if do_v {
             let mut ii = p; // check v-closure
             loop {
-                let du = (get(uk, ii + 1, OP)? - get(uk, ii, OP)?) / p as f64;
+                let du = (get(uk, succ(ii, OP)?, OP)? - get(uk, ii, OP)?) / p as f64;
                 let mut broke = false;
                 for jj in 0..=p {
                     let (d1, d2) = if jj == p {
@@ -1333,6 +1411,12 @@ impl Surface {
     pub fn surface_type(&self, tol: f64) -> Result<SurfaceType> {
         TypeFinder::new(self, tol)?.run()
     }
+}
+
+/// `i + 1` on a signed index; `InvalidInput` where it overflows (an index that far
+/// out is outside every array upstream would read).
+fn succ(i: isize, op: &'static str) -> Result<isize> {
+    i.checked_add(1).ok_or_else(|| oob(op))
 }
 
 /// `SD[k][l]`.
@@ -2078,5 +2162,20 @@ mod tests {
         assert_eq!(cone.degrees(), (1, 2));
         let closed = cone.is_closed_smooth(0, &[1e-9], Direction::V).unwrap();
         assert_eq!(closed, Some(Direction::V));
+    }
+
+    #[test]
+    fn closed_smooth_absurd_degree_is_an_error() {
+        // fuzz (nlib.srf_nurb fuzz01067): p = q = i64::MAX overflowed `ii + 1`.
+        let f = flat();
+        let s = Surface::new(
+            f.cpts(),
+            i64::MAX as usize,
+            i64::MAX as usize,
+            vec![0.0, 0.0, 1.0, 1.0],
+            vec![0.0, 0.0, 1.0, 1.0],
+        )
+        .unwrap();
+        assert!(s.is_closed_smooth(1, &[1e-6, 1.0], Direction::UV).is_err());
     }
 }

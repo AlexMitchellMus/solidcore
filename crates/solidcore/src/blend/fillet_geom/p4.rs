@@ -530,15 +530,15 @@ pub fn create_uv_curve(
         let mut uv10 = Point2::new(uv11.x, uv00.y);
 
         // evaluate Vmin corners
-        let srf_pt00 = surface.evaluate_point(uv00)?;
-        let srf_pt10 = surface.evaluate_point(uv10)?;
+        let srf_pt00 = surface.evaluate_point(k, uv00)?;
+        let srf_pt10 = surface.evaluate_point(k, uv10)?;
         if srf_pt00.distance(srf_pt10) > approx_tol {
             return Err(SolidError::sm_err(OP_UV));
         }
 
         // evaluate Vmax corners
-        let srf_pt01 = surface.evaluate_point(uv01)?;
-        let srf_pt11 = surface.evaluate_point(uv11)?;
+        let srf_pt01 = surface.evaluate_point(k, uv01)?;
+        let srf_pt11 = surface.evaluate_point(k, uv11)?;
         if srf_pt01.distance(srf_pt11) > approx_tol {
             return Err(SolidError::sm_err(OP_UV));
         }
@@ -1283,7 +1283,7 @@ impl FilletBrep {
         let sol = solutions
             .get(0)
             .ok_or_else(|| SolidError::sm_err(OP_INT2))?;
-        let vert_geom = c1.evaluate_point(sol.start.parameters[0])?;
+        let vert_geom = c1.evaluate_point(k, sol.start.parameters[0])?;
         set_vertex_point(self.brep_mut(), v, vert_geom)?;
         self.fillet_vertex_mut(v)?.set_status(FilStatus::Processed);
         Ok(())
@@ -1575,7 +1575,7 @@ impl FilletBrep {
     #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn make_face_brep(
         &mut self,
-        k: &Kernel,
+        k: &mut Kernel,
         g: FilletGeomId,
         solvers: &[FilletSolver],
         brep: &mut Brep,
@@ -1603,7 +1603,7 @@ impl FilletBrep {
                 let prim = primary_edgeuse(self.brep(), this_rail)?.ok_or_else(nul)?;
                 let uv_curve = eu1::uv_trim_curve(self.brep(), prim)?.0.ok_or_else(nul)?;
                 let t = self.brep().edge(this_rail)?.interval.evaluate(0.5);
-                *slot = uv_curve.evaluate_point(t)?;
+                *slot = uv_curve.evaluate_point(k, t)?;
             }
             // (sTestUV[0].y < sTestUV[1].y) ? 0 : 1
             start_rail_indx = usize::from(test_uv[0].y >= test_uv[1].y);
@@ -1619,7 +1619,7 @@ impl FilletBrep {
         if use_uv_curves {
             let uv = uv_domain.mid();
             let uv_dir = Vec2::new(1.0, 0.0);
-            uv_tol = map_to_2d_dir(approx_tol_3d, uv, uv_dir, &fillet_surface)?;
+            uv_tol = map_to_2d_dir(k, approx_tol_3d, uv, uv_dir, &fillet_surface)?;
         }
 
         let rail_curve = |fb: &Self, e: EdgeId| -> Result<Curve> {
@@ -1787,7 +1787,7 @@ impl FilletBrep {
                 .curves_3d
                 .get(m)
                 .ok_or_else(nul)?
-                .is_degenerate(EFF_ZERO, None)?;
+                .is_degenerate(k, EFF_ZERO, None)?;
             if degenerate {
                 lists1.curves_3d.remove(m);
                 lists1.uv_curves.remove(m);
@@ -1955,7 +1955,7 @@ impl FilletBrep {
                 let (Some(base_face), Some(fill_edge)) = (base_face, fill_edge) else {
                     continue;
                 };
-                if rail_curve.is_degenerate(EFF_ZERO, None)? || !all_edges.contains(&fill_edge) {
+                if rail_curve.is_degenerate(k, EFF_ZERO, None)? || !all_edges.contains(&fill_edge) {
                     continue;
                 }
 
@@ -2106,7 +2106,7 @@ impl FilletBrep {
             let total_samples = 10u32;
             let step = crv_len / f64::from(total_samples);
             let mut start_param = ivl.min();
-            let mut uv_points = vec![uv_curve.evaluate_point(start_param)?];
+            let mut uv_points = vec![uv_curve.evaluate_point(k, start_param)?];
             for _ in 1..total_samples {
                 // Find param on curve at arc length dStep from previous point.
                 let end_param = rail_curve
@@ -2115,11 +2115,11 @@ impl FilletBrep {
                 start_param = end_param;
 
                 // Find uv from the corresponding uv curve.
-                uv_points.push(uv_curve.evaluate_point(start_param)?);
+                uv_points.push(uv_curve.evaluate_point(k, start_param)?);
             }
 
             // Get the final point.
-            uv_points.push(uv_curve.evaluate_point(ivl.max())?);
+            uv_points.push(uv_curve.evaluate_point(k, ivl.max())?);
 
             // pRail->SetCurve(NULL, TRUE): deletes the curve and the UV trim curves
             set_edge_curve(self.brep_mut(), rail, None)?;
@@ -2224,6 +2224,7 @@ impl FilletBrep {
             .map(|s| s.and_then(b_spline_net))
             .collect();
         let surfaces = BSplineSurface::create_corner_blend(
+            k,
             &ordered_3d,
             &orients,
             &ordered_uv,
@@ -2272,16 +2273,16 @@ mod tests {
         let k = kernel();
         let srf = plane_patch(1.0);
         let dom = srf.natural_uv_domain();
-        let a = srf.evaluate_point(dom.evaluate(0.2, 0.3)).unwrap();
-        let b = srf.evaluate_point(dom.evaluate(0.2, 0.9)).unwrap();
+        let a = srf.evaluate_point(&k, dom.evaluate(0.2, 0.3)).unwrap();
+        let b = srf.evaluate_point(&k, dom.evaluate(0.2, 0.9)).unwrap();
         let (fb, v) = fb_with_points(&k, &[a, b]);
         let r = create_uv_curve(&k, &fb, v[0], v[1], false, &srf, 1e-6).unwrap();
         assert!(r.curve_3d.is_none());
         assert!(r.uv_curve2.is_none());
         let c = Curve::from(r.uv_curve1.unwrap());
         let ivl = c.natural_interval();
-        let s = c.evaluate_point(ivl.min()).unwrap();
-        let e = c.evaluate_point(ivl.max()).unwrap();
+        let s = c.evaluate_point(&k, ivl.min()).unwrap();
+        let e = c.evaluate_point(&k, ivl.max()).unwrap();
         let ua = dom.evaluate(0.2, 0.3);
         let ub = dom.evaluate(0.2, 0.9);
         assert!((s.x - ua.x).abs() < 1e-9 && (s.y - ua.y).abs() < 1e-9);
@@ -2293,8 +2294,8 @@ mod tests {
         let k = kernel();
         let srf = plane_patch(1.0);
         let dom = srf.natural_uv_domain();
-        let a = srf.evaluate_point(dom.evaluate(0.1, 0.1)).unwrap();
-        let b = srf.evaluate_point(dom.evaluate(0.8, 0.7)).unwrap();
+        let a = srf.evaluate_point(&k, dom.evaluate(0.1, 0.1)).unwrap();
+        let b = srf.evaluate_point(&k, dom.evaluate(0.8, 0.7)).unwrap();
         let (fb, v) = fb_with_points(&k, &[a, b]);
         let r = create_uv_curve(&k, &fb, v[0], v[1], false, &srf, 1e-6).unwrap();
         assert!(r.uv_curve1.is_some() && r.curve_3d.is_none());
@@ -2406,7 +2407,7 @@ mod tests {
 
     #[test]
     fn make_face_without_surface_is_null() {
-        let k = kernel();
+        let mut k = kernel();
         let mut fb = FilletBrep::new();
         let g = fb.add_geom(FilletGeom::new(&k, None, FilletGeomType::Default).unwrap());
         let mut b = Brep::new();
@@ -2422,7 +2423,7 @@ mod tests {
             context: None,
             key_of: &key_of,
         };
-        assert!(fb.make_face_brep(&k, g, &[], &mut b, &mut env).is_err());
+        assert!(fb.make_face_brep(&mut k, g, &[], &mut b, &mut env).is_err());
     }
 
     #[test]
