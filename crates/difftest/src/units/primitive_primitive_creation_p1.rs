@@ -69,11 +69,11 @@ fn sweep_curve(k: &Kernel, v: &[f64], analytic: bool) -> solidcore::Result<Curve
         .map(Curve::from)
     }
 }
-fn samples(curve: &Curve, record: &mut Vec<f64>) -> solidcore::Result<()> {
+fn samples(k: &Kernel, curve: &Curve, record: &mut Vec<f64>) -> solidcore::Result<()> {
     let interval = curve.natural_interval();
     record.extend([interval.min(), interval.max()]);
     for i in 0..=4 {
-        let values = curve.evaluate(interval.evaluate(f64::from(i) / 4.0), 1, true, true)?;
+        let values = curve.evaluate(k, interval.evaluate(f64::from(i) / 4.0), 1, true, true)?;
         for value in values {
             record.extend(value.to_array());
         }
@@ -234,7 +234,7 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
             )?;
             record.push(extended.len() as f64);
             for item in extended {
-                samples(&Curve::from(item), &mut record)?;
+                samples(&k, &Curve::from(item), &mut record)?;
             }
         }
         3 => {
@@ -259,7 +259,7 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
             api::position_profile_curves(&k, &profiles, value(v, 2), &path, &mut output)?;
             record.push(output.len() as f64);
             for item in output {
-                samples(&item, &mut record)?;
+                samples(&k, &item, &mut record)?;
             }
         }
         4 => {

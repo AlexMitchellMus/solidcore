@@ -226,7 +226,7 @@ pub fn position_profile_curves(
     for curve in output.iter_mut() {
         ignore_status(curve.transform(k, &translation, None))?;
     }
-    let normal = ignored(compute_crvs_normal(profiles))?.unwrap_or(Vec3::UNDEF);
+    let normal = ignored(compute_crvs_normal(k, profiles))?.unwrap_or(Vec3::UNDEF);
     let mut orientation = Axis2Placement::IDENTITY;
     let angle = ignored(Vec3::X.angle_between(normal))?.unwrap_or(0.0);
     orientation.rotate_about_axis(-angle, Vec3::X.cross(normal));
@@ -234,7 +234,7 @@ pub fn position_profile_curves(
         ignore_status(curve.transform(k, &orientation, None))?;
     }
     let mut start = [Vec3::UNDEF; 2];
-    if let Some(values) = ignored(path.evaluate(path.natural_interval().min(), 1, true, true))? {
+    if let Some(values) = ignored(path.evaluate(k, path.natural_interval().min(), 1, true, true))? {
         for (target, value) in start.iter_mut().zip(values) {
             *target = value;
         }
