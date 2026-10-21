@@ -152,8 +152,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "pair_gap0_do_flags",
@@ -552,8 +552,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "pair_gap1e-07_do_flags",
@@ -952,8 +952,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "pair_gap1e-05_do_flags",
@@ -1335,16 +1335,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
-      },
       "max_rel_err": 0.0,
       "name": "pair_gap0.001_do_flags",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/heal.stitch_p2/constructed.json#131",
-      "values_compared": 0
+      "values_compared": 40
     },
     {
       "max_rel_err": 0.0,
@@ -1679,16 +1675,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
-      },
       "max_rel_err": 0.0,
       "name": "pair_gap0.05_do_flags",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/heal.stitch_p2/constructed.json#170",
-      "values_compared": 0
+      "values_compared": 40
     },
     {
       "max_rel_err": 0.0,
@@ -2040,8 +2032,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "pair_reversed_do_flags",
@@ -2439,16 +2431,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
-      },
       "max_rel_err": 0.0,
       "name": "tjunction_do_flags",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/heal.stitch_p2/constructed.json#248",
-      "values_compared": 0
+      "values_compared": 40
     },
     {
       "max_rel_err": 0.0,
@@ -2779,16 +2767,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
-      },
       "max_rel_err": 0.0,
       "name": "tjunction_gap_do_flags",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/heal.stitch_p2/constructed.json#287",
-      "values_compared": 0
+      "values_compared": 40
     },
     {
       "max_rel_err": 0.0,
@@ -3140,8 +3124,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "grid2x2_do_flags",
@@ -3544,8 +3528,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "tiny_pair_do_flags",
@@ -3907,16 +3891,12 @@
       "values_compared": 26
     },
     {
-      "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
-      },
       "max_rel_err": 0.0,
       "name": "single_do_flags",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/heal.stitch_p2/constructed.json#404",
-      "values_compared": 0
+      "values_compared": 24
     },
     {
       "max_rel_err": 0.0,
@@ -5224,13 +5204,12 @@
     }
   ],
   "cases_both_errored": 1,
-  "cases_deferred": 193,
+  "cases_deferred": 188,
   "cases_failed": 0,
-  "cases_passed": 363,
+  "cases_passed": 368,
   "cases_total": 556,
   "deferred_by_unit": {
-    "intersect.curve_class_p2": 11,
-    "topology.brep_p1": 172,
+    "topology.brep_p1": 178,
     "topology.brep_p9": 10
   },
   "max_rel_err": 0.0,

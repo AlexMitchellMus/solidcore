@@ -1075,8 +1075,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op0-same-wire",
@@ -1087,8 +1087,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op0-reverse-wire",
@@ -1099,8 +1099,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op0-cross-wire",
@@ -1111,8 +1111,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op0-touch-wire",
@@ -1123,8 +1123,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op0-half-tol-gap",
@@ -1135,8 +1135,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op0-at-tol-gap",
@@ -1147,8 +1147,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op0-twice-tol-gap",
@@ -1183,8 +1183,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmVertex::GetPoint",
+        "unit": "topology.vertex"
       },
       "max_rel_err": 0.0,
       "name": "op0-tiny-wire",
@@ -1267,8 +1267,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op1-same-wire",
@@ -1279,8 +1279,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op1-reverse-wire",
@@ -1291,8 +1291,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op1-cross-wire",
@@ -1303,8 +1303,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op1-touch-wire",
@@ -1315,8 +1315,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op1-half-tol-gap",
@@ -1327,8 +1327,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op1-at-tol-gap",
@@ -1339,8 +1339,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op1-twice-tol-gap",
@@ -1375,8 +1375,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmVertex::GetPoint",
+        "unit": "topology.vertex"
       },
       "max_rel_err": 0.0,
       "name": "op1-tiny-wire",
@@ -1459,8 +1459,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op2-same-wire",
@@ -1471,8 +1471,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op2-reverse-wire",
@@ -1483,8 +1483,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op2-cross-wire",
@@ -1495,8 +1495,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op2-touch-wire",
@@ -1507,8 +1507,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op2-half-tol-gap",
@@ -1519,8 +1519,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op2-at-tol-gap",
@@ -1531,8 +1531,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op2-twice-tol-gap",
@@ -1567,8 +1567,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmVertex::GetPoint",
+        "unit": "topology.vertex"
       },
       "max_rel_err": 0.0,
       "name": "op2-tiny-wire",
@@ -1651,8 +1651,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op3-same-wire",
@@ -1663,8 +1663,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op3-reverse-wire",
@@ -1675,8 +1675,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op3-cross-wire",
@@ -1687,8 +1687,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op3-touch-wire",
@@ -1699,8 +1699,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op3-half-tol-gap",
@@ -1711,8 +1711,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op3-at-tol-gap",
@@ -1723,8 +1723,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op3-twice-tol-gap",
@@ -1759,8 +1759,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmVertex::GetPoint",
+        "unit": "topology.vertex"
       },
       "max_rel_err": 0.0,
       "name": "op3-tiny-wire",
@@ -1843,8 +1843,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op4-same-wire",
@@ -1855,8 +1855,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op4-reverse-wire",
@@ -1867,8 +1867,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op4-cross-wire",
@@ -1879,8 +1879,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op4-touch-wire",
@@ -1891,8 +1891,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op4-half-tol-gap",
@@ -1903,8 +1903,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op4-at-tol-gap",
@@ -1915,8 +1915,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op4-twice-tol-gap",
@@ -1951,8 +1951,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmVertex::GetPoint",
+        "unit": "topology.vertex"
       },
       "max_rel_err": 0.0,
       "name": "op4-tiny-wire",
@@ -2035,8 +2035,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op5-same-wire",
@@ -2047,8 +2047,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op5-reverse-wire",
@@ -2059,8 +2059,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op5-cross-wire",
@@ -2071,8 +2071,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op5-touch-wire",
@@ -2083,8 +2083,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op5-half-tol-gap",
@@ -2095,8 +2095,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op5-at-tol-gap",
@@ -2107,8 +2107,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op5-twice-tol-gap",
@@ -2143,8 +2143,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmVertex::GetPoint",
+        "unit": "topology.vertex"
       },
       "max_rel_err": 0.0,
       "name": "op5-tiny-wire",
@@ -2227,8 +2227,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op6-same-wire",
@@ -2239,8 +2239,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op6-reverse-wire",
@@ -2251,8 +2251,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op6-cross-wire",
@@ -2263,8 +2263,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op6-touch-wire",
@@ -2275,8 +2275,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op6-half-tol-gap",
@@ -2287,8 +2287,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op6-at-tol-gap",
@@ -2299,8 +2299,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op6-twice-tol-gap",
@@ -2335,8 +2335,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmVertex::GetPoint",
+        "unit": "topology.vertex"
       },
       "max_rel_err": 0.0,
       "name": "op6-tiny-wire",
@@ -2419,8 +2419,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op7-same-wire",
@@ -2431,8 +2431,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op7-reverse-wire",
@@ -2443,8 +2443,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op7-cross-wire",
@@ -2455,8 +2455,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op7-touch-wire",
@@ -2467,8 +2467,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op7-half-tol-gap",
@@ -2479,8 +2479,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op7-at-tol-gap",
@@ -2491,8 +2491,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op7-twice-tol-gap",
@@ -2527,8 +2527,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmVertex::GetPoint",
+        "unit": "topology.vertex"
       },
       "max_rel_err": 0.0,
       "name": "op7-tiny-wire",
@@ -2611,8 +2611,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op8-same-wire",
@@ -2623,8 +2623,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op8-reverse-wire",
@@ -2635,8 +2635,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op8-cross-wire",
@@ -2647,8 +2647,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op8-touch-wire",
@@ -2659,8 +2659,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op8-half-tol-gap",
@@ -2671,8 +2671,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op8-at-tol-gap",
@@ -2683,8 +2683,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op8-twice-tol-gap",
@@ -2719,8 +2719,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmVertex::GetPoint",
+        "unit": "topology.vertex"
       },
       "max_rel_err": 0.0,
       "name": "op8-tiny-wire",
@@ -2803,8 +2803,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op9-same-wire",
@@ -2815,8 +2815,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op9-reverse-wire",
@@ -2827,8 +2827,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op9-cross-wire",
@@ -2839,8 +2839,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op9-touch-wire",
@@ -2851,8 +2851,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op9-half-tol-gap",
@@ -2863,8 +2863,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op9-at-tol-gap",
@@ -2875,8 +2875,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmEdge::GetVertex",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "op9-twice-tol-gap",
@@ -2911,8 +2911,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmVertex::GetPoint",
+        "unit": "topology.vertex"
       },
       "max_rel_err": 0.0,
       "name": "op9-tiny-wire",
@@ -3169,8 +3169,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCurveClassification::ReSet",
-        "unit": "intersect.curve_class_p2"
+        "symbol": "SmVertex::GetPoint",
+        "unit": "topology.vertex"
       },
       "max_rel_err": 0.0,
       "name": "gen0000",
@@ -3359,11 +3359,12 @@
   "cases_rejected": 3,
   "cases_total": 311,
   "deferred_by_unit": {
-    "intersect.curve_class_p2": 81,
     "topology.brep_p1": 19,
     "topology.brep_p3": 6,
     "topology.brep_p4": 4,
-    "topology.face_p3": 99
+    "topology.edge": 70,
+    "topology.face_p3": 99,
+    "topology.vertex": 11
   },
   "max_rel_err": 0.0,
   "pass": true,
