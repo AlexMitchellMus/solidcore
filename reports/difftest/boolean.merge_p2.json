@@ -351,8 +351,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
+        "symbol": "SmFace::GetVertices",
+        "unit": "topology.face_p4"
       },
       "max_rel_err": 0.0,
       "name": "gen0009",
@@ -425,8 +425,7 @@
     "topology.brep_p1": 1,
     "topology.brep_p3": 3,
     "topology.brep_p9": 1,
-    "topology.face_p2": 1,
-    "topology.face_p4": 4
+    "topology.face_p4": 5
   },
   "max_rel_err": 0.0,
   "pass": true,
