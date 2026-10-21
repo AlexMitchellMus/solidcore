@@ -622,9 +622,9 @@ pub fn map_to_1d(tol: f64, deriv: Vec3, natural_interval: &Extent1d) -> f64 {
 ///
 /// Those of the curve evaluation (upstream ignores its status and then reads the unset
 /// derivative; [`SolidError::Unported`] always propagates).
-pub fn map_to_1d_on_curve(tol: f64, param: f64, curve: &Curve) -> Result<f64> {
+pub fn map_to_1d_on_curve(k: &Kernel, tol: f64, param: f64, curve: &Curve) -> Result<f64> {
     // evaluate CurvePt
-    let pd = curve.evaluate(param, 1, true, true)?;
+    let pd = curve.evaluate(k, param, 1, true, true)?;
     let deriv = pd.get(1).copied().ok_or(SolidError::InvalidInput {
         operation: "geom::tol::map_to_1d_on_curve",
         reason: "no first derivative",
@@ -680,7 +680,7 @@ pub fn is_degenerate_curve(
     };
     let zone = zone_tol_3d_of_curve(k, curve)?;
     let xsect = override_xsect_tol.unwrap_or_else(|| xsect_tol_3d_from_zones(k, zone, zone));
-    curve.is_degenerate(xsect, Some(interval))
+    curve.is_degenerate(k, xsect, Some(interval))
 }
 
 // ---- scaled zeros ------------------------------------------------------------------
@@ -791,10 +791,10 @@ pub fn scaled_zero_of_volume(k: &Kernel, volume: &Volume) -> Result<f64> {
 ///
 /// Those of `ApproximateLength` and `EvaluatePoint` (upstream ignores the point's
 /// status and then reads an unset point; [`SolidError::Unported`] always propagates).
-pub fn scaled_zero_of_curve(curve: &Curve) -> Result<f64> {
+pub fn scaled_zero_of_curve(k: &Kernel, curve: &Curve) -> Result<f64> {
     let ivl = curve.natural_interval();
-    let length = curve.approximate_length(&ivl, 3, false)?.0;
-    let pnt = curve.evaluate_point(ivl.evaluate(0.5))?;
+    let length = curve.approximate_length(k, &ivl, 3, false)?.0;
+    let pnt = curve.evaluate_point(k, ivl.evaluate(0.5))?;
     Ok(scaled_zero2(&pnt, &length))
 }
 
@@ -1088,9 +1088,9 @@ mod tests {
         let k = Kernel::default();
         let c = test_line(4.0);
         // the tolerance over the speed of the curve at the parameter
-        let speed = c.evaluate(0.5, 1, true, true).unwrap()[1].length();
+        let speed = c.evaluate(&k, 0.5, 1, true, true).unwrap()[1].length();
         assert!(speed > scaled_zero());
-        let t = map_to_1d_on_curve(1.0e-3, 0.5, &c).unwrap();
+        let t = map_to_1d_on_curve(&k, 1.0e-3, 0.5, &c).unwrap();
         assert_eq!(t, 1.0e-3 / speed);
         let ivl = Extent1d::from_min_max(0.0, 1.0);
         assert_eq!(is_degenerate_curve(&k, None, &ivl, None), Ok(true));

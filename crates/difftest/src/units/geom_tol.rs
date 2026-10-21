@@ -464,8 +464,8 @@ fn rust_curve_case(i: &Inputs) -> Result<Output, HarnessError> {
     let xsect = i.flag.then_some(tol::tol3d(a[4]));
     let r = (|| -> solidcore::Result<Vec<f64>> {
         Ok(vec![
-            tol::scaled_zero_of_curve(&curve)?,
-            tol::map_to_1d_on_curve(tol::tol3d(a[1]), a[0], &curve)?,
+            tol::scaled_zero_of_curve(&k, &curve)?,
+            tol::map_to_1d_on_curve(&k, tol::tol3d(a[1]), a[0], &curve)?,
             flag(tol::is_degenerate_curve(&k, Some(&curve), &ivl, xsect)?),
         ])
     })();

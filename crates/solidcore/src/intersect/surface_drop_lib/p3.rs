@@ -418,8 +418,8 @@ impl Surface {
 
         // locals
         let s_interval = *interval;
-        let curve_scaled_zero = scaled_zero_of_curve(curve)?;
-        let degen_curve = curve.is_degenerate(curve_scaled_zero, Some(interval))?;
+        let curve_scaled_zero = scaled_zero_of_curve(k, curve)?;
+        let degen_curve = curve.is_degenerate(k, curve_scaled_zero, Some(interval))?;
         let mut start = DropPt::new(s_interval.min(), Some(degen_curve));
         let mut end = DropPt::new(s_interval.max(), Some(degen_curve));
         let mut max_drop_to_surf = 0.0;
@@ -490,7 +490,7 @@ impl Surface {
 
         // UV Tolerances - proportional to surface 3d/UV mapping size
         let srf_nat_domain = self.natural_uv_domain();
-        let project_size = approx_derivative_lengths(self, &srf_nat_domain)?;
+        let project_size = approx_derivative_lengths(k, self, &srf_nat_domain)?;
         let uv_tol_x = approx_tol_3d / (project_size.x + 1.0);
         let uv_tol_y = approx_tol_3d / (project_size.y + 1.0);
 
@@ -510,6 +510,7 @@ impl Surface {
         // Characterize Surface seams and singularities
         let mut singular_direction = SurfParamType::Neither;
         let closed_u = ignored(this.is_closed(
+            k,
             &srf_nat_domain,
             SurfParamType::U,
             Some(approx_tol_3d),
@@ -517,6 +518,7 @@ impl Surface {
         ))?
         .is_some_and(|r| r.0);
         let closed_v = ignored(this.is_closed(
+            k,
             &srf_nat_domain,
             SurfParamType::V,
             Some(approx_tol_3d),
@@ -541,7 +543,7 @@ impl Surface {
         fs.approx_singularities = u64::from(sings.approx_singular);
 
         // set sStart's Curve Start Point, 1stDeriv, and 2nd Deriv
-        let pd = curve.evaluate(start.t, 2, true, true)?;
+        let pd = curve.evaluate(k, start.t, 2, true, true)?;
         for (dst, src) in start.crv_pd.iter_mut().zip(pd.iter()) {
             *dst = *src;
         }
@@ -658,6 +660,7 @@ impl Surface {
                 // find degenParam value at a singularity that matches the dropCurve UV
                 // direction
                 let found = match this.find_degen_param_for_direction(
+                    k,
                     start.uv_pd[0],
                     start.crv_pd[1],
                     true,
@@ -725,6 +728,7 @@ impl Surface {
                     s_uv_domain.classify_point(start.uv_pd[0], uv_tol_x, Some(uv_tol_y));
                 let mut poc_u = if on_seam == SurfParamType::U || on_seam == SurfParamType::Both {
                     start.is_moving_along_boundary(
+                        k,
                         this,
                         &srf_nat_domain,
                         uv_tol_x,
@@ -737,6 +741,7 @@ impl Surface {
                 };
                 let mut poc_v = if on_seam == SurfParamType::V || on_seam == SurfParamType::Both {
                     start.is_moving_along_boundary(
+                        k,
                         this,
                         &srf_nat_domain,
                         uv_tol_x,
@@ -817,6 +822,7 @@ impl Surface {
 
             // try the iso curve shortcut
             let iso = this.drop_iso_curve(
+                k,
                 &s_uv_domain,
                 curve,
                 &s_interval,
@@ -884,7 +890,7 @@ impl Surface {
                     };
 
                     // skip tiny pieces
-                    if curve.approximate_length(&tmp_ivl, 5, false)?.0 < approx_tol_3d {
+                    if curve.approximate_length(k, &tmp_ivl, 5, false)?.0 < approx_tol_3d {
                         continue;
                     }
                     ivl = tmp_ivl;
@@ -895,7 +901,7 @@ impl Surface {
                 end.t = ivl.max();
 
                 // span start curve point and derivatives
-                let pd = curve.evaluate(start.t, 2, true, true)?;
+                let pd = curve.evaluate(k, start.t, 2, true, true)?;
                 for (dst, src) in start.crv_pd.iter_mut().zip(pd.iter()) {
                     *dst = *src;
                 }
@@ -961,9 +967,9 @@ impl Surface {
                         && knots.len() > 1
                     {
                         let end_ivl = Extent1d::from_min_max(start.t, s_interval.max());
-                        let approx_length = curve.approximate_length(&end_ivl, 5, false)?.0;
+                        let approx_length = curve.approximate_length(k, &end_ivl, 5, false)?.0;
                         if approx_length < approx_tol_3d {
-                            let curve_end = curve.evaluate_point(s_interval.max())?;
+                            let curve_end = curve.evaluate_point(k, s_interval.max())?;
                             let end_gap_length = start.pd_3d[0].distance(curve_end);
                             if end_gap_length < approx_tol_3d {
                                 if let Some(last) = knots.last_mut() {
@@ -1045,6 +1051,7 @@ impl Surface {
 
                     // test the span
                     let acc = start.test_span_accuracy(
+                        k,
                         this,
                         &s_uv_domain,
                         curve,
