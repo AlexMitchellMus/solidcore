@@ -244,11 +244,7 @@ impl RecoveryOps for Script {
             Ok(SideHit::default())
         }
     }
-    fn topology_split(
-        &mut self,
-        c: &mut Recovery<'_>,
-        g: FilletGeomId,
-    ) -> Result<(FilletGeomId, FilletGeomRef)> {
+    fn topology_split(&mut self, c: &mut Recovery<'_>, g: FilletGeomId) -> Result<FilletGeomId> {
         self.call("split_geom")?;
         let mut geom = c.fillets.geom(g)?.clone();
         for which in 0..2 {
@@ -269,7 +265,7 @@ impl RecoveryOps for Script {
             geom.set_rail(which, Some(new));
         }
         let id = c.fillets.add_geom(geom);
-        Ok((id, FilletGeomRef { index: 99 }))
+        Ok(id)
     }
     fn split_rail(
         &mut self,
@@ -434,6 +430,7 @@ fn failed_first_full_rollover_stops_before_second() {
 fn tangent_split_rebuilds_both_segments_and_restores_offset_identity_and_orientation() {
     let mut f = Fixture::new([&[0.4, 1.0], &[1.0]], true);
     let id = f.geom;
+    let expected_new_geom = FilletGeomId(f.fb.geoms().len() as u32);
     let mut script = Script {
         side: Some(f.side),
         tangent: true,
@@ -463,7 +460,8 @@ fn tangent_split_rebuilds_both_segments_and_restores_offset_identity_and_orienta
     );
     assert_eq!(f.solver.orientations, [1.0, 1.0]);
     assert_eq!(f.solver.surfaces[0].as_ref().unwrap().key, 20);
-    assert_eq!(f.solver.fillet_geoms.last().unwrap().index, 99);
+    assert_eq!(f.solver.fillet_geoms.last(), Some(&expected_new_geom));
+    assert!(f.fb.geom(expected_new_geom).is_ok());
     assert_eq!(
         adjusted,
         [FilletCornerId(41), FilletCornerId(41), FilletCornerId(42)]
@@ -820,13 +818,13 @@ fn support_recovery_intersects_trims_installs_and_notifies_the_actual_curve() {
     let curve = f.fb.brep().edge(rail).unwrap().curve.as_ref().unwrap();
     assert_eq!(
         curve
-            .evaluate_point(curve.natural_interval().min())
+            .evaluate_point(&f.k, curve.natural_interval().min())
             .unwrap(),
         Vec3::Z
     );
     assert_eq!(
         curve
-            .evaluate_point(curve.natural_interval().max())
+            .evaluate_point(&f.k, curve.natural_interval().max())
             .unwrap(),
         Vec3::ZERO
     );
@@ -850,17 +848,17 @@ fn offset_copy_uses_the_real_port_and_preserves_base_identity_and_options() {
     assert_eq!(copy.surface.singularities(), source.surface.singularities());
     assert_eq!(
         copy.surface
-            .evaluate_point(crate::math::Point2::new(0.2, 0.3))
+            .evaluate_point(&f.k, crate::math::Point2::new(0.2, 0.3))
             .unwrap(),
         source
             .surface
-            .evaluate_point(crate::math::Point2::new(0.2, 0.3))
+            .evaluate_point(&f.k, crate::math::Point2::new(0.2, 0.3))
             .unwrap()
     );
 }
 
 #[test]
-fn public_split_helper_reaches_only_the_missing_edge_constructor() {
+fn public_split_helper_reaches_the_builder_infinite_region_gap() {
     let mut f = Fixture::new([&[1.0], &[1.0]], false);
     let id = f.geom;
     let rail = f.fb.geom(id).unwrap().rail(0).unwrap();
@@ -868,10 +866,52 @@ fn public_split_helper_reaches_only_the_missing_edge_constructor() {
     assert!(matches!(
         outcome,
         Err(SolidError::Unported {
-            unit: "blend.fillet_geom_p5",
+            unit: "topology.brep_p3",
             ..
         })
     ));
+}
+
+#[test]
+fn public_split_helper_uses_the_ported_edge_builder_and_actual_geometry_id() {
+    let mut f = Fixture::new([&[1.0], &[1.0]], false);
+    let id = f.geom;
+    let rail = f.fb.geom(id).unwrap().rail(0).unwrap();
+    let old_end = f.context().end(rail).unwrap();
+    let reg =
+        f.fb.brep_mut()
+            .add_region_record(crate::topology::Region {
+                in_brep: true,
+                ..crate::topology::Region::default()
+            })
+            .unwrap();
+    f.fb.brep_mut().set_infinite_region_record(Some(reg));
+    let (middle, new_rail) =
+        super::super::super::p1::split_rail(&f.k, &mut f.fb, &mut f.owners, id, rail).unwrap();
+    assert_eq!(f.context().end(rail).unwrap(), middle);
+    assert_eq!(f.context().start(new_rail).unwrap(), middle);
+    assert_eq!(f.context().end(new_rail).unwrap(), old_end);
+    assert_eq!(f.fb.brep().vertex(middle).unwrap().vertexuses.len(), 2);
+    assert_eq!(f.fb.brep().vertex(old_end).unwrap().vertexuses.len(), 1);
+    let primary = eu::primary_edgeuse(f.fb.brep(), new_rail).unwrap().unwrap();
+    let mate = eu::mate(f.fb.brep(), primary).unwrap().unwrap();
+    assert_eq!(f.fb.fillet_edgeuse(mate).unwrap().fillet_geom(), Some(id));
+    assert_eq!(
+        f.fb.fillet_edge(new_rail).unwrap().edge_type,
+        FilletEdgeType::Rail
+    );
+    let owner = f.owners.edge_owner(new_rail).unwrap().0;
+    assert_eq!(
+        f.fb.brep()
+            .edge(new_rail)
+            .unwrap()
+            .curve
+            .as_ref()
+            .unwrap()
+            .owner(),
+        Some(owner)
+    );
+    assert_eq!(f.owners.notifications.len(), 1);
 }
 
 #[test]
@@ -940,7 +980,7 @@ fn public_support_helper_uses_the_real_surface_intersection() {
     let curve = f.fb.brep().edge(rail).unwrap().curve.as_ref().unwrap();
     assert!(
         (curve
-            .evaluate_point(curve.natural_interval().min())
+            .evaluate_point(&f.k, curve.natural_interval().min())
             .unwrap()
             - Vec3::Z)
             .length()
@@ -948,13 +988,56 @@ fn public_support_helper_uses_the_real_surface_intersection() {
     );
     assert!(
         curve
-            .evaluate_point(curve.natural_interval().max())
+            .evaluate_point(&f.k, curve.natural_interval().max())
             .unwrap()
             .length()
             < 1e-12
     );
     assert_eq!(curve.owner(), Some(f.owners.edge_owner(rail).unwrap().0));
     assert_eq!(f.owners.notifications.len(), 1);
+}
+
+#[test]
+fn rollover_trim_uses_the_live_solver_at_its_nonzero_id() {
+    let mut f = Fixture::new([&[1.0], &[1.0]], false);
+    let id = f.geom;
+    let solver_id = crate::blend::fillet_geom::p1::FilletSolverId(37);
+    f.fb.geom_mut(id).unwrap().solver = Some(solver_id);
+    f.fb.geom_mut(id).unwrap().set_fillet_surface(Some(
+        Plane::new(
+            Point3::ZERO,
+            Vec3::X,
+            Vec3::Y,
+            crate::math::Vec2::new(1.0, 1.0),
+            &crate::geom::extent2d::Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+        )
+        .into(),
+    ));
+    Missing.trim_rails(&mut f.context(), id).unwrap();
+    for rail in f.fb.geom(id).unwrap().rails.into_iter().flatten() {
+        let primary = eu::primary_edgeuse(f.fb.brep(), rail).unwrap().unwrap();
+        let uv =
+            f.fb.brep()
+                .edgeuse(primary)
+                .unwrap()
+                .uv_trim_curve
+                .as_ref()
+                .unwrap();
+        assert_eq!(
+            uv.evaluate_point(&f.k, 0.25).unwrap(),
+            Point3::new(0.25, 0.0, 0.0)
+        );
+    }
+    assert!(matches!(
+        f.fb.trim_rail_curves_with_solver(
+            &f.k,
+            id,
+            crate::blend::fillet_geom::p1::FilletSolverId(0),
+            &f.solver,
+            &f.target
+        ),
+        Err(SolidError::InvalidInput { .. })
+    ));
 }
 
 #[test]

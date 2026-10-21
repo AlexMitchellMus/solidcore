@@ -10,7 +10,7 @@
 //!
 //! Deviations: missing callees have typed call boundaries in `RecoveryOps`;
 //! their callers, mutations, cleanup and continuation are fully represented.
-//! Geometry registration returns both arena and solver-local handles. Offset
+//! Geometry registration uses the shared pseudo-B-rep id in the solver list. Offset
 //! identities are monotonically allocated keys, never addresses. The segment
 //! walk has a checked input-derived progress budget (4 times the total interval
 //! count times (target edge-use count + 1), plus 8); a broken callee cannot
@@ -20,8 +20,8 @@
 pub(super) use super::super::p1::rails::SupportIntersection;
 use super::{
     edge, eu, ignored, p2, Brep, CurveClassification, EdgeId, EdgeuseId, EntityRef, FilletBrep,
-    FilletCornerId, FilletCornerType, FilletGeomId, FilletGeomRef, FilletGeomType, FilletSolver,
-    Kernel, PointClassType, Result, RolloverOwnership, SolidError, SurfOfRevolution, OP,
+    FilletCornerId, FilletCornerType, FilletGeomId, FilletGeomType, FilletSolver, Kernel,
+    PointClassType, Result, RolloverOwnership, SolidError, SurfOfRevolution, OP,
 };
 use crate::blend::fillet_custom_solver::{OffsetSurface, SurfaceId};
 use crate::blend::fillet_geom::p1::{
@@ -140,7 +140,7 @@ pub(super) trait RecoveryOps {
         &mut self,
         _c: &mut Recovery<'_>,
         _geom: FilletGeomId,
-    ) -> Result<(FilletGeomId, FilletGeomRef)> {
+    ) -> Result<FilletGeomId> {
         // UNPORTED(blend.fillet_geom_p3): SmFilletGeom::TopologySplit
         Err(SolidError::unported(
             "SmFilletGeom::TopologySplit",
@@ -250,12 +250,10 @@ pub(super) trait RecoveryOps {
     {
         c.support_edge(edge, geom, approx_tol, angle_tol, self)
     }
-    fn trim_rails(&mut self, _c: &mut Recovery<'_>, _geom: FilletGeomId) -> Result<()> {
-        // UNPORTED(blend.fillet_geom_p5): SmFilletGeom::TrimRailCurves
-        Err(SolidError::unported(
-            "SmFilletGeom::TrimRailCurves",
-            "blend.fillet_geom_p5",
-        ))
+    fn trim_rails(&mut self, c: &mut Recovery<'_>, geom: FilletGeomId) -> Result<()> {
+        let solver_id = required(c.fillets.geom(geom)?.fillet_solver())?;
+        c.fillets
+            .trim_rail_curves_with_solver(c.k, geom, solver_id, c.solver, c.target)
     }
     fn copy_offset(
         &mut self,
@@ -595,9 +593,9 @@ impl Recovery<'_> {
                         }
                     }
                 } else {
-                    let (geom, reference) = ops.topology_split(self, current_geom)?;
+                    let geom = ops.topology_split(self, current_geom)?;
                     new_geom = Some(geom);
-                    self.solver.fillet_geoms.push(reference);
+                    self.solver.fillet_geoms.push(geom);
                     for (slot, rail) in new_vertices.iter_mut().zip(&rails) {
                         *slot = Some(self.end(rail.edge)?);
                     }
@@ -637,7 +635,7 @@ impl Recovery<'_> {
                                 .set_fillet_vertex_type(FilletVertexType::Mate);
                         }
                         let point = if corner_eu.is_none() {
-                            Some(rail.curve.evaluate_point(guess)?)
+                            Some(rail.curve.evaluate_point(self.k, guess)?)
                         } else {
                             None
                         };
@@ -798,7 +796,9 @@ impl Recovery<'_> {
                         .first()
                         .copied()
                         .ok_or_else(|| SolidError::null_pointer(OP))?;
-                    if let Some(values) = ignored(original_curve.evaluate(t, 1, true, true))? {
+                    if let Some(values) =
+                        ignored(original_curve.evaluate(self.k, t, 1, true, true))?
+                    {
                         direction = values.get(1).copied();
                     }
                 }

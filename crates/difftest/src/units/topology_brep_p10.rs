@@ -449,7 +449,7 @@ fn rust(i: &Inputs) -> Result<Dump, HarnessError> {
     out.push(Item::Int(i64::from(data.manifold)));
     out.push(Item::Int(i64::from(data.is_geom_borrowed)));
     let g = Graph::walk(&b).map_err(|e| harness(e.to_string()))?;
-    export(&b, &g, &records, &mut out).map_err(|e| harness(e.to_string()))?;
+    export(&k, &b, &g, &records, &mut out).map_err(|e| harness(e.to_string()))?;
 
     match i.op {
         OpIn::Make => {}
@@ -473,7 +473,7 @@ fn rust(i: &Inputs) -> Result<Dump, HarnessError> {
                 }
             }
             let g2 = Graph::walk(&b).map_err(|e| harness(e.to_string()))?;
-            export(&b, &g2, &records, &mut out).map_err(|e| harness(e.to_string()))?;
+            export(&k, &b, &g2, &records, &mut out).map_err(|e| harness(e.to_string()))?;
         }
         OpIn::RemoveAll { editing } => {
             b.set_editing_enabled(editing);
@@ -483,7 +483,7 @@ fn rust(i: &Inputs) -> Result<Dump, HarnessError> {
                 Err(e) => out.push(Item::Int(status(&e))),
             }
             let g2 = Graph::walk(&b).map_err(|e| harness(e.to_string()))?;
-            export(&b, &g2, &records, &mut out).map_err(|e| harness(e.to_string()))?;
+            export(&k, &b, &g2, &records, &mut out).map_err(|e| harness(e.to_string()))?;
         }
         OpIn::Project {
             trim,
@@ -543,7 +543,7 @@ fn rust(i: &Inputs) -> Result<Dump, HarnessError> {
                 Err(e) => out.push(Item::Int(status(&e))),
             }
             let g2 = Graph::walk(&b).map_err(|e| harness(e.to_string()))?;
-            export(&b, &g2, &records, &mut out).map_err(|e| harness(e.to_string()))?;
+            export(&k, &b, &g2, &records, &mut out).map_err(|e| harness(e.to_string()))?;
         }
     }
     Ok(Ok(out))
@@ -551,8 +551,8 @@ fn rust(i: &Inputs) -> Result<Dump, HarnessError> {
 
 // ---- traversal-order registry (mirrors the shim's walk) ---------------------------------
 
-struct Reg<I> {
-    items: Vec<I>,
+pub(crate) struct Reg<I> {
+    pub(crate) items: Vec<I>,
     index: BTreeMap<u32, i64>,
 }
 
@@ -574,7 +574,7 @@ impl<I: Copy> Reg<I> {
         self.index.insert(r, self.items.len() as i64);
         self.items.push(id);
     }
-    fn find(&self, id: Option<I>, raw: impl Fn(I) -> u32) -> i64 {
+    pub(crate) fn find(&self, id: Option<I>, raw: impl Fn(I) -> u32) -> i64 {
         match id {
             None => -1,
             Some(id) => self.index.get(&raw(id)).copied().unwrap_or(-3),
@@ -582,17 +582,18 @@ impl<I: Copy> Reg<I> {
     }
 }
 
-struct Graph {
-    regions: Reg<RegionId>,
-    shells: Reg<ShellId>,
-    faceuses: Reg<FaceuseId>,
-    faces: Reg<FaceId>,
-    loopuses: Reg<LoopuseId>,
-    loops: Reg<LoopId>,
-    edgeuses: Reg<EdgeuseId>,
-    edges: Reg<EdgeId>,
-    vertexuses: Reg<VertexuseId>,
-    vertices: Reg<VertexId>,
+/// The B-rep's objects in the shim's traversal order (shared with `topology.brep_p6`).
+pub(crate) struct Graph {
+    pub(crate) regions: Reg<RegionId>,
+    pub(crate) shells: Reg<ShellId>,
+    pub(crate) faceuses: Reg<FaceuseId>,
+    pub(crate) faces: Reg<FaceId>,
+    pub(crate) loopuses: Reg<LoopuseId>,
+    pub(crate) loops: Reg<LoopId>,
+    pub(crate) edgeuses: Reg<EdgeuseId>,
+    pub(crate) edges: Reg<EdgeId>,
+    pub(crate) vertexuses: Reg<VertexuseId>,
+    pub(crate) vertices: Reg<VertexId>,
 }
 
 const LOOPUSE_TYPE: i64 = 16004;
@@ -601,7 +602,7 @@ const VERTEXUSE_TYPE: i64 = 16006;
 const SHELL_TYPE: i64 = 16013;
 const UNKNOWN_TYPE: i64 = 16999;
 
-fn orient_code(o: solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType) -> i64 {
+pub(crate) fn orient_code(o: solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType) -> i64 {
     use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
     match o {
         OrientType::Unknown => 0,
@@ -612,7 +613,7 @@ fn orient_code(o: solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType) -> i
 
 impl Graph {
     #[allow(clippy::too_many_lines)]
-    fn walk(b: &Brep) -> Result<Self, SolidError> {
+    pub(crate) fn walk(b: &Brep) -> Result<Self, SolidError> {
         let mut g = Self {
             regions: Reg::new(),
             shells: Reg::new(),
@@ -799,11 +800,11 @@ impl Out<'_> {
         self.d(ivl.max());
         for k in 0..=4 {
             let t = ivl.min() + 0.25 * f64::from(k) * (ivl.max() - ivl.min());
-            self.point(c.evaluate_point(t));
+            self.point(c.evaluate_point(&Kernel::default(), t));
         }
         self.i(i64::from(c.owner() == Some(key_of(owner))));
     }
-    fn surface(&mut self, s: Option<&Surface>, owner: EntityRef) {
+    fn surface(&mut self, k: &Kernel, s: Option<&Surface>, owner: EntityRef) {
         let Some(s) = s else {
             self.i(0);
             return;
@@ -822,7 +823,7 @@ impl Out<'_> {
                     lo.x + 0.5 * f64::from(a) * (hi.x - lo.x),
                     lo.y + 0.5 * f64::from(bb) * (hi.y - lo.y),
                 );
-                self.point(s.evaluate_point(uv));
+                self.point(s.evaluate_point(k, uv));
             }
         }
         self.i(i64::from(s.owner() == Some(key_of(owner))));
@@ -831,6 +832,7 @@ impl Out<'_> {
 
 #[allow(clippy::too_many_lines)]
 fn export(
+    k: &Kernel,
     b: &Brep,
     g: &Graph,
     records: &BTreeMap<ObjectKey, Topology>,
@@ -904,7 +906,7 @@ fn export(
     }
     for &id in &g.faces.items {
         let f = b.face(id)?;
-        w.surface(f.surface.as_ref(), EntityRef::Face(id));
+        w.surface(k, f.surface.as_ref(), EntityRef::Face(id));
         w.i(g.faceuses.find(f.faceuse, FaceuseId::index));
         let (lo, hi) = (f.uv_domain.min(), f.uv_domain.max());
         w.d(lo.x);
@@ -1001,10 +1003,10 @@ fn export(
 
 /// Shared post-state snapshot: topology in traversal order, sampled geometry,
 /// and lazy-cache initialization/UV fields not used by the p10 operation runner.
-pub(crate) fn snapshot(b: &Brep) -> Result<Output, HarnessError> {
+pub(crate) fn snapshot(k: &Kernel, b: &Brep) -> Result<Output, HarnessError> {
     let g = Graph::walk(b).map_err(|e| harness(e.to_string()))?;
     let mut items = Vec::new();
-    export(b, &g, &BTreeMap::new(), &mut items).map_err(|e| harness(e.to_string()))?;
+    export(k, b, &g, &BTreeMap::new(), &mut items).map_err(|e| harness(e.to_string()))?;
     let mut output = to_output(&items).int("validate_only", i64::from(b.validate_only()));
     // This caller uses the normal relative comparison, not p10's bit audit.
     output.ints.remove("dbl_bits");

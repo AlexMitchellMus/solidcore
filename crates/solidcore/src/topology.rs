@@ -61,6 +61,7 @@ use crate::error::{EntityRef, Result, SolidError};
 use crate::geom::attribute::ObjectKey;
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
+use crate::geom::extent3d::Extent3d;
 use crate::geom::solution_array::{ObjectKind, SolutionObject};
 use crate::geom::tol::{USE_DEFAULT, ZONE_TOL_3D};
 use crate::geom::vector2d::Point2;
@@ -181,12 +182,18 @@ impl<I: ArenaId, T> Arena<I, T> {
     /// Appends an item and returns its id.
     ///
     /// Fails with [`SolidError::InvalidInput`] if the arena already holds `u32::MAX`
-    /// items.
+    /// items or cannot grow (allocation failure).
     pub fn insert(&mut self, item: T) -> Result<I> {
         let index = u32::try_from(self.items.len()).map_err(|_| SolidError::InvalidInput {
             operation: "topology::Arena::insert",
             reason: "arena is full",
         })?;
+        self.items
+            .try_reserve(1)
+            .map_err(|_| SolidError::InvalidInput {
+                operation: "topology::Arena::insert",
+                reason: "arena cannot grow",
+            })?;
         self.items.push(item);
         Ok(I::from_index(index))
     }
@@ -573,6 +580,12 @@ pub struct Brep {
     /// `m_pDeletedSurfaces` (unit `topology.brep_p1`): surfaces removed from the B-rep
     /// that are kept until the operation ends because they may still be referenced.
     deleted_surfaces: Vec<Surface>,
+    /// `m_pLockedBoundingBox` (unit `query.brep`): the box
+    /// [`crate::query::brep::lock_bounding_box`] saved, which
+    /// [`crate::query::brep::calculate_bounding_box`] returns while it is set. A clone
+    /// keeps it (clones stand in for the same B-rep); upstream's copy constructor
+    /// (`topology.brep_p3`) starts without one.
+    locked_bounding_box: Option<Extent3d>,
 }
 
 impl Default for Brep {
@@ -600,6 +613,7 @@ impl Default for Brep {
             model_size_estimate: USE_DEFAULT,
             large_small_size_ratio: USE_DEFAULT,
             deleted_surfaces: Vec::new(),
+            locked_bounding_box: None,
         }
     }
 }
@@ -661,6 +675,19 @@ impl Brep {
     /// Sets `m_bEditingEnabled`.
     pub fn set_editing_enabled(&mut self, enabled: bool) {
         self.editing_enabled = enabled;
+    }
+
+    /// `m_pLockedBoundingBox` (unit `query.brep`): the locked bounding box, if any.
+    #[must_use]
+    pub const fn locked_bounding_box(&self) -> Option<Extent3d> {
+        self.locked_bounding_box
+    }
+
+    /// Sets (`Some`) or clears (`None`) `m_pLockedBoundingBox`; see
+    /// [`crate::query::brep::lock_bounding_box`] and
+    /// [`crate::query::brep::unlock_bounding_box`].
+    pub fn set_locked_bounding_box(&mut self, bbox: Option<Extent3d>) {
+        self.locked_bounding_box = bbox;
     }
 
     /// All shells.

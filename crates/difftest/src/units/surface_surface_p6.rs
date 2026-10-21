@@ -627,11 +627,11 @@ fn pv(o: &mut Vec<f64>, v: Vec3) {
 }
 
 /// The shim's curve record.
-fn put_curve(o: &mut Vec<f64>, c: &SmCurve) -> Result<(), Fail> {
+fn put_curve(k: &Kernel, o: &mut Vec<f64>, c: &SmCurve) -> Result<(), Fail> {
     let ivl = c.natural_interval();
     o.extend([ivl.min(), ivl.max()]);
     for i in 0..=4 {
-        match st(c.evaluate_point(ivl.evaluate(f64::from(i) / 4.0)))? {
+        match st(c.evaluate_point(k, ivl.evaluate(f64::from(i) / 4.0)))? {
             Ok(p) => pv(o, p),
             Err(_) => o.extend([f64::NAN; 3]),
         }
@@ -720,13 +720,13 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
                         let orient = t.orients.get(j).copied().unwrap_or_default();
                         o.push(orient_code(orient));
                         o.push(t.max_gaps_3d.get(j).copied().unwrap_or(f64::NAN));
-                        put_curve(&mut o, c)?;
+                        put_curve(&k, &mut o, c)?;
                         let uv = t
                             .uv_curves
                             .get(j)
                             .cloned()
                             .ok_or_else(|| harness("missing uv curve"))?;
-                        put_curve(&mut o, &SmCurve::from(uv))?;
+                        put_curve(&k, &mut o, &SmCurve::from(uv))?;
                     }
                 }
                 Err(c) => o.push(c),
@@ -744,6 +744,11 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
             want2,
             want3,
         } => {
+            // the FFI rejects more than `ffi::MAX_SAMPLES` samples; a larger count only
+            // sizes the Rust side's sampling loop
+            if *n > ffi::MAX_SAMPLES as u64 {
+                return Err(HarnessError::new(format!("{n} samples")).into());
+            }
             let reference = match reference {
                 Some(r) => match curve_of(r)? {
                     Some(c) => Some(c),
@@ -804,7 +809,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
                 return Ok(vec![-3.0]);
             };
             match st(s.local_curve_intersect(
-                &dom_of(*dom),
+                &k, &dom_of(*dom),
                 &c,
                 &ivl_of(*ivl),
                 *tol,
@@ -891,7 +896,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
                 kernel: &k,
                 caches: [None, None],
             };
-            match st(solver.solutions_identical(&a, &bb))? {
+            match st(solver.solutions_identical(&k, &a, &bb))? {
                 Ok((t, pref)) => {
                     let pref = match pref {
                         None => 0.0,

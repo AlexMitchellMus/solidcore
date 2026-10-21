@@ -7,8 +7,8 @@
 //! | [`FilletSolver::test_roll_over`] | `SmFilletSolver::TestRollOver` |
 //! | [`FilletSolver::process_roll_over`] | `SmFilletSolver::ProcessRollOver` |
 //!
-//! Deviations: pseudo-B-rep objects use typed arenas and geometry handles have an
-//! explicit resolver. Completed mutations survive failures. Only unavailable
+//! Deviations: pseudo-B-rep objects use typed arenas and geometry uses the same
+//! typed ids as the solver list. Completed mutations survive failures. Only unavailable
 //! callees are stubbed; the entire caller continuation is ported, including both
 //! full-rollover calls, the segment walk and topology/surface/corner updates.
 //! The four-argument classification constructor calls the real `reset`
@@ -16,7 +16,7 @@
 //! Internal short intervals are retained in descending order for refinement.
 //! See `p5/recovery.rs` for the bounded segment-walk deviation. No recursion.
 
-use super::p1::{FilletGeomRef, FilletSolver};
+use super::p1::FilletSolver;
 use crate::blend::fillet_geom::p1::{
     FilletBrep, FilletCornerId, FilletCornerType, FilletGeomId, FilletGeomType,
 };
@@ -58,8 +58,8 @@ pub use super::p1::RailOwnership as RolloverOwnership;
 impl FilletSolver {
     /// Classify both rails against their original faces, squeeze tiny end
     /// intervals, refine their classifications and process rollover. Iterates a
-    /// snapshot of the solver's geometry list, as upstream does. `geometry_id`
-    /// resolves each solver-local handle into the caller's pseudo-B-rep arena.
+    /// snapshot of the solver's geometry list, as upstream does. Every entry is
+    /// the geometry's actual id in the caller's pseudo-B-rep arena.
     ///
     /// # Errors
     /// Missing rails/curves/mates are invalid inputs (upstream dereferences them).
@@ -71,13 +71,11 @@ impl FilletSolver {
         target: &mut Brep,
         fillets: &mut FilletBrep,
         objects: &impl RolloverObjects,
-        geometry_id: &impl Fn(FilletGeomRef) -> Result<FilletGeomId>,
         adjusted_corners: &mut Vec<FilletCornerId>,
         ownership: &mut impl RolloverOwnership,
     ) -> Result<()> {
         let geoms = self.fillet_geoms();
-        for reference in geoms {
-            let id = geometry_id(reference)?;
+        for id in geoms {
             for ii in 0..2 {
                 let rail = fillets
                     .geom(id)?
@@ -254,8 +252,8 @@ fn squeeze_rail(
                 .sub_interval(index)?;
             let curve =
                 edge::curve(fillets.brep(), rail)?.ok_or_else(|| SolidError::null_pointer(OP))?;
-            let start = curve.evaluate_point(interval.min())?;
-            let end = curve.evaluate_point(interval.max())?;
+            let start = curve.evaluate_point(k, interval.min())?;
+            let end = curve.evaluate_point(k, interval.max())?;
             if start.distance(end) > 50.0 * tolerance {
                 continue;
             }

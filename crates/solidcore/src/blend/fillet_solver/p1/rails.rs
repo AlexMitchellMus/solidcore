@@ -7,9 +7,9 @@
 //! | [`split_rail`] | `sm_SplitRail` |
 //! | [`compute_support_edge`] | `sm_ComputeSupportEdge` |
 //!
-//! Deviations: typed arena ids and caller-owned notification routing; unavailable
-//! edge construction retains a typed call boundary; surface intersection calls
-//! the ported `blend::fillet_geom::p2::srf_srf_intersection`.
+//! Deviations: typed arena ids and caller-owned notification routing. Edge
+//! construction delegates to the ported fillet geometry builder; surface
+//! intersection calls the ported `blend::fillet_geom::p2::srf_srf_intersection`.
 //! No recursion.
 use crate::blend::fillet_geom::p1::{
     CliffHandle, FilStatus, FilletBrep, FilletEdgeType, FilletGeomId, FilletVertex,
@@ -46,15 +46,11 @@ pub(crate) trait RailOps {
     fn make_edge(
         &mut self,
         _k: &Kernel,
-        _fb: &mut FilletBrep,
-        _start: VertexId,
-        _end: VertexId,
+        fb: &mut FilletBrep,
+        start: VertexId,
+        end: VertexId,
     ) -> Result<EdgeId> {
-        // UNPORTED(blend.fillet_geom_p5): SmFilletEdge::MakeFilletEdge
-        Err(SolidError::unported(
-            "SmFilletEdge::MakeFilletEdge",
-            "blend.fillet_geom_p5",
-        ))
+        fb.make_fillet_edge(Some(start), Some(end), None)
     }
     fn surface_intersection(
         &mut self,
@@ -315,7 +311,7 @@ impl Rails<'_> {
             .first()
             .copied()
             .ok_or_else(|| SolidError::null_pointer(OP))?;
-        let end_point = curve.evaluate_point(t)?;
+        let end_point = curve.evaluate_point(self.k, t)?;
         let end = self.end(support)?;
         self.fillets.brep_mut().vertex_mut(end)?.point = end_point;
         self.fillets

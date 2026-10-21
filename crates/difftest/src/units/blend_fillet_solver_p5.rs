@@ -119,10 +119,38 @@ fn output(state: &[f64]) -> Result<Output, HarnessError> {
 // target topology is imported from the exact same native rectangular fixture;
 // rail curves live in this separate pseudo-B-rep. No default Kernel is hidden.
 struct Objects<'a> {
+    k: &'a Kernel,
     fillets: &'a FilletBrep,
     target: &'a Brep,
 }
 impl ClassGeometry<EntityRef> for Objects<'_> {
+    /// `pVertex->GetVertexuseOfFace(pFace)->GetVertexFaceGap()`: its `GetLength()`,
+    /// or `0.0` without a gap (as the `topology.face_p4` runner).
+    fn vertex_face_gap(
+        &self,
+        vertex: EntityRef,
+        surface: &Surface,
+        face: Option<EntityRef>,
+    ) -> Option<f64> {
+        let EntityRef::Vertex(v) = vertex else {
+            return None;
+        };
+        let f = match face {
+            Some(EntityRef::Face(f)) => f,
+            Some(_) => return None,
+            None => self
+                .target
+                .faces()
+                .iter()
+                .find(|(_, r)| r.surface.as_ref().is_some_and(|s| std::ptr::eq(s, surface)))
+                .map(|(f, _)| f)?,
+        };
+        let vu = solidcore::topology::vertex::vertexuse_of_face(self.target, v, Some(f)).ok()??;
+        let mut b = self.target.clone();
+        let gap =
+            solidcore::topology::vertexuse::vertex_face_gap(self.k, &mut b, vu, false).ok()?;
+        Some(gap.map_or(0.0, |g| g.gap_3d))
+    }
     fn curve(&self, o: EntityRef) -> Option<&Curve> {
         match o {
             EntityRef::Edge(e) => {
@@ -378,6 +406,7 @@ fn run(i: &Inputs) -> Result<Output, HarnessError> {
         rails.push(edge);
     }
     let id = fb.add_geom(geom);
+    solver.fillet_geoms = vec![id];
     let mut adjusted: Vec<_> = i
         .adjusted
         .iter()
@@ -405,18 +434,9 @@ fn run(i: &Inputs) -> Result<Output, HarnessError> {
             &mut target,
             &mut fb,
             &Objects {
+                k: &k,
                 fillets: &snapshot,
                 target: &target_objects,
-            },
-            &|reference| {
-                if reference.index == 0 {
-                    Ok(id)
-                } else {
-                    Err(SolidError::invalid_input(
-                        "fixture",
-                        "unknown solver geometry",
-                    ))
-                }
             },
             &mut adjusted,
             &mut Ownership,

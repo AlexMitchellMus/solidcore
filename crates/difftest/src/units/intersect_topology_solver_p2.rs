@@ -362,7 +362,8 @@ fn static_rust(case: &Case) -> Result<Output, HarnessError> {
         handle: StaticHandle(999),
     };
     let interval = Extent1d::from_min_max(0.0, 1.0);
-    let shape = Shape::new(&[], &[], &[], &[]).map_err(|e| HarnessError::new(e.to_string()))?;
+    let shape = Shape::new(&kernel, &solidcore::geom::object::NoBreps, &[], &[], &[], &[])
+        .map_err(|e| HarnessError::new(e.to_string()))?;
     let result = match i.entry {
         0 => TopologySolver::brep_point_solve(
             &kernel,
@@ -421,7 +422,7 @@ fn static_rust(case: &Case) -> Result<Output, HarnessError> {
                 (first, second)
             };
             local
-                .solve_it(&mut ts, Some(first), Some(second))
+                .solve_it(&kernel, &mut ts, Some(first), Some(second))
                 .map(|()| ts.base.solutions)
         }
         _ => return Err(HarnessError::new("static entry")),

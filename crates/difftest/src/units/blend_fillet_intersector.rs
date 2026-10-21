@@ -28,10 +28,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use solidcore::blend::fillet_custom_solver::{ConstantRadiusAssistedFs, OffsetSurface, SurfaceId};
+use solidcore::blend::fillet_geom::p1::{FilletBrep, FilletGeomId, FilletSolverId};
 use solidcore::blend::fillet_intersector::{
     find_guess_mid_tsect_pnt, flush_crv, FilletIntersector, TYPE,
 };
-use solidcore::blend::fillet_solver::p1::FilletGeomRef;
 use solidcore::curve::curve::Curve;
 use solidcore::geom::extent1d::{Extent1d, ExtentPointType};
 use solidcore::geom::extent2d::Extent2d;
@@ -503,7 +503,17 @@ fn id(i: usize) -> TsectId {
     TsectId(i)
 }
 
-type Fi<'s> = FilletIntersector<'s, 'static, NoSurfaceHandle, FilletGeomRef>;
+type Fi<'s> = FilletIntersector<'s, 'static, NoSurfaceHandle, FilletGeomId>;
+
+/// Stores `p` as arena point `i`: the shim hands its points to the op by reference, so
+/// what the op wrote (also on a failure) is in the emitted arena.
+fn write_back(fi: &mut Fi<'_>, i: usize, p: TsectPnt) -> Result<(), Fail> {
+    *fi.base
+        .base
+        .point_mut(id(i))
+        .map_err(|e| Fail::Harness(harness(e.to_string())))? = p;
+    Ok(())
+}
 
 #[allow(clippy::too_many_lines)]
 fn run_op(
@@ -511,6 +521,7 @@ fn run_op(
     k: &Kernel,
     fi: &mut Fi<'_>,
     solver: &mut ConstantRadiusAssistedFs,
+    pseudo: &mut FilletBrep,
     o: &mut Vec<f64>,
 ) -> Result<(), Fail> {
     match op {
@@ -541,7 +552,7 @@ fn run_op(
                     .map_err(|e| Fail::Harness(harness(format!("add point: {e}"))))?;
             }
             let mut out = TsectCurves::default();
-            let r = fi.flush_curve(solver, k, &mut out);
+            let r = fi.flush_curve(solver, k, pseudo, &mut out);
             if st(o, r)?.is_some() {
                 o.push(out.curve_types.len() as f64);
                 o.push(out.deviations.len() as f64);
@@ -595,15 +606,9 @@ fn run_op(
                 &mut pa,
                 &mut pb,
             );
-            // Native reference arguments retain both complete and partial writes.
-            *fi.base
-                .base
-                .point_mut(id(*a))
-                .map_err(|e| Fail::Harness(harness(e.to_string())))? = pa;
-            *fi.base
-                .base
-                .point_mut(id(*b))
-                .map_err(|e| Fail::Harness(harness(e.to_string())))? = pb;
+            // the shim passes the arena points by reference: they are emitted as changed
+            write_back(fi, *a, pa)?;
+            write_back(fi, *b, pb)?;
             st(o, r)?;
         }
         OpIn::Values { uv, a, prev } => {
@@ -624,10 +629,7 @@ fn run_op(
                 None => None,
             };
             let r = fi.compute_point_values(solver, k, uv.map(p2), &mut pa, pp.as_ref(), None);
-            *fi.base
-                .base
-                .point_mut(id(*a))
-                .map_err(|e| Fail::Harness(harness(e.to_string())))? = pa;
+            write_back(fi, *a, pa)?;
             st(o, r)?;
         }
         OpIn::Law {
@@ -717,16 +719,26 @@ fn rust_record(i: &Inputs) -> Result<Vec<f64>, Fail> {
     for slot in solver.solver.surfaces.iter_mut().flatten() {
         slot.surface.surface.set_allow_extension(true);
     }
+    // the base constructor's fillet geometry (with the offset copies FinishConstruction
+    // installs), in the pseudo B-rep the flush writes to
+    let mut pseudo = FilletBrep::new();
+    if let Err(e) = solver
+        .solver
+        .add_constructor_fillet_geom(&k, &mut pseudo, FilletSolverId(0))
+    {
+        return Err(Fail::Harness(harness(format!("fillet geometry: {e}"))));
+    }
 
-    let mut fi: Fi<'_> = match FilletIntersector::new(&a, &ext(i.dom1), bref, &ext(i.dom2), None) {
-        Ok(fi) => fi,
-        Err(e) => {
-            if let Some(d) = Output::unported(&e) {
-                return Err(Fail::Deferred(Box::new(d)));
+    let mut fi: Fi<'_> =
+        match FilletIntersector::new(&k, &a, &ext(i.dom1), bref, &ext(i.dom2), None) {
+            Ok(fi) => fi,
+            Err(e) => {
+                if let Some(d) = Output::unported(&e) {
+                    return Err(Fail::Deferred(Box::new(d)));
+                }
+                return Err(Fail::Harness(harness(format!("constructor: {e}"))));
             }
-            return Err(Fail::Harness(harness(format!("constructor: {e}"))));
-        }
-    };
+        };
     fi.base.base.this_ang_tol_rad = i.ang_tol;
     fi.base.base.this_approx_tol_3d = i.approx_tol;
     fi.base.base.clipped_by_through_point = i.clipped;
@@ -737,7 +749,7 @@ fn rust_record(i: &Inputs) -> Result<Vec<f64>, Fail> {
     }
 
     let mut o = vec![op_code(&i.op)];
-    run_op(&i.op, &k, &mut fi, &mut solver, &mut o)?;
+    run_op(&i.op, &k, &mut fi, &mut solver, &mut pseudo, &mut o)?;
 
     // state
     let si = &fi.base.base;
@@ -929,12 +941,18 @@ fn lerp_dom(d: [f64; 4], fu: f64, fv: f64) -> [f64; 2] {
 /// A point of the generated trace at `t`: UV points `base + t dir` on both surfaces,
 /// the curve point on the first surface and its unit tangent (central differences),
 /// UV tangents scaled to the unit-speed parameter `t |tangent|`.
-fn trace_point(srfs: &[Surface; 2], base: [[f64; 2]; 2], dir: [[f64; 2]; 2], t: f64) -> PointIn {
+fn trace_point(
+    k: &Kernel,
+    srfs: &[Surface; 2],
+    base: [[f64; 2]; 2],
+    dir: [[f64; 2]; 2],
+    t: f64,
+) -> PointIn {
     let uv = [
         [base[0][0] + t * dir[0][0], base[0][1] + t * dir[0][1]],
         [base[1][0] + t * dir[1][0], base[1][1] + t * dir[1][1]],
     ];
-    let at = |s: &Surface, uv: [f64; 2]| s.evaluate_point(p2(uv)).ok();
+    let at = |s: &Surface, uv: [f64; 2]| s.evaluate_point(k, p2(uv)).ok();
     let h = 1e-4;
     let p0 = at(&srfs[0], uv[0]).unwrap_or(Vec3::new(0.0, 0.0, 0.0));
     let pp = at(
@@ -991,7 +1009,7 @@ fn rot(v: [f64; 3], ang: f64) -> [f64; 3] {
 }
 
 #[allow(clippy::too_many_lines)]
-fn gen_case(rng: &mut Rng) -> Option<Inputs> {
+fn gen_case(k: &Kernel, rng: &mut Rng) -> Option<Inputs> {
     let s = gen_scale(rng);
     let a = if rng.chance(0.65) {
         gen_bspline(rng, s)
@@ -1058,9 +1076,9 @@ fn gen_case(rng: &mut Rng) -> Option<Inputs> {
         1 => 0.05,
         _ => rng.uniform(0.1, 1.0),
     };
-    let mut p0 = trace_point(&srfs, base, dir, 0.0);
-    let mut p1 = trace_point(&srfs, base, dir, t1);
-    let pm = trace_point(&srfs, base, dir, t1 * rng.uniform(0.3, 0.7));
+    let mut p0 = trace_point(k, &srfs, base, dir, 0.0);
+    let mut p1 = trace_point(k, &srfs, base, dir, t1);
+    let pm = trace_point(k, &srfs, base, dir, t1 * rng.uniform(0.3, 0.7));
     // variants: turn the tangent, zero it, change the types, angles and deviations
     match rng.below(8) {
         0 => p1.deriv = rot(p1.deriv, rng.uniform(0.0, 3.1)),
@@ -1341,8 +1359,9 @@ impl UnitDiff for Runner {
     }
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
+        let k = &Kernel::default();
         for _ in 0..64 {
-            let Some(i) = gen_case(rng) else { continue };
+            let Some(i) = gen_case(k, rng) else { continue };
             if ffi::encode(&ffi_program(&i)).is_ok() {
                 return serde_json::to_value(i).ok();
             }

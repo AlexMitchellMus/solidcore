@@ -152,6 +152,7 @@ fn main() {
         command
             .arg(&worker_source)
             .arg(shim_dir.join("topology_edgeuse_p1.cpp"))
+            .arg(shim_dir.join("sc_shim.cpp"))
             .arg("-o")
             .arg(&worker);
         command.arg(format!("-L{}", lib_dir.display()));

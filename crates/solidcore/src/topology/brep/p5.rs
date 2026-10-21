@@ -479,8 +479,8 @@ pub fn create_wire_edge_from_curve(
     curve: Curve,
     interval: Extent1d,
 ) -> Result<EdgeId> {
-    let start = curve.evaluate_point(interval.min())?;
-    let end = curve.evaluate_point(interval.max())?;
+    let start = curve.evaluate_point(k, interval.min())?;
+    let end = curve.evaluate_point(k, interval.max())?;
     let region = b
         .infinite_region()
         .ok_or_else(|| SolidError::null_pointer(OP))?;
@@ -549,10 +549,10 @@ pub fn delete_topological_vertex_with_notifications(
         edge
     } else {
         let length1 = edge_curve(b, *first)?
-            .approximate_length(&b.edge(*first)?.interval, 5, false)?
+            .approximate_length(k, &b.edge(*first)?.interval, 5, false)?
             .0;
         let length2 = edge_curve(b, *last)?
-            .approximate_length(&b.edge(*last)?.interval, 5, false)?
+            .approximate_length(k, &b.edge(*last)?.interval, 5, false)?
             .0;
         if length2 < length1 {
             *last
@@ -634,7 +634,7 @@ pub fn delete_topological_vertex_with_notifications(
                             // Native ignores EvaluatePoint's status. Its defined
                             // SM_UNDEF_DOUBLE sentinel remains explicit when an ordinary evaluation fails.
                             let evaluated =
-                                crate::error::ignored(survive_curve.evaluate_point(far))?
+                                crate::error::ignored(survive_curve.evaluate_point(k, far))?
                                     .unwrap_or(Vec3::UNDEF);
                             if evaluated.closer_than(max_gap, point) {
                                 same_geometry = true;
@@ -763,6 +763,7 @@ fn join_copied_curves(
             owner,
         ),
         _ => bspline_curve_base_mut(survivor)?.join_with(
+            k,
             survivor_end,
             bspline_curve_base_mut(deleted)?,
             deleted_end,
@@ -1777,7 +1778,9 @@ pub fn squeeze_face(
     *output = SqueezedFace::default();
     require_editing(editing_enabled)?;
     b.face(face)?;
-    lock_bounding_box(b)?;
+    // `SmLockBrepBox`: unlocks when it goes out of scope, whatever the result
+    let mut lock = crate::topology::brep::p1::LockBrepBox::new(k, b)?;
+    let b = lock.brep();
     let result = (|| {
         let tolerance = stitch_tolerance.unwrap_or_else(|| {
             crate::geom::tol::xsect_tol_3d_from_zones(k, b.tolerance(), b.tolerance())
@@ -1890,19 +1893,9 @@ pub fn squeeze_face(
             Ok(())
         }
     })();
-    // Upstream unlocks in a destructor; an unlock failure never hides `result`.
-    let unlocked = unlock_bounding_box(b);
-    result.and(unlocked)
+    result
 }
 
-fn lock_bounding_box(_b: &mut Brep) -> Result<()> {
-    // UNPORTED(topology.brep_p1): SmLockBrepBox::SmLockBrepBox
-    missing("SmLockBrepBox::SmLockBrepBox", "topology.brep_p1")
-}
-fn unlock_bounding_box(_b: &mut Brep) -> Result<()> {
-    // UNPORTED(topology.brep_p1): SmLockBrepBox::~SmLockBrepBox
-    missing("SmLockBrepBox::~SmLockBrepBox", "topology.brep_p1")
-}
 fn shell_size(b: &Brep, shell: ShellId) -> Result<usize> {
     crate::topology::shell::shell_list_size(b, shell)
 }
@@ -2175,6 +2168,12 @@ fn transformed_surface_base(
                 crate::error::ignore_status(revolution.make_nurb(k))?;
             }
             Some(revolution.base().clone())
+        }
+        SurfaceKind::Cone(cone) => {
+            if cone.rev().base().gw_nurb().is_none() {
+                crate::error::ignore_status(cone.make_nurb(k))?;
+            }
+            Some(cone.rev().base().clone())
         }
         SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)

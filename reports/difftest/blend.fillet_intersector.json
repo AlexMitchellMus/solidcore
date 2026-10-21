@@ -11853,8 +11853,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 378,
   "cases_failed": 0,
-  "cases_passed": 914,
-  "cases_total": 1292,
+  "cases_passed": 908,
+  "cases_total": 1286,
   "deferred_by_unit": {
     "blend.fillet_solver_p2": 37,
     "blend.fillet_solver_p3": 120,

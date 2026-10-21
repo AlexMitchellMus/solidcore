@@ -681,7 +681,13 @@ fn topology(k: &Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>>
             objects.build(k)?;
             closest(
                 &mut o,
-                api::face_closest_point(k, &objects, (BrepId::from_index(0), face), point)?,
+                api::face_closest_point(
+                    k,
+                    &(BrepId::from_index(0), b),
+                    &objects,
+                    (BrepId::from_index(0), face),
+                    point,
+                )?,
             );
         }
         21 => cclosest(
@@ -695,7 +701,7 @@ fn topology(k: &Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>>
         23 => o.push(f64::from(
             api::edge_classify_parameter(k, b, e.ok_or_else(missing)?, a[14])?.code(),
         )),
-        24 => vec(&mut o, api::edge_tangent(b, e.ok_or_else(missing)?, a[14])?),
+        24 => vec(&mut o, api::edge_tangent(k, b, e.ok_or_else(missing)?, a[14])?),
         25 => vec(&mut o, api::vertex_get_point(b, vert.ok_or_else(missing)?)?),
         _ => return Err(missing()),
     }

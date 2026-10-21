@@ -17,7 +17,7 @@
 //! | [`SecantConstantRadiusFs::load_initial_values`]   | `SmSecantConstantRadiusFS::LoadInitialValues`     |
 //! | [`SecantConstantRadiusFs::load_jacobian`]         | `SmSecantConstantRadiusFS::LoadJacobian`          |
 //! | [`ConstantRadiusAssistedFs`] (CO-PORTED)          | `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` over the `SmFilletSolver` base ([`FilletSolver`]) |
-//! | `impl FilletSolverOps for ConstantRadiusAssistedFs` | inherited p1 overrides and `SmConstantRadiusFS::LoadJacobian`; `IsKindOf` / `LoadInitialValues` return [`SolidError::Unported`] (unit `blend.fillet_standard_solver_p2`) |
+//! | `impl FilletSolverOps for ConstantRadiusAssistedFs` | the same inherited overrides plus `SmConstantRadiusFS::LoadJacobian` (`blend.fillet_standard_solver_p1`'s methods); `IsKindOf` and `LoadInitialValues` (`_p2`) return [`SolidError::Unported`] (the class `blend.fillet_intersector` runs `ComputeSurfaceValues` on) |
 //! | `impl FilletSolverOps` for both solvers            | their `LoadJacobian` / `LoadInitialValues` overrides; the inherited `SmConstantRadiusFS` / `SmConstantRadiusAssistedFS` overrides (`GetJacobianSize`, `SetupOffsetValues`, `OffsetRadiiCanChange`, `GetType`); `IsKindOf` returns [`SolidError::Unported`] (unit `blend.fillet_standard_solver_p2`) |
 //! | [`OffsetSurface`], [`SurfaceId`]                  | an `SmOffsetSurface*` rail surface (unit `surface.offset_surface`) and the identity of its base pointer |
 //! | [`JacobianLoad`], [`InitialValues`]               | the in/out arguments of `LoadJacobian`, `LoadInitialValues` |
@@ -53,7 +53,9 @@
 //!   (the only use of those pointers) and their offsets by value (never written);
 //!   `rbFoundAnswer` is the result. `LoadInitialValues` returns the rail index of
 //!   `rpSurface2` (always `GetSurface(1 - lRailIndex)`) and `rlSurface2Index`, or
-//!   `None` when `rbDoSurf2Calcs` is `0` (nothing is touched). `CreateSurface` takes
+//!   `None` when `rbDoSurf2Calcs` is `0` (nothing is touched); on an error nothing
+//!   is returned (upstream has already set `rpSurface2`, to that same surface).
+//!   `CreateSurface` takes
 //!   the solver's `GetThisApproxTol3d()` (the only solver value it reads) and drops
 //!   its unused centre line, surface and UV curve arguments; the rails are plain
 //!   B-spline curves (the fillet intersector builds them with `sm_FlushCrv`) and are
@@ -69,6 +71,7 @@
 //!   construction propagate the errors of their surface dispatchers.
 
 use crate::blend::fillet_solver::p1::{FilletSolver, FilletSolverOps, OffsetSurfaceSlot};
+use crate::blend::fillet_standard_solver::p1::CONSTANT_RADIUS_ASSISTED_FS_TYPE;
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::p5::is_arc_base;
 use crate::curve::curve::Curve;
@@ -184,8 +187,12 @@ impl OffsetSurface {
 }
 
 /// `SmOffsetSurface::EvaluatePoint`.
-pub(crate) fn offset_evaluate_point(s: &mut OffsetSurface, uv: Point2) -> Result<Point3> {
-    s.surface.evaluate_point_extending(uv)
+pub(crate) fn offset_evaluate_point(
+    k: &Kernel,
+    s: &mut OffsetSurface,
+    uv: Point2,
+) -> Result<Point3> {
+    s.surface.evaluate_point_extending(k, uv)
 }
 
 /// `SmOffsetSurface::GetNaturalUVDomain`.
@@ -196,26 +203,36 @@ pub(crate) fn offset_natural_uv_domain(s: &OffsetSurface) -> Extent2d {
 /// `Evaluate1stDerivatives(uv, TRUE, TRUE, ..)` of an offset surface:
 /// `(P, S_u, S_v)`.
 pub(crate) fn offset_evaluate_1st(
+    k: &Kernel,
     s: &mut OffsetSurface,
     uv: Point2,
 ) -> Result<(Point3, Vec3, Vec3)> {
     s.surface
-        .with_evaluator(|e| evaluate_1st_derivatives(e, uv, Side::Left, Side::Left))
+        .with_evaluator(|e| evaluate_1st_derivatives(k, e, uv, Side::Left, Side::Left))
 }
 
 /// `Evaluate2ndDerivatives(uv, TRUE, TRUE, ..)` of an offset surface:
 /// `(P, S_u, S_v, S_uv, S_uu, S_vv)`.
-pub(crate) fn offset_evaluate_2nd(s: &mut OffsetSurface, uv: Point2) -> Result<[Vec3; 6]> {
+pub(crate) fn offset_evaluate_2nd(
+    k: &Kernel,
+    s: &mut OffsetSurface,
+    uv: Point2,
+) -> Result<[Vec3; 6]> {
     let d = s
         .surface
-        .with_evaluator(|e| evaluate_2nd_derivatives(e, uv, Side::Left, Side::Left))?;
+        .with_evaluator(|e| evaluate_2nd_derivatives(k, e, uv, Side::Left, Side::Left))?;
     Ok([d.point, d.du, d.dv, d.duv, d.duu, d.dvv])
 }
 
 /// `SmSurface::ComputeInwardVector` of an offset surface (it evaluates the offset
 /// surface).
-pub(crate) fn offset_compute_inward_vector(s: &mut OffsetSurface, uv: Point2) -> Result<Vec3> {
-    s.surface.with_evaluator(|e| compute_inward_vector(e, uv))
+pub(crate) fn offset_compute_inward_vector(
+    k: &Kernel,
+    s: &mut OffsetSurface,
+    uv: Point2,
+) -> Result<Vec3> {
+    s.surface
+        .with_evaluator(|e| compute_inward_vector(k, e, uv))
 }
 
 /// `LocalPointSolve(domain, SM_SO_MINIMIZE, point, guess, bFound, sSol)` of an offset
@@ -535,7 +552,7 @@ fn initial_setup(
         x_at(guess_t, surface1_index, op)?,
         x_at(guess_t, checked_add(surface1_index, 1, op)?, op)?,
     );
-    let pnt = offset_evaluate_point(surface1, uv1)?;
+    let pnt = offset_evaluate_point(k, surface1, uv1)?;
     let base2 = surface2.base_surface();
     let mut domain1 = offset_natural_uv_domain(surface1);
     let mut domain2 = offset_natural_uv_domain(surface2);
@@ -599,9 +616,9 @@ fn initial_setup(
         // end point, snap the solution to whichever end (start or finish)
         // such that the direction that moves towards the interior of the curve
         // also moves generally towards the interior of the surface.
-        if curve.is_closed(&ivl, 0.0)? {
-            let p3 = curve.evaluate_point(t)?;
-            let inward = offset_compute_inward_vector(surface1, uv1)?;
+        if curve.is_closed(k, &ivl, 0.0)? {
+            let p3 = curve.evaluate_point(k, t)?;
+            let inward = offset_compute_inward_vector(k, surface1, uv1)?;
             let dropped = curve.drop_point(
                 k,
                 &ivl,
@@ -621,7 +638,7 @@ fn initial_setup(
         let (uv_curve, _) = edgeuse::uv_trim_curve(b, eu)?;
         let uv_curve =
             uv_curve.ok_or_else(|| SolidError::invalid_input(op, "edge use without UV curve"))?;
-        let p2d = uv_curve.evaluate_point(t)?;
+        let p2d = uv_curve.evaluate_point(k, t)?;
         let mut guess2 = Point2::new(p2d.x, p2d.y);
 
         // Before we add it drop point to other surface to get a better guess
@@ -647,14 +664,14 @@ fn initial_setup(
 
     let base1 = surface1.base_surface();
     let normal1 = base1
-        .evaluate_normal(uv1, Side::Left, Side::Left)?
+        .evaluate_normal(k, uv1, Side::Left, Side::Left)?
         .unitize()?;
     let normal2 = base2
-        .evaluate_normal(uv2, Side::Left, Side::Left)?
+        .evaluate_normal(k, uv2, Side::Left, Side::Left)?
         .unitize()?;
 
     let (plane_orig, plane_normal) = if let Some((curve, t)) = fillet_edge {
-        let pv = curve.evaluate(t, 1, true, true)?;
+        let pv = curve.evaluate(k, t, 1, true, true)?;
         let p = pv.first().copied().ok_or_else(|| SolidError::sm_err(op))?;
         let d = pv.get(1).copied().ok_or_else(|| SolidError::sm_err(op))?;
         (p, d)
@@ -729,8 +746,8 @@ fn store_initial_values(
 }
 
 /// `pBase->DropVectors(uv, TRUE, TRUE, 1, &v, &delta)`: the UV step of `v`.
-fn drop_vector(base: &Surface, uv: Point2, v: Vec3, op: &'static str) -> Result<Vec2> {
-    drop_vectors_at(base, uv, Side::Left, Side::Left, &[v])?
+fn drop_vector(k: &Kernel, base: &Surface, uv: Point2, v: Vec3, op: &'static str) -> Result<Vec2> {
+    drop_vectors_at(k, base, uv, Side::Left, Side::Left, &[v])?
         .first()
         .copied()
         .ok_or_else(|| SolidError::sm_err(op))
@@ -828,11 +845,11 @@ impl EiffelTowerFs {
             // (R1-R2)*cos(m_dTowerAngle) as our final guess sUV2
             let len1 = fs.orientation(1)? * scale_factor * rad_diff * self.tower_angle.sin();
             let v1 = len1 * s.normal2;
-            let delta1 = drop_vector(base1, uv1, v1, OP)?;
+            let delta1 = drop_vector(k, base1, uv1, v1, OP)?;
             uv1 += delta1;
             let len2 = -fs.orientation(0)? * rad_diff * self.tower_angle.cos();
             let v2 = len2 * s.normal1;
-            let delta2 = drop_vector(base2, uv2, v2, OP)?;
+            let delta2 = drop_vector(k, base2, uv2, v2, OP)?;
             uv2 += delta2;
         } else {
             let tsect = fs
@@ -853,11 +870,11 @@ impl EiffelTowerFs {
             // (R1-R2)*cos(m_dTowerAngle) as our final guess sUV2
             let len2 = fs.orientation(1)? * scale_factor * rad_diff * self.tower_angle.sin();
             let v2 = len2 * s.normal1;
-            let delta2 = drop_vector(base2, uv2, v2, OP)?;
+            let delta2 = drop_vector(k, base2, uv2, v2, OP)?;
             uv2 += delta2;
             let len1 = -fs.orientation(0)? * rad_diff * self.tower_angle.cos();
             let v1 = len1 * s.normal2;
-            let delta1 = drop_vector(base1, uv1, v1, OP)?;
+            let delta1 = drop_vector(k, base1, uv1, v1, OP)?;
             uv1 += delta1;
         }
 
@@ -894,6 +911,7 @@ impl EiffelTowerFs {
     #[allow(clippy::too_many_lines)]
     pub fn load_jacobian(
         &mut self,
+        k: &Kernel,
         num_equations: &mut usize,
         num_parameters: &mut usize,
         load: &mut JacobianLoad<'_>,
@@ -918,7 +936,7 @@ impl EiffelTowerFs {
             x_at(x, checked_add(surf1_off, 1, OP)?, OP)?,
         );
         fs.surface_mut(0)?.set_offset_distance(0.0);
-        let [_, duf, dvf, duvf, duuf, dvvf] = offset_evaluate_2nd(fs.surface_mut(0)?, uv)?;
+        let [_, duf, dvf, duvf, duuf, dvvf] = offset_evaluate_2nd(k, fs.surface_mut(0)?, uv)?;
 
         // get lSurf2Off index into crX array for lSurf2 parameters
         let base1 = fs.surface(1)?.base_id;
@@ -930,7 +948,7 @@ impl EiffelTowerFs {
             x_at(x, checked_add(surf2_off, 1, OP)?, OP)?,
         );
         fs.surface_mut(1)?.set_offset_distance(0.0);
-        let [_, dug, dvg, duvg, duug, dvvg] = offset_evaluate_2nd(fs.surface_mut(1)?, uv2)?;
+        let [_, dug, dvg, duvg, duug, dvvg] = offset_evaluate_2nd(k, fs.surface_mut(1)?, uv2)?;
 
         // check surface tangent magnitudes
         let duf_len_sq = duf.length_squared();
@@ -980,10 +998,10 @@ impl EiffelTowerFs {
         // evaluate offsetSurface F and G point positions
         let d0 = fs.radius(0)? * orient0;
         fs.surface_mut(0)?.set_offset_distance(d0);
-        let (pf, duf, dvf) = offset_evaluate_1st(fs.surface_mut(0)?, uv)?;
+        let (pf, duf, dvf) = offset_evaluate_1st(k, fs.surface_mut(0)?, uv)?;
         let d1 = fs.radius(1)? * fs.orientation(1)?;
         fs.surface_mut(1)?.set_offset_distance(d1);
-        let (pg, dug, dvg) = offset_evaluate_1st(fs.surface_mut(1)?, uv2)?;
+        let (pg, dug, dvg) = offset_evaluate_1st(k, fs.surface_mut(1)?, uv2)?;
 
         // set sV = distance between offsetSurface points
         let v = pf - pg;
@@ -1055,6 +1073,7 @@ pub struct EiffelTowerCrossSectionFsg;
 /// The cross section of `CreateSurface` at one rail parameter: `p1`, `p2` the fillet
 /// point's surface positions, `s1`, `s2` the rail points.
 fn cross_section(
+    k: &Kernel,
     p1: Point3,
     p2: Point3,
     s1: Point3,
@@ -1129,7 +1148,7 @@ fn cross_section(
             NurbCircleParam::Quadratic,
         )?;
         // Join pCrossSection with pArc2
-        cross_section.join_with(true, &mut arc2, false, None)?;
+        cross_section.join_with(k, true, &mut arc2, false, None)?;
     }
     Ok(cross_section)
 }
@@ -1184,7 +1203,7 @@ impl EiffelTowerCrossSectionFsg {
             let p2 = tsp.srf_pos(SrfIndex::Second);
             let s1 = rail1.evaluate_point(t)?;
             let s2 = rail2.evaluate_point(t)?;
-            cross_sections.push(cross_section(p1, p2, s1, s2, approx_tol_3d)?);
+            cross_sections.push(cross_section(k, p1, p2, s1, s2, approx_tol_3d)?);
         }
 
         let mut sweep = false;
@@ -1218,8 +1237,9 @@ impl EiffelTowerCrossSectionFsg {
         // See if we can create a surface of revolution
         let is_arc = |c: &BSplineCurve| {
             is_arc_base(
+                k,
                 c,
-                |c, tol| c.is_degenerate(tol, None),
+                |c, tol| c.is_degenerate(k, tol, None),
                 ANALYTIC_SAMPLES,
                 ANALYTIC_TOL,
             )
@@ -1307,7 +1327,7 @@ impl EiffelTowerCrossSectionFsg {
             ]),
             degree: 3,
         };
-        BSplineSurface::create_skinned_surface(&cross_sections, opts)
+        BSplineSurface::create_skinned_surface(k, &cross_sections, opts)
     }
 }
 
@@ -1393,7 +1413,7 @@ impl SecantConstantRadiusFs {
             // a (3-d)distance of 2*Radius*sin(theta) as our final guess point
             let len = -fs.orientation(1)? * fs.radius(1)? * self.secant_angle.sin();
             let v = len * s.normal1;
-            let delta = drop_vector(base2, uv2, v, OP)?;
+            let delta = drop_vector(k, base2, uv2, v, OP)?;
             uv2 += delta * 2.0;
         } else {
             let tsect = fs
@@ -1413,7 +1433,7 @@ impl SecantConstantRadiusFs {
             // a (3-d)distance of 2*Radius*sin(theta) as our final guess point
             let len = -fs.orientation(0)? * fs.radius(0)? * self.secant_angle.sin();
             let v = len * s.normal2;
-            let delta = drop_vector(base1, uv1, v, OP)?;
+            let delta = drop_vector(k, base1, uv1, v, OP)?;
             uv1 += delta * 2.0;
         }
 
@@ -1446,6 +1466,7 @@ impl SecantConstantRadiusFs {
     #[allow(clippy::too_many_lines)]
     pub fn load_jacobian(
         &mut self,
+        k: &Kernel,
         num_equations: &mut usize,
         num_parameters: &mut usize,
         load: &mut JacobianLoad<'_>,
@@ -1470,7 +1491,7 @@ impl SecantConstantRadiusFs {
             x_at(x, checked_add(surf1_off, 1, OP)?, OP)?,
         );
         fs.surface_mut(0)?.set_offset_distance(0.0);
-        let (_, duf2, dvf2) = offset_evaluate_1st(fs.surface_mut(0)?, uv)?;
+        let (_, duf2, dvf2) = offset_evaluate_1st(k, fs.surface_mut(0)?, uv)?;
 
         // get baseSurface1 surface normal and check its size
         let n = duf2.cross(dvf2);
@@ -1483,7 +1504,7 @@ impl SecantConstantRadiusFs {
         // get offsetSurface1 F point values for given crX
         let d0 = fs.radius(0)? * orient0;
         fs.surface_mut(0)?.set_offset_distance(d0);
-        let (pf, duf, dvf) = offset_evaluate_1st(fs.surface_mut(0)?, uv)?;
+        let (pf, duf, dvf) = offset_evaluate_1st(k, fs.surface_mut(0)?, uv)?;
 
         // get lSurf2Off index into crX array for lSurf2 parameters
         let base1 = fs.surface(1)?.base_id;
@@ -1495,7 +1516,7 @@ impl SecantConstantRadiusFs {
             x_at(x, checked_add(surf2_off, 1, OP)?, OP)?,
         );
         fs.surface_mut(1)?.set_offset_distance(0.0);
-        let (pg2, dug2, dvg2) = offset_evaluate_1st(fs.surface_mut(1)?, uv2)?;
+        let (pg2, dug2, dvg2) = offset_evaluate_1st(k, fs.surface_mut(1)?, uv2)?;
 
         // get baseSurface surface normal value
         let n2 = dug2.cross(dvg2);
@@ -1628,13 +1649,14 @@ macro_rules! fillet_solver_ops {
 
             fn load_jacobian(
                 &mut self,
+                k: &Kernel,
                 num_equations: &mut usize,
                 num_parameters: &mut usize,
                 load: &mut JacobianLoad<'_>,
                 f: &mut [f64],
                 jacobian: Option<&mut Matrix>,
             ) -> Result<bool> {
-                <$t>::load_jacobian(self, num_equations, num_parameters, load, f, jacobian)
+                <$t>::load_jacobian(self, k, num_equations, num_parameters, load, f, jacobian)
             }
 
             fn load_initial_values(
@@ -1669,10 +1691,25 @@ macro_rules! fillet_solver_ops {
 fillet_solver_ops!(EiffelTowerFs);
 fillet_solver_ops!(SecantConstantRadiusFs);
 
-/// The virtuals of `SmConstantRadiusAssistedFS` itself (the class
-/// `blend.fillet_intersector` runs `SmFilletSolver::ComputeSurfaceValues` on).
-/// Ported overrides delegate to `blend.fillet_standard_solver_p1`; `IsKindOf`
-/// and `LoadInitialValues` retain their unavailable p2 calls.
+/// `SmConstantRadiusFS::SetupOffsetValues` with the optional `pOffsetDist` out-param
+/// (`blend.fillet_standard_solver_p1`'s
+/// [`ConstantRadiusAssistedFs::setup_offset_values`] returns it).
+fn constant_radius_setup_offset_values(
+    fs: &mut ConstantRadiusAssistedFs,
+    tsect: &TsectPnt,
+    offset_dist: Option<&mut f64>,
+) -> Result<()> {
+    let d = ConstantRadiusAssistedFs::setup_offset_values(fs, tsect)?;
+    if let Some(out) = offset_dist {
+        *out = d;
+    }
+    Ok(())
+}
+
+/// The virtuals of `SmConstantRadiusAssistedFS` itself (the class `blend.fillet_intersector`
+/// runs `SmFilletSolver::ComputeSurfaceValues` on): the `SmConstantRadiusFS` overrides
+/// are `blend.fillet_standard_solver_p1`'s; those owned by `_p2` are explicit
+/// [`SolidError::Unported`] overrides, so none falls through to the base.
 impl FilletSolverOps for ConstantRadiusAssistedFs {
     fn solver(&self) -> &FilletSolver {
         &self.solver
@@ -1693,11 +1730,7 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
         tsect: &TsectPnt,
         offset_dist: Option<&mut f64>,
     ) -> Result<()> {
-        let d = ConstantRadiusAssistedFs::setup_offset_values(self, tsect)?;
-        if let Some(offset) = offset_dist {
-            *offset = d;
-        }
-        Ok(())
+        constant_radius_setup_offset_values(self, tsect, offset_dist)
     }
 
     /// `SmConstantRadiusFS::OffsetRadiiCanChange`.
@@ -1707,7 +1740,7 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
 
     /// `SmConstantRadiusAssistedFS::GetType` (`SM_COMMON`).
     fn type_code(&self) -> Result<i64> {
-        Ok(crate::blend::fillet_standard_solver::p1::CONSTANT_RADIUS_ASSISTED_FS_TYPE)
+        Ok(CONSTANT_RADIUS_ASSISTED_FS_TYPE)
     }
 
     /// `SmConstantRadiusAssistedFS::IsKindOf` (unit `blend.fillet_standard_solver_p2`,
@@ -1720,9 +1753,11 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
         ))
     }
 
-    /// `SmConstantRadiusFS::LoadJacobian`.
+    /// `SmConstantRadiusFS::LoadJacobian` ([`ConstantRadiusAssistedFs::load_jacobian`]);
+    /// the in/out `rlSurf1Offset`, `rlSurf2Offset` are written back into `load`.
     fn load_jacobian(
         &mut self,
+        k: &Kernel,
         num_equations: &mut usize,
         num_parameters: &mut usize,
         load: &mut JacobianLoad<'_>,
@@ -1730,8 +1765,9 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
         jacobian: Option<&mut Matrix>,
     ) -> Result<bool> {
         let mut offsets = [load.surf1_offset, load.surf2_offset];
-        let result = ConstantRadiusAssistedFs::load_jacobian(
+        let found = ConstantRadiusAssistedFs::load_jacobian(
             self,
+            k,
             num_equations,
             num_parameters,
             load.rail_index,
@@ -1741,9 +1777,8 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
             f,
             jacobian,
         );
-        // The native reference arguments retain mutations even on a later error.
         [load.surf1_offset, load.surf2_offset] = offsets;
-        result
+        found
     }
 
     /// `SmConstantRadiusFS::LoadInitialValues` (unit `blend.fillet_standard_solver_p2`,
@@ -1826,7 +1861,7 @@ mod tests {
         assert!(!ops.offset_radii_can_change().expect("fixed radii"));
         assert_eq!(
             ops.type_code().expect("type"),
-            crate::blend::fillet_standard_solver::p1::CONSTANT_RADIUS_ASSISTED_FS_TYPE
+            CONSTANT_RADIUS_ASSISTED_FS_TYPE
         );
         ops.setup_offset_values(&TsectPnt::new(), Some(&mut distance))
             .expect("offsets");
@@ -1846,6 +1881,7 @@ mod tests {
 
     #[test]
     fn assisted_virtual_jacobian_writes_rail_offsets_values_and_matrix() {
+        let k = Kernel::default();
         for rail_index in [0, 1] {
             let mut fs = assisted_parallel_planes();
             let x = [99.0, 99.0, 0.25, 0.75, 0.5, 0.125];
@@ -1862,7 +1898,7 @@ mod tests {
             let mut matrix = Matrix::new(4, 6);
             let ops: &mut dyn FilletSolverOps = &mut fs;
             assert!(!ops
-                .load_jacobian(&mut ne, &mut np, &mut load, &mut f, Some(&mut matrix))
+                .load_jacobian(&k, &mut ne, &mut np, &mut load, &mut f, Some(&mut matrix))
                 .expect("jacobian"));
             assert_eq!((ne, np), (4, 6));
             assert_eq!(
@@ -1887,6 +1923,7 @@ mod tests {
 
     #[test]
     fn assisted_virtual_jacobian_preserves_offsets_after_later_error() {
+        let k = Kernel::default();
         let mut fs = assisted_parallel_planes();
         let mut load = JacobianLoad {
             rail_index: 1,
@@ -1900,7 +1937,7 @@ mod tests {
         let mut f = [17.0; 3];
         let ops: &mut dyn FilletSolverOps = &mut fs;
         assert!(matches!(
-            ops.load_jacobian(&mut ne, &mut np, &mut load, &mut f, None),
+            ops.load_jacobian(&k, &mut ne, &mut np, &mut load, &mut f, None),
             Err(SolidError::InvalidInput { .. })
         ));
         assert_eq!((ne, np), (0, 4));
@@ -1910,21 +1947,23 @@ mod tests {
 
     #[test]
     fn cross_section_point_curve_when_rails_meet() {
+        let k = &Kernel::default();
         let p = Point3::new(1.0, 2.0, 3.0);
-        let c = cross_section(p, p, p, p, 1e-6).expect("point curve");
+        let c = cross_section(k, p, p, p, p, 1e-6).expect("point curve");
         let q = c.evaluate_point(0.5).expect("eval");
         assert!(q.distance(p) < 1e-12);
     }
 
     #[test]
     fn cross_section_tower_arcs_end_on_rails() {
+        let k = &Kernel::default();
         // R1 = 2 swept 60 degrees, then R2 = 1 swept 30 more degrees
         let h = 3.0f64.sqrt() / 2.0;
         let s1 = Point3::new(0.0, 0.0, 0.0);
         let p1 = Point3::new(0.0, 0.0, 2.0);
         let p2 = Point3::new(0.0, h, 1.5);
         let s2 = Point3::new(0.0, h + 1.0, 1.5);
-        let c = cross_section(p1, p2, s1, s2, 1e-6).expect("tower");
+        let c = cross_section(k, p1, p2, s1, s2, 1e-6).expect("tower");
         let ivl = c.natural_interval();
         let a = c.evaluate_point(ivl.min()).expect("eval");
         let b = c.evaluate_point(ivl.max()).expect("eval");
@@ -2008,7 +2047,7 @@ mod tests {
             surf2_offset: 0,
             x: &xs,
         };
-        let r = fs.load_jacobian(&mut ne, &mut np, &mut load, &mut f, None);
+        let r = fs.load_jacobian(&k, &mut ne, &mut np, &mut load, &mut f, None);
         assert!(r.is_ok(), "{r:?}");
         assert_eq!(np, 4);
         assert!(f.iter().all(|v| v.is_finite()));
