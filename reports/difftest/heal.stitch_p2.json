@@ -2344,8 +2344,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "tjunction_shell_0.001_1",
@@ -2356,8 +2356,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "tjunction_shell_0.001_0",
@@ -2368,8 +2368,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "tjunction_shell_0.1_1",
@@ -2380,8 +2380,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "tjunction_shell_0.1_0",
@@ -2392,8 +2392,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "tjunction_do_0",
@@ -2404,8 +2404,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "tjunction_do_1e-06",
@@ -2416,8 +2416,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "tjunction_do_0.001",
@@ -2428,8 +2428,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "tjunction_do_0.1",
@@ -2692,8 +2692,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "tjunction_gap_shell_0.001_1",
@@ -2704,8 +2704,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "tjunction_gap_shell_0.001_0",
@@ -2716,8 +2716,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "tjunction_gap_shell_0.1_1",
@@ -2728,8 +2728,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "tjunction_gap_shell_0.1_0",
@@ -2756,8 +2756,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "tjunction_gap_do_0.001",
@@ -2768,8 +2768,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::Notify",
-        "unit": "topology.face_p3"
+        "symbol": "SmBrep::m_pVertexListHead",
+        "unit": "topology.brep_p1"
       },
       "max_rel_err": 0.0,
       "name": "tjunction_gap_do_0.1",
@@ -5230,9 +5230,8 @@
   "cases_total": 556,
   "deferred_by_unit": {
     "intersect.curve_class_p2": 11,
-    "topology.brep_p1": 158,
-    "topology.brep_p5": 10,
-    "topology.face_p3": 14
+    "topology.brep_p1": 172,
+    "topology.brep_p5": 10
   },
   "max_rel_err": 0.0,
   "pass": true,

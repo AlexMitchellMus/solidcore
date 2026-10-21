@@ -11276,3 +11276,50 @@ guarded in `offset.offset_geometry_creation`; the fix belongs to the curve cache
   tessellation, before any intersection test, as in `fuzz00504`.
 - **Status.** Open, with `fuzz00504`. Reproduce with the fuzz output file as a fixture and
   the tolerance set to any accepted value.
+
+## query.brep (B-rep boxes, `Point3DClassify`, decimation attributes, `SmApiEvaluateSurface*`; PR #329, takeover of #101, 2026-10-21; partial, no disagreements)
+
+- **Lazy B-rep cache.** Upstream builds the `SM_OC_BREP` cache inside the solves that need it
+  (`CacheMakeOrValidate`). `query::brep::BrepQuery` does the same: a single-region
+  `Point3DClassify` (and one without boundary intersections that never fires a ray) builds
+  none, and a failed build is a failed `RayFire` (ignored, next direction), not an error of
+  the classification.
+- **`const` queries that edit.** `RayFire` / `LocalCurveSector` may create missing UV trim
+  curves on the B-rep (upstream does it inside `const` methods). Callers holding the B-rep
+  shared (`query.api_queries`' containment tests, `SmShell::RayFire`'s sector) classify on
+  a private copy (`BrepClassifier`), as `query.face_p3` and `mass.integrator` already do;
+  callers with the B-rep mutable (the merge, `FindInfiniteRegion`) work on it directly.
+- **Identities.** The cache keys and geometry owners are the caller's. Every wired library
+  caller uses `BrepIdentity::arena` (records' `arena_identity`), which is what this crate's
+  builders and importers give geometry; a caller with other keys passes its own
+  `BrepIdentity`.
+- **Ignored statuses in `CalculateTightBoundingBox`.** The face loop keeps `rFaceBBox` from
+  face to face and uses what a failed call leaves; `query.face_p3` gained
+  `calculate_tight_bounding_box_into`, which writes the caller's box at the same two points
+  as `SmFace::CalculateTightBoundingBox`. A failed loose edge box is taken as the freshly
+  initialised (empty) box: the curve boxes write their output only once computed (not
+  checked for every curve override).
+- **`merge_vertex` records.** Wiring `Point3DClassify` made `SmMerge::ProcessWiresAndShellVertices`
+  reach `merge_vertex`'s `Copy` notification for vertices of imported operands, which had
+  no `Topology` record (records are made when this crate creates an entity). Upstream every
+  `SmVertex` is an `SmTopology`; `merge_vertex` now materialises a missing record as the
+  default one.
+- **Harness gaps found on newly reached paths.** `topology.brep_p2`'s RayFire op passed an
+  unbuilt cache (hidden by the `query.brep` stub); `geom.a_object`, `boolean.merge_p4`,
+  `boolean.topology_intersector_p1` and `mass.integrator` needed the runner fixes of #332
+  (bherbruck), applied here. `boolean.merge_p1` defers its unmated
+  `FindBrepRegionOfOtherFace` on analytic face geometry
+  (`harness:analytic-geometry-export`).
+- **Coverage limits.** The shared B-rep fixture gained kind 7 (the closed box of
+  `SmApiCreateBox`) so the multi-region ray-fire path is compared: rays that miss, the
+  retry order and boundary hits on edges and vertices compare; rays that hit a face defer
+  on `geom.tol`'s `SmTol::GetZoneTol3d(const SmObject*)`. Kind 8 (up to 600 vertices and
+  150 wire segments at given tolerances) reaches the 500-vertex / 100-edge approximation
+  shortcut and non-default tolerance expansion.
+- **Follow-ups for other units (no open PR covers them).**
+  - `topology.brep_p2`: `merge_curves_on_surface` takes `&mut Brep` and the classification
+    world separately, so no world can read the B-rep's geometry during the call;
+    `topology::brep::p10::merge_curves_world` stays a `DISPATCH GAP` until the world can
+    own the B-rep (as `boolean::merge::p4::ArenaPair` does).
+  - `geom.object`: `Shape::new` gets B-rep keys but no store to resolve them, so the B-rep
+    box (and the face box, already a `DISPATCH GAP`) cannot be reached there.
