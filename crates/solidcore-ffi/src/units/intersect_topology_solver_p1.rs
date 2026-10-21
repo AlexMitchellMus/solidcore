@@ -604,7 +604,7 @@ fn call(spec: Spec, objs: &[Entry], o1: Option<usize>, o2: Option<usize>) -> Res
         LocalKind::PointVertex => second.is_none() || is_vertex(second),
         // The release `SM_ASSERT(pObjN->IsKindOf(..))` of `SmTLSVertexVertex::SolveIt` and
         // `SmTLSEdgeEdge::SolveIt` still evaluates its argument, so both objects are
-        // dereferenced before any `NULL` check (UB-221).
+        // dereferenced before any `NULL` check (UB-238).
         LocalKind::VertexVertex => is_vertex(first) && is_vertex(second),
         LocalKind::PointCurve => match (second, spec.interval) {
             // the interval must lie near the curve's range
