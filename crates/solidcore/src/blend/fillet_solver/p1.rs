@@ -126,7 +126,7 @@ use crate::surface::cone::Cone;
 use crate::surface::offset_surface::SS_UNKNOWN;
 use crate::surface::sphere::Sphere;
 use crate::surface::surface::p1::evaluate_1st_derivatives;
-use crate::surface::surface::p2::{drop_vectors, SurfaceKind};
+use crate::surface::surface::p2::drop_vectors;
 use crate::surface::surface::Surface;
 use crate::surface::torus::Torus;
 use crate::topology::edgeuse::p1 as eu;
@@ -2604,6 +2604,7 @@ pub enum AnalyticTestSurface<'a> {
 /// `SmBSplineSurface`.
 pub fn test_analytic_surface(k: &Kernel, surface: AnalyticTestSurface<'_>) -> Result<bool> {
     use crate::surface::surface::p2::{CONE_TYPE, PLANE_TYPE};
+    use crate::surface::surface::SurfaceKind;
     let type_code = match surface {
         AnalyticTestSurface::Surface(s) => s.type_code(),
         AnalyticTestSurface::Cone(c) => c.type_code(),
