@@ -23,6 +23,21 @@ are also logged, one entry each, in `plan/upstream-issues.md` for the upstream m
 - **JSON can't hold NaN or inf.** difftest inputs are JSON, so generated cases can't contain
   non-finite parameters (serde turns NaN into `null`). Test robustness to non-finite input in
   Rust unit tests. Outputs may still be non-finite.
+- **Shims: one argument-reader call per statement.** C++ leaves the evaluation order of
+  function and constructor arguments unspecified: `SmPoint3d p(ad.num(), ad.num(),
+  ad.num())` reads `(x, y, z)` on arm64 g++ but `(z, y, x)` on x86-64 g++. The
+  `topology.face_p4` line op passed on arm64 and failed 326 cases on x86-64 CI (lines through
+  permuted points). Read each value into a named local first (`double x = ad.num(), y =
+  ad.num();` is sequenced).
+- **Graphs after deletions.** An arena cannot free a record, so a Rust op that deletes
+  topology resets it, while the C++ side exports a fresh walk. `boolean_merge_p1::graph`
+  numbers every arena record (unreachable ones last), so its counts and lists differ
+  after a deletion; `graph_reachable` (and `Canon::reachable`) compares only the
+  topology reachable from the regions and the edge list. Also, the shared importer
+  leaves the Rust-only caches `Face::loops` and `Loop::edges` empty: a runner whose
+  port fills them (`topology.brep_p9`'s `sync_face_cache`) empties them before
+  comparing. Both surfaced in `topology.brep_p9` once `topology.face_p4` let its
+  MakeVertexLoop / MakeEdgeInFace paths run.
 - **difftest report `seeds` field.** It records the `--seeds` CLI value, not the number of
   generated cases a runner actually produced. `nlib.knots` overrides `cases()` to always
   generate at least 1200.
@@ -6437,6 +6452,143 @@ mutated scales and accepted/reduced step counts are compared.
   misplaced p6 tag and duplicate `boundary_location` stub are removed. STATUS
   describes the unit as partial without the obsolete claim that the PR is draft.
 
+
+## Kernel-aware Surface dispatch revived on main (2026-10-20, issue #76)
+
+Branch `refactor/kernel-surface-dispatch` merges #133 (Karl-VonRichter, head `88596f8e`)
+into main `862746f4` and keeps its design; the two sections below are #133's own
+records.
+
+- **Where the Kernel is threaded.** `Surface::evaluate`, `evaluate_point`,
+  `evaluate_simple`, `evaluate_ignoring_status`, `copy`, `copy_and_add_analytics`,
+  `max_analytic_domain`, `is_periodic`, the degeneracy and normal queries, the
+  `SurfaceEvaluate` / `CurveEvaluate` traits, `IsoCurve`/`Curve` evaluation and the
+  surface solvers (`SpGlobalSolver`, `LsiGlobalSolver`, `CsiGlobalSolver`,
+  `SurfPtSolveStepper`) take or hold the caller's `&Kernel`. Everything main added
+  after #133's base (`OffsetSurface`, blend, boolean, offset, heal, query.face,
+  sphere, surface p8/p10/p11) was threaded the same way: no production path builds a
+  `Kernel::default()`. The B-rep boolean classification uses the source operand's own
+  kernel (`BooleanKernels`), not an extra parameter.
+- **Shape for the next kinds.** One `SurfaceKind` variant per concrete class
+  (`Cone(Box<Cone>)` holds `SmCone` and `SmCylinder`, distinguished by `type_code`);
+  every `Surface` method is one `match` with one arm per kind; inherited
+  `SmBSplineSurface`/`SmSurfOfRevolution` bodies are reached through the kind's
+  `rev().base()`. Adding `Sphere`, `Torus` or `SurfOfExtrusion` is: a variant, a
+  `From` impl, one arm per method (the compiler lists every match), and replacing the
+  `DISPATCH GAP` in `Surface::read_from_db` and the recogniser chain.
+- **`Result<Option<Surface>>`** for `create_offset_surface`: `None` is upstream's
+  success with a `NULL` surface (a cone whose offset radii both collapse).
+- **Wired here** (cone_p2/cone_p3 are green/partial on main): `CopyAndAddAnalytics`
+  returns the recognised cone; `Reverse`, `SwapUV`, `Reparameterize` of a cone;
+  `IntersectWithPlane` / `GlobalSurfaceIntersect` of a cone and the `SmCone_TYPE`
+  cases of the revolution, sphere and cone intersections; `sm_TestAnalyticSurface`'s
+  `IsNurbSurfaceCone`.
+- **Still gaps (named `surface.surface_p2` / `surface.surface_p9`)**: cone
+  `DropPointFast` and `TrimWithDomain` (inherited revolution bodies need the cone's
+  virtual callbacks), the part 9 iso/tessellation helpers that store B-splines,
+  `cone_p3`'s coincident-boundary adapter (it reaches the part 9 gap), sphere / torus /
+  extrusion variants, and a base-only `SmSurface` variant (WR-196, #245).
+- **Runner note.** `intersect.surface_intersector_p4` records an unset curve type as
+  the shim does, `(double)(SmTsectCurveType)-7` = `2^32 - 7` (same fix as #270).
+
+## Kernel-aware common Surface integration (issue #76, PR #133)
+
+`SurfaceKind::Cone` retains the native cone/cylinder distinction and the existing
+`surface.cone_p1` implementation. Common reads, copies, NURB/STEP evaluation,
+normal/derivative helpers, UV conversion, STEP inversion (including the caller's
+subdomain), adjustment and transform dispatch through the concrete object.
+The common evaluation traits and callbacks borrow the caller's `Kernel`; implicit
+iso curves also carry it through `CurveEvaluate` and the curve solver callers.
+Production dispatch does not create a default kernel. The offset API returns
+`Result<Option<Surface>>`, preserving the representability of successful null
+analytic offsets; no cone offset implementation is imported or certified here.
+
+Remaining integration boundaries are explicit:
+
+- `surface.cone_p2` owns offsets and rebuilding analytic parameters after reverse /
+  UV swap. PR #71 remains independent. Its head `c9aa85de` has 26 reported failures;
+  older passing results do not certify that head.
+- PR #131 has merged. Its concrete intersection numerics are retained, with
+  caller Kernel propagation at the newly merged call sites. Common plane/cone,
+  boundary and global cone intersection adapters remain `surface.surface_p2`
+  dispatch gaps; numerical bodies and dependency integration stay with #131's owner.
+- Cone trimming and fast point dropping still need inherited revolution bodies
+  with the cone's virtual callbacks. These are dispatch gaps, not replacements by
+  a plain revolution or a B-spline. Their errors name the owning common unit.
+- Part 9 iso/tessellation helpers still store B-spline objects and cannot retain
+  Cone/Cylinder iso/evaluation overrides. These now report an explicit
+  `surface.surface_p9` dispatch gap before constructing stand-ins. The existing
+  part 9 revolution fixtures do not certify real Cone/Cylinder dispatch; a core
+  contract assertion covers refusal for both concrete types.
+- Sphere (PR #100), torus and extrusion adapters are not imported.
+  PR #120 has merged; its numerical implementation and subdivision bound are
+  retained, with caller Kernel propagation through its new shared solver paths. Existing concrete readers may still defer when no SurfaceKind
+  adapter exists. Curve-on-surface and cache storage that specifically owns a
+  B-spline remains a separate adapter boundary.
+
+Resource handling: common polymorphic surface reads balance the reader's bounded
+nesting counter on ordinary errors. Fallible evaluation and copy entrypoints
+preflight owned geometry against the existing 64-level limit; derivative orders
+are checked by the concrete evaluator before rectangular output allocation.
+Inherited `SplitAt` returns newly constructed B-spline results, as explicitly
+specified and implemented by `SmBSplineSurface::SplitAt` (`SmBSplineSurface.cpp`,
+5016–5076); the input's Cone/Cylinder kind is retained.
+Constructor failures remain native statuses. Safe native database coverage writes
+records from guarded real Cone/Cylinder constructors before reading them through
+`SmSurface::ReadFromDB`; it does not parse arbitrary caller-controlled records in
+C++. Existing crash/undefined-input guards are retained, and guarded `SC_ERR_ARG`
+recipes are excluded from the newly added common numerical coverage.
+
+Native common tests reuse the cone part 1 constructor/operation corpus and add
+ASCII/binary version-30 round trips, lazy `SmSurfaceEval` derivatives, inversion
+subdomains, degeneracy, normals and bounding boxes. Common fallible inversion
+compares UV/location only on success; direct cone part 1 retains its native
+failure-output comparisons. No comparison tolerance or absolute floor is changed.
+The seven `topology.brep_data` fixtures previously deferred on cone/cylinder
+records now compare: the five Defeature LShape I/II, Platte, defillet and
+flathead-screw-top files, plus OffsetBoxCylOnCorner edited/healed. That unit
+retains 48 independent offset/extrusion deferrals.
+An additional 32 manual lazy-evaluator apex probes pass bit-identically: canonical
+cone bot=2/top=0/height=3, identity placement, both swap/inside flags, angular
+parameters 0, 0.25, 0.5, 1 and axial parameters 1 and its preceding float
+0.9999999999999999 (exchange coordinates when swapped). These probes use the
+common lazy adapter and are separate from the committed default case totals.
+
+
+Validation configuration for #133: Apple Clang uses the shared Release/O2 kernel
+and O2 shims. The full regression gate uses the standard Ubuntu CI workflow on
+Karl's fork, with Release/O2 kernel, O2 shims, the difftest profile and unchanged
+`-ffp-contract=off -fno-fast-math`. A local 4 GB Linux VM could not complete the
+full runner build under memory pressure (including an unoptimized driver/shim
+attempt); no full-suite pass is claimed for that abandoned local attempt. Its
+validation container was removed without changing other containers or the VM's
+configuration. Canonical CI requires maintainer approval, which this account
+cannot grant; the fork workflow adds report upload, full sensitivity and the native contract
+tests. Default and sensitivity checks run in independent processes after one
+standard optimized build, with unchanged per-process input/operation order and
+comparison policy. Its crate/harness sources match PR #133's source commit
+`ce56aae6`.
+After merging #120, the local C++ Clippy rerun could not write its query cache
+because the shared disk filled; only this worktree's disposable caches were
+removed. The hosted rerun passes C++ Clippy on the merged source. The merged
+local core tests (1,193) and wasm check pass.
+
+Final recertification: [GNU CI](https://github.com/Karl-VonRichter/solidcore/actions/runs/38870779906) validates code
+`ce56aae6`, including merged #120 and the explicit part 9 Cone/Cylinder refusal.
+The validation tree changes only the workflow. `--green` compares 452,754 of
+465,289 cases across 182 units (99 green, 83 partial), with 12,535 deferred and
+zero failed. Sensitivity detects all 452,672 perturbations; 82 empty outputs
+remain unperturbed (`geom.assert_array` 1, `nlib.srf_basic` 1,
+`geom.local_solve1d` 7, `nlib.basis_adv` 73), and deferrals are not perturbed.
+The two primary reports have max relative error zero and no absolute floors;
+all units retain their previous tolerance/floor policy. Workspace tests total
+1,215 passes (1,193 core); the two native contract tests pass with 27 filtered.
+Formatting, plain/C++ Clippy, wasm, deny and locked publish dry-run all pass.
+
+The topology solver's 12 previous `curve.iso_curve` deferrals now reach the
+explicit `SmSurface::GetNaturalUVDomain` gap in `surface.surface_p2`; 2,396 cases
+still compare and 33 defer. No additional unit is promoted by this integration.
+
 ## surface.cone_p3: analytic intersections and dispatch handoff (PR #131)
 
 The cone part-3 port keeps complete analytic and NURBS intersection curve records,
@@ -8643,6 +8795,116 @@ regression inputs below; 2000-seed sweep 2051 pass / 116 deferred / 0 failed / 1
   `Relations::relate_vertices`, and `merge_vertex` / `process_wires_and_shell_vertices`
   take the other operand mutably; it stays unreached behind `MakeShellVertex`,
   `topology.brep_p9`.)
+  (PR #229: `MergeEdge` is wired to `boolean.merge_p2`'s `merge_edge` of each edge's
+  primary edge use. `process_wires_and_shell_vertices` takes a `TopologyCopy` (edge
+  and face notification identities around p1's `VertexCopy`) and snapshots the other
+  operand's edge list before the loop, as upstream's `GetEdges`; the call stays
+  unreached behind `Point3DClassify`.)
+
+## boolean.merge_p2 (`SmMerge` constructor, `MergeEdge`, `MakeFaceuse`, `MergeAddedFace`, `MergeAddedTopology`; PR #229, 2026-10-20; partial, no disagreements)
+
+- **Two data models.** `MergeEdge` and `MakeFaceuse` copy other-operand topology into
+  the primary B-rep, like `merge_p1`'s `MergeVertex`, so they work on concrete arena
+  `Brep`s with the shared `Relations` mates (which gain face mates and the edge/face
+  branches of `Relate`). `MergeAddedTopology` drives the intersector's phases, which
+  are generic over handles `O`, so it is generic too: the B-rep and `SmStitch` calls
+  go through the `MergeBrep` trait (on top of `IntersectorBrepP2`), one method per
+  upstream function. Callees ported on arena B-reps are required methods (the runner
+  routes them on the intersector runner's `Two` adapter: the three `SmStitch` calls,
+  `TestClosureSplitRegion`, `FindAndSetInfiniteRegion`, `SmBrep::Notify` and
+  `IsManifoldSolid`; `GetFaces` comes from `IntersectorBrepP2`); the rest default to
+  `Unported` (the `SweepAccess` style of #222). The runner's `Notify` deletes the
+  adapter's B-rep cache on `PRE_EDIT`, as upstream, and notifies on an empty attribute
+  store over the regions (as `heal.stitch_p1`'s).
+- **`SmStitch`.** The merge's one `SmStitch` is `StitchSettings`; the runner builds a
+  `heal::stitch::p1::Stitch` from it for each call. Equivalent: the default
+  `SmStitchCallback` is stateless and the stitch carries only its settings.
+- **Partial outputs of a failed callee (known difference).** The ported stitch and
+  intersector calls return no out-lists or gaps with an error, so after an ignored
+  failure the merge continues with the entry values (empty, `0`, `SM_BIG_DOUBLE`).
+  Upstream keeps what was appended before the failure: `VertexFaceIntersect`
+  (`SmTopologyIntersector.cpp:7029`), `SplitEdgesWithVertices` (`SmStitch.cpp:3777`)
+  and the edge/face intersectors `SER` mid-loop when `bIgnoreProblems` is `FALSE`,
+  after appending to `rProcessedVerts` and raising the gaps, and `MergeAddedTopology`
+  appends whatever is there (`SmMerge.cpp:6045`-`6092`). `SmFeatureExecutive.cpp:2127`
+  passes its `m_bIgnoreProblems`, so this is reachable. Fixing it needs those callees
+  (units `heal.stitch_p2`, `boolean.topology_intersector_p1` / `_p2`) to hand back
+  their partial outputs with the error; until then, a `MergeAddedTopology` case with
+  `ignore_problems = false` and a failing phase may differ. Every current case defers
+  before the phases (`SmFace::GetEdges`, `topology.face_p4`) or adds nothing.
+- **Null processed vertices.** `sProcessedVerts` keeps the null entries the edge
+  intersectors return (`EdgeFaceIntersect`'s `MakeVertexSplitEdge` failures);
+  `FaceFaceIntersect`'s non-null list drops them, which is equivalent because
+  `FindCommonElements` never matches a null against a face's vertices.
+- **Curve and surface mates.** An arena edge owns its curve and a face its surface,
+  so `GetBrepMate(pCurve)` / `GetBrepMate(pOldSurface)` (only reached for an unmated
+  edge or face) are always null; the curve is always copied and the surface always
+  `CopyAndAddAnalytics`-copied. The fixtures build every edge and face with its own
+  curve and surface, as arena B-reps must.
+- **Merge flags.** `m_bManifoldBoolean` / `m_bIntersectionLoopClosed` are
+  `MergeState::manifold_boolean` / `intersection_loop_closed`: `Some(true)` from the
+  B-rep constructor (compared), `None` from the context-only one, which leaves them
+  uninitialised. `ManifoldBoolean` (`boolean.merge_p4`) reads the first.
+- **Coverage.** The constructor, `MergeEdge`'s mated and null paths and `MakeFaceuse`'s
+  mated-face fast path and `SM_ERR` paths compare values and both operand snapshots.
+  `MakeFace` is wired (`topology.brep_p7`) and now stops at `SmFace::SetTolerance`
+  (`topology.face_p3`, 114 of the 1000-seed deferrals); new wire edges stop at
+  `MakeWireEdge` (`topology.brep_p3`). With `topology.brep_p2` (#149) wired, computed
+  tolerances (`GetMinEdgeBBoxSize`), new shell vertices (`MakeShellVertexTopology`,
+  through `topology.brep_p9`) and a `MergeAddedTopology` that adds nothing compare
+  (45 cases: 30 pass, 15 deferred; `--seeds 1000`: 631 pass, 398 deferred). The
+  other `MergeAddedTopology` / `MergeAddedFace` cases defer at `SmFace::GetEdges`
+  (`topology.face_p4`) or later, while the C++ still runs them; the stitch and
+  intersector phases are wired but not yet compared. When those land, rerun with a
+  high `--seeds`.
+- **Snapshot numbering.** The shim snapshots in `sc_merge_fixture.h`'s `native_graph`
+  order (edge list, vertex list, then the walk from the regions), so a new vertex
+  shell's vertex use is numbered first (shells are walked before face uses), while the
+  Rust arena appends it. The shared `boolean.merge_p5` snapshot now numbers every
+  record by the same walk (`Canon::of_native` in the `boolean.merge_p1` runner), which
+  is the identity on imported fixtures (`merge_p5` unchanged, 140/108/32).
+- **Fixture records.** A copy notification propagates `SmTopology` flags from source
+  to copy, so the runner registers a fresh `Topology` record for every vertex, edge
+  and face of both operands and every primary vertex use (the flags are not compared).
+- **Guards.** Two inputs crash the reference build and are refused by the FFI
+  wrapper: a computed tolerance with a null other B-rep (UB-167, which makes
+  `SmApiStitch(pBrep, pFace)` crash on every call) and a vertex listed twice in a
+  `MergeAddedTopology` list once stitching glues it (UB-176, now confirmed on the
+  reference build through this route). The wrapper also refuses, as a deliberate
+  over-refusal, any repeated face, edge or vertex and any `MergeAddedTopology` with
+  an other B-rep. Non-finite tolerances and angles were probed on every fixture kind
+  and run, so they are not refused.
+- **Upstream defaults.** `MergeAddedTopology`'s header and definition disagree on the
+  position of `bDoGluing` (WR-197); `MergeAddedOptions::default` is the effective
+  `(TRUE, FALSE, TRUE, TRUE)`.
+- **Back-edges.** Wired: `boolean.merge_p5`'s `MergeEdge` (both drivers; the shared
+  `collect` stage merges each kept wire edge inside its classification loop, as
+  upstream, through a `StageKernels` adapter: the primary kernel copies the curve and
+  the source context is notified, so one shared kernel goes through `MergeContext`);
+  `boolean.api_brep`'s two-B-rep booleans (they construct the merge through
+  `merge_p3`'s `DependencyMerge`, call `IsManifoldSolid` (`topology.brep_p2`) and stop
+  at `merge_p3`'s `ManifoldBoolean` stub, `boolean.merge_p4`, directly or through
+  `NonManifoldBoolean`; the entry points take the kernel mutably);
+  `heal.stitch_p1`'s `SmApiStitch(pBrep, pFace)` (the constructor fails on the null
+  other B-rep where upstream crashes, UB-167); `topology.brep_p7`'s `CopyFaces` with the
+  merge (`MakeFaceuse` per face with `DoingBoolean` set; `copy_faces` takes the kernel
+  mutably; its notifications use `env`'s one identity space; unreached behind
+  `SmFace::GetBrep`, `topology.face_p4`); `boolean.merge_p3`'s `DependencyMerge::construct`
+  (builds #287's `MergeEngine` through `MergeEngine::from_merge`, which `ManifoldBoolean`
+  runs `boolean.merge_p4` on) and its runner's `Pool` (the same engine; family 3
+  constructs first, as the shim's `MergeAccess` does)
+  (`construct`, and `process_wires` with empty mates and marks, which is the pool's
+  actual state: its intersector names only B-reps and surfaces); `boolean.merge_p4`'s
+  `ManifoldIntersector::make_faceuse` (now required; the kernel adapter calls
+  `make_faceuse_with` with its mates and records). `SmFace::CalculateBoundingBox` calls
+  `query.face_p1` with `bTight = FALSE`. Difftest re-runs after merging main
+  `7b57d8de` (with #287's engine): `boolean.merge_p3` 387/222/165 (of its 87
+  `boolean.merge_p2` deferrals 7 pass and 80 stop at `query.brep` inside
+  `ManifoldBoolean`), `boolean.api_brep` 287/151/136 (its 114 now at `query.brep`),
+  `topology.brep_p7` 316/237/79 (its 3 now at `topology.face_p4`); `boolean.merge_p4`
+  311/30/278, `heal.stitch_p1` 300/232/68, `boolean.merge_p5` 140/108/32,
+  `boolean.merge_p1` 248/206/42, `boolean.topology_intersector_p1` 830/713/117 and
+  `topology.brep_p9` 684/638/46 unchanged from main.
 
 ## topology.brep_p5 — historical pre-review coverage (superseded)
 
@@ -11050,6 +11312,64 @@ Why the harness still runs the test solver (`P2FS` / `TestSolver`) and no librar
   `FilletSolverOps -> ConstantRadius*` dispatch once. A follow-up for whoever wires `blend.fillet_standard_solver_p2`.
 - The test solver reaches what no library solver does: a varying radius through `slope`, 0-5 extra unknowns (the user-double
   overflow of `PointOnPlaneSolve`, UB-192). The mirror is record by record: `TestSolver` (runner) against `P2FS` (shim).
+
+## Kernel-aware Surface integration: PR #133 review follow-up (2026-10-16)
+
+The review reproduced five missing-Kernel compile errors in a temporary merge
+with main after #131 landed (bbox/degeneracy/curve point calls). This branch now
+merges main and threads the existing caller Kernel through those sites without
+changing intersection formulas, branches, result lifecycle or tolerances. The
+review also found the inherited Apple portability prerequisites conflicted with
+[the maintainer's policy](https://github.com/bherbruck/solidcore/pull/131#pullrequestreview-5543522828):
+`build.rs` and both unrelated shared shim files are restored to main. Workflow
+changes remain confined to the fork's disposable validation branch. Historical
+Apple results above required those prerequisites and do not certify a clean
+Apple build after their removal. The final GNU rerun is recorded below when
+complete. No #71/#100 numerical implementation is imported. Common intersection
+adapter errors now identify the remaining Surface integration rather than the
+already-partial cone numerical unit.
+
+The review also found `Surface::evaluate_simple` recursively delegates through
+curve-bounded bases without the preflight used by the other common evaluators.
+It now checks the same 64-level owned-geometry limit before dispatch; a 70-level
+curve-bounded regression verifies normal `InvalidInput` rather than recursion.
+
+The new native common-API corpus uses the shim's default `SmContext`. A Rust
+regression uses zone tolerance 0.002 and checks that lazy/solver callbacks borrow
+the caller Kernel and generic iso/STEP evaluation retains it; custom native
+context settings are not differentially covered by this PR.
+
+Concrete cone part 3 tests use its typed intersection targets. Wrapped-other
+cone dispatch through `IntersectTarget::Surface` is not certified here; that
+helper currently reaches the supplied general callback rather than recognizing
+the new Cone variant as an analytic target. This remains part of the common
+intersection adapter handoff, along with the explicit Surface method stubs.
+
+### Moving-base integration during review validation
+
+While the f804bc5f run was executing, main advanced through 8f6a9378 with
+#128 (including heal.face_props) and #142's edge-use review fixes. The branch
+merges that base and adapts six healing call sites to the borrowed Kernel. The
+edge-use runner conflict is resolved by retaining both Kernel forwarding and
+the incoming numerical gap arrays, exact-plane import and inexact-geometry
+deferrals. Their numerical implementations are not duplicated or rewritten.
+
+The completed [f804bc5f GNU run](https://github.com/Karl-VonRichter/solidcore/actions/runs/38884360383)
+passes 183 units: 99 green / 84 partial, 466597 total cases, 453941 compared,
+12656 deferred, zero failed. Sensitivity detects 453859/453859 perturbations,
+with 82 empty outputs unperturbed. Workspace tests pass 1218 (1196 core), plus
+eight focused FFI tests. These results certify f804bc5f only. The new 185-unit
+run on 8cb9ff44 was cancelled at the user's pause request and does not certify the final merged revision.
+
+
+### User pause (2026-10-16)
+
+Work is paused with implementation 8cb9ff44 saved in draft PR #133. The
+185-unit GNU validation run 38889088718 was cancelled at the user's request.
+All required Rust checks, C++-feature Clippy and 1230 workspace tests (1208
+core) pass on this revision. Its full native gate, sensitivity and focused FFI
+tests remain incomplete; f804bc5f's completed 183-unit run is historical
+evidence only. See STATUS for the exact handoff, artifact paths and resume steps.
 
 ## query.face_p4: review fixes (PR #129, 2026-10-20; harness bug, no port disagreement)
 

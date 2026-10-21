@@ -58,15 +58,20 @@
 //! - `SmBrep::GlueVertices`, `RemoveFaces` (with the B-rep's own editing flag) and
 //!   `StitchAndOrient` call `topology.brep_p5`, which defers at its own barriers.
 //! - The calls into `GlueEdgesGeneral` (`topology.brep_p7`), `SqueezeEdge`
-//!   (`topology.brep_p3`), `CalculateBoundingBox` (`query.brep`), `SmFace::GetBrep`,
-//!   `GetVertices`, `GetEdges` (`topology.face_p4`) and `SmMerge::MergeAddedFace`
-//!   (`boolean.merge_p2`) return [`SolidError::Unported`]. The API entry points call
-//!   `DoStitching`, `StitchIntoSolid` and `StitchIntoShell` in [`super::p2`].
-//!   `SmBrep::Notify(SM_NO_PRE_EDIT)` is `topology::brep::p2::notify` on an empty notify
-//!   state (no B-rep cache, no attribute state on the heal path).
+//!   (`topology.brep_p3`) and `CalculateBoundingBox` (`query.brep`) return
+//!   [`SolidError::Unported`]. `SmApiStitch(pBrep, pFace)` builds its `SmMerge` with
+//!   `boolean.merge_p2`'s [`MergeState::with_breps`], whose computed tolerance fails on
+//!   the null other B-rep where upstream crashes (UB-167), so its `MergeAddedFace` is
+//!   never reached. The API entry points call `DoStitching`, `StitchIntoSolid` and
+//!   `StitchIntoShell` in [`super::p2`]. `SmBrep::Notify(SM_NO_PRE_EDIT)` is
+//!   `topology::brep::p2::notify` on an empty notify state (no B-rep cache, no attribute
+//!   state on the heal path).
 
 use std::collections::BTreeMap;
 
+use crate::boolean::merge::p1::MergeState;
+use crate::boolean::merge::p2::MergeOperand;
+use crate::boolean::topology_intersector::p1::TopologyIntersector;
 use crate::curve::curve::Curve;
 use crate::error::{ignore_status, ignored, EntityRef, SM_ERR};
 use crate::geom::attribute::{AttributeStore, ObjectKey};
@@ -488,14 +493,14 @@ pub fn select_topology_to_keep<C: StitchCallback + ?Sized>(
 ///
 /// Those of the curve evaluation (upstream then reports not interior); a null curve or
 /// vertex pointer upstream dereferences.
-pub fn check_interior_edge(b: &Brep, e: EdgeId, t: f64, tol: f64) -> Result<bool> {
+pub fn check_interior_edge(k: &Kernel, b: &Brep, e: EdgeId, t: f64, tol: f64) -> Result<bool> {
     // Check common simple case first. Note, negative tol excludes the ends.
     let domain = edge::interval(b, e)?;
     if !domain.contains_value(t, -EFF_ZERO) {
         return Ok(false);
     }
 
-    let pts = curve_of(b, e)?.evaluate(t, 1, false, true)?;
+    let pts = curve_of(b, e)?.evaluate(k, t, 1, false, true)?;
     let crv_pt = pts.first().copied().ok_or_else(sm_err)?;
     let param_len = pts.get(1).copied().ok_or_else(sm_err)?.length();
     if param_len > 0.1 {
@@ -591,7 +596,7 @@ pub fn test_and_split_edge(
 
     // Check on the interior (status ignored: a failure reports not interior).
     let interior =
-        ignored(check_interior_edge(b, e, dropped.parameter, this_tol))?.unwrap_or(false);
+        ignored(check_interior_edge(k, b, e, dropped.parameter, this_tol))?.unwrap_or(false);
     if !interior {
         out.reason = SplitReason::CloseToBoundary;
         return Ok(out);
@@ -864,10 +869,10 @@ impl<'c> Stitch<'c> {
                     let (mut d_start, mut d_end) = (d_ivl.min(), d_ivl.max());
                     let k_curve = curve_of(b, k_edge)?;
                     let d_curve = curve_of(b, d_edge)?;
-                    let k_pt0 = k_curve.evaluate_point(k_start)?;
-                    let k_pt1 = k_curve.evaluate_point(k_end)?;
-                    let d_pt0 = d_curve.evaluate_point(d_start)?;
-                    let d_pt1 = d_curve.evaluate_point(d_end)?;
+                    let k_pt0 = k_curve.evaluate_point(k, k_start)?;
+                    let k_pt1 = k_curve.evaluate_point(k, k_end)?;
+                    let d_pt0 = d_curve.evaluate_point(k, d_start)?;
+                    let d_pt1 = d_curve.evaluate_point(k, d_end)?;
                     if k_pt0.distance(d_pt0) < vtol && k_pt1.distance(d_pt1) < vtol {
                         // do nothing, continue on to check dist.
                     } else if k_pt0.distance(d_pt1) < vtol && k_pt1.distance(d_pt0) < vtol {
@@ -999,7 +1004,7 @@ impl<'c> Stitch<'c> {
                     let mut squeeze_edge: Option<EdgeId> = None;
                     for e in vertex::common_edges(b, v0, Some(v1), None)? {
                         let edge_length = curve_of(b, e)?
-                            .approximate_length(&edge::interval(b, e)?, 10, false)?
+                            .approximate_length(k, &edge::interval(b, e)?, 10, false)?
                             .0;
                         if edge_length < 2.0 * dist_to_v {
                             if do_squeeze {
@@ -1041,7 +1046,7 @@ impl<'c> Stitch<'c> {
                     let e1_ivl = edge::interval(b, e1)?;
                     let e0_curve = curve_of(b, e0)?;
                     let e1_curve = curve_of(b, e1)?;
-                    let mid_pnt = e0_curve.evaluate_point(e0_ivl.evaluate(0.5))?;
+                    let mid_pnt = e0_curve.evaluate_point(k, e0_ivl.evaluate(0.5))?;
                     let dropped = e1_curve.drop_point(
                         k,
                         &e1_ivl,
@@ -1054,8 +1059,8 @@ impl<'c> Stitch<'c> {
                     if !dropped.success {
                         return Err(sm_err());
                     }
-                    let pv = e0_curve.evaluate(e0_ivl.evaluate(0.5), 1, true, true)?;
-                    let pv_test = e1_curve.evaluate(dropped.parameter, 1, true, true)?;
+                    let pv = e0_curve.evaluate(k, e0_ivl.evaluate(0.5), 1, true, true)?;
+                    let pv_test = e1_curve.evaluate(k, dropped.parameter, 1, true, true)?;
                     let mut orientation = OrientType::Same;
                     let (mut t_start, mut t_end) = (e1_ivl.min(), e1_ivl.max());
                     if tangent(&pv)?.dot(tangent(&pv_test)?) < 0.0 {
@@ -1255,8 +1260,13 @@ impl<'c> Stitch<'c> {
                             if norm_param < 0.02 || norm_param > 0.98 {
                                 continue;
                             }
-                            let pv =
-                                curve_of(b, other)?.evaluate(dropped.parameter, 1, true, true)?;
+                            let pv = curve_of(b, other)?.evaluate(
+                                k,
+                                dropped.parameter,
+                                1,
+                                true,
+                                true,
+                            )?;
                             // status ignored: a failure leaves the angle 0
                             let angle_rad =
                                 ignored(tangent(&pv)?.angle_between(dir))?.unwrap_or(0.0);
@@ -1703,7 +1713,7 @@ impl<'c> Stitch<'c> {
                     let te_ivl = edge::interval(b, test_e)?;
                     let e_curve = curve_of(b, e)?;
                     let te_curve = curve_of(b, test_e)?;
-                    let mid_pnt = e_curve.evaluate_point(e_ivl.evaluate(0.5))?;
+                    let mid_pnt = e_curve.evaluate_point(k, e_ivl.evaluate(0.5))?;
 
                     // select new tolerance
                     let this_tol = smos_max(
@@ -1732,8 +1742,8 @@ impl<'c> Stitch<'c> {
                     }
 
                     // Ok, the midpoints are close. Figure out the relative orientation.
-                    let pv = e_curve.evaluate(e_ivl.evaluate(0.5), 1, true, true)?;
-                    let pv_test = te_curve.evaluate(dropped.parameter, 1, true, true)?;
+                    let pv = e_curve.evaluate(k, e_ivl.evaluate(0.5), 1, true, true)?;
+                    let pv_test = te_curve.evaluate(k, dropped.parameter, 1, true, true)?;
                     let mut orientation = OrientType::Same;
                     let (mut t_start, mut t_end) = (te_ivl.min(), te_ivl.max());
                     if tangent(&pv)?.dot(tangent(&pv_test)?) < 0.0 {
@@ -2114,28 +2124,20 @@ fn brep_bounding_box(
     ))
 }
 
-/// Whether `SmFace::GetBrep()` is `b` (unit `topology.face_p4`).
+/// Whether `SmFace::GetBrep()` is `b` (unit `topology.face_p4`): a face of this arena
+/// whose shell's region is in the B-rep.
 fn face_in_brep(b: &Brep, f: FaceId) -> Result<bool> {
-    let _ = (b, f);
-    // UNPORTED(topology.face_p4): SmFace::GetBrep
-    Err(SolidError::unported("SmFace::GetBrep", "topology.face_p4"))
+    Ok(crate::topology::face::p4::brep(b, f)?.is_some())
 }
 
-/// `SmFace::GetVertices` (unit `topology.face_p4`).
+/// `SmFace::GetVertices(rVertices)` (unit `topology.face_p4`; default arguments).
 fn face_vertices(b: &Brep, f: FaceId) -> Result<Vec<VertexId>> {
-    let _ = (b, f);
-    // UNPORTED(topology.face_p4): SmFace::GetVertices
-    Err(SolidError::unported(
-        "SmFace::GetVertices",
-        "topology.face_p4",
-    ))
+    crate::topology::face::p4::vertices(b, f, None, false, None)
 }
 
-/// `SmFace::GetEdges` (unit `topology.face_p4`).
+/// `SmFace::GetEdges(rEdges)` (unit `topology.face_p4`; default arguments).
 fn face_edges(b: &Brep, f: FaceId) -> Result<Vec<EdgeId>> {
-    let _ = (b, f);
-    // UNPORTED(topology.face_p4): SmFace::GetEdges
-    Err(SolidError::unported("SmFace::GetEdges", "topology.face_p4"))
+    crate::topology::face::p4::edges(b, f, None, false, None)
 }
 
 /// `SmEdgeuse::NormalizedEvaluate(t, bParameterSpaceEval, rPoint, pOptFirstDeriv,
@@ -2194,11 +2196,14 @@ pub fn api_stitch(k: &mut Kernel, b: Option<&mut Brep>) -> Result<()> {
 }
 
 /// `SmApiStitch(SmBrep*, SmFace*)`: merges the face into the B-rep
-/// (`SmMerge::MergeAddedFace` with the API context).
+/// (`SmMerge::MergeAddedFace` with the API context), through a merge with a null other
+/// B-rep and the default tolerance, which upstream dereferences (UB-167).
 ///
 /// # Errors
 ///
-/// [`SolidError::InvalidInput`] for a null B-rep or face; those of the merge.
+/// [`SolidError::InvalidInput`] for a null B-rep or face, and from the merge
+/// constructor for the null other B-rep (after the primary's
+/// `SmBrep::GetMinEdgeBBoxSize`).
 pub fn api_stitch_face(k: &mut Kernel, b: Option<&mut Brep>, face: Option<FaceId>) -> Result<()> {
     let (Some(b), Some(face)) = (b, face) else {
         return Err(SolidError::invalid_input(
@@ -2206,14 +2211,22 @@ pub fn api_stitch_face(k: &mut Kernel, b: Option<&mut Brep>, face: Option<FaceId
             "SmApiStitch: null B-rep or face",
         ));
     };
-    let _ = (k, b, face);
-    // UNPORTED(boolean.merge_p2): SmMerge::SmMerge(ctx, pBrep, NULL), then MergeAddedFace.
-    // Upstream crashes already in the constructor (UB-167: with tolerance 0 it calls
-    // GetMinEdgeBBoxSize on the null other B-rep), so this entry point cannot become a
-    // compared pass once merge_p2 lands; its port must refuse the null other B-rep.
-    Err(SolidError::unported(
-        "SmMerge::SmMerge (then MergeAddedFace; UB-167)",
-        "boolean.merge_p2",
+    // SmMerge sMerge(*pContext, pBrep, NULL): the default tolerance 0 is computed from
+    // both B-reps, and upstream dereferences the null other B-rep there (UB-167). The
+    // constructor returns that error (after the primary's GetMinEdgeBBoxSize), so the
+    // MergeAddedFace that follows upstream is never reached.
+    let merge = MergeState::<TopologyIntersector<MergeOperand>>::with_breps(
+        k,
+        (&*b, MergeOperand::Primary),
+        None,
+        0.0,
+        0.0,
+        None,
+    )?;
+    let _ = (k, merge, face);
+    Err(SolidError::invalid_input(
+        API_OP,
+        "SmApiStitch: SmMerge with a null other B-rep (UB-167)",
     ))
 }
 
