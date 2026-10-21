@@ -1832,7 +1832,7 @@ pub fn make_consistent_classifications<O: ClassObject>(
                     .curve()
                     .and_then(|c| geometry.curve(c))
                     .ok_or(SolidError::null_pointer(OP))?;
-                let mid_pnt = curve.evaluate_point(t_mid)?;
+                let mid_pnt = curve.evaluate_point(k, t_mid)?;
                 let xsect_tol_3d = xsect_tol_3d_from_zones(
                     k,
                     src_zone_tol_3d,

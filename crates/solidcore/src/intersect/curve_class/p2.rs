@@ -827,7 +827,7 @@ impl<O: ClassObject> CurveClassification<O> {
         let surface = surface.ok_or(SolidError::sm_err(OP_UV))?;
 
         // (EvaluatePoint's status is ignored upstream: an undefined point on failure)
-        let point = ignored(curve.evaluate_point(param))?.unwrap_or(Vec3::UNDEF);
+        let point = ignored(curve.evaluate_point(k, param))?.unwrap_or(Vec3::UNDEF);
         let drop = surface.drop_point::<NoObject>(
             k,
             point,
