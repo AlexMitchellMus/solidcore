@@ -1787,8 +1787,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteFace",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "remove_all_edit_Defeature_LShape_I",
@@ -1807,8 +1807,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteFace",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "remove_all_edit_Defeature_inset_cube",
@@ -1827,8 +1827,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteFace",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "remove_all_edit_Defeature_brep1",
@@ -1847,8 +1847,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteFace",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "remove_all_edit_Boolean_BoltMBox1",
@@ -1867,8 +1867,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteFace",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "remove_all_edit_Boolean_BoltMBox2",
@@ -1887,8 +1887,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteFace",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "remove_all_edit_Boolean_extrudeHoles1",
@@ -10027,8 +10027,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteFace",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0011",
@@ -10835,8 +10835,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteFace",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0098",
@@ -11695,8 +11695,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::DeleteFace",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0196",
@@ -12624,8 +12624,8 @@
     "query.brep": 6,
     "surface.surf_of_extrusion_p2": 10,
     "surface.surface_p2": 149,
-    "topology.face_p2": 166,
-    "topology.face_p4": 9
+    "topology.brep_p3": 9,
+    "topology.face_p2": 166
   },
   "max_rel_err": 0.0,
   "pass": true,
