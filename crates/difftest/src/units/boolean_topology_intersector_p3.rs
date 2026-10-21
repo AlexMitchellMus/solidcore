@@ -61,8 +61,8 @@ use solidcore_ffi::units::boolean_topology_intersector_p3::{self as ffi, Op};
 
 use super::boolean_topology_intersector_p1::{
     brep_block, brep_h, build_failure, eid, fid, flag, harness, hd, path_of, put_h, BrepIn, Hin,
-    Two, H, K_BREP, K_EDGE, K_EDGE_CURVE, K_FACE, K_FACE_SURFACE, K_NULL, K_VERTEX, NULL_DEREF,
-    TI_HANDLE,
+    Two, H, K_BREP, K_EDGE, K_EDGE_CURVE, K_FACE, K_FACE_SURFACE, K_NULL, K_TRIM_CURVE, K_VERTEX,
+    NULL_DEREF, TI_HANDLE,
 };
 use super::topology_vertexuse::import;
 use crate::case::{CaseContext, CaseSource};
@@ -109,6 +109,12 @@ enum MergeIn {
         curve: Hin,
         edge1: Hin,
         edge2: Hin,
+        /// `pUVCurve1` / `pUVCurve2`: an edge use's UV trim curve (`K_TRIM_CURVE`), null
+        /// by default.
+        #[serde(default = "null_h")]
+        uv1: Hin,
+        #[serde(default = "null_h")]
+        uv2: Hin,
     },
     CurveClasses {
         merge_singularities: bool,
@@ -140,8 +146,8 @@ struct Inputs {
 
 // ---- resolution ------------------------------------------------------------------------------
 
-/// The entity counts of the two B-reps: `[vertices, edges, faces]`.
-struct Counts([Option<[usize; 3]>; 2]);
+/// The entity counts of the two B-reps: `[vertices, edges, faces, edge uses]`.
+struct Counts([Option<[usize; 4]>; 2]);
 
 impl Counts {
     /// Resolves a selector handle: the index modulo the count of its kind (`None` for a
@@ -162,6 +168,7 @@ impl Counts {
             K_VERTEX => c[0],
             K_EDGE | K_EDGE_CURVE => c[1],
             K_FACE | K_FACE_SURFACE => c[2],
+            K_TRIM_CURVE => c[3],
             _ => return None,
         };
         if n == 0 {
@@ -189,6 +196,8 @@ enum MergeR {
         curve: Option<H>,
         edge1: Option<H>,
         edge2: Option<H>,
+        uv1: Option<H>,
+        uv2: Option<H>,
     },
     CurveClasses {
         merge_singularities: bool,
@@ -324,8 +333,15 @@ fn prepare(i: &Inputs) -> Result<Prepared, Box<Result<Output, HarnessError>>> {
     let uses = ffi::eval(Op::VertexUses, [&pa, &pb], &bl)
         .map_err(|e| Box::new(Err(harness(format!("c++ vertex uses: {e}")))))?;
     apply_vertex_use_order(&uses, &mut brep_a, brep_b.as_mut()).map_err(|e| Box::new(Err(e)))?;
-    let count3 = |b: &Brep| [b.vertices().len(), b.edges().len(), b.faces().len()];
-    let counts = Counts([Some(count3(&brep_a)), brep_b.as_ref().map(count3)]);
+    let count4 = |b: &Brep| {
+        [
+            b.vertices().len(),
+            b.edges().len(),
+            b.faces().len(),
+            b.edgeuses().len(),
+        ]
+    };
+    let counts = Counts([Some(count4(&brep_a)), brep_b.as_ref().map(count4)]);
     let two = Two::new(brep_a, brep_b);
     let relates = i
         .relates
@@ -340,6 +356,8 @@ fn prepare(i: &Inputs) -> Result<Prepared, Box<Result<Output, HarnessError>>> {
             curve,
             edge1,
             edge2,
+            uv1,
+            uv2,
         } => MergeR::CurveOnSurfaces {
             s1: counts.resolve(*s1),
             s2: counts.resolve(*s2),
@@ -347,6 +365,8 @@ fn prepare(i: &Inputs) -> Result<Prepared, Box<Result<Output, HarnessError>>> {
             curve: counts.resolve(*curve),
             edge1: counts.resolve(*edge1),
             edge2: counts.resolve(*edge2),
+            uv1: counts.resolve(*uv1),
+            uv2: counts.resolve(*uv2),
         },
         MergeIn::CurveClasses {
             merge_singularities,
@@ -401,6 +421,8 @@ fn encode(i: &Inputs, p: &Prepared) -> Result<Vec<f64>, HarnessError> {
             curve,
             edge1,
             edge2,
+            uv1,
+            uv2,
         } => {
             v.push(1.0);
             put_h(&mut v, *s1);
@@ -409,6 +431,8 @@ fn encode(i: &Inputs, p: &Prepared) -> Result<Vec<f64>, HarnessError> {
             put_h(&mut v, *curve);
             put_h(&mut v, *edge1);
             put_h(&mut v, *edge2);
+            put_h(&mut v, *uv1);
+            put_h(&mut v, *uv2);
         }
         MergeR::CurveClasses {
             merge_singularities,
@@ -507,7 +531,19 @@ fn pc_ok(two: &Two, cls: i64, h: Option<H>) -> bool {
 }
 
 fn class_ok(two: &Two, c: &ClassR) -> bool {
-    c.curve.is_some() && c.pcs.iter().all(|&(cls, h)| pc_ok(two, cls, h))
+    c.curve.is_some() && c.pcs.iter().all(|&(cls, h)| pc_ok(two, cls, h)) && !unknown_end_on_face(c)
+}
+
+/// The shim's guard: an unknown start or end with a face or region mid. `MergeInterval`
+/// gives the end the mid's face (it stays unknown, without object, when the point does
+/// not project onto that face) or region (this runner names no region: a null object),
+/// and the vertex merge then dereferences the null end (`SmCurveClass.cpp:17659`,
+/// `:17672`).
+fn unknown_end_on_face(c: &ClassR) -> bool {
+    let code = |t: PointClassType| i64::from(t.code());
+    let [(s, _), (m, _), (e, _)] = c.pcs;
+    (m == code(PointClassType::Face) || m == code(PointClassType::Region))
+        && (s == code(PointClassType::Unknown) || e == code(PointClassType::Unknown))
 }
 
 /// The full classification constructor with its single interval's classes set.
@@ -618,6 +654,8 @@ fn run_rust_merge(i: &Inputs, p: Prepared) -> Result<Vec<f64>, SolidError> {
             curve,
             edge1,
             edge2,
+            uv1,
+            uv2,
         } => {
             o.push(1.0);
             // the shim's guard, in upstream's order
@@ -653,8 +691,8 @@ fn run_rust_merge(i: &Inputs, p: Prepared) -> Result<Vec<f64>, SolidError> {
                 other_surface: s2,
                 curve_tolerance: tol,
                 curve: curve.unwrap_or(hd(-1, 8, 0)),
-                uv_curve1: None,
-                uv_curve2: None,
+                uv_curve1: uv1,
+                uv_curve2: uv2,
                 brep_edge: edge1,
                 other_edge: edge2,
                 ti: Some(TI_HANDLE),
@@ -905,6 +943,11 @@ fn h(b: i64, kind: u8, s: i64) -> Hin {
 
 const NULL_H: Hin = [-1, K_NULL, -1];
 
+/// [`NULL_H`] (the serde default of the optional UV curves).
+const fn null_h() -> Hin {
+    NULL_H
+}
+
 fn tol(rng: &mut Rng) -> f64 {
     [1e-7, 1e-6, 1e-5, 1e-4, 1e-3]
         .get(rng.below(5) as usize)
@@ -1007,6 +1050,8 @@ fn gen_inputs(rng: &mut Rng) -> Inputs {
                 curve: h(0, K_EDGE_CURVE, e),
                 edge1: h(0, K_EDGE, e),
                 edge2: h(1, K_EDGE, e2),
+                uv1: NULL_H,
+                uv2: NULL_H,
             }
         }
         6..=8 => MergeIn::CurveClasses {
@@ -1059,6 +1104,8 @@ fn edge_cases() -> Vec<(String, Value)> {
         curve: h(0, K_EDGE_CURVE, e1),
         edge1: h(0, K_EDGE, e1),
         edge2: h(1, K_EDGE, e2),
+        uv1: NULL_H,
+        uv2: NULL_H,
     };
     let base = |(brep_a, brep_b): (BrepIn, Option<BrepIn>), merge: MergeIn| Inputs {
         brep_a,
@@ -1104,7 +1151,37 @@ fn edge_cases() -> Vec<(String, Value)> {
                 curve: NULL_H,
                 edge1: h(0, K_EDGE, 0),
                 edge2: h(1, K_EDGE, 0),
+                uv1: NULL_H,
+                uv2: NULL_H,
             },
+        ),
+    );
+    // with the UV trim curves of the curve's own edge use on each face (pUVCurve1 /
+    // pUVCurve2), both surfaces given and no edges: the CurveOnClassify path
+    let with_uv = |e: i64, (f1, eu1): (i64, i64), (f2, eu2): (i64, i64)| MergeIn::CurveOnSurfaces {
+        s1: h(0, K_FACE_SURFACE, f1),
+        s2: h(1, K_FACE_SURFACE, f2),
+        tol: 1e-6,
+        curve: h(0, K_EDGE_CURVE, e),
+        edge1: NULL_H,
+        edge2: NULL_H,
+        uv1: h(0, K_TRIM_CURVE, eu1),
+        uv2: h(1, K_TRIM_CURVE, eu2),
+    };
+    add(
+        "square_uv_curves",
+        base(same("plane_square.smb"), with_uv(0, (0, 0), (0, 0))),
+    );
+    add(
+        "disk_uv_curves",
+        base(same("disk.smb"), with_uv(0, (0, 0), (0, 0))),
+    );
+    // edge 14 bounds face 0 (edge use 0) and face 5 (edge use 22)
+    add(
+        "fillet_box_uv_curves_two_faces",
+        base(
+            same("box_with_large_fillet.smb"),
+            with_uv(14, (0, 0), (5, 22)),
         ),
     );
     let pc = |cls: PointClassType, b: i64, kind: u8, s: i64| PcIn {
@@ -1128,6 +1205,34 @@ fn edge_cases() -> Vec<(String, Value)> {
                 merge_singularities: true,
                 c1: class(0, 1, 1e-12),
                 c2: class(1, 1, 1e-12),
+            },
+        ),
+    );
+    // the review's crash: unknown ends of a face-mid interval that does not project onto
+    // the face (refused on both sides)
+    let face_mid = |b: i64| ClassIn {
+        curve: h(b, K_EDGE_CURVE, 0),
+        f0: 0.25,
+        f1: 0.75,
+        tol: 1e-6,
+        start: PcIn {
+            cls: i64::from(PointClassType::Unknown.code()),
+            h: NULL_H,
+        },
+        mid: pc(PointClassType::Face, b, K_FACE, 0),
+        end: PcIn {
+            cls: i64::from(PointClassType::Unknown.code()),
+            h: NULL_H,
+        },
+    };
+    add(
+        "fillet_box_unknown_ends_face_mid_refused",
+        base(
+            same("box_with_large_fillet.smb"),
+            MergeIn::CurveClasses {
+                merge_singularities: false,
+                c1: face_mid(0),
+                c2: face_mid(1),
             },
         ),
     );

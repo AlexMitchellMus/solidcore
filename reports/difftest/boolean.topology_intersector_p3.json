@@ -2611,6 +2611,42 @@
     },
     {
       "deferred": {
+        "symbol": "SmVertex::GetTolerance",
+        "unit": "topology.vertex"
+      },
+      "max_rel_err": 0.0,
+      "name": "square_uv_curves",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "inline",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmVertex::GetTolerance",
+        "unit": "topology.vertex"
+      },
+      "max_rel_err": 0.0,
+      "name": "disk_uv_curves",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "inline",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmVertex::GetTolerance",
+        "unit": "topology.vertex"
+      },
+      "max_rel_err": 0.0,
+      "name": "fillet_box_uv_curves_two_faces",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "inline",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
         "symbol": "SmVertex::GetPoint",
         "unit": "topology.vertex"
       },
@@ -2620,6 +2656,14 @@
       "pass": false,
       "source": "inline",
       "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "fillet_box_unknown_ends_face_mid_refused",
+      "outcome": "pass",
+      "pass": true,
+      "source": "inline",
+      "values_compared": 3
     },
     {
       "deferred": {
@@ -2635,17 +2679,17 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 124,
+  "cases_deferred": 127,
   "cases_failed": 0,
-  "cases_passed": 143,
-  "cases_total": 267,
+  "cases_passed": 144,
+  "cases_total": 271,
   "deferred_by_unit": {
     "intersect.curve_class_p6": 44,
     "topology.brep_p1": 4,
     "topology.brep_p3": 4,
     "topology.edge": 36,
     "topology.face_p4": 28,
-    "topology.vertex": 8
+    "topology.vertex": 11
   },
   "max_rel_err": 0.0,
   "pass": true,

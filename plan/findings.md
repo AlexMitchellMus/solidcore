@@ -9487,6 +9487,21 @@ rejected: nothing runs on either side.
   - `SmBrep::DeleteEdge` (`topology.brep_p4`) when repairing an edge relation;
   - the remaining `topology.edge` / `topology.vertex` stubs of `curve_class_p7`, which are
     in functions without classification geometry.
+- **Review r1 (2026-10-21).**
+  - *Guard:* an `SM_PC_UNKNOWN` start or end of a face-mid interval stays unknown, without
+    object, when the point does not project onto that face (`sm_ComputeFacePointClass`);
+    a region mid copies a null object (this harness names no region). `MergeInterval`
+    then dereferences the null vertex (`SmCurveClass.cpp:17659` / `:17672`). The shim
+    and the runner refuse that input; the generator only made edge mids, so the fuzz
+    never reached it.
+  - *UV curves:* `MergeCurveOnSurfaces` was compared only without UV curves. Handles of
+    kind 13 name an edge use's UV trim curve (`GetUVTrimCurve`, own or mate's), and three
+    inline cases pass the curve's own edge uses. They defer at `intersect.point_class`'s
+    `SmVertex::GetTolerance` stub in `MergeIntoObject`, past the UV classification.
+  - *Owner:* the 3D edge-curve copy in `MergeCoincidentSurfaces` gets the edge curve's
+    owner as upstream (`SetOwner`, also after the trim on the other side); the
+    `SM_NO_CHANGE_OWNER` notification of the temporary copy is not delivered (noted in the
+    module's Deviations).
 - **Back-edges.** `blend.fillet_geom_p4`'s `MergeCurveOnSurfaces` stub is retagged
   `blend.fillet_executive_p1`: it runs on the executive's intersector, which that unit
   provides (as its `RegisterExistingSSI` stub already is). `boolean.merge_p1`'s

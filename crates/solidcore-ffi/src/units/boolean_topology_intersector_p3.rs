@@ -24,7 +24,7 @@
 //!
 //! | merge | name | args | outputs |
 //! |-------|------|------|---------|
-//! | 1 | `MergeCurveOnSurfaces` | `h(surface) h(surface) tol h(curve) h(edge) h(edge)` | `status deleted n h* n h*` then the state |
+//! | 1 | `MergeCurveOnSurfaces` | `h(surface) h(surface) tol h(curve) h(edge) h(edge) h(uv) h(uv)` (`h(uv)`: an edge use's UV trim curve, kind 13, or null) | `status deleted n h* n h*` then the state |
 //! | 2 | `MergeCurveClasses` | `merge_singularities class class` | `status deleted n h* n h* class class` then the state |
 //! | 3 | `MergeCoincidentSurfaces` | `h(surface) h(surface)` | `status n h* n h*` then the state |
 //!
@@ -154,16 +154,23 @@ enum Kind {
     FaceSurface,
     Brep,
     Null,
+    /// An edge use's UV trim curve (`GetUVTrimCurve`), by edge use index.
+    TrimCurve,
 }
 
-/// Per B-rep `[vertices, edges, faces]` (`None` for an absent one).
-struct Counts([Option<[usize; 3]>; 2]);
+/// Per B-rep `[vertices, edges, faces, edge uses]` (`None` for an absent one).
+struct Counts([Option<[usize; 4]>; 2]);
 
 impl Counts {
     /// A handle triple of one of the `allowed` kinds (or null when `allow_null`).
-    fn handle(&self, rd: &mut Reader<'_>, allowed: &[Kind], allow_null: bool) -> Result<Kind, FfiError> {
+    fn handle(
+        &self,
+        rd: &mut Reader<'_>,
+        allowed: &[Kind],
+        allow_null: bool,
+    ) -> Result<Kind, FfiError> {
         let b = rd.int(-1, 1)?;
-        let kind = match rd.int(-1, 8)? {
+        let kind = match rd.int(-1, 13)? {
             0 => Kind::Vertex,
             1 => Kind::Edge,
             2 => Kind::Face,
@@ -171,6 +178,7 @@ impl Counts {
             4 => Kind::FaceSurface,
             6 => Kind::Brep,
             8 => Kind::Null,
+            13 => Kind::TrimCurve,
             _ => return Err(bad("bad handle kind")),
         };
         let i = rd.int(-1, i64::from(u32::MAX))?;
@@ -204,6 +212,7 @@ impl Counts {
         let n = match kind {
             Kind::Vertex => c[0],
             Kind::Edge | Kind::EdgeCurve => c[1],
+            Kind::TrimCurve => c[3],
             _ => c[2],
         };
         if usize::try_from(i).map_or(true, |i| i >= n) {
@@ -241,7 +250,7 @@ impl Counts {
 
 /// Checks the `Run` input after the B-rep blocks.
 fn run_args(rd: &mut Reader<'_>, c: &Counts) -> Result<(), FfiError> {
-    use Kind::{Edge, EdgeCurve, Face, FaceSurface, Vertex};
+    use Kind::{Edge, EdgeCurve, Face, FaceSurface, TrimCurve, Vertex};
     let approx = rd.finite()?;
     let ang = rd.finite()?;
     if approx < 0.0 || ang < 0.0 {
@@ -270,6 +279,8 @@ fn run_args(rd: &mut Reader<'_>, c: &Counts) -> Result<(), FfiError> {
             c.handle(rd, &[EdgeCurve], true)?;
             c.handle(rd, &[Edge], true)?;
             c.handle(rd, &[Edge], true)?;
+            c.handle(rd, &[TrimCurve], true)?;
+            c.handle(rd, &[TrimCurve], true)?;
         }
         2 => {
             rd.flag()?;
@@ -318,7 +329,9 @@ pub fn eval(op: Op, paths: [&str; 2], input: &[f64]) -> Result<Vec<f64>, FfiErro
     }
     let joined = format!("{}\n{}", paths[0], paths[1]);
     let n_blocks = blocks_len(paths, input)?;
-    let block = input.get(..n_blocks).ok_or_else(|| bad("input too short"))?;
+    let block = input
+        .get(..n_blocks)
+        .ok_or_else(|| bad("input too short"))?;
     let export = raw(Op::Export, &joined, block)?;
     if op == Op::Export || op == Op::VertexUses {
         if n_blocks != input.len() {
@@ -334,12 +347,15 @@ pub fn eval(op: Op, paths: [&str; 2], input: &[f64]) -> Result<Vec<f64>, FfiErro
         // a B-rep could not be built: the op reports the same failure
         return Ok(export);
     };
-    let count3 = |ex: &[f64]| counts(ex).map(|c| [c[9], c[7], c[3]]);
-    let c = Counts([count3(&a), b.as_deref().and_then(count3)]);
+    // the export's counts in graph order: faces 3, edge uses 6, edges 7, vertices 9
+    let count4 = |ex: &[f64]| counts(ex).map(|c| [c[9], c[7], c[3], c[6]]);
+    let c = Counts([count4(&a), b.as_deref().and_then(count4)]);
     if c.0[0].is_none() {
         return Err(bad("first export unreadable"));
     }
-    let rest = input.get(n_blocks..).ok_or_else(|| bad("input too short"))?;
+    let rest = input
+        .get(n_blocks..)
+        .ok_or_else(|| bad("input too short"))?;
     let mut rd = Reader { input: rest, at: 0 };
     run_args(&mut rd, &c)?;
     rd.done()?;

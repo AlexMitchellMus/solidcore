@@ -31,8 +31,14 @@
 //!   dropped UV curves that upstream deletes on return (`SmObjDelete`, `SmObjsDelete`)
 //!   are stored with [`ProtoBrep::insert_curve`] to get a handle; their handles are
 //!   returned in `deleted_curves` for the caller to free. On an error return they are
-//!   not reported. `SmCurve::SetOwner` on the copies (for the owner's tolerance) has no
-//!   counterpart: a copy has no owner here.
+//!   not reported.
+//! - **Owners of the curve copies.** As upstream, the edge-curve copy each edge pass merges
+//!   gets the edge curve's owner (`pECopy->SetOwner(pEdgeCurve->GetOwner())`, for the
+//!   owner's tolerance; set again after the trim on the other B-rep's side), while the
+//!   per-UV-curve copies keep none (a copy resets its owner, as `SmCurve::Copy` does).
+//!   `SetOwner`'s `SM_NO_CHANGE_OWNER` notification of the temporary copy, which upstream
+//!   passes only to the context's notify callbacks, is not delivered: the intersector
+//!   hooks carry no notification environment.
 //! - **Statuses.** `MergeCurveClasses` turns a failing `FixupClassification`,
 //!   `Homogenize`, `CleanupAndValidate` or `FixupClassMates` into `SM_ERR` as upstream,
 //!   and a failing `Relate` of two edges into its repair attempt; a failing
@@ -1520,8 +1526,14 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
             // make temporary edge->Curve copy so the original won't be modified, trimmed
             // to the edge interval
             let mut copy = edge_curve.clone();
+            // Set owner for access to Tol value (its notification: see the module notes)
+            let owner = edge_curve.owner();
+            let _ = copy.set_owner(owner, None);
             let mut tmp_ivl = edge_ivl;
             copy.trim(k, &mut tmp_ivl, TrimMode::Notify)?;
+            if side == Side::Other {
+                let _ = copy.set_owner(owner, None);
+            }
 
             let edges_count = edges.len();
             let (brep_edge, other_edge) = match side {

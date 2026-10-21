@@ -46,6 +46,8 @@ enum HKind : int64_t
     H_FACE_SURFACE = 4,
     H_BREP = 6,
     H_NULL = 8,
+    // an edge use's UV trim curve (`GetUVTrimCurve`: its own or its mate's)
+    H_TRIM_CURVE = 13,
 };
 
 struct Two
@@ -99,6 +101,11 @@ struct Two
         {
             SmFace* f = (SmFace*)at(gr.faces);
             return f ? (SmObject*)f->GetSurface() : nullptr;
+        }
+        case H_TRIM_CURVE:
+        {
+            SmEdgeuse* eu = (SmEdgeuse*)at(gr.edgeuses);
+            return eu ? (SmObject*)eu->GetUVTrimCurve() : nullptr;
         }
         default: return nullptr;
         }
@@ -287,6 +294,14 @@ bool spec_ok(const ClassSpec& s)
         default: break;
         }
     }
+    // MergeInterval gives an unknown start or end the mid's face (sm_ComputeFacePointClass,
+    // which leaves it unknown and without object when the point does not project onto
+    // that face) or region (CopyClassificationOnly; this runner names no region, so its
+    // object is null). Then pStartV / pEndV is null and dereferenced (SmCurveClass.cpp
+    // :17659 GetPoint, :17672 GetBrep).
+    const int mid = s.cls[1];
+    if ((mid == SM_PC_FACE || mid == SM_PC_REGION) && (s.cls[0] == SM_PC_UNKNOWN || s.cls[2] == SM_PC_UNKNOWN))
+        return false;
     return true;
 }
 
@@ -416,6 +431,8 @@ void run_merge(Rd& rd, Two& t, std::vector<double>& o)
         SmCurve* c = (SmCurve*)rd_h(rd, t);
         SmEdge* be = (SmEdge*)rd_h(rd, t);
         SmEdge* oe = (SmEdge*)rd_h(rd, t);
+        SmCurve* uv1 = (SmCurve*)rd_h(rd, t);
+        SmCurve* uv2 = (SmCurve*)rd_h(rd, t);
         // In upstream's order: a surface without face is SM_ERR_NULL_POINTER (safe); then
         // p3DCurve is dereferenced; a degenerate curve never reaches the edges or a missing
         // face; else side 1's edge (sm_SetEdgeClass) or face (CurveOnClassify) is
@@ -437,7 +454,7 @@ void run_merge(Rd& rd, Two& t, std::vector<double>& o)
         SmBoolean deleted = FALSE;
         SmTArray<SmEdge*> del_e;
         SmTArray<SmVertex*> del_v;
-        SmStatus s = ti->MergeCurveOnSurfaces(s1, s2, tol, c, nullptr, nullptr, be, oe, deleted, &del_e, &del_v);
+        SmStatus s = ti->MergeCurveOnSurfaces(s1, s2, tol, c, uv1, uv2, be, oe, deleted, &del_e, &del_v);
         o.push_back(st(s));
         // the outputs only on success (the port returns none with an error); deleted
         // objects are no longer in the re-walked graph: their handles are unknown
