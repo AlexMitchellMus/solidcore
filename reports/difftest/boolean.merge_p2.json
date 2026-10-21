@@ -195,8 +195,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere as SmSurface",
-        "unit": "surface.surface_p2"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "make_faceuse_sphere",
@@ -420,8 +420,8 @@
   "cases_passed": 32,
   "cases_total": 45,
   "deferred_by_unit": {
+    "intersect.surface_drop_lib_p3": 1,
     "query.brep": 2,
-    "surface.surface_p2": 1,
     "topology.brep_p1": 1,
     "topology.brep_p3": 3,
     "topology.brep_p9": 1,

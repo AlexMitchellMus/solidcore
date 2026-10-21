@@ -1251,8 +1251,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere as SmSurface",
-        "unit": "surface.surface_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_sphere.smb_0",
@@ -1263,8 +1263,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere as SmSurface",
-        "unit": "surface.surface_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_sphere.smb_1",
@@ -1659,8 +1659,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere as SmSurface",
-        "unit": "surface.surface_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_surf_sphere150.smb_0",
@@ -1671,8 +1671,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere as SmSurface",
-        "unit": "surface.surface_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "read_surf_sphere150.smb_1",
@@ -2852,11 +2852,11 @@
     "curve.crv_on_surf": 2,
     "curve.curve_p6": 2,
     "query.brep": 2,
-    "surface.surface_p2": 8,
+    "surface.surface_p2": 4,
     "topology.brep_p3": 36,
     "topology.brep_p4": 1,
     "topology.brep_p9": 2,
-    "topology.face_p2": 22
+    "topology.face_p2": 26
   },
   "max_rel_err": 0.0,
   "pass": true,
