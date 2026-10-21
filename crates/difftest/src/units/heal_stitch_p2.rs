@@ -121,7 +121,11 @@ fn path(b: &StitchBrep) -> Result<String, HarnessError> {
 
 /// The C++ export of the B-rep.
 fn export(b: &StitchBrep) -> Result<Vec<f64>, HarnessError> {
-    ffi::eval(Op::Export, &path(b)?, &block_of(b)?).map_err(|e| harness(format!("c++ export: {e}")))
+    let (path, block) = (path(b)?, block_of(b)?);
+    crate::export_memo::export("heal_stitch_p2", &[&path], &block, || {
+        ffi::eval(Op::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))
 }
 
 fn build_failure(export: &[f64]) -> Output {
@@ -588,7 +592,7 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result
             // the shim's guard: the doubling from a tolerance at or below zero cannot
             // end (HANG-24); same test on the same box diagonal (`tol < dist / 200`
             // excludes a NaN tolerance, so `!(tol > 0)` is `tol <= 0` here)
-            let (tol, dist) = match st::solid_stitch_start(b) {
+            let (tol, dist) = match st::solid_stitch_start(k, b) {
                 Ok(start) => start,
                 Err(e) => return failed(e),
             };

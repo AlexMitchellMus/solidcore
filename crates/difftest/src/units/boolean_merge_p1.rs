@@ -25,6 +25,9 @@ use solidcore::SolidError;
 use solidcore_ffi::units::{boolean_merge_p1 as ffi, topology_vertexuse as fixture};
 use std::collections::BTreeMap;
 
+/// The op of `find_brep_region_of_other_face` (`SmMerge::FindBrepRegionOfOtherFace`).
+const OP_FIND_REGION: u8 = 5;
+
 /// Differential runner for `boolean.merge_p1`.
 pub struct Runner;
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -869,7 +872,7 @@ fn run_rust(i: &Inputs, b: &mut Brep, other: &Brep) -> Result<Vec<f64>, SolidErr
             }
             append_events(&context, &mut out)?;
         }
-        5 => {
+        OP_FIND_REGION => {
             let f = FaceuseId::from_index(u32::from(a) % other.faceuses().len() as u32);
             out.push(
                 port::find_brep_region_of_other_face(
@@ -897,17 +900,16 @@ fn run_rust(i: &Inputs, b: &mut Brep, other: &Brep) -> Result<Vec<f64>, SolidErr
         7 => {
             let mut other = other.clone();
             // The native probe constructs and immediately destroys its shift.
-            port::temporary_brep_transform(b, &mut other)?.restore(
-                Some(b),
-                Some(&mut other),
-                |_brep, _is_other, _xfm, _scale, _scale_tolerance| {
-                    // UNPORTED(topology.brep_p5): SmBrep::Transform
-                    Err(SolidError::unported(
-                        "SmBrep::Transform",
-                        "topology.brep_p5",
-                    ))
-                },
-            )?;
+            let transform = |_: &mut Brep, _: bool, _: &_, _: Option<_>, _: bool| {
+                // UNPORTED(topology.brep_p5): SmBrep::Transform
+                Err(SolidError::unported(
+                    "SmBrep::Transform",
+                    "topology.brep_p5",
+                ))
+            };
+            port::temporary_brep_transform(&k, &k, b, &other)?
+                .apply(b, &mut other, transform)?
+                .restore(Some(b), Some(&mut other), transform)?;
         }
         8 | 9 => {
             let sec = EdgeuseId::from_index(u32::from(a) % b.edgeuses().len() as u32);
@@ -993,13 +995,35 @@ impl UnitDiff for Runner {
             return Ok(Output::new().values("record", control(i.args)));
         }
         let (path, block) = block(&i)?;
-        let raw = fixture::eval(fixture::Op::Export, &path, &block)
-            .map_err(|e| harness(e.to_string()))?;
-        let (mut b, _) = import(&raw)?;
+        let raw = crate::export_memo::export("topology_vertexuse", &[&path], &block, || {
+            fixture::eval(fixture::Op::Export, &path, &block)
+        })
+        .map_err(|e| harness(e.to_string()))?;
+        let (mut b, exact) = import(&raw)?;
+        // Op 5 without mates classifies points against `b` (SmBrep::Point3DClassify;
+        // with mates every edge is mated, so the radial sectors decide): a face surface
+        // the export carries only as its B-spline part would be classified against other
+        // geometry than the C++ one (the harness limitation of `query.face_p1`).
+        let [_, mates, _] = i.args;
+        let mated = mates != 0;
+        if i.op == OP_FIND_REGION && !mated && exact.iter().any(|&e| !e) {
+            return Ok(Output::deferred(
+                "harness:analytic-geometry-export",
+                "analytic face surface in the B-rep export",
+            ));
+        }
         let (other_path, other_block) = other_block(&i)?;
-        let other_raw = fixture::eval(fixture::Op::Export, &other_path, &other_block)
+        let other_raw =
+            crate::export_memo::export("topology_vertexuse", &[&other_path], &other_block, || {
+                fixture::eval(fixture::Op::Export, &other_path, &other_block)
+            })
             .map_err(|e| harness(e.to_string()))?;
         let (other, _) = import(&other_raw)?;
+        // the FFI's selection guard: the selectors are taken modulo these counts
+        let counts = |raw: &[f64]| fixture::counts(raw).ok_or_else(|| harness("fixture rejected"));
+        if !ffi::selection_valid(i.op, &counts(&raw)?, &counts(&other_raw)?) {
+            return Err(harness("fixture lacks selected entity"));
+        }
         match run_rust(&i, &mut b, &other) {
             Ok(v) => Ok(graph(&b, v)),
             Err(e) => Ok(Output::unported(&e).unwrap_or_else(|| {
@@ -1042,5 +1066,28 @@ impl UnitDiff for Runner {
             seeds: ctx.seeds.max(96),
         };
         crate::runner::default_cases(self, &ctx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::case::CaseSource;
+
+    /// Fuzz 30000 (fuzz03460): op 2 on a wire, which has no face to select. The FFI
+    /// rejects the fixture; the Rust side must refuse it too instead of taking the
+    /// selector modulo zero faces.
+    #[test]
+    fn op_without_selected_entity_is_refused_not_a_panic() {
+        let case = Case {
+            unit: "boolean.merge_p1".into(),
+            name: "fuzz03460".into(),
+            source: CaseSource::Inline,
+            inputs: json!({"args":[2,1,0],"brep":{"curve":{"cpts":[[0,0,0,1],[4,0,0,1]],
+                "dim":3,"p":1,"u":[0,0,1,1]},"kind":"wire","t0":0.125,"t1":0.875},
+                "op":2,"tolerances":[0.001,1.0]}),
+        };
+        let e = Runner.run_rust(&case).unwrap_err();
+        assert!(e.to_string().contains("lacks selected entity"), "{e}");
     }
 }
