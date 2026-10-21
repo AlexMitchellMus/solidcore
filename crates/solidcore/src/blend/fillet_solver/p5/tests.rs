@@ -1056,3 +1056,66 @@ fn rollover_corner_vertex_delegates_to_the_available_geom_port() {
         })
     ));
 }
+
+#[test]
+fn rollover_topology_split_preserves_actual_solver_id_and_partial_edits() {
+    let mut f = Fixture::new([&[1.0], &[1.0]], false);
+    let id = f.geom;
+    let solver_id = crate::blend::fillet_geom::p1::FilletSolverId(37);
+    f.fb.geom_mut(id).unwrap().solver = Some(solver_id);
+    f.solver.executive = Some(crate::blend::fillet_solver::p1::FilletExecutiveRef);
+    for rail in f.fb.geom(id).unwrap().rails.into_iter().flatten() {
+        let uses = f.fb.brep().edge(rail).unwrap().edgeuses.clone();
+        for eu in uses {
+            f.fb.set_edgeuse_fillet_geom(eu, Some(id)).unwrap();
+            let vu = f.fb.brep().edgeuse(eu).unwrap().vertexuse.unwrap();
+            f.fb.brep_mut().vertexuse_mut(vu).unwrap().owner =
+                crate::topology::VertexuseOwner::Edgeuse(Some(eu));
+            f.fb.insert_fillet_vertexuse(vu, crate::blend::fillet_geom::p1::FilletVertexuse::new());
+        }
+    }
+    let rail = f.fb.geom(id).unwrap().rail(0).unwrap();
+    let end_use = f.fb.brep().edge(rail).unwrap().edgeuses[1];
+    let count = f.fb.geoms().len();
+    let err = Missing.topology_split(&mut f.context(), id).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            SolidError::Unported {
+                unit: "topology.brep_p3",
+                ..
+            }
+        ),
+        "{err:?}"
+    );
+    let new_geom = f.fb.geoms().last().unwrap();
+    assert_eq!(f.fb.geoms().len(), count + 1);
+    assert_eq!(new_geom.fillet_solver(), Some(solver_id));
+    assert_eq!(new_geom.fillet_geom_type(), FilletGeomType::Default);
+    assert!(!f.fb.brep().edge(rail).unwrap().edgeuses.contains(&end_use));
+    assert_eq!(f.fb.brep().edgeuse(end_use).unwrap().edge, None);
+}
+
+#[test]
+fn rollover_recalc_uses_the_real_solver_and_reports_missing_edge_curve() {
+    let mut f = Fixture::new([&[1.0], &[1.0]], false);
+    let id = f.geom;
+    f.fb.geom_mut(id).unwrap().solver = Some(crate::blend::fillet_geom::p1::FilletSolverId(37));
+    let err = Missing
+        .recalc(&mut f.context(), id, false, Some(Vec3::Y))
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            SolidError::Upstream {
+                code: crate::error::SM_ERR_NULL_POINTER,
+                ..
+            }
+        ),
+        "{err:?}"
+    );
+    assert_eq!(
+        err.operation(),
+        "blend::fillet_geom::p3::FilletBrep::re_calc_fillet_geom"
+    );
+}

@@ -136,16 +136,16 @@ pub(super) trait RecoveryOps {
     {
         c.split_rail(geom, rail, self)
     }
-    fn topology_split(
-        &mut self,
-        _c: &mut Recovery<'_>,
-        _geom: FilletGeomId,
-    ) -> Result<FilletGeomId> {
-        // UNPORTED(blend.fillet_geom_p3): SmFilletGeom::TopologySplit
-        Err(SolidError::unported(
-            "SmFilletGeom::TopologySplit",
-            "blend.fillet_geom_p3",
-        ))
+    fn topology_split(&mut self, c: &mut Recovery<'_>, geom: FilletGeomId) -> Result<FilletGeomId> {
+        let solver_id = required(c.fillets.geom(geom)?.fillet_solver())?;
+        c.fillets.topology_split(
+            c.k,
+            geom,
+            FilletGeomType::Default,
+            solver_id,
+            c.solver,
+            c.target,
+        )
     }
     fn rail_x_edge(
         &mut self,
@@ -217,16 +217,13 @@ pub(super) trait RecoveryOps {
     }
     fn recalc(
         &mut self,
-        _c: &mut Recovery<'_>,
-        _geom: FilletGeomId,
-        _analytic: bool,
-        _direction: Option<Vec3>,
+        c: &mut Recovery<'_>,
+        geom: FilletGeomId,
+        analytic: bool,
+        direction: Option<Vec3>,
     ) -> Result<()> {
-        // UNPORTED(blend.fillet_geom_p3): SmFilletGeom::ReCalcFilletGeom
-        Err(SolidError::unported(
-            "SmFilletGeom::ReCalcFilletGeom",
-            "blend.fillet_geom_p3",
-        ))
+        c.fillets
+            .re_calc_fillet_geom(c.k, geom, c.solver, c.target, analytic, direction, None)
     }
     fn surface_intersection(
         &mut self,
