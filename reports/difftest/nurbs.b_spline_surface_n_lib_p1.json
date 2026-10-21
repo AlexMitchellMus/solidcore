@@ -523,6 +523,278 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "surf1_coons_bicubic_deriv0_start_direction_off",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#0 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateCoonsPatch: N_SrfCoonsPatch input made compatible / twist correction warning) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:474))",
+      "values_compared": 127
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "surf1_coons_bicubic_deriv0_end_direction_off",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#1 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateCoonsPatch: N_SrfCoonsPatch input made compatible / twist correction warning) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:474))",
+      "values_compared": 127
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "surf1_coons_bicubic_deriv1_start_direction_off",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#2 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateCoonsPatch: N_SrfCoonsPatch input made compatible / twist correction warning) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:474))",
+      "values_compared": 127
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "surf1_coons_bicubic_deriv1_end_direction_off",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#3 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateCoonsPatch: N_SrfCoonsPatch input made compatible / twist correction warning) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:474))",
+      "values_compared": 127
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "surf1_coons_bicubic_deriv2_start_direction_off",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#4 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateCoonsPatch: N_SrfCoonsPatch input made compatible / twist correction warning) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:474))",
+      "values_compared": 127
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "surf1_coons_bicubic_deriv2_end_direction_off",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#5 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateCoonsPatch: N_SrfCoonsPatch input made compatible / twist correction warning) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:474))",
+      "values_compared": 127
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "surf1_coons_bicubic_deriv3_start_direction_off",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#6 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateCoonsPatch: N_SrfCoonsPatch input made compatible / twist correction warning) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:474))",
+      "values_compared": 127
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "surf1_coons_bicubic_deriv3_end_direction_off",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#7 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateCoonsPatch: N_SrfCoonsPatch input made compatible / twist correction warning) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:474))",
+      "values_compared": 127
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "surf1_coons_bilinear_incompatible_first_pair",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#8 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateCoonsPatch: N_SrfCoonsPatch input made compatible / twist correction warning) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:433))",
+      "values_compared": 152
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "surf1_coons_bicubic_incompatible_first_pair",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#9 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateCoonsPatch: N_SrfCoonsPatch input made compatible / twist correction warning) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:433))",
+      "values_compared": 152
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "surf1_coons_bicubic_incompatible_first_deriv",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#10 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateCoonsPatch: N_SrfCoonsPatch input made compatible / twist correction warning) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:433))",
+      "values_compared": 152
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "nsided_3_ders_all",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#11 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateNSidedPatch with cross-boundary derivative curves) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:1388))",
+      "values_compared": 536
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "nsided_3_ders_all_center",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#12 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateNSidedPatch with cross-boundary derivative curves) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:1388))",
+      "values_compared": 536
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "nsided_3_ders_alternate",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#13 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateNSidedPatch with cross-boundary derivative curves) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:1388))",
+      "values_compared": 640
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "nsided_3_ders_alternate_center",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#14 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateNSidedPatch with cross-boundary derivative curves) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:1388))",
+      "values_compared": 640
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "nsided_3_ders_lifted",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#15 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateNSidedPatch with cross-boundary derivative curves) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:1388))",
+      "values_compared": 398
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "nsided_3_ders_lifted_center",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#16 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateNSidedPatch with cross-boundary derivative curves) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:1388))",
+      "values_compared": 536
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "nsided_4_ders_all",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#17 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateNSidedPatch with cross-boundary derivative curves) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:1388))",
+      "values_compared": 713
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "nsided_4_ders_all_center",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#18 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateNSidedPatch with cross-boundary derivative curves) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:1388))",
+      "values_compared": 713
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "nsided_4_ders_alternate",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#19 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateNSidedPatch with cross-boundary derivative curves) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:1388))",
+      "values_compared": 713
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "nsided_4_ders_alternate_center",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#20 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateNSidedPatch with cross-boundary derivative curves) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:1388))",
+      "values_compared": 713
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "nsided_4_ders_lifted",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#21 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateNSidedPatch with cross-boundary derivative curves) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:1388))",
+      "values_compared": 713
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "nsided_4_ders_lifted_center",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#22 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateNSidedPatch with cross-boundary derivative curves) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:1388))",
+      "values_compared": 713
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "nsided_5_ders_all",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#23 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateNSidedPatch with cross-boundary derivative curves) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:1388))",
+      "values_compared": 890
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "nsided_5_ders_all_center",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#24 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateNSidedPatch with cross-boundary derivative curves) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:1388))",
+      "values_compared": 890
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "nsided_5_ders_alternate",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#25 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateNSidedPatch with cross-boundary derivative curves) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:1388))",
+      "values_compared": 890
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "nsided_5_ders_alternate_center",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#26 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateNSidedPatch with cross-boundary derivative curves) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:1388))",
+      "values_compared": 890
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "nsided_5_ders_lifted",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#27 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateNSidedPatch with cross-boundary derivative curves) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:1388))",
+      "values_compared": 890
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "nsided_5_ders_lifted_center",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#28 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateNSidedPatch with cross-boundary derivative curves) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:1388))",
+      "values_compared": 890
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "surf1_coons_bilinear_incompatible_bdry2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#29 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateCoonsPatch: N_SrfCoonsPatch input made compatible) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:436))",
+      "values_compared": 144
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "surf1_coons_bilinear_incompatible_bdry3",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#30 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateCoonsPatch: N_SrfCoonsPatch input made compatible) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:436))",
+      "values_compared": 144
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "surf1_coons_bicubic_incompatible_bdry2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#31 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateCoonsPatch: N_SrfCoonsPatch input made compatible) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:436))",
+      "values_compared": 144
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "surf1_coons_bicubic_incompatible_bdry3",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#32 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateCoonsPatch: N_SrfCoonsPatch input made compatible) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:436))",
+      "values_compared": 144
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "surf1_coons_bicubic_incompatible_deriv2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_n_lib_p1/coverage.json#33 (upstream source/SMLib/src/SmBSplineSurfaceNLib.cpp (CreateCoonsPatch: N_SrfCoonsPatch input made compatible) (coverage: nurbs/b_spline_surface_n_lib/p1.rs:436))",
+      "values_compared": 144
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -5325,8 +5597,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 665,
-  "cases_total": 665,
+  "cases_passed": 699,
+  "cases_total": 699,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

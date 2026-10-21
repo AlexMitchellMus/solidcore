@@ -475,6 +475,62 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "extract_double_exponent_1e5_2p5E3_7e0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.database_io/coverage.json#0 (upstream libstdc++ std::istream >> double via source/SMLib/src/SmDatabaseIO.cpp (exponent without sign) (coverage: topology/database_io.rs:578))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "extract_double_exponent_m3p25e12x",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.database_io/coverage.json#1 (upstream libstdc++ std::istream >> double via source/SMLib/src/SmDatabaseIO.cpp (exponent without sign) (coverage: topology/database_io.rs:578))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "extract_double_exponent_6E_4",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.database_io/coverage.json#2 (upstream libstdc++ std::istream >> double via source/SMLib/src/SmDatabaseIO.cpp (exponent without sign) (coverage: topology/database_io.rs:578))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "extract_double_exponent_1pe7_p5e2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.database_io/coverage.json#3 (upstream libstdc++ std::istream >> double via source/SMLib/src/SmDatabaseIO.cpp (exponent without sign) (coverage: topology/database_io.rs:578))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "extract_word_at_end_6",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.database_io/coverage.json#4 (upstream source/SMLib/src/SmDatabaseIO.cpp (word extraction at end of input fails the stream) (coverage: topology/database_io.rs:388))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "extract_word_at_end_0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.database_io/coverage.json#5 (upstream source/SMLib/src/SmDatabaseIO.cpp (word extraction at end of input fails the stream) (coverage: topology/database_io.rs:388))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "extract_word_at_end_5",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/topology.database_io/coverage.json#6 (upstream source/SMLib/src/SmDatabaseIO.cpp (word extraction at end of input fails the stream) (coverage: topology/database_io.rs:388))",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -16477,8 +16533,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 2059,
-  "cases_total": 2059,
+  "cases_passed": 2066,
+  "cases_total": 2066,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

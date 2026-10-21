@@ -2259,6 +2259,358 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "through_uv_case2_before_start_notan_A",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#0 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case2_before_start_notan_AB_uvp",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#1 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 192
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case2_before_start_tan_A",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#2 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case2_before_start_tan_AB_uvp",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#3 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 192
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case3_first_span_bottom_notan_A",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#4 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case3_first_span_bottom_notan_AB_uvp",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#5 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 192
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case3_first_span_bottom_tan_A",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#6 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case3_first_span_bottom_tan_AB_uvp",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#7 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 192
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case5_top_of_span1_notan_A",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#8 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case5_top_of_span1_notan_AB_uvp",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#9 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 192
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case5_top_of_span1_tan_A",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#10 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case5_top_of_span1_tan_AB_uvp",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#11 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 192
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case5_bottom_of_span2_notan_A",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#12 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case5_bottom_of_span2_notan_AB_uvp",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#13 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 192
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case5_bottom_of_span2_tan_A",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#14 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case5_bottom_of_span2_tan_AB_uvp",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#15 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 192
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case5_at_knot_notan_A",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#16 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case5_at_knot_notan_AB_uvp",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#17 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 192
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case5_at_knot_tan_A",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#18 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case5_at_knot_tan_AB_uvp",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#19 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 192
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case5_top_of_span2_notan_A",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#20 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case5_top_of_span2_notan_AB_uvp",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#21 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 192
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case5_top_of_span2_tan_A",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#22 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case5_top_of_span2_tan_AB_uvp",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#23 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 192
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case6_last_span_top_notan_A",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#24 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case6_last_span_top_notan_AB_uvp",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#25 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 192
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case6_last_span_top_tan_A",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#26 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case6_last_span_top_tan_AB_uvp",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#27 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 192
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case7_after_end_notan_A",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#28 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case7_after_end_notan_AB_uvp",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#29 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 192
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case7_after_end_tan_A",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#30 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case7_after_end_tan_AB_uvp",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#31 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 192
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case6_at_end_notan_A",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#32 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case6_at_end_notan_AB_uvp",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#33 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 192
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case6_at_end_tan_A",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#34 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 129
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_case6_at_end_tan_AB_uvp",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#35 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1921 (coverage: nurbs/b_spline_curve_n_lib.rs:1187))",
+      "values_compared": 192
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_off_surface_inside",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#36 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1940 (coverage: nurbs/b_spline_curve_n_lib.rs:1220))",
+      "values_compared": 127
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "through_uv_off_surface_before_start",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#37 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp:1940 (coverage: nurbs/b_spline_curve_n_lib.rs:1220))",
+      "values_compared": 127
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "crvToOffset_trim_near_ends_-46.999999998_-5e-11_mode0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#38 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp (SmBSplineCurve::Trim, no-work return when both ends snap to the end knots) (coverage: nurbs/b_spline_curve_n_lib.rs:2100))",
+      "values_compared": 490
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "crvToOffset_trim_near_ends_-46.999999998_-5e-11_mode1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#39 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp (SmBSplineCurve::Trim, no-work return when both ends snap to the end knots) (coverage: nurbs/b_spline_curve_n_lib.rs:2100))",
+      "values_compared": 490
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "closedCurve_trim_near_ends_5e-11_6.9999999995_mode0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#40 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp (SmBSplineCurve::Trim, no-work return when both ends snap to the end knots) (coverage: nurbs/b_spline_curve_n_lib.rs:2100))",
+      "values_compared": 66
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "closedCurve_trim_near_ends_5e-11_6.9999999995_mode1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#41 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp (SmBSplineCurve::Trim, no-work return when both ends snap to the end knots) (coverage: nurbs/b_spline_curve_n_lib.rs:2100))",
+      "values_compared": 66
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "crvToOffset_trim_near_ends_-46.999999996_-9e-11_mode0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#42 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp (SmBSplineCurve::Trim, no-work return when both ends snap to the end knots) (coverage: nurbs/b_spline_curve_n_lib.rs:2100))",
+      "values_compared": 490
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "crvToOffset_trim_near_ends_-46.999999996_-9e-11_mode1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_n_lib/coverage.json#43 (upstream source/SMLib/src/SmBSplineCurveNLib.cpp (SmBSplineCurve::Trim, no-work return when both ends snap to the end knots) (coverage: nurbs/b_spline_curve_n_lib.rs:2100))",
+      "values_compared": 490
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -18261,8 +18613,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 2282,
-  "cases_total": 2282,
+  "cases_passed": 2326,
+  "cases_total": 2326,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

@@ -572,6 +572,102 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "ssi_near_coincident_end_plus_interior_0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/geom.geom_utility_p2/coverage.json#0 (upstream source/SMLib/src/SmGeomUtility.cpp (smgu_SegmentSegmentIntersect: one end point found, interior point kept as second point) (coverage: geom/geom_utility/p2.rs:661))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ssi_near_coincident_end_plus_interior_0_swapped",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/geom.geom_utility_p2/coverage.json#1 (upstream source/SMLib/src/SmGeomUtility.cpp (smgu_SegmentSegmentIntersect: one end point found, interior point kept as second point) (coverage: geom/geom_utility/p2.rs:661))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ssi_near_coincident_end_plus_interior_1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/geom.geom_utility_p2/coverage.json#2 (upstream source/SMLib/src/SmGeomUtility.cpp (smgu_SegmentSegmentIntersect: one end point found, interior point kept as second point) (coverage: geom/geom_utility/p2.rs:661))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ssi_near_coincident_end_plus_interior_1_swapped",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/geom.geom_utility_p2/coverage.json#3 (upstream source/SMLib/src/SmGeomUtility.cpp (smgu_SegmentSegmentIntersect: one end point found, interior point kept as second point) (coverage: geom/geom_utility/p2.rs:661))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ssi_near_coincident_end_plus_interior_2",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/geom.geom_utility_p2/coverage.json#4 (upstream source/SMLib/src/SmGeomUtility.cpp (smgu_SegmentSegmentIntersect: one end point found, interior point kept as second point) (coverage: geom/geom_utility/p2.rs:661))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ssi_near_coincident_end_plus_interior_2_swapped",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/geom.geom_utility_p2/coverage.json#5 (upstream source/SMLib/src/SmGeomUtility.cpp (smgu_SegmentSegmentIntersect: one end point found, interior point kept as second point) (coverage: geom/geom_utility/p2.rs:661))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ssi_near_coincident_end_plus_interior_3",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/geom.geom_utility_p2/coverage.json#6 (upstream source/SMLib/src/SmGeomUtility.cpp (smgu_SegmentSegmentIntersect: one end point found, interior point kept as second point) (coverage: geom/geom_utility/p2.rs:661))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ssi_near_coincident_end_plus_interior_3_swapped",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/geom.geom_utility_p2/coverage.json#7 (upstream source/SMLib/src/SmGeomUtility.cpp (smgu_SegmentSegmentIntersect: one end point found, interior point kept as second point) (coverage: geom/geom_utility/p2.rs:661))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ssi_near_coincident_end_plus_interior_4",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/geom.geom_utility_p2/coverage.json#8 (upstream source/SMLib/src/SmGeomUtility.cpp (smgu_SegmentSegmentIntersect: one end point found, interior point kept as second point) (coverage: geom/geom_utility/p2.rs:661))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ssi_near_coincident_end_plus_interior_4_swapped",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/geom.geom_utility_p2/coverage.json#9 (upstream source/SMLib/src/SmGeomUtility.cpp (smgu_SegmentSegmentIntersect: one end point found, interior point kept as second point) (coverage: geom/geom_utility/p2.rs:661))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ssi_near_coincident_end_plus_interior_5",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/geom.geom_utility_p2/coverage.json#10 (upstream source/SMLib/src/SmGeomUtility.cpp (smgu_SegmentSegmentIntersect: one end point found, interior point kept as second point) (coverage: geom/geom_utility/p2.rs:661))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ssi_near_coincident_end_plus_interior_5_swapped",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/geom.geom_utility_p2/coverage.json#11 (upstream source/SMLib/src/SmGeomUtility.cpp (smgu_SegmentSegmentIntersect: one end point found, interior point kept as second point) (coverage: geom/geom_utility/p2.rs:661))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -26336,8 +26432,8 @@
   "cases_both_errored": 171,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 3270,
-  "cases_total": 3270,
+  "cases_passed": 3282,
+  "cases_total": 3282,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

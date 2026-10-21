@@ -515,6 +515,390 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot0_flip000",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#0 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot0_flip001",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#1 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot0_flip010",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#2 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot0_flip011",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#3 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot0_flip100",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#4 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot0_flip101",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#5 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot0_flip110",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#6 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot0_flip111",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#7 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot1_flip000",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#8 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot1_flip001",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#9 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot1_flip010",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#10 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot1_flip011",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#11 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot1_flip100",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#12 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot1_flip101",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#13 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot1_flip110",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#14 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot1_flip111",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#15 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot2_flip000",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#16 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot2_flip001",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#17 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot2_flip010",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#18 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot2_flip011",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#19 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot2_flip100",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#20 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot2_flip101",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#21 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot2_flip110",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#22 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_octant120_rot2_flip111",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#23 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot0_flip000",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#24 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot0_flip001",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#25 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot0_flip010",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#26 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot0_flip011",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#27 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot0_flip100",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#28 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot0_flip101",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#29 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot0_flip110",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#30 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot0_flip111",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#31 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot1_flip000",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#32 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot1_flip001",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#33 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot1_flip010",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#34 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot1_flip011",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#35 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot1_flip100",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#36 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot1_flip101",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#37 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot1_flip110",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#38 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot1_flip111",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#39 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot2_flip000",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#40 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot2_flip001",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#41 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot2_flip010",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#42 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot2_flip011",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#43 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot2_flip100",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#44 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot2_flip101",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#45 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot2_flip110",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#46 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "sphere_tri_120_104_60_rot2_flip111",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_surface_p2/coverage.json#47 (upstream source/SMLib/src/SmBSplineSurface.cpp (SmBSplineSurface::CreateSphereFrom3Arcs: largest-arc choice and end point coincidence branches, arcs of three different spans) (coverage: nurbs/b_spline_surface/p2.rs:519))",
+      "values_compared": 94
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -6117,8 +6501,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 764,
-  "cases_total": 764,
+  "cases_passed": 812,
+  "cases_total": 812,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

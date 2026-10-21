@@ -2627,6 +2627,54 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "offset_arc_inward_past_center",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_p2/coverage.json#0 (upstream source/SMLib/src/SmBSplineCurve.cpp (SmBSplineCurve::CreateSimpleOffset, arc offset with negative / degenerate radius) (coverage: nurbs/b_spline_curve/p2.rs:1118))",
+      "values_compared": 57
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "offset_arc_inward_to_center",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_p2/coverage.json#1 (upstream source/SMLib/src/SmBSplineCurve.cpp (SmBSplineCurve::CreateSimpleOffset, arc offset with negative / degenerate radius) (coverage: nurbs/b_spline_curve/p2.rs:1118))",
+      "values_compared": 51
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "offset_arc_inward_below_tol",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_p2/coverage.json#2 (upstream source/SMLib/src/SmBSplineCurve.cpp (SmBSplineCurve::CreateSimpleOffset, arc offset with negative / degenerate radius) (coverage: nurbs/b_spline_curve/p2.rs:1118))",
+      "values_compared": 51
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "offset_arc_negative_distance_past_center",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_p2/coverage.json#3 (upstream source/SMLib/src/SmBSplineCurve.cpp (SmBSplineCurve::CreateSimpleOffset, arc offset with negative / degenerate radius) (coverage: nurbs/b_spline_curve/p2.rs:1118))",
+      "values_compared": 57
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "offset_arc_inward_just_above_tol",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_p2/coverage.json#4 (upstream source/SMLib/src/SmBSplineCurve.cpp (SmBSplineCurve::CreateSimpleOffset, arc offset with negative / degenerate radius) (coverage: nurbs/b_spline_curve/p2.rs:1118))",
+      "values_compared": 57
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "offset_arc_inward_far_past_center",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.b_spline_curve_p2/coverage.json#5 (upstream source/SMLib/src/SmBSplineCurve.cpp (SmBSplineCurve::CreateSimpleOffset, arc offset with negative / degenerate radius) (coverage: nurbs/b_spline_curve/p2.rs:1118))",
+      "values_compared": 57
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -18629,8 +18677,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 2328,
-  "cases_total": 2328,
+  "cases_passed": 2334,
+  "cases_total": 2334,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

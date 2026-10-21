@@ -8715,6 +8715,198 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "DropCurveCurve_global_max_1_tol0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#0 (upstream source/SMLib/src/SmNurbsCrv.cpp:2873 (sm_BasisFindGlobalMax: no convergence after itl refinements) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "DropCurveCurve_span_maxima_1_tol0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#1 (upstream source/SMLib/src/SmNurbsCrv.cpp:2033 (sm_BasisFindAllSpanMaxima: the global maximum does not converge) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "DropCurveCurve_global_max_1_tol-1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#2 (upstream source/SMLib/src/SmNurbsCrv.cpp:2873 (sm_BasisFindGlobalMax: no convergence after itl refinements) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 3
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "DropCurveCurve_span_maxima_1_tol-1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#3 (upstream source/SMLib/src/SmNurbsCrv.cpp:2033 (sm_BasisFindAllSpanMaxima: the global maximum does not converge) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 6
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "DropCurveCurve_global_max_3_tol0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#4 (upstream source/SMLib/src/SmNurbsCrv.cpp:2873 (sm_BasisFindGlobalMax: no convergence after itl refinements) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "DropCurveCurve_span_maxima_3_tol0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#5 (upstream source/SMLib/src/SmNurbsCrv.cpp:2033 (sm_BasisFindAllSpanMaxima: the global maximum does not converge) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "DropCurveCurve_global_max_3_tol-1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#6 (upstream source/SMLib/src/SmNurbsCrv.cpp:2873 (sm_BasisFindGlobalMax: no convergence after itl refinements) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "DropCurveCurve_span_maxima_3_tol-1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#7 (upstream source/SMLib/src/SmNurbsCrv.cpp:2033 (sm_BasisFindAllSpanMaxima: the global maximum does not converge) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "closedCurve_global_max_1_tol0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#8 (upstream source/SMLib/src/SmNurbsCrv.cpp:2873 (sm_BasisFindGlobalMax: no convergence after itl refinements) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "closedCurve_span_maxima_1_tol0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#9 (upstream source/SMLib/src/SmNurbsCrv.cpp:2033 (sm_BasisFindAllSpanMaxima: the global maximum does not converge) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "closedCurve_global_max_1_tol-1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#10 (upstream source/SMLib/src/SmNurbsCrv.cpp:2873 (sm_BasisFindGlobalMax: no convergence after itl refinements) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "closedCurve_span_maxima_1_tol-1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#11 (upstream source/SMLib/src/SmNurbsCrv.cpp:2033 (sm_BasisFindAllSpanMaxima: the global maximum does not converge) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "closedCurve_global_max_3_tol0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#12 (upstream source/SMLib/src/SmNurbsCrv.cpp:2873 (sm_BasisFindGlobalMax: no convergence after itl refinements) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "closedCurve_span_maxima_3_tol0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#13 (upstream source/SMLib/src/SmNurbsCrv.cpp:2033 (sm_BasisFindAllSpanMaxima: the global maximum does not converge) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "closedCurve_global_max_3_tol-1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#14 (upstream source/SMLib/src/SmNurbsCrv.cpp:2873 (sm_BasisFindGlobalMax: no convergence after itl refinements) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "closedCurve_span_maxima_3_tol-1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#15 (upstream source/SMLib/src/SmNurbsCrv.cpp:2033 (sm_BasisFindAllSpanMaxima: the global maximum does not converge) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "crvToOffset_global_max_1_tol0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#16 (upstream source/SMLib/src/SmNurbsCrv.cpp:2873 (sm_BasisFindGlobalMax: no convergence after itl refinements) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "crvToOffset_span_maxima_1_tol0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#17 (upstream source/SMLib/src/SmNurbsCrv.cpp:2033 (sm_BasisFindAllSpanMaxima: the global maximum does not converge) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "crvToOffset_global_max_1_tol-1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#18 (upstream source/SMLib/src/SmNurbsCrv.cpp:2873 (sm_BasisFindGlobalMax: no convergence after itl refinements) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "crvToOffset_span_maxima_1_tol-1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#19 (upstream source/SMLib/src/SmNurbsCrv.cpp:2033 (sm_BasisFindAllSpanMaxima: the global maximum does not converge) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "crvToOffset_global_max_3_tol0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#20 (upstream source/SMLib/src/SmNurbsCrv.cpp:2873 (sm_BasisFindGlobalMax: no convergence after itl refinements) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "crvToOffset_span_maxima_3_tol0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#21 (upstream source/SMLib/src/SmNurbsCrv.cpp:2033 (sm_BasisFindAllSpanMaxima: the global maximum does not converge) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "crvToOffset_global_max_3_tol-1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#22 (upstream source/SMLib/src/SmNurbsCrv.cpp:2873 (sm_BasisFindGlobalMax: no convergence after itl refinements) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "crvToOffset_span_maxima_3_tol-1",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/nurbs.nurbs_crv/coverage.json#23 (upstream source/SMLib/src/SmNurbsCrv.cpp:2033 (sm_BasisFindAllSpanMaxima: the global maximum does not converge) (coverage: nurbs/nurbs_crv.rs:1976))",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "gen0000",
       "outcome": "pass",
       "pass": true,
@@ -32717,8 +32909,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 4089,
-  "cases_total": 4089,
+  "cases_passed": 4113,
+  "cases_total": 4113,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,
