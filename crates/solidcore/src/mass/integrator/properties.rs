@@ -121,6 +121,7 @@ impl PropertyAttributes<'_> {
 
 /// `SmEdge::ComputePreciseProperties` on a live edge.
 pub fn edge_properties(
+    k: &Kernel,
     b: &Brep,
     e: EdgeId,
     accuracy: f64,
@@ -128,10 +129,11 @@ pub fn edge_properties(
     radius: f64,
 ) -> Result<EdgeProperties> {
     let curve = edge::curve(b, e)?.ok_or_else(|| SolidError::null_pointer(OP))?;
-    curve_properties(curve, &edge::interval(b, e)?, accuracy, origin, radius)
+    curve_properties(k, curve, &edge::interval(b, e)?, accuracy, origin, radius)
 }
 /// The precise edge integration on an already-bound curve and interval.
 pub fn curve_properties(
+    k: &Kernel,
     curve: &Curve,
     interval: &Extent1d,
     accuracy: f64,
@@ -139,7 +141,7 @@ pub fn curve_properties(
     radius: f64,
 ) -> Result<EdgeProperties> {
     let eval = edge::OdeEdgeLength::new(curve, origin, radius);
-    let approx = curve.approximate_length(interval, 10, false)?.0;
+    let approx = curve.approximate_length(k, interval, 10, false)?.0;
     let mut y = [0.0; 27];
     let mut scale = [BIG_DOUBLE; 27];
     if let Some(s) = scale.first_mut() {
@@ -157,7 +159,7 @@ pub fn curve_properties(
             scale: Some(&scale),
         },
         |t, _, dy| {
-            eval.evaluate(t, &mut scratch)?;
+            eval.evaluate(k, t, &mut scratch)?;
             for (d, v) in dy.iter_mut().zip(scratch.iter().skip(1)) {
                 *d = *v;
             }
@@ -307,7 +309,7 @@ pub fn boundary_properties(
                         for (s, d) in scratch.iter_mut().skip(1).zip(dy.iter()) {
                             *s = *d;
                         }
-                        eval.evaluate(t, &mut scratch)?;
+                        eval.evaluate(k, t, &mut scratch)?;
                         for (d, v) in dy.iter_mut().zip(scratch.iter().skip(1)) {
                             *d = *v;
                         }
@@ -371,12 +373,8 @@ fn vertices(b: &Brep) -> Result<Vec<VertexId>> {
 fn region_void(b: &Brep, r: RegionId) -> Result<bool> {
     Ok(b.region(r)?.is_void() != 0)
 }
-fn manifold_solid(_b: &Brep) -> Result<bool> {
-    // UNPORTED(topology.brep_p2): SmBrep::IsManifoldSolid
-    Err(SolidError::unported(
-        "SmBrep::IsManifoldSolid",
-        "topology.brep_p2",
-    ))
+fn manifold_solid(b: &Brep) -> Result<bool> {
+    crate::topology::brep::p2::is_manifold_solid(b)
 }
 fn add(total: &mut PreciseProperties, delta: &PreciseProperties, density: f64) {
     total.area += delta.area;
@@ -491,7 +489,7 @@ pub fn brep_properties(
             EntityRef::Edge(e),
             Vec3::new(behavior.density, behavior.edge_radius, 0.0),
         )?;
-        let delta = edge_properties(b, e, accuracy, origin, mass.y)?;
+        let delta = edge_properties(k, b, e, accuracy, origin, mass.y)?;
         if mass.x < EFF_ZERO {
             mass.x = 1.0;
         }
