@@ -322,6 +322,21 @@ pub fn create_rectangle(
     Ok(brep)
 }
 
+// CreateCircle ignores the segment-constructor status (SE) and tests pCircle.
+// An unavailable port must remain visible; a failed native allocation/geometry
+// instead yields the static constructor's null result and its SM_ERR status.
+fn circle_error(error: SolidError) -> SolidError {
+    if error.is_unported() {
+        error
+    } else {
+        SolidError::sm_err("primitive::primitive_creation::p1::create_circle")
+    }
+}
+fn circle_curve(radius: f64, frame: &Axis2Placement) -> Result<BSplineCurve> {
+    BSplineCurve::create_circle_segment(3, frame, radius, 0.0, 360.0, NurbCircleParam::Quadratic)
+        .map_err(circle_error)
+}
+
 /// Static circular-face constructor. `tolerance` is passed to the planarity
 /// check; it does not replace the context's B-rep tolerance.
 pub fn create_circle(
@@ -331,22 +346,11 @@ pub fn create_circle(
     frame: &Axis2Placement,
 ) -> Result<Brep> {
     let mut brep = new_brep(k)?;
-    let circle = BSplineCurve::create_circle_segment(
-        3,
-        frame,
-        radius,
-        0.0,
-        360.0,
-        NurbCircleParam::Quadratic,
-    )?;
+    let circle = circle_curve(radius, frame)?;
     brep.set_editing_enabled(true);
     let region = brep.infinite_region();
     if let Err(error) = planar_face(k, &mut brep, region, vec![Curve::from(circle)], tolerance) {
-        return Err(if error.is_unported() {
-            error
-        } else {
-            SolidError::sm_err("primitive::primitive_creation::p1::create_circle")
-        });
+        return Err(circle_error(error));
     }
     brep.set_editing_enabled(false);
     Ok(brep)
@@ -1201,6 +1205,27 @@ mod tests {
         face.surface = Some(Surface::from(plane));
         b.add_face_record(face).unwrap();
         b
+    }
+
+    #[test]
+    fn failed_static_circle_geometry_reports_native_sm_err() {
+        let frame = Axis2Placement::default();
+        for radius in [-1.0, 0.0, EFF_ZERO * 0.5] {
+            let error = circle_curve(radius, &frame).unwrap_err();
+            assert!(matches!(
+                error,
+                SolidError::Upstream {
+                    operation: "primitive::primitive_creation::p1::create_circle",
+                    code: crate::error::SM_ERR,
+                    ..
+                }
+            ));
+        }
+        let circle = circle_curve(0.5, &frame).unwrap();
+        let point = circle
+            .evaluate_point(circle.natural_interval().min())
+            .unwrap();
+        assert_eq!(point, Vec3::new(0.5, 0.0, 0.0));
     }
 
     #[test]

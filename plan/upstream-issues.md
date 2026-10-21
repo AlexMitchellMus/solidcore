@@ -3196,6 +3196,44 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** docs / debug assertion.
 - **Rust port:** Matches release C++ rather than enforcing the assertion; derivative orders remain bounded to 3.
 
+
+#### `ST_curxcdr` G1 fallback reads a third point of a two-point line (primitive.primitive_creation_p1, PR #213)
+
+- **Location:** `source/SMLib/src/NL_CrvAdv.cpp:999-1006,1077-1084`.
+- **Trigger:** a two-control-point line whose endpoint difference cannot be
+  normalized by `N_VectorNormalize`, then G1 extension at the affected end.
+  Finite coordinates around `1e300` overflow the computed vector magnitude.
+  The fallback reads `Pw[2]` at the start or `Pw[n-2]` (index -1) at the end.
+- **Found by:** the primitive path helper's 1,000-case FFI fuzz run (cases 427,
+  670, 689 and 919), initially reporting history-dependent garbage extension
+  intervals instead of Rust's checked error/unchanged curve.
+- **Confirmation:** the linked native `N_VectorNormalize` fails for those exact
+  two points; source inspection then proves the next read is out of bounds.
+  The revised shim prevents that read by preflighting only extension stages
+  actually selected by the upstream join and closed/periodic decisions. Huge
+  single lines that are not extended remain accepted. Rejected cases are
+  excluded from parity. The Rust NLib port already bounds its fallback lookup.
+
+## CreateLinearSweep: negative full-circle distance does not terminate (PR #213 review, 2026-10-19)
+
+- Location: `source/SMLib/src/SmPrimitiveCreation.cpp:1290-1360`, the full-circle
+  analytic-cylinder branch at `SmCone::AdjustSTEPUVDomain`, before face construction.
+- Trigger: one unit circular B-spline or analytic SmCircle in XY, sweep direction +Z, distance -1,
+  with or without end caps. Positive and zero distances finish; negative line,
+  skew-line and open-arc sweeps also finish.
+- Found by new PR #213 review fixtures `linear_circle_cap{0,1}_distance-1`; the analytic generator family adds two further rejected witnesses.
+  Confirmed by the native shim running the included upstream implementation:
+  both isolated cases exceeded the 10/5-second limits; the combined run ran
+  for over a minute without completing. An interrupted GDB run locates the loop
+  in `N_CreateEllipticalArcAngTypeTol` via `SmEllipse::MakeNurb`,
+  `SmCone::CreateIsoParametricCurve`, `SmSurfOfRevolution::RebuildPolarConverter`,
+  `Reparameterize` and `SmCone::AdjustSTEPUVDomain`. Rust reaches its face-construction
+  dependency, so these are rejected native fixtures, not parity comparisons.
+- The shim preflight repeats the upstream full-circle angular/tolerance and
+  axis-parallel tests and rejects only negative-distance inputs selecting that
+  cylinder branch. No kernel tolerance is changed and negative line/open-arc
+  fixtures remain accepted.
+
 #### UB-188. `BooleanTrees` trusts executed leaf indices and binary operand pointers
 
 - **Unit:** `boolean.merge_p3` (PR #245).
@@ -3269,39 +3307,3 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** crash/UB (virtual call through a mistyped pointer).
 - **Related:** WR-208 (the same `m_vVertexCornerMap` arrays leak for vertices without a corner).
 - **Rust port:** `ExecutiveAccess::solver_corner` yields `None` for a vertex without a corner, so the walk returns `SM_ERR_NULL_POINTER` (upstream's `NER`) instead.
-#### `ST_curxcdr` G1 fallback reads a third point of a two-point line (primitive.primitive_creation_p1, PR #213)
-
-- **Location:** `source/SMLib/src/NL_CrvAdv.cpp:999-1006,1077-1084`.
-- **Trigger:** a two-control-point line whose endpoint difference cannot be
-  normalized by `N_VectorNormalize`, then G1 extension at the affected end.
-  Finite coordinates around `1e300` overflow the computed vector magnitude.
-  The fallback reads `Pw[2]` at the start or `Pw[n-2]` (index -1) at the end.
-- **Found by:** the primitive path helper's 1,000-case FFI fuzz run (cases 427,
-  670, 689 and 919), initially reporting history-dependent garbage extension
-  intervals instead of Rust's checked error/unchanged curve.
-- **Confirmation:** the linked native `N_VectorNormalize` fails for those exact
-  two points; source inspection then proves the next read is out of bounds.
-  The revised shim prevents that read by preflighting only extension stages
-  actually selected by the upstream join and closed/periodic decisions. Huge
-  single lines that are not extended remain accepted. Rejected cases are
-  excluded from parity. The Rust NLib port already bounds its fallback lookup.
-
-## CreateLinearSweep: negative full-circle distance does not terminate (PR #213 review, 2026-10-19)
-
-- Location: `source/SMLib/src/SmPrimitiveCreation.cpp:1290-1360`, the full-circle
-  analytic-cylinder branch at `SmCone::AdjustSTEPUVDomain`, before face construction.
-- Trigger: one unit circular B-spline or analytic SmCircle in XY, sweep direction +Z, distance -1,
-  with or without end caps. Positive and zero distances finish; negative line,
-  skew-line and open-arc sweeps also finish.
-- Found by new PR #213 review fixtures `linear_circle_cap{0,1}_distance-1`; the analytic generator family adds two further rejected witnesses.
-  Confirmed by the native shim running the included upstream implementation:
-  both isolated cases exceeded the 10/5-second limits; the combined run ran
-  for over a minute without completing. An interrupted GDB run locates the loop
-  in `N_CreateEllipticalArcAngTypeTol` via `SmEllipse::MakeNurb`,
-  `SmCone::CreateIsoParametricCurve`, `SmSurfOfRevolution::RebuildPolarConverter`,
-  `Reparameterize` and `SmCone::AdjustSTEPUVDomain`. Rust reaches its face-construction
-  dependency, so these are rejected native fixtures, not parity comparisons.
-- The shim preflight repeats the upstream full-circle angular/tolerance and
-  axis-parallel tests and rejects only negative-distance inputs selecting that
-  cylinder branch. No kernel tolerance is changed and negative line/open-arc
-  fixtures remain accepted.

@@ -1,7 +1,7 @@
 # solidcore status
 
 Last updated: 2026-10-20, PR #250 review fixes (`primitive.primitive_creation_p2` partial: 129 bit-identical passes, 169 deferred, 13 guarded rejections). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
-Last updated: 2026-10-19, PR #233 second review (`primitive.primitive_creation_p3` partial: 284 bit-identical passes, 8 deferred, 1 UB-78 rejection). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
+Last updated: 2026-10-21, PR #233 dependency integration (`primitive.primitive_creation_p3` partial: 285 exact passes, 10 deferred, 1 rejected native fixture). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
 Latest port: `primitive.primitive_creation_p2` ([PR #250](https://github.com/tangency-labs/solidcore/pull/250)) implements all twelve owned functions through `PrimitiveCreationAccess`, stacked on #233. Native comparisons certify the entry checks and the state they leave; construction tails await the B-rep units. Building the harness found UB-215, HANG-35 and WR-191. See the final validation entry below.
 
@@ -12,7 +12,15 @@ Previous port integration: `sweep.topology_sweep` ([PR #222](https://github.com/
 
 Last updated: 2026-10-17, PR #213 (`primitive.primitive_creation_p1` partial: 661 bit-identical passes, 17 dependency deferrals, one UB-57 construction preflight rejection). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
 
+Last updated: 2026-10-19, PR #213 review (`primitive.primitive_creation_p1` partial: 689 exact passes, 75 dependency deferrals, 9 rejected native fixtures). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
+
 Last updated: 2026-10-20, PR #213 review (`primitive.primitive_creation_p1` partial: 689 exact passes, 75 dependency deferrals, 9 rejected native fixtures). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
+
+Last updated: 2026-10-20, PR #222 third review (`sweep.topology_sweep` partial: 558 passes, max_rel_err=0, 10 deferred, 0 rejected). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
+
+Latest port: `sweep.topology_sweep` ([PR #222](https://github.com/tangency-labs/solidcore/pull/222)) implements the complete sweep orchestration through an explicit `SweepAccess` service boundary. The 568-case gate compares maps, stitch-callback decisions and f64 distances, successful helper frames, options and edge-profile tags; topology creation and whole-B-rep/HCR/merge/stitch paths await dependencies and are not claimed as differential coverage. Safety regression tests cover failed traversal progress, temporary ownership, context restoration and consuming union across repetitions. Review integration wires available B-rep/shell queries, copying, face construction and binormal evaluation, calls the newly available part 9/5 constructors and edits, HCR, lamina queries and part 2 stitching with the sweep callback, and converts face/edge/vertex tolerances through the owning kernel. All 10 deferrals now reach `SmBrep::MakeWireEdgeVertex` in `topology.brep_p3`. A concrete production access adapter remains integration work, tracked in [issue #255](https://github.com/tangency-labs/solidcore/issues/255); see `plan/findings.md`.
+
+Review follow-up merges canonical main `bb137d7d`, preserving both findings sections and main's full part 7 notes plus the sweep API extension. The merge p3/p4 integration boundary remains coordinated with the unavailable `merge_p2` constructor; the two `SM_DEG2RAD` sites now match upstream grouping.
 
 Latest topology integration: `topology.brep_p6` partial (PR #169, after its dependency #154: 498 cases, 450 pass, 48 deferred, 0 failed; 206 units, 113 green and 93 partial); before: `topology.shell` partial (PR #154, continuing @0xlillith's PR #80: 192 ported units, 109 green and 83 partial); before: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green); before: `mass.integrator` partial and `curve.curve_p3` green (PR #119); PR #115 (`topology.brep_cache` partial). Update a summary line here when your unit changes it; per-unit state lives in `plan/modules.toml` and evidence in `reports/difftest/`.
 
@@ -1175,3 +1183,57 @@ Primitive p1 remains 773/689/0/75 with 9 rejected and zero relative error; the
 single former p9 deferral now reaches p2 `MakeShellVertexTopology`. All 689
 perturbations are detected. Format checks, plain/native Clippy, 1479 kernel
 tests, wasm32 and all five primitive FFI tests pass.
+
+
+### PR #213 API back-edge refresh (2026-10-20, main e5f3e441)
+
+All thirteen obsolete p1 tags in the SM_API primitive module are removed. Plane
+and disc call the p1 port with caller Kernel and native no-face checks; solid
+new-Brep paths report the actual constructor dependency. Blend uses the
+existing B-rep. Planar boolean cleanup forwards the caller NotifyEnv to p5.
+The API differential gate remains 1981 cases / 1445 exact passes / 536 deferred
+(surface.sphere 1, topology.brep_p3 448, topology.brep_p8 87) / 0 failed. P1
+remains 773 / 689 pass / 75 deferred / 9 rejected; its former p2 construction
+deferral now reaches p3, so p3 accounts for six deferrals. All seven affected
+gates have zero failures. Workspace tests (1530 kernel tests), fmt, plain/native
+Clippy, wasm32 and five p1 native FFI tests pass. Successful primitive topology
+and post-intersection mutations remain uncertified. Full gate and actual-head
+CI evidence are recorded in the PR discussion.
+
+
+### PR #233 face-box/current-main refresh (2026-10-20)
+
+Current main through `e4dd81c4` and the #213/#222 compatibility updates are
+integrated. Face bounding boxes call the real query port with tight=false and
+caller owner/face ids. HCR uses the owning mutable Kernel and edge blending
+uses the current same-Brep API. The face-box and empty linear-cap native-feature
+runner regressions pass; 1549 kernel tests, plain/native Clippy, wasm32 and five
+FFI regressions pass. All eight inherited sweep service regressions pass, including nonzero-owner
+shell-vertex queries in list order, empty cleanup success and open-loop
+validation after the landed topology/notification ports.
+
+All thirteen affected native gates pass every comparable case (maximum relative
+error zero), including the newly wired p2 shell-vertex query (1709 cases, 1437
+pass, 272 deferred). P3 remains 296 cases / 285 pass / 10 deferred at topology.brep_p8 /
+1 rejected. Sweep is 568 / 558 pass / 10 deferred at topology.brep_p3 / 0 rejected.
+The four newly comparable sweep cases certify the exported helper records and
+maps, not new vertex coordinates or complete B-rep topology. Primitive topology
+and successful nonempty stitch tails remain uncertified. Full local and
+actual-head CI results are recorded in the PR discussion.
+
+### PR #222 current-main compatibility refresh (2026-10-20)
+
+Main `e4dd81c4` is merged, preserving complete p5/p7 notes and sweep API
+extensions. HCR receives the owning mutable Kernel and shell-vertex queries
+use the real p2 getter with owner-scoped vertex-list order. All eight native-
+feature service regressions pass: distinct owner lists, shell allocation and
+point, foreign owner refusal, empty cleanup, open-loop rejection, copy blocker
+and stitch flag restoration. The native record does not export vertex points
+or full constructed B-rep topology; production adapter work remains in #255.
+
+Fresh native gates: sweep 568/558 pass/10 deferred (topology.brep_p3); p5
+797/738/59; p7 316/237/79; p9 684/638/46; p2 1709/1437/272; HCR 434/394/40.
+All six gates have zero failures and maximum relative error zero. Workspace
+tests (1535 kernel tests), fmt/include formatting, plain/native Clippy, wasm32
+and four native FFI regressions pass. The full gate and successful actual-head
+CI evidence are recorded in the PR discussion. No tolerance was relaxed.

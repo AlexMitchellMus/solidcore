@@ -252,6 +252,40 @@ impl SweepAccess for EmptyModel {
         // This fixture has one B-rep; no distinct pair can be resolved.
         unavailable()
     }
+    fn with_brep_notifications<T>(
+        &mut self,
+        id: BrepId,
+        body: impl FnOnce(&mut Brep, &mut solidcore::topology::edge::NotifyEnv<'_>) -> Result<T>,
+    ) -> Result<T> {
+        if id != BrepId::from_index(0) {
+            return unavailable();
+        }
+        let key_of = |entity: solidcore::EntityRef| {
+            if let solidcore::EntityRef::Face(face) = entity {
+                solidcore::geom::object::ObjectRef {
+                    type_code: solidcore::geom::assert_array::labels::FACE_TYPE,
+                    key: solidcore::geom::attribute::ObjectKey(
+                        100_000 + u64::from(face.index()) * 97,
+                    ),
+                }
+            } else {
+                super::boolean_topology_intersector_p1::p9_entity_ref(entity)
+            }
+        };
+        let mut env = solidcore::topology::edge::NotifyEnv {
+            records: &mut self.notification_records,
+            attributes: &mut self.notification_attributes,
+            context: Some(&mut self.k.context),
+            key_of: &key_of,
+        };
+        body(&mut self.b, &mut env)
+    }
+    fn retain_hcr(&mut self, _: BrepId, _: solidcore::blend::hcr::Hcr) -> Result<BrepId> {
+        unavailable()
+    }
+    fn hcr_session(&self, _: BrepId) -> Result<&solidcore::blend::hcr::Hcr> {
+        unavailable()
+    }
     fn new_brep(&mut self, _: BrepId) -> Result<BrepId> {
         unavailable()
     }
@@ -530,7 +564,28 @@ mod tests {
     use solidcore::sweep::topology_sweep::{TopologySweep, TopologySweepOptions};
 
     #[test]
-    fn linear_cap_stitch_calls_port_and_restores_caller_state() {
+    fn face_box_default_resolves_the_selected_face_and_uses_the_normal_box() {
+        let mut model = EmptyModel::new().unwrap();
+        let shell = model.b.add_shell().unwrap();
+        let _without_surface = model.b.add_face(shell).unwrap();
+        let selected = model.b.add_face(shell).unwrap();
+        let plane =
+            solidcore::surface::plane::Plane::create_canonical(&Axis2Placement::IDENTITY).unwrap();
+        model.b.face_mut(selected).unwrap().surface = Some(Surface::from(plane));
+        // A linear surface without trims has an empty normal box. The leading
+        // face has no surface, so resolving face zero would fail this check.
+        let bound = model
+            .primitive_face_box((BrepId::from_index(0), selected))
+            .unwrap();
+        assert_eq!(bound, solidcore::geom::extent3d::Extent3d::new());
+        assert!(matches!(
+            model.primitive_face_box((BrepId::from_index(1), selected)),
+            Err(SolidError::InvalidInput { .. })
+        ));
+    }
+
+    #[test]
+    fn linear_cap_stitch_completes_for_empty_brep_and_restores_caller_state() {
         let mut model = EmptyModel::new().unwrap();
         let mut sweep = TopologySweep::new(TopologySweepOptions::default());
         for editing in [false, true] {
@@ -538,13 +593,7 @@ mod tests {
                 model.b.set_editing_enabled(editing);
                 model.k.context.set_doing_boolean(doing_boolean);
                 let result = model.stitch_linear_caps(BrepId::from_index(0), &mut sweep, 0.125);
-                assert!(matches!(
-                    result,
-                    Err(SolidError::Unported {
-                        upstream: "SmBrep::Notify",
-                        unit: "topology.brep_p2",
-                    })
-                ));
+                assert!(result.is_ok(), "stitch result: {result:?}");
                 assert_eq!(model.b.editing_enabled(), editing);
                 assert_eq!(model.k.context.doing_boolean(), doing_boolean);
             }
