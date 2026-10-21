@@ -1088,8 +1088,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetUpwardLoopuses",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0115",
@@ -4297,8 +4297,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetUpwardLoopuses",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0477",
@@ -5573,8 +5573,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetUpwardLoopuses",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0627",
@@ -7406,9 +7406,9 @@
     "intersect.curve_class_p2": 12,
     "topology.brep_p1": 4,
     "topology.brep_p3": 8,
-    "topology.face_p2": 85,
+    "topology.face_p2": 88,
     "topology.face_p3": 12,
-    "topology.face_p4": 34
+    "topology.face_p4": 31
   },
   "max_rel_err": 0.0,
   "pass": true,

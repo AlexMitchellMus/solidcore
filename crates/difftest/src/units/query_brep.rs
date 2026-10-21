@@ -347,7 +347,7 @@ fn classify_point(m: &Model, i: &ClassifyIn) -> Result<Option<[f64; 3]>, Harness
             f.surface
                 .as_ref()
                 .ok_or_else(|| harness("face without surface"))?
-                .evaluate_point(uv)
+                .evaluate_point(&Kernel::default(), uv)
                 .map_err(|e| harness(format!("surface point: {e}")))?
         }
         At::Point { p } => Vec3::new(p[0], p[1], p[2]),
@@ -371,6 +371,7 @@ fn cpp_classify(i: &ClassifyIn) -> Result<Output, HarnessError> {
 fn rust_evaluate(i: &EvalIn) -> Result<Output, Fail> {
     let surface: Option<Surface> = i.surf.as_ref().map(surface_in).transpose()?;
     let uv = Point2::new(i.uv[0], i.uv[1]);
+    let k = Kernel::default();
     let mut out = i.sentinel.to_vec();
     let mut put = |at: usize, v: Vec3| {
         if let Some(slot) = out.get_mut(at..at + 3) {
@@ -379,12 +380,12 @@ fn rust_evaluate(i: &EvalIn) -> Result<Output, Fail> {
     };
     let code = match i.what {
         What::Point => {
-            st(qb::evaluate_surface_point(surface.as_ref(), uv))?.map(|p| put(P_AT, p))
+            st(qb::evaluate_surface_point(&k, surface.as_ref(), uv))?.map(|p| put(P_AT, p))
         }
         What::Normal => {
-            st(qb::evaluate_surface_normal(surface.as_ref(), uv))?.map(|n| put(P_AT, n))
+            st(qb::evaluate_surface_normal(&k, surface.as_ref(), uv))?.map(|n| put(P_AT, n))
         }
-        What::Derivatives => st(qb::evaluate_surface_derivatives(surface.as_ref(), uv))?.map(
+        What::Derivatives => st(qb::evaluate_surface_derivatives(&k, surface.as_ref(), uv))?.map(
             |(p, du, dv)| {
                 put(P_AT, p);
                 put(DU_AT, du);

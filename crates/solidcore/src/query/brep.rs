@@ -680,8 +680,8 @@ fn checked_surface<'s>(
 ///
 /// [`SolidError::InvalidInput`] without a surface or for a parameter outside (or NaN
 /// against) the surface's natural domain; those of [`Surface::evaluate_point`].
-pub fn evaluate_surface_point(surface: Option<&Surface>, uv: Point2) -> Result<Point3> {
-    checked_surface(surface, uv, OP_EVAL_POINT)?.evaluate_point(uv)
+pub fn evaluate_surface_point(k: &Kernel, surface: Option<&Surface>, uv: Point2) -> Result<Point3> {
+    checked_surface(surface, uv, OP_EVAL_POINT)?.evaluate_point(k, uv)
 }
 
 /// `SmApiEvaluateSurfaceNormal`: the unit normal of `surface` at `uv`, from the upper
@@ -691,8 +691,8 @@ pub fn evaluate_surface_point(surface: Option<&Surface>, uv: Point2) -> Result<P
 ///
 /// Those of [`evaluate_surface_point`]'s input checks; those of
 /// [`Surface::evaluate_normal`].
-pub fn evaluate_surface_normal(surface: Option<&Surface>, uv: Point2) -> Result<Vec3> {
-    checked_surface(surface, uv, OP_EVAL_NORMAL)?.evaluate_normal(uv, Side::Left, Side::Left)
+pub fn evaluate_surface_normal(k: &Kernel, surface: Option<&Surface>, uv: Point2) -> Result<Vec3> {
+    checked_surface(surface, uv, OP_EVAL_NORMAL)?.evaluate_normal(k, uv, Side::Left, Side::Left)
 }
 
 /// `SmApiEvaluateSurfaceDerivatives`: the point and first derivatives `(P, Du, Dv)` of
@@ -704,10 +704,11 @@ pub fn evaluate_surface_normal(surface: Option<&Surface>, uv: Point2) -> Result<
 /// Those of [`evaluate_surface_point`]'s input checks; those of
 /// [`Surface::evaluate_1st_derivatives`].
 pub fn evaluate_surface_derivatives(
+    k: &Kernel,
     surface: Option<&Surface>,
     uv: Point2,
 ) -> Result<(Point3, Vec3, Vec3)> {
-    checked_surface(surface, uv, OP_EVAL_DERIVS)?.evaluate_1st_derivatives(uv, true, true)
+    checked_surface(surface, uv, OP_EVAL_DERIVS)?.evaluate_1st_derivatives(k, uv, true, true)
 }
 
 // ---- polygon decimation attributes ---------------------------------------------------
@@ -875,16 +876,22 @@ mod tests {
 
     #[test]
     fn rejects_missing_surface_and_out_of_domain_parameters() {
+        let k = Kernel::default();
         let s = unit_plane();
         let bad = |r: Result<Point3>| matches!(r, Err(SolidError::InvalidInput { .. }));
-        assert!(bad(evaluate_surface_point(None, Point2::new(0.5, 0.5))));
-        assert!(bad(evaluate_surface_point(Some(&s), Point2::new(1.5, 0.5))));
+        assert!(bad(evaluate_surface_point(&k, None, Point2::new(0.5, 0.5))));
         assert!(bad(evaluate_surface_point(
+            &k,
+            Some(&s),
+            Point2::new(1.5, 0.5)
+        )));
+        assert!(bad(evaluate_surface_point(
+            &k,
             Some(&s),
             Point2::new(f64::NAN, 0.5)
         )));
         // the domain bounds are inside
-        assert!(evaluate_surface_point(Some(&s), Point2::new(1.0, 0.0)).is_ok());
+        assert!(evaluate_surface_point(&k, Some(&s), Point2::new(1.0, 0.0)).is_ok());
     }
 
     #[test]
@@ -1001,13 +1008,14 @@ mod tests {
 
     #[test]
     fn evaluates_a_plane() {
+        let k = Kernel::default();
         let s = unit_plane();
         let uv = Point2::new(0.25, 0.75);
-        let p = evaluate_surface_point(Some(&s), uv).unwrap();
+        let p = evaluate_surface_point(&k, Some(&s), uv).unwrap();
         assert_eq!((p.x, p.y, p.z), (0.25, 0.75, 0.0));
-        let n = evaluate_surface_normal(Some(&s), uv).unwrap();
+        let n = evaluate_surface_normal(&k, Some(&s), uv).unwrap();
         assert_eq!((n.x, n.y, n.z), (0.0, 0.0, 1.0));
-        let (q, du, dv) = evaluate_surface_derivatives(Some(&s), uv).unwrap();
+        let (q, du, dv) = evaluate_surface_derivatives(&k, Some(&s), uv).unwrap();
         assert_eq!((q.x, q.y, q.z), (p.x, p.y, p.z));
         assert_eq!(
             (du.x, du.y, du.z, dv.x, dv.y, dv.z),

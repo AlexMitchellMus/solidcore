@@ -479,8 +479,8 @@ pub fn create_wire_edge_from_curve(
     curve: Curve,
     interval: Extent1d,
 ) -> Result<EdgeId> {
-    let start = curve.evaluate_point(interval.min())?;
-    let end = curve.evaluate_point(interval.max())?;
+    let start = curve.evaluate_point(k, interval.min())?;
+    let end = curve.evaluate_point(k, interval.max())?;
     let region = b
         .infinite_region()
         .ok_or_else(|| SolidError::null_pointer(OP))?;
@@ -549,10 +549,10 @@ pub fn delete_topological_vertex_with_notifications(
         edge
     } else {
         let length1 = edge_curve(b, *first)?
-            .approximate_length(&b.edge(*first)?.interval, 5, false)?
+            .approximate_length(k, &b.edge(*first)?.interval, 5, false)?
             .0;
         let length2 = edge_curve(b, *last)?
-            .approximate_length(&b.edge(*last)?.interval, 5, false)?
+            .approximate_length(k, &b.edge(*last)?.interval, 5, false)?
             .0;
         if length2 < length1 {
             *last
@@ -634,7 +634,7 @@ pub fn delete_topological_vertex_with_notifications(
                             // Native ignores EvaluatePoint's status. Its defined
                             // SM_UNDEF_DOUBLE sentinel remains explicit when an ordinary evaluation fails.
                             let evaluated =
-                                crate::error::ignored(survive_curve.evaluate_point(far))?
+                                crate::error::ignored(survive_curve.evaluate_point(k, far))?
                                     .unwrap_or(Vec3::UNDEF);
                             if evaluated.closer_than(max_gap, point) {
                                 same_geometry = true;
@@ -763,6 +763,7 @@ fn join_copied_curves(
             owner,
         ),
         _ => bspline_curve_base_mut(survivor)?.join_with(
+            k,
             survivor_end,
             bspline_curve_base_mut(deleted)?,
             deleted_end,
@@ -1653,13 +1654,13 @@ pub fn remove_faces(
     result.and(released)
 }
 
-fn face_edges(_b: &Brep, _face: FaceId) -> Result<Vec<EdgeId>> {
-    // UNPORTED(topology.face_p4): SmFace::GetEdges
-    missing("SmFace::GetEdges", "topology.face_p4")
+/// `SmFace::GetEdges(rEdges)` (unit `topology.face_p4`; default arguments).
+fn face_edges(b: &Brep, face: FaceId) -> Result<Vec<EdgeId>> {
+    crate::topology::face::p4::edges(b, face, None, false, None)
 }
-fn face_vertices(_b: &Brep, _face: FaceId) -> Result<Vec<VertexId>> {
-    // UNPORTED(topology.face_p4): SmFace::GetVertices
-    missing("SmFace::GetVertices", "topology.face_p4")
+/// `SmFace::GetVertices(rVertices)` (unit `topology.face_p4`; default arguments).
+fn face_vertices(b: &Brep, face: FaceId) -> Result<Vec<VertexId>> {
+    crate::topology::face::p4::vertices(b, face, None, false, None)
 }
 
 /// Stitching and orientation options with the native defaults.
@@ -2176,6 +2177,12 @@ fn transformed_surface_base(
                 crate::error::ignore_status(revolution.make_nurb(k))?;
             }
             Some(revolution.base().clone())
+        }
+        SurfaceKind::Cone(cone) => {
+            if cone.rev().base().gw_nurb().is_none() {
+                crate::error::ignore_status(cone.make_nurb(k))?;
+            }
+            Some(cone.rev().base().clone())
         }
         SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
