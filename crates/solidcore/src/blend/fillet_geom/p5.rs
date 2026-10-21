@@ -649,8 +649,8 @@ impl FilletBrep {
         let curve = edge::curve(self.brep(), curr_edge)?
             .ok_or_else(|| SolidError::null_pointer(OP_INT_FILLET))?;
         let ivl = curve.natural_interval();
-        let pnt1 = curve.evaluate_point(ivl.min())?;
-        let pnt2 = curve.evaluate_point(ivl.max())?;
+        let pnt1 = curve.evaluate_point(k, ivl.min())?;
+        let pnt2 = curve.evaluate_point(k, ivl.max())?;
 
         // use xSect point closest to this vertex to set vertex position and 3dCurve
         // direction
@@ -1454,7 +1454,7 @@ impl FilletBrep {
             if found1 {
                 tangent1 = tangent1.unitize_or_z();
                 tangent1 *= dist;
-                uv_tan1 = drop_vector(&fillet_surface, p_start, tangent1)?;
+                uv_tan1 = drop_vector(k, &fillet_surface, p_start, tangent1)?;
                 if uv_tan1.y < 0.0 {
                     uv_tan1 = -uv_tan1;
                 }
@@ -1468,7 +1468,7 @@ impl FilletBrep {
             if found2 {
                 tangent2 = tangent2.unitize_or_z();
                 tangent2 *= dist;
-                uv_tan2 = drop_vector(&fillet_surface, p_end, tangent2)?;
+                uv_tan2 = drop_vector(k, &fillet_surface, p_end, tangent2)?;
                 if uv_tan2.y < 0.0 {
                     uv_tan2 = -uv_tan2;
                 }
@@ -1630,15 +1630,15 @@ impl FilletBrep {
 
             // Pick a point out in the middle.
             let param = trim_ivl.evaluate(0.34567);
-            let curve_pnt = rail_curve.evaluate_point(param)?;
+            let curve_pnt = rail_curve.evaluate_point(k, param)?;
             let mut iso_v = uv_domain.min().y;
             let mut test_uv = Point2::new(param, iso_v);
-            let mut surf_pnt = fillet_surface.evaluate_point(test_uv)?;
+            let mut surf_pnt = fillet_surface.evaluate_point(k, test_uv)?;
             if curve_pnt.distance(surf_pnt) > app_tol {
                 // check the other edge of the fillet surface
                 iso_v = uv_domain.max().y;
                 test_uv.y = iso_v;
-                surf_pnt = fillet_surface.evaluate_point(test_uv)?;
+                surf_pnt = fillet_surface.evaluate_point(k, test_uv)?;
                 if curve_pnt.distance(surf_pnt) > app_tol {
                     // Rail is not syncronizing with the parametrization of the fillet
                     // surface
@@ -1756,8 +1756,8 @@ impl FilletBrep {
             } else {
                 // Rail could be either closed, degenerate or self-intersected
                 // No further processing if closed or degenerate
-                if rail_curve.is_closed(&trim_ivl, app_tol)?
-                    || rail_curve.is_degenerate(EFF_ZERO, None)?
+                if rail_curve.is_closed(k, &trim_ivl, app_tol)?
+                    || rail_curve.is_degenerate(k, EFF_ZERO, None)?
                 {
                     continue;
                 }
@@ -1888,12 +1888,12 @@ impl FilletBrep {
                 let t = orig_rail_ivl.evaluate(0.34567);
                 let mut iso_v = fil_srf_domain.min().y;
                 let mut test_uv = Point2::new(t, iso_v);
-                let curve_pnt = orig_rail_curve.evaluate_point(t)?;
-                let mut surf_pnt = fillet_surface.evaluate_point(test_uv)?;
+                let curve_pnt = orig_rail_curve.evaluate_point(k, t)?;
+                let mut surf_pnt = fillet_surface.evaluate_point(k, test_uv)?;
                 if curve_pnt.distance(surf_pnt) > tolerance {
                     iso_v = fil_srf_domain.max().y;
                     test_uv.y = iso_v;
-                    surf_pnt = fillet_surface.evaluate_point(test_uv)?;
+                    surf_pnt = fillet_surface.evaluate_point(k, test_uv)?;
                     if curve_pnt.distance(surf_pnt) > tolerance {
                         return Err(SolidError::sm_err(OP_CLIFF));
                     }
@@ -2102,8 +2102,8 @@ impl FilletBrep {
 }
 
 /// `DropVectors(uv, TRUE, TRUE, 1, &direction, &uv_dir)`.
-fn drop_vector(surface: &Surface, uv: Point2, direction: Vec3) -> Result<Vec2> {
-    let dropped = drop_vectors_at(surface, uv, Side::Left, Side::Left, &[direction])?;
+fn drop_vector(k: &Kernel, surface: &Surface, uv: Point2, direction: Vec3) -> Result<Vec2> {
+    let dropped = drop_vectors_at(k, surface, uv, Side::Left, Side::Left, &[direction])?;
     dropped
         .first()
         .copied()
