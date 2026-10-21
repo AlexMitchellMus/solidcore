@@ -17,9 +17,11 @@
 
 use super::arena_pair::{self, ArenaPair, H};
 use super::{
-    manifold_boolean, BooleanKernels, FixedGaps, ManifoldIntersector, ManifoldState, MergeEntity,
+    manifold_boolean, BooleanKernels, FixedGaps, MadeFaceuse, ManifoldIntersector, ManifoldState,
+    MergeEntity,
 };
 use crate::boolean::merge::p1::{self, MergeState};
+use crate::boolean::merge::p2::{self, MergeContext, TopologyCopy};
 use crate::boolean::merge::p5;
 use crate::boolean::topology_intersector::p1::TopologyIntersector;
 use crate::boolean::topology_intersector::p1::{set_subset_objects, Relations};
@@ -410,6 +412,43 @@ impl ManifoldIntersector for KernelManifoldIntersector {
         )
     }
 
+    fn close_intersection_loop(
+        &mut self,
+        kernels: &mut BooleanKernels<'_>,
+        primary: &mut Brep,
+        other: &mut Brep,
+        attributes: &mut AttributeStore,
+        vertex: VertexId,
+        made_new_topology: &mut bool,
+    ) -> Result<()> {
+        let vertex = arena_pair::encode(EntityRef::Vertex(vertex), false);
+        // IIREdgeBrep's MergeCurveClasses sets m_bTopologyDeleted on this same flag.
+        self.intersector.topology_deleted = self.topology_deleted;
+        Context::with_notification_context(kernels.primary, |k, context| {
+            let mut pair = ArenaPair::new(
+                primary,
+                Some(other),
+                &mut self.curves,
+                &mut self.extra_curves,
+                &mut self.records,
+                attributes,
+                cache_kernels(k, kernels.other.as_deref(), context),
+                context,
+                kernels.other.as_deref_mut().map(|k| &mut k.context),
+                self.namespace,
+            );
+            let result = self.merge.intersector.with_intersector(
+                &mut self.intersector,
+                arena_pair::encode,
+                arena_pair::decode,
+                |ti| ti.close_intersection_loop(k, &mut pair, Some(vertex)),
+            );
+            self.topology_deleted = self.intersector.topology_deleted;
+            *made_new_topology = result?;
+            Ok(())
+        })
+    }
+
     fn fix_gaps(
         &mut self,
         kernels: &mut BooleanKernels<'_>,
@@ -624,11 +663,21 @@ impl ManifoldIntersector for KernelManifoldIntersector {
             type_code: crate::topology::vertex::TYPE,
         };
         let destination_key = |e| notification_key(namespace, false, e);
-        let mut copy = p1::VertexCopy {
-            records: &mut self.records,
-            attributes,
-            source_key: &source_key,
-            destination_key: &destination_key,
+        let edge_source = |e| notification_key(namespace, true, EntityRef::Edge(e));
+        let edge_destination = |e| notification_key(namespace, false, EntityRef::Edge(e));
+        let face_source = |f| notification_key(namespace, true, EntityRef::Face(f));
+        let face_destination = |f| notification_key(namespace, false, EntityRef::Face(f));
+        let mut copy = TopologyCopy {
+            vertices: p1::VertexCopy {
+                records: &mut self.records,
+                attributes,
+                source_key: &source_key,
+                destination_key: &destination_key,
+            },
+            edge_source_key: &edge_source,
+            edge_destination_key: &edge_destination,
+            face_source_key: &face_source,
+            face_destination_key: &face_destination,
         };
         p5::process_wires_and_shell_vertices_with_kernels(
             kernels.primary,
@@ -644,6 +693,61 @@ impl ManifoldIntersector for KernelManifoldIntersector {
             other_mark,
             keep,
         )
+    }
+
+    fn make_faceuse(
+        &mut self,
+        kernels: &mut BooleanKernels<'_>,
+        primary: &mut Brep,
+        other: &mut Brep,
+        attributes: &mut AttributeStore,
+        faceuse: FaceuseId,
+        original_region: Option<RegionId>,
+    ) -> Result<MadeFaceuse> {
+        let namespace = self.namespace;
+        let vertex_source = |id| ObjectRef {
+            key: entity_key(namespace, true, MergeEntity::Vertex(id)),
+            type_code: crate::topology::vertex::TYPE,
+        };
+        let destination = |e| notification_key(namespace, false, e);
+        let edge_source = |e| notification_key(namespace, true, EntityRef::Edge(e));
+        let edge_destination = |e| notification_key(namespace, false, EntityRef::Edge(e));
+        let face_source = |f| notification_key(namespace, true, EntityRef::Face(f));
+        let face_destination = |f| notification_key(namespace, false, EntityRef::Face(f));
+        let mut copy = TopologyCopy {
+            vertices: p1::VertexCopy {
+                records: &mut self.records,
+                attributes,
+                source_key: &vertex_source,
+                destination_key: &destination,
+            },
+            edge_source_key: &edge_source,
+            edge_destination_key: &edge_destination,
+            face_source_key: &face_source,
+            face_destination_key: &face_destination,
+        };
+        // New topology is made with the primary context; copies notify through the
+        // other operand's (or the shared) context.
+        let ctx = match kernels.other.as_deref_mut() {
+            Some(o) => MergeContext::Split(kernels.primary, Some(&mut o.context)),
+            None => MergeContext::Shared(kernels.primary),
+        };
+        let mut faces = Vec::new();
+        let made = p2::make_faceuse_with(
+            ctx,
+            primary,
+            other,
+            faceuse,
+            original_region,
+            &mut self.merge.intersector,
+            &mut copy,
+            Some(&mut faces),
+        )?;
+        Ok(MadeFaceuse {
+            old_region: made.old_region,
+            new_region: made.new_region,
+            faces,
+        })
     }
 
     fn find_region_of_other_face(
@@ -756,6 +860,42 @@ mod tests {
     fn face(b: &mut Brep) -> FaceId {
         let shell = b.add_shell().unwrap();
         b.add_face(shell).unwrap()
+    }
+
+    #[test]
+    fn close_intersection_loop_runs_the_co_ported_intersector() {
+        let mut adapter = KernelManifoldIntersector::new(0).unwrap();
+        let mut k = Kernel::default();
+        let mut kernels = BooleanKernels {
+            primary: &mut k,
+            other: None,
+        };
+        let mut a = Brep::new();
+        let v = a
+            .add_vertex_record(crate::topology::Vertex::default())
+            .unwrap();
+        let mut b = Brep::new();
+        let mut made = true;
+        // An unmated vertex is p2's NER early return; the flag is left alone.
+        let error = adapter
+            .close_intersection_loop(
+                &mut kernels,
+                &mut a,
+                &mut b,
+                &mut AttributeStore::new(),
+                v,
+                &mut made,
+            )
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            SolidError::Upstream {
+                code: crate::error::SM_ERR_NULL_POINTER,
+                ..
+            }
+        ));
+        assert!(made);
+        assert!(!adapter.topology_deleted());
     }
 
     #[test]
@@ -1222,8 +1362,8 @@ mod tests {
         let mut placement = Axis2Placement::default();
         placement.translate(Vec3::X);
         // SmBrep::Notify is topology.brep_p2's (#149) and now runs through the adapter's
-        // environment; the vertex walk is wired since #285, so the transform stops at
-        // its curve walk
+        // environment; the vertex walk (GetVertices) is wired, so the transform then
+        // stops at its curve walk
         let r = adapter.transform_brep(
             &mut kernels,
             &mut b,
