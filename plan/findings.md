@@ -13256,12 +13256,24 @@ reconciliation with main's `surface.offset_surface`. With both, the affected dif
   `SplitFilletGeom`, whose geometry calls are p1 stubs), `sm_RefineRailCurveClassification`
   and `sm_CalcRailXEdge` (defer at `RailEdgeuseIntersect`, p2) and `ProcessFullRollOver`
   (defers at `sm_SplitRail`'s fillet geometry calls, then `CreateCliffRollOverSideFG`, p2,
-  and `TrimCliffRails`, `blend.fillet_geom_p5`). A native fixture for them needs the
+  and `TrimCliffRails`, `blend.fillet_geom_p5`; `MakeFilletEdge` is wired to #264's
+  `FilletBrep::make_fillet_edge`). A native fixture for them needs the
   executive's pseudo B-rep and real fillet geometries; once p2 lands they should get
   difftest cases. Upstream index defects found while porting: UB-248, UB-249.
 - **For #208 (`blend.fillet_solver_p5`).** Its `ProcessRollOver` calls
   `is_convex_radial_sector(.., 10, true, 0.0)`; upstream calls `IsConvexRadialSector(10)`,
   whose `bOptStepOff` defaults to `FALSE` (`SmEdgeuse.h:356`, `SmFilletSolver.cpp:7260`).
+- **`blend.fillet_geom_p5` back-edges (after #264 merged, 2026-10-21).**
+  `ProcessFullRollOver`'s `SmFilletEdge::MakeFilletEdge` calls #264's
+  `FilletBrep::make_fillet_edge` (start `pEndVert`, end `pNewV`, no corner), and the
+  `SetFilletEdgeType(SM_FE_ON_EXTEND_EDGE)` after it, unreachable behind the stub before,
+  is ported. `SmFilletGeom::TrimCliffRails` stays a justified stub:
+  `FilletBrep::trim_cliff_rails` finds the geometry's solver by its `FilletSolverId` in a
+  solver table (`&[FilletSolver]`), while `ProcessFullRollOver` holds only `this` solver
+  (`&mut self`); a one-entry table would answer for id 0 only. Wiring it needs the
+  solver table, or the solver itself, passed to `trim_cliff_rails` (the same handle
+  question as #192's `FilletGeomRef` / `FilletBrep` id note); no compared path reaches it
+  (`ProcessFullRollOver` defers earlier at `CreateCliffRollOverSideFG`, p2).
 - **Solver dispatch (#236 review round 4, 2026-10-20).** The constant-radius solver's
   `FilletSolverOps` overrides (`GetJacobianSize`, `SetupOffsetValues`,
   `OffsetRadiiCanChange`, `LoadJacobian`, `GetType`, `GetSolverType`) call

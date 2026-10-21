@@ -1253,9 +1253,10 @@ impl FilletSolver {
     /// use, no face use or loop use, no edge nearest the rail start); those of the
     /// convexity test, the drops and evaluations; [`SolidError::Unported`] from
     /// `sm_SplitRail` (`blend.fillet_solver_p1`, its fillet geometry calls),
-    /// `SmFilletEdge::MakeFilletEdge` and `SmFilletGeom::TrimCliffRails`
-    /// (`blend.fillet_geom_p5`) and `CreateCliffRollOverSideFG`
-    /// (`blend.fillet_solver_p2`).
+    /// `SmFilletEdge::MakeFilletEdge` ([`FilletBrep::make_fillet_edge`], while the
+    /// pseudo B-rep has no infinite region or shell), `CreateCliffRollOverSideFG`
+    /// (`blend.fillet_solver_p2`) and `SmFilletGeom::TrimCliffRails`
+    /// (`blend.fillet_geom_p5`; a justified stub, it needs the solver table).
     #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
     pub fn process_full_roll_over(
         &mut self,
@@ -1403,12 +1404,10 @@ impl FilletSolver {
                     let mut record = FilletVertex::new(k, None);
                     record.set_status(FilStatus::Processed);
                     fillets.insert_fillet_vertex(end_vert, record);
-                    // UNPORTED(blend.fillet_geom_p5): SmFilletEdge::MakeFilletEdge
-                    let _new_edge: EdgeId = unported_on(
-                        (end_vert, new_v),
-                        "SmFilletEdge::MakeFilletEdge",
-                        "blend.fillet_geom_p5",
-                    )?;
+                    let new_edge = fillets.make_fillet_edge(Some(end_vert), Some(new_v), None)?;
+                    fillets
+                        .fillet_edge_mut(new_edge)?
+                        .set_fillet_edge_type(FilletEdgeType::OnExtendEdge);
                 }
             }
 
@@ -1470,7 +1469,7 @@ impl FilletSolver {
         }
 
         // Finally, trim all rails of the fillet
-        // UNPORTED(blend.fillet_geom_p5): SmFilletGeom::TrimCliffRails
+        // UNPORTED(blend.fillet_geom_p5): SmFilletGeom::TrimCliffRails (justified: findings.md "blend.fillet_solver_p3 (`SmFilletSolver.cpp` part 3")
         unported_on::<_, ()>(geom, "SmFilletGeom::TrimCliffRails", "blend.fillet_geom_p5")
     }
 }
