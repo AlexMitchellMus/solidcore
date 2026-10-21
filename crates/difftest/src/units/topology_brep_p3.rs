@@ -18,6 +18,14 @@
 //! own ([`source_key_of`]). `DeleteFace` always passes a deleted list
 //! (`pOptDeletedEdgesVertices`); the header default `NULL` only skips its `Add`s and
 //! is not compared.
+//!
+//! An `Orient` case in which a face's `SwapUV` runs defers under
+//! [`HARNESS_SURFACE_NOTIFY`]: upstream the surface's own `SwapUV` notifies
+//! `SM_NO_PRE_EDIT` / `SM_NO_POST_EDIT` on the surface (`SmBSplineSurface::SwapUV` through
+//! `SetCanonical`, `SmBSplineSurface.cpp:4585`/`:4592`; `SmOffsetSurface` through its base
+//! surface; `SmSrfInVolume` itself), which the tracker records and turns into a `Chg` of
+//! the owning face. A Rust `Surface` has no notification identity yet, so that event
+//! cannot be produced; the deferral lifts once `Surface` carries one.
 
 use std::collections::BTreeMap;
 
@@ -498,6 +506,11 @@ fn ix<I: ArenaId>(x: Option<I>) -> Option<u32> {
 
 /// `SmUnknown_TYPE`, the type a use without an owner kind reports.
 const UNKNOWN_TYPE: i64 = 16999;
+
+/// The deferral label of an `Orient` case that swaps a face's UV: upstream's surface
+/// `SwapUV` notifies the surface's own edit, and a Rust `Surface` has no notification
+/// identity to notify it under (see the module docs).
+const HARNESS_SURFACE_NOTIFY: &str = "harness:surface-notify-identity";
 
 /// The shim's `Graph` over the Rust arena: every object reached by [`walk`], per kind
 /// (`0` regions, `1` shells, `2` face uses, `3` faces, `4` loop uses, `5` loops, `6` edge
@@ -1177,6 +1190,18 @@ fn run_rust_op(
     tracker.finish(Some(&mut ctx));
     drop(must(ctx.take_notify_lease())?);
     let mut out = r?;
+    // SmFace::SwapUV ran (its face POST_EDIT): upstream its surface's SwapUV notified
+    // the surface's own edit too, which Rust cannot name yet
+    let swapped = lists.notify_events.iter().any(|e| {
+        e.operation == solidcore::geom::object::NotifyOperation::PostEdit
+            && e.caller.is_some_and(|c| c.type_code == 16002)
+    });
+    if matches!(op, OpIn::Orient { .. }) && swapped {
+        return Err(Fail::Deferred(Box::new(Output::deferred(
+            HARNESS_SURFACE_NOTIFY,
+            "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        ))));
+    }
     let geometry_seen = seen
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
