@@ -38,16 +38,24 @@
 //!   surface part of the tight face box
 //!   ([`crate::query::face::p3::calculate_tight_bounding_box_into`]), the loose box
 //!   after a failed tight edge box. A failed loose edge box leaves the freshly
-//!   initialised (empty) box: the curve boxes write their output once their
-//!   computation succeeded. [`SolidError::Unported`] still propagates.
+//!   initialised (empty) box: every `CalculateBoundingBox` override (`SmCurve`,
+//!   `SmBSplineCurve`, `SmLine`, `SmHermiteCurve`, `SmCrvOnSurf`, `SmCompositeCurve`)
+//!   fails only before it writes the caller's box. [`SolidError::Unported`] still
+//!   propagates.
 //! - **Point classification.** [`BrepQuery::point_3d_classify`] returns the
 //!   classification instead of filling the caller's (every upstream caller constructs a
 //!   fresh one just before and drops it on failure), with [`EntityRef`] objects. Its
 //!   boundary solve and ray fires need the B-rep's cache and object identities, which
 //!   upstream reaches through the B-rep (`CacheMakeOrValidate`): a [`BrepQuery`] holds
-//!   them, built once by the caller. A ray fire that fails with an ordinary error moves on to the
-//!   next direction, as a failing status does upstream; [`SolidError::Unported`]
-//!   propagates.
+//!   the identities and builds the cache lazily, on the first solve that needs it (so a
+//!   single-region B-rep never builds one, as upstream). A caller keeps one query while
+//!   the B-rep is not edited and makes a fresh one after an edit (upstream revalidates).
+//!   [`BrepIdentity::default`] is the identity of a lone B-rep (`BrepId` 0, geometry
+//!   owned by its arena records). The ray fires may add missing UV trim curves, which
+//!   upstream's `const` method does to the B-rep itself; [`BrepClassifier`] serves
+//!   callers that hold the B-rep shared and makes a private copy on the first ray fire
+//!   only. A ray fire that fails with an ordinary error moves on to the next direction,
+//!   as a failing status does upstream; [`SolidError::Unported`] propagates.
 //! - **Out-params.** The evaluated point, normal or point and derivatives are the
 //!   return value; on failure there is none (upstream evaluates into locals and leaves
 //!   the caller's outputs untouched).
@@ -424,6 +432,24 @@ impl<'a> BrepQuery<'a> {
         point_zone_tol_3d: f64,
         do_boundary_intersections: bool,
     ) -> Result<PointClassification<EntityRef>> {
+        self.classify(
+            k,
+            Target::Own(b),
+            point,
+            point_zone_tol_3d,
+            do_boundary_intersections,
+        )
+    }
+
+    /// [`BrepQuery::point_3d_classify`] on `target`.
+    fn classify(
+        &self,
+        k: &Kernel,
+        mut target: Target<'_>,
+        point: Point3,
+        point_zone_tol_3d: f64,
+        do_boundary_intersections: bool,
+    ) -> Result<PointClassification<EntityRef>> {
         let BrepIdentity {
             brep_id,
             keys,
@@ -437,6 +463,7 @@ impl<'a> BrepQuery<'a> {
 
         // Intersect the point with the boundary elements of the Brep
         if do_boundary_intersections {
+            let b = target.shared();
             let objects = BrepObjects {
                 brep: b,
                 brep_id,
@@ -476,7 +503,7 @@ impl<'a> BrepQuery<'a> {
         } // end bDoBoundaryIntersections check
 
         // get Brep->Regions
-        let regions = bp1::regions(b, None)?;
+        let regions = bp1::regions(target.shared(), None)?;
 
         // Check for special case where only one region exists then we
         // do not have to do any ray firing.
@@ -492,6 +519,7 @@ impl<'a> BrepQuery<'a> {
         // none), `None` on failure.
         // (the solve of each ray fire builds the cache when needed)
         let mut fire = |direction: Vec3| -> Result<Option<Option<RegionId>>> {
+            let b = target.mutable();
             let fired = self.cache(k, b).and_then(|cache| {
                 bp2::ray_fire(
                     k,
@@ -529,34 +557,73 @@ impl<'a> BrepQuery<'a> {
     }
 }
 
-/// Point classification against a B-rep the caller holds shared: its [`BrepQuery`] and a
-/// private copy for the ray fires, which may add missing UV trim curves (upstream's
-/// `const` `Point3DClassify` adds them to the B-rep itself). Keep one per B-rep state
-/// and classify every point through it: the copy and the cache are made once.
-#[derive(Debug)]
-pub struct BrepClassifier<'a> {
-    query: BrepQuery<'a>,
-    brep: Brep,
+/// The B-rep a classification runs on: the caller's, lent mutably, or one it holds
+/// shared, copied when a ray fire first needs it mutably.
+enum Target<'t> {
+    Own(&'t mut Brep),
+    Shared {
+        source: &'t Brep,
+        copy: &'t mut Option<Brep>,
+    },
 }
 
-impl<'a> BrepClassifier<'a> {
-    /// The classifier of `brep` with `identity` (copies the B-rep; the cache is built
-    /// on first use).
-    #[must_use]
-    pub fn new(brep: &Brep, identity: BrepIdentity<'a>) -> Self {
-        Self {
-            query: BrepQuery::new(identity),
-            brep: brep.clone(),
+impl Target<'_> {
+    /// The B-rep as it stands (the copy once made: it may hold new UV trim curves).
+    fn shared(&self) -> &Brep {
+        match self {
+            Self::Own(b) => b,
+            Self::Shared { source, copy } => copy.as_ref().unwrap_or(source),
         }
     }
 
-    /// The private copy the classifications run on (its regions are the caller's).
+    /// The B-rep to edit, copying a shared one first.
+    fn mutable(&mut self) -> &mut Brep {
+        match self {
+            Self::Own(b) => b,
+            Self::Shared { source, copy } => copy.get_or_insert_with(|| (*source).clone()),
+        }
+    }
+}
+
+/// Point classification against a B-rep the caller holds shared: its [`BrepQuery`], and
+/// a private copy for the ray fires, which may add missing UV trim curves (upstream's
+/// `const` `Point3DClassify` adds them to the B-rep itself). The copy is made when a ray
+/// is first fired, so boundary hits and single-region B-reps copy nothing. Keep one per
+/// B-rep state and classify every point through it: the copy and the cache are made
+/// once.
+#[derive(Debug)]
+pub struct BrepClassifier<'a, 'b> {
+    query: BrepQuery<'a>,
+    source: &'b Brep,
+    copy: Option<Brep>,
+}
+
+impl<'a, 'b> BrepClassifier<'a, 'b> {
+    /// The classifier of `brep` with `identity` (nothing is copied or built yet).
     #[must_use]
-    pub const fn brep(&self) -> &Brep {
-        &self.brep
+    pub const fn new(brep: &'b Brep, identity: BrepIdentity<'a>) -> Self {
+        Self {
+            query: BrepQuery::new(identity),
+            source: brep,
+            copy: None,
+        }
     }
 
-    /// [`BrepQuery::point_3d_classify`] on the private copy.
+    /// The B-rep the classifications run on (the private copy once made; its regions
+    /// are the caller's).
+    #[must_use]
+    pub fn brep(&self) -> &Brep {
+        self.copy.as_ref().unwrap_or(self.source)
+    }
+
+    /// Whether a classification has copied the B-rep.
+    #[must_use]
+    pub const fn has_copied(&self) -> bool {
+        self.copy.is_some()
+    }
+
+    /// [`BrepQuery::point_3d_classify`] on the B-rep, copied when a ray fire first
+    /// needs it.
     ///
     /// # Errors
     ///
@@ -568,9 +635,13 @@ impl<'a> BrepClassifier<'a> {
         point_zone_tol_3d: f64,
         do_boundary_intersections: bool,
     ) -> Result<PointClassification<EntityRef>> {
-        self.query.point_3d_classify(
+        let target = Target::Shared {
+            source: self.source,
+            copy: &mut self.copy,
+        };
+        self.query.classify(
             k,
-            &mut self.brep,
+            target,
             point,
             point_zone_tol_3d,
             do_boundary_intersections,
@@ -865,6 +936,40 @@ mod tests {
         let mut classifier = BrepClassifier::new(&b, BrepIdentity::arena(BrepId::from_index(0)));
         let pc = classifier.point_3d_classify(&k, p, 1e-6, true).unwrap();
         assert_eq!(pc.object(), b.infinite_region().map(EntityRef::Region));
+        assert!(!classifier.has_copied());
+    }
+
+    #[test]
+    fn classifier_fires_rays_on_a_copy_and_leaves_the_callers_brep_alone() {
+        let k = Kernel::default();
+        let mut b = Brep::new_with_infinite_region().unwrap();
+        b.add_region_record(crate::topology::Region {
+            in_brep: true,
+            ..Default::default()
+        })
+        .unwrap();
+        let before = format!("{b:?}");
+
+        let mut classifier = BrepClassifier::new(&b, BrepIdentity::default());
+        assert!(!classifier.has_copied());
+        // two regions: the ray fire needs the B-rep mutable, so it works on a copy
+        let _ = classifier.point_3d_classify(&k, Point3::new(1.0, 2.0, 3.0), 1e-6, false);
+        assert!(classifier.has_copied());
+        let copied = classifier.brep() as *const Brep;
+        let _ = classifier.point_3d_classify(&k, Point3::new(3.0, 2.0, 1.0), 1e-6, false);
+        assert_eq!(classifier.brep() as *const Brep, copied, "copied once");
+        assert_eq!(format!("{b:?}"), before);
+    }
+
+    #[test]
+    fn a_clone_keeps_the_locked_box() {
+        let k = Kernel::default();
+        let mut b = Brep::new();
+        b.add_vertex(Point3::new(1.0, 2.0, 3.0)).unwrap();
+        lock_bounding_box(&k, &mut b, false).unwrap();
+        let locked = b.locked_bounding_box();
+        assert!(locked.is_some());
+        assert_eq!(b.clone().locked_bounding_box(), locked);
     }
 
     #[test]

@@ -361,10 +361,10 @@ pub struct BrepRelationship {
 }
 
 /// A B-rep points are classified against (`pTarget`).
-struct Target(BrepClassifier<'static>);
+struct Target<'b>(BrepClassifier<'static, 'b>);
 
-impl Target {
-    fn new(brep: &Brep) -> Self {
+impl<'b> Target<'b> {
+    fn new(brep: &'b Brep) -> Self {
         Self(BrepClassifier::new(brep, BrepIdentity::default()))
     }
 
@@ -388,7 +388,12 @@ impl Target {
 
 /// `sm_PointInSolid`: whether `point` classifies to a material region of `target`
 /// (a failing classification is `false`).
-fn point_in_solid(k: &Kernel, target: &mut Target, point: Point3, tolerance: f64) -> Result<bool> {
+fn point_in_solid(
+    k: &Kernel,
+    target: &mut Target<'_>,
+    point: Point3,
+    tolerance: f64,
+) -> Result<bool> {
     Ok(ignored(target.classify(k, point, tolerance))?
         .is_some_and(|(class, material)| class == PointClassType::Region && material))
 }
@@ -400,7 +405,7 @@ fn brep_vertices(brep: &Brep) -> Result<Vec<VertexId>> {
 fn count_contained_samples(
     k: &Kernel,
     sample: &Brep,
-    target: &mut Target,
+    target: &mut Target<'_>,
     tolerance: f64,
 ) -> Result<(usize, usize)> {
     let mut points = Vec::new();

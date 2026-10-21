@@ -292,6 +292,8 @@ fn ray_output(values: &[f64]) -> Result<Output, HarnessError> {
 fn rust_ray(brep: &solidcore::topology::Brep, input: &RayInput) -> Result<Output, HarnessError> {
     use solidcore::intersect::point_class::{PointClassType, PointClassification};
     use solidcore::topology::shell::{ray_fire, ShellRayInput, ShellRayState};
+    // The ray fires may add UV trim curves (as the native B-rep's): one copy per case.
+    let mut scratch = brep.clone();
     let mut kernel = solidcore::kernel::Kernel::default();
     let mut out = Vec::new();
     // The shim's guard: non-finite ray values would reach the intersection solver
@@ -328,7 +330,7 @@ fn rust_ray(brep: &solidcore::topology::Brep, input: &RayInput) -> Result<Output
         classification.set_pre_snap_param(456.0);
         let attempt = ray_fire(
             &mut kernel,
-            brep,
+            &mut scratch,
             solidcore::topology::BrepId::from_index(0),
             id,
             &EmptyRayWorld,

@@ -874,14 +874,14 @@ pub trait ShellRayWorld<O>: crate::intersect::topology_solver::p1::TopologyObjec
 
     /// Classify the incoming line segment at its known intersection
     /// (`pBrep->LocalCurveSector(curve, ivl, orientation, sPC, pRegion)`, unit
-    /// `topology.brep_p2`): [`crate::topology::brep::p2::local_curve_sector`] on a private
-    /// copy of `brep` (the sectoring may add missing UV trim curves, which upstream's
-    /// `const` method adds to the B-rep itself), the classification's objects mapped by
-    /// [`ShellRayWorld::class_entity`]. A failure leaves the region unchanged.
+    /// `topology.brep_p2`): [`crate::topology::brep::p2::local_curve_sector`] on `brep`
+    /// (the sectoring may add missing UV trim curves, as upstream's `const` method does),
+    /// the classification's objects mapped by [`ShellRayWorld::class_entity`]. A failure
+    /// leaves the region unchanged.
     fn shell_ray_sector(
         &self,
         kernel: &Kernel,
-        brep: &Brep,
+        brep: &mut Brep,
         request: ShellRaySector<'_, O>,
     ) -> ShellRaySectorAttempt
     where
@@ -894,11 +894,10 @@ pub trait ShellRayWorld<O>: crate::intersect::topology_solver::p1::TopologyObjec
                     "intersection without a topology entity",
                 ))
             })?;
-            let mut copy = brep.clone();
             let curve = crate::curve::curve::Curve::from(request.curve.clone());
             crate::topology::brep::p2::local_curve_sector(
                 kernel,
-                &mut copy,
+                brep,
                 &curve,
                 &request.interval,
                 request.orientation,
@@ -923,7 +922,7 @@ pub trait ShellRayWorld<O>: crate::intersect::topology_solver::p1::TopologyObjec
 /// Missing geometry queries are explicit dependency errors.
 pub fn ray_fire<O, W>(
     kernel: &mut Kernel,
-    brep: &Brep,
+    brep: &mut Brep,
     brep_id: crate::topology::BrepId,
     shell_id: ShellId,
     world: &W,

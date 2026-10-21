@@ -198,8 +198,11 @@ where
             if !success {
                 let edge_id = best_edge.ok_or_else(|| SolidError::null_pointer(OP))?;
                 let record = b.edge(edge_id)?;
-                let curve = required(record.curve.as_ref(), "ray target edge without curve")?;
-                let point = curve.evaluate_point(record.interval.evaluate(0.789))?;
+                // (a copy: the ray fires may add UV trim curves to the B-rep)
+                let curve =
+                    required(record.curve.as_ref(), "ray target edge without curve")?.clone();
+                let interval = record.interval;
+                let point = curve.evaluate_point(interval.evaluate(0.789))?;
                 let attempt = crate::topology::shell::ray_fire(
                     k,
                     b,
@@ -217,7 +220,7 @@ where
                 let success = ray_success(&attempt.status)?;
                 state = attempt.state;
                 if !success {
-                    let point = curve.evaluate_point(record.interval.evaluate(0.189))?;
+                    let point = curve.evaluate_point(interval.evaluate(0.189))?;
                     let start = bounds.min() - (bounds.max() - bounds.min()) * 0.5;
                     let attempt = crate::topology::shell::ray_fire(
                         k,
