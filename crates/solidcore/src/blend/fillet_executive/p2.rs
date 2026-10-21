@@ -80,18 +80,20 @@ use crate::surface::surface::Surface;
 
 const OP: &str = "blend::fillet_executive::p2";
 
+/// `SM_ERR_NULL_POINTER` (`NER`, or a null upstream dereferences). `$what` names the
+/// null object and is kept in the error's operation (`blend::fillet_executive::p2: …`).
+macro_rules! null {
+    ($what:literal) => {
+        SolidError::null_pointer(concat!("blend::fillet_executive::p2: ", $what))
+    };
+}
+
 fn status(code: i32) -> SolidError {
     SolidError::Upstream {
         operation: OP,
         code,
         entity: None,
     }
-}
-
-/// `SM_ERR_NULL_POINTER` (`NER`, or a null upstream dereferences); `what` names it.
-fn null(what: &'static str) -> SolidError {
-    let _ = what;
-    SolidError::null_pointer(OP)
 }
 
 fn invalid(reason: &'static str) -> SolidError {
@@ -419,7 +421,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         };
 
         // pBrep->GetContext()
-        let brep = params.brep.ok_or_else(|| null("null B-rep"))?;
+        let brep = params.brep.ok_or_else(|| null!("null B-rep"))?;
 
         // Note, dApproxTol will be reset for each edge: the default (10 times the B-rep
         // tolerance) is computed but never read.
@@ -535,7 +537,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                 FilletSolverType::VariableRadius => {
                     let laws = params
                         .var_rad_laws
-                        .ok_or_else(|| null("null variable-radius law list"))?;
+                        .ok_or_else(|| null!("null variable-radius law list"))?;
                     let Some(law) = laws.get(ii).copied().flatten() else {
                         self.error.note_edge_error(
                             Some(edge),
@@ -595,7 +597,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                 // Save it, so that we can delete it when filleting is finished.
                 self.add_fillet_surface_generator(fsg);
             }
-            let fsg = generator.ok_or_else(|| null("no surface generator"))?;
+            let fsg = generator.ok_or_else(|| null!("no surface generator"))?;
             access.set_surface_generator(fs, fsg)?;
         }
 
@@ -792,7 +794,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         A: ExecutiveAccess<O> + ?Sized,
     {
         // get edges from FilletBrep (fillet edges already created)
-        let fillet = self.fillet.ok_or_else(|| null("no fillet B-rep"))?;
+        let fillet = self.fillet.ok_or_else(|| null!("no fillet B-rep"))?;
         let edges = access.edges(fillet)?;
 
         // for every FilletEdgeSolver
@@ -802,7 +804,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             for geom in access.solver_geoms(solver)? {
                 // set every rail's fillet B-rep edge
                 for rail in access.geom_rails(geom)? {
-                    let rail = rail.ok_or_else(|| null("null rail"))?;
+                    let rail = rail.ok_or_else(|| null!("null rail"))?;
                     access.find_fillet_brep_edge(k, rail, &edges, false)?;
                 }
 
@@ -810,7 +812,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                 for eu in access.geom_side_edgeuses(geom)? {
                     let fe = access
                         .edgeuse_edge(eu)?
-                        .ok_or_else(|| null("null side edge"))?;
+                        .ok_or_else(|| null!("null side edge"))?;
                     if access.fillet_edge_original_face(fe)?.is_none() {
                         continue;
                     }
@@ -906,7 +908,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         let mut start_edge: Option<O> = None;
         for list in &self.law_sequence_edges {
             for fs in solvers.iter() {
-                let fs = fs.ok_or_else(|| null("null fillet solver"))?;
+                let fs = fs.ok_or_else(|| null!("null fillet solver"))?;
                 let this_edge = access.solver_edge(fs)?;
                 if list.contains(&this_edge) {
                     start_edge = list.first().copied(); // First in list.
@@ -936,7 +938,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             if start_edge.is_none() {
                 let corner0 = access
                     .solver_corner(fs, 0)?
-                    .ok_or_else(|| null("solver without corner"))?;
+                    .ok_or_else(|| null!("solver without corner"))?;
 
                 let mut curr_fs = fs;
                 let mut prev_fs = access.corner_tangent_solver(corner0, fs)?;
@@ -968,7 +970,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
 
                     let prev_corner = access
                         .solver_other_corner(prev, curr_corner)?
-                        .ok_or_else(|| null("solver without other corner"))?;
+                        .ok_or_else(|| null!("solver without other corner"))?;
                     curr_fs = prev;
                     prev_fs = access.corner_tangent_solver(prev_corner, curr_fs)?;
                     curr_corner = prev_corner;
@@ -979,13 +981,13 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             if let Some(edge) = start_edge {
                 fs = self
                     .fillet_solver_of_edge(access, edge)?
-                    .ok_or_else(|| null("no solver of edge"))?;
+                    .ok_or_else(|| null!("no solver of edge"))?;
             }
 
             let corner0 = access.solver_corner(fs, 0)?;
             let corner1 = access
                 .solver_corner(fs, 1)?
-                .ok_or_else(|| null("solver without end corner"))?;
+                .ok_or_else(|| null!("solver without end corner"))?;
 
             if Some(corner1) == corner0 {
                 continue; // Single closed loop.
@@ -1023,7 +1025,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
 
                 let next_corner = access
                     .solver_other_corner(next, curr_corner)?
-                    .ok_or_else(|| null("solver without other corner"))?;
+                    .ok_or_else(|| null!("solver without other corner"))?;
                 let curr_fs = next;
                 next_fs = access.corner_tangent_solver(next_corner, curr_fs)?;
                 curr_corner = next_corner;
@@ -1079,7 +1081,7 @@ impl Default for SurfaceFilletOptions {
 fn uv(list: &[Option<Curve>], i: usize) -> Result<&Curve> {
     list.get(i)
         .and_then(Option::as_ref)
-        .ok_or_else(|| null("null intersection UV curve"))
+        .ok_or_else(|| null!("null intersection UV curve"))
 }
 
 /// `SmFilletExecutive::SurfaceSurfaceFillet`: fillets two surfaces with signed radii
@@ -1202,8 +1204,8 @@ where
         let uv_curve2 = uv(&uv_curves2, kk)?;
         let ivl2 = uv_curve2.natural_interval();
 
-        let pnt1 = uv_curve1.evaluate_point(ivl1.evaluate(0.4567))?;
-        let pnt2 = uv_curve2.evaluate_point(ivl2.evaluate(0.4567))?;
+        let pnt1 = uv_curve1.evaluate_point(k, ivl1.evaluate(0.4567))?;
+        let pnt2 = uv_curve2.evaluate_point(k, ivl2.evaluate(0.4567))?;
         let guess1 = Vec2::new(pnt1.x, pnt1.y);
         let guess2 = Vec2::new(pnt2.x, pnt2.y);
 
@@ -1332,15 +1334,15 @@ impl<O: ClassObject + SolutionObject + Ord> TemporaryRadiusChange<O> {
         let mut at_start = crate::topology::brep_data::UNSURE;
         let eu = access
             .solver_edgeuse(self.fs, self.rail_idx)?
-            .ok_or_else(|| null("no rail edge use"))?;
+            .ok_or_else(|| null!("no rail edge use"))?;
         let e = access
             .edgeuse_edge(eu)?
-            .ok_or_else(|| null("edge use without edge"))?;
+            .ok_or_else(|| null!("edge use without edge"))?;
         let (edge_v1, edge_v2) = access.edge_vertices(e)?;
 
         let side_edge = access
             .edgeuse_edge(self.side_eu)?
-            .ok_or_else(|| null("side edge use without edge"))?;
+            .ok_or_else(|| null!("side edge use without edge"))?;
         let (side_v1, side_v2) = access.edge_vertices(side_edge)?;
 
         if edge_v1 == edge_v2 {
@@ -1385,7 +1387,7 @@ impl<O: ClassObject + SolutionObject + Ord> TemporaryRadiusChange<O> {
         // Evaluate the radius at the proper end (no reversal: already checked).
         let vrfs = access
             .variable_radius_solver_mut(self.fs)?
-            .ok_or_else(|| null("solver is no longer variable-radius"))?;
+            .ok_or_else(|| null!("solver is no longer variable-radius"))?;
         let values = law_evaluate(&mut vrfs.law, edge_t, &edge_ivl, false)?;
         let [end_rad, _, _] = values;
 
@@ -1400,7 +1402,7 @@ impl<O: ClassObject + SolutionObject + Ord> TemporaryRadiusChange<O> {
 
             let vrfs = access
                 .variable_radius_solver_mut(self.fs)?
-                .ok_or_else(|| null("solver is no longer variable-radius"))?;
+                .ok_or_else(|| null!("solver is no longer variable-radius"))?;
             if let FilletLawKind::BSpline {
                 law_curve,
                 extended_law,
@@ -1413,7 +1415,7 @@ impl<O: ClassObject + SolutionObject + Ord> TemporaryRadiusChange<O> {
         } else {
             let vrfs = access
                 .variable_radius_solver_mut(self.fs)?
-                .ok_or_else(|| null("solver is no longer variable-radius"))?;
+                .ok_or_else(|| null!("solver is no longer variable-radius"))?;
             if let FilletLawKind::Linear {
                 start_radius,
                 end_radius,
