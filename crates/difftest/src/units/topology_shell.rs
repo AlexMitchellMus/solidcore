@@ -915,10 +915,11 @@ impl UnitDiff for Runner {
                     "type probe cannot be combined with another operation",
                 ));
             }
-            let export = crate::export_memo::export("topology_edgeuse_p1", &[&path], &block, || {
-                graph::eval(graph::Op::Export, &path, &block)
-            })
-            .map_err(failure)?;
+            let export =
+                crate::export_memo::export("topology_edgeuse_p1", &[&path], &block, || {
+                    graph::eval(graph::Op::Export, &path, &block)
+                })
+                .map_err(failure)?;
             let counts = graph::counts(&export)
                 .ok_or_else(|| failure("native type fixture build failed"))?;
             let values =
@@ -927,10 +928,11 @@ impl UnitDiff for Runner {
             return Ok(Output::new().ints("records", values.to_vec()));
         }
         let native = if let Some(transfer) = inputs.transfer {
-            let export = crate::export_memo::export("topology_edgeuse_p1", &[&path], &block, || {
-                graph::eval(graph::Op::Export, &path, &block)
-            })
-            .map_err(failure)?;
+            let export =
+                crate::export_memo::export("topology_edgeuse_p1", &[&path], &block, || {
+                    graph::eval(graph::Op::Export, &path, &block)
+                })
+                .map_err(failure)?;
             let counts = graph::counts(&export)
                 .ok_or_else(|| failure("native transfer fixture build failed"))?;
             let options = resolve_transfer(&transfer, counts)?;
@@ -972,9 +974,9 @@ impl UnitDiff for Runner {
         let inputs: Inputs = case.parse()?;
         let (path, block) = fixture_input(inputs.brep)?;
         let export = crate::export_memo::export("topology_edgeuse_p1", &[&path], &block, || {
-                graph::eval(graph::Op::Export, &path, &block)
-            })
-            .map_err(failure)?;
+            graph::eval(graph::Op::Export, &path, &block)
+        })
+        .map_err(failure)?;
         let mut brep = import(&export)?;
         if let Some(filter) = inputs.region_filter {
             if filter.pattern > 2

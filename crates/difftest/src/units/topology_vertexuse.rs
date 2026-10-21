@@ -306,8 +306,10 @@ pub(crate) fn sel(s: i64, n: usize) -> i64 {
 fn export(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
     let path = path_of(&i.brep)?;
     let block = brep_block(i)?;
-    crate::export_memo::export("topology_vertexuse", &[&path], &block, || ffi::eval(Op::Export, &path, &block))
-        .map_err(|e| harness(format!("c++ export: {e}")))
+    crate::export_memo::export("topology_vertexuse", &[&path], &block, || {
+        ffi::eval(Op::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))
 }
 
 /// A build failure as an operation error.

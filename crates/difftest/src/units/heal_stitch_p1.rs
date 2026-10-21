@@ -212,8 +212,10 @@ pub(crate) fn path(b: &StitchBrep) -> Result<String, HarnessError> {
 /// The C++ export of the case's B-rep.
 pub(crate) fn export(b: &StitchBrep) -> Result<Vec<f64>, HarnessError> {
     let (path, block) = (path(b)?, block_of(b)?);
-    crate::export_memo::export("heal_stitch_p1", &[&path], &block, || ffi::eval(Op::Export, &path, &block))
-        .map_err(|e| harness(format!("c++ export: {e}")))
+    crate::export_memo::export("heal_stitch_p1", &[&path], &block, || {
+        ffi::eval(Op::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))
 }
 
 pub(crate) fn build_failure(export: &[f64]) -> Output {
