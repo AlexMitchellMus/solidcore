@@ -752,18 +752,28 @@ mod tests {
             cache.resize_trees(&k, &b, &[], &[], &[], &arena_identity, &|_| None),
             Err(SolidError::InvalidInput { .. })
         ));
+        // an edge without curve fails the build after the B-rep box, leaving no tree
+        let mut open = Brep::new();
+        let v0 = open.add_vertex(crate::math::Point3::ZERO).unwrap();
+        let v1 = open
+            .add_vertex(crate::math::Point3::new(1.0, 0.0, 0.0))
+            .unwrap();
+        open.add_edge(v0, v1).unwrap();
         assert!(matches!(
-            cache.build_trees(&k, CacheSource::Brep(&b), |o| o, &arena_identity),
-            Err(SolidError::Unported {
-                unit: "query.brep",
-                ..
-            })
+            cache.build_trees(&k, CacheSource::Brep(&open), |o| o, &arena_identity),
+            Err(SolidError::Upstream { code: 1006, .. })
         ));
         assert!(
             cache.vertex_tree().is_none()
                 && cache.curve_tree().is_none()
                 && cache.surface_tree().is_none()
         );
+        // an empty B-rep builds (its box is the inside-out empty box)
+        let mut empty = BrepCache::new(BREP_TYPE).unwrap();
+        empty
+            .build_trees(&k, CacheSource::Brep(&b), |o| o, &arena_identity)
+            .unwrap();
+        assert!(empty.vertex_tree().is_some());
         let p = PolyBrep::new(&k, 1e-6);
         assert!(matches!(
             cache.build_trees(&k, CacheSource::PolyBrep(&p), |o| o, &arena_identity),

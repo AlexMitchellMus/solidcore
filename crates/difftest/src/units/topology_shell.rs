@@ -153,10 +153,11 @@ impl solidcore::intersect::point_class::ClassObject for NoRayObject {
 }
 impl solidcore::topology::shell::ShellRayWorld<NoRayObject> for EmptyRayWorld {
     // Harness-limited: a non-empty boundary-face shape needs the B-rep's cached
-    // geometry (`topology::brep_cache::BrepObjects` over a built `BrepCache`, which
-    // is `query.brep`) plus a world overriding `shell_ray_sector` with `topology::brep::p2::local_curve_sector`. The
-    // cases whose C++ run reaches that stage are deferred, never compared here;
-    // swap this world for `BrepObjects` when those units are ported.
+    // geometry (`topology::brep_cache::BrepObjects` over a built `BrepCache`) plus a
+    // world overriding `shell_ray_sector` with `topology::brep::p2::local_curve_sector`.
+    // The cases whose C++ run reaches that stage are deferred
+    // (`harness:shell-ray-world`), never compared here; swap this world for
+    // `BrepObjects` when such a world exists.
     fn shell_ray_shape(
         &self,
         faces: &[solidcore::geom::object::FaceKey],
@@ -164,11 +165,12 @@ impl solidcore::topology::shell::ShellRayWorld<NoRayObject> for EmptyRayWorld {
         if faces.is_empty() {
             return solidcore::geom::object::Shape::new(&[], &[], &[], &[]);
         }
-        // UNPORTED(query.brep): SmBrep cache for SmShape/ShapePointSolve on faces
-        // (harness-limited: this adapter has no B-rep geometry; see the note above)
+        // Harness-limited (see the note above): this adapter has no B-rep geometry, and
+        // a face shape also needs SmFace::CalculateBoundingBox through the face handle
+        // (the DISPATCH GAP in `geom::object::Shape::new`).
         Err(solidcore::SolidError::unported(
             "SmShape::SmShape / SmTopologySolver::ShapePointSolve on boundary faces",
-            "query.brep",
+            "harness:shell-ray-world",
         ))
     }
 }

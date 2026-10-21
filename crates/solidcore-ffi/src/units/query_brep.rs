@@ -25,12 +25,13 @@
 //! [`attribute`] takes `kind id has_behavior behavior set [data]`: `kind` an
 //! [`AttrKind`], `behavior` an `SmAttributeBehaviorType` (`0..=4`, used when
 //! `has_behavior`, else the constructor's default), and with `set` the data written
-//! before the copy: `sort class distance error N` (`SmDecimateVertexAttr`), `Q0 Q1 Q2 b
-//! c` (`SmQuadricVertexAttr`) or `P error sort_set sort` (`SmQuadricEdgeAttr`; the sort
-//! index is written only when `sort_set`). It returns `id behavior type data` of the
-//! constructed attribute, then of its `MakeCopy`; the data as written above (the
-//! quadric edge's sort index NaN while unset). Ids and sort indices are integers in
-//! `0..=2^53`, classes `0..=5`.
+//! before the copy: `class distance error N sort_set sort` (`SmDecimateVertexAttr`),
+//! `Q0 Q1 Q2 b c` (`SmQuadricVertexAttr`) or `P error sort_set sort`
+//! (`SmQuadricEdgeAttr`); a sort index is written only when `sort_set`. An id or sort
+//! index (`ULONG`) is its two 32-bit halves `hi lo`, so all 64 bits are exact. It
+//! returns `id behavior type data` of the constructed attribute, then of its
+//! `MakeCopy`, the data as `sort class distance error N`, `Q0 Q1 Q2 b c` or `P error
+//! sort` (the quadric edge's sort index NaN NaN while unset). Classes are `0..=5`.
 //!
 //! [`box_steps`] builds a real `SmBrep` from unit `topology.edgeuse_p1`'s B-rep block
 //! (`path` names the `.smb` file of a file block; validated and built once through that
@@ -48,8 +49,8 @@
 //! pc)` with `pc` constructed with `tol`; it returns the status and `class kind index gap
 //! src_tol presnap tparam u v param_set face_kind face_index` of `pc` (objects as `kind
 //! index`: `1` face, `2` edge, `3` vertex, `4` region by traversal index, `0 -1` none).
-//! The point must be finite with coordinates up to `1e6`, the tolerance finite in
-//! `0..=1`.
+//! The point and the tolerance must be finite (any sign or magnitude: upstream takes
+//! them as given; a non-finite one could not end the tree descents).
 
 use super::surface_surface_cache_p1::{bad, Reader};
 use super::surface_surface_cache_p3::sized_surface;
@@ -99,9 +100,9 @@ impl AttrKind {
     /// The length of one `id behavior type data` output block.
     const fn block_len(self) -> usize {
         match self {
-            Self::DecimateVertex => 10,
-            Self::QuadricVertex => 16,
-            Self::QuadricEdge => 8,
+            Self::DecimateVertex => 12,
+            Self::QuadricVertex => 17,
+            Self::QuadricEdge => 10,
         }
     }
 }
@@ -161,8 +162,6 @@ impl BoxStep {
 /// Largest number of [`box_steps`] steps.
 pub const MAX_BOX_STEPS: usize = 8;
 
-/// Largest id or sort index (every integer up to it is exact in an `f64`).
-const MAX_ULONG: f64 = 9_007_199_254_740_992.0;
 
 mod sys {
     extern "C" {
@@ -251,11 +250,13 @@ pub fn evaluate(op: EvalOp, input: &[f64]) -> Result<Vec<f64>, FfiError> {
     Ok(out)
 }
 
-/// An integer in `0..=2^53` (an `ULONG` the shim converts exactly).
+/// An `ULONG` as its 32-bit halves `hi lo` (integers in `0..2^32`).
 fn ulong(rd: &mut Reader<'_>) -> Result<(), FfiError> {
-    let v = rd.num()?;
-    if v.fract() != 0.0 || !(0.0..=MAX_ULONG).contains(&v) {
-        return Err(bad(format!("bad ULONG {v}")));
+    for _ in 0..2 {
+        let v = rd.num()?;
+        if v.fract() != 0.0 || !(0.0..4_294_967_296.0).contains(&v) {
+            return Err(bad(format!("bad ULONG half {v}")));
+        }
     }
     Ok(())
 }
@@ -273,11 +274,12 @@ pub fn validate_attribute(kind: AttrKind, data: &[f64]) -> Result<(), FfiError> 
     if rd.flag()? {
         match kind {
             AttrKind::DecimateVertex => {
-                ulong(&mut rd)?;
                 rd.index(5)?;
                 for _ in 0..5 {
                     rd.num()?;
                 }
+                rd.flag()?;
+                ulong(&mut rd)?;
             }
             AttrKind::QuadricVertex => {
                 for _ in 0..13 {
@@ -383,8 +385,8 @@ pub const CLASSIFY_LEN: usize = 13;
 /// # Errors
 ///
 /// [`FfiError::InvalidArgument`] for a block the graph wrapper rejects, a B-rep that
-/// cannot be built, a point or tolerance out of range; the shim's status (also for a
-/// face without surface).
+/// cannot be built, a non-finite point or tolerance; the shim's status (also for a face
+/// without surface).
 pub fn classify(
     path: &str,
     block: &[f64],
@@ -393,10 +395,10 @@ pub fn classify(
     do_boundary: bool,
 ) -> Result<Vec<f64>, FfiError> {
     use super::topology_edgeuse_p1 as graph;
-    if point.iter().any(|x| !x.is_finite() || x.abs() > 1e6) {
+    if point.iter().any(|x| !x.is_finite()) {
         return Err(bad("classify: point"));
     }
-    if !(tol.is_finite() && (0.0..=1.0).contains(&tol)) {
+    if !tol.is_finite() {
         return Err(bad("classify: tolerance"));
     }
     let export = graph::eval(graph::Op::Export, path, block)?;

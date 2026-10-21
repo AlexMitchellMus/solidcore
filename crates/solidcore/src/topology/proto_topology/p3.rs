@@ -24,8 +24,9 @@
 //!   [`ProtoBrep::topology_tolerance`]; `SmTol::GetXSectTol3d(v1, v2)` is the
 //!   sum of the two.
 //! - **Callees not ported yet** are private stubs returning [`SolidError::Unported`],
-//!   each tagged `UNPORTED(<unit>)`: `SmBrep::Point3DClassify` (`query.brep`),
-//!   `SqueezeEdge` / `DeleteEdge` (`topology.brep_p3` / `_p4`). `SmBrep::GlueVertices`
+//!   each tagged `UNPORTED(<unit>)`: `SqueezeEdge` / `DeleteEdge` (`topology.brep_p3`
+//!   / `_p4`). `SmBrep::Point3DClassify` is ported (`query.brep`) but needs the B-rep
+//!   and its cache, which the opaque handle here does not carry (a `DISPATCH GAP`). `SmBrep::GlueVertices`
 //!   goes through [`BrepGlue`], which the B-reps' owner implements with
 //!   `topology::brep::p5` (so [`ProtoTopologyManager::glue_coincident_brep_vertices`]
 //!   takes the kernel and the B-reps mutably).
@@ -148,7 +149,10 @@ fn brep_point3d_classify<O>(
     _tol: f64,
     _pc: &mut PointClassification<O>,
 ) -> Result<()> {
-    // UNPORTED(query.brep): SmBrep::Point3DClassify
+    // DISPATCH GAP: SmBrep::Point3DClassify is ported (`query::brep::point_3d_classify`,
+    // query.brep partial; no UNPORTED marker), but it needs the B-rep mutably with its
+    // B-rep cache and object identities (as `topology::brep::p2::ray_fire`), which this
+    // caller's opaque B-rep handle does not carry.
     Err(SolidError::unported(
         "SmBrep::Point3DClassify",
         "query.brep",

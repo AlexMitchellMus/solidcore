@@ -730,6 +730,43 @@ SmBrep* build(Rd& rd, const char* path, SmStatus& status)
         SmPrimitiveCreation pc(brep->GetInfiniteRegion());
         status = pc.CreateBox(l, w, h, frame);
     }
+    else if (kind == 8)
+    {
+        // `8 nv (x y z tol)*nv ne (x0 y0 z0 x1 y1 z1 tol)*ne`: isolated vertices
+        // (MakeShellVertex) and wire edges over line segments (CreateWireEdgeFromCurve over
+        // the segment's natural interval), each given its tolerance (SetTolerance, not only
+        // if larger, no cascade).
+        const int64_t nv = rd.idx();
+        for (int64_t i = 0; i < nv; ++i)
+        {
+            const SmPoint3d point = rd.vec();
+            const double tol = rd.num();
+            if (status != SM_SUCCESS)
+                continue;
+            SmShell* shell = nullptr;
+            SmVertex* vertex = nullptr;
+            status = brep->MakeShellVertex(brep->GetInfiniteRegion(), point, shell, vertex);
+            if (status == SM_SUCCESS && vertex != nullptr)
+                vertex->SetTolerance(SmZoneTol3d(tol), FALSE, FALSE);
+        }
+        const int64_t ne = rd.idx();
+        for (int64_t i = 0; i < ne; ++i)
+        {
+            const SmPoint3d a = rd.vec();
+            const SmPoint3d b = rd.vec();
+            const double tol = rd.num();
+            if (status != SM_SUCCESS)
+                continue;
+            SmBSplineCurve* line = nullptr;
+            status = SmBSplineCurve::CreateLineSegment(ctx, 3, a, b, line);
+            if (status != SM_SUCCESS || line == nullptr)
+                continue;
+            SmEdge* edge = nullptr;
+            status = brep->CreateWireEdgeFromCurve(line, line->GetNaturalInterval(), edge);
+            if (status == SM_SUCCESS && edge != nullptr)
+                edge->SetTolerance(SmZoneTol3d(tol), FALSE, FALSE);
+        }
+    }
     else
     {
         status = build_wire_network(ctx, brep);

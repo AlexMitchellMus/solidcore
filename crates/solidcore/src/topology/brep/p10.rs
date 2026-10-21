@@ -1791,18 +1791,21 @@ fn merge_curves_world(
     _curves_3d: &[Curve],
     _uv_curves: &[Curve],
 ) -> Result<(CacheMergeWorld, Vec<CacheHandle>, Vec<CacheHandle>)> {
-    // UNPORTED(query.brep): MergeCurvesObjects world over the B-rep cache
+    // DISPATCH GAP: SmBrep::MergeCurvesOnSurface is ported
+    // (`topology::brep::p2::merge_curves_on_surface`, topology.brep_p2 partial; no
+    // UNPORTED marker), but its classification world over the B-rep cache (handles for
+    // the 3D and UV curves next to the cached B-rep geometry) is not built here.
     Err(SolidError::Unported {
         upstream: "SmBrep::MergeCurvesOnSurface classification world over the B-rep cache",
-        unit: "query.brep",
+        unit: "topology.brep_p2",
     })
 }
 
 /// `MergeCurvesOnSurface(*pSurf, dTol, s3DCurves, &sUVCurves, sNewFaces, sCurveEdges,
 /// bUseProjection)` with the header defaults for the rest (no intersection surface,
 /// `bUVSpaceOkay = TRUE`): [`crate::topology::brep::p2::merge_curves_on_surface`]
-/// through the B-rep cache's classification world, which only `query.brep` provides
-/// ([`merge_curves_world`]). Called here (`SmBrep.cpp:25074`, default
+/// through the B-rep cache's classification world ([`merge_curves_world`], not built
+/// yet). Called here (`SmBrep.cpp:25074`, default
 /// `bUseProjection = FALSE`) and by `blend.hcr` (`SmHCR.cpp:1229`, `TRUE`).
 pub(crate) fn merge_curves_on_surface(
     k: &mut Kernel,
@@ -1862,12 +1865,13 @@ fn face_edges(_b: &Brep, _f: FaceId) -> Result<Vec<EdgeId>> {
     })
 }
 
-fn brep_bounding_box(_k: &Kernel, _b: &Brep) -> Result<Extent3d> {
-    // UNPORTED(query.brep): SmBrep::CalculateBoundingBox
-    Err(SolidError::Unported {
-        upstream: "SmBrep::CalculateBoundingBox",
-        unit: "query.brep",
-    })
+/// `SmBrep::CalculateBoundingBox(rBox)` (unit `query.brep`, default arguments).
+fn brep_bounding_box(k: &Kernel, b: &Brep) -> Result<Extent3d> {
+    crate::query::brep::calculate_bounding_box(
+        k,
+        b,
+        crate::query::brep::BoundingBoxOptions::default(),
+    )
 }
 
 /// `sm_GetPointFromSol(sSol, start)` ([`crate::topology::brep::p2::point_from_solution`]).

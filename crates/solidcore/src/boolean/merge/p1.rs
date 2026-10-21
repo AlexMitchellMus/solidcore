@@ -15,7 +15,7 @@
 //! | [`merge_vertex`] | `SmMerge::MergeVertex` |
 //! | [`boolean_post_process`] | `SmMerge::BooleanPostProcess` |
 //! | [`propagate_other_src_region_attribs`] | `SmMerge::PropagateOtherSrcRegionAttribs` |
-//! | [`temporary_brep_transform`], [`TemporaryBrepTransform`] | `SmTemporaryBrepTransform` (constructor/destructor) |
+//! | [`temporary_brep_transform`], [`TemporaryBrepShift`], [`TemporaryBrepTransform`] | `SmTemporaryBrepTransform` (constructor/destructor) |
 //!
 //! Deviations: option accessors are public fields; the context-only constructor's
 //! already-created intersector is supplied by its owner (its type belongs to
@@ -251,7 +251,10 @@ pub fn find_brep_region_of_other_face(
         };
         // Point classification uses tolerance 0.0, boundary intersections FALSE,
         // a classification initialised with edge.tolerance and editing disabled.
-        // UNPORTED(query.brep): SmBrep::Point3DClassify
+        // DISPATCH GAP: SmBrep::Point3DClassify is ported (`query::brep::point_3d_classify`,
+        // query.brep partial; no UNPORTED marker), but it needs the B-rep mutably with its
+        // B-rep cache and object identities (as `topology::brep::p2::ray_fire`), which this
+        // caller (`&Brep` only) does not have.
         return unavailable("SmBrep::Point3DClassify", "query.brep");
     }
     Ok(None)
@@ -652,16 +655,80 @@ impl TemporaryBrepTransform {
     }
 }
 
-/// Begin the scoped origin shift used by manifold Booleans. Bounding boxes are
-/// not yet available on arena B-reps; fail before translating either operand.
-/// Once wired, the returned token must retain the inverse placement (or `None`
-/// when the center's squared length is at most 1e6) until the caller restores it.
+/// The first half of `SmTemporaryBrepTransform(pTI)`, the scoped origin shift of
+/// manifold Booleans: the union of the operands' boxes (`brep` boxed in
+/// `primary_kernel`'s context, `other` in `other_kernel`'s; statuses ignored, a failure
+/// leaves the box initialised) gives a center; when its squared length exceeds `1e6`
+/// the operands need the translation by `-center`. [`TemporaryBrepShift::apply`] is the
+/// second half (the boxes are computed before either operand moves, as upstream).
+///
+/// # Errors
+///
+/// [`SolidError::Unported`] from the boxes.
 pub fn temporary_brep_transform(
-    _brep: &mut Brep,
-    _other: &mut Brep,
-) -> Result<TemporaryBrepTransform> {
-    // UNPORTED(query.brep): SmBrep::CalculateBoundingBox
-    unavailable("SmBrep::CalculateBoundingBox", "query.brep")
+    primary_kernel: &Kernel,
+    other_kernel: &Kernel,
+    brep: &Brep,
+    other: &Brep,
+) -> Result<TemporaryBrepShift> {
+    // get parts bbox
+    let bbox1 = ignore_failure(brep_bounding_box(primary_kernel, brep))?.unwrap_or_default();
+    let bbox2 = ignore_failure(brep_bounding_box(other_kernel, other))?.unwrap_or_default();
+    let bbox = bbox1.union(&bbox2);
+
+    // when bbox is very large - translate its center to the origin
+    let center = bbox.evaluate(0.5, 0.5, 0.5);
+    let shift = (center.length_squared() > 1.0e6).then(|| -center);
+    Ok(TemporaryBrepShift { shift })
+}
+
+/// The translation [`temporary_brep_transform`] decided on (`m_bNeedsTranslation`,
+/// `-m_sCenter`).
+#[derive(Debug)]
+#[must_use = "apply the shift to the operands"]
+pub struct TemporaryBrepShift {
+    shift: Option<Vec3>,
+}
+
+impl TemporaryBrepShift {
+    /// The rest of `SmTemporaryBrepTransform(pTI)`: when a shift is needed, translates
+    /// the primary operand (`false`) then the other (`true`) through `transform`
+    /// (`Transform(sXfm)`: no scale, scaled tolerances; statuses ignored). The token
+    /// keeps the inverse translation for [`TemporaryBrepTransform::restore`].
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::Unported`] from the transforms.
+    pub fn apply(
+        self,
+        brep: &mut Brep,
+        other: &mut Brep,
+        mut transform: impl FnMut(&mut Brep, bool, &Axis2Placement, Option<Vec3>, bool) -> Result<()>,
+    ) -> Result<TemporaryBrepTransform> {
+        let Some(shift) = self.shift else {
+            return Ok(TemporaryBrepTransform { inverse: None });
+        };
+        let mut xfm = Axis2Placement::IDENTITY;
+        xfm.translate(shift);
+        crate::error::ignore_status(transform(brep, false, &xfm, None, true))?;
+        crate::error::ignore_status(transform(other, true, &xfm, None, true))?;
+
+        // (the destructor negates the shift again)
+        let mut inverse = Axis2Placement::IDENTITY;
+        inverse.translate(-shift);
+        Ok(TemporaryBrepTransform {
+            inverse: Some(inverse),
+        })
+    }
+}
+
+/// `SmBrep::CalculateBoundingBox(rBox)` (unit `query.brep`, default arguments).
+fn brep_bounding_box(k: &Kernel, b: &Brep) -> Result<crate::geom::extent3d::Extent3d> {
+    crate::query::brep::calculate_bounding_box(
+        k,
+        b,
+        crate::query::brep::BoundingBoxOptions::default(),
+    )
 }
 
 #[cfg(test)]

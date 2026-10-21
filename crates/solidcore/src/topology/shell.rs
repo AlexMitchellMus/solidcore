@@ -867,7 +867,10 @@ pub trait ShellRayWorld<O>: crate::intersect::topology_solver::p1::TopologyObjec
         _kernel: &Kernel,
         _brep: crate::topology::BrepId,
     ) -> Result<crate::geom::extent3d::Extent3d> {
-        // UNPORTED(query.brep): SmBrep::CalculateBoundingBox
+        // DISPATCH GAP: SmBrep::CalculateBoundingBox is ported
+        // (`query::brep::calculate_bounding_box`, query.brep partial; no UNPORTED marker),
+        // but it takes the `Brep`, which this default (given only the B-rep's id) does not
+        // have; worlds that hold the B-rep override this method.
         Err(SolidError::unported(
             "SmBrep::CalculateBoundingBox",
             "query.brep",
@@ -886,11 +889,14 @@ pub trait ShellRayWorld<O>: crate::intersect::topology_solver::p1::TopologyObjec
     /// overrides this with [`crate::topology::brep::p2::local_curve_sector`], which needs
     /// the B-rep and an entity classification this generic default does not have.
     fn shell_ray_sector(&self, _request: ShellRaySector<'_, O>) -> ShellRaySectorAttempt {
-        // UNPORTED(query.brep): ShellRayWorld over the B-rep cache (SmBrep::LocalCurveSector)
+        // DISPATCH GAP: SmBrep::LocalCurveSector is ported
+        // (`topology::brep::p2::local_curve_sector`, topology.brep_p2 partial; no UNPORTED
+        // marker), but it needs the B-rep and an entity classification this generic
+        // default does not have; worlds over the B-rep cache override this method.
         ShellRaySectorAttempt {
             status: Err(SolidError::unported(
-                "SmShell::RayFire world over the B-rep cache (SmBrep::LocalCurveSector)",
-                "query.brep",
+                "SmBrep::LocalCurveSector (SmShell::RayFire world over the B-rep cache)",
+                "topology.brep_p2",
             )),
             region_update: None,
         }

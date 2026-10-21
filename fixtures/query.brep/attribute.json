@@ -75,18 +75,18 @@
     "id": 120,
     "behavior": 1,
     "data": [
-     17,
      5,
      0.25,
      1e-07,
      0.0,
      0.6,
      0.8
-    ]
+    ],
+    "sort": 17
    }
   },
   {
-   "name": "decimate_vertex_with_data_default_behavior",
+   "name": "decimate_vertex_with_data_no_sort",
    "upstream_ref": "source/SMLib/src/SmPolyDecimate.cpp",
    "inputs": {
     "op": "attribute",
@@ -94,7 +94,6 @@
     "id": 120,
     "behavior": null,
     "data": [
-     17,
      5,
      0.25,
      1e-07,
@@ -105,22 +104,60 @@
    }
   },
   {
-   "name": "decimate_vertex_huge_data",
+   "name": "decimate_vertex_huge_data_max_ids",
    "upstream_ref": "source/SMLib/src/SmPolyDecimate.cpp",
    "inputs": {
     "op": "attribute",
     "kind": "decimate_vertex",
-    "id": 9007199254740992,
+    "id": 18446744073709551615,
     "behavior": 3,
     "data": [
-     17,
      5,
      1e+300,
      1e+300,
      1e+300,
      1e+300,
      1e+300
-    ]
+    ],
+    "sort": 18446744073709551615
+   }
+  },
+  {
+   "name": "decimate_vertex_ids_past_f64",
+   "upstream_ref": "source/SMLib/src/SmPolyDecimate.cpp",
+   "inputs": {
+    "op": "attribute",
+    "kind": "decimate_vertex",
+    "id": 9007199254740993,
+    "behavior": 2,
+    "data": [
+     5,
+     0.25,
+     1e-07,
+     0.0,
+     0.6,
+     0.8
+    ],
+    "sort": 9007199254740995
+   }
+  },
+  {
+   "name": "decimate_vertex_tiny_data",
+   "upstream_ref": "source/SMLib/src/SmPolyDecimate.cpp",
+   "inputs": {
+    "op": "attribute",
+    "kind": "decimate_vertex",
+    "id": 0,
+    "behavior": 4,
+    "data": [
+     5,
+     5e-324,
+     5e-324,
+     5e-324,
+     5e-324,
+     5e-324
+    ],
+    "sort": 0
    }
   },
   {
@@ -211,11 +248,12 @@
      2.5,
      -3.5,
      42.0
-    ]
+    ],
+    "sort": 17
    }
   },
   {
-   "name": "quadric_vertex_with_data_default_behavior",
+   "name": "quadric_vertex_with_data_no_sort",
    "upstream_ref": "source/SMLib/src/SmPolyDecimate.cpp",
    "inputs": {
     "op": "attribute",
@@ -240,12 +278,12 @@
    }
   },
   {
-   "name": "quadric_vertex_huge_data",
+   "name": "quadric_vertex_huge_data_max_ids",
    "upstream_ref": "source/SMLib/src/SmPolyDecimate.cpp",
    "inputs": {
     "op": "attribute",
     "kind": "quadric_vertex",
-    "id": 9007199254740992,
+    "id": 18446744073709551615,
     "behavior": 3,
     "data": [
      1,
@@ -261,7 +299,60 @@
      1e+300,
      1e+300,
      1e+300
-    ]
+    ],
+    "sort": 18446744073709551615
+   }
+  },
+  {
+   "name": "quadric_vertex_ids_past_f64",
+   "upstream_ref": "source/SMLib/src/SmPolyDecimate.cpp",
+   "inputs": {
+    "op": "attribute",
+    "kind": "quadric_vertex",
+    "id": 9007199254740993,
+    "behavior": 2,
+    "data": [
+     1,
+     0.5,
+     0.25,
+     0.5,
+     2,
+     0.125,
+     0.25,
+     0.125,
+     3,
+     -1.5,
+     2.5,
+     -3.5,
+     42.0
+    ],
+    "sort": 9007199254740995
+   }
+  },
+  {
+   "name": "quadric_vertex_tiny_data",
+   "upstream_ref": "source/SMLib/src/SmPolyDecimate.cpp",
+   "inputs": {
+    "op": "attribute",
+    "kind": "quadric_vertex",
+    "id": 0,
+    "behavior": 4,
+    "data": [
+     1,
+     5e-324,
+     5e-324,
+     5e-324,
+     2,
+     5e-324,
+     5e-324,
+     5e-324,
+     3,
+     5e-324,
+     5e-324,
+     5e-324,
+     5e-324
+    ],
+    "sort": 0
    }
   },
   {
@@ -342,14 +433,13 @@
      1.5,
      -2.5,
      3.5,
-     0.0625,
-     1,
-     12345
-    ]
+     0.0625
+    ],
+    "sort": 17
    }
   },
   {
-   "name": "quadric_edge_with_data_default_behavior",
+   "name": "quadric_edge_with_data_no_sort",
    "upstream_ref": "source/SMLib/src/SmPolyDecimate.cpp",
    "inputs": {
     "op": "attribute",
@@ -360,46 +450,59 @@
      1.5,
      -2.5,
      3.5,
-     0.0625,
-     1,
-     12345
+     0.0625
     ]
    }
   },
   {
-   "name": "quadric_edge_huge_data",
+   "name": "quadric_edge_huge_data_max_ids",
    "upstream_ref": "source/SMLib/src/SmPolyDecimate.cpp",
    "inputs": {
     "op": "attribute",
     "kind": "quadric_edge",
-    "id": 9007199254740992,
+    "id": 18446744073709551615,
     "behavior": 3,
     "data": [
      1e+300,
      1e+300,
      1e+300,
-     1e+300,
-     1,
-     12345
-    ]
+     1e+300
+    ],
+    "sort": 18446744073709551615
    }
   },
   {
-   "name": "quadric_edge_sort_unset",
-   "upstream_ref": "source/SMLib/inc/SmPolyDecimate.h",
+   "name": "quadric_edge_ids_past_f64",
+   "upstream_ref": "source/SMLib/src/SmPolyDecimate.cpp",
+   "inputs": {
+    "op": "attribute",
+    "kind": "quadric_edge",
+    "id": 9007199254740993,
+    "behavior": 2,
+    "data": [
+     1.5,
+     -2.5,
+     3.5,
+     0.0625
+    ],
+    "sort": 9007199254740995
+   }
+  },
+  {
+   "name": "quadric_edge_tiny_data",
+   "upstream_ref": "source/SMLib/src/SmPolyDecimate.cpp",
    "inputs": {
     "op": "attribute",
     "kind": "quadric_edge",
     "id": 0,
     "behavior": 4,
     "data": [
-     0.0,
-     0.0,
-     0.0,
-     -1.0,
-     0,
-     0
-    ]
+     5e-324,
+     5e-324,
+     5e-324,
+     5e-324
+    ],
+    "sort": 0
    }
   },
   {
@@ -412,13 +515,13 @@
     "behavior": 0,
     "data": [
      0,
-     0,
      -1.0,
      2.0,
      1.0,
      0.0,
      0.0
-    ]
+    ],
+    "sort": 0
    }
   },
   {
@@ -431,13 +534,13 @@
     "behavior": 0,
     "data": [
      1,
-     1,
      -1.0,
      2.0,
      1.0,
      0.0,
      0.0
-    ]
+    ],
+    "sort": 1
    }
   },
   {
@@ -450,13 +553,13 @@
     "behavior": 0,
     "data": [
      2,
-     2,
      -1.0,
      2.0,
      1.0,
      0.0,
      0.0
-    ]
+    ],
+    "sort": 2
    }
   },
   {
@@ -469,13 +572,13 @@
     "behavior": 0,
     "data": [
      3,
-     3,
      -1.0,
      2.0,
      1.0,
      0.0,
      0.0
-    ]
+    ],
+    "sort": 3
    }
   },
   {
@@ -488,13 +591,13 @@
     "behavior": 0,
     "data": [
      4,
-     4,
      -1.0,
      2.0,
      1.0,
      0.0,
      0.0
-    ]
+    ],
+    "sort": 4
    }
   },
   {
@@ -507,13 +610,13 @@
     "behavior": 0,
     "data": [
      5,
-     5,
      -1.0,
      2.0,
      1.0,
      0.0,
      0.0
-    ]
+    ],
+    "sort": 5
    }
   }
  ]

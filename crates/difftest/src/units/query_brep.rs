@@ -124,8 +124,12 @@ struct AttrIn {
     kind: Kind,
     id: u64,
     behavior: Option<u8>,
-    /// The data record written before the copy (see the ffi module).
+    /// The data written before the copy (see the ffi module, without the sort index):
+    /// `class distance error N`, `Q0 Q1 Q2 b c` or `P error`.
     data: Option<Vec<f64>>,
+    /// The sort index written with the data (decimate vertex and quadric edge).
+    #[serde(default)]
+    sort: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -266,14 +270,25 @@ fn cpp_evaluate(i: &EvalIn) -> Result<Output, HarnessError> {
     Ok(eval_output(&flat))
 }
 
+/// An `ULONG` as its exact 32-bit halves `hi lo`.
+fn halves(v: u64) -> [f64; 2] {
+    [(v >> 32) as f64, (v & 0xffff_ffff) as f64]
+}
+
 fn attr_input(i: &AttrIn) -> Vec<f64> {
-    let mut o = vec![
-        i.id as f64,
+    let mut o = halves(i.id).to_vec();
+    o.extend([
         f64::from(u8::from(i.behavior.is_some())),
         f64::from(i.behavior.unwrap_or(0)),
         f64::from(u8::from(i.data.is_some())),
-    ];
-    o.extend(i.data.iter().flatten());
+    ]);
+    if let Some(d) = &i.data {
+        o.extend(d);
+        if !matches!(i.kind, Kind::QuadricVertex) {
+            o.push(f64::from(u8::from(i.sort.is_some())));
+            o.extend(halves(i.sort.unwrap_or(0)));
+        }
+    }
     o
 }
 
@@ -373,19 +388,21 @@ fn vec_at(d: &[f64], at: usize) -> Result<Vec3, HarnessError> {
     Ok(Vec3::new(datum(d, at)?, datum(d, at + 1)?, datum(d, at + 2)?))
 }
 
-/// Writes a data record into the attribute (as the shim's `set_data`).
-fn set_data(a: &mut Attribute, d: &[f64]) -> Result<(), HarnessError> {
+/// Writes a data record and sort index into the attribute (as the shim's `set_data`).
+fn set_data(a: &mut Attribute, d: &[f64], sort: Option<u64>) -> Result<(), HarnessError> {
     match a.value_mut() {
         AttributeValue::DecimateVertex(v) => {
-            v.sort_index = datum(d, 0)? as u64;
-            let class = datum(d, 1)?;
+            let class = datum(d, 0)?;
             v.vertex_class = PolyVertexClass::ALL
                 .get(class as usize)
                 .copied()
                 .ok_or_else(|| harness(format!("bad vertex class {class}")))?;
-            v.vertex_distance = datum(d, 2)?;
-            v.max_face_error = datum(d, 3)?;
-            v.average_plane_normal = vec_at(d, 4)?;
+            v.vertex_distance = datum(d, 1)?;
+            v.max_face_error = datum(d, 2)?;
+            v.average_plane_normal = vec_at(d, 3)?;
+            if let Some(s) = sort {
+                v.sort_index = s;
+            }
         }
         AttributeValue::QuadricVertex(v) => {
             v.q = [vec_at(d, 0)?, vec_at(d, 3)?, vec_at(d, 6)?];
@@ -395,8 +412,8 @@ fn set_data(a: &mut Attribute, d: &[f64]) -> Result<(), HarnessError> {
         AttributeValue::QuadricEdge(v) => {
             v.new_point = vec_at(d, 0)?;
             v.error = datum(d, 3)?;
-            if datum(d, 4)? != 0.0 {
-                v.sort_index = Some(datum(d, 5)? as u64);
+            if sort.is_some() {
+                v.sort_index = sort;
             }
         }
         _ => return Err(harness("not a decimation attribute")),
@@ -406,15 +423,12 @@ fn set_data(a: &mut Attribute, d: &[f64]) -> Result<(), HarnessError> {
 
 fn push_attribute(o: &mut Vec<f64>, a: &Attribute) -> Result<(), HarnessError> {
     let pv = |o: &mut Vec<f64>, v: Vec3| o.extend([v.x, v.y, v.z]);
-    o.extend([
-        a.attribute_id() as f64,
-        f64::from(a.behavior().code()),
-        a.type_code() as f64,
-    ]);
+    o.extend(halves(a.attribute_id()));
+    o.extend([f64::from(a.behavior().code()), a.type_code() as f64]);
     match a.value() {
         AttributeValue::DecimateVertex(v) => {
+            o.extend(halves(v.sort_index));
             o.extend([
-                v.sort_index as f64,
                 f64::from(v.vertex_class as u8),
                 v.vertex_distance,
                 v.max_face_error,
@@ -431,7 +445,7 @@ fn push_attribute(o: &mut Vec<f64>, a: &Attribute) -> Result<(), HarnessError> {
         AttributeValue::QuadricEdge(v) => {
             pv(o, v.new_point);
             o.push(v.error);
-            o.push(v.sort_index.map_or(f64::NAN, |s| s as f64));
+            o.extend(v.sort_index.map_or([f64::NAN; 2], halves));
         }
         _ => return Err(harness("not a decimation attribute")),
     }
@@ -450,7 +464,7 @@ fn rust_attribute(i: &AttrIn) -> Result<Output, HarnessError> {
         Kind::QuadricEdge => qb::quadric_edge_attribute(i.id, behavior),
     };
     if let Some(d) = &i.data {
-        set_data(&mut a, d)?;
+        set_data(&mut a, d, i.sort)?;
     }
     let c = a.make_copy();
     let mut o = Vec::new();
@@ -642,13 +656,15 @@ fn gen_value(rng: &mut Rng) -> f64 {
     }
 }
 
-/// An exact `ULONG` the ffi accepts.
+/// An `ULONG`: the ends of the range, the `f64` precision limits, or a random one.
 fn gen_ulong(rng: &mut Rng) -> u64 {
-    match rng.below(6) {
+    match rng.below(8) {
         0 => 0,
         1 => u64::from(u32::MAX),
-        2 => 1 << 53,
-        _ => rng.below(1 << 20),
+        2 => (1 << 53) + 1,
+        3 => u64::MAX,
+        4 => rng.below(1 << 20),
+        _ => (rng.below(1 << 32) << 32) | rng.below(1 << 32),
     }
 }
 
@@ -662,26 +678,22 @@ fn gen_attr(rng: &mut Rng) -> AttrIn {
     let behavior = rng.chance(0.7).then(|| rng.below(5) as u8);
     let data = rng.chance(0.75).then(|| match kind {
         Kind::DecimateVertex => {
-            let mut d = vec![gen_ulong(rng) as f64, rng.below(6) as f64];
+            let mut d = vec![rng.below(6) as f64];
             d.extend((0..5).map(|_| gen_value(rng)));
             d
         }
         Kind::QuadricVertex => (0..13).map(|_| gen_value(rng)).collect(),
-        Kind::QuadricEdge => {
-            let mut d: Vec<f64> = (0..4).map(|_| gen_value(rng)).collect();
-            d.push(f64::from(u8::from(rng.chance(0.5))));
-            d.push(gen_ulong(rng) as f64);
-            d
-        }
+        Kind::QuadricEdge => (0..4).map(|_| gen_value(rng)).collect(),
     });
+    let sort = rng.chance(0.5).then(|| gen_ulong(rng));
     AttrIn {
         kind,
         id,
         behavior,
         data,
+        sort,
     }
 }
-
 
 fn gen_what(rng: &mut Rng) -> What {
     match rng.below(3) {
@@ -779,12 +791,44 @@ fn gen_box_solid(rng: &mut Rng) -> BrepIn {
     }
 }
 
+/// Isolated vertices and wire line segments with their own tolerances; `large` is past
+/// the approximation threshold of `SmBrep::CalculateBoundingBox` (500 vertices, 100
+/// edges).
+fn gen_points_brep(rng: &mut Rng, large: bool) -> BrepIn {
+    let tol = |rng: &mut Rng| *rng.choose(&[0.0, 1e-7, 1e-5, 1e-3, 0.1]).unwrap_or(&1e-5);
+    let (nv, ne) = if large {
+        (300 + rng.below(250) as usize, 101 + rng.below(49) as usize)
+    } else {
+        (rng.below(6) as usize, 1 + rng.below(5) as usize)
+    };
+    let scale = *rng.choose(&[1e-3, 1.0, 10.0, 1e3]).unwrap_or(&1.0);
+    let vertices = (0..nv)
+        .map(|_| {
+            let p = rng.point3(-scale, scale);
+            [p[0], p[1], p[2], tol(rng)]
+        })
+        .collect();
+    let lines = (0..ne)
+        .map(|_| {
+            let a = rng.point3(-scale, scale);
+            let b = rng.point3(-scale, scale);
+            [a[0], a[1], a[2], b[0], b[1], b[2], tol(rng)]
+        })
+        .collect();
+    BrepIn::Points { vertices, lines }
+}
+
 /// A B-rep for a generated `box` or `classify` case.
 fn gen_case_brep(rng: &mut Rng) -> BrepIn {
-    match rng.below(10) {
+    match rng.below(12) {
         0..=4 => gen_face_brep(rng),
         5..=7 => gen_brep(rng),
-        _ => gen_box_solid(rng),
+        8 | 9 => gen_box_solid(rng),
+        10 => gen_points_brep(rng, false),
+        _ => {
+            let large = rng.chance(0.5);
+            gen_points_brep(rng, large)
+        }
     }
 }
 
@@ -804,6 +848,11 @@ fn gen_classify(rng: &mut Rng) -> Option<Value> {
             index: rng.below(64) as usize,
             u: frac(rng),
             v: frac(rng),
+        },
+        _ if rng.chance(0.1) => At::Point {
+            p: *rng
+                .choose(&[[1e100, -1e100, 3e100], [1e-200, -1e-200, 3e-200], [1e6, -1e6, 3e6]])
+                .unwrap_or(&[0.0; 3]),
         },
         _ => At::Point {
             p: match &brep {
@@ -827,7 +876,7 @@ fn gen_classify(rng: &mut Rng) -> Option<Value> {
         rng.uniform(-1.0, 1.0) * scale,
     ];
     let tol = *rng
-        .choose(&[0.0, 1e-10, 1e-8, 1e-6, 1e-4, 1e-2])
+        .choose(&[0.0, 1e-10, 1e-8, 1e-6, 1e-4, 1e-2, 1e-6, 1e-6, -1e-12, -1.0, 100.0])
         .unwrap_or(&1e-6);
     serde_json::to_value(Inputs::Classify(ClassifyIn {
         brep: serde_json::to_value(&brep).ok()?,

@@ -57,7 +57,10 @@ fn classify_region(
     // region through upward faceuse / primary edgeuse -> shell -> region.
     // None means another classification kind: wire passes signal SE(SM_ERR)
     // and continue; shell-vertex passes return SM_ERR via SER(SM_ERR).
-    // UNPORTED(query.brep): SmBrep::Point3DClassify
+    // DISPATCH GAP: SmBrep::Point3DClassify is ported (`query::brep::point_3d_classify`,
+    // query.brep partial; no UNPORTED marker), but it needs the B-rep mutably with its
+    // B-rep cache and object identities (as `topology::brep::p2::ray_fire`), which this
+    // caller (`&Brep` only) does not have.
     Err(SolidError::unported(
         "SmBrep::Point3DClassify",
         "query.brep",

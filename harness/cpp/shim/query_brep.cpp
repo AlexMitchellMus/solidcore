@@ -170,14 +170,29 @@ enum
     KIND_QUADRIC_EDGE = 2,
 };
 
-// The data of a decimation attribute of kind `kind`; the quadric edge sort index only when
-// `sort_set` (it is uninitialised until set), else NaN.
+// An ULONG as its exact 32-bit halves `hi lo`.
+void put_ulong(std::vector<double>& o, ULONG v)
+{
+    o.push_back((double)(v >> 32));
+    o.push_back((double)(v & 0xffffffffUL));
+}
+
+ULONG read_ulong(Rd& rd)
+{
+    ULONG hi = (ULONG)rd.num();
+    ULONG lo = (ULONG)rd.num();
+    return (hi << 32) | lo;
+}
+
+// The data of a decimation attribute of kind `kind`: `sort(hi lo) class distance error N`,
+// `Q0 Q1 Q2 b c`, or `P error sort(hi lo)` (the quadric edge sort index only when
+// `sort_set`: it is uninitialised until set; else NaN NaN).
 void put_data(std::vector<double>& o, int64_t kind, SmAttribute* a, bool sort_set)
 {
     if (kind == KIND_DECIMATE_VERTEX)
     {
         DecimatePeek* d = static_cast<DecimatePeek*>(static_cast<SmDecimateVertexAttr*>(a));
-        o.push_back((double)d->sort());
+        put_ulong(o, d->sort());
         o.push_back((double)d->vclass());
         o.push_back(d->distance());
         o.push_back(d->error());
@@ -196,21 +211,32 @@ void put_data(std::vector<double>& o, int64_t kind, SmAttribute* a, bool sort_se
         QuadricEdgePeek* d = static_cast<QuadricEdgePeek*>(static_cast<SmQuadricEdgeAttr*>(a));
         put_vec(o, d->point());
         o.push_back(d->error());
-        o.push_back(sort_set ? (double)d->sort() : std::numeric_limits<double>::quiet_NaN());
+        if (sort_set)
+            put_ulong(o, d->sort());
+        else
+        {
+            o.push_back(std::numeric_limits<double>::quiet_NaN());
+            o.push_back(std::numeric_limits<double>::quiet_NaN());
+        }
     }
 }
 
-// Sets the data of a decimation attribute from the record (layout in the ffi module).
+// Sets the data of a decimation attribute from the record (layout in the ffi module):
+// `class distance error N`, `Q0 Q1 Q2 b c` or `P error`, then for the decimate vertex and
+// quadric edge attributes `sort_set sort(hi lo)`.
 void set_data(Rd& rd, int64_t kind, SmAttribute* a, bool& sort_set)
 {
     if (kind == KIND_DECIMATE_VERTEX)
     {
         DecimatePeek* d = static_cast<DecimatePeek*>(static_cast<SmDecimateVertexAttr*>(a));
-        d->sort() = (ULONG)rd.num();
         d->vclass() = (SmPolyVertexClass)rd.idx();
         d->distance() = rd.num();
         d->error() = rd.num();
         d->normal() = rd.vec();
+        sort_set = rd.flag();
+        ULONG sort = read_ulong(rd);
+        if (sort_set)
+            d->sort() = sort;
     }
     else if (kind == KIND_QUADRIC_VERTEX)
     {
@@ -226,15 +252,15 @@ void set_data(Rd& rd, int64_t kind, SmAttribute* a, bool& sort_set)
         d->point() = rd.vec();
         d->error() = rd.num();
         sort_set = rd.flag();
-        double sort = rd.num();
+        ULONG sort = read_ulong(rd);
         if (sort_set)
-            d->sort() = (ULONG)sort;
+            d->sort() = sort;
     }
 }
 
 void put_attribute(std::vector<double>& o, int64_t kind, SmAttribute* a, bool sort_set)
 {
-    o.push_back((double)a->GetAttributeID());
+    put_ulong(o, a->GetAttributeID());
     o.push_back((double)a->GetBehavior());
     o.push_back((double)a->GetType());
     put_data(o, kind, a, sort_set);
@@ -242,9 +268,9 @@ void put_attribute(std::vector<double>& o, int64_t kind, SmAttribute* a, bool so
 
 } // namespace sc_query_brep
 
-// `kind id has_behavior behavior set [data]`: constructs the attribute (with the default
-// behaviour unless `has_behavior`), sets its data when `set`, copies it with MakeCopy and
-// returns `id behavior type data` of the original, then of the copy.
+// `kind id(hi lo) has_behavior behavior set [data]`: constructs the attribute (with the
+// default behaviour unless `has_behavior`), sets its data when `set`, copies it with
+// MakeCopy and returns `id(hi lo) behavior type data` of the original, then of the copy.
 SC_EXPORT int32_t sc_query_brep_attribute(const double* in, int64_t n_in, double* out, int64_t cap,
                                           int64_t* out_len)
 {
@@ -255,7 +281,7 @@ SC_EXPORT int32_t sc_query_brep_attribute(const double* in, int64_t n_in, double
     const SmContext& ctx = *SmApiGetOrCreateContext();
     Rd rd{in, 0};
     int64_t kind = rd.idx();
-    ULONG id = (ULONG)rd.num();
+    ULONG id = read_ulong(rd);
     bool has_behavior = rd.flag();
     SmAttributeBehaviorType behavior = (SmAttributeBehaviorType)rd.idx();
     bool set = rd.flag();
@@ -270,7 +296,8 @@ SC_EXPORT int32_t sc_query_brep_attribute(const double* in, int64_t n_in, double
     else
         return SC_ERR_ARG;
 
-    bool sort_set = false;
+    // the decimate vertex constructor sets its sort index; the quadric edge's is unset
+    bool sort_set = kind == KIND_DECIMATE_VERTEX;
     if (set)
         set_data(rd, kind, a, sort_set);
     if (rd.at != n_in)

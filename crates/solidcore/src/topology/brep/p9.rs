@@ -114,7 +114,7 @@ where
         };
         let bounds = match supplied_box {
             Some(bounds) => bounds,
-            None => crate::error::ignored(brep_bounds(b))?
+            None => crate::error::ignored(brep_bounds(k, b))?
                 .unwrap_or_else(crate::geom::extent3d::Extent3d::new),
         };
         let ray_start = bounds.max() + (bounds.max() - bounds.min()) * 0.5;
@@ -321,13 +321,13 @@ fn brep_edges(b: &Brep) -> Result<Vec<EdgeId>> {
     crate::topology::brep::p1::edges(b, None)
 }
 
-fn brep_bounds(b: &Brep) -> Result<crate::geom::extent3d::Extent3d> {
-    let _ = b;
-    // UNPORTED(query.brep): SmBrep::CalculateBoundingBox
-    Err(SolidError::unported(
-        "SmBrep::CalculateBoundingBox",
-        "query.brep",
-    ))
+/// `SmBrep::CalculateBoundingBox(rBox)` (unit `query.brep`, default arguments).
+fn brep_bounds(k: &Kernel, b: &Brep) -> Result<crate::geom::extent3d::Extent3d> {
+    crate::query::brep::calculate_bounding_box(
+        k,
+        b,
+        crate::query::brep::BoundingBoxOptions::default(),
+    )
 }
 
 fn brep_ray_fire<O>(
@@ -338,13 +338,13 @@ fn brep_ray_fire<O>(
     state: &mut crate::topology::shell::ShellRayState<O>,
 ) -> Result<bool> {
     let _ = (b, start, direction, tolerance, state);
-    // UNPORTED(query.brep): SmBrep::RayFire over the B-rep cache. The port
-    // (`topology::brep::p2::ray_fire`) solves on the SM_OC_BREP cache world and first
-    // needs CalculateBoundingBox; both belong to query.brep, as for
-    // ShellRayWorld::shell_ray_sector.
+    // DISPATCH GAP: SmBrep::RayFire is ported (`topology::brep::p2::ray_fire`,
+    // topology.brep_p2 partial; no UNPORTED marker), but it solves on the B-rep cache
+    // (SM_OC_BREP) with the B-rep's object identities and lent mutably, which this
+    // caller (`&Brep` and a shell ray state) does not have.
     Err(SolidError::unported(
         "SmBrep::RayFire (B-rep cache world)",
-        "query.brep",
+        "topology.brep_p2",
     ))
 }
 

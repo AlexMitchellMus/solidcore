@@ -3024,7 +3024,7 @@
     {
       "deferred": {
         "symbol": "SmShape::SmShape / SmTopologySolver::ShapePointSolve on boundary faces",
-        "unit": "query.brep"
+        "unit": "harness:shell-ray-world"
       },
       "max_rel_err": 0.0,
       "name": "ray_closed_Mouse.smb_147",
@@ -3036,7 +3036,7 @@
     {
       "deferred": {
         "symbol": "SmShape::SmShape / SmTopologySolver::ShapePointSolve on boundary faces",
-        "unit": "query.brep"
+        "unit": "harness:shell-ray-world"
       },
       "max_rel_err": 0.0,
       "name": "ray_closed_Mouse.smb_148",
@@ -3048,7 +3048,7 @@
     {
       "deferred": {
         "symbol": "SmShape::SmShape / SmTopologySolver::ShapePointSolve on boundary faces",
-        "unit": "query.brep"
+        "unit": "harness:shell-ray-world"
       },
       "max_rel_err": 0.0,
       "name": "ray_closed_Mouse.smb_149",
@@ -3060,7 +3060,7 @@
     {
       "deferred": {
         "symbol": "SmShape::SmShape / SmTopologySolver::ShapePointSolve on boundary faces",
-        "unit": "query.brep"
+        "unit": "harness:shell-ray-world"
       },
       "max_rel_err": 0.0,
       "name": "ray_closed_Mouse.smb_150",
@@ -3072,7 +3072,7 @@
     {
       "deferred": {
         "symbol": "SmShape::SmShape / SmTopologySolver::ShapePointSolve on boundary faces",
-        "unit": "query.brep"
+        "unit": "harness:shell-ray-world"
       },
       "max_rel_err": 0.0,
       "name": "ray_closed_box_with_large_fillet.smb_151",
@@ -3084,7 +3084,7 @@
     {
       "deferred": {
         "symbol": "SmShape::SmShape / SmTopologySolver::ShapePointSolve on boundary faces",
-        "unit": "query.brep"
+        "unit": "harness:shell-ray-world"
       },
       "max_rel_err": 0.0,
       "name": "ray_closed_box_with_large_fillet.smb_152",
@@ -3096,7 +3096,7 @@
     {
       "deferred": {
         "symbol": "SmShape::SmShape / SmTopologySolver::ShapePointSolve on boundary faces",
-        "unit": "query.brep"
+        "unit": "harness:shell-ray-world"
       },
       "max_rel_err": 0.0,
       "name": "ray_closed_box_with_large_fillet.smb_153",
@@ -3108,7 +3108,7 @@
     {
       "deferred": {
         "symbol": "SmShape::SmShape / SmTopologySolver::ShapePointSolve on boundary faces",
-        "unit": "query.brep"
+        "unit": "harness:shell-ray-world"
       },
       "max_rel_err": 0.0,
       "name": "ray_closed_box_with_large_fillet.smb_154",
@@ -7365,7 +7365,8 @@
   "cases_passed": 896,
   "cases_total": 911,
   "deferred_by_unit": {
-    "query.brep": 11,
+    "harness:shell-ray-world": 8,
+    "query.brep": 3,
     "topology.face_p4": 4
   },
   "max_rel_err": 0.0,
