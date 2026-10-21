@@ -336,8 +336,8 @@ pub fn combine_with_notifications(
             ) {
                 end = start + Vec3::new(target.tolerance, target.tolerance, target.tolerance);
             }
-            // Preserve failures from the temporary line before the missing edit
-            // metadata is consulted. The owned temporary drops on deferral.
+            // Preserve failures from the temporary line before the edit metadata is
+            // consulted.
             let line = BSplineCurve::create_line_segment(3, start, end)?;
             let interval = line.natural_interval();
             let editing = b.editing_enabled();
@@ -1404,9 +1404,7 @@ pub fn make_manifold(
     if regions_to_keep.is_some_and(<[RegionId]>::is_empty) {
         return Err(SolidError::sm_err(OP));
     }
-    // SmTemporaryChangeValue of SmBrep::m_bEditingEnabled
-    let previous = b.editing_enabled();
-    b.set_editing_enabled(true);
+    let previous = set_editing_enabled(b, true);
     let result = (|| {
         let mut regions = if let Some(given) = regions_to_keep {
             given.to_vec()
@@ -1456,8 +1454,15 @@ pub fn make_manifold(
         Ok(())
     })();
     // Upstream restores in a destructor.
-    b.set_editing_enabled(previous);
+    set_editing_enabled(b, previous);
     result
+}
+
+/// Sets `m_bEditingEnabled`, returning the previous value.
+fn set_editing_enabled(b: &mut Brep, enabled: bool) -> bool {
+    let previous = b.editing_enabled();
+    b.set_editing_enabled(enabled);
+    previous
 }
 
 fn brep_regions(b: &Brep) -> Result<Vec<RegionId>> {
@@ -1523,9 +1528,7 @@ pub fn remove_topological_with_notifications(
     keep_vertices: Option<&[VertexId]>,
     mut notifications: Option<&mut EditNotifyEnv<'_>>,
 ) -> Result<()> {
-    // SmTemporaryChangeValue of SmBrep::m_bEditingEnabled
-    let previous = b.editing_enabled();
-    b.set_editing_enabled(true);
+    let previous = set_editing_enabled(b, true);
     let result = (|| {
         for edge in brep_edges(b)? {
             // IsTopological can expand a surface even when this edge is on the
@@ -1596,7 +1599,7 @@ pub fn remove_topological_with_notifications(
         Ok(())
     })();
     // Upstream restores in a destructor.
-    b.set_editing_enabled(previous);
+    set_editing_enabled(b, previous);
     result
 }
 

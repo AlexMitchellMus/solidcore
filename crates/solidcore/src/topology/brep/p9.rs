@@ -715,7 +715,6 @@ fn face_notify_call(
     operation: NotifyOperation,
     data: [Option<crate::geom::object::ObjectRef>; 3],
 ) -> Result<()> {
-    // no trimmed surface cache is held here
     crate::topology::face::p3::notify(b, face, env, None, operation, data)
 }
 
