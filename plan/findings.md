@@ -11449,12 +11449,13 @@ mechanical:
   surfaces, UV trim and edge curves sampled, tolerances, every link. They pass with 0
   failures, including holes, loop vertices, shared edges, open boxes of 1 to 5 faces,
   a non-manifold book, B-spline patches and tiny, huge or off-plane inputs.
-- **Deferred.** Every `bCalculateTrims` case defers at `SmFace::GetUpwardLoopuses`
-  (`topology.face_p4`, inside `face_p3`'s `CreateUVTrimCurves`), or at `SmCrvOnSurf` over a
-  plane (`curve.crv_on_surf`) for given UV curves. Every radial-sector recovery defers at
-  `SmSurface::DropCurve` (`intersect.surface_drop_lib_p3`, inside `CreateUVTrimCurve`).
-  A face that closes a shell (the sixth cube face, zero-length loops) defers at
-  `SmBrep::CalculateBoundingBox` (`query.brep`) in `TestClosureSplitRegion`.
+- **Deferred.** After the merge with `topology.face_p4` (#239), every `bCalculateTrims`
+  case and every radial-sector recovery defers at `SmSurface::DropCurve`
+  (`intersect.surface_drop_lib_p3`), inside `face_p3`'s `CreateUVTrimCurves` or
+  `edgeuse_p3`'s `CreateUVTrimCurve`. Given UV curves on a plane defer at `SmCrvOnSurf`
+  (`curve.crv_on_surf`). A face that closes a shell (the sixth cube face, zero-length
+  loops) defers at `SmBrep::CalculateBoundingBox` (`query.brep`) in
+  `TestClosureSplitRegion`. Of the 89 fixture cases, 50 pass and 39 defer.
 - **Not compared: edge marks.** `TransferChildrenTo`'s nested `GetWireEdges` (inside
   `RemoveShell` and the loop-vertex shell merge) marks the C++ edges. `topology.shell`
   keeps those marks in a per-call record (its documented deviation), so the edges'
@@ -11468,9 +11469,11 @@ mechanical:
 - **Downstream.** `topology.brep_p7` 316 cases: 238 pass, 78 deferred, 0 failed (was 237
   and 79). Its face paths now get past `MakeFaceTopology`, and 18 of them reach
   `SmFace::GetTolerance` through a face-owned surface (`topology.face_p2` dispatch
-  stubs in `surface`). With PR #72 merged locally, `topology.brep_p8` runs 339 cases: 305
-  pass, 34 deferred (33 `face_p4` `GetUpwardEdgeuses`, 1 `query.brep`), 0 failed. 264 of
-  its 298 deferrals now pass. `primitive.api_primitives` runs 1981 cases: 1484 pass, 497
-  deferred, 0 failed (1445 and 536 without #72). Its 87 `brep_p8` deferrals become 39
-  passes, 43 `topology.brep_p4` `DeleteEdge` deferrals and 5 `cpp-guard:ub-119`
-  deferrals.
+  stubs in `surface`). `boolean.merge_p2`'s `MakeFaceuse` now completes its face: 45
+  cases, 32 pass, 13 deferred (was 30 and 15). Its `MergeContext` gained `SplitMut`
+  (a mutable primary kernel for the face's mark lock), and `MakeFace` notifies through
+  the copy's face, edge and entity identities, so that its `Notify(SM_NO_COPY)` of the
+  new face finds the record. Before that fix, gen0006 and gen0008 failed with
+  "notified object is not a topology object". `primitive.api_primitives`: 1445 pass,
+  536 deferred, 0 failed, unchanged (its face paths go through the unported
+  `topology.brep_p8` and `primitive_creation_p*`).
