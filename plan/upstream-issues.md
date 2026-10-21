@@ -55,12 +55,12 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** crash/UB (memory exhaustion, integer overflow).
 - **Rust port:** Checks each count against the bytes left (`DatabaseReader::ensure_available`) after upstream's own validation, and returns `InvalidInput`.
 
-#### UB-3. Polymorphic curve readers recurse without a depth limit [PSIRT]
-- **Location:** `SmCurve.cpp:23709` `SmCurve::ReadFromDB` dispatching to `SmProjectedCurve.cpp:690` `SmProjectedCurve::ReadFromDB` (and to the offset and iso curve readers), which read their base curve through `SmCurve::ReadFromDB` again.
+#### UB-3. Polymorphic curve and surface readers recurse without a depth limit [PSIRT]
+- **Location:** `SmCurve.cpp:23709` `SmCurve::ReadFromDB` dispatching to `SmProjectedCurve.cpp:690` `SmProjectedCurve::ReadFromDB` (and to the offset and iso curve readers, e.g. `SmOffsetCurve.cpp:567` `SmOffsetCurve::ReadFromDB`), which read their base curve through `SmCurve::ReadFromDB` again; likewise `SmSurface.cpp:34641` `SmSurface::ReadFromDB` and `SmOffsetSurface.cpp:2197` `SmOffsetSurface::ReadFromDB` for surfaces.
 - **What happens:** Each nesting level costs a few bytes of input and one stack frame chain, so a crafted file overflows the stack.
-- **Trigger:** A file of N nested projected-curve records with N large (thousands).
-- **How found:** read during porting (commit security review of `curve.projected_curve`).
-- **Confirmed:** no.
+- **Trigger:** A file of N nested projected-curve records with N large (thousands). Two concrete triggers (reader fuzz, 2026-10-20): `Fillet/eg1_srf2.smb` with its first 3D curve header preceded by 200000 copies of `Object Type 14036` / `Curve Dim 3` / `0 0 1` / `0.1` / `0 1` / `0` / `//base` (offset curves), or its surface header preceded by 200000 copies of `Object Type 15400` / `0.1` / `0` / `0` / `0` / `0` / `//base` (offset surfaces).
+- **How found:** read during porting (commit security review of `curve.projected_curve`); confirmed by the `.smb` reader fuzz (`crates/difftest/examples/reader_fuzz.rs`).
+- **Confirmed:** yes. `SmBrepData::ReadFromFile` (ASCII) on both 200000-level files segfaults (SIGSEGV, stack overflow) in the C++ reference build, with an 8 MiB stack; 200 levels read fine. The Rust port returns `InvalidInput` for both.
 - **Severity:** crash/UB (stack exhaustion).
 - **Rust port:** Limits nesting to 64 levels (`DatabaseReader::enter_nested`) and returns `InvalidInput` for deeper input.
 
@@ -3077,6 +3077,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes (C++ reference run, reproduced alone by the fuzz harness).
 - **Severity:** hang.
 - **Rust port:** `heal::stitch::p1::api_stitch` defers at `SmBrep::StitchAndOrient` (`topology.brep_p5`); the difftest FFI bounds sheet values at 1e150 for the full-stitch API entry points.
+
+#### HANG-37. B-spline surface extension does not return for a control point of magnitude 1e157 or more
+- **Location:** `source/SMLib/src/SmBSplineSurfaceNLib.cpp:4583` (`SmBSplineSurface::CreateExtendedSurface`), reached from `SmOffsetExecutive::GetCreateExtendedSurface` (`source/SMLib/src/SmOffsetExecutive.cpp:2148`) with `SM_SP_BOTH`, five times the (nonnegative) offset magnitude and `SM_CT_G1R`.
+- **What happens:** With one control point coordinate at `1e157` or beyond, the extension call gives no result within 25 s; the stuck loop was not isolated (HANG-16 and HANG-17 describe the same routine's doubling loop and its exponential split; a coordinate of that size overflows the squared distances the extension-by-distance code compares).
+- **Trigger:** `--fuzz 2000` of `offset.offset_executive_p1` (case `fuzz00331`): a 3x3 degree-2 rational surface with one control point at `x = -1e300`, extension distance `-0.0`, approximation tolerance `4.5e-4`. The sign of the zero distance does not matter.
+- **How found:** PR #282's fuzz gate on the tree merged with main; the case timed out alone as well. Timing with that coordinate replaced, each axis in turn (pod sc-builder-0, release build): `1e154`, `1e155`, `1e156` return in 25-45 ms on x, y and z; `1e157` and `1e158` give no result within 25 s on every axis; `1e160`, `1e180`, `1e200`, `1e250`, `1e300` likewise on x.
+- **Confirmed:** yes (no result within 25 s, reproduced on 15 inputs across three axes; infinite execution not proven).
+- **Severity:** hang on out-of-range geometry; not a parity blocker (no fixture or generated case reaches it).
+- **Rust port:** the `offset.offset_executive_p1` FFI refuses control point coordinates (and coordinate/weight) above `MAX_COORDINATE = 1e154` in its `points()` guard, 1000x below the first slow value; the difftest runner's Rust side runs the same check, and the input is kept as a regression in `crates/difftest/tests/fuzz_regressions/`.
 
 ### Numerical integration
 

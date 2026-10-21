@@ -195,8 +195,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere::IsNurbSurfaceSphere",
-        "unit": "surface.sphere"
+        "symbol": "SmSphere as SmSurface",
+        "unit": "surface.surface_p2"
       },
       "max_rel_err": 0.0,
       "name": "make_faceuse_sphere",
@@ -428,7 +428,7 @@
   "cases_passed": 30,
   "cases_total": 45,
   "deferred_by_unit": {
-    "surface.sphere": 1,
+    "surface.surface_p2": 1,
     "topology.brep_p1": 1,
     "topology.brep_p3": 3,
     "topology.brep_p9": 1,
