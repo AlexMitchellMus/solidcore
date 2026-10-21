@@ -158,7 +158,7 @@ fn copy_skin_primitive_curves(k: &Kernel, input_curves: &[Option<&Curve>]) -> Re
 /// `InvalidInput` for fewer than two profiles, a degree outside `1..=3`, an empty
 /// profile, profile counts that do not add up to the curve count or a `None` curve;
 /// the error of a failing curve copy; [`SolidError::Unported`] otherwise
-/// (`SmPrimitiveCreation::CreateSkinPrimitive`).
+/// (`SmBrep::SmBrep`, until the B-rep constructor is ported).
 pub fn create_skin_primitive(
     k: &mut Kernel,
     curves_in_each_profile: &[usize],
@@ -282,10 +282,7 @@ pub fn create_surface_revolution(
     // UNPORTED(primitive.primitive_creation_p3): SmPrimitiveCreation::CreateRotationalSweep
     // ported (topology.brep_p1): SmBrep::GetSurfaces is topology::brep::p1::surfaces, on the
     // sweep's B-rep after the call above
-    Err(SolidError::unported(
-        "SmPrimitiveCreation::CreateRotationalSweep",
-        "primitive.primitive_creation_p3",
-    ))
+    Err(SolidError::unported("SmBrep::SmBrep", "topology.brep_p3"))
 }
 
 /// The surface skinned through `profiles` (`SmApiCreateSkin`,

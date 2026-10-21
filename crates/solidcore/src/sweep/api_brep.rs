@@ -62,13 +62,13 @@ const OP_PIPE: &str = "sweep::api_brep::create_pipe_sweep";
 const OP_PLANAR_PATH: &str = "sweep::api_brep::create_sweep_along_planar_path";
 const OP_CURVE_SWEEP: &str = "sweep::api_brep::create_curve_sweep";
 const OP_FROM_FACES: &str = "sweep::api_brep::create_curve_sweep_from_faces";
+
+const UNIT_P2: &str = "primitive.primitive_creation_p2";
+const UNIT_P3: &str = "primitive.primitive_creation_p3";
 const OP_FROM_EDGES: &str = "sweep::api_brep::create_curve_sweep_from_edges";
 const OP_TAPER: &str = "sweep::api_brep::create_taper_extrude";
 const OP_LINEAR_REPS: &str = "sweep::api_brep::create_linear_sweep_with_repetitions";
 const OP_ROTATIONAL_REPS: &str = "sweep::api_brep::create_rotational_sweep_with_repetitions";
-
-const UNIT_P2: &str = "primitive.primitive_creation_p2";
-const UNIT_P3: &str = "primitive.primitive_creation_p3";
 
 /// How the gaps between offset profile curves are filled by a draft sweep or taper
 /// extrusion (`SmOffsetCornerType`).
@@ -194,7 +194,7 @@ pub fn create_rotational_sweep(
 /// # Errors
 ///
 /// `InvalidInput` for a `None` curve; the error of a failing curve copy;
-/// [`SolidError::Unported`] otherwise (`SmPrimitiveCreation::CreateTaperExtrude`).
+/// [`SolidError::Unported`] otherwise (`SmBrep::SmBrep`, until the B-rep constructor is ported).
 pub fn create_draft_sweep(
     k: &mut Kernel,
     curves_to_sweep: &[Option<&Curve>],
@@ -243,7 +243,7 @@ pub fn create_draft_sweep(
 ///
 /// `InvalidInput` for no path curve or a radius `<= 0` (a NaN radius passes, as
 /// upstream); [`SolidError::Unported`] otherwise
-/// (`SmPrimitiveCreation::CreatePipeSweep`).
+/// (`SmBrep::SmBrep`, until the B-rep constructor is ported).
 pub fn create_pipe_sweep(
     k: &mut Kernel,
     pipe_radius: f64,
@@ -284,7 +284,7 @@ pub fn create_pipe_sweep(
 ///
 /// `InvalidInput` for no profile or path curve or `cap_ends` outside `0..=3`;
 /// [`SolidError::Unported`] otherwise
-/// (`SmPrimitiveCreation::CreateSweepAlongPlanarPath`).
+/// (`SmBrep::SmBrep`, until the B-rep constructor is ported).
 pub fn create_sweep_along_planar_path(
     k: &Kernel,
     profile_curves: &[&Curve],
@@ -319,11 +319,12 @@ pub fn create_sweep_along_planar_path(
         cap_end,
         move_profile,
     );
-    // UNPORTED(primitive.primitive_creation_p2): SmPrimitiveCreation::CreateSweepAlongPlanarPath
-    Err(SolidError::unported(
-        "SmPrimitiveCreation::CreateSweepAlongPlanarPath",
-        UNIT_P2,
-    ))
+    // Ported: primitive::primitive_creation::p2::PrimitiveCreation::create_sweep_along_planar_path,
+    // which builds every piece in a new B-rep: supply them through PrimitiveCreationAccess
+    // once the B-rep constructor is ported. Upstream has no early exit before that
+    // constructor, so it is this wrapper's first unported call.
+    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
+    Err(SolidError::unported("SmBrep::SmBrep", "topology.brep_p3"))
 }
 
 /// The solid swept by `profile_curves` along `path_curve`, scaled as
@@ -378,7 +379,7 @@ pub fn create_curve_sweep(
 /// # Errors
 ///
 /// `InvalidInput` for no faces or no path curve; [`SolidError::Unported`] otherwise
-/// (`SmPrimitiveCreation::CreateCurveSweepFromFaces`).
+/// (`SmBrep::SmBrep`, until the B-rep constructor is ported).
 pub fn create_curve_sweep_from_faces(
     k: &mut Kernel,
     brep: &Brep,
@@ -419,7 +420,7 @@ pub fn create_curve_sweep_from_faces(
 /// # Errors
 ///
 /// `InvalidInput` for no edges or no path curve; [`SolidError::Unported`] otherwise
-/// (`SmPrimitiveCreation::CreateCurveSweepFromEdges`).
+/// (`SmBrep::SmBrep`, until the B-rep constructor is ported).
 pub fn create_curve_sweep_from_edges(
     k: &mut Kernel,
     brep: &Brep,
@@ -463,7 +464,7 @@ pub fn create_curve_sweep_from_edges(
 ///
 /// `InvalidInput` for no curves or a `None` curve; the error of a failing curve
 /// copy; [`SolidError::Unported`] otherwise
-/// (`SmPrimitiveCreation::CreateTaperExtrude`).
+/// (`SmBrep::SmBrep`, until the B-rep constructor is ported).
 pub fn create_taper_extrude(
     k: &mut Kernel,
     curves: &[Option<&Curve>],

@@ -70,6 +70,7 @@ use crate::geom::extent2d::Extent2d;
 use crate::geom::vector3d::{is_valid_double, Point3, Vec3};
 use crate::kernel::Kernel;
 use crate::math::EFF_ZERO;
+use crate::primitive::primitive_creation::p1::{self, PrimitiveCreation};
 use crate::surface::cone::Cone;
 use crate::surface::plane::Plane;
 use crate::surface::torus::{Torus, TorusOptions};
@@ -87,6 +88,7 @@ const OP_SPHERE_NO_POLE: &str = "primitive::api_primitives::create_sphere_no_pol
 const UNIT_P1: &str = "primitive.primitive_creation_p1";
 const UNIT_P2: &str = "primitive.primitive_creation_p2";
 const UNIT_P3: &str = "primitive.primitive_creation_p3";
+const UNIT_BREP_P8: &str = "topology.brep_p8";
 
 /// `SmApiIsPositiveDim`: a finite dimension (radius, length, height) above
 /// `SM_EFF_ZERO`.
@@ -137,17 +139,17 @@ fn extent_from_zero(max_x: f64, max_y: f64) -> Extent2d {
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`] (`SmPrimitiveCreation::CreateRectangle`); upstream fails
+/// Construction errors, including [`SolidError::Unported`] from missing B-rep edits; upstream fails
 /// with `SM_ERR` when no face is made.
-pub fn create_plane(origin: Point3, x: f64, y: f64) -> Result<Brep> {
+pub fn create_plane(k: &Kernel, origin: Point3, x: f64, y: f64) -> Result<Brep> {
     let frame = xy_frame(origin);
-    let tol = 1.0e-5;
-    let _ = (frame, tol, x, y);
-    // UNPORTED(primitive.primitive_creation_p1): SmPrimitiveCreation::CreateRectangle
-    Err(SolidError::unported(
-        "SmPrimitiveCreation::CreateRectangle",
-        UNIT_P1,
-    ))
+    let brep = p1::create_rectangle(k, 1.0e-5, x, y, &frame)?;
+    if brep.face_list().is_empty() {
+        return Err(SolidError::sm_err(
+            "primitive::api_primitives::create_plane",
+        ));
+    }
+    Ok(brep)
 }
 
 /// The plane bounded to `[0, length] x [0, width]` in the XY plane with its minimum
@@ -169,17 +171,17 @@ pub fn create_plane_surface(origin: Point3, length: f64, width: f64) -> Result<P
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`] (`SmPrimitiveCreation::CreateCircle`); upstream fails with
+/// Construction errors, including [`SolidError::Unported`] from missing B-rep edits; upstream fails with
 /// `SM_ERR` when no face is made.
-pub fn create_planar_circle(origin: Point3, radius: f64) -> Result<Brep> {
+pub fn create_planar_circle(k: &Kernel, origin: Point3, radius: f64) -> Result<Brep> {
     let frame = xy_frame(origin);
-    let tol = 1.0e-5;
-    let _ = (frame, tol, radius);
-    // UNPORTED(primitive.primitive_creation_p1): SmPrimitiveCreation::CreateCircle
-    Err(SolidError::unported(
-        "SmPrimitiveCreation::CreateCircle",
-        UNIT_P1,
-    ))
+    let brep = p1::create_circle(k, 1.0e-5, radius, &frame)?;
+    if brep.face_list().is_empty() {
+        return Err(SolidError::sm_err(
+            "primitive::api_primitives::create_planar_circle",
+        ));
+    }
+    Ok(brep)
 }
 
 /// The solid box of `length` (X) by `width` (Y) by `height` (Z) with its lower left
@@ -188,7 +190,7 @@ pub fn create_planar_circle(origin: Point3, radius: f64) -> Result<Brep> {
 /// # Errors
 ///
 /// [`SolidError::InvalidInput`] unless every size is finite and above
-/// `SM_EFF_ZERO`; then [`SolidError::Unported`] (`SmPrimitiveCreation::CreateBox`).
+/// `SM_EFF_ZERO`; then [`SolidError::Unported`] (`SmBrep::SmBrep`).
 pub fn create_box(origin: Point3, length: f64, width: f64, height: f64) -> Result<Brep> {
     if !is_positive_dim(length) || !is_positive_dim(width) || !is_positive_dim(height) {
         return Err(SolidError::invalid_input(OP_BOX, "non-positive size"));
@@ -212,7 +214,7 @@ pub fn create_box(origin: Point3, length: f64, width: f64, height: f64) -> Resul
 /// # Errors
 ///
 /// [`SolidError::InvalidInput`] unless the radius is finite and its magnitude above
-/// `SM_EFF_ZERO`; then [`SolidError::Unported`] (`SmPrimitiveCreation::CreateSphere`).
+/// `SM_EFF_ZERO`; then [`SolidError::Unported`] (`SmBrep::SmBrep`).
 pub fn create_sphere(origin: Point3, radius: f64) -> Result<Brep> {
     if !is_non_zero_radius(radius) {
         return Err(SolidError::invalid_input(OP_SPHERE, "zero radius"));
@@ -266,7 +268,7 @@ pub fn create_cylinder_surface(
 ///
 /// [`SolidError::InvalidInput`] for a non-finite or negative radius, both radii not
 /// above `SM_EFF_ZERO`, or a height not finite and above `SM_EFF_ZERO`; then
-/// [`SolidError::Unported`] (`SmPrimitiveCreation::CreateCone`).
+/// [`SolidError::Unported`] (`SmBrep::SmBrep`).
 pub fn create_cone(origin: Point3, radius_base: f64, radius_top: f64, height: f64) -> Result<Brep> {
     if !cone_dims_valid(radius_base, radius_top, height) {
         return Err(SolidError::invalid_input(
@@ -311,7 +313,7 @@ pub fn create_cone_surface(
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`] (`SmPrimitiveCreation::CreateTorus`).
+/// [`SolidError::Unported`] (`SmBrep::SmBrep`).
 pub fn create_torus(origin: Point3, radius_major: f64, radius_minor: f64) -> Result<Brep> {
     partial_torus(origin, radius_major, radius_minor, 0.0, 360.0)
 }
@@ -447,7 +449,7 @@ pub fn create_pyramid(
 /// above `SM_EFF_ZERO`, the outside radius is finite and above the inside radius plus
 /// `SM_EFF_ZERO`, the start angle is finite in `[-360, 360]`, and the end angle is
 /// finite, above the start plus `SM_EFF_ZERO` and at most 360 degrees past it; then
-/// [`SolidError::Unported`] (`SmPrimitiveCreation::CreateCylindricalBox`).
+/// [`SolidError::Unported`] (`SmBrep::SmBrep`).
 pub fn create_cylindrical_box(
     origin: Point3,
     length: f64,
@@ -512,7 +514,7 @@ fn partial_sphere(
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`] (`SmPrimitiveCreation::CreateSphere`).
+/// [`SolidError::Unported`] (`SmBrep::SmBrep`).
 pub fn create_partial_sphere(
     origin: Point3,
     radius: f64,
@@ -530,7 +532,7 @@ pub fn create_partial_sphere(
 ///
 /// [`SolidError::InvalidInput`] unless the radius is finite and its magnitude above
 /// `SM_EFF_ZERO`; then [`SolidError::Unported`]
-/// (`SmPrimitiveCreation::CreateSphereNoPole`).
+/// (`SmBrep::SmBrep`).
 pub fn create_sphere_no_pole(center: Point3, radius: f64) -> Result<Brep> {
     if !is_non_zero_radius(radius) {
         return Err(SolidError::invalid_input(OP_SPHERE_NO_POLE, "zero radius"));
@@ -583,7 +585,7 @@ fn partial_cone(
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`] (`SmPrimitiveCreation::CreateCone`).
+/// [`SolidError::Unported`] (`SmBrep::SmBrep`).
 pub fn create_partial_cone(
     origin: Point3,
     radius_base: f64,
@@ -628,7 +630,7 @@ pub struct ConeEllipticEnds {
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`] (`SmPrimitiveCreation::CreateConeEllipticEnds`).
+/// [`SolidError::Unported`] (`SmBrep::SmBrep`).
 pub fn create_cone_elliptic_ends(params: &ConeEllipticEnds) -> Result<Brep> {
     let _ = params;
     // `new SmBrep()`: the B-rep and its infinite void region (module Deviations)
@@ -700,7 +702,7 @@ fn partial_torus(
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`] (`SmPrimitiveCreation::CreateTorus`).
+/// [`SolidError::Unported`] (`SmBrep::SmBrep`).
 pub fn create_partial_torus(
     origin: Point3,
     radius_major: f64,
@@ -723,7 +725,7 @@ pub fn create_partial_torus(
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`] (`SmPrimitiveCreation::CreateBlendPrimitive`).
+/// [`SolidError::Unported`] (`SmBrep::CreateFaceFromSurface`).
 pub fn create_blend_primitive(
     brep: &mut Brep,
     edge1: EdgeId,
@@ -732,12 +734,13 @@ pub fn create_blend_primitive(
     face2: FaceId,
     same_dir_curves: bool,
 ) -> Result<FaceId> {
-    let _ = (brep, edge1, face1, edge2, face2, same_dir_curves);
-    // UNPORTED(primitive.primitive_creation_p1): SmPrimitiveCreation::SmPrimitiveCreation
-    // UNPORTED(primitive.primitive_creation_p2): SmPrimitiveCreation::CreateBlendPrimitive
+    let _creation = PrimitiveCreation::new(brep.infinite_region(), 0, false);
+    let _ = (edge1, face1, edge2, face2, same_dir_curves);
+    // Ported: PrimitiveCreation::new uses the caller's existing B-rep region.
+    // UNPORTED(topology.brep_p8): SmBrep::CreateFaceFromSurface
     Err(SolidError::unported(
-        "SmPrimitiveCreation::CreateBlendPrimitive",
-        UNIT_P2,
+        "SmBrep::CreateFaceFromSurface",
+        UNIT_BREP_P8,
     ))
 }
 
@@ -747,7 +750,7 @@ pub fn create_blend_primitive(
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`] (`SmPrimitiveCreation::CreateSwungPrimitive`).
+/// [`SolidError::Unported`] (`SmBrep::SmBrep`).
 pub fn create_swung_primitive(
     xy_curves: &[Curve],
     xz_curves: &[Curve],
@@ -835,6 +838,69 @@ mod tests {
         assert!(
             create_pyramid(&mut Kernel::default(), o(), 2.0, 3.0).is_err_and(|e| e.is_unported())
         );
+    }
+
+    #[test]
+    fn ported_constructors_defer_at_the_next_unported_call() {
+        fn deferred_at<T>(r: &Result<T>) -> Option<&'static str> {
+            match r {
+                Err(SolidError::Unported { unit, .. }) => Some(*unit),
+                _ => None,
+            }
+        }
+        // the new B-rep is built (topology.brep_p3); the SmPrimitiveCreation call that
+        // fills it is not wired yet
+        let creation = |r: Option<&'static str>| {
+            r.is_some_and(|u| u.starts_with("primitive.primitive_creation_p"))
+        };
+        assert!(creation(deferred_at(&create_sphere(o(), 5.0))));
+        assert!(creation(deferred_at(&create_partial_sphere(
+            o(),
+            5.0,
+            0.0,
+            90.0
+        ))));
+        assert!(creation(deferred_at(&create_cone(o(), 5.0, 2.0, 10.0))));
+        assert!(creation(deferred_at(&create_partial_cylinder(
+            o(),
+            5.0,
+            10.0,
+            0.0,
+            90.0
+        ))));
+        assert!(creation(deferred_at(&create_torus(o(), 10.0, 2.0))));
+        assert!(creation(deferred_at(&create_partial_torus(
+            o(),
+            10.0,
+            2.0,
+            0.0,
+            90.0
+        ))));
+        let mut brep = Brep::new();
+        let (edge, face) = (EdgeId::from_index(0), FaceId::from_index(0));
+        assert_eq!(
+            deferred_at(&create_blend_primitive(
+                &mut brep, edge, face, edge, face, true
+            )),
+            Some(UNIT_BREP_P8)
+        );
+    }
+
+    #[test]
+    fn static_sheets_call_the_port_and_report_the_first_missing_constructor() {
+        let k = Kernel::default();
+        for result in [
+            create_plane(&k, o(), 2.0, 3.0),
+            create_planar_circle(&k, o(), 2.0),
+        ] {
+            assert!(matches!(
+                result,
+                Err(SolidError::Unported {
+                    upstream: "SmBrep::SmBrep",
+                    unit: "topology.brep_p3"
+                })
+            ));
+        }
     }
 
     #[test]
