@@ -1294,6 +1294,9 @@ worth knowing:
   owner metadata, with a 64-link bound; missing metadata is a capture failure.
   Tracker/callback state uses a private shared notification-array allocation so
   active resets and foreign-callback replacement preserve native array lifetimes.
+  `topology.brep_p3` (PR #204) runs heal_data_p3's ported edits (`SqueezeEdge`,
+  `DeleteFace`) under this tracker too (`SmHealData` installs
+  `SmTrackTopologyChanges(m_pBrep, TRUE)` around them, SmHealData.cpp:3341).
 - **Starting a tracker twice leaves its callback installed after it dies.** The
   second `StartTracking` sees the tracker's own callback in the slot and stores it in
   `m_pLastNotifyCallback`; `StopTracking` (and so the destructor) then does nothing,
@@ -8986,6 +8989,17 @@ regression inputs below; 2000-seed sweep 2051 pass / 116 deferred / 0 failed / 1
   311/30/278, `heal.stitch_p1` 300/232/68, `boolean.merge_p5` 140/108/32,
   `boolean.merge_p1` 248/206/42, `boolean.topology_intersector_p1` 830/713/117 and
   `topology.brep_p9` 684/638/46 unchanged from main.
+- **Integration gap (PR #204, topology.brep_p3): `SmBrep::MakeWireEdge` stays a stub.**
+  `merge_edge_with`'s `make_wire_edge` keeps `UNPORTED(topology.brep_p3)` although
+  `topology::brep::p3::make_wire_edge` is ported. The callee needs `&mut Kernel`
+  (`topology::brep::p2::make_edge_topology` transfers shells), and #229's
+  `MergeContext::Split` carries only `&Kernel` plus an optional `Context`. It also
+  needs a `NotifyEnv` naming the new edge, edge uses and vertex uses, which has to be
+  built from `TopologyCopy`'s destination keys. Wiring it means changing
+  `MergeContext::Split` to `&mut Kernel` for every `merge_edge` caller, so it is a
+  small follow-up after #204 lands. `OrientTrimmedSurfaces` is wired in #204: it is a
+  required `MergeBrep` method, implemented by the runner's `Two` with
+  `topology::brep::p3::orient_trimmed_surfaces` under the kernel's identities.
 
 ## topology.brep_p5 — historical pre-review coverage (superseded)
 
@@ -12999,6 +13013,19 @@ guarded in `offset.offset_geometry_creation`; the fix belongs to the curve cache
   tessellation, before any intersection test, as in `fuzz00504`.
 - **Status.** Open, with `fuzz00504`. Reproduce with the fuzz output file as a fixture and
   the tolerance set to any accepted value.
+- **Difftest `graph()` compared arena records upstream deletes (topology.brep_p3, PR #204).** The shared
+  difftest helper `graph()` / `Canon::of` (`crates/difftest/src/units/boolean_merge_p1.rs`, used by
+  several runners) counted raw arena lengths and appended the records its walk did not reach, while the
+  C++ side is a fresh import of the shim's export walk, which emits only live objects. Upstream deletes
+  records the Rust arenas keep, unlinked (topology.brep_p2's documented deviation: "deleted records ...
+  stay in the arena, unlinked", e.g. `MakeEdgeVertexTopology` deleting a vertex shell's vertex use,
+  SmBrep.cpp:13850). It surfaced when #339 wired `GetInfiniteRegion` into topology.brep_p5, so
+  `CreateWireEdgeFromCurve` (op 13) ran for the first time: 5 vertex uses vs 4, geometry 29 vs 27, graph
+  57 vs 54, with equal topology. `graph()` now numbers, compares and counts only the records the walk
+  reaches from the B-rep's roots (regions and edge list, as the export walk): reachability is the
+  definition of the B-rep's content upstream, and a record that is wrongly still linked is reached and
+  compared. The unreached count is a Rust-side report diagnostic (`diagnostics.unreached_records`,
+  never compared) so leaks stay visible.
 
 ## query.brep (B-rep boxes, `Point3DClassify`, decimation attributes, `SmApiEvaluateSurface*`; PR #329, takeover of #101, 2026-10-21; partial, no disagreements)
 
@@ -13109,6 +13136,45 @@ mechanical:
 
 `SmCurveInterval::GetMinUV` / `GetMaxUV` are wired (no case reaches them yet).
 
+## topology.brep_p3 — `OrientTrimmedSurfaces` SwapUV cases defer under `harness:surface-notify-identity` (PR #204, 2026-10-21)
+
+- **Root cause.** `SmFace::SwapUV` calls `pSurface->SwapUV()`. `SmBSplineSurface::SwapUV`
+  rebuilds the surface with `SetCanonical`, which notifies `SM_NO_PRE_EDIT` /
+  `SM_NO_POST_EDIT` on the surface itself (`SmBSplineSurface.cpp:4585` / `:4592`,
+  `(this, SM_NO_GET_OWNER(this) = NULL, NULL)`). `SmOffsetSurface::SwapUV` forwards to its
+  base surface, and `SmSrfInVolume::SwapUV` notifies itself. So every upstream swap
+  sends a geometry `POST_EDIT`. The tracker records it and, through the surface's
+  owner, puts the face in its `Chg` list. A Rust `Surface` has no notification
+  identity (a `Curve` has its `IdentitySlot`), so the port cannot send that event.
+  Found when #364 (#239 `topology.face_p4`) let the orient fixtures reach `SwapUV`: 31
+  `orient_*_swap0` cases, 29 with one swap and 2 with two, differed only in the
+  tracker's event list (`orient_Mouse_swap0`: C++ 577 values, Rust 557, i.e. one
+  `Chg` entry and one geometry event per swap).
+- **Fixed in the same round.** The face's own `PRE_EDIT` / `POST_EDIT` now go through the
+  caller's environment (`face::p1::swap_uv_with_notifications`) and carry
+  `(this, NULL, NULL)`: `SM_NO_GET_BREP(this)` is a null pointer (`SmTypes.h:659`).
+- **Deferral.** The `topology.brep_p3` runner defers an `Orient` case exactly when
+  `SmFace::SwapUV` ran (the face's `POST_EDIT` is in the tracker's events). Orient cases
+  that swap nothing are still compared in full. The whole case defers: its face and
+  topology values share one output vector with the tracker's lists, and no case
+  boundary separates them.
+- **Follow-up.** Co-port a notification `IdentitySlot` onto `Surface` (owned by
+  `surface.surface_p1`, as `Curve`'s). Send the surface's `PRE/POST_EDIT` around the
+  surface swap in `swap_uv_with_notifications`. Have the runner issue each face
+  surface's identity before the op, with the face as owner for the tracker's owner
+  walk (as it does for edge curves). Then remove the deferral.
+- **Update (re-check of `766472a1`).** The whole-case deferral was decided from the
+  Rust side alone, so a Rust-only wrong swap would have been hidden, and the 31 cases
+  compared nothing. `harness:surface-notify-identity` is gone. Both the shim and the
+  runner now end an `Orient` output with a trailer: each pre-op face's `SmFace::SwapUV`
+  `POST_EDIT` count from that side's own tracker events, the face count, and the
+  tracker's offset. The runner splits it into `out` (status, flag, face domains and
+  upward face uses, counts), `swapped` and `tracker`. `out` and `swapped` are always
+  compared. Only a side whose own events show a swap leaves out `tracker`, so a swap on
+  one side only fails on `swapped`, and on `tracker`'s presence too.
+- **MakeWireEdge (above): Shared is wireable.** `MergeContext::Shared(&mut Kernel)` does
+  carry a mutable kernel, so that path could be wired now. Only `Split` needs the
+  signature change. Both are left for the follow-up.
 **Resolved (wire/curve-class-p4, PR #365):** both back-edges are now wired.
 
 - The 4 `ConnectIntervals` disagreements are upstream undefined behaviour, not a port

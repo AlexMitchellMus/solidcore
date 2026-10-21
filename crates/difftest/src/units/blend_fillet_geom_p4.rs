@@ -429,8 +429,14 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
             let key_of = |e: solidcore::EntityRef| {
                 use solidcore::EntityRef as E;
                 let (type_code, key) = match e {
-                    E::Face(f) => (solidcore::topology::face::p2::TYPE, 1 + u64::from(f.index())),
-                    E::Edge(x) => (solidcore::topology::edge::TYPE, 1 << 40 | u64::from(x.index())),
+                    E::Face(f) => (
+                        solidcore::topology::face::p2::TYPE,
+                        1 + u64::from(f.index()),
+                    ),
+                    E::Edge(x) => (
+                        solidcore::topology::edge::TYPE,
+                        1 << 40 | u64::from(x.index()),
+                    ),
                     E::Edgeuse(x) => (16005, 2 << 40 | u64::from(x.index())),
                     _ => (0, 3 << 40),
                 };
