@@ -959,10 +959,12 @@ pub fn make_face_with_curves(
                         start_vertex,
                         end_vertex,
                         curve: &curve,
+                        // (a new input curve: no edge owns it)
+                        curve_owner: None,
                         interval: ivl,
                         tolerance: zone_tol,
                     };
-                    if let Some(c) = find_coincident_edge(b, &query, &edges, 0)? {
+                    if let Some(c) = find_coincident_edge(k, b, &query, &edges, 0)? {
                         if c.max_deviation < zone_tol * 1.0e-3 {
                             // share the coincident edge (the curve is dropped)
                             let coin = *at(&edges, c.index)?;

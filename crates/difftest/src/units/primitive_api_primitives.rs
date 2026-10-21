@@ -406,7 +406,12 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         OpName::Cylinder => brep_out(api::create_cylinder(i.point(0)?, a(3)?, a(4)?)),
         OpName::Cone => brep_out(api::create_cone(i.point(0)?, a(3)?, a(4)?, a(5)?)),
         OpName::Torus => brep_out(api::create_torus(i.point(0)?, a(3)?, a(4)?)),
-        OpName::Pyramid => brep_out(api::create_pyramid(i.point(0)?, a(3)?, a(4)?)),
+        OpName::Pyramid => brep_out(api::create_pyramid(
+            &mut Kernel::default(),
+            i.point(0)?,
+            a(3)?,
+            a(4)?,
+        )),
         OpName::CylindricalBox => brep_out(api::create_cylindrical_box(
             i.point(0)?,
             a(3)?,
