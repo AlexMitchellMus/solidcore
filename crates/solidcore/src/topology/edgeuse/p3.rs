@@ -401,7 +401,7 @@ pub fn create_uv_trim_curve(
         let base = cos.surface();
         // `pSurface == base || *pSurface == *base` (identity is lost in the port: value
         // equality only) && same orientation as the primary edge use
-        if face_surface.approx_eq(k, &base)?
+        if face_surface.approx_eq(k, base)?
             && orientation(b, eu)?
                 == orientation(
                     b,
