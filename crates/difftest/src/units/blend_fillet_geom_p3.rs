@@ -649,8 +649,6 @@ impl RustModel {
         let mut solvers = Vec::new();
         for s in &m.solvers {
             let mut fs = FilletSolver::new(s.tol, s.ang, s.tang);
-            // the constructor's own geometry is none of the model's
-            fs.fillet_geoms.push(FilletGeomId(u32::MAX));
             for (slot, &e) in fs.edgeuses.iter_mut().zip(&s.eus) {
                 *slot = u32::try_from(sel(e, tg.n_eu()))
                     .ok()
@@ -974,7 +972,8 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         }
         OpIn::CornerEdge { e } => {
             let e = *m.edges.get(*e).ok_or_else(|| harness("edge"))?;
-            m.fb.calc_corner_edge_geom(&k, e, &bases, &mut tg.brep)
+            // the shim refuses the part 6 calculators (its corners carry no data)
+            m.fb.calc_corner_edge_geom(&k, e, &[], &bases, &mut tg.brep)
         }
         OpIn::FilletIntFillet { e } => {
             let e = *m.edges.get(*e).ok_or_else(|| harness("edge"))?;
@@ -1002,11 +1001,17 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                 .solvers
                 .get_mut(si.0 as usize)
                 .ok_or_else(|| harness("solver"))?;
+            // the solver's own geometry (made by its constructor) is none of the model's
+            if solver.solver().fillet_geoms.is_empty() {
+                solver
+                    .solver_mut()
+                    .fillet_geoms
+                    .push(FilletGeomId(u32::MAX));
+            }
             m.fb.re_calc_fillet_geom(
                 &k,
                 g,
                 solver,
-                &bases,
                 &tg.brep,
                 *analytic,
                 dir.map(|d| Vec3::new(d[0], d[1], d[2])),
@@ -1379,7 +1384,7 @@ fn gen_fif(rng: &mut Rng) -> Inputs {
         ve: 1,
         etype: FilletEdgeType::FilletXFillet as i64,
         status: 0,
-        // without a curve upstream reads the corner's context (UB-246; the shim refuses that)
+        // without a curve upstream reads the corner's context (UB-210; the shim refuses that)
         corner: if !has_curve || rng.chance(0.9) { 0 } else { -1 },
         curve: has_curve.then(|| curve.clone()),
         interval: Some([a, bb]),
@@ -1582,7 +1587,7 @@ fn gen_recalc(rng: &mut Rng) -> Inputs {
         .then(|| gen_curve_on(rng, 3, 1.0, 0.0, 1.0));
     let mut dir = rng.chance(0.5).then(|| rng.point3(-1.0, 1.0));
     // Without a march direction, when rail 0 has no curve (never here) and both rails
-    // are there, upstream reads the first sorted point even when there is none (UB-245;
+    // are there, upstream reads the first sorted point even when there is none (UB-208;
     // the shim refuses that model): give such a model a direction.
     if dir.is_none() && rails[1] >= 0 && !recalc_sorts_a_point(gtype, &vertices, &edges) {
         dir = Some(rng.point3(-1.0, 1.0));
