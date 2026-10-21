@@ -12273,3 +12273,38 @@ api_primitives 1981 / 1445 / 536 deferred (brep_p3 282 that named p2); p1 773 / 
 the two `include!`d files; green 237 units, 114 passed, 123 partial, 0 failed. Planted faults: 10 of
 11 caught (unit tests, and the four guard faults also as native crashes of `guarded.json`); a
 supplied-normal comparison against `UNDEF` instead of zero is unobservable today.
+
+
+### PR #250 second review (2026-10-21)
+
+Merged main `7b57d8de`, #233 `f810c60a` (its `p3/construct.rs` edge-blend call taken) and main
+`ca3bbd2b`; the kernel test model and the difftest runner gained the three `SweepAccess` items #233
+added. `SmBrep::SetTolerance` (upstream defaults: only if larger, cascading to the boundaries),
+`SmBrep::IsManifoldSolid` and `SmMerge::BooleanTrees` (B-reps moved out, checked first, written back in
+`sOrderedBreps`' order) are wired; a union of two B-reps defers at `SmMerge::SmMerge`
+(`boolean.merge_p2`).
+
+The taper guard now replays the reversed chaining only where upstream may take that pass, and its end-cap
+rule refuses, where upstream may reverse, a closed chain whose short curve meets one over 100 times longer
+at a corner sharper than `3e-5` radians. 7,236 native probes: 1,078 crash, the guard refuses all of them
+(as the pushed head's did) and now refuses 1,805 that run instead of 5,558.
+
+`--fuzz 1000` on the merged tree found UB-243 (`fuzz00880`): with the start cap,
+`CreatePlanarFaceWith3DCurves` fails after building edges on the input curves when an end meets no other end
+or more than one, and the taper deletes the curves those edges use. About 400 native probes: every crash had
+a closed loop and such an end; curves closing no loop and clean loops (a self-crossing bow-tie, a square with a
+repeated or reversed side) ran. The FFI refuses, with the start cap, curves that close a loop while an end
+meets no other end or more than one within `2 * SM_ZONE_TOL_3D` (repeats of another curve left out). Five
+crashing shapes are in `guarded.json`, four start-cap inputs that run in `review_duplicate_curves.json`; seven
+planted faults in the guard are each caught by its test.
+
+Gate at `1527b886`: p2 328 cases, 129 pass, 0 fail, 179 deferred (`topology.brep_p3` 81, `topology.brep_p8`
+78, `topology.brep_p1` 20), 20 rejected; perturb 129/129; fuzz 1000 clean (560 rejected, 190 malformed, 250
+ran, 0 differ); p1 773/689/75/9, p3 296/285/10/1, api_primitives 1981/1445/536, sweep api_brep 573/306/267,
+api_surfaces 882/831/51, offset executive 1032/714/317/1, topology sweep 568/558/10; fmt, workspace and native
+Clippy, 6 FFI tests, 187 difftest runner tests, 1,595 kernel tests, wasm32; `--green --jobs 4`: 242 units,
+116 passed, 126 partial, 0 failed.
+
+Main `a6132883` (#133's caller `Kernel` through curve and surface calls) does not compile with the stack yet:
+45 call sites, 34 in the carried p1, p3 and topology_sweep code (#213, #233, #222) and 11 in p2. This head
+stays on `ca3bbd2b`; p2's sites are fixed when #233, merged with main, is merged in again.
