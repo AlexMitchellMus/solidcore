@@ -828,7 +828,7 @@ impl FilletBrep {
             &surface1,
             50.0 * tol,
         )?;
-        let mut curve_3d = uv.curve_3d;
+        let mut curve_3d: Option<Curve> = uv.curve_3d.map(Curve::from);
         let uv_curve1 = uv.uv_curve1;
         let uv_curve2 = uv.uv_curve2;
 
@@ -852,7 +852,7 @@ impl FilletBrep {
         }
         let curve_3d = curve_3d.ok_or_else(|| SolidError::null_pointer(OP_CROSS))?;
 
-        set_edge_curve(self.brep_mut(), e, Some(Curve::from(curve_3d)))?; // side effect: delete current this->UVTrimCurves
+        set_edge_curve(self.brep_mut(), e, Some(curve_3d))?; // side effect: delete current this->UVTrimCurves
         self.set_uv(prim, uv_curve1.map(Curve::from))?;
 
         // Need second UV curve when we had a closed fillet surface
