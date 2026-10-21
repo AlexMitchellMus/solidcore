@@ -1326,16 +1326,12 @@
       "values_compared": 33
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::RayFire (B-rep cache world)",
-        "unit": "topology.brep_p2"
-      },
       "max_rel_err": 0.0,
       "name": "real_box_with_large_fillet_infinite_region",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p9/real_files.json#54 (upstream source/SMLib/src/SmBrep.cpp:8004-8582)",
-      "values_compared": 0
+      "values_compared": 242
     },
     {
       "max_rel_err": 0.0,
@@ -5659,14 +5655,13 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 46,
+  "cases_deferred": 45,
   "cases_failed": 0,
-  "cases_passed": 638,
+  "cases_passed": 639,
   "cases_total": 684,
   "deferred_by_unit": {
     "intersect.surface_drop_curve": 1,
     "intersect.surface_drop_lib_p3": 1,
-    "topology.brep_p2": 1,
     "topology.face_p3": 39,
     "topology.face_p4": 4
   },

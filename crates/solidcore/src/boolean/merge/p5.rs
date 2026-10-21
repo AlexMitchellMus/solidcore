@@ -494,7 +494,10 @@ mod tests {
             &mut keep,
         );
         // the second wire's classification reaches a callee not ported yet
-        assert!(matches!(result, Err(SolidError::Unported { .. })), "{result:?}");
+        assert!(
+            matches!(result, Err(SolidError::Unported { .. })),
+            "{result:?}"
+        );
         assert_eq!(keep, [ae]);
     }
 
