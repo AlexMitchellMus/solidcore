@@ -414,7 +414,7 @@ impl FilletSolver {
         let surfaces = c3_trace_setup(ops, &mut cx, &mut st)?;
         {
             // :2037-2052 SmFilletIntersector sFI(..), extension distance
-            let mut fi = c3_make_intersector(ops, &mut cx, &st, &surfaces)?;
+            let mut fi = c3_make_intersector(ops, cx.k, &st, &surfaces)?;
             // :2054-2090 trace locals, reversal at a tangent last point
             c3_trace_start(ops, &mut cx, &mut st)?;
             // :2093-2467 while (!bFoundAllPoints)
@@ -482,17 +482,27 @@ fn offset_surface_mut(ops: &mut dyn FilletSolverOps, rail: usize) -> Result<&mut
 
 /// `GetSurface(rail)->EvaluatePoint(uv, pnt)` on the solver's own surface (an
 /// extended base it builds is stored, as upstream's `const` cast does).
-fn offset_evaluate_point(ops: &mut dyn FilletSolverOps, rail: usize, uv: Point2) -> Result<Point3> {
+fn offset_evaluate_point(
+    k: &Kernel,
+    ops: &mut dyn FilletSolverOps,
+    rail: usize,
+    uv: Point2,
+) -> Result<Point3> {
     offset_surface_mut(ops, rail)?
         .surface
-        .evaluate_point_extending(uv)
+        .evaluate_point_extending(k, uv)
 }
 
 /// `GetSurface(rail)->EvaluateNormal(uv, TRUE, TRUE, n)` on the solver's own surface.
-fn offset_evaluate_normal(ops: &mut dyn FilletSolverOps, rail: usize, uv: Point2) -> Result<Vec3> {
+fn offset_evaluate_normal(
+    k: &Kernel,
+    ops: &mut dyn FilletSolverOps,
+    rail: usize,
+    uv: Point2,
+) -> Result<Vec3> {
     offset_surface_mut(ops, rail)?
         .surface
-        .evaluate_normal_extending(uv, Side::Left, Side::Left)
+        .evaluate_normal_extending(k, uv, Side::Left, Side::Left)
 }
 
 /// `SM_CAST_PTR(SmBSplineCurve, pCurve)`: the B-spline part of the kinds derived from
@@ -581,12 +591,12 @@ fn binormal_guess_point(
     if half {
         bin_vec *= 0.5;
     }
-    let uv_dir = drop_vectors_at(base0, b.uv, Side::Left, Side::Left, &[bin_vec])?
+    let uv_dir = drop_vectors_at(cx.k, base0, b.uv, Side::Left, Side::Left, &[bin_vec])?
         .first()
         .copied()
         .ok_or_else(|| invalid("short drop result"))?;
     let uv = b.uv + uv_dir;
-    let pnt = offset_evaluate_point(ops, 0, uv)?;
+    let pnt = offset_evaluate_point(cx.k, ops, 0, uv)?;
     Ok((pnt, b.tangent))
 }
 
@@ -621,8 +631,8 @@ fn c1_setup(ops: &mut dyn FilletSolverOps, cx: &mut Cx<'_>) -> Result<CalcState>
     let ivl = topo_edge::interval(cx.target, edge)?;
 
     // evaluate curve end points
-    let pv_start = c1_pos_and_tangent(&edge_curve.evaluate(ivl.min(), 1, true, false)?)?;
-    let pv_end = c1_pos_and_tangent(&edge_curve.evaluate(ivl.max(), 1, true, false)?)?;
+    let pv_start = c1_pos_and_tangent(&edge_curve.evaluate(cx.k, ivl.min(), 1, true, false)?)?;
+    let pv_end = c1_pos_and_tangent(&edge_curve.evaluate(cx.k, ivl.max(), 1, true, false)?)?;
 
     // get fillet offset and base surfaces (GetSurface(i) is dereferenced unchecked;
     // an SmOffsetSurface always has its base, so the NER cannot fire)
@@ -689,7 +699,7 @@ fn c1_collect_points(
     let uv_curve = get_or_create_uv_trim_curve(cx.k, cx.target, eu_filleted_edge)?;
 
     // special case: don't sort SmTsectPnts on closed UVTrimCurves
-    if uv_curve.is_closed(&st.ivl, 0.0)? {
+    if uv_curve.is_closed(cx.k, &st.ivl, 0.0)? {
         if which_surf == 0 {
             // try the other one.
             return Ok(None);
@@ -732,7 +742,7 @@ fn c1_collect_points(
             .get(k)
             .copied()
             .ok_or_else(|| invalid("G1 knot index out of range"))?;
-        st.edge_curve.evaluate(knot, 1, true, false)?;
+        st.edge_curve.evaluate(cx.k, knot, 1, true, false)?;
 
         // guess point: GetSurface(0) point nearest to the end of the binormal (half
         // the second offset) dropped onto pBaseSrf1; tangent in edgeuse direction
@@ -1291,7 +1301,7 @@ fn c2_sort_points(
         // a drop to the edge's end point may lie beyond it (the edge needs extending):
         // drop to the tangent extension line instead
         if st.ivl.is_value_on_boundary(t, EFF_ZERO).0 {
-            let pv = pass.uv_curve.evaluate(t, 1, true, false)?;
+            let pv = pass.uv_curve.evaluate(cx.k, t, 1, true, false)?;
             let p0 = *pv
                 .first()
                 .ok_or_else(|| invalid("short curve evaluation"))?;
@@ -1345,9 +1355,16 @@ fn c2_insert_index(proj_params: &[f64], t: f64, d_scale: f64) -> Option<usize> {
 /// evaluation leaves the fresh `SmPoint3d` at `SM_UNDEF_DOUBLE` ([`Vec3::UNDEF`]);
 /// `Unported` still propagates. A missing `GetSurface(0)` (a `NULL` dereference
 /// upstream, ruled out by setup) is `invalid`, not ignored.
-fn c2_offset_point_ignored(ops: &mut dyn FilletSolverOps, uv: Point2) -> Result<Point3> {
+fn c2_offset_point_ignored(
+    k: &Kernel,
+    ops: &mut dyn FilletSolverOps,
+    uv: Point2,
+) -> Result<Point3> {
     let surface = offset_surface_mut(ops, 0)?;
-    Ok(crate::error::ignored(surface.surface.evaluate_point_extending(uv))?.unwrap_or(Vec3::UNDEF))
+    Ok(
+        crate::error::ignored(surface.surface.evaluate_point_extending(k, uv))?
+            .unwrap_or(Vec3::UNDEF),
+    )
 }
 
 /// :1872-1920: `SM_ERR` without points; with more than two, drop the penultimate
@@ -1368,11 +1385,11 @@ fn c2_clean_ends(ops: &mut dyn FilletSolverOps, cx: &mut Cx<'_>, st: &mut CalcSt
         let uv1 = st
             .point(cx.fillets, total_tsects - 1)?
             .uv_pos(SrfIndex::First);
-        let pnt1 = c2_offset_point_ignored(ops, uv1)?;
+        let pnt1 = c2_offset_point_ignored(cx.k, ops, uv1)?;
         let uv2 = st
             .point(cx.fillets, total_tsects - 2)?
             .uv_pos(SrfIndex::First);
-        let pnt2 = c2_offset_point_ignored(ops, uv2)?;
+        let pnt2 = c2_offset_point_ignored(cx.k, ops, uv2)?;
         let v = pnt1 - pnt2;
         let len = v.length();
 
@@ -1394,9 +1411,9 @@ fn c2_clean_ends(ops: &mut dyn FilletSolverOps, cx: &mut Cx<'_>, st: &mut CalcSt
     // the first two points very close to each other: remove the second one
     if total_tsects > 2 {
         let uv1 = st.point(cx.fillets, 0)?.uv_pos(SrfIndex::First);
-        let pnt1 = c2_offset_point_ignored(ops, uv1)?;
+        let pnt1 = c2_offset_point_ignored(cx.k, ops, uv1)?;
         let uv2 = st.point(cx.fillets, 1)?.uv_pos(SrfIndex::First);
-        let pnt2 = c2_offset_point_ignored(ops, uv2)?;
+        let pnt2 = c2_offset_point_ignored(cx.k, ops, uv2)?;
         let v = pnt1 - pnt2;
         let len = v.length();
 
@@ -1688,22 +1705,21 @@ fn c3_trace_setup(
 /// (`IsArc(5, m_dThisApproxTol3d, ..)`), `SetExtensionDistance(|5 * offset 0|)`.
 fn c3_make_intersector<'s>(
     ops: &mut dyn FilletSolverOps,
-    cx: &mut Cx<'_>,
+    k: &'s Kernel,
     st: &CalcState,
     surfaces: &'s [Surface; 2],
 ) -> Result<TraceIntersector<'s>> {
-    let _ = cx;
     let [surface1, surface2] = surfaces;
     let [domain1, domain2] = &st.trace.domains;
     // the solver (`*this`) is passed to each intersector call instead
-    let mut fi = TraceIntersector::new(surface1, domain1, surface2, domain2, None)?;
+    let mut fi = TraceIntersector::new(k, surface1, domain1, surface2, domain2, None)?;
 
     // If we need to trace beyond the end and we are tracing along an arc, put a stop
     // tracing criterion to avoid possible infinite looping (`IsArc` only runs when an
     // extension flag is set, as upstream's `&&`).
     let solver = ops.solver();
     if (solver.extend_after || solver.extend_before)
-        && st.edge_curve.is_arc(5, solver.approx_tol_3d)?.is_some()
+        && st.edge_curve.is_arc(k, 5, solver.approx_tol_3d)?.is_some()
     {
         // set max extension distance
         let offset = offset_surface(ops, 0)?.offset_distance();
@@ -2016,7 +2032,7 @@ mod tests_c3 {
         let mut st = state(curve, [a, b]);
         with_cx(k, |cx| {
             let surfaces = c3_trace_setup(&mut fs, cx, &mut st).unwrap();
-            let fi = c3_make_intersector(&mut fs, cx, &st, &surfaces).unwrap();
+            let fi = c3_make_intersector(&mut fs, cx.k, &st, &surfaces).unwrap();
             fi.base.base.extension_distance
         })
     }
@@ -2462,7 +2478,7 @@ mod tests_c4 {
         let s = surfaces();
         let d = Extent2d::from_bounds(-1.0, -1.0, 2.0, 2.0);
         let mut fi: TraceIntersector<'_> =
-            FilletIntersector::new(&s[0], &d, &s[1], &d, None).unwrap();
+            FilletIntersector::new(&k, &s[0], &d, &s[1], &d, None).unwrap();
 
         // DoPointIntersection fails on these unprepared points (a tracing failure, not
         // a return), point 1 stays missed, and the cusp recovery finds no centre line
@@ -2644,7 +2660,7 @@ fn c5_split_rail(
         SrfIndex::Second
     });
     let pnt = if mm == 0 {
-        let pnt = st.base_surfaces[0].evaluate_point(uv)?;
+        let pnt = st.base_surfaces[0].evaluate_point(cx.k, uv)?;
         // Find the split-at parameter (i.e. -u) of the fillet
         let rail_curve = edge_unit::curve(cx.fillets.brep(), rail)?
             .ok_or_else(|| SolidError::null_pointer(OP))?;
@@ -2658,7 +2674,7 @@ fn c5_split_rail(
         )?;
         pnt
     } else {
-        st.base_surfaces[1].evaluate_point(uv)?
+        st.base_surfaces[1].evaluate_point(cx.k, uv)?
     };
 
     ignore_status(trim_ivl.set_min_max(trim_ivl.min(), split_at_param))?;
@@ -3006,7 +3022,8 @@ mod tests_c5 {
                 .curve
                 .as_ref()
                 .unwrap();
-            c.evaluate_point(c.natural_interval().min()).unwrap()
+            c.evaluate_point(&Kernel::default(), c.natural_interval().min())
+                .unwrap()
         }
 
         fn uv_start(&self, i: usize) -> Point3 {
@@ -3018,7 +3035,8 @@ mod tests_c5 {
                 .uv_trim_curve
                 .as_ref()
                 .unwrap();
-            c.evaluate_point(c.natural_interval().min()).unwrap()
+            c.evaluate_point(&Kernel::default(), c.natural_interval().min())
+                .unwrap()
         }
 
         fn centre_start(&self) -> Point3 {
@@ -3032,7 +3050,7 @@ mod tests_c5 {
                 .unwrap()
                 .fillet_surface()
                 .unwrap()
-                .evaluate_point(uv)
+                .evaluate_point(&Kernel::default(), uv)
                 .unwrap()
         }
 
@@ -3236,7 +3254,7 @@ fn c6_compute_point_values(
     use crate::math::EFF_ZERO_SQ;
 
     // :3557 set the surface positions, tangents, normals and the tangent plane angle
-    FilletSolver::compute_surface_values(ops, uv_values, point)?;
+    FilletSolver::compute_surface_values(k, ops, uv_values, point)?;
 
     // :3568 intersection curve tangent: (SrfNorm(0) * SrfNorm(1)) * dCurveTraceDirection
     *point.crv_deriv_mut() = point
@@ -3308,8 +3326,8 @@ fn c6_compute_point_values(
 
         // :3629 surface points before the next StepSolve changes the offsets
         let forw_pts = if found_forw {
-            let p0 = offset_evaluate_point(ops, 0, step_forw.uv_pos(SrfIndex::First))?;
-            let p1 = offset_evaluate_point(ops, 1, step_forw.uv_pos(SrfIndex::Second))?;
+            let p0 = offset_evaluate_point(k, ops, 0, step_forw.uv_pos(SrfIndex::First))?;
+            let p1 = offset_evaluate_point(k, ops, 1, step_forw.uv_pos(SrfIndex::Second))?;
             Some((p0, p1))
         } else {
             None
@@ -3336,8 +3354,8 @@ fn c6_compute_point_values(
         let found_back = back_flags.found_answer;
 
         let back_pts = if found_back {
-            let p0 = offset_evaluate_point(ops, 0, step_back.uv_pos(SrfIndex::First))?;
-            let p1 = offset_evaluate_point(ops, 1, step_back.uv_pos(SrfIndex::Second))?;
+            let p0 = offset_evaluate_point(k, ops, 0, step_back.uv_pos(SrfIndex::First))?;
+            let p1 = offset_evaluate_point(k, ops, 1, step_back.uv_pos(SrfIndex::Second))?;
             Some((p0, p1))
         } else {
             None
@@ -3366,8 +3384,8 @@ fn c6_compute_point_values(
         if point.point_type == IntersectionPointType::TangentPoint {
             let at = if found_forw { &step_forw } else { &step_back };
             let (uv0, uv1) = (at.uv_pos(SrfIndex::First), at.uv_pos(SrfIndex::Second));
-            let norm1 = offset_evaluate_normal(ops, 0, uv0)?;
-            let norm2 = offset_evaluate_normal(ops, 1, uv1)?;
+            let norm1 = offset_evaluate_normal(k, ops, 0, uv0)?;
+            let norm2 = offset_evaluate_normal(k, ops, 1, uv1)?;
             let mut curve_direction = norm1.cross(norm2);
             if curve_direction.length_squared() < EFF_ZERO_SQ {
                 return Err(SolidError::sm_err(OP));
@@ -3900,11 +3918,11 @@ impl crate::blend::fillet_intersector::FilletSolverOps for IntersectorSolver<'_,
     /// [`FilletSolver::compute_surface_values`].
     fn compute_surface_values(
         &mut self,
-        _k: &Kernel,
+        k: &Kernel,
         uv_values: [Point2; 2],
         point: &mut TsectPnt,
     ) -> Result<()> {
-        let r = FilletSolver::compute_surface_values(&mut *self.ops, uv_values, point);
+        let r = FilletSolver::compute_surface_values(k, &mut *self.ops, uv_values, point);
         self.synced(r)
     }
 
@@ -3954,10 +3972,12 @@ impl crate::blend::fillet_intersector::FilletSolverOps for IntersectorSolver<'_,
     /// upstream's `const` evaluators store it), as `ComputeSurfaceValues` evaluates it.
     fn rail_surface_evaluate_1st_derivatives(
         &mut self,
+        k: &Kernel,
         rail: usize,
         uv: Point2,
     ) -> Result<(Point3, Vec3, Vec3)> {
         crate::blend::fillet_custom_solver::offset_evaluate_1st(
+            k,
             offset_surface_mut(&mut *self.ops, rail)?,
             uv,
         )
@@ -4111,7 +4131,7 @@ mod c7_tests {
         ];
         let d = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
         let mut fi: TraceIntersector<'_> =
-            FilletIntersector::new(&surfaces[0], &d, &surfaces[1], &d, None).unwrap();
+            FilletIntersector::new(&k, &surfaces[0], &d, &surfaces[1], &d, None).unwrap();
         let mut solver = FilletSolver::new(1.0e-5, 0.01, 0.01);
         let mut target = Brep::new();
         let mut fillets = FilletBrep::new();

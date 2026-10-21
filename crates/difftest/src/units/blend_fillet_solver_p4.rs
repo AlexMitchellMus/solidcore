@@ -568,6 +568,7 @@ impl FilletSolverOps for ShimSolver {
 
     fn load_jacobian(
         &mut self,
+        k: &Kernel,
         num_equations: &mut usize,
         num_parameters: &mut usize,
         load: &mut solidcore::blend::fillet_custom_solver::JacobianLoad<'_>,
@@ -576,6 +577,7 @@ impl FilletSolverOps for ShimSolver {
     ) -> solidcore::Result<bool> {
         <ConstantRadiusAssistedFs as FilletSolverOps>::load_jacobian(
             &mut self.inner,
+            k,
             num_equations,
             num_parameters,
             load,
