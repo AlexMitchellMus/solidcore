@@ -2044,7 +2044,14 @@ fn faces_to_delete(
             // Make a face shape with the face and its edges and vertices.
             let edge_keys: Vec<_> = edges.iter().map(|&e| (env.brep_id, e)).collect();
             let vertex_keys: Vec<_> = vertices.iter().map(|&v| (env.brep_id, v)).collect();
-            let shape = Shape::new(&[], &[(env.brep_id, face)], &edge_keys, &vertex_keys)?;
+            let shape = Shape::new(
+                k,
+                &(env.brep_id, b),
+                &[],
+                &[(env.brep_id, face)],
+                &edge_keys,
+                &vertex_keys,
+            )?;
 
             // Find a ray to determine which face needs to be kept or deleted
             let bbox = brep_bounding_box(k, b)?;
