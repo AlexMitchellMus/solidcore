@@ -3875,8 +3875,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateRectangle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "plane_brep_10_15",
@@ -3887,8 +3887,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateRectangle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "plane_brep_zero",
@@ -3915,8 +3915,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateCircle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "planar_circle_10",
@@ -3927,8 +3927,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateCircle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "planar_circle_0",
@@ -3963,8 +3963,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateCircle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "planar_circles_5_8_a",
@@ -4375,8 +4375,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateRectangle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0029",
@@ -4727,8 +4727,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateCircle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0066",
@@ -4815,8 +4815,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateCircle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0074",
@@ -5495,8 +5495,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateRectangle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0151",
@@ -6027,8 +6027,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateRectangle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0205",
@@ -6495,8 +6495,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateRectangle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0255",
@@ -6767,8 +6767,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateCircle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0283",
@@ -7463,8 +7463,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateCircle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0359",
@@ -7523,8 +7523,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateRectangle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0365",
@@ -7755,8 +7755,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateCircle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0391",
@@ -8103,8 +8103,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateRectangle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0429",
@@ -8243,8 +8243,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateRectangle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0444",
@@ -8363,8 +8363,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateRectangle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0458",
@@ -8399,8 +8399,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateCircle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0461",
@@ -8411,8 +8411,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateCircle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0462",
@@ -9423,8 +9423,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateRectangle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0572",
@@ -9451,8 +9451,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateCircle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0575",
@@ -9555,8 +9555,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateRectangle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0586",
@@ -9771,8 +9771,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateCircle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0608",
@@ -11823,8 +11823,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateRectangle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0837",
@@ -12863,8 +12863,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateRectangle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0952",
@@ -13167,8 +13167,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateRectangle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0983",
@@ -13951,8 +13951,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateRectangle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1071",
@@ -14147,8 +14147,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateRectangle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1093",
@@ -14855,8 +14855,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateRectangle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1169",
@@ -15523,8 +15523,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateCircle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1243",
@@ -15755,8 +15755,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateCircle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1270",
@@ -17287,8 +17287,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmPrimitiveCreation::CreateRectangle",
-        "unit": "primitive.primitive_creation_p1"
+        "symbol": "SmBrep::SmBrep",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1438",
@@ -17845,9 +17845,10 @@
   "cases_total": 1981,
   "deferred_by_unit": {
     "cpp-guard:ub-119": 5,
-    "primitive.primitive_creation_p1": 136,
+    "primitive.primitive_creation_p1": 103,
     "primitive.primitive_creation_p2": 282,
     "primitive.primitive_creation_p3": 31,
+    "topology.brep_p3": 33,
     "topology.brep_p4": 43
   },
   "max_rel_err": 0.0,
