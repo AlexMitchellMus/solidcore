@@ -1065,10 +1065,19 @@ fn rollover_topology_split_preserves_actual_solver_id_and_partial_edits() {
     f.fb.geom_mut(id).unwrap().solver = Some(solver_id);
     f.solver.executive = Some(crate::blend::fillet_solver::p1::FilletExecutiveRef);
     for rail in f.fb.geom(id).unwrap().rails.into_iter().flatten() {
+        f.fb.fillet_edge_mut(rail)
+            .unwrap()
+            .set_fillet_edge_type(crate::blend::fillet_geom::p1::FilletEdgeType::Rail);
         let uses = f.fb.brep().edge(rail).unwrap().edgeuses.clone();
         for eu in uses {
             f.fb.set_edgeuse_fillet_geom(eu, Some(id)).unwrap();
             let vu = f.fb.brep().edgeuse(eu).unwrap().vertexuse.unwrap();
+            let vertex = f.fb.brep().vertexuse(vu).unwrap().vertex.unwrap();
+            f.fb.brep_mut()
+                .vertex_mut(vertex)
+                .unwrap()
+                .vertexuses
+                .push(vu);
             f.fb.brep_mut().vertexuse_mut(vu).unwrap().owner =
                 crate::topology::VertexuseOwner::Edgeuse(Some(eu));
             f.fb.insert_fillet_vertexuse(vu, crate::blend::fillet_geom::p1::FilletVertexuse::new());
