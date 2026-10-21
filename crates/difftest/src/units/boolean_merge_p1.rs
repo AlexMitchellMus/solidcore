@@ -112,7 +112,7 @@ fn id<I: ArenaId>(v: Option<I>) -> i64 {
 /// One kind's records in first-seen order of [`Canon::of`] and each arena index's
 /// position in it.
 pub(crate) struct Order<I> {
-    items: Vec<I>,
+    pub(crate) items: Vec<I>,
     index: BTreeMap<u32, i64>,
 }
 impl<I: ArenaId + Copy> Order<I> {
@@ -147,12 +147,14 @@ impl<I: ArenaId + Copy> Order<I> {
 /// first-seen order, while Rust arenas append new records. Both sides are renumbered
 /// by the same walk (the shim's, from the B-rep's regions in arena order and the edge
 /// list; on an imported C++ export it is the identity), so records created by the op
-/// compare by position in the topology, not by allocation order. Only records the walk
-/// reaches are numbered, compared and counted, as the C++ export walk emits only those:
-/// a record upstream deletes stays in the Rust arena, unlinked (the arena model's
-/// documented deviation, e.g. `MakeEdgeVertexTopology`'s vertex-shell vertex use), and
-/// is not part of the B-rep. A record that is wrongly still linked is reached, so it is
-/// still compared. The unreached count is a report diagnostic ([`graph`]).
+/// compare by position in the topology, not by allocation order. [`graph`] compares only
+/// the records the walk reaches ([`Canon::reachable`]), as the C++ export walk emits
+/// only those: a record upstream deletes stays in the Rust arena, unlinked (the arena
+/// model's documented deviation, e.g. `MakeEdgeVertexTopology`'s vertex-shell vertex
+/// use), and is not part of the B-rep. A record that is wrongly still linked is reached,
+/// so it is still compared. The unreached count is a report diagnostic ([`graph`]).
+/// [`Canon::of`] (numbering record slots) also numbers the unreached records, after the
+/// reached ones.
 pub(crate) struct Canon {
     pub(crate) regions: Order<RegionId>,
     pub(crate) shells: Order<ShellId>,
@@ -166,8 +168,26 @@ pub(crate) struct Canon {
     pub(crate) vertices: Order<VertexId>,
 }
 impl Canon {
-    #[allow(clippy::too_many_lines)]
+    /// Every record: the walk from the B-rep's regions and edge list, then the
+    /// unreachable records in arena order (and the walk from them).
     pub(crate) fn of(b: &Brep) -> Self {
+        Self::walk(b, true, false)
+    }
+
+    /// Only the records reachable from the B-rep's regions and edge list, in the order
+    /// of [`Canon::of`] (an arena keeps the records an op deleted, reset).
+    pub(crate) fn reachable(b: &Brep) -> Self {
+        Self::walk(b, false, false)
+    }
+
+    /// [`Canon::of`] after seeding the edge and vertex lists in list order, as
+    /// `sc_merge_fixture.h`'s `native_graph` (`GetEdges`, `GetVertices`, then `walk`).
+    pub(crate) fn of_native(b: &Brep) -> Self {
+        Self::walk(b, true, true)
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn walk(b: &Brep, unreachable: bool, native: bool) -> Self {
         let mut g = Self {
             regions: Order::new(),
             shells: Order::new(),
@@ -180,6 +200,14 @@ impl Canon {
             vertexuses: Order::new(),
             vertices: Order::new(),
         };
+        if native {
+            for &e in b.edge_list() {
+                g.edges.add(Some(e));
+            }
+            for &v in b.vertex_list() {
+                g.vertices.add(Some(v));
+            }
+        }
         for (id, r) in b.regions().iter() {
             if r.in_brep {
                 g.regions.add(Some(id));
@@ -321,6 +349,41 @@ impl Canon {
                 l += 1;
                 more = true;
             }
+            if !more && unreachable {
+                // unreachable records, in arena order, then walk on from them
+                let before = g.len();
+                for (id, _) in b.regions().iter() {
+                    g.regions.add(Some(id));
+                }
+                for (id, _) in b.shells().iter() {
+                    g.shells.add(Some(id));
+                }
+                for (id, _) in b.faceuses().iter() {
+                    g.faceuses.add(Some(id));
+                }
+                for (id, _) in b.faces().iter() {
+                    g.faces.add(Some(id));
+                }
+                for (id, _) in b.loopuses().iter() {
+                    g.loopuses.add(Some(id));
+                }
+                for (id, _) in b.loops().iter() {
+                    g.loops.add(Some(id));
+                }
+                for (id, _) in b.edgeuses().iter() {
+                    g.edgeuses.add(Some(id));
+                }
+                for (id, _) in b.edges().iter() {
+                    g.edges.add(Some(id));
+                }
+                for (id, _) in b.vertexuses().iter() {
+                    g.vertexuses.add(Some(id));
+                }
+                for (id, _) in b.vertices().iter() {
+                    g.vertices.add(Some(id));
+                }
+                more = g.len() != before;
+            }
         }
         g
     }
@@ -354,22 +417,52 @@ impl Canon {
 }
 /// The B-rep's records and links in [`Canon`] numbering, after `record` (which the
 /// caller has already put in that numbering, see [`Canon::of`]).
-#[allow(clippy::too_many_lines)]
 pub(crate) fn graph(b: &Brep, record: Vec<f64>) -> Output {
-    let c = Canon::of(b);
-    // the reached records of each kind (what the C++ export walk emits)
-    let mut ints = vec![
-        c.regions.items.len() as i64,
-        c.shells.items.len() as i64,
-        c.faceuses.items.len() as i64,
-        c.faces.items.len() as i64,
-        c.loopuses.items.len() as i64,
-        c.loops.items.len() as i64,
-        c.edgeuses.items.len() as i64,
-        c.edges.items.len() as i64,
-        c.vertexuses.items.len() as i64,
-        c.vertices.items.len() as i64,
-    ];
+    graph_counted(b, record, true)
+}
+
+/// [`graph`] (kept for its callers): the reachable topology ([`Canon::reachable`]) and
+/// its record counts, as the C++ side's fresh export walk.
+pub(crate) fn graph_reachable(b: &Brep, record: Vec<f64>) -> Output {
+    graph_counted(b, record, true)
+}
+
+#[allow(clippy::too_many_lines)]
+fn graph_counted(b: &Brep, record: Vec<f64>, reachable: bool) -> Output {
+    let c = if reachable {
+        Canon::reachable(b)
+    } else {
+        Canon::of(b)
+    };
+    let mut ints = if reachable {
+        [
+            c.regions.items.len(),
+            c.shells.items.len(),
+            c.faceuses.items.len(),
+            c.faces.items.len(),
+            c.loopuses.items.len(),
+            c.loops.items.len(),
+            c.edgeuses.items.len(),
+            c.edges.items.len(),
+            c.vertexuses.items.len(),
+            c.vertices.items.len(),
+        ]
+        .map(|n| n as i64)
+        .to_vec()
+    } else {
+        vec![
+            b.regions().len() as i64,
+            b.shells().len() as i64,
+            b.faceuses().len() as i64,
+            b.faces().len() as i64,
+            b.loopuses().len() as i64,
+            b.loops().len() as i64,
+            b.edgeuses().len() as i64,
+            b.edges().len() as i64,
+            b.vertexuses().len() as i64,
+            b.vertices().len() as i64,
+        ]
+    };
     let regions: Vec<_> = c
         .regions
         .items

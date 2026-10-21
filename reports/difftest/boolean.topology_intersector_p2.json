@@ -931,8 +931,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::UpdateVertexEdgeIntervals",
-        "unit": "topology.brep_p1"
+        "symbol": "SmBrep::SqueezeEdge",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0098",
@@ -1088,8 +1088,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetUpwardLoopuses",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0115",
@@ -1353,8 +1353,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::UpdateVertexEdgeIntervals",
-        "unit": "topology.brep_p1"
+        "symbol": "SmBrep::SqueezeEdge",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0146",
@@ -1657,8 +1657,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::UpdateVertexEdgeIntervals",
-        "unit": "topology.brep_p1"
+        "symbol": "SmBrep::SqueezeEdge",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0180",
@@ -2481,8 +2481,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::UpdateVertexEdgeIntervals",
-        "unit": "topology.brep_p1"
+        "symbol": "SmBrep::SqueezeEdge",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0273",
@@ -3009,8 +3009,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::UpdateVertexEdgeIntervals",
-        "unit": "topology.brep_p1"
+        "symbol": "SmBrep::SqueezeEdge",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0332",
@@ -3077,8 +3077,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::UpdateVertexEdgeIntervals",
-        "unit": "topology.brep_p1"
+        "symbol": "SmBrep::SqueezeEdge",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0338",
@@ -3493,8 +3493,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::UpdateVertexEdgeIntervals",
-        "unit": "topology.brep_p1"
+        "symbol": "SmBrep::SqueezeEdge",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0386",
@@ -3961,8 +3961,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::UpdateVertexEdgeIntervals",
-        "unit": "topology.brep_p1"
+        "symbol": "SmBrep::SqueezeEdge",
+        "unit": "topology.brep_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0439",
@@ -4309,8 +4309,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetUpwardLoopuses",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0477",
@@ -5589,8 +5589,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetUpwardLoopuses",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0627",
@@ -7423,10 +7423,11 @@
   "cases_total": 841,
   "deferred_by_unit": {
     "query.brep": 41,
-    "topology.brep_p1": 12,
-    "topology.face_p2": 72,
+    "topology.brep_p1": 4,
+    "topology.brep_p3": 8,
+    "topology.face_p2": 75,
     "topology.face_p3": 12,
-    "topology.face_p4": 34
+    "topology.face_p4": 31
   },
   "max_rel_err": 0.0,
   "pass": true,
