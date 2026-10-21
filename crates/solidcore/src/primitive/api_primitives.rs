@@ -680,7 +680,8 @@ pub fn create_swung_primitive(
     // UNPORTED(topology.brep_p3): SmBrep::SmBrep
     // Ported: primitive::primitive_creation::p1::PrimitiveCreation::new;
     // use the new B-rep's infinite region after its constructor is available.
-    // UNPORTED(primitive.primitive_creation_p3): SmPrimitiveCreation::CreateSwungPrimitive
+    // Ported: primitive::primitive_creation::p3::create_swung_primitive;
+    // call it once the owning B-rep constructor is available.
     Err(SolidError::unported("SmBrep::SmBrep", UNIT_BREP_P3))
 }
 
