@@ -1389,7 +1389,7 @@ impl FilletSolver {
         for ii in 0..n {
             // Create a new Fillet Geometry object by copying old one.
             let new_fillet_geom = if ii + 1 < n {
-                // UNPORTED(blend.fillet_geom_p5): SmFilletGeom::SmFilletGeom
+                // UNPORTED(blend.fillet_geom_p5): SmFilletGeom::SmFilletGeom (justified: findings.md "blend.fillet_geom_p5: solver and corner callers")
                 let copy: FilletGeomId = unported_on(
                     fillet_geom,
                     "SmFilletGeom::SmFilletGeom",
@@ -1461,7 +1461,7 @@ impl FilletSolver {
 
             // Create the ending curve on the fillet
             for end in 0..2usize {
-                // UNPORTED(blend.fillet_geom_p5): SmFilletGeom::CreateEndCurve
+                // UNPORTED(blend.fillet_geom_p5): SmFilletGeom::CreateEndCurve (justified: findings.md "blend.fillet_geom_p5: solver and corner callers")
                 unported_on::<_, ()>(
                     (new_fillet_geom, end, trim_type),
                     "SmFilletGeom::CreateEndCurve",
@@ -1490,7 +1490,7 @@ impl FilletSolver {
     /// [`SolidError::Unported`] for any geometry (`SmFilletGeom::TrimRailCurves`).
     pub fn trim_rails(&mut self) -> Result<()> {
         for fillet_geom in &self.fillet_geoms {
-            // UNPORTED(blend.fillet_geom_p5): SmFilletGeom::TrimRailCurves
+            // UNPORTED(blend.fillet_geom_p5): SmFilletGeom::TrimRailCurves (justified: findings.md "blend.fillet_geom_p5: solver and corner callers")
             unported_on::<_, ()>(
                 *fillet_geom,
                 "SmFilletGeom::TrimRailCurves",
@@ -2907,7 +2907,7 @@ pub fn split_rail(
     )?;
 
     // Make NewRail from NewVert to EndVert - has no Curve or UVTrimCurve data
-    // UNPORTED(blend.fillet_geom_p5): SmFilletEdge::MakeFilletEdge
+    // UNPORTED(blend.fillet_geom_p5): SmFilletEdge::MakeFilletEdge (justified: findings.md "blend.fillet_geom_p5: solver and corner callers")
     let new_rail: EdgeId = unported_on(
         (new_vert, end_vert),
         "SmFilletEdge::MakeFilletEdge",
