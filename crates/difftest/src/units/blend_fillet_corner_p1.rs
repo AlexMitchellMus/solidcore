@@ -2080,6 +2080,26 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
             }
         }
         topo = (0..ne).filter(|_| rng.chance(0.5)).collect();
+        // the deletions must not leave a one-way mate link to an earlier-deleted corner
+        // vertex (upstream frees it first and dereferences it after; the FFI refuses such
+        // inputs): make the link reciprocal where the mate has a free slot, else drop it
+        for pos in 1..verts.len() {
+            let v = verts[pos];
+            for slot in 0..2 {
+                let m = model.vertices[v].mates[slot];
+                let Ok(m) = usize::try_from(m) else {
+                    continue;
+                };
+                if !verts[1..pos].contains(&m) || model.vertices[m].mates.contains(&(v as i64)) {
+                    continue;
+                }
+                if let Some(free) = model.vertices[m].mates.iter_mut().find(|x| **x < 0) {
+                    *free = v as i64;
+                } else {
+                    model.vertices[v].mates[slot] = -1;
+                }
+            }
+        }
     }
     // the end patch: a fillet-side-face edge, with or without an original face
     let mut orig_faces: Vec<[usize; 2]> = Vec::new();
