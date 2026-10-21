@@ -12968,7 +12968,7 @@ and `ruled_surface_from_offset` require the same Kernel, including for interior
 samples, lengths and degeneracy checks. No production default Kernel is added.
 Numerical formulas, operation order, tolerances and error handling are unchanged.
 
-Main through `3082813a` is integrated, including fixture export memoization and
+Main through `41617b03` is integrated, including fixture export memoization and
 executive updates. Both parents' findings and main's complete p5/p7/HCR notes
 remain, with the earlier API extensions and virtual/lazy-NURB changes retained.
 The native p3 fixtures still compare the ruled-offset helper and early/empty
