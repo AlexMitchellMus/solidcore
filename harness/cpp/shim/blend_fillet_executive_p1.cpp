@@ -25,6 +25,7 @@
 #include <nurbs.h>
 
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -174,11 +175,18 @@ template <typename T> T* ptr(int64_t h)
     return h == 0 ? NULL : (T*)(uintptr_t)((uint64_t)h << 6);
 }
 
-// `-1` for the executive itself, else the handle.
+// The real fillet edges a script made (call 20); output as `-2 - k`.
+std::vector<const void*> g_made;
+
+// `-1` for the executive itself, `-2 - k` for the k-th fillet edge the script made, else
+// the handle.
 double hnd(const void* p, const void* self)
 {
     if (p != NULL && p == self)
         return -1.0;
+    for (size_t k = 0; p != NULL && k < g_made.size(); k++)
+        if (g_made[k] == p)
+            return -2.0 - (double)k;
     return (double)((uintptr_t)p >> 6);
 }
 
@@ -225,7 +233,8 @@ struct StatusTag
 template struct Rob<StatusTag, &SmFilletErrorInfo::m_eFilletStatus>;
 
 // One NoteError call of kind 0-5; false for another kind.
-bool note(Rd& rd, int64_t kind, SmFilletErrorInfo& e, bool& fv_set, bool& loc_set)
+// With `fx`, calls 2, 3 and 5 go through the matching SmFilletExecutive::NoteFilletError.
+bool note(Rd& rd, int64_t kind, SmFilletErrorInfo& e, SmFilletExecutive* fx, bool& fv_set, bool& loc_set)
 {
     switch (kind)
     {
@@ -254,7 +263,10 @@ bool note(Rd& rd, int64_t kind, SmFilletErrorInfo& e, bool& fv_set, bool& loc_se
         const SmFilletEdge* fe = ptr<const SmFilletEdge>(rd.idx());
         const SmSurface* surf = ptr<const SmSurface>(rd.idx());
         Str c = read_str(rd);
-        e.NoteError(code, st, edge, face, fe, surf, c.c());
+        if (fx)
+            fx->NoteFilletError(code, st, edge, face, fe, surf, c.c());
+        else
+            e.NoteError(code, st, edge, face, fe, surf, c.c());
         return true;
     }
     case 3:
@@ -269,7 +281,10 @@ bool note(Rd& rd, int64_t kind, SmFilletErrorInfo& e, bool& fv_set, bool& loc_se
         const SmFilletVertex* fv1 = ptr<const SmFilletVertex>(rd.idx());
         const SmFilletVertex* fv2 = ptr<const SmFilletVertex>(rd.idx());
         Str c = read_str(rd);
-        e.NoteError(code, ct, st, (TCHAR*)name.c(), v, s1, s2, fv1, fv2, c.c());
+        if (fx)
+            fx->NoteFilletError(code, ct, st, (TCHAR*)name.c(), v, s1, s2, fv1, fv2, c.c());
+        else
+            e.NoteError(code, ct, st, (TCHAR*)name.c(), v, s1, s2, fv1, fv2, c.c());
         fv_set = true;
         return true;
     }
@@ -306,7 +321,10 @@ bool note(Rd& rd, int64_t kind, SmFilletErrorInfo& e, bool& fv_set, bool& loc_se
         double z = rd.num();
         SmPoint3d at(x, y, z);
         Str c = read_str(rd);
-        e.NoteError(code, st, edge, surfs, curves, edges, at, c.c());
+        if (fx)
+            fx->NoteFilletError(code, st, edge, surfs, curves, edges, at, c.c());
+        else
+            e.NoteError(code, st, edge, surfs, curves, edges, at, c.c());
         loc_set = true;
         return true;
     }
@@ -388,8 +406,51 @@ struct Exec : public SmFilletExecutive
         put_error(o, m_sErrorInfo, this, fv_set, loc_set);
     }
 
-    // The fake generator pointers must not reach the destructor's delete.
-    void drop_fsgs() { m_vFSGs.ReSet(); }
+    // The fake generator pointers must not reach the base destructor's delete.
+    ~Exec() { m_vFSGs.ReSet(); }
+
+    // Calls 16-20; false for another kind. Queries append to `q`. The lookups cast the
+    // fake map values to SmFilletCorner* / SmFilletSolver* (single inheritance from
+    // SmObject: the address is unchanged) and never dereference them.
+    bool step(Rd& rd, int64_t kind, std::vector<double>& q)
+    {
+        switch (kind)
+        {
+        case 16:
+        {
+            SmVertex* v = ptr<SmVertex>(rd.idx());
+            m_vVertexCornerMap.Insert(v, ptr<SmObject>(rd.idx()));
+            return true;
+        }
+        case 17:
+        {
+            SmEdgeuse* eu = ptr<SmEdgeuse>(rd.idx());
+            m_vEdgeuseSolverMap.Insert(eu, ptr<SmFilletSolver>(rd.idx()));
+            return true;
+        }
+        case 18:
+            q.push_back(hnd(GetFilletCornerOfVertex(ptr<SmVertex>(rd.idx())), this));
+            return true;
+        case 19:
+            q.push_back(hnd(GetFilletSolverOfEdgeuse(ptr<SmEdgeuse>(rd.idx())), this));
+            return true;
+        case 20:
+        {
+            SmFilletErrorType code = (SmFilletErrorType)rd.idx();
+            SmFilletEdgeType et = (SmFilletEdgeType)rd.idx();
+            SmFilStatus st = (SmFilStatus)rd.idx();
+            Str c = read_str(rd);
+            SmFilletEdge* fe = new (m_pPseudoBrep) SmFilletEdge(m_pPseudoBrep);
+            fe->SetFilletEdgeType(et);
+            fe->SetStatus(st);
+            g_made.push_back(fe);
+            NoteFilletError(code, fe, c.c());
+            return true;
+        }
+        default:
+            return false;
+        }
+    }
 };
 
 } // namespace
@@ -404,24 +465,27 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p1_object_eval(int32_t op, const dou
     Rd rd{in, 0};
     bool fv_set = false;
     bool loc_set = false;
+    g_made.clear();
     if (op == 0)
     {
         int64_t exec = rd.idx();
         SmFilletErrorInfo e(ptr<SmFilletExecutive>(exec));
         int64_t calls = rd.idx();
         for (int64_t i = 0; i < calls; i++)
-            note(rd, rd.idx(), e, fv_set, loc_set);
+            if (!note(rd, rd.idx(), e, NULL, fv_set, loc_set))
+                throw std::runtime_error("bad call kind");
         o.push_back(0.0);
         put_error(o, e, NULL, fv_set, loc_set);
     }
     else
     {
         Exec x(ctx, ptr<SmBrep>(rd.idx()));
+        std::vector<double> q;
         int64_t calls = rd.idx();
         for (int64_t i = 0; i < calls; i++)
         {
             int64_t kind = rd.idx();
-            if (note(rd, kind, *x.GetFilletErrorInfo(), fv_set, loc_set))
+            if (note(rd, kind, *x.GetFilletErrorInfo(), &x, fv_set, loc_set) || x.step(rd, kind, q))
                 continue;
             switch (kind)
             {
@@ -440,15 +504,19 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p1_object_eval(int32_t op, const dou
             case 14:
                 x.AddTopoEdges(ptr<SmFilletEdge>(rd.idx()));
                 break;
-            default:
+            case 15:
                 x.RemoveFromTopoEdges(ptr<SmFilletEdge>(rd.idx()));
                 break;
+            default:
+                throw std::runtime_error("bad call kind");
             }
         }
         o.push_back(0.0);
         x.put(o, fv_set, loc_set);
-        x.drop_fsgs();
+        o.push_back((double)q.size());
+        o.insert(o.end(), q.begin(), q.end());
     }
+    g_made.clear();
     return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len);
     SC_CATCH
 }

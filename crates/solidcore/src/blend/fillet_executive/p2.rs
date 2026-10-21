@@ -58,6 +58,7 @@
 use crate::blend::fillet_executive::p3::{
     ContextMark, ErrorInfo, ExecutionOptions, ExecutiveAccess, FilletExecutive,
 };
+use crate::blend::fillet_geom::p1::{FilStatus, FilletErrorType};
 use crate::blend::fillet_solver::p1::FilletSurfaceGenerator;
 use crate::blend::fillet_standard_solver::p1::{
     BoundaryTrimmingType, FilletLaw, FilletLawKind, FilletSolverType, FilletSurfaceGeneratorType,
@@ -78,13 +79,6 @@ use crate::surface::offset_surface::{OffsetSurface, SS_UNKNOWN};
 use crate::surface::surface::Surface;
 
 const OP: &str = "blend::fillet_executive::p2";
-
-/// `SM_FILERR_INVALID_INPUT` (`SmFilletErrorType`).
-pub const FILERR_INVALID_INPUT: i32 = 2;
-/// `SM_FILERR_EDGE_PROBLEM` (`SmFilletErrorType`).
-pub const FILERR_EDGE_PROBLEM: i32 = 4;
-/// `SM_FIL_FAILURE` (`SmFilStatus`).
-pub const FIL_FAILURE: i32 = 2;
 
 fn status(code: i32) -> SolidError {
     SolidError::Upstream {
@@ -418,7 +412,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             (single_xsect_type, single_radius_type, single_radius_value)
         else {
             self.error.note_error(
-                FILERR_INVALID_INPUT,
+                FilletErrorType::InvalidInput,
                 Some("SetFilletParameters: Input array size mismatch."),
             );
             return Err(status(SM_ERR_INVALID_INPUT));
@@ -481,7 +475,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         if single_xsect_type {
             let Some(spec) = generator_spec(xsect_type, xsect_tol) else {
                 self.error.note_error(
-                    FILERR_INVALID_INPUT,
+                    FilletErrorType::InvalidInput,
                     Some("SetFilletParameters: Invalid Fillet Surface Generator type."),
                 );
                 return Err(status(SM_ERR_INVALID_INPUT));
@@ -499,8 +493,8 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                 // This edge is not filletable.
                 self.error.note_edge_error(
                     Some(edge),
-                    FIL_FAILURE,
-                    FILERR_INVALID_INPUT,
+                    FilStatus::Failure,
+                    FilletErrorType::InvalidInput,
                     Some(&format!("Edge[ {ii:2} ]: cannot be filleted\n")),
                 );
                 return Err(status(SM_ERR_INVALID_INPUT));
@@ -545,8 +539,8 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                     let Some(law) = laws.get(ii).copied().flatten() else {
                         self.error.note_edge_error(
                             Some(edge),
-                            FIL_FAILURE,
-                            FILERR_INVALID_INPUT,
+                            FilStatus::Failure,
+                            FilletErrorType::InvalidInput,
                             Some(&format!(
                                 "Edge[ {ii:2} ]: no variable-radius law specified\n"
                             )),
@@ -572,8 +566,8 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             let Some(spec) = spec else {
                 self.error.note_edge_error(
                     Some(edge),
-                    FIL_FAILURE,
-                    FILERR_INVALID_INPUT,
+                    FilStatus::Failure,
+                    FilletErrorType::InvalidInput,
                     Some(&format!(
                         "Edge[ {ii:2} ]: invalid radius type (Fillet Solver)\n"
                     )),
@@ -591,7 +585,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                     .ok_or_else(|| first("cross-section type list too short"))?;
                 let Some(spec) = generator_spec(xsect_type, 0.1) else {
                     self.error.note_error(
-                        FILERR_INVALID_INPUT,
+                        FilletErrorType::InvalidInput,
                         Some("SetFilletParameters: Invalid Fillet Surface Generator type."),
                     );
                     return Err(status(SM_ERR_INVALID_INPUT));
@@ -826,7 +820,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                         }
                         self.note_fillet_error(
                             access,
-                            FILERR_EDGE_PROBLEM,
+                            FilletErrorType::EdgeProblem,
                             fe,
                             Some("Unable to map new Fillet Edge back to Edge in Target Brep"),
                         )?;

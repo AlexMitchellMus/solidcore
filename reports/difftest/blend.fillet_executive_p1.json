@@ -335,7 +335,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#41",
-      "values_compared": 48
+      "values_compared": 49
     },
     {
       "max_rel_err": 0.0,
@@ -343,7 +343,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#42",
-      "values_compared": 48
+      "values_compared": 49
     },
     {
       "max_rel_err": 0.0,
@@ -351,7 +351,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#43",
-      "values_compared": 92
+      "values_compared": 93
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "executive_lookups_wrappers_and_fillet_edge_errors",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/blend.fillet_executive_p1/cases.json#44",
+      "values_compared": 72
     },
     {
       "max_rel_err": 0.0,
@@ -359,7 +367,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13131444038141468807",
-      "values_compared": 31
+      "values_compared": 124
     },
     {
       "max_rel_err": 0.0,
@@ -367,7 +375,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13131444038141468808",
-      "values_compared": 38
+      "values_compared": 74
     },
     {
       "max_rel_err": 0.0,
@@ -375,7 +383,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13131444038141468809",
-      "values_compared": 1051
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -383,7 +391,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13131444038141468810",
-      "values_compared": 72
+      "values_compared": 88
     },
     {
       "max_rel_err": 0.0,
@@ -407,7 +415,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13131444038141468813",
-      "values_compared": 101
+      "values_compared": 66
     },
     {
       "max_rel_err": 0.0,
@@ -415,7 +423,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13131444038141468814",
-      "values_compared": 26
+      "values_compared": 31
     },
     {
       "max_rel_err": 0.0,
@@ -423,7 +431,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13131444038141468815",
-      "values_compared": 44
+      "values_compared": 72
     },
     {
       "max_rel_err": 0.0,
@@ -447,7 +455,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13131444038141468818",
-      "values_compared": 83
+      "values_compared": 63
     },
     {
       "max_rel_err": 0.0,
@@ -455,7 +463,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=13131444038141468819",
-      "values_compared": 43
+      "values_compared": 91
     },
     {
       "max_rel_err": 0.0,
@@ -485,8 +493,8 @@
   "cases_both_errored": 0,
   "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 60,
-  "cases_total": 60,
+  "cases_passed": 61,
+  "cases_total": 61,
   "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,

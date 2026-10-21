@@ -67,12 +67,18 @@
 //!   names. Comments and names are `Option<&str>` (null upstream is `None`); a null one
 //!   is printed as glibc's `(null)` (`"%s"` with a null pointer is undefined in C) and
 //!   text is cut to 1023 bytes as `snprintf` into the `SM_TBLOCK_SIZE` buffers does, at
-//!   a character boundary. The vertex overload of `NoteError` (cpp:131) has no effect
-//!   and is not ported. `NoteFilletError` on a fillet edge whose type `GetName` writes
+//!   a character boundary (upstream may cut inside a UTF-8 sequence; that case is not
+//!   compared). The vertex overload of `NoteError` (cpp:131) reads the vertex's number
+//!   but stores nothing, and is not ported. The codes are typed
+//!   ([`FilletErrorType`], [`FilStatus`], [`FilletEdgeType`]) and stored as their
+//!   upstream values. `NoteFilletError` on a fillet edge whose type `GetName` writes
 //!   no name for is [`SolidError::InvalidInput`]: upstream prints an uninitialised
 //!   buffer.
 //! - The executive's objects (pseudo B-rep, the fillet-edges attribute, its own
-//!   identity) are handles the owner allocates ([`ExecutiveObjects`]); `GetContext` is
+//!   identity) are handles the owner allocates ([`ExecutiveObjects`]). The constructor
+//!   leaves `m_bIsInitialized` unset; it is `false` here, the value the first upstream
+//!   write (`SetFilletParameters`) gives it. A null surface generator is not
+//!   representable (no upstream caller adds one). `GetContext` is
 //!   not ported (no context object). The destructor (deleting the owned objects) and
 //!   `SetBevelCorner` wait for the owner's object model.
 //! - No recursion.
@@ -82,7 +88,7 @@ use std::collections::BTreeMap;
 use crate::blend::fillet_executive::p3::{
     ErrorInfo, ExecutionOptions, ExecutiveAccess, FilletExecutive,
 };
-use crate::blend::fillet_geom::p1::{FilletCornerType, FilletEdgeType};
+use crate::blend::fillet_geom::p1::{FilStatus, FilletCornerType, FilletEdgeType, FilletErrorType};
 pub use crate::blend::fillet_standard_solver::p1::{FilletLaw, FilletLawKind};
 use crate::boolean::topology_intersector::p1::TopologyIntersector;
 use crate::error::{Result, SolidError};
@@ -381,8 +387,8 @@ impl<O: Copy + PartialEq> ErrorInfo<O> {
 
     /// `NoteError(eErrorCode, cComment)`: a generic error; a null comment keeps the old
     /// one.
-    pub fn note_error(&mut self, code: i32, comment: Option<&str>) {
-        self.code = code;
+    pub fn note_error(&mut self, code: FilletErrorType, comment: Option<&str>) {
+        self.code = code as i32;
         if comment.is_some() {
             self.comment = tblock_text(comment);
         }
@@ -393,16 +399,16 @@ impl<O: Copy + PartialEq> ErrorInfo<O> {
     pub fn note_edge_error(
         &mut self,
         edge: Option<O>,
-        status: i32,
-        code: i32,
+        status: FilStatus,
+        code: FilletErrorType,
         comment: Option<&str>,
     ) {
         if edge.is_none() {
             return;
         }
         self.edge = edge;
-        self.code = code;
-        self.status = status;
+        self.code = code as i32;
+        self.status = status as i32;
         self.comment = tblock_text(comment);
     }
 
@@ -411,16 +417,16 @@ impl<O: Copy + PartialEq> ErrorInfo<O> {
     #[allow(clippy::too_many_arguments)] // upstream's overload
     pub fn note_merge_error(
         &mut self,
-        code: i32,
-        status: i32,
+        code: FilletErrorType,
+        status: FilStatus,
         filleted_edge: Option<O>,
         side_face: Option<O>,
         fillet_edge: Option<O>,
         surface: Option<O>,
         comment: Option<&str>,
     ) {
-        self.code = code;
-        self.status = status;
+        self.code = code as i32;
+        self.status = status as i32;
         self.edge = filleted_edge;
         self.side_face = side_face;
         add_unique(&mut self.edges, fillet_edge);
@@ -434,17 +440,17 @@ impl<O: Copy + PartialEq> ErrorInfo<O> {
     #[allow(clippy::too_many_arguments)] // upstream's overload
     pub fn note_corner_error(
         &mut self,
-        code: i32,
+        code: FilletErrorType,
         corner_type: FilletCornerType,
-        status: i32,
+        status: FilStatus,
         corner_name: Option<&str>,
         vertex: Option<O>,
         surfaces: [Option<O>; 2],
         fillet_vertices: [Option<O>; 2],
         comment: Option<&str>,
     ) {
-        self.code = code;
-        self.status = status;
+        self.code = code as i32;
+        self.status = status as i32;
         self.corner_type = corner_type;
         self.vertex = vertex;
         let [surface1, surface2] = surfaces;
@@ -459,16 +465,16 @@ impl<O: Copy + PartialEq> ErrorInfo<O> {
     /// an error at a fillet edge (of the fillet B-rep, not the target).
     pub fn note_fillet_edge_error(
         &mut self,
-        code: i32,
-        status: i32,
-        edge_type: i32,
+        code: FilletErrorType,
+        status: FilStatus,
+        edge_type: FilletEdgeType,
         fillet_edge: Option<O>,
         edge_name: Option<&str>,
         comment: Option<&str>,
     ) {
-        self.code = code;
-        self.status = status;
-        self.edge_type = edge_type;
+        self.code = code as i32;
+        self.status = status as i32;
+        self.edge_type = edge_type as i32;
         add_unique(&mut self.edges, fillet_edge);
         self.comment = tblock_text(comment);
         self.entity_name = tblock_text(edge_name);
@@ -480,17 +486,17 @@ impl<O: Copy + PartialEq> ErrorInfo<O> {
     #[allow(clippy::too_many_arguments)] // upstream's overload
     pub fn note_intersection_error(
         &mut self,
-        code: i32,
-        status: i32,
+        code: FilletErrorType,
+        status: FilStatus,
         filleted_edge: Option<O>,
         surfaces: &[Option<O>],
-        curves: &[O],
+        curves: &[Option<O>],
         fillet_edges: &[Option<O>],
         location: Point3,
         comment: Option<&str>,
     ) {
-        self.code = code;
-        self.status = status;
+        self.code = code as i32;
+        self.status = status as i32;
         self.edge_type = FilletEdgeType::Unknown as i32; // (it's not a fillet edge)
         self.edge = filleted_edge;
         for &surface in surfaces {
@@ -612,32 +618,48 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
     }
 
     /// `NoteFilletError(eErrorType, pFilletEdge, cComment)`: an error at a fillet edge,
-    /// with the edge's name, type and status.
+    /// with the edge's name, type and status from the adapter.
     ///
     /// # Errors
     ///
-    /// Those of [`ExecutiveAccess::fillet_edge_note`];
-    /// [`SolidError::InvalidInput`] for a fillet edge type `GetName` writes no name for
-    /// (upstream then prints an uninitialised buffer).
+    /// Those of [`ExecutiveAccess::fillet_edge_note`] and
+    /// [`FilletExecutive::note_fillet_edge`].
     pub fn note_fillet_error<A>(
         &mut self,
         access: &A,
-        code: i32,
+        code: FilletErrorType,
         fillet_edge: O,
         comment: Option<&str>,
     ) -> Result<()>
     where
         A: ExecutiveAccess<O> + ?Sized,
     {
-        let (name, edge_type, status) = access.fillet_edge_note(fillet_edge)?;
+        let note = access.fillet_edge_note(fillet_edge)?;
+        self.note_fillet_edge(code, fillet_edge, note, comment)
+    }
+
+    /// The body of [`FilletExecutive::note_fillet_error`] given the fillet edge's
+    /// `GetName`, `GetFilletEdgeType()` and `GetStatus()`.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::InvalidInput`] for a fillet edge type `GetName` writes no name for
+    /// (upstream then prints an uninitialised buffer).
+    pub fn note_fillet_edge(
+        &mut self,
+        code: FilletErrorType,
+        fillet_edge: O,
+        (name, edge_type, status): (Option<&'static str>, FilletEdgeType, FilStatus),
+        comment: Option<&str>,
+    ) -> Result<()> {
         let name = name.ok_or(SolidError::InvalidInput {
             operation: OP_NOTE,
             reason: "fillet edge type without a name (uninitialised name upstream)",
         })?;
         self.error.note_fillet_edge_error(
             code,
-            status as i32,
-            edge_type as i32,
+            status,
+            edge_type,
             Some(fillet_edge),
             Some(name),
             comment,
@@ -650,8 +672,8 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
     #[allow(clippy::too_many_arguments)] // upstream's overload
     pub fn note_fillet_merge_error(
         &mut self,
-        code: i32,
-        status: i32,
+        code: FilletErrorType,
+        status: FilStatus,
         filleted_edge: Option<O>,
         target_face: Option<O>,
         fillet_edge: Option<O>,
@@ -674,9 +696,9 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
     #[allow(clippy::too_many_arguments)] // upstream's overload
     pub fn note_fillet_corner_error(
         &mut self,
-        code: i32,
+        code: FilletErrorType,
         corner_type: FilletCornerType,
-        status: i32,
+        status: FilStatus,
         corner_name: Option<&str>,
         vertex: Option<O>,
         surfaces: [Option<O>; 2],
@@ -700,11 +722,11 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
     #[allow(clippy::too_many_arguments)] // upstream's overload
     pub fn note_fillet_intersection_error(
         &mut self,
-        code: i32,
-        status: i32,
+        code: FilletErrorType,
+        status: FilStatus,
         filleted_edge: Option<O>,
         surfaces: &[Option<O>],
-        curves: &[O],
+        curves: &[Option<O>],
         fillet_edges: &[Option<O>],
         location: Point3,
         comment: Option<&str>,
@@ -875,14 +897,27 @@ mod tests {
     #[test]
     fn note_errors_follow_the_overloads() {
         let mut e = ErrorInfo::<H>::new(Some(H(9)));
-        e.note_error(5, None);
+        e.note_error(FilletErrorType::BadInt, None);
         assert_eq!((e.code, e.comment.as_str()), (5, "<no comment>\n"));
-        e.note_edge_error(None, 2, 7, Some("ignored"));
+        e.note_edge_error(
+            None,
+            FilStatus::Failure,
+            FilletErrorType::BadMerge,
+            Some("ignored"),
+        );
         assert_eq!((e.code, e.edge), (5, None));
-        e.note_merge_error(4, 2, Some(H(1)), Some(H(2)), None, Some(H(3)), None);
         e.note_merge_error(
-            4,
-            2,
+            FilletErrorType::EdgeProblem,
+            FilStatus::Failure,
+            Some(H(1)),
+            Some(H(2)),
+            None,
+            Some(H(3)),
+            None,
+        );
+        e.note_merge_error(
+            FilletErrorType::EdgeProblem,
+            FilStatus::Failure,
             Some(H(1)),
             Some(H(2)),
             None,

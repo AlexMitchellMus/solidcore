@@ -11239,13 +11239,16 @@ Final integrated-tree checks pending.
 
 ## blend.fillet_executive_p1, error info and executive object (PR #260, 2026-10-21; two harness bugs, no port disagreement)
 
-- **Corpus.** 60 cases (44 fixture, 16 generated): the 51 law cases plus scripts of
-  `NoteError` calls on a standalone `SmFilletErrorInfo` and of those and the setters
-  (`SetDoGlobalMerge`, `SetDoTrimming`, `SetSelfIntersectionHandler`,
-  `AddFilletSurfaceGenerator`, `AddTopoEdges`, `RemoveFromTopoEdges`) on a real
-  `SmFilletExecutive(ctx, target)`. Handles become pointers the shim never dereferences;
-  the executive's generator list is emptied before its destructor would delete them.
-  60 pass at max_rel_err 0; 500 seeds 544 pass; `--perturb` SENSITIVE 60/60; `--fuzz 2000`
+- **Corpus.** 61 cases (45 fixture, 16 generated): the 51 law cases plus scripts of
+  `NoteError` calls on a standalone `SmFilletErrorInfo`, and on a real
+  `SmFilletExecutive(ctx, target)` scripts of the `NoteFilletError` overloads (one on a
+  real `SmFilletEdge` in the pseudo B-rep), the setters (`SetDoGlobalMerge`,
+  `SetDoTrimming`, `SetSelfIntersectionHandler`, `AddFilletSurfaceGenerator`,
+  `AddTopoEdges`, `RemoveFromTopoEdges`) and the corner/solver maps and lookups. Other
+  handles become pointers the shim never dereferences; the executive's generator list is
+  emptied before its destructor would delete them. Short texts include non-ASCII
+  characters; long ones stay ASCII (a cut inside a UTF-8 sequence is a deviation). 61 pass
+  at max_rel_err 0; 500 seeds 545 pass; `--perturb` SENSITIVE 61/61; `--fuzz 2000`
   FUZZ-PASS.
 - **Text.** `smos_sprintf` is `snprintf(buf, SM_TBLOCK_SIZE, ...)`: comments and names keep
   1023 bytes. Every overload but the generic one prints a null comment through `"%s"`,

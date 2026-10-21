@@ -16,7 +16,9 @@ use solidcore::blend::fillet_executive::p1::{
     LINEAR_FILLET_LAW_TYPE,
 };
 use solidcore::blend::fillet_executive::p3::{ErrorInfo, FilletExecutive};
-use solidcore::blend::fillet_geom::p1::FilletCornerType;
+use solidcore::blend::fillet_geom::p1::{
+    FilStatus, FilletCornerType, FilletEdge, FilletEdgeType, FilletErrorType,
+};
 use solidcore::geom::solution_array::{ObjectKind, SolutionObject};
 use solidcore::geom::vector3d::Point3;
 use solidcore::intersect::point_class::{ClassObject, ClassObjectKind};
@@ -335,6 +337,8 @@ impl SolutionObject for H {
 const SELF: H = H(u32::MAX);
 const PSEUDO: H = H(u32::MAX - 1);
 const ATTRIBUTE: H = H(u32::MAX - 2);
+/// The k-th fillet edge a script made is `H(MADE - k)` (`-2 - k` in the output).
+const MADE: u32 = u32::MAX - 16;
 
 fn opt(h: u32) -> Option<H> {
     (h != 0).then_some(H(h))
@@ -344,11 +348,14 @@ fn out_handle(h: Option<H>) -> f64 {
     match h {
         None => 0.0,
         Some(SELF) => -1.0,
+        Some(H(h)) if h <= MADE && h > MADE - ffi::MAX_SCRIPT as u32 => {
+            -2.0 - f64::from(MADE - h)
+        }
         Some(H(h)) => f64::from(h),
     }
 }
 
-/// One call of a script (the shim's call kinds 0-5, 10-15).
+/// One call of a script (the shim's call kinds 0-5, 10-20).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "call", rename_all = "snake_case")]
 enum Step {
@@ -362,7 +369,7 @@ enum Step {
         comment: Option<String>,
     },
     /// `NoteError(eErrorCode, eEdgeStatus, pFilletedEdge, pSideFace, pFilletEdge,
-    /// pFilletSurface, cComment)`.
+    /// pFilletSurface, cComment)` (`NoteFilletError` on an executive).
     Merge {
         code: u8,
         status: u8,
@@ -372,7 +379,8 @@ enum Step {
         surface: u32,
         comment: Option<String>,
     },
-    /// `NoteError(eErrorCode, eCornerType, eFilletStatus, cCornerName, ...)`.
+    /// `NoteError(eErrorCode, eCornerType, eFilletStatus, cCornerName, ...)`
+    /// (`NoteFilletError` on an executive).
     Corner {
         code: u8,
         corner: u8,
@@ -393,7 +401,7 @@ enum Step {
         comment: Option<String>,
     },
     /// `NoteError(eErrorCode, eFilletStatus, pFilletedEdge, rapFilSurfs, rapFilCurvs,
-    /// rapFilEdges, rTsectPos, cComment)`.
+    /// rapFilEdges, rTsectPos, cComment)` (`NoteFilletError` on an executive).
     Intersection {
         code: u8,
         status: u8,
@@ -416,6 +424,22 @@ enum Step {
     AddTopoEdge { h: u32 },
     /// `RemoveFromTopoEdges`.
     RemoveTopoEdge { h: u32 },
+    /// An `m_vVertexCornerMap` entry.
+    MapCorner { v: u32, c: u32 },
+    /// An `m_vEdgeuseSolverMap` entry.
+    MapSolver { eu: u32, s: u32 },
+    /// `GetFilletCornerOfVertex(v)`.
+    CornerOf { v: u32 },
+    /// `GetFilletSolverOfEdgeuse(eu)`.
+    SolverOf { eu: u32 },
+    /// `NoteFilletError(code, pFilletEdge, cComment)` on a new fillet edge of `fe_type`
+    /// and `status`.
+    NoteFilletError {
+        code: u8,
+        fe_type: u8,
+        status: u8,
+        comment: Option<String>,
+    },
 }
 
 /// A script on an `SmFilletErrorInfo` (`exec` its executive) or on a new
@@ -535,9 +559,51 @@ fn object_cpp_input(i: &ObjectIn) -> Vec<f64> {
             Step::AddGenerator { h } => o.extend([13.0, f64::from(*h)]),
             Step::AddTopoEdge { h } => o.extend([14.0, f64::from(*h)]),
             Step::RemoveTopoEdge { h } => o.extend([15.0, f64::from(*h)]),
+            Step::MapCorner { v, c } => o.extend([16.0, f64::from(*v), f64::from(*c)]),
+            Step::MapSolver { eu, s } => o.extend([17.0, f64::from(*eu), f64::from(*s)]),
+            Step::CornerOf { v } => o.extend([18.0, f64::from(*v)]),
+            Step::SolverOf { eu } => o.extend([19.0, f64::from(*eu)]),
+            Step::NoteFilletError {
+                code,
+                fe_type,
+                status,
+                comment,
+            } => {
+                o.extend([20.0, f64::from(*code), f64::from(*fe_type), f64::from(*status)]);
+                push_text(&mut o, comment.as_ref());
+            }
         }
     }
     o
+}
+
+fn bad_code(what: &str) -> HarnessError {
+    HarnessError::new(format!("{what} code outside its enum"))
+}
+
+fn error_type(code: u8) -> Result<FilletErrorType, HarnessError> {
+    use FilletErrorType as E;
+    [
+        E::Ok,
+        E::ExecUninitialized,
+        E::InvalidInput,
+        E::VertexProblem,
+        E::EdgeProblem,
+        E::BadInt,
+        E::BadTrim,
+        E::BadMerge,
+    ]
+    .get(usize::from(code))
+    .copied()
+    .ok_or_else(|| bad_code("SmFilletErrorType"))
+}
+
+fn fil_status(code: u8) -> Result<FilStatus, HarnessError> {
+    FilStatus::from_code(i64::from(code)).ok_or_else(|| bad_code("SmFilStatus"))
+}
+
+fn edge_type(code: u8) -> Result<FilletEdgeType, HarnessError> {
+    FilletEdgeType::from_code(i64::from(code)).ok_or_else(|| bad_code("SmFilletEdgeType"))
 }
 
 fn corner_type(code: u8) -> Result<FilletCornerType, HarnessError> {
@@ -559,27 +625,43 @@ fn corner_type(code: u8) -> Result<FilletCornerType, HarnessError> {
     ]
     .get(usize::from(code))
     .copied()
-    .ok_or_else(|| HarnessError::new("corner type outside SmFilletCornerType"))
+    .ok_or_else(|| bad_code("SmFilletCornerType"))
 }
 
 fn opts(hs: &[u32]) -> Vec<Option<H>> {
     hs.iter().map(|&h| opt(h)).collect()
 }
 
-/// The script's `NoteError` call on `e`, `false` for an executive call. `fv`/`loc` record
-/// that the fillet vertices / location were set (uninitialised upstream before).
-fn note(e: &mut ErrorInfo<H>, s: &Step, fv: &mut bool, loc: &mut bool) -> Result<bool, HarnessError> {
+/// Where a script's `NoteError` calls go: an error info, or an executive (whose
+/// `NoteFilletError` overloads take calls 2, 3 and 5).
+enum Sink<'a> {
+    Info(&'a mut ErrorInfo<H>),
+    Exec(&'a mut FilletExecutive<H>),
+}
+
+impl Sink<'_> {
+    fn info(&mut self) -> &mut ErrorInfo<H> {
+        match self {
+            Self::Info(e) => e,
+            Self::Exec(x) => &mut x.error,
+        }
+    }
+}
+
+/// The script's `NoteError` call, `false` for another call. `fv`/`loc` record that the
+/// fillet vertices / location were set (uninitialised upstream before).
+fn note(sink: &mut Sink<'_>, s: &Step, fv: &mut bool, loc: &mut bool) -> Result<bool, HarnessError> {
     match s {
-        Step::Note { code, comment } => e.note_error(i32::from(*code), comment.as_deref()),
+        Step::Note { code, comment } => sink.info().note_error(error_type(*code)?, comment.as_deref()),
         Step::Edge {
             edge,
             status,
             code,
             comment,
-        } => e.note_edge_error(
+        } => sink.info().note_edge_error(
             opt(*edge),
-            i32::from(*status),
-            i32::from(*code),
+            fil_status(*status)?,
+            error_type(*code)?,
             comment.as_deref(),
         ),
         Step::Merge {
@@ -590,15 +672,23 @@ fn note(e: &mut ErrorInfo<H>, s: &Step, fv: &mut bool, loc: &mut bool) -> Result
             fillet_edge,
             surface,
             comment,
-        } => e.note_merge_error(
-            i32::from(*code),
-            i32::from(*status),
-            opt(*edge),
-            opt(*face),
-            opt(*fillet_edge),
-            opt(*surface),
-            comment.as_deref(),
-        ),
+        } => {
+            let args = (
+                error_type(*code)?,
+                fil_status(*status)?,
+                opt(*edge),
+                opt(*face),
+                opt(*fillet_edge),
+                opt(*surface),
+                comment.as_deref(),
+            );
+            match sink {
+                Sink::Info(e) => e.note_merge_error(args.0, args.1, args.2, args.3, args.4, args.5, args.6),
+                Sink::Exec(x) => {
+                    x.note_fillet_merge_error(args.0, args.1, args.2, args.3, args.4, args.5, args.6);
+                }
+            }
+        }
         Step::Corner {
             code,
             corner,
@@ -609,16 +699,24 @@ fn note(e: &mut ErrorInfo<H>, s: &Step, fv: &mut bool, loc: &mut bool) -> Result
             fillet_vertices,
             comment,
         } => {
-            e.note_corner_error(
-                i32::from(*code),
+            let args = (
+                error_type(*code)?,
                 corner_type(*corner)?,
-                i32::from(*status),
+                fil_status(*status)?,
                 name.as_deref(),
                 opt(*vertex),
                 surfaces.map(opt),
                 fillet_vertices.map(opt),
                 comment.as_deref(),
             );
+            match sink {
+                Sink::Info(e) => e.note_corner_error(
+                    args.0, args.1, args.2, args.3, args.4, args.5, args.6, args.7,
+                ),
+                Sink::Exec(x) => x.note_fillet_corner_error(
+                    args.0, args.1, args.2, args.3, args.4, args.5, args.6, args.7,
+                ),
+            }
             *fv = true;
         }
         Step::FilletEdge {
@@ -628,10 +726,10 @@ fn note(e: &mut ErrorInfo<H>, s: &Step, fv: &mut bool, loc: &mut bool) -> Result
             fillet_edge,
             name,
             comment,
-        } => e.note_fillet_edge_error(
-            i32::from(*code),
-            i32::from(*status),
-            i32::from(*fe_type),
+        } => sink.info().note_fillet_edge_error(
+            error_type(*code)?,
+            fil_status(*status)?,
+            edge_type(*fe_type)?,
             opt(*fillet_edge),
             name.as_deref(),
             comment.as_deref(),
@@ -646,19 +744,31 @@ fn note(e: &mut ErrorInfo<H>, s: &Step, fv: &mut bool, loc: &mut bool) -> Result
             at,
             comment,
         } => {
-            // A null curve is not a handle; the shim never gets one (`curves` holds
-            // non-zero handles only, see the generator).
-            let curves: Vec<H> = curves.iter().map(|&h| H(h)).collect();
-            e.note_intersection_error(
-                i32::from(*code),
-                i32::from(*status),
-                opt(*edge),
-                &opts(surfaces),
-                &curves,
-                &opts(edges),
-                Point3::new(at[0], at[1], at[2]),
-                comment.as_deref(),
-            );
+            let (code, status) = (error_type(*code)?, fil_status(*status)?);
+            let (surfaces, curves, edges) = (opts(surfaces), opts(curves), opts(edges));
+            let at = Point3::new(at[0], at[1], at[2]);
+            match sink {
+                Sink::Info(e) => e.note_intersection_error(
+                    code,
+                    status,
+                    opt(*edge),
+                    &surfaces,
+                    &curves,
+                    &edges,
+                    at,
+                    comment.as_deref(),
+                ),
+                Sink::Exec(x) => x.note_fillet_intersection_error(
+                    code,
+                    status,
+                    opt(*edge),
+                    &surfaces,
+                    &curves,
+                    &edges,
+                    at,
+                    comment.as_deref(),
+                ),
+            }
             *loc = true;
         }
         _ => return Ok(false),
@@ -683,12 +793,10 @@ fn put_error(o: &mut Vec<f64>, e: &ErrorInfo<H>, fv: bool, loc: bool) {
     if fv {
         o.extend(e.fillet_vertices.map(out_handle));
     }
-    o.push(e.surfaces.len() as f64);
-    o.extend(e.surfaces.iter().map(|&h| out_handle(h)));
-    o.push(e.edges.len() as f64);
-    o.extend(e.edges.iter().map(|&h| out_handle(h)));
-    o.push(e.curves.len() as f64);
-    o.extend(e.curves.iter().map(|&h| out_handle(Some(h))));
+    for list in [&e.surfaces, &e.edges, &e.curves] {
+        o.push(list.len() as f64);
+        o.extend(list.iter().map(|&h| out_handle(h)));
+    }
     o.push(flag(loc));
     if loc {
         let p = e.location.unwrap_or_default();
@@ -698,6 +806,52 @@ fn put_error(o: &mut Vec<f64>, e: &ErrorInfo<H>, fv: bool, loc: bool) {
     push_out_text(o, &e.entity_name);
 }
 
+/// One executive call (10-20), with query answers appended to `q`.
+fn exec_step(
+    x: &mut FilletExecutive<H>,
+    s: &Step,
+    made: &mut u32,
+    q: &mut Vec<f64>,
+) -> Result<(), HarnessError> {
+    match s {
+        Step::GlobalMerge { on } => x.set_do_global_merge(*on),
+        Step::Trimming { on } => x.set_do_trimming(*on),
+        Step::Handler { h } => x.set_self_intersection_handler(opt(*h)),
+        Step::AddGenerator { h } => x.add_fillet_surface_generator(H(*h)),
+        Step::AddTopoEdge { h } => x.topo_edges.push(opt(*h)),
+        Step::RemoveTopoEdge { h } => x.remove_from_topo_edges(opt(*h)),
+        Step::MapCorner { v, c } => {
+            x.vertex_corner_map.insert(H(*v), H(*c));
+        }
+        Step::MapSolver { eu, s } => {
+            x.edgeuse_solver_map.insert(H(*eu), H(*s));
+        }
+        Step::CornerOf { v } => q.push(out_handle(x.fillet_corner_of_vertex(H(*v)))),
+        Step::SolverOf { eu } => q.push(out_handle(x.fillet_solver_of_edgeuse(H(*eu)))),
+        Step::NoteFilletError {
+            code,
+            fe_type,
+            status,
+            comment,
+        } => {
+            let mut fe = FilletEdge::with_corner(None);
+            fe.edge_type = edge_type(*fe_type)?;
+            fe.status = fil_status(*status)?;
+            let handle = H(MADE - *made);
+            *made += 1;
+            x.note_fillet_edge(
+                error_type(*code)?,
+                handle,
+                (fe.name(), fe.edge_type, fe.status),
+                comment.as_deref(),
+            )
+            .map_err(|e| HarnessError::new(e.to_string()))?;
+        }
+        _ => return Err(HarnessError::new("not an executive call")),
+    }
+    Ok(())
+}
+
 fn object_rust(i: &ObjectIn) -> Result<Output, HarnessError> {
     let (mut fv, mut loc) = (false, false);
     let mut o = vec![0.0];
@@ -705,7 +859,9 @@ fn object_rust(i: &ObjectIn) -> Result<Output, HarnessError> {
         ObjectIn::ErrorInfo { exec, script } => {
             let mut e = ErrorInfo::new(opt(*exec));
             for s in script {
-                note(&mut e, s, &mut fv, &mut loc)?;
+                if !note(&mut Sink::Info(&mut e), s, &mut fv, &mut loc)? {
+                    return Err(HarnessError::new("not an error-info call"));
+                }
             }
             put_error(&mut o, &e, fv, loc);
         }
@@ -716,29 +872,23 @@ fn object_rust(i: &ObjectIn) -> Result<Output, HarnessError> {
                 edge_attribute: ATTRIBUTE,
             };
             let mut x = FilletExecutive::new(opt(*target), objects);
+            let (mut made, mut q) = (0, Vec::new());
             for s in script {
-                if note(&mut x.error, s, &mut fv, &mut loc)? {
-                    continue;
-                }
-                match s {
-                    Step::GlobalMerge { on } => x.set_do_global_merge(*on),
-                    Step::Trimming { on } => x.set_do_trimming(*on),
-                    Step::Handler { h } => x.set_self_intersection_handler(opt(*h)),
-                    Step::AddGenerator { h } => x.add_fillet_surface_generator(H(*h)),
-                    Step::AddTopoEdge { h } => x.topo_edges.push(opt(*h)),
-                    Step::RemoveTopoEdge { h } => x.remove_from_topo_edges(opt(*h)),
-                    _ => {}
+                if !note(&mut Sink::Exec(&mut x), s, &mut fv, &mut loc)? {
+                    exec_step(&mut x, s, &mut made, &mut q)?;
                 }
             }
             let op = x.options;
-            o.extend([
-                op.piecewise_merge,
-                op.topology_insertion,
-                op.global_merge,
-                op.trimming,
-                op.classification,
-            ]
-            .map(flag));
+            o.extend(
+                [
+                    op.piecewise_merge,
+                    op.topology_insertion,
+                    op.global_merge,
+                    op.trimming,
+                    op.classification,
+                ]
+                .map(flag),
+            );
             o.extend([out_handle(x.target), out_handle(x.fillet)]);
             o.extend([x.corners.len() as f64, x.solvers.len() as f64]);
             o.push(x.topo_edges.len() as f64);
@@ -753,6 +903,8 @@ fn object_rust(i: &ObjectIn) -> Result<Output, HarnessError> {
             ]);
             o.extend([flag(x.pseudo_brep.is_some()), flag(x.edge_attribute.is_some())]);
             put_error(&mut o, &x.error, fv, loc);
+            o.push(q.len() as f64);
+            o.extend(q);
         }
     }
     Ok(to_output(&o))
@@ -766,33 +918,46 @@ fn gen_handle(rng: &mut Rng) -> u32 {
     }
 }
 
+/// A text: NULL, empty, short (ASCII or any Unicode), or long ASCII. Long texts stay
+/// ASCII: upstream's 1023-byte cut may split a UTF-8 sequence, which a Rust string
+/// cannot hold (a documented deviation).
 fn gen_text(rng: &mut Rng) -> Option<String> {
+    const WIDE: [char; 6] = ['é', 'ß', '€', '中', '🙂', '\u{7f}'];
     let len = match rng.below(10) {
         0..=1 => return None,
         2 => 0,
         3 => rng.range_i64(1000, ffi::MAX_TEXT as i64) as usize,
         _ => rng.below(40) as usize,
     };
+    let wide = len < 200 && rng.chance(0.4);
     Some(
         (0..len)
-            .map(|_| char::from(rng.range_i64(1, 127) as u8))
+            .map(|_| match rng.choose(&WIDE) {
+                Some(&c) if wide && rng.chance(0.3) => c,
+                _ => char::from(rng.range_i64(1, 126) as u8),
+            })
             .collect(),
     )
 }
 
-fn gen_list(rng: &mut Rng, nonzero: bool) -> Vec<u32> {
-    (0..rng.below(5))
-        .map(|_| {
-            let h = gen_handle(rng);
-            if nonzero { h.max(1) } else { h }
-        })
+fn gen_list(rng: &mut Rng) -> Vec<u32> {
+    (0..rng.below(ffi::MAX_LIST as u64 + 1))
+        .map(|_| gen_handle(rng))
         .collect()
+}
+
+/// A `SmFilletEdgeType` `GetName` writes a name for.
+fn gen_named_edge_type(rng: &mut Rng) -> u8 {
+    [1, 3, 4, 5, 6, 7, 9, 10, 11, 12]
+        .get(rng.below(10) as usize)
+        .copied()
+        .unwrap_or(1)
 }
 
 fn gen_step(rng: &mut Rng, exec: bool) -> Step {
     let code = rng.below(8) as u8;
     let status = rng.below(13) as u8;
-    match rng.below(if exec { 12 } else { 6 }) {
+    match rng.below(if exec { 17 } else { 6 }) {
         0 => Step::Note {
             code,
             comment: gen_text(rng),
@@ -834,24 +999,43 @@ fn gen_step(rng: &mut Rng, exec: bool) -> Step {
             code,
             status,
             edge: gen_handle(rng),
-            surfaces: gen_list(rng, false),
-            curves: gen_list(rng, true),
-            edges: gen_list(rng, false),
+            surfaces: gen_list(rng),
+            curves: gen_list(rng),
+            edges: gen_list(rng),
             at: [0; 3].map(|_| rng.uniform(-1e3, 1e3) * 10f64.powf(rng.uniform(-6.0, 6.0))),
             comment: gen_text(rng),
         },
         6 => Step::GlobalMerge { on: rng.chance(0.5) },
         7 => Step::Trimming { on: rng.chance(0.5) },
         8 => Step::Handler { h: gen_handle(rng) },
-        9 => Step::AddGenerator { h: gen_handle(rng).max(1) },
+        // No upstream caller adds a null generator; the Rust list holds handles only.
+        9 => Step::AddGenerator {
+            h: gen_handle(rng).max(1),
+        },
         10 => Step::AddTopoEdge { h: gen_handle(rng) },
-        _ => Step::RemoveTopoEdge { h: gen_handle(rng) },
+        11 => Step::RemoveTopoEdge { h: gen_handle(rng) },
+        12 => Step::MapCorner {
+            v: gen_handle(rng),
+            c: gen_handle(rng),
+        },
+        13 => Step::MapSolver {
+            eu: gen_handle(rng),
+            s: gen_handle(rng),
+        },
+        14 => Step::CornerOf { v: gen_handle(rng) },
+        15 => Step::SolverOf { eu: gen_handle(rng) },
+        _ => Step::NoteFilletError {
+            code,
+            fe_type: gen_named_edge_type(rng),
+            status,
+            comment: gen_text(rng),
+        },
     }
 }
 
 fn gen_object(rng: &mut Rng) -> ObjectIn {
     let exec = rng.chance(0.5);
-    let n = rng.below(13);
+    let n = rng.below(17);
     let script = (0..n).map(|_| gen_step(rng, exec)).collect();
     if exec {
         ObjectIn::Executive {

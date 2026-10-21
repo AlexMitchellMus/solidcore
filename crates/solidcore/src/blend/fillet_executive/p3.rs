@@ -94,7 +94,7 @@ pub struct ErrorInfo<O> {
     /// `m_pFilletEdges`, including null entries.
     pub edges: Vec<Option<O>>,
     /// `m_pFilletCurves` (not copied by operator=).
-    pub curves: Vec<O>,
+    pub curves: Vec<Option<O>>,
     /// `m_vLocation` (not copied by operator=).
     pub location: Option<Point3>,
     /// `m_cComment` (not copied by operator=).

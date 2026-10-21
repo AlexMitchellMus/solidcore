@@ -17,7 +17,7 @@
 //! `SmFilletExecutive(ctx, target)` ([`ObjectOp::ExecScript`]: `target ncalls call*`).
 //! Handles are integers in `[0, MAX_HANDLE]` the shim turns into pointers it never
 //! dereferences (`0` is NULL); a text is `len c*` (`len = -1` is NULL; characters
-//! `1..=127`). Calls:
+//! `1..=255`). Calls:
 //!
 //! ```text
 //! 0 code text                                             NoteError(eErrorCode, cComment)
@@ -29,7 +29,16 @@
 //! 10 flag | 11 flag | 12 h | 13 h | 14 h | 15 h           (ExecScript only) SetDoGlobalMerge,
 //!                     SetDoTrimming, SetSelfIntersectionHandler, AddFilletSurfaceGenerator,
 //!                     AddTopoEdges, RemoveFromTopoEdges
+//! 16 v c | 17 eu s                                        (ExecScript only) insert into
+//!                     m_vVertexCornerMap / m_vEdgeuseSolverMap
+//! 18 v | 19 eu                                            (ExecScript only) query
+//!                     GetFilletCornerOfVertex / GetFilletSolverOfEdgeuse
+//! 20 code fe_type status text                             (ExecScript only) a real
+//!                     SmFilletEdge of that type and status, then NoteFilletError(code, it, text)
 //! ```
+//!
+//! In an `ExecScript` calls 2, 3 and 5 go through the matching `NoteFilletError`
+//! overload.
 //!
 //! Codes stay inside their enums (`SmFilletErrorType` 0-7, `SmFilStatus` 0-12,
 //! `SmFilletCornerType` 0-12, `SmFilletEdgeType` 0-14). Output: `0`, for `ExecScript`
@@ -37,8 +46,10 @@
 //! n_solvers n_topo topo* n_fsg fsg* handler ignore_tangency approx_tol ang_tol
 //! has_pseudo has_attribute`, then the error info `code status corner edge_type exec
 //! vertex edge side end has_fv [fv1 fv2] ns s* ne e* nc c* has_loc [x y z] comment
-//! name` (texts as `len c*`; a handle `-1` is the executive itself; the fillet vertices
-//! and the location only once a call set them, being uninitialised before).
+//! name` (texts as `len c*`; a handle `-1` is the executive itself, `-2 - k` the k-th
+//! fillet edge call 20 made; the fillet vertices and the location only once a call set
+//! them, being uninitialised before), and for `ExecScript` last `nq q*`, the query
+//! answers.
 use crate::units::blend_fillet_standard_solver_p1::{bcurve, Reader, MAX_ARRAY, MAX_CALLS};
 use crate::{call_with_buffer, FfiError};
 
@@ -154,15 +165,15 @@ fn handles(rd: &mut Reader<'_>) -> Result<(), FfiError> {
     Ok(())
 }
 
-/// `len c*`: `-1` (NULL) or up to [`MAX_TEXT`] characters `1..=127` (no NUL, which would
-/// end the C string early).
+/// `len c*`: `-1` (NULL) or up to [`MAX_TEXT`] bytes `1..=255` (no NUL, which would end
+/// the C string early).
 fn text(rd: &mut Reader<'_>) -> Result<(), FfiError> {
     if rd.input.get(rd.at).copied() == Some(-1.0) {
         rd.at += 1;
         return Ok(());
     }
     for _ in 0..rd.index(MAX_TEXT)? {
-        if rd.index(127)? == 0 {
+        if rd.index(255)? == 0 {
             return Err(crate::units::blend_fillet_standard_solver_p1::bad("NUL in text"));
         }
     }
@@ -172,7 +183,7 @@ fn text(rd: &mut Reader<'_>) -> Result<(), FfiError> {
 /// One call of the script; `exec` allows the executive calls.
 fn call(rd: &mut Reader<'_>, exec: bool) -> Result<(), FfiError> {
     let (code, status, corner, fe_type) = (7, 12, 12, 14);
-    match rd.index(15)? {
+    match rd.index(20)? {
         0 => {
             rd.index(code)?;
             text(rd)
@@ -220,7 +231,23 @@ fn call(rd: &mut Reader<'_>, exec: bool) -> Result<(), FfiError> {
             text(rd)
         }
         10 | 11 if exec => rd.flag().map(|_| ()),
-        12..=15 if exec => handle(rd),
+        12..=15 | 18 | 19 if exec => handle(rd),
+        16 | 17 if exec => {
+            handle(rd)?;
+            handle(rd)
+        }
+        20 if exec => {
+            rd.index(code)?;
+            // Only the types SmFilletEdge::GetName writes a name for; for the others
+            // NoteFilletError prints an uninitialised buffer.
+            if !matches!(rd.index(fe_type)?, 1 | 3..=7 | 9..=12) {
+                return Err(crate::units::blend_fillet_standard_solver_p1::bad(
+                    "fillet edge type without a name",
+                ));
+            }
+            rd.index(status)?;
+            text(rd)
+        }
         _ => Err(crate::units::blend_fillet_standard_solver_p1::bad("bad call kind")),
     }
 }

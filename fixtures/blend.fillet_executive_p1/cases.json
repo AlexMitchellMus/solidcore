@@ -2700,6 +2700,117 @@
      }
     ]
    }
+  },
+  {
+   "name": "executive_lookups_wrappers_and_fillet_edge_errors",
+   "inputs": {
+    "object": "executive",
+    "target": 3,
+    "script": [
+     {
+      "call": "map_corner",
+      "v": 1,
+      "c": 7
+     },
+     {
+      "call": "map_corner",
+      "v": 1,
+      "c": 8
+     },
+     {
+      "call": "map_corner",
+      "v": 0,
+      "c": 9
+     },
+     {
+      "call": "map_solver",
+      "eu": 2,
+      "s": 5
+     },
+     {
+      "call": "corner_of",
+      "v": 1
+     },
+     {
+      "call": "corner_of",
+      "v": 4
+     },
+     {
+      "call": "corner_of",
+      "v": 0
+     },
+     {
+      "call": "solver_of",
+      "eu": 2
+     },
+     {
+      "call": "solver_of",
+      "eu": 3
+     },
+     {
+      "call": "note_fillet_error",
+      "code": 4,
+      "fe_type": 6,
+      "status": 2,
+      "comment": null
+     },
+     {
+      "call": "note_fillet_error",
+      "code": 4,
+      "fe_type": 9,
+      "status": 3,
+      "comment": "rail été 中"
+     },
+     {
+      "call": "merge",
+      "code": 7,
+      "status": 2,
+      "edge": 1,
+      "face": 2,
+      "fillet_edge": 0,
+      "surface": 3,
+      "comment": "merge"
+     },
+     {
+      "call": "corner",
+      "code": 3,
+      "corner": 5,
+      "status": 2,
+      "name": "SM_FCR_3_x_2_MIXED",
+      "vertex": 2,
+      "surfaces": [
+       3,
+       0
+      ],
+      "fillet_vertices": [
+       0,
+       0
+      ],
+      "comment": "corner"
+     },
+     {
+      "call": "intersection",
+      "code": 5,
+      "status": 3,
+      "edge": 6,
+      "surfaces": [],
+      "curves": [
+       0,
+       9,
+       0
+      ],
+      "edges": [
+       0
+      ],
+      "at": [
+       0.0,
+       -0.0,
+       7.5
+      ],
+      "comment": "ok"
+     }
+    ]
+   }
   }
  ]
 }
