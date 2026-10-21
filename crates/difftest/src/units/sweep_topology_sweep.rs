@@ -695,13 +695,18 @@ mod tests {
         let source = BrepId::from_index(0);
         let destination = BrepId::from_index(1);
         assert!(model.copy_edges(source, &[], destination)?.is_empty());
-        assert!(matches!(
-            model.copy_edges(source, &[EdgeId::from_index(0)], destination),
-            Err(SolidError::Unported {
-                unit: "topology.brep_p1",
-                ..
-            })
-        ));
+        // The live p1 infinite-region lookup now reaches wire topology creation.
+        let copied = model.copy_edges(source, &[EdgeId::from_index(0)], destination);
+        assert!(
+            matches!(
+                copied,
+                Err(SolidError::Unported {
+                    upstream: "SmBrep::MakeShellVertex",
+                    unit: "topology.brep_p9",
+                })
+            ),
+            "{copied:?}"
+        );
         let mut mates = BTreeMap::new();
         assert_unported(
             model.copy_faces(source, &[], destination, true, SweepMergeId(0), &mut mates),
@@ -771,13 +776,25 @@ mod tests {
             Err(SolidError::Upstream { code: 1006, .. })
         ));
         let face = model.b[0].add_face_record(Face::new(ShellId::from_index(0)))?;
-        assert!(matches!(
-            model.make_vertex_loop((b, face), Point3::ZERO),
-            Err(SolidError::Unported {
-                upstream: "SmFace::Notify",
-                ..
-            })
-        ));
+        // This bare face has no upward faceuse. The real PRE_EDIT notification
+        // runs before MakeVertexLoop reports that missing topology (native NER).
+        model.b[0].face_mut(face)?.rectangular_trim = 1;
+        let vertex_loop = model.make_vertex_loop((b, face), Point3::ZERO);
+        assert!(
+            matches!(
+                vertex_loop,
+                Err(SolidError::Upstream {
+                    operation: "topology::brep::p9",
+                    code: 1006,
+                    ..
+                })
+            ),
+            "{vertex_loop:?}"
+        );
+        assert_eq!(
+            model.b[0].face(face)?.rectangular_trim,
+            solidcore::topology::face::p2::UNSURE
+        );
         let edge = model.b[0].edge(EdgeId::from_index(0))?;
         let curve = edge
             .curve
