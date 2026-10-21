@@ -955,9 +955,9 @@ mod tests {
         // two regions: the ray fire needs the B-rep mutable, so it works on a copy
         let _ = classifier.point_3d_classify(&k, Point3::new(1.0, 2.0, 3.0), 1e-6, false);
         assert!(classifier.has_copied());
-        let copied = classifier.brep() as *const Brep;
+        let copied: *const Brep = classifier.brep();
         let _ = classifier.point_3d_classify(&k, Point3::new(3.0, 2.0, 1.0), 1e-6, false);
-        assert_eq!(classifier.brep() as *const Brep, copied, "copied once");
+        assert!(core::ptr::eq(classifier.brep(), copied), "copied once");
         assert_eq!(format!("{b:?}"), before);
     }
 
