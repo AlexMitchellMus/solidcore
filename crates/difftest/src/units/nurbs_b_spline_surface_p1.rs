@@ -1026,7 +1026,7 @@ fn rust_static(op: &OpIn, o: &mut Vec<f64>, tail: &mut Vec<f64>) -> Result<(), F
 }
 
 /// Runs a surface op on `s`; pushes its outputs (after the status) on success.
-fn rust_surface(op: &OpIn, s: &mut BSplineSurface, o: &mut Vec<f64>) -> Result<(), Fail> {
+fn rust_surface(k: &Kernel, op: &OpIn, s: &mut BSplineSurface, o: &mut Vec<f64>) -> Result<(), Fail> {
     match op {
         OpIn::State => {}
         OpIn::Counts => {
@@ -1118,7 +1118,7 @@ fn rust_surface(op: &OpIn, s: &mut BSplineSurface, o: &mut Vec<f64>) -> Result<(
                 expand_by_zone_tol: *expand,
                 expand_tolerance: None,
             };
-            let b = s.calculate_bounding_box(&domain_of(*domain), &req)?;
+            let b = s.calculate_bounding_box(k, &domain_of(*domain), &req)?;
             if let Some(nb) = b.normal {
                 o.extend((0..3).map(|i| nb.min_at(i)));
                 o.extend((0..3).map(|i| nb.max_at(i)));
@@ -1158,7 +1158,7 @@ fn rust_surface(op: &OpIn, s: &mut BSplineSurface, o: &mut Vec<f64>) -> Result<(
         }
         OpIn::DegenCurve { angle, domain, tol } => {
             let d = domain.map(domain_of);
-            o.push(flag(s.is_degenerate_curve(*angle, d.as_ref(), *tol)?));
+            o.push(flag(s.is_degenerate_curve(k, *angle, d.as_ref(), *tol)?));
         }
         OpIn::StepInv {
             domain,
@@ -1180,12 +1180,12 @@ fn rust_surface(op: &OpIn, s: &mut BSplineSurface, o: &mut Vec<f64>) -> Result<(
     Ok(())
 }
 
-fn rust(i: &Inputs) -> Result<Output, HarnessError> {
+fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
     let mut this = i.this.as_ref().map(build_this).transpose()?;
     let mut o = vec![0.0];
     let mut tail = Vec::new();
     let res = match this.as_mut() {
-        Some(s) => rust_surface(&i.op, s, &mut o),
+        Some(s) => rust_surface(k, &i.op, s, &mut o),
         None => rust_static(&i.op, &mut o, &mut tail),
     };
     match res {
@@ -1740,6 +1740,7 @@ impl UnitDiff for Runner {
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
-        rust(&case.parse()?)
+        let k = &Kernel::default();
+        rust(k, &case.parse()?)
     }
 }
