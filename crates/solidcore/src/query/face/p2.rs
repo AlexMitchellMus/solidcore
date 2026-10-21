@@ -651,6 +651,9 @@ fn vertex_face_gap_length(k: &Kernel, b: &mut Brep, v: VertexId, f: FaceId) -> R
 /// The caller's [`ClassGeometry`] answering [`ClassGeometry::vertex_face_gap`] for the
 /// vertices `IntersectVertices` intersects (their gaps computed from the B-rep, as
 /// upstream's vertex pointers reach them); everything else is the caller's.
+///
+/// Every [`ClassGeometry`] method must be forwarded to `inner` here, including any added
+/// later: a trait default would otherwise silently replace the inner adapter's override.
 struct WithVertexFaceGaps<'g, G, O> {
     inner: &'g G,
     gaps: Vec<(O, Option<f64>)>,
