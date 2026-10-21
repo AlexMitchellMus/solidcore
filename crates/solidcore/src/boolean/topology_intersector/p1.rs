@@ -98,7 +98,9 @@
 //!   `SmFace::GetVertices` / `GetEdges` / `GetBrep` (`topology.face_p4`),
 //!   `SmFace::FaceIntersect` with UV curve and point outputs (`topology.face_p3`; part
 //!   2's `face_face_intersect_curves`, which [`IntersectorBrep`] does not cover),
-//!   `SmFace::CalculateBoundingBox` / `Point3DClassify` (`query.face_p1`). The
+//!   `SmFace::Point3DClassify` (`query.face_p1`; `SmFace::CalculateBoundingBox` goes
+//!   through [`IntersectorBrep::face_calculate_bounding_box`] since the `query.face_p1`
+//!   port). The
 //!   code after a stub is ported in full. `SmSurface::GlobalCurveIntersect` /
 //!   `CoincidenceCheck` (`surface.surface_p8`), `SmCurveClassification::Homogenize`
 //!   (`intersect.curve_class_p6`), `InsertTopologyIntersections`
@@ -165,7 +167,7 @@ use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::surface::surface::p2::TsectCurveType;
 use crate::surface::surface::p5::{DropPoint, DropPointOptions};
 use crate::topology::proto_topology::{ProtoBrep, ProtoTopologyManager};
-use crate::topology::{vertex, Brep, EdgeId, FaceId, VertexId};
+use crate::topology::{edge, vertex, Brep, EdgeId, FaceId, VertexId};
 
 const OP: &str = "boolean::topology_intersector::p1";
 const OP_CHECK_SSI: &str = "boolean::topology_intersector::p1::check_if_have_existing_ssi";
@@ -431,6 +433,15 @@ pub trait IntersectorBrep<O>:
     ///
     /// [`SolidError::InvalidInput`] for an unknown B-rep.
     fn brep_vertices(&self, brep: O) -> Result<Vec<O>>;
+    /// The bounding box of `face` (`SmFace::CalculateBoundingBox(rBox, bTight)`, unit
+    /// `query.face_p1`: `query::face::p1::calculate_bounding_box` on the B-rep behind the
+    /// handle). The intersector passes `tight = false`, upstream's default. (Named after
+    /// the upstream call in full: `face_bounding_box` is #229's `MergeBrep` method.)
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::InvalidInput`] for an unknown face, and those of the port.
+    fn face_calculate_bounding_box(&self, k: &Kernel, face: O, tight: bool) -> Result<Extent3d>;
 }
 
 // ---- unported callees -----------------------------------------------------------------------
@@ -600,18 +611,6 @@ fn face_uv_domain_from_uv_trim_curves<O>(
         }) => Ok(None),
         r => ignore_soft(r),
     }
-}
-
-/// `SmFace::CalculateBoundingBox(rBox, bTight)` (`bTight` is `FALSE` by default).
-fn face_bounding_box<O>(_k: &Kernel, _face: O, _tight: bool) -> Result<Extent3d> {
-    // DISPATCH GAP: SmFace::CalculateBoundingBox is ported
-    // (`query::face::p1::calculate_bounding_box`, query.face_p1 partial; no UNPORTED
-    // marker), but it takes the face's `Brep` and `FaceId`, which this caller's opaque face
-    // handle does not carry.
-    Err(SolidError::unported(
-        "SmFace::CalculateBoundingBox",
-        "query.face_p1",
-    ))
 }
 
 /// `SmFace::Point3DClassify(pt, tol, bDoBoundaryIntersections, pc, pOptGuessUV,
@@ -1953,8 +1952,10 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
     /// # Errors
     ///
     /// Unless `ignore_problems`, a failing vertex loop or edge split (`SER`); those of
-    /// the geometry queries; [`SolidError::Unported`] for the face bounding box
-    /// (`query.face_p1`), `SmFace::CalculateUVDomainFromUVTrimCurves`'s
+    /// the geometry queries; [`SolidError::Unported`] from the adapter's face bounding box
+    /// and the stubs after it (`gen0011` defers at `SmBrep::CalculateBoundingBox`,
+    /// `query.brep`; six cases at `SmFace::GetUpwardLoopuses`, `topology.face_p4`),
+    /// `SmFace::CalculateUVDomainFromUVTrimCurves`'s
     /// `CreateUVTrimCurves`, `SmSurface::GlobalCurveIntersect` and the B-rep edits;
     /// [`SolidError::InvalidInput`] for null handles upstream dereferences.
     #[allow(clippy::too_many_lines)]
@@ -2039,7 +2040,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                 }
 
                 // BBox check.
-                if let Some(b) = ignore_soft(face_bounding_box(k, face, false))? {
+                if let Some(b) = ignore_soft(brep.face_calculate_bounding_box(k, face, false))? {
                     f_bbox = b;
                 }
                 if e_bbox.are_disjoint(&f_bbox, face_zone_tol_3d) {
@@ -4106,6 +4107,8 @@ impl<I: Ord + Copy> MateMap<I> {
 }
 
 /// Face, edge and vertex mates shared by the merge stages; every id is operand-local.
+/// Curves and surfaces are owned by their edge and face in the arena model, so they
+/// have no mates of their own (see `boolean.merge_p2`).
 #[derive(Debug, Default, Clone)]
 pub struct Relations {
     /// Face mates in both directions; face Relate has no tolerance update.
@@ -4117,6 +4120,67 @@ pub struct Relations {
 }
 
 impl Relations {
+    /// `Relate(pBrepTopo, pOtherTopo)` for two edges ([`TopologyIntersector::relate`]'s
+    /// edge branch on arena ids; CO-PORTED by `boolean.merge_p2`): the conflict checks,
+    /// then (`SM_USE_OLDTOL`) each edge gets the other's tolerance when that is larger
+    /// (`SmEdge::SetTolerance` with its defaults `TRUE, TRUE`), then the pair is stored.
+    ///
+    /// # Errors
+    ///
+    /// `SM_ERR` when either edge already has a different mate (nothing changes);
+    /// [`SolidError::NotFound`] for a dangling id; those of `SetTolerance`.
+    pub fn relate_edges(
+        &mut self,
+        brep: &mut Brep,
+        brep_edge: EdgeId,
+        other: &mut Brep,
+        other_edge: EdgeId,
+    ) -> Result<()> {
+        // check for conflicting existing mate relationships
+        if self.edges.other(brep_edge).is_some_and(|e| e != other_edge)
+            || self
+                .edges
+                .primary(other_edge)
+                .is_some_and(|e| e != brep_edge)
+        {
+            return Err(SolidError::sm_err(OP_RELATE));
+        }
+
+        // when objects are edges - set object tolerances to max(object1 tol, object2 tol)
+        let tol1 = brep.edge(brep_edge)?.tolerance;
+        let tol2 = other.edge(other_edge)?.tolerance;
+        if tol1 < tol2 {
+            edge::set_tolerance(brep, brep_edge, tol2, true, true)?;
+        }
+        let tol1 = brep.edge(brep_edge)?.tolerance;
+        if tol2 < tol1 {
+            edge::set_tolerance(other, other_edge, tol1, true, true)?;
+        }
+
+        // add the pair to the Ptr to Ptr map
+        self.edges.record(brep_edge, other_edge)
+    }
+
+    /// `Relate(pBrepTopo, pOtherTopo)` for two faces (CO-PORTED by
+    /// `boolean.merge_p2`): the conflict checks, then the pair is stored. Faces have no
+    /// tolerance branch upstream.
+    ///
+    /// # Errors
+    ///
+    /// `SM_ERR` when either face already has a different mate (nothing changes);
+    /// [`SolidError::NotFound`] for a dangling id.
+    pub fn relate_faces(
+        &mut self,
+        brep: &Brep,
+        brep_face: FaceId,
+        other: &Brep,
+        other_face: FaceId,
+    ) -> Result<()> {
+        brep.face(brep_face)?;
+        other.face(other_face)?;
+        self.faces.record(brep_face, other_face)
+    }
+
     /// Move the typed mate store through a generic intersector operation, then
     /// restore it even when that operation fails. Geometry and proto state stay
     /// in the same intersector; no second live relationship store is retained.

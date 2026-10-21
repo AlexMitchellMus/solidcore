@@ -358,7 +358,7 @@ fn edge_curve(b: &Brep, e: EdgeId) -> Result<&Curve> {
 /// The handles of the UV line classifications of [`calculate_an_internal_point`]: the
 /// face, its surface, the UV line and the face's boundary topology and curves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum UvLineHandle {
+pub(crate) enum UvLineHandle {
     Face,
     Surface,
     Line,
@@ -386,10 +386,18 @@ impl ClassObject for UvLineHandle {
 
 /// The UV line `sm_FaceClassifyUVLine` made last (`sCurveClassification.GetCurve()`),
 /// and the face `f` of `b` whose objects the other handles name.
-struct UvLineObjects<'a> {
+pub(crate) struct UvLineObjects<'a> {
     b: &'a Brep,
     f: FaceId,
     line: Option<Curve>,
+}
+
+impl<'a> UvLineObjects<'a> {
+    /// The objects of face `f` of `b`, before `sm_FaceClassifyUVLine` makes its line
+    /// (also used by `topology::face::p4`'s `GlobalLineIntersect`).
+    pub(crate) const fn new(b: &'a Brep, f: FaceId) -> Self {
+        Self { b, f, line: None }
+    }
 }
 
 impl ClassGeometry<UvLineHandle> for UvLineObjects<'_> {
@@ -993,6 +1001,7 @@ pub struct SeamCrvReview<O> {
 /// [`SolidError::InvalidInput`] for an empty classification; those of
 /// `SmCurveInterval::GetIvlBound_EdgeuseObj`.
 pub fn review_start_and_stop_on_seam_crv_classifies<O: ClassObject>(
+    k: &Kernel,
     geometry: &impl ClassGeometry<O>,
     classification: &mut CurveClassification<O>,
 ) -> Result<SeamCrvReview<O>> {
@@ -1003,8 +1012,8 @@ pub fn review_start_and_stop_on_seam_crv_classifies<O: ClassObject>(
         .ok_or_else(|| null("ReviewStartAndStopOnSeamCrvClassifies: empty classification"))?;
 
     // init output
-    let edge_first_side = classification.ivl_bound_edgeuse_obj(geometry, 0, true)?;
-    let edge_last_side = classification.ivl_bound_edgeuse_obj(geometry, last, false)?;
+    let edge_first_side = classification.ivl_bound_edgeuse_obj(k, geometry, 0, true)?;
+    let edge_last_side = classification.ivl_bound_edgeuse_obj(k, geometry, last, false)?;
     let mut out = SeamCrvReview {
         first_kept: true,
         last_kept: true,
@@ -2867,6 +2876,6 @@ mod tests {
     fn review_of_an_empty_classification_is_rejected() {
         let k = Kernel::default();
         let mut cc: CurveClassification<H> = CurveClassification::new(&k);
-        assert!(review_start_and_stop_on_seam_crv_classifies(&NoGeometry, &mut cc).is_err());
+        assert!(review_start_and_stop_on_seam_crv_classifies(&k, &NoGeometry, &mut cc).is_err());
     }
 }
