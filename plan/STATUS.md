@@ -1,6 +1,10 @@
 # solidcore status
 
-Last updated: 2026-10-16, PR #127 (`sweep.trans_sweep_geometry` partial: 719 bit-identical passes, 50 deferred on `surface.cone_p2`, 19 rejected native fixtures). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
+Last updated: 2026-10-20, PR #222 third review (`sweep.topology_sweep` partial: 558 passes, max_rel_err=0, 10 deferred, 0 rejected). Per-unit state and evidence are in `plan/modules.toml` and `reports/difftest/`.
+
+Latest port: `sweep.topology_sweep` ([PR #222](https://github.com/tangency-labs/solidcore/pull/222)) implements the complete sweep orchestration through an explicit `SweepAccess` service boundary. The 568-case gate compares maps, stitch-callback decisions and f64 distances, successful helper frames, options and edge-profile tags; topology creation and whole-B-rep/HCR/merge/stitch paths await dependencies and are not claimed as differential coverage. Safety regression tests cover failed traversal progress, temporary ownership, context restoration and consuming union across repetitions. Review integration wires available B-rep/shell queries, copying, face construction and binormal evaluation, calls the newly available part 9/5 constructors and edits, HCR, lamina queries and part 2 stitching with the sweep callback, and converts face/edge/vertex tolerances through the owning kernel. All 10 deferrals now reach `SmBrep::MakeWireEdgeVertex` in `topology.brep_p3`. A concrete production access adapter remains integration work, tracked in [issue #255](https://github.com/tangency-labs/solidcore/issues/255); see `plan/findings.md`.
+
+Review follow-up merges canonical main `bb137d7d`, preserving both findings sections and main's full part 7 notes plus the sweep API extension. The merge p3/p4 integration boundary remains coordinated with the unavailable `merge_p2` constructor; the two `SM_DEG2RAD` sites now match upstream grouping.
 
 Latest harness: PR #295 (B-rep records for the classification shims' bare topology stand-ins, on top of main's real one-face B-rep adapter #347): curve_class_p1 2054->2070, p2 1495->1627, p7 1327->1474, point_class 2411->2466 passes, 0 failed.
 
@@ -1067,3 +1071,21 @@ passes, zero failures and 89 query deferrals. Perturbation detects every compare
 case (108/108 default, 291/291 extended).
 
 `blend.fillet_solver_p1` partial -> green (PR #303, glue with `blend.fillet_geom_p1`): 346/346 pass, 0 deferred.
+
+
+### PR #222 current-main compatibility refresh (2026-10-20)
+
+Main `e4dd81c4` is merged, preserving complete p5/p7 notes and sweep API
+extensions. HCR receives the owning mutable Kernel and shell-vertex queries
+use the real p2 getter with owner-scoped vertex-list order. All eight native-
+feature service regressions pass: distinct owner lists, shell allocation and
+point, foreign owner refusal, empty cleanup, open-loop rejection, copy blocker
+and stitch flag restoration. The native record does not export vertex points
+or full constructed B-rep topology; production adapter work remains in #255.
+
+Fresh native gates: sweep 568/558 pass/10 deferred (topology.brep_p3); p5
+797/738/59; p7 316/237/79; p9 684/638/46; p2 1709/1437/272; HCR 434/394/40.
+All six gates have zero failures and maximum relative error zero. Workspace
+tests (1535 kernel tests), fmt/include formatting, plain/native Clippy, wasm32
+and four native FFI regressions pass. The full gate and successful actual-head
+CI evidence are recorded in the PR discussion. No tolerance was relaxed.
