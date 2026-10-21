@@ -1435,8 +1435,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_Mouse_0.1",
@@ -1447,8 +1447,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_Mouse_-0.05",
@@ -1459,8 +1459,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_Endcap_0.1",
@@ -1471,8 +1471,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_Endcap_-0.05",
@@ -1483,8 +1483,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_box_with_large_fillet_0.1",
@@ -1495,8 +1495,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_box_with_large_fillet_-0.05",
@@ -1507,8 +1507,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_cone_0.1",
@@ -1519,8 +1519,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_cone_-0.05",
@@ -1531,8 +1531,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_disk_0.1",
@@ -1543,8 +1543,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_disk_-0.05",
@@ -1555,8 +1555,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_ellips_ts2_0.1",
@@ -1567,8 +1567,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_ellips_ts2_-0.05",
@@ -1579,8 +1579,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_plane_circ_0.1",
@@ -1591,8 +1591,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_plane_circ_-0.05",
@@ -1603,8 +1603,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_plane_square_0.1",
@@ -1615,8 +1615,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_plane_square_-0.05",
@@ -1627,8 +1627,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_sphere_0.1",
@@ -1639,8 +1639,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_sphere_-0.05",
@@ -1651,8 +1651,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_surf_extrude_0.1",
@@ -1663,8 +1663,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_surf_extrude_-0.05",
@@ -1675,8 +1675,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_surf_rev_0.1",
@@ -1687,8 +1687,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_surf_rev_-0.05",
@@ -1699,8 +1699,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_surf_sphere150_0.1",
@@ -1711,8 +1711,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_surf_sphere150_-0.05",
@@ -1723,8 +1723,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_torus_0.1",
@@ -1735,8 +1735,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_torus_-0.05",
@@ -1747,8 +1747,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_toruswvy_0.1",
@@ -1759,8 +1759,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_toruswvy_-0.05",
@@ -1771,8 +1771,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_vase_rev_0.1",
@@ -1783,8 +1783,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetEdges",
-        "unit": "topology.face_p4"
+        "symbol": "SmFace::Notify",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "nurbs_off_vase_rev_-0.05",
@@ -3647,8 +3647,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "orient_Mouse_swap0",
@@ -3707,8 +3707,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "orient_Endcap_swap0",
@@ -3767,8 +3767,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "orient_box_with_large_fillet_swap0",
@@ -3827,8 +3827,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "orient_cone_swap0",
@@ -3887,8 +3887,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "orient_disk_swap0",
@@ -3947,8 +3947,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "orient_ellips_ts2_swap0",
@@ -4007,8 +4007,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "orient_plane_circ_swap0",
@@ -4067,8 +4067,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "orient_plane_square_swap0",
@@ -4127,8 +4127,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "orient_sphere_swap0",
@@ -4187,8 +4187,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "orient_surf_extrude_swap0",
@@ -4247,8 +4247,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "orient_surf_rev_swap0",
@@ -4307,8 +4307,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "orient_surf_sphere150_swap0",
@@ -4367,8 +4367,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "orient_torus_swap0",
@@ -4427,8 +4427,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "orient_toruswvy_swap0",
@@ -4487,8 +4487,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "orient_vase_rev_swap0",
@@ -4635,8 +4635,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "gen0010",
@@ -4775,8 +4775,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "gen0027",
@@ -4795,8 +4795,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "gen0029",
@@ -4919,8 +4919,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "gen0043",
@@ -4995,8 +4995,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "gen0052",
@@ -5059,8 +5059,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "gen0059",
@@ -5171,8 +5171,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "gen0072",
@@ -5203,8 +5203,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "gen0075",
@@ -5363,8 +5363,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "gen0094",
@@ -5399,8 +5399,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "gen0098",
@@ -5679,8 +5679,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "gen0129",
@@ -6103,8 +6103,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "gen0179",
@@ -6171,8 +6171,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "gen0186",
@@ -6707,8 +6707,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "gen0249",
@@ -6747,8 +6747,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "gen0253",
@@ -6971,8 +6971,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "gen0279",
@@ -7183,8 +7183,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "gen0304",
@@ -7379,8 +7379,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "gen0326",
@@ -7443,8 +7443,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "gen0333",
@@ -7611,8 +7611,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "gen0352",
@@ -7631,8 +7631,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "gen0354",
@@ -7643,8 +7643,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "gen0355",
@@ -7807,8 +7807,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SwapUV's surface PRE/POST_EDIT (SetCanonical) needs a Surface notify identity",
+        "unit": "harness:surface-notify-identity"
       },
       "max_rel_err": 0.0,
       "name": "gen0375",
@@ -7903,8 +7903,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetBrep",
-        "unit": "topology.face_p4"
+        "symbol": "SmBrep::CalculateBoundingBox",
+        "unit": "query.brep"
       },
       "max_rel_err": 0.0,
       "name": "gen0386",
@@ -8036,10 +8036,11 @@
   "cases_passed": 684,
   "cases_total": 897,
   "deferred_by_unit": {
-    "query.brep": 49,
+    "harness:surface-notify-identity": 31,
+    "query.brep": 57,
     "surface.surface_p2": 21,
-    "topology.face_p3": 17,
-    "topology.face_p4": 126
+    "topology.face_p3": 47,
+    "topology.face_p4": 57
   },
   "max_rel_err": 0.0,
   "pass": true,
