@@ -7415,8 +7415,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet.smb_1_f2_op17",
@@ -7435,8 +7435,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet.smb_1_f2_op19",
@@ -11359,8 +11359,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_0_f1_op17",
@@ -11371,8 +11371,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_0_f1_op18",
@@ -12847,8 +12847,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_1_f2_op17",
@@ -12859,8 +12859,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_1_f2_op18",
@@ -16655,8 +16655,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_0_f1_op17",
@@ -16667,8 +16667,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_0_f1_op18",
@@ -18143,8 +18143,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_1_f2_op17",
@@ -18155,8 +18155,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_1_f2_op18",
@@ -19215,8 +19215,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_0_f1_op17",
@@ -19227,8 +19227,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_0_f1_op18",
@@ -20703,8 +20703,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_1_f2_op17",
@@ -20715,8 +20715,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_1_f2_op18",
@@ -42519,8 +42519,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet.smb_f0_tol4816",
@@ -42531,8 +42531,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet.smb_f0_tol4817",
@@ -42543,8 +42543,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet.smb_f0_tol4818",
@@ -42555,8 +42555,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet.smb_f0_tol4819",
@@ -42567,8 +42567,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet.smb_f0_tol4820",
@@ -42579,8 +42579,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet.smb_f0_tol4821",
@@ -42807,8 +42807,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet.smb_f2_tol4849",
@@ -42819,8 +42819,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet.smb_f2_tol4850",
@@ -42831,8 +42831,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet.smb_f2_tol4851",
@@ -42843,8 +42843,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet.smb_f2_tol4852",
@@ -42855,8 +42855,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet.smb_f2_tol4853",
@@ -42867,8 +42867,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet.smb_f2_tol4854",
@@ -43647,8 +43647,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_f0_tol4924",
@@ -43659,8 +43659,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_f0_tol4925",
@@ -43671,8 +43671,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_f0_tol4926",
@@ -43683,8 +43683,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_f0_tol4927",
@@ -43695,8 +43695,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_f0_tol4928",
@@ -43707,8 +43707,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_f0_tol4929",
@@ -43815,8 +43815,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_f1_tol4942",
@@ -43827,8 +43827,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_f1_tol4943",
@@ -43839,8 +43839,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_f1_tol4944",
@@ -43851,8 +43851,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_f1_tol4945",
@@ -43863,8 +43863,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_f1_tol4946",
@@ -43875,8 +43875,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_f1_tol4947",
@@ -43983,8 +43983,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_f2_tol4960",
@@ -43995,8 +43995,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_f2_tol4961",
@@ -44007,8 +44007,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_f2_tol4962",
@@ -44019,8 +44019,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_f2_tol4963",
@@ -44031,8 +44031,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_f2_tol4964",
@@ -44043,8 +44043,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "disk.smb_f2_tol4965",
@@ -44799,8 +44799,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_f0_tol5032",
@@ -44811,8 +44811,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_f0_tol5033",
@@ -44823,8 +44823,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_f0_tol5034",
@@ -44835,8 +44835,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_f0_tol5035",
@@ -44847,8 +44847,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_f0_tol5036",
@@ -44859,8 +44859,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_f0_tol5037",
@@ -44967,8 +44967,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_f1_tol5050",
@@ -44979,8 +44979,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_f1_tol5051",
@@ -44991,8 +44991,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_f1_tol5052",
@@ -45003,8 +45003,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_f1_tol5053",
@@ -45015,8 +45015,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_f1_tol5054",
@@ -45027,8 +45027,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_f1_tol5055",
@@ -45135,8 +45135,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_f2_tol5068",
@@ -45147,8 +45147,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_f2_tol5069",
@@ -45159,8 +45159,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_f2_tol5070",
@@ -45171,8 +45171,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_f2_tol5071",
@@ -45183,8 +45183,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_f2_tol5072",
@@ -45195,8 +45195,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ.smb_f2_tol5073",
@@ -45303,8 +45303,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_f0_tol5086",
@@ -45315,8 +45315,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_f0_tol5087",
@@ -45327,8 +45327,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_f0_tol5088",
@@ -45339,8 +45339,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_f0_tol5089",
@@ -45351,8 +45351,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_f0_tol5090",
@@ -45363,8 +45363,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_f0_tol5091",
@@ -45471,8 +45471,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_f1_tol5104",
@@ -45483,8 +45483,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_f1_tol5105",
@@ -45495,8 +45495,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_f1_tol5106",
@@ -45507,8 +45507,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_f1_tol5107",
@@ -45519,8 +45519,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_f1_tol5108",
@@ -45531,8 +45531,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_f1_tol5109",
@@ -45639,8 +45639,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_f2_tol5122",
@@ -45651,8 +45651,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_f2_tol5123",
@@ -45663,8 +45663,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_f2_tol5124",
@@ -45675,8 +45675,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_f2_tol5125",
@@ -45687,8 +45687,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_f2_tol5126",
@@ -45699,8 +45699,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
-        "unit": "curve.crv_on_surf"
+        "symbol": "SmEdge::GetCurve",
+        "unit": "topology.edge"
       },
       "max_rel_err": 0.0,
       "name": "plane_square.smb_f2_tol5127",
@@ -50252,10 +50252,10 @@
   "cases_passed": 3957,
   "cases_total": 5506,
   "deferred_by_unit": {
-    "curve.crv_on_surf": 80,
     "geom.tol": 1118,
     "intersect.curve_class_p2": 50,
     "intersect.surface_drop_lib_p3": 9,
+    "topology.edge": 80,
     "topology.face_p2": 292
   },
   "max_rel_err": 0.0,
