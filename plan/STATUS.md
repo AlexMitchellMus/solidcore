@@ -37,9 +37,10 @@ decimation attributes and `SmApiEvaluateSurface*`); `geom.a_object` and
   The merge passes go through `boolean::merge::p1::classify_point_editing_disabled`.
 - **Lone B-reps** use `BrepIdentity::default()`; B-reps in a store pass their own
   `BrepIdentity`.
-- **Open follow-ups** (no PR yet): `topology::brep::p10::merge_curves_world` is a
-  `DISPATCH GAP` until the merge-curves world can own the B-rep (`topology.brep_p2`), and
-  `geom.object`'s `Shape` cannot reach the B-rep box without a store.
+- **Shapes:** `geom::object::Shape::new` takes a `BrepStore` (`(BrepId, &Brep)` for one
+  B-rep, `NoBreps` for an empty shape) and is fully ported; `geom.object` is green.
+- **Open follow-up:** `topology::brep::p10::merge_curves_world` is a `DISPATCH GAP` until
+  the merge-curves world can own the B-rep (`topology.brep_p2`; PR #348).
 
 ## Port review note (2026-10-18, issue #210)
 
@@ -296,7 +297,7 @@ adds a variant must also extend the exhaustive matches in `curve::curve_cache`.
   `GlobalPointSolveSTEP`; `curve.curve_p1`'s porter decides the port (`SM_ERR`).
 - Nested polymorphic reads (`SmCurve::ReadFromDB` -> projected/offset/iso curve ->
   `SmCurve::ReadFromDB`) have no depth limit upstream; the port bounds them at
-  `MAX_READ_NESTING` = 64.
+  `MAX_READ_NESTING` = 32.
 - `curve.tangent_field`: `SmTangentField` derives from `SmCrvOnSurf`; `SetAll`,
   `GetNaturalInterval`, `IsKindOf`, `operator==` are `CO-PORT(curve.crv_on_surf)`.
 - `nlib.srf_adv_p5`: with rails and rational input the derivative curves share the
