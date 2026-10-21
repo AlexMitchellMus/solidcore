@@ -5529,8 +5529,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0642",
@@ -7115,9 +7115,8 @@
   "cases_passed": 714,
   "cases_total": 830,
   "deferred_by_unit": {
-    "intersect.surface_drop_lib_p3": 1,
     "query.brep": 18,
-    "topology.face_p2": 86,
+    "topology.face_p2": 87,
     "topology.face_p4": 11
   },
   "max_rel_err": 0.0,

@@ -4872,8 +4872,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmCrvOnSurf::ApproximateCurve",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "Endcap_corner_blend_3",
@@ -7323,8 +7323,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "cone_corner_blend_3",
@@ -8526,16 +8526,12 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "disk_corner_blend_3",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/topology.brep_p1/upstream_files.json#677 (upstream TestFiles/pt_TestFiles/disk.smb (SmBrep::ReadFromFile))",
-      "values_compared": 0
+      "values_compared": 2
     },
     {
       "max_rel_err": 0.0,
@@ -10907,8 +10903,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "plane_circ_corner_blend_3",
@@ -13336,8 +13332,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "sphere_corner_blend_3",
@@ -15836,8 +15832,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_rev_corner_blend_3",
@@ -17084,8 +17080,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "surf_sphere150_corner_blend_3",
@@ -18349,8 +18345,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "torus_corner_blend_3",
@@ -19614,8 +19610,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "toruswvy_corner_blend_3",
@@ -20861,8 +20857,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "vase_rev_corner_blend_3",
@@ -23204,19 +23200,18 @@
     }
   ],
   "cases_both_errored": 45,
-  "cases_deferred": 465,
+  "cases_deferred": 464,
   "cases_failed": 0,
-  "cases_passed": 2146,
+  "cases_passed": 2147,
   "cases_rejected": 16,
   "cases_total": 2627,
   "deferred_by_unit": {
-    "curve.crv_on_surf": 4,
+    "curve.crv_on_surf": 5,
     "geom.tol": 37,
     "harness:analytic-geometry-export": 228,
-    "intersect.surface_drop_lib_p3": 10,
     "nurbs.b_spline_surface_n_lib_p2": 5,
     "query.brep": 71,
-    "topology.face_p2": 89,
+    "topology.face_p2": 97,
     "topology.face_p3": 21
   },
   "max_rel_err": 0.0,
