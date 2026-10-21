@@ -993,6 +993,7 @@ pub struct SeamCrvReview<O> {
 /// [`SolidError::InvalidInput`] for an empty classification; those of
 /// `SmCurveInterval::GetIvlBound_EdgeuseObj`.
 pub fn review_start_and_stop_on_seam_crv_classifies<O: ClassObject>(
+    k: &Kernel,
     geometry: &impl ClassGeometry<O>,
     classification: &mut CurveClassification<O>,
 ) -> Result<SeamCrvReview<O>> {
@@ -1003,8 +1004,8 @@ pub fn review_start_and_stop_on_seam_crv_classifies<O: ClassObject>(
         .ok_or_else(|| null("ReviewStartAndStopOnSeamCrvClassifies: empty classification"))?;
 
     // init output
-    let edge_first_side = classification.ivl_bound_edgeuse_obj(geometry, 0, true)?;
-    let edge_last_side = classification.ivl_bound_edgeuse_obj(geometry, last, false)?;
+    let edge_first_side = classification.ivl_bound_edgeuse_obj(k, geometry, 0, true)?;
+    let edge_last_side = classification.ivl_bound_edgeuse_obj(k, geometry, last, false)?;
     let mut out = SeamCrvReview {
         first_kept: true,
         last_kept: true,
@@ -2829,11 +2830,11 @@ mod tests {
             BSplineCurve::create_line_segment(2, Vec3::ZERO, Vec3::new(1.0, 1.0, 0.0)).unwrap(),
         );
         let uv = [Some(line)];
-        assert!(
-            create_curves_by_trimming(&k, &b, f, Some(1.0), None, Some(&uv), false, true)
-                .unwrap_err()
-                .is_unported()
-        );
+        // a face without loops: CurveOnClassify's status
+        assert!(matches!(
+            create_curves_by_trimming(&k, &b, f, Some(1.0), None, Some(&uv), false, true),
+            Err(SolidError::Upstream { .. })
+        ));
         assert!(create_curves_by_trimming(&k, &b, f, None, None, None, true, false).is_err());
     }
 
@@ -2867,6 +2868,6 @@ mod tests {
     fn review_of_an_empty_classification_is_rejected() {
         let k = Kernel::default();
         let mut cc: CurveClassification<H> = CurveClassification::new(&k);
-        assert!(review_start_and_stop_on_seam_crv_classifies(&NoGeometry, &mut cc).is_err());
+        assert!(review_start_and_stop_on_seam_crv_classifies(&k, &NoGeometry, &mut cc).is_err());
     }
 }
