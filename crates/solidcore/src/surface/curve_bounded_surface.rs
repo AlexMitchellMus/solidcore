@@ -29,7 +29,7 @@
 //! Deviations:
 //! - **Nesting.** `new` return `InvalidInput` when the basis and every boundary curve would nest
 //!   deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
-//!   (64; upstream fixtures nest at most 3), which bounds the recursive dispatch,
+//!   (32; upstream fixtures nest at most 3), which bounds the recursive dispatch,
 //!   cloning and dropping of nested geometry (no limit upstream).
 //! - Compound evaluation copies carry a depth counter capped at 64 by `Surface`.
 //! - **Ownership.** The surface owns its basis surface and boundary curves, as
@@ -122,7 +122,7 @@ impl From<CurveBoundedSurface> for Surface {
 }
 
 impl CurveBoundedSurface {
-    /// An evaluation copy retaining exact basis data, with Surface's 64-level bound.
+    /// An evaluation copy retaining exact basis data, with Surface's `MAX_GEOMETRY_NESTING` bound.
     pub(crate) fn clone_for_evaluation(&self, depth: usize) -> Result<Self> {
         Ok(Self {
             basis: Box::new(self.basis.clone_for_evaluation_depth(depth)?),

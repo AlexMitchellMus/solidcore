@@ -24,7 +24,7 @@
 //!   [`IsoCurve::new`] retains the B-spline constructor; [`IsoCurve::from_surface`]
 //!   also supports the other concrete surface kinds through the same virtual dispatch.
 //!   This extension is needed by `surface.surface_point_solve_p3` boundary solves.
-//!   The general constructor bounds owned geometry nesting to 64 levels before
+//!   The general constructor bounds owned geometry nesting to `MAX_GEOMETRY_NESTING` before
 //!   any recursive surface dispatch; the B-spline constructor cannot nest.
 //! - **Equality.** `operator==` accepts identical surface pointers before comparing the
 //!   surfaces (`SmBSplineSurface::operator==`); the port always compares the surfaces
@@ -110,7 +110,8 @@ impl IsoCurve {
     ///
     /// # Errors
     ///
-    /// `InvalidInput` when owned geometry nesting exceeds 64 levels.
+    /// `InvalidInput` when owned geometry nesting exceeds
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING) levels.
     pub fn from_surface(
         surface: Surface,
         surf_param: SurfParamType,

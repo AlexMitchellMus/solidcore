@@ -57,7 +57,7 @@
 //! Deviations:
 //! - **Nesting.** `with_maps` and `add_next_map` return `InvalidInput` when the next-map chain would nest
 //!   deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
-//!   (64; upstream fixtures nest at most 3), which bounds the recursive dispatch,
+//!   (32; upstream fixtures nest at most 3), which bounds the recursive dispatch,
 //!   cloning and dropping of nested geometry (no limit upstream).
 //! - **Kinds.** The class hierarchy is the [`VolumeKind`] enum: [`VolumeKind::Base`]
 //!   is a plain `SmVolume` (as made by the slicing copy in `IsLineInParamDomain`),

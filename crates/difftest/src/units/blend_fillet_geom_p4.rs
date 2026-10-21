@@ -15,10 +15,8 @@
 //! points and knots), for `rail_index` the index, for the vertex calculators the
 //! vertex's point and fillet status.
 //!
-//! Deferred on the Rust side (unported callees): `rail_index` of a vertex
-//! (`GetRailIndexOfVertexuse`, `blend.fillet_geom_p6`), `make_face` past its rail
-//! checks (`JoinTwoFilletVertsByCurves`, `blend.fillet_geom_p6`), `blending` of a
-//! blending rail (`SmFilletEdge::CalcBlendingRail`, `blend.fillet_geom_p6`) and the
+//! Deferred on the Rust side (unported callees): the face makers' unported callees in
+//! `make_face` (`topology.brep_p3`) and the
 //! unported callees of `sm_SrfSrfIntersection` (`SmSurface::DropCurve`,
 //! `intersect.surface_drop_lib_p3`, ...) where reached. The shim refuses the inputs that would make upstream dereference
 //! what the harness cannot build (a real fillet corner, a solver or rail it needs);
@@ -39,9 +37,9 @@ use solidcore::SolidError;
 use solidcore_ffi::units::blend_fillet_geom_p4::{self as ffi, Op};
 
 use super::blend_fillet_geom_p1::{
-    analytic_surface, dump_bcurve, gen_curve, gen_cylinder, gen_model, gen_surface,
-    push_model, push_srf, scale_of, status, surface_of, AnalyticSrf, Crv, EdgeIn, EuIn,
-    GeomIn, Model, RustModel, Srf, VertexIn,
+    analytic_surface, dump_bcurve, gen_curve, gen_cylinder, gen_model, gen_surface, push_model,
+    push_srf, scale_of, status, surface_of, AnalyticSrf, Crv, EdgeIn, EuIn, GeomIn, Model,
+    RustModel, Srf, VertexIn,
 };
 use crate::case::CaseContext;
 use crate::runner::default_cases;
@@ -378,7 +376,15 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
                 }
             };
             o.push(0.0);
-            let r = create_uv_curve(&k, &rm.fb, rm.vertex(*sv)?, rm.vertex(*ev)?, *two, &surface, *tol);
+            let r = create_uv_curve(
+                &k,
+                &rm.fb,
+                rm.vertex(*sv)?,
+                rm.vertex(*ev)?,
+                *two,
+                &surface,
+                *tol,
+            );
             o.push(status_of!(r));
             let curves = r.unwrap_or_default();
             dump_bcurve(&mut o, curves.curve_3d.as_ref());
@@ -398,10 +404,9 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
             let vid = rm.vertex(*v)?;
             let target = rm.target.clone();
             let r = match &i.query {
-                Query::RailIntExtended { .. } => {
-                    rm.fb
-                        .calc_rail_int_extended_edgeuse(&k, vid, &solvers, &target)
-                }
+                Query::RailIntExtended { .. } => rm
+                    .fb
+                    .calc_rail_int_extended_edgeuse(&k, vid, &solvers, &target),
                 Query::Int2Fillets { .. } => {
                     rm.fb.calc_fillet_int_2_fillets(&k, vid, &solvers, &target)
                 }
@@ -414,7 +419,9 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
         }
         Query::MakeFace { g } => {
             let gid: FilletGeomId = rm.geom(*g)?;
-            let mut brep = Brep::new();
+            // `new (ctx) SmBrep()`: the constructor makes the void infinite region the
+            // face makers put the face in
+            let mut brep = Brep::new_with_infinite_region().map_err(h)?;
             let mut records = std::collections::BTreeMap::new();
             let mut attributes = solidcore::geom::attribute::AttributeStore::default();
             // distinct identities for the face makers' notifications, keyed as the
@@ -496,7 +503,10 @@ pub(crate) fn gen_analytic(rng: &mut Rng, scale: f64) -> AnalyticSrf {
             x_axis: [1.0, rng.uniform(-0.3, 0.3), 0.0],
             y_axis: [rng.uniform(-0.3, 0.3), 1.0, rng.uniform(-0.3, 0.3)],
             uv_scale: [rng.uniform(0.5, 2.0) * scale, rng.uniform(0.5, 2.0) * scale],
-            domain: [d, [d[0] + rng.uniform(0.5, 2.0), d[1] + rng.uniform(0.5, 2.0)]],
+            domain: [
+                d,
+                [d[0] + rng.uniform(0.5, 2.0), d[1] + rng.uniform(0.5, 2.0)],
+            ],
             make_nurb: rng.chance(0.9),
         }
     } else {
@@ -535,13 +545,25 @@ fn gen_uv_curve(rng: &mut Rng) -> Option<Inputs> {
         _ => UvSurface::Analytic(gen_analytic(rng, scale)),
     };
     let rs = uv_surface(&k, &surface).ok()?.ok()?;
-    let closed_u = kind == 1 || matches!(&surface, UvSurface::Analytic(AnalyticSrf::Revolution { .. }));
+    let closed_u = kind == 1
+        || matches!(
+            &surface,
+            UvSurface::Analytic(AnalyticSrf::Revolution { .. })
+        );
     let two = closed_u && rng.chance(0.4) || rng.chance(0.05);
     let frac = |rng: &mut Rng| *rng.choose(&[0.0, 1.0, 0.5, 0.25]).unwrap_or(&0.5);
     let (a, b) = if two {
         // seam ends: corners in v, sometimes a cut corner (mid v) or swapped
-        let v0 = if rng.chance(0.2) { rng.uniform(0.1, 0.9) } else { 0.0 };
-        let v1 = if rng.chance(0.2) { rng.uniform(0.1, 0.9) } else { 1.0 };
+        let v0 = if rng.chance(0.2) {
+            rng.uniform(0.1, 0.9)
+        } else {
+            0.0
+        };
+        let v1 = if rng.chance(0.2) {
+            rng.uniform(0.1, 0.9)
+        } else {
+            1.0
+        };
         let u = if rng.chance(0.5) { 0.0 } else { 1.0 };
         let (p, q) = (on_surface(&k, &rs, u, v0)?, on_surface(&k, &rs, u, v1)?);
         if rng.chance(0.5) {
@@ -564,7 +586,14 @@ fn gen_uv_curve(rng: &mut Rng) -> Option<Inputs> {
             // an iso line in u or v
             0 => {
                 let u = rng.uniform(0.0, 1.0);
-                return Some(gen_uv_from(rng, surface, scale, on_surface(&k, &rs, u, 0.1)?, on_surface(&k, &rs, u, 0.8)?, false));
+                return Some(gen_uv_from(
+                    rng,
+                    surface,
+                    scale,
+                    on_surface(&k, &rs, u, 0.1)?,
+                    on_surface(&k, &rs, u, 0.8)?,
+                    false,
+                ));
             }
             1 => q = p, // coincident
             2 => {
@@ -591,7 +620,10 @@ fn gen_uv_from(
     b: [f64; 3],
     two: bool,
 ) -> Inputs {
-    let tol = scale * *rng.choose(&[1e-6, 1e-4, 1e-3, 1e-8, 1e-2, 1e-12]).unwrap_or(&1e-6);
+    let tol = scale
+        * *rng
+            .choose(&[1e-6, 1e-4, 1e-3, 1e-8, 1e-2, 1e-12])
+            .unwrap_or(&1e-6);
     let (model, sv, ev) = if rng.chance(0.3) {
         // p1's random model with the two vertices first; rails of geometries reach the
         // vertex-use branch
@@ -902,10 +934,8 @@ fn gen_crafted(rng: &mut Rng) -> Inputs {
                 let mut e = edge_in(rng, a, b, rail_type, g as i64, scale);
                 if rng.chance(0.85) {
                     let v0 = if r == 0 { 0.1 } else { 0.9 };
-                    e.eus[0].uv_curve = Some(uv_line(
-                        [0.0, v0],
-                        [1.0, v0 + rng.uniform(-0.05, 0.05)],
-                    ));
+                    e.eus[0].uv_curve =
+                        Some(uv_line([0.0, v0], [1.0, v0 + rng.uniform(-0.05, 0.05)]));
                 }
                 if r == 1 && rng.chance(0.2) {
                     // a rail through the queried vertex

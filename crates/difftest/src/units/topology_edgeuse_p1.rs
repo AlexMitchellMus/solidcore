@@ -137,6 +137,14 @@ pub(crate) enum BrepIn {
         face: Option<FaceIn>,
         networks: usize,
     },
+    /// The closed box solid of `SmApiCreateBox` (planes and lines; fixtures only).
+    Box { origin: [f64; 3], size: [f64; 3] },
+    /// Isolated vertices `[x, y, z, tol]` and wire line segments `[x0, y0, z0, x1, y1,
+    /// z1, tol]`, each set to its tolerance (fixtures and other units' generators).
+    Points {
+        vertices: Vec<[f64; 4]>,
+        lines: Vec<[f64; 7]>,
+    },
 }
 
 /// The face of a [`BrepIn::Mixed`] B-rep (as [`BrepIn::Face`]).
@@ -305,6 +313,21 @@ pub(crate) fn brep_block_of(
                 v.extend(face.dom);
             }
             v.push(*networks as f64);
+        }
+        BrepIn::Box { origin, size } => {
+            v.push(7.0);
+            v.extend(origin);
+            v.extend(size);
+        }
+        BrepIn::Points { vertices, lines } => {
+            v.extend([8.0, vertices.len() as f64]);
+            for p in vertices {
+                v.extend(p);
+            }
+            v.push(lines.len() as f64);
+            for l in lines {
+                v.extend(l);
+            }
         }
     }
     v.push(flag(validate_only));
@@ -1042,10 +1065,20 @@ pub(crate) fn import_with_types(ex: &[f64]) -> Result<(Brep, ImportTypes), Harne
     }
     for (f, (surface, uv_domain, tolerance)) in surfaces.into_iter().enumerate() {
         let shell = face_shells.get(f).copied().unwrap_or(ShellId::from_index(0));
+        // m_pFU, which the export does not carry: the primary face use is the face's
+        // upward one (SM_OT_SAME, SmFace::GetUpwardFaceuse)
+        let faceuse = faceuses
+            .iter()
+            .position(|fu| {
+                fu.face == Some(FaceId::from_index(f as u32))
+                    && fu.orientation == OrientType::Same
+            })
+            .map(|i| FaceuseId::from_index(i as u32));
         b.add_face_record(Face {
             surface,
             uv_domain,
             tolerance,
+            faceuse,
             ..Face::new(shell)
         })
         .map_err(|e| harness(e.to_string()))?;

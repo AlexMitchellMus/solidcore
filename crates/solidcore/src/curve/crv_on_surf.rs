@@ -41,7 +41,7 @@
 //! Deviations:
 //! - **Nesting.** `new` and `set_uv_curve` return `InvalidInput` when the UV curve would nest
 //!   deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
-//!   (64; upstream fixtures nest at most 3), which bounds the recursive dispatch,
+//!   (32; upstream fixtures nest at most 3), which bounds the recursive dispatch,
 //!   cloning and dropping of nested geometry (no limit upstream).
 //! - **Surface.** `m_pSurface` is an `SmSurface*`; the only ported surface class is
 //!   [`BSplineSurface`], so the curve holds one, by value. The surface virtuals resolve

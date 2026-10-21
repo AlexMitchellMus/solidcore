@@ -46,7 +46,7 @@
 //! Deviations:
 //! - **Nesting.** `with_curves` and `set_segment` return `InvalidInput` when any segment curve would nest
 //!   deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
-//!   (64; upstream fixtures nest at most 3), which bounds the recursive dispatch,
+//!   (32; upstream fixtures nest at most 3), which bounds the recursive dispatch,
 //!   cloning and dropping of nested geometry (no limit upstream).
 //! - **Object model.** `SmCompositeCurve` derives from `SmCurve`; here it is the
 //!   [`CurveKind::Composite`] variant of [`Curve`], whose dispatch calls the

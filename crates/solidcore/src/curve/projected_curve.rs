@@ -31,7 +31,7 @@
 //! Deviations:
 //! - **Nesting.** `new` and `set_canonical` return `InvalidInput` when the projected curve would nest
 //!   deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
-//!   (64; upstream fixtures nest at most 3), which bounds the recursive dispatch,
+//!   (32; upstream fixtures nest at most 3), which bounds the recursive dispatch,
 //!   cloning and dropping of nested geometry (no limit upstream).
 //! - **Base curve.** Upstream keeps a pointer to the projected curve that it owns
 //!   or merely borrows (`m_bOwnsCurve`). Here the projected curve always holds its

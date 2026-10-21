@@ -36,7 +36,7 @@
 //! Deviations:
 //! - **Nesting.** `new`, `set_base_surface` and `set_volume` return `InvalidInput` when the surface and the volume would nest
 //!   deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
-//!   (64; upstream fixtures nest at most 3), which bounds the recursive dispatch,
+//!   (32; upstream fixtures nest at most 3), which bounds the recursive dispatch,
 //!   cloning and dropping of nested geometry (no limit upstream).
 //! - Compound evaluation copies carry a depth counter capped at 64 by `Surface`.
 //! - **Volumes.** The volume is a [`Volume`] (unit `surface.volume_p1`).
@@ -189,7 +189,7 @@ impl From<SrfInVolume> for Surface {
 }
 
 impl SrfInVolume {
-    /// An evaluation copy retaining exact basis data, with Surface's 64-level bound.
+    /// An evaluation copy retaining exact basis data, with Surface's `MAX_GEOMETRY_NESTING` bound.
     pub(crate) fn clone_for_evaluation(&self, depth: usize) -> Result<Self> {
         Ok(Self {
             surface: Box::new(self.surface.clone_for_evaluation_depth(depth)?),

@@ -13,7 +13,8 @@
 //! inside_out}}` (domain in degrees), as in unit
 //! `curve.curve_p8`): `gcs` (`GlobalCurveSolve`: `c2: null` solves the first curve
 //! against itself; `sop` the `SmSolverOperationType`, `target` the optional target
-//! distance, `vecs` the option vectors, `requested` the `SmSolutionRequestedType`),
+//! distance, `vecs` the option vectors, `requested` the `SmSolutionRequestedType`,
+//! optional `transform1` an `[origin, x, y]` placement `c1` is `Transform`ed by first),
 //! `self_intersect`, `tight_box`, `tight_pseudo_box` (`basis`), `on_plane` (`p`, `n`,
 //! `tol`, optional `ivl`) and `positive_side` (`planes`: point and normal pairs). Both
 //! sides produce the flat record documented in the ffi module; the runner reports its
@@ -751,6 +752,11 @@ enum OpIn {
         /// The `SmSolutionRequestedType` value.
         #[serde(default = "one_i")]
         requested: i32,
+        /// Optional `[origin, x, y]` of an `SmAxis2Placement` (`SetCanonical`, status
+        /// ignored) that `c1` is `Transform`ed by before the solve (as in the upstream
+        /// tests that move a curve).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transform1: Option<[[f64; 3]; 3]>,
     },
     SelfIntersect {
         c: CurveIn,
@@ -794,6 +800,7 @@ fn cpp_input(op: &OpIn) -> Result<(Op, Vec<f64>), HarnessError> {
             target,
             vecs,
             requested,
+            transform1,
         } => {
             curve_block(&mut v, c1)?;
             v.extend_from_slice(ivl1);
@@ -813,6 +820,10 @@ fn cpp_input(op: &OpIn) -> Result<(Op, Vec<f64>), HarnessError> {
                 v.extend_from_slice(x);
             }
             v.push(f64::from(*requested));
+            v.push(b(transform1.is_some()));
+            for x in transform1.iter().flatten() {
+                v.extend_from_slice(x);
+            }
             Op::Gcs
         }
         OpIn::SelfIntersect { c, ivl, tol } => {
@@ -883,8 +894,13 @@ fn rust(op: &OpIn) -> Result<Output, HarnessError> {
             target,
             vecs,
             requested,
+            transform1,
         } => {
-            let a = build(c1)?;
+            let mut a = build(c1)?;
+            if let Some([org, x, y]) = transform1 {
+                let frame = Axis2Placement::new(v3(*org), v3(*x), v3(*y));
+                tri!(o, a.transform(&k, &frame, None));
+            }
             let other = match c2 {
                 Some(c) => Some(build(c)?),
                 None => None,
@@ -1282,6 +1298,7 @@ fn gen_gcs(k: &Kernel, rng: &mut Rng) -> OpIn {
         target,
         vecs,
         requested: i32::from(!rng.chance(0.3)),
+        transform1: None,
     }
 }
 
@@ -1375,6 +1392,53 @@ fn gen_case(k: &Kernel, rng: &mut Rng) -> OpIn {
     }
 }
 
+/// Cases whose C++ result depends on an uninitialised Jacobian (UB-204, #94): the generator
+/// keeps them away from the C++ side, like an input the FFI guard rejects.
+///
+/// `SM_SO_3D_SIGNED_DIRECTED_MINIMIZE` (9) runs `SmCurve::LocalCurveIntersect` on the two projected
+/// curves. When a Newton step ends at a Hermite end whose tangent has zero length (`d2` at
+/// `t = 1`, `d1` at `t = 0`) while the other curve passes within 0.1 of that end (the
+/// `gap^2 < 0.01` test of `SmCCIntersectENFO::Evaluate`), upstream calls
+/// `SmCCTangentIntENFO::StaticEvaluate`, which fails before it writes the Jacobian, and the
+/// solver goes on with whatever the stack held. Rust's `Matrix::new` zeroes it instead, so the two
+/// sides cannot agree. In the default 30,093 cases this is 4 cases (`gen21507` and 3 pairs
+/// that touch exactly at that end and agree anyway); the other 38 with a zero end tangent are 0.5 or more apart.
+fn reads_uninitialised_jacobian(k: &Kernel, op: &OpIn) -> bool {
+    let OpIn::Gcs {
+        c1,
+        ivl1,
+        c2,
+        ivl2,
+        sop: 9,
+        ..
+    } = op
+    else {
+        return false;
+    };
+    let other_curve = c2.as_ref().unwrap_or(c1);
+    [(c1, ivl1, other_curve, ivl2), (other_curve, ivl2, c1, ivl1)]
+        .into_iter()
+        .any(|(c, ivl, other, other_ivl)| {
+            let CurveIn::Hermite(h) = c else { return false };
+            let end = if h.d2 == [0.0; 3] && ivl[1] >= 1.0 {
+                1.0
+            } else if h.d1 == [0.0; 3] && ivl[0] <= 0.0 {
+                0.0
+            } else {
+                return false;
+            };
+            let e = point_at(k, c, end);
+            (0..=64).any(|i| {
+                let q = point_at(
+                    k,
+                    other,
+                    other_ivl[0] + (other_ivl[1] - other_ivl[0]) * f64::from(i) / 64.0,
+                );
+                (e[0] - q[0]).powi(2) + (e[1] - q[1]).powi(2) + (e[2] - q[2]).powi(2) < 0.01
+            })
+        })
+}
+
 impl UnitDiff for Runner {
     fn id(&self) -> &'static str {
         "curve.curve_p9"
@@ -1388,6 +1452,9 @@ impl UnitDiff for Runner {
                 continue;
             };
             if ffi::validate(code, &input).is_err() {
+                continue;
+            }
+            if reads_uninitialised_jacobian(k, &op) {
                 continue;
             }
             return serde_json::to_value(op).ok();
