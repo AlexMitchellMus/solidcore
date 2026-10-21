@@ -252,7 +252,14 @@ pub fn find_brep_region_of_other_face(
             continue;
         };
         // (the classification's construction tolerance, the edge's, is not read)
-        let Some(pc) = ignore_failure(classify_point_editing_disabled(k, brep, point, 0.0, false))?
+        let Some(pc) = ignore_failure(classify_point_editing_disabled(
+            k,
+            &BrepQuery::default(),
+            brep,
+            point,
+            0.0,
+            false,
+        ))?
         else {
             continue;
         };
@@ -270,16 +277,18 @@ pub fn find_brep_region_of_other_face(
 }
 
 /// `pBrep->Point3DClassify(point, tolerance, boundary, sPC)` (unit `query.brep`) with
-/// `pBrep->m_bEditingEnabled` set to `FALSE` around it (`SmTemporaryChangeValue`), on the
-/// B-rep's current state (a fresh [`BrepQuery`]: the merge edits the operands between
-/// classifications, and upstream's `CacheMakeOrValidate` rebuilds an invalidated cache).
-/// The operands' geometry is owned by their arena identities ([`crate::query::brep::BrepIdentity::default`]).
+/// `pBrep->m_bEditingEnabled` set to `FALSE` around it (`SmTemporaryChangeValue`), through
+/// `query`: the caller keeps one while `b` is not edited, and makes a fresh one after
+/// an edit (upstream's `CacheMakeOrValidate` rebuilds an invalidated cache). The
+/// operands' geometry is owned by their arena identities
+/// ([`crate::query::brep::BrepIdentity::default`]).
 ///
 /// # Errors
 ///
 /// Those of [`BrepQuery::point_3d_classify`].
 pub(crate) fn classify_point_editing_disabled(
     k: &Kernel,
+    query: &BrepQuery<'_>,
     b: &mut Brep,
     point: Point3,
     tolerance: f64,
@@ -287,7 +296,6 @@ pub(crate) fn classify_point_editing_disabled(
 ) -> Result<PointClassification<EntityRef>> {
     let editing = b.editing_enabled();
     b.set_editing_enabled(false);
-    let query = BrepQuery::default();
     let result = query.point_3d_classify(k, b, point, tolerance, boundary);
     b.set_editing_enabled(editing);
     result

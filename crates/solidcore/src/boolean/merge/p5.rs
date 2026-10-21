@@ -32,6 +32,7 @@ use crate::geom::context::{Context, MarkType};
 use crate::intersect::point_class::PointClassType;
 use crate::kernel::Kernel;
 use crate::math::{Point3, EFF_ZERO};
+use crate::query::brep::BrepQuery;
 use crate::topology::edgeuse::p1 as eu1;
 use crate::topology::topology_traverser::{collect_wire_edges, Entity, Marks};
 use crate::topology::{edge, face, vertex, vertexuse, Brep, EdgeId, RegionId, ShellId, VertexId};
@@ -51,15 +52,18 @@ struct LocatedRegion {
 /// class gives its region; with `accept_face_or_edge` (the primary-wire pass) a face
 /// gives its upward face use's shell's region and an edge its primary edge use's
 /// shell's region. `None` for any other class: the wire passes then signal `SE(SM_ERR)`
-/// and go on, the shell-vertex passes return `SM_ERR`.
+/// and go on, the shell-vertex passes return `SM_ERR`. `query` is `b`'s: the callers keep
+/// one across classifications while `b` is not edited.
 fn classify_region(
     k: &Kernel,
+    query: &BrepQuery<'_>,
     b: &mut Brep,
     point: Point3,
     boundary_intersections: bool,
     accept_face_or_edge: bool,
 ) -> Result<Option<LocatedRegion>> {
-    let pc = p1::classify_point_editing_disabled(k, b, point, EFF_ZERO, boundary_intersections)?;
+    let pc =
+        p1::classify_point_editing_disabled(k, query, b, point, EFF_ZERO, boundary_intersections)?;
     let shell_region = |shell: Option<ShellId>| -> Result<RegionId> {
         let shell = shell.ok_or_else(|| SolidError::null_pointer(OP))?;
         b.shell(shell)?
@@ -262,6 +266,10 @@ fn collect_wires_and_shell_vertices(
 ) -> Result<Vec<(VertexId, RegionId)>> {
     keep_as_wires.clear();
     let mut collected = Vec::new();
+    // A pass keeps one query for the B-rep it classifies against, which it does not
+    // edit; the other-wire pass makes a fresh one per classification (MergeEdge edits
+    // `brep` in between).
+    let other_query = BrepQuery::default();
     let mut done = !removes_primary(operation);
     while !done {
         done = true;
@@ -276,7 +284,7 @@ fn collect_wires_and_shell_vertices(
                 continue;
             }
             let point = midpoint(brep, id)?;
-            let region = classify_region(k, other, point, true, true)?;
+            let region = classify_region(k, &other_query, other, point, true, true)?;
             let Some(region) = region else { continue };
             collect_wire_edges(
                 k,
@@ -334,7 +342,7 @@ fn collect_wires_and_shell_vertices(
             continue;
         }
         let point = midpoint(other, id)?;
-        let region = classify_region(k, brep, point, true, false)?;
+        let region = classify_region(k, &BrepQuery::default(), brep, point, true, false)?;
         let Some(region) = region else { continue };
         collect_wire_edges(
             other_k,
@@ -353,6 +361,7 @@ fn collect_wires_and_shell_vertices(
     }
 
     if removes_primary(operation) {
+        let other_query = BrepQuery::default();
         let vertices: Vec<_> = brep.vertices().ids().collect();
         for v in vertices {
             if brep_marks.is_marked(k, Entity::Vertex(v), brep_mark)
@@ -361,7 +370,7 @@ fn collect_wires_and_shell_vertices(
                 continue;
             }
             let point = brep.vertex(v)?.point;
-            let region = classify_region(k, other, point, false, false)?
+            let region = classify_region(k, &other_query, other, point, false, false)?
                 .ok_or_else(|| SolidError::sm_err(OP))?;
             if remove_in_region(operation, region.is_void) {
                 delete_vertex(brep, v)?;
@@ -369,6 +378,7 @@ fn collect_wires_and_shell_vertices(
         }
     }
 
+    let brep_query = BrepQuery::default();
     let mut keep_vertices = Vec::new();
     for v in other.vertices().ids() {
         if other_marks.is_marked(other_k, Entity::Vertex(v), other_mark)
@@ -377,8 +387,8 @@ fn collect_wires_and_shell_vertices(
             continue;
         }
         let point = other.vertex(v)?.point;
-        let region =
-            classify_region(k, brep, point, false, false)?.ok_or_else(|| SolidError::sm_err(OP))?;
+        let region = classify_region(k, &brep_query, brep, point, false, false)?
+            .ok_or_else(|| SolidError::sm_err(OP))?;
         if keep_other(operation, region.is_void) {
             keep_vertices.push((v, region.id));
         }

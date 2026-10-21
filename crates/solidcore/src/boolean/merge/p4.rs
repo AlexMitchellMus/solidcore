@@ -30,9 +30,9 @@ use crate::geom::attribute::{
 };
 use crate::geom::axis2_placement::Axis2Placement;
 use crate::geom::context::{MarkLock, MarkType};
-use crate::intersect::point_class::{PointClassType, PointClassification};
+use crate::intersect::point_class::PointClassType;
 use crate::kernel::Kernel;
-use crate::math::{Point3, Vec3};
+use crate::math::Vec3;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::query::brep::BrepQuery;
 use crate::topology::brep::p1 as bp;
@@ -710,22 +710,6 @@ fn classify_edge_faces(
     Ok(true)
 }
 
-/// `pBrep->Point3DClassify(point, tolerance, boundary, sPC)` (unit `query.brep`, on the
-/// B-rep's current state); the caller disables editing around it. On failure the
-/// classification keeps what it held (the callers ignore the status and move on).
-fn classify_point(
-    k: &Kernel,
-    brep: &mut Brep,
-    point: Point3,
-    tolerance: f64,
-    boundary_intersections: bool,
-    classification: &mut PointClassification<EntityRef>,
-) -> Result<()> {
-    let query = BrepQuery::default();
-    *classification = query.point_3d_classify(k, brep, point, tolerance, boundary_intersections)?;
-    Ok(())
-}
-
 fn classify_remaining(
     kernels: &BooleanKernels<'_>,
     primary: &mut Brep,
@@ -755,6 +739,8 @@ fn classify_remaining(
                 marks.0,
             )
         };
+        // The pass only reads `opposite`, so one query (and its cache) serves every face.
+        let query = BrepQuery::default();
         for f in bp::faces(source, None)? {
             if source_marks.is_marked(source_k, Entity::Face(f), mark) {
                 continue;
@@ -804,21 +790,18 @@ fn classify_remaining(
                 } else {
                     0.45678
                 }))?;
-                let mut classification = PointClassification::new(e.tolerance);
-                let edit = opposite.editing_enabled();
-                opposite.set_editing_enabled(false);
-                let located = ignored(classify_point(
+                // Upstream ignores a failed `Point3DClassify` and tries the next edge.
+                let located = ignored(p1::classify_point_editing_disabled(
                     opposite_k,
+                    &query,
                     opposite,
                     point,
                     crate::math::EFF_ZERO,
                     false,
-                    &mut classification,
-                ));
-                opposite.set_editing_enabled(edit);
-                if located?.is_none() {
+                ))?;
+                let Some(classification) = located else {
                     continue;
-                }
+                };
                 // The other pass checks PC_REGION; the primary pass only casts
                 // GetObject(). These are caller decisions, not query behaviour.
                 if reverse && classification.point_class() != PointClassType::Region {
