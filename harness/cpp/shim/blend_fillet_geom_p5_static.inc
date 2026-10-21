@@ -419,7 +419,8 @@ int32_t p5_run(int32_t op, Rd& rd, std::vector<double>& o)
         // no edge uses, so past the allocation upstream fails NER(pBaseEU) and its SmObjDelete
         // clean-up deletes the new vertex use while it is still linked in fv's use list (a
         // vertex use's destructor does not unlink it): ~SmFilletVertex then deletes it a second
-        // time (UB-215). Refused, so only the two defined early exits run.
+        // time (UB-238). A solver without both base edge uses is also a null dereference
+        // (pBaseEU1->GetFace()). Both are refused, so only the two defined early exits run.
         SmFilletGeom* g = M.geom(rd.idx());
         int64_t rail = rd.idx();
         int64_t fvi = rd.idx();
@@ -431,6 +432,12 @@ int32_t p5_run(int32_t op, Rd& rd, std::vector<double>& o)
         SmFilletEdge* belonging = bi < 0 ? NULL : M.edge(bi);
         if ((fvi >= 0 && fv == NULL) || (bi >= 0 && belonging == NULL))
             return SC_ERR_ARG;
+        // past NER(pFilletSolver) and NER(pFilletVertex) the call allocates (UB-238)
+        {
+            SmFilletSolver* fs = g->GetFilletSolver();
+            if (fs != NULL && fv != NULL && (fs->GetEdgeuse(0) == NULL || fs->GetEdgeuse(1) == NULL))
+                return SC_ERR_ARG;
+        }
         SmFilletEdgeuse* neu = NULL;
         SmStatus r = g->MakeRailEdgeuse(M.pseudo, (ULONG)rail, fv, neu, (SmOrientType)orient, belonging);
         o.push_back(st(r));

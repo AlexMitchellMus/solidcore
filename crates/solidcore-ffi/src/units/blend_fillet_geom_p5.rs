@@ -39,7 +39,10 @@
 //!   dereference a missing curve, a corner, or an uninitialised test point;
 //! - `EndCurve` with `SM_BT_BLEND`: a rail end vertex classified `SM_PC_EDGE` whose object is
 //!   not an `SmEdge` (`FindEdgeTangentAtPoint` casts it; a `NULL` object is a defined error and
-//!   runs).
+//!   runs);
+//! - `RailEdgeuse` past `NER(pFilletSolver)` / `NER(pFilletVertex)` with a solver that lacks
+//!   one of its two base edge uses (UB-238: the clean-up deletes a vertex use still linked in
+//!   the fillet vertex, and `pBaseEU1->GetFace()` dereferences `NULL`).
 
 use crate::{call_with_buffer, FfiError};
 
