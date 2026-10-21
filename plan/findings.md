@@ -10583,6 +10583,100 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   valgrind with `harness/valgrind/ub11.supp` gives 0 errors on the simple, unify, select and split
   samples.
 
+
+## sweep.topology_sweep (PR #222; partial)
+
+- **Observed differential coverage.** 56 named fixtures plus 512 generated scripts:
+  554 pass, 14 deferred, zero failures and zero rejected native setups. All four maps
+  are compared after each script (counts, membership and values for all 65 keys),
+  including null entries, first vertex images, overwritten edge images and stale
+  reverse entries. Callback status/keep decision and map mutations, options,
+  repetitions (all 64 bits) and eight integer fields of each edge tag compare exactly.
+  The two identity namespaces on the Rust side correspond to distinct native objects;
+  this is not evidence of copying real cross-B-rep topology. Floating-point helper
+  coordinates/transforms are emitted for successful ops 8/9 as origin and X/Y/Z
+  axes (12 doubles); callback distances are also emitted without integer truncation.
+  Unrequested or failed frame slots are zero-filled on both sides, not read from
+  unspecified native outputs. The report's `values_compared`
+  counts floats only; the `state` integer arrays are nevertheless compared exactly.
+- **Deferred and unexecuted paths.** Fourteen cases stop at
+  `SmBrep::MakeShellVertexTopology` (`topology.brep_p2`), through part 9's
+  real `MakeShellVertex` port. The selected-vertex base error and
+  rotational axis-identity `DoSweep` paths now complete on both sides after wiring
+  `GetInfiniteRegion`. The native fixture's newly constructed source vertex has its
+  own identity on the Rust side too; repeated axis sweeps do not reuse a map-pool
+  vertex. These observe statuses and map state, not generated wire/face geometry.
+  Map entries enumerate the 64 pool objects plus NULL; fixture-owned vertices
+  outside that pool affect map cardinality, but their individual pairs are not emitted.
+  C++ execution beyond a Rust dependency deferral
+  is not a parity pass. The full edge/face construction, profile loop mapping,
+  silhouette/HCR flow, back-face move, stitch, merge and recursive wire sweep bodies
+  are ported through their final returns, but no native differential evidence is
+  claimed for those tails. Missing calls have default `Unported` implementations
+  in `SweepAccess`. It requires caller-owned context, B-rep, key/attribute, mark and
+  lifecycle resolution; this PR does not provide a production store/adapter for it (follow-up [#255](https://github.com/tangency-labs/solidcore/issues/255)).
+  Existing faithful face/edge/vertex geometry and traversal helpers are reused.
+  The plan's rectangle/polygon test entry points are indirect callers, not direct
+  topology-sweep fixture replays.
+- **Safety deviations and limits.** Execution rejects repetitions above 4096 before
+  mutating context; the option itself retains the full unsigned upstream value.
+  A soft `CollectFaces` failure that did not mark its start face returns an error
+  instead of retrying forever. Temporary scene, wire and merge objects are cleaned
+  on Result errors; partial marks/output are preserved when a soft failure made
+  progress. Context flags restore in reverse construction order, including aliased
+  contexts and failure to obtain the second mutable context. These are safe Rust
+  unit regressions with a service double, not native topology comparisons.
+- **Consuming union ownership.** `SmMerge::ManifoldBoolean` with default
+  `m_bKeepOtherBrep=FALSE` deletes the source on success (`SmMerge.cpp`, final cleanup).
+  `SmTopologySweep::DoSweep` retains `pWireBrep` outside its repetition loop. The Rust
+  port clears the handle after successful union and releases only live owned wire
+  temporaries on early errors; otherwise adding cleanup would double-delete the
+  consumed object, and retaining the handle could reuse it on a later repetition.
+  A two-repetition Rust regression makes the second pass have silhouettes but no
+  wires, and rejects any access to the consumed source. No native reproducer of the
+  upstream stale-pointer scenario has been run; do not call it a confirmed C++ crash.
+- **Prior-head harness stress (`049ef767`).** Perturbation detected all 551 comparable scripts. The 20,000
+  mutated-input campaign has 7,389 executed, 3,817 rejected and 8,794 malformed cases:
+  zero differing results, crashes, panics or timeouts. This covers the bounded script
+  API, not the dependency-blocked construction paths or a general crash guarantee.
+
+- **Review integration (2026-10-19).** Merged canonical main through `5387f70c` (including `topology.brep_p10`) without
+  rebasing the published branch; preserved both appended findings sections. Available
+  `SweepAccess` defaults now call `Brep::infinite_region`, owning-list face/wire
+  queries, region/shell traversals, part 6 edge copying, part 7 face construction and
+  copying, part 3 edge-use binormal evaluation, and part 10 topology removal. Only unavailable callees remain
+  deferred locally; the stitch owner is `heal.stitch_p2`. Borrow-splitting callbacks
+  pass the real caller context and face-object resolver, without a default kernel
+  or inferred object keys. Native binormal point/vector outputs are written only on
+  success when no optional UV-vector output is requested, so errors retain the
+  caller's values. Merge-copy edge-mate registration still awaits `boolean.merge_p2`.
+- **Curve ownership hand-off.** Part 7's `make_face_with_curve_owners` extends the
+  existing face constructor with input-slot owner records. Discarded degenerate or
+  coincident curves have `None`; each created edge is retained in its original slot,
+  and completed slots survive a later error. The original API delegates to it without
+  changing its result. SweepFaceSame skips discarded slots, matching native null
+  curve slots, and rejects a malformed short ownership array. A Rust unit regression
+  checks discarded slots before a later dependency failure; actual successful face
+  construction remains deferred and is not claimed as compared coverage.
+- **Tolerance conversion regression.** Both edge and vertex tolerance helpers apply
+  `tol::zone_tol3d` using the owning entity's actual kernel before SetTolerance. A
+  regression covers negative tolerances, `USE_DEFAULT` with a non-default system
+  tolerance (0.125), ordinary positive tolerances and edge-to-vertex cascading.
+  Without conversion the negative/default cases do not grow the zero tolerance.
+  Four additional access-default regressions check list order/duplicates, NULL
+  infinite regions, CopyEdges/CopyFaces/MakeFaceWithCurves dependency attribution,
+  and binormal output preservation on error.
+
+  Resolver failures during CopyFaces are kept outside the callee's copy status:
+  rejecting aliasing or an invalid B-rep does not attempt notifier lookup or become
+  a false `Unported(boolean.merge_p2)`. The access-default regression checks both.
+
+- **Prior review harness stress (`86c7eb33`, 2026-10-19).** Perturbation detected all 554 comparable scripts.
+  The 20,000 mutated-input campaign has 7,378 executed, 3,893 rejected and 8,729
+  malformed cases, with zero differences, crashes, panics or timeouts. This remains
+  evidence for the script API and its newly completed root paths, not for deferred
+  topology construction or a production adapter.
+
 ## blend.fillet_geom_p4 (`SmFilletGeom.cpp` part 4: `sm_CreateUVCurve`, the fillet-surface intersection vertex calculators, `GetRailIndexOfVertex`, `MakeFaceBrep`, `InsertIntersectionTopology`, `CalcBlendingGeom`; PR #252, 2026-10-19; partial)
 
 - **Built on open PRs.** The fillet object model (`FilletBrep`, `FilletGeom`, ...) is
@@ -10816,6 +10910,56 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   The FFI refuses a vertex repeated in the one-list `StitchVertexPairs` list (UB-178).
   Upstream defects kept by the port: WR-186 (`DoStitching`'s sticky candidate flags),
   WR-187 (a cancelled squeeze reported as done), UB-197 (stale edge after a failed glue with `m_bIgnoreProblems`).
+
+## sweep.topology_sweep — second review integration (PR #222, 2026-10-20)
+
+Merged canonical main through `95b823ed`, preserving both sides of the appended
+findings and the part 7 integration notes. `SweepAccess` now calls the real ports
+for `MakeShellVertex`, `MakeVertexLoop` (default opposite orientation),
+`MakeEdgeInFace`, `RemoveFaces` (actual editing flag), `Transform` (default scale
+and tolerance flags), `SmFace::SetTolerance`, HCR construction/visibility and
+silhouette retrieval, `HasLaminaEdge`, and `Stitch::do_stitching`. Face tolerance
+converts the double with the owning kernel's `zone_tol3d`, then uses the native
+true/true flags, including cascading to boundary edges and vertices.
+
+The shell/vertex-loop borrowing callback supplies persistent notification records,
+attributes, identity resolution and the owning mutable notification context. The
+part 7 face builder and copy path now receive their added `NotifyEnv` argument;
+its curve-owner extension carries that environment through unchanged. The dual
+B-rep borrowing callback passes a mutable destination kernel, matching the updated
+part 6 `copy_edges` API. Integrating adapters must provide those services and
+retain the entire `Hcr` session until its scene id is deleted. `Hcr::scene_brep_mut`
+exposes the exact owned scene for mutable source borrows; no scene clone is used.
+The concrete production adapter remains tracked in #255.
+
+The sweep stitching callback implements `StitchCallback`, qualifies local ids by
+the actual B-rep and delegates to the existing sweep decision/map-update routine.
+Stitching uses the native true/true constructor options, default candidate lists,
+no optional min-gap outputs, and the caller's manifold flag. A regression checks
+map changes and a distinct B-rep namespace; default-service regressions check the
+new dependency boundaries, editing refusal, empty-face-removal mark advancement
+and release, identity transform, and context restoration after a stitch deferral.
+Negative, default (non-default system zone 0.125) and positive face tolerances
+check face-to-edge-to-vertex cascading.
+
+The runner now compares untruncated `f64` distances and successful frames for ops
+8/9 on both sides, in addition to the existing integer state. A native FFI
+regression checks a fractional translation frame. Construction/HCR/stitching
+continuations behind their own dependencies are still not claimed as differential
+coverage; the default HCR constructor stops at the part 3 B-rep copy, and stitching
+stops at the part 2 B-rep pre-edit notification.
+
+The part 5 adapter also exposes `make_edge_in_face_with_uv_curve`, preserving the
+polymorphic UV curve (including a real line). Its original B-spline-only Rust
+entry point delegates after wrapping its curve, preserving its API and control
+flow. The sweep does not approximate a line/conic as a B-spline or reject that
+valid native subtype; a line-UV default-service regression reaches the real
+`FindVertexSector` dependency boundary.
+
+`MakeEdgeInFace` preserves the editing-disabled early return before checking its
+unused vertex owners. The regression supplies foreign-B-rep vertex handles while
+editing is disabled; active editing still refuses cross-B-rep handles instead of
+resolving their local ids in the wrong arena.
 
 ### boolean.merge_p3 (#245): orchestration coverage and dependency boundaries
 
@@ -12194,3 +12338,62 @@ Exact controls still compare 4 values (`line_join_fw_tangent_start`), 18
 (`plane_square_e0_tangent`), and 50 (`Mouse_e0_query`). The Mouse query uses the
 same imported B-rep as the deferred operations: the guard still applies per
 operation, not to the whole B-rep.
+## sweep.topology_sweep — third review integration (PR #222, 2026-10-20)
+
+Merged canonical main `bb137d7d` after review 5589823426. The manifest keeps
+main's complete `topology.brep_p7` notes and appends the sweep-specific
+`make_face_with_curve_owners` API extension. Both appended findings sections
+survive the merge. No code conflict required a behavioral resolution.
+
+The `piecewise_merge` / `union` defaults remain tagged with their p3/p4 owners:
+although those units are partial, neither path can acquire a `SweepMergeId`
+before `new_merge` reaches the still-unported `SmMerge::SmMerge` in
+`boolean.merge_p2`. Canonical engine/storage integration belongs with that
+constructor, consistent with `PiecewiseAccess` and the review's permitted split.
+This is a documented integration boundary, not native merge-path coverage.
+
+The HCR five-degree angle and wire-union twenty-degree angle now use
+`angle * (PI / 180.0)`, exactly the grouping of `SM_DEG2RAD` at
+`SmTopologySweep.cpp:844,1424` / `SmMath.h:78`. The other three twenty-degree
+expressions keep upstream's literal `20.0*SM_PI/180.0` order
+(`SmTopologySweep.cpp:926,1123,1339`). The two corrected constants have unchanged
+floating-point bits. No differential-coverage boundary or tolerance is relaxed.
+
+Local validation after this merge: workspace fmt, explicit included-file rustfmt,
+strict workspace Clippy with and without C++, workspace tests (1529 kernel
+tests), wasm32, and all four native sweep FFI tests pass. The four affected
+difftests pass every comparable case with maximum relative error zero:
+
+```text
+PARTIAL sweep.topology_sweep cases=568 passed=554 failed=0 deferred=14 rejected=0
+PARTIAL topology.brep_p5 cases=797 passed=737 failed=0 deferred=60
+PARTIAL topology.brep_p7 cases=316 passed=197 failed=0 deferred=119
+PARTIAL blend.hcr cases=434 passed=394 failed=0 deferred=40
+```
+
+Sweep deferrals remain `SmBrep::MakeShellVertexTopology` (`topology.brep_p2`).
+Construction/HCR/merge/stitch continuations remain uncertified native coverage;
+this integration does not promote the unit to green. Full-gate and exact-head
+CI results are recorded in the PR discussion.
+
+## sweep.topology_sweep — current p2 and HCR compatibility (PR #222)
+
+Canonical main `e4dd81c4` is merged. The full main p5/p7 notes retain both sweep
+API extensions. HCR global visibility now receives the owning mutable Kernel;
+`GetShellVertices` invokes p2 with the actual owner and no attribute filter,
+preserving the native vertex-list walk.
+
+Eight native-feature Rust service regressions pass. They check one shell vertex
+in owner 0 against two in owner 1 (including list order), successful shell/vertex
+allocation and its owner/point, foreign-owner refusal, actual empty cleanup,
+open-loop rejection by the live p7 constructor, copy-constructor deferral and
+stitch-error context restoration. The cleanup fixture has no traversable shell
+topology: its success does not certify nonempty deletion. The open line reaches
+`loop does not close`, rather than the old unavailable topology prefix.
+
+The native sweep record exports statuses/maps/decisions/tags/distances/frames,
+not newly allocated vertex coordinates or full B-rep topology. Those owner/point
+checks are Rust regressions. Complete construction, HCR, merge and nonempty
+stitching still have their documented dependencies; merge p3/p4 remain paired
+with the missing p2 merge constructor. Final native/CI evidence is recorded on
+the tested PR head; no tolerance or absolute floor is relaxed.
