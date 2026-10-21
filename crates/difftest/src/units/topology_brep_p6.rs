@@ -655,6 +655,8 @@ fn make_faces_cpp(i: &Inputs) -> Result<Output, HarnessError> {
 struct W {
     ints: Vec<i64>,
     values: Vec<f64>,
+    /// The kernel the samples are evaluated with (a default one, as the shim's context).
+    kernel: Kernel,
 }
 
 impl W {
@@ -696,7 +698,7 @@ impl W {
         self.d(ivl.max());
         for k in 0..=4 {
             let t = ivl.min() + 0.25 * f64::from(k) * (ivl.max() - ivl.min());
-            self.point(&c.evaluate_point(t));
+            self.point(&c.evaluate_point(&self.kernel, t));
         }
     }
     fn surface(&mut self, s: Option<&Surface>, owner: EntityRef) {
@@ -718,7 +720,7 @@ impl W {
                     lo.x + 0.5 * f64::from(a) * (hi.x - lo.x),
                     lo.y + 0.5 * f64::from(bb) * (hi.y - lo.y),
                 );
-                self.point(&s.evaluate_point(uv));
+                self.point(&s.evaluate_point(&self.kernel, uv));
             }
         }
         self.i(i64::from(s.owner() == Some(key_of(owner))));
