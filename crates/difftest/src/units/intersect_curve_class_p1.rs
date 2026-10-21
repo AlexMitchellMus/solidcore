@@ -877,7 +877,6 @@ impl BareTopology {
 }
 
 impl Pool {
-
     pub(crate) fn handle(&self, i: Option<usize>) -> Result<Option<H>, HarnessError> {
         i.map(|i| {
             self.handles
