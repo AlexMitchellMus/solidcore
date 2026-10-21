@@ -11,6 +11,7 @@
 //! | [`calculate_tight_bounding_box`]             | `SmBrep::CalculateTightBoundingBox`            |
 //! | [`lock_bounding_box`]                        | `SmBrep::LockBoundingBox`                      |
 //! | [`unlock_bounding_box`]                      | `SmBrep::UnLockBoundingBox`                    |
+//! | [`point_3d_classify`]                        | `SmBrep::Point3DClassify`                      |
 //! | [`evaluate_surface_point`]                   | `SmApiEvaluateSurfacePoint`                    |
 //! | [`evaluate_surface_normal`]                  | `SmApiEvaluateSurfaceNormal`                   |
 //! | [`evaluate_surface_derivatives`]             | `SmApiEvaluateSurfaceDerivatives`              |
@@ -37,6 +38,14 @@
 //!   after a failed tight edge box. A failed loose edge box leaves the freshly
 //!   initialised (empty) box: the curve boxes write their output once their
 //!   computation succeeded. [`SolidError::Unported`] still propagates.
+//! - **Point classification.** [`point_3d_classify`] returns the classification
+//!   instead of filling the caller's (every upstream caller constructs a fresh one just
+//!   before and drops it on failure), with [`EntityRef`] objects. Its boundary solve and
+//!   ray fires need the B-rep's cache and object identities, which upstream reaches
+//!   through the B-rep (`CacheMakeOrValidate`): they are the caller's, as for
+//!   [`bp2::ray_fire`]. A ray fire that fails with an ordinary error moves on to the
+//!   next direction, as a failing status does upstream; [`SolidError::Unported`]
+//!   propagates.
 //! - **Out-params.** The evaluated point, normal or point and derivatives are the
 //!   return value; on failure there is none (upstream evaluates into locals and leaves
 //!   the caller's outputs untouched).
@@ -52,9 +61,14 @@
 //!   ([`QuadricEdgeData::sort_index`]). `SmPolyVertexClass` (`SmPoly.h`) is defined
 //!   here, the only place that uses it so far.
 
-use crate::error::{ignore_status, ignored, Result, SolidError};
+use crate::error::{ignore_status, ignored, EntityRef, Result, SolidError};
 use crate::geom::attribute::{Attribute, AttributeValue, Behavior};
 use crate::geom::extent3d::Extent3d;
+use crate::geom::global_solver::{SolutionRequested, SolverOperation};
+use crate::geom::object::ObjectRef;
+use crate::intersect::point_class::{PointClassType, PointClassification};
+use crate::intersect::topology_solver::p1::TopologySolver;
+use crate::intersect::topology_solver::p2::TopologySolveOptions;
 use crate::kernel::Kernel;
 use crate::math::{Point2, Point3, Vec3, BIG_DOUBLE};
 use crate::nurbs::b_spline_curve::BoundingBoxRequest;
@@ -62,9 +76,11 @@ use crate::nurbs::knots::Side;
 use crate::query::edge as qe;
 use crate::query::face::{p1 as qf1, p3 as qf3};
 use crate::surface::surface::Surface;
-use crate::topology::brep::p1 as bp1;
-use crate::topology::{edge, face, vertex, Brep};
+use crate::topology::brep::{p1 as bp1, p2 as bp2};
+use crate::topology::brep_cache::{BrepCache, BrepObjects, CacheObject};
+use crate::topology::{edge, face, vertex, Brep, BrepId, RegionId};
 
+const OP_CLASSIFY: &str = "query::brep::point_3d_classify";
 const OP_EVAL_POINT: &str = "query::brep::evaluate_surface_point";
 const OP_EVAL_NORMAL: &str = "query::brep::evaluate_surface_normal";
 const OP_EVAL_DERIVS: &str = "query::brep::evaluate_surface_derivatives";
@@ -259,6 +275,132 @@ pub fn lock_bounding_box(k: &Kernel, b: &mut Brep, tight: bool) -> Result<()> {
 /// `SmBrep::UnLockBoundingBox`: forgets the locked box, if any.
 pub fn unlock_bounding_box(b: &mut Brep) {
     b.set_locked_bounding_box(None);
+}
+
+// ---- point classification -----------------------------------------------------------
+
+/// `SmBrep::Point3DClassify`: classifies `point` (zone tolerance `point_zone_tol_3d`)
+/// against the B-rep. With `do_boundary_intersections` the lowest dimensional vertex,
+/// edge or face the point lies on (`BrepPointSolve`, `SM_SO_INTERSECT`, single solution)
+/// is the answer when there is one. Otherwise the region: the only one when there is
+/// one, else the region a ray fire from the point finds along `+x` (then `-x` when that
+/// fails), then `+y`/`-y`, then `+z`/`-z` while none was found. `brep_id`, `cache`,
+/// `keys` and `owner_of` are the B-rep's cache and identities, as for
+/// [`bp2::ray_fire`].
+///
+/// # Errors
+///
+/// `SM_ERR` when no ray finds a region; those of the boundary solve, the region list
+/// and the classification load; [`SolidError::Unported`] from the ray fires.
+#[allow(clippy::too_many_arguments)] // one upstream routine
+pub fn point_3d_classify(
+    k: &Kernel,
+    b: &mut Brep,
+    brep_id: BrepId,
+    cache: &BrepCache,
+    keys: &dyn Fn(CacheObject) -> ObjectRef,
+    owner_of: &dyn Fn(ObjectRef) -> Option<ObjectRef>,
+    point: Point3,
+    point_zone_tol_3d: f64,
+    do_boundary_intersections: bool,
+) -> Result<PointClassification<EntityRef>> {
+    // init output
+    let mut pc = PointClassification::new(point_zone_tol_3d);
+    pc.set_class_object(PointClassType::Unknown, None);
+    pc.set_src_zone_tol_3d(point_zone_tol_3d);
+
+    // Intersect the point with the boundary elements of the Brep
+    if do_boundary_intersections {
+        let objects = BrepObjects {
+            brep: b,
+            brep_id,
+            cache,
+            keys,
+            owner_of,
+        };
+        // XSects point with the Brep verts, edges, and faces returning lowest dim
+        // topology intersection found.
+        let solutions = TopologySolver::brep_point_solve(
+            k,
+            &objects,
+            Some(CacheObject::Brep),
+            point,
+            TopologySolveOptions {
+                operation: SolverOperation::Intersect,
+                requested: SolutionRequested::Single,
+                tolerance_3d: point_zone_tol_3d,
+                best_answer_so_far_sq: 0.0,
+                opt_vectors: &[],
+            },
+        )?;
+
+        // when the point is on a Brep Face
+        if let Some(sol) = solutions.get(0) {
+            // Just grab the first one -- we asked for Single.
+            let object = sol.objects[0].ok_or(SolidError::null_pointer(OP_CLASSIFY))?;
+            pc.load_from_intersection(
+                point_zone_tol_3d,
+                bp2::cache_entity(object)?,
+                &sol.start,
+                0,
+                BIG_DOUBLE,
+            )?;
+            return Ok(pc);
+        }
+    } // end bDoBoundaryIntersections check
+
+    // get Brep->Regions
+    let regions = bp1::regions(b, None)?;
+
+    // Check for special case where only one region exists then we
+    // do not have to do any ray firing.
+    if let [region] = regions.as_slice() {
+        pc.set_class_object(PointClassType::Region, Some(EntityRef::Region(*region)));
+        pc.set_gap_3d(0.0);
+        pc.set_pre_snap_param(BIG_DOUBLE);
+        return Ok(pc);
+    }
+
+    // Now do a ray fire to determine which region this lies in. Fire extra rays only
+    // if the first rays fail: `Some(region)` on success (the region may be none),
+    // `None` on failure.
+    let mut fire = |direction: Vec3| -> Result<Option<Option<RegionId>>> {
+        Ok(ignored(bp2::ray_fire(
+            k,
+            b,
+            brep_id,
+            cache,
+            keys,
+            owner_of,
+            point,
+            direction,
+            point_zone_tol_3d,
+            None,
+        ))?
+        .map(|r| r.region))
+    };
+    let mut region = None;
+    for (forward, backward) in [
+        (Vec3::new(1.0, 0.0, 0.0), Vec3::new(-1.0, 0.0, 0.0)), // X-Dir
+        (Vec3::new(0.0, 1.0, 0.0), Vec3::new(0.0, -1.0, 0.0)), // Y-Dir
+        (Vec3::new(0.0, 0.0, 1.0), Vec3::new(0.0, 0.0, -1.0)), // Z-Dir
+    ] {
+        region = match fire(forward)? {
+            Some(r) => r,
+            None => fire(backward)?.flatten(),
+        };
+        if region.is_some() {
+            break;
+        }
+    }
+
+    let region = region.ok_or(SolidError::sm_err(OP_CLASSIFY))?;
+
+    // load output
+    pc.set_class_object(PointClassType::Region, Some(EntityRef::Region(region)));
+    pc.set_deviation(0.0); // SM_USE_OLDTOL
+    pc.set_pre_snap_param(BIG_DOUBLE);
+    Ok(pc)
 }
 
 // ---- SM_API surface evaluation ------------------------------------------------------

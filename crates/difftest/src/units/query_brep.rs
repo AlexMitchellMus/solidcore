@@ -23,26 +23,40 @@
 //! produce every step's status and box (seeded, so what a failing call leaves is
 //! compared). A B-rep with a face surface or edge curve the export carries only as its
 //! B-spline part is deferred, as in that runner.
+//!
+//! A `classify` case is such a B-rep, a point (a vertex's point, a face surface point at
+//! fractions of the face's UV domain, or given coordinates; plus an offset, computed once
+//! from the import for both sides), a tolerance and `do_bnd`. Both sides produce the
+//! status of `SmBrep::Point3DClassify` and the classification (class, object kind and
+//! index, gap, source tolerance, pre-snap parameter, curve and surface parameters,
+//! parameters-set flag, face kind and index); on failure the classification as the
+//! call starts it. The Rust side builds the B-rep cache with
+//! `topology::brep_cache::make_brep_cache` over the import's arena identities.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use solidcore::geom::extent3d::Extent3d;
+use solidcore::geom::tol::zone_tol3d;
+use solidcore::intersect::point_class::{PointClassType, PointClassification};
 use solidcore::kernel::Kernel;
-use solidcore::topology::Brep;
-use solidcore::SolidError;
+use solidcore::topology::brep_cache::{arena_identity, make_brep_cache, CacheSource};
+use solidcore::topology::{Brep, BrepId, FaceId, VertexId};
+use solidcore::{EntityRef, SolidError};
 
 use solidcore::geom::attribute::{Attribute, AttributeValue, Behavior};
 use solidcore::math::{Point2, Vec3};
 use solidcore::query::brep::{self as qb, PolyVertexClass};
 use solidcore::surface::surface::Surface;
-use solidcore_ffi::units::query_brep::{self as ffi, AttrKind, BoxStep, EvalOp, MAX_BOX_STEPS};
+use solidcore_ffi::units::query_brep::{
+    self as ffi, AttrKind, BoxStep, EvalOp, CLASSIFY_LEN, MAX_BOX_STEPS,
+};
 
 use super::surface_surface_cache_p1::harness;
 use super::surface_surface_cache_p3::{gen_surf, push_surf, surf_domain, surface_in, SurfIn};
-use super::query_face_p1::{everything, gen_face_brep, inexact, model};
+use super::query_face_p1::{everything, gen_face_brep, inexact, model, Model, NoGeometry};
 use super::surface_surface_p7::{st, Fail};
-use super::topology_edgeuse_p1::{fixture_input, gen_brep};
+use super::topology_edgeuse_p1::{fixture_input, gen_brep, BrepIn};
 use crate::case::CaseContext;
 use crate::runner::default_cases;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
@@ -120,6 +134,32 @@ enum Inputs {
     Evaluate(EvalIn),
     Attribute(AttrIn),
     Box(BoxIn),
+    Classify(ClassifyIn),
+}
+
+/// Where the point of a `classify` case is.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "at", rename_all = "snake_case")]
+enum At {
+    /// The point of vertex `index` (modulo the vertex count).
+    Vertex { index: usize },
+    /// The surface point of face `index` (modulo the face count) at fractions `u`, `v`
+    /// of its UV domain.
+    Face { index: usize, u: f64, v: f64 },
+    /// Given coordinates.
+    Point { p: [f64; 3] },
+}
+
+/// A `classify` case.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ClassifyIn {
+    brep: Value,
+    #[serde(flatten)]
+    at: At,
+    #[serde(default)]
+    offset: [f64; 3],
+    tol: f64,
+    do_bnd: bool,
 }
 
 /// A step of a `box` case.
@@ -247,6 +287,51 @@ fn cpp_box(i: &BoxIn) -> Result<Output, HarnessError> {
     let steps: Vec<BoxStep> = i.steps.iter().map(|s| s.ffi()).collect();
     let flat = ffi::box_steps(&path, &block, &steps).map_err(|e| harness(e.to_string()))?;
     Ok(Output::new().values("steps", flat))
+}
+
+/// The classified point of a `classify` case on the import; `None` when the selected
+/// kind has no entity.
+fn classify_point(m: &Model, i: &ClassifyIn) -> Result<Option<[f64; 3]>, HarnessError> {
+    let b = &m.brep;
+    let p = match &i.at {
+        At::Vertex { index } => {
+            let n = b.vertices().len();
+            if n == 0 {
+                return Ok(None);
+            }
+            let v = VertexId::from_index((index % n) as u32);
+            b.vertex(v).map_err(|e| harness(e.to_string()))?.point
+        }
+        At::Face { index, u, v } => {
+            let n = b.faces().len();
+            if n == 0 {
+                return Ok(None);
+            }
+            let f = b
+                .face(FaceId::from_index((index % n) as u32))
+                .map_err(|e| harness(e.to_string()))?;
+            let (lo, size) = (f.uv_domain.min(), f.uv_domain.size());
+            let uv = Point2::new(lo.x + u * size.x, lo.y + v * size.y);
+            f.surface
+                .as_ref()
+                .ok_or_else(|| harness("face without surface"))?
+                .evaluate_point(uv)
+                .map_err(|e| harness(format!("surface point: {e}")))?
+        }
+        At::Point { p } => Vec3::new(p[0], p[1], p[2]),
+    };
+    let [dx, dy, dz] = i.offset;
+    Ok(Some([p.x + dx, p.y + dy, p.z + dz]))
+}
+
+fn cpp_classify(i: &ClassifyIn) -> Result<Output, HarnessError> {
+    let m = model(&i.brep)?;
+    let Some(p) = classify_point(&m, i)? else {
+        return Ok(Output::new().values("classify", vec![-2.0]));
+    };
+    let flat = ffi::classify(&m.path, &m.block, p, i.tol, i.do_bnd)
+        .map_err(|e| harness(e.to_string()))?;
+    Ok(Output::new().values("classify", flat))
 }
 
 // ---- Rust side ----------------------------------------------------------------------
@@ -457,6 +542,92 @@ fn rust_box(i: &BoxIn) -> Result<Output, Fail> {
     Ok(Output::new().values("steps", flat))
 }
 
+/// `class kind index gap src_tol presnap tparam u v param_set face_kind face_index` (as
+/// the shim's `put_pc`).
+fn pc_block(pc: &PointClassification<EntityRef>) -> Vec<f64> {
+    let object = |o: Option<EntityRef>| match o {
+        None => (0.0, -1.0),
+        Some(EntityRef::Face(f)) => (1.0, f64::from(f.index())),
+        Some(EntityRef::Edge(e)) => (2.0, f64::from(e.index())),
+        Some(EntityRef::Vertex(v)) => (3.0, f64::from(v.index())),
+        Some(EntityRef::Region(r)) => (4.0, f64::from(r.index())),
+        Some(_) => (-3.0, -1.0),
+    };
+    let (kind, index) = object(pc.object());
+    let (face_kind, face_index) = object(pc.face());
+    let uv = pc.uv_param();
+    vec![
+        f64::from(pc.point_class().code()),
+        kind,
+        index,
+        pc.gap_3d(&Kernel::default(), &NoGeometry, None)
+            .unwrap_or(f64::NAN),
+        pc.src_zone_tol_3d(),
+        pc.pre_snap_param(),
+        pc.t_param(),
+        uv.x,
+        uv.y,
+        f64::from(u8::from(pc.are_parameters_set())),
+        face_kind,
+        face_index,
+    ]
+}
+
+fn rust_classify(i: &ClassifyIn) -> Result<Output, Fail> {
+    let m = model(&i.brep)?;
+    let Some(p) = classify_point(&m, i)? else {
+        return Ok(Output::new().values("classify", vec![-2.0]));
+    };
+    let (faces, edges) = everything(&m.brep);
+    if let Some(o) = inexact(&m, &faces, &edges) {
+        return Ok(o);
+    }
+    let k = Kernel::default();
+    let mut b = m.brep;
+    crate::util::own_arena_geometry(&mut b);
+    let cache = match make_brep_cache(&k, CacheSource::Brep(&b), &arena_identity) {
+        Ok(c) => c,
+        Err(e) => {
+            return Err(Output::unported(&e).map_or_else(
+                || Fail::Harness(harness(format!("rust brep cache: {e}"))),
+                |d| Fail::Deferred(Box::new(d)),
+            ))
+        }
+    };
+    let tol = zone_tol3d(&k, i.tol);
+    let owners = |_: solidcore::geom::object::ObjectRef| None;
+    let r = qb::point_3d_classify(
+        &k,
+        &mut b,
+        BrepId::from_index(0),
+        &cache,
+        &arena_identity,
+        &owners,
+        Vec3::new(p[0], p[1], p[2]),
+        tol,
+        i.do_bnd,
+    );
+    let (status, pc) = match r {
+        Ok(pc) => (0.0, pc),
+        Err(e) => {
+            if let Some(d) = Output::unported(&e) {
+                return Ok(d);
+            }
+            let Some(code) = status_code(&e) else {
+                return Ok(Output::err(format!("rust error: {e}")));
+            };
+            // as the call starts the classification
+            let mut pc = PointClassification::new(tol);
+            pc.set_class_object(PointClassType::Unknown, None);
+            (code, pc)
+        }
+    };
+    let mut flat = vec![status];
+    flat.extend(pc_block(&pc));
+    debug_assert_eq!(flat.len(), CLASSIFY_LEN);
+    Ok(Output::new().values("classify", flat))
+}
+
 // ---- generation ---------------------------------------------------------------------
 
 /// A value for a data field: mostly moderate, sometimes zero, huge, tiny or non-finite
@@ -585,16 +756,85 @@ fn gen_step(rng: &mut Rng) -> StepIn {
 }
 
 fn gen_box(rng: &mut Rng) -> Option<Value> {
-    let brep = if rng.chance(0.6) {
-        gen_face_brep(rng)
-    } else {
-        gen_brep(rng)
-    };
+    let brep = gen_case_brep(rng);
     let n = 1 + rng.below(MAX_BOX_STEPS as u64) as usize;
     let steps = (0..n).map(|_| gen_step(rng)).collect();
     serde_json::to_value(Inputs::Box(BoxIn {
         brep: serde_json::to_value(&brep).ok()?,
         steps,
+    }))
+    .ok()
+}
+
+/// A closed box solid (two regions) with a random corner and size.
+fn gen_box_solid(rng: &mut Rng) -> BrepIn {
+    let size = *rng.choose(&[1e-2, 1.0, 1.0, 10.0, 1e3]).unwrap_or(&1.0);
+    BrepIn::Box {
+        origin: rng.point3(-10.0, 10.0),
+        size: [
+            size * rng.uniform(0.1, 1.0),
+            size * rng.uniform(0.1, 1.0),
+            size * rng.uniform(0.1, 1.0),
+        ],
+    }
+}
+
+/// A B-rep for a generated `box` or `classify` case.
+fn gen_case_brep(rng: &mut Rng) -> BrepIn {
+    match rng.below(10) {
+        0..=4 => gen_face_brep(rng),
+        5..=7 => gen_brep(rng),
+        _ => gen_box_solid(rng),
+    }
+}
+
+fn gen_classify(rng: &mut Rng) -> Option<Value> {
+    let brep = gen_case_brep(rng);
+    let frac = |rng: &mut Rng| match rng.below(6) {
+        0 => 0.0,
+        1 => 1.0,
+        2 => 0.5,
+        _ => rng.unit(),
+    };
+    let at = match rng.below(3) {
+        0 => At::Vertex {
+            index: rng.below(64) as usize,
+        },
+        1 => At::Face {
+            index: rng.below(64) as usize,
+            u: frac(rng),
+            v: frac(rng),
+        },
+        _ => At::Point {
+            p: match &brep {
+                BrepIn::Box { origin, size } => {
+                    let mut p = *origin;
+                    for (x, s) in p.iter_mut().zip(size) {
+                        *x += s * rng.uniform(-0.5, 1.5);
+                    }
+                    p
+                }
+                _ => rng.point3(-20.0, 20.0),
+            },
+        },
+    };
+    let scale = *rng
+        .choose(&[0.0, 0.0, 1e-9, 1e-7, 1e-5, 1e-3, 0.1, 5.0])
+        .unwrap_or(&0.0);
+    let offset = [
+        rng.uniform(-1.0, 1.0) * scale,
+        rng.uniform(-1.0, 1.0) * scale,
+        rng.uniform(-1.0, 1.0) * scale,
+    ];
+    let tol = *rng
+        .choose(&[0.0, 1e-10, 1e-8, 1e-6, 1e-4, 1e-2])
+        .unwrap_or(&1e-6);
+    serde_json::to_value(Inputs::Classify(ClassifyIn {
+        brep: serde_json::to_value(&brep).ok()?,
+        at,
+        offset,
+        tol,
+        do_bnd: rng.chance(0.6),
     }))
     .ok()
 }
@@ -636,7 +876,11 @@ impl UnitDiff for Runner {
             return serde_json::to_value(Inputs::Attribute(i)).ok();
         }
         if rng.chance(0.4) {
-            return gen_box(rng);
+            return if rng.chance(0.5) {
+                gen_box(rng)
+            } else {
+                gen_classify(rng)
+            };
         }
         for _ in 0..64 {
             let Ok(i) = gen_eval(rng) else {
@@ -665,6 +909,7 @@ impl UnitDiff for Runner {
             Inputs::Evaluate(i) => cpp_evaluate(&i),
             Inputs::Attribute(i) => cpp_attribute(&i),
             Inputs::Box(i) => cpp_box(&i),
+            Inputs::Classify(i) => cpp_classify(&i),
         }
     }
 
@@ -673,6 +918,7 @@ impl UnitDiff for Runner {
             Inputs::Evaluate(i) => rust_evaluate(&i),
             Inputs::Attribute(i) => return rust_attribute(&i),
             Inputs::Box(i) => rust_box(&i),
+            Inputs::Classify(i) => rust_classify(&i),
         };
         match r {
             Ok(o) => Ok(o),

@@ -5,7 +5,8 @@
 // attribute constructors and MakeCopy overrides (source/SMLib/inc/SmPolyDecimate.h,
 // source/SMLib/src/SmPolyDecimate.cpp), whose protected data is reached through derived
 // "peek" classes; and SmBrep::CalculateBoundingBox, CalculateTightBoundingBox,
-// LockBoundingBox and UnLockBoundingBox (source/SMLib/src/SmBrep.cpp) on a real SmBrep
+// LockBoundingBox, UnLockBoundingBox and Point3DClassify (source/SMLib/src/SmBrep.cpp) on a
+// real SmBrep
 // built with the shared topology fixture (sc_topology_fixture::apply: unit
 // topology.edgeuse_p1's B-rep block and traversal order, which the Rust side imports from
 // that unit's export).
@@ -25,7 +26,11 @@
 #include <SmContext.h>
 #include <SmCurveBoundedSurface.h>
 #include <SmExtent3d.h>
+#include <SmEdge.h>
 #include <SmFace.h>
+#include <SmPointClass.h>
+#include <SmRegion.h>
+#include <SmVertex.h>
 #include <SmExtent2d.h>
 #include <SmNurbsSrf.h>
 #include <SmPlane.h>
@@ -410,6 +415,88 @@ SC_EXPORT int32_t sc_query_brep_box(const char* path, const double* block, int64
                 SmCacheMgr::DeleteObjectsCache(SM_OC_TRIMSRF, srf);
         }
         return sc_query_brep::run_steps(args, n_args, g.brep, o);
+    });
+    if (rc != 0)
+        return rc;
+    return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len);
+    SC_CATCH
+}
+
+namespace sc_query_brep
+{
+template <typename T> int64_t index_of(const std::vector<T*>& v, const void* p)
+{
+    for (size_t i = 0; i < v.size(); i++)
+        if ((const void*)v[i] == p)
+            return (int64_t)i;
+    return -1;
+}
+
+// `kind index` of a classification object: 1 face, 2 edge, 3 vertex, 4 region (traversal
+// index), `0 -1` for none, `-3 -1` for anything else.
+void put_object(std::vector<double>& o, const sc_topology_fixture::View& g, const SmObject* p)
+{
+    int64_t kind = -3, index = -1;
+    if (p == nullptr)
+        kind = 0;
+    else if (p->IsKindOf(SmFace_TYPE))
+        kind = 1, index = index_of(g.faces, p);
+    else if (p->IsKindOf(SmEdge_TYPE))
+        kind = 2, index = index_of(g.edges, p);
+    else if (p->IsKindOf(SmVertex_TYPE))
+        kind = 3, index = index_of(g.vertices, p);
+    else if (p->IsKindOf(SmRegion_TYPE))
+        kind = 4, index = index_of(g.regions, p);
+    o.push_back((double)kind);
+    o.push_back((double)index);
+}
+
+// `class kind index gap src_tol presnap tparam u v param_set face_kind face_index`
+void put_pc(std::vector<double>& o, const sc_topology_fixture::View& g, const SmPointClassification& pc)
+{
+    o.push_back((double)pc.GetPointClass());
+    put_object(o, g, pc.GetObject());
+    o.push_back(pc.GetGap3d());
+    o.push_back((double)pc.GetTolerance());
+    o.push_back(pc.GetPreSnapParam());
+    o.push_back(pc.GetTParam());
+    SmPoint2d uv = pc.GetUVParam();
+    o.push_back(uv.x);
+    o.push_back(uv.y);
+    o.push_back(pc.AreParametersSet() ? 1.0 : 0.0);
+    put_object(o, g, pc.GetFace());
+}
+} // namespace sc_query_brep
+
+// Builds the B-rep of `path` / `block` and classifies `x y z` with zone tolerance `tol`
+// (`do_bnd`: bDoBoundaryIntersections) into a classification constructed with that
+// tolerance; the output is the status and the classification (see put_pc).
+SC_EXPORT int32_t sc_query_brep_classify(const char* path, const double* block, int64_t n_block,
+                                         const double* args, int64_t n_args, double* out,
+                                         int64_t cap, int64_t* out_len)
+{
+    if (path == nullptr || block == nullptr || n_block < 1 || args == nullptr || n_args != 5 ||
+        out_len == nullptr)
+        return SC_ERR_ARG;
+    SC_TRY
+    std::vector<double> o;
+    int32_t rc = sc_topology_fixture::apply(path, block, n_block, [&](const sc_topology_fixture::View& g) -> int32_t {
+        for (SmFace* f : g.faces)
+        {
+            SmSurface* srf = f->GetSurface();
+            if (srf == nullptr)
+                return SC_ERR_ARG; // the face queries dereference it unchecked
+            if (SmCacheMgr::GetObjectCache(SM_OC_TRIMSRF, srf) != nullptr)
+                SmCacheMgr::DeleteObjectsCache(SM_OC_TRIMSRF, srf);
+        }
+        SmPoint3d p(args[0], args[1], args[2]);
+        SmZoneTol3d tol(args[3]);
+        SmBoolean do_bnd = args[4] != 0.0 ? TRUE : FALSE;
+        SmPointClassification pc(tol, g.brep.GetContext());
+        SmStatus s = g.brep.Point3DClassify(p, tol, do_bnd, pc);
+        o.push_back(s == SM_SUCCESS ? 0.0 : (double)s);
+        sc_query_brep::put_pc(o, g, pc);
+        return 0;
     });
     if (rc != 0)
         return rc;

@@ -35,6 +35,7 @@
 #include <SmNurbsCrv.h>
 #include <SmNurbsSrf.h>
 #include <SmPlane.h>
+#include <SmPrimitiveCreation.h>
 #include <SmRegion.h>
 #include <SmShell.h>
 #include <SmSolutionArray.h>
@@ -716,6 +717,18 @@ SmBrep* build(Rd& rd, const char* path, SmStatus& status)
         const int64_t networks = rd.idx();
         for (int64_t i = 0; i < networks && status == SM_SUCCESS; ++i)
             status = build_wire_network(ctx, brep);
+    }
+    else if (kind == 7)
+    {
+        // `7 origin[3] length width height`: the closed solid of SmApiCreateBox
+        // (SmPrimitiveCreation::CreateBox on canonical axes at the origin; planes and
+        // lines), built in this B-rep.
+        SmPoint3d origin = rd.vec();
+        double l = rd.num(), w = rd.num(), h = rd.num();
+        SmAxis2Placement frame;
+        frame.SetCanonical(origin, SmVector3d(1.0, 0.0, 0.0), SmVector3d(0.0, 1.0, 0.0));
+        SmPrimitiveCreation pc(brep->GetInfiniteRegion());
+        status = pc.CreateBox(l, w, h, frame);
     }
     else
     {

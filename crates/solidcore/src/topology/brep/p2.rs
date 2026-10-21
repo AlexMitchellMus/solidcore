@@ -331,8 +331,8 @@ pub fn min_edge_bbox_size(k: &Kernel, b: &Brep) -> Result<(f64, Option<EdgeId>)>
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`] for the B-rep box (`query.brep`); [`SolidError::NotFound`]
-/// for a dangling id.
+/// [`SolidError::Unported`] from the B-rep box; [`SolidError::NotFound`] for a dangling
+/// id.
 pub fn set_tolerance(
     k: &Kernel,
     b: &mut Brep,
@@ -346,7 +346,8 @@ pub fn set_tolerance(
 
     // when sZoneTol3d <= 0.0 compute tol from Bounding box size
     if new_tol <= 0.0 {
-        let bbox = brep_bounding_box(k, b)?;
+        // (status ignored: a failure leaves the initialised box)
+        let bbox = crate::error::ignored(brep_bounding_box(k, b))?.unwrap_or_default();
         let mut size = bbox.size().length();
         if size >= 1.0e15 || size <= 0.0 {
             size = 1.0;
@@ -507,14 +508,13 @@ fn check_uv_trim_curve(k: &Kernel, b: &Brep, eu: EdgeuseId) -> Result<bool> {
     }
 }
 
-/// `SmBrep::CalculateBoundingBox(box)` with defaults (unit `query.brep`).
+/// `SmBrep::CalculateBoundingBox(rBox)` (unit `query.brep`, default arguments).
 fn brep_bounding_box(k: &Kernel, b: &Brep) -> Result<Extent3d> {
-    let _ = (k, b);
-    // UNPORTED(query.brep): SmBrep::CalculateBoundingBox
-    Err(SolidError::unported(
-        "SmBrep::CalculateBoundingBox",
-        "query.brep",
-    ))
+    crate::query::brep::calculate_bounding_box(
+        k,
+        b,
+        crate::query::brep::BoundingBoxOptions::default(),
+    )
 }
 
 /// `SmFace::SetTolerance(tol, bUpdateOnlyIfLarger, FALSE)` ([`face3::set_tolerance`]).
@@ -1289,8 +1289,9 @@ pub struct RayFireResult {
     pub intersection: PointClassification<EntityRef>,
 }
 
-/// The topology entity a B-rep cache object stands for.
-fn cache_entity(object: CacheObject) -> Result<EntityRef> {
+/// The topology entity a B-rep cache object stands for (also the solution objects of
+/// `SmBrep::Point3DClassify`'s boundary solve, unit `query.brep`).
+pub(crate) fn cache_entity(object: CacheObject) -> Result<EntityRef> {
     match object {
         CacheObject::Vertex(v) => Ok(EntityRef::Vertex(v)),
         CacheObject::Edge(e) | CacheObject::Curve(e) => Ok(EntityRef::Edge(e)),
@@ -1311,7 +1312,7 @@ fn cache_entity(object: CacheObject) -> Result<EntityRef> {
 ///
 /// `SM_ERR` when the best hit is closer than `SM_EFF_ZERO * (1 + max |start|)`; errors
 /// of the B-rep box, the solve, the classification load and [`local_curve_sector`];
-/// [`SolidError::Unported`] from the B-rep box (`query.brep`).
+/// [`SolidError::Unported`] from the callees.
 #[allow(clippy::too_many_arguments)] // one upstream routine
 pub fn ray_fire(
     k: &Kernel,

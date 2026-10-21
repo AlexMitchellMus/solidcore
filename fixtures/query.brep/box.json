@@ -4183,6 +4183,810 @@
    }
   },
   {
+   "name": "box_solid_defaults",
+   "upstream_ref": "tests/prog_test/src/smTopoTest.cpp:1920",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      -5,
+      7,
+      1.5
+     ],
+     "size": [
+      0.5,
+      10,
+      2
+     ]
+    },
+    "steps": [
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": true,
+      "defaults": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_plain",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp:1009",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      -5,
+      7,
+      1.5
+     ],
+     "size": [
+      0.5,
+      10,
+      2
+     ]
+    },
+    "steps": [
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": false,
+      "defaults": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_approx",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp:1009",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      -5,
+      7,
+      1.5
+     ],
+     "size": [
+      0.5,
+      10,
+      2
+     ]
+    },
+    "steps": [
+     {
+      "step": "box",
+      "approx": true,
+      "tight": false,
+      "expand": true,
+      "defaults": false
+     },
+     {
+      "step": "box",
+      "approx": true,
+      "tight": false,
+      "expand": false,
+      "defaults": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_tight_edges_faces",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp:1009",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      -5,
+      7,
+      1.5
+     ],
+     "size": [
+      0.5,
+      10,
+      2
+     ]
+    },
+    "steps": [
+     {
+      "step": "box",
+      "approx": false,
+      "tight": true,
+      "expand": true,
+      "defaults": false
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": true,
+      "expand": false,
+      "defaults": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_tight_box",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp:1009",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      -5,
+      7,
+      1.5
+     ],
+     "size": [
+      0.5,
+      10,
+      2
+     ]
+    },
+    "steps": [
+     {
+      "step": "tight"
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_lock_then_query",
+   "upstream_ref": "source/SMLib/inc/SmBrep.h:1640",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      -5,
+      7,
+      1.5
+     ],
+     "size": [
+      0.5,
+      10,
+      2
+     ]
+    },
+    "steps": [
+     {
+      "step": "lock",
+      "tight": false,
+      "defaults": true
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": false,
+      "defaults": false
+     },
+     {
+      "step": "box",
+      "approx": true,
+      "tight": true,
+      "expand": true,
+      "defaults": false
+     },
+     {
+      "step": "tight"
+     },
+     {
+      "step": "unlock"
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": false,
+      "defaults": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_lock_tight_relock",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp:1009",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      -5,
+      7,
+      1.5
+     ],
+     "size": [
+      0.5,
+      10,
+      2
+     ]
+    },
+    "steps": [
+     {
+      "step": "lock",
+      "tight": true,
+      "defaults": false
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": true,
+      "defaults": true
+     },
+     {
+      "step": "lock",
+      "tight": false,
+      "defaults": false
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": true,
+      "defaults": true
+     },
+     {
+      "step": "unlock"
+     },
+     {
+      "step": "unlock"
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": true,
+      "defaults": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_tiny_defaults",
+   "upstream_ref": "tests/prog_test/src/smTopoTest.cpp:1920",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      1,
+      1,
+      1
+     ],
+     "size": [
+      0.001,
+      0.002,
+      0.003
+     ]
+    },
+    "steps": [
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": true,
+      "defaults": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_tiny_plain",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp:1009",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      1,
+      1,
+      1
+     ],
+     "size": [
+      0.001,
+      0.002,
+      0.003
+     ]
+    },
+    "steps": [
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": false,
+      "defaults": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_tiny_approx",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp:1009",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      1,
+      1,
+      1
+     ],
+     "size": [
+      0.001,
+      0.002,
+      0.003
+     ]
+    },
+    "steps": [
+     {
+      "step": "box",
+      "approx": true,
+      "tight": false,
+      "expand": true,
+      "defaults": false
+     },
+     {
+      "step": "box",
+      "approx": true,
+      "tight": false,
+      "expand": false,
+      "defaults": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_tiny_tight_edges_faces",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp:1009",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      1,
+      1,
+      1
+     ],
+     "size": [
+      0.001,
+      0.002,
+      0.003
+     ]
+    },
+    "steps": [
+     {
+      "step": "box",
+      "approx": false,
+      "tight": true,
+      "expand": true,
+      "defaults": false
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": true,
+      "expand": false,
+      "defaults": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_tiny_tight_box",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp:1009",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      1,
+      1,
+      1
+     ],
+     "size": [
+      0.001,
+      0.002,
+      0.003
+     ]
+    },
+    "steps": [
+     {
+      "step": "tight"
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_tiny_lock_then_query",
+   "upstream_ref": "source/SMLib/inc/SmBrep.h:1640",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      1,
+      1,
+      1
+     ],
+     "size": [
+      0.001,
+      0.002,
+      0.003
+     ]
+    },
+    "steps": [
+     {
+      "step": "lock",
+      "tight": false,
+      "defaults": true
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": false,
+      "defaults": false
+     },
+     {
+      "step": "box",
+      "approx": true,
+      "tight": true,
+      "expand": true,
+      "defaults": false
+     },
+     {
+      "step": "tight"
+     },
+     {
+      "step": "unlock"
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": false,
+      "defaults": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_tiny_lock_tight_relock",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp:1009",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      1,
+      1,
+      1
+     ],
+     "size": [
+      0.001,
+      0.002,
+      0.003
+     ]
+    },
+    "steps": [
+     {
+      "step": "lock",
+      "tight": true,
+      "defaults": false
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": true,
+      "defaults": true
+     },
+     {
+      "step": "lock",
+      "tight": false,
+      "defaults": false
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": true,
+      "defaults": true
+     },
+     {
+      "step": "unlock"
+     },
+     {
+      "step": "unlock"
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": true,
+      "defaults": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_large_defaults",
+   "upstream_ref": "tests/prog_test/src/smTopoTest.cpp:1920",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      -1000.0,
+      -1000.0,
+      -1000.0
+     ],
+     "size": [
+      5000.0,
+      4000.0,
+      3000.0
+     ]
+    },
+    "steps": [
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": true,
+      "defaults": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_large_plain",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp:1009",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      -1000.0,
+      -1000.0,
+      -1000.0
+     ],
+     "size": [
+      5000.0,
+      4000.0,
+      3000.0
+     ]
+    },
+    "steps": [
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": false,
+      "defaults": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_large_approx",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp:1009",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      -1000.0,
+      -1000.0,
+      -1000.0
+     ],
+     "size": [
+      5000.0,
+      4000.0,
+      3000.0
+     ]
+    },
+    "steps": [
+     {
+      "step": "box",
+      "approx": true,
+      "tight": false,
+      "expand": true,
+      "defaults": false
+     },
+     {
+      "step": "box",
+      "approx": true,
+      "tight": false,
+      "expand": false,
+      "defaults": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_large_tight_edges_faces",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp:1009",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      -1000.0,
+      -1000.0,
+      -1000.0
+     ],
+     "size": [
+      5000.0,
+      4000.0,
+      3000.0
+     ]
+    },
+    "steps": [
+     {
+      "step": "box",
+      "approx": false,
+      "tight": true,
+      "expand": true,
+      "defaults": false
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": true,
+      "expand": false,
+      "defaults": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_large_tight_box",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp:1009",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      -1000.0,
+      -1000.0,
+      -1000.0
+     ],
+     "size": [
+      5000.0,
+      4000.0,
+      3000.0
+     ]
+    },
+    "steps": [
+     {
+      "step": "tight"
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_large_lock_then_query",
+   "upstream_ref": "source/SMLib/inc/SmBrep.h:1640",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      -1000.0,
+      -1000.0,
+      -1000.0
+     ],
+     "size": [
+      5000.0,
+      4000.0,
+      3000.0
+     ]
+    },
+    "steps": [
+     {
+      "step": "lock",
+      "tight": false,
+      "defaults": true
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": false,
+      "defaults": false
+     },
+     {
+      "step": "box",
+      "approx": true,
+      "tight": true,
+      "expand": true,
+      "defaults": false
+     },
+     {
+      "step": "tight"
+     },
+     {
+      "step": "unlock"
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": false,
+      "defaults": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "box_solid_large_lock_tight_relock",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp:1009",
+   "inputs": {
+    "op": "box",
+    "brep": {
+     "kind": "box",
+     "origin": [
+      -1000.0,
+      -1000.0,
+      -1000.0
+     ],
+     "size": [
+      5000.0,
+      4000.0,
+      3000.0
+     ]
+    },
+    "steps": [
+     {
+      "step": "lock",
+      "tight": true,
+      "defaults": false
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": true,
+      "defaults": true
+     },
+     {
+      "step": "lock",
+      "tight": false,
+      "defaults": false
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": true,
+      "defaults": true
+     },
+     {
+      "step": "unlock"
+     },
+     {
+      "step": "unlock"
+     },
+     {
+      "step": "box",
+      "approx": false,
+      "tight": false,
+      "expand": true,
+      "defaults": true
+     }
+    ]
+   }
+  },
+  {
    "name": "many_vertices_approx",
    "upstream_ref": "source/SMLib/src/SmBrep.cpp:1057",
    "inputs": {

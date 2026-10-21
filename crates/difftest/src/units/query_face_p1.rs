@@ -472,8 +472,9 @@ fn pc_block(pc: &PointClassification<EntityRef>) -> Vec<f64> {
     ]
 }
 
-/// No geometry behind the B-rep handles (only the stored gap is read).
-struct NoGeometry;
+/// No geometry behind the B-rep handles (only the stored gap is read; shared with the
+/// `query.brep` runner).
+pub(crate) struct NoGeometry;
 
 impl solidcore::intersect::point_class::ClassGeometry<EntityRef> for NoGeometry {
     fn curve(&self, _o: EntityRef) -> Option<&Curve> {

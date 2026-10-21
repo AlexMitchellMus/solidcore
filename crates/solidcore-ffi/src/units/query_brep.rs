@@ -1,7 +1,7 @@
 //! FFI wrappers for unit `query.brep`.
 //!
 //! Shim: `harness/cpp/shim/query_brep.cpp` (`sc_query_brep_evaluate`,
-//! `sc_query_brep_attribute`, `sc_query_brep_box`).
+//! `sc_query_brep_attribute`, `sc_query_brep_box`, `sc_query_brep_classify`).
 //! Upstream: `source/SM_API/src/SmApiSurfaces.cpp`, `source/SMLib/inc/SmPolyDecimate.h`,
 //! `source/SMLib/src/SmPolyDecimate.cpp`, `source/SMLib/src/SmBrep.cpp`.
 //!
@@ -43,6 +43,13 @@
 //! what a failing call leaves is compared), for `Lock` the status, for `Unlock` `0`.
 //! At most [`MAX_BOX_STEPS`] steps; a B-rep with a face without surface is rejected by
 //! the shim (upstream dereferences it).
+//!
+//! [`classify`] builds the B-rep the same way and runs `Point3DClassify(P, tol, do_bnd,
+//! pc)` with `pc` constructed with `tol`; it returns the status and `class kind index gap
+//! src_tol presnap tparam u v param_set face_kind face_index` of `pc` (objects as `kind
+//! index`: `1` face, `2` edge, `3` vertex, `4` region by traversal index, `0 -1` none).
+//! The point must be finite with coordinates up to `1e6`, the tolerance finite in
+//! `0..=1`.
 
 use super::surface_surface_cache_p1::{bad, Reader};
 use super::surface_surface_cache_p3::sized_surface;
@@ -159,6 +166,16 @@ const MAX_ULONG: f64 = 9_007_199_254_740_992.0;
 
 mod sys {
     extern "C" {
+        pub fn sc_query_brep_classify(
+            path: *const std::ffi::c_char,
+            block: *const f64,
+            n_block: i64,
+            args: *const f64,
+            n_args: i64,
+            out: *mut f64,
+            cap: i64,
+            out_len: *mut i64,
+        ) -> i32;
         pub fn sc_query_brep_box(
             path: *const std::ffi::c_char,
             block: *const f64,
@@ -354,6 +371,66 @@ pub fn box_steps(path: &str, block: &[f64], steps: &[BoxStep]) -> Result<Vec<f64
     })?;
     if out.len() != want {
         return Err(bad("box steps: unexpected output length"));
+    }
+    Ok(out)
+}
+
+/// The length of a [`classify`] output.
+pub const CLASSIFY_LEN: usize = 13;
+
+/// Classifies `point` against the B-rep of `block` (see the module docs).
+///
+/// # Errors
+///
+/// [`FfiError::InvalidArgument`] for a block the graph wrapper rejects, a B-rep that
+/// cannot be built, a point or tolerance out of range; the shim's status (also for a
+/// face without surface).
+pub fn classify(
+    path: &str,
+    block: &[f64],
+    point: [f64; 3],
+    tol: f64,
+    do_boundary: bool,
+) -> Result<Vec<f64>, FfiError> {
+    use super::topology_edgeuse_p1 as graph;
+    if point.iter().any(|x| !x.is_finite() || x.abs() > 1e6) {
+        return Err(bad("classify: point"));
+    }
+    if !(tol.is_finite() && (0.0..=1.0).contains(&tol)) {
+        return Err(bad("classify: tolerance"));
+    }
+    let export = graph::eval(graph::Op::Export, path, block)?;
+    if graph::counts(&export).is_none() {
+        return Err(bad("native fixture construction failed"));
+    }
+    let args = [
+        point[0],
+        point[1],
+        point[2],
+        tol,
+        f64::from(u8::from(do_boundary)),
+    ];
+    let path = std::ffi::CString::new(path).map_err(|_| bad("path contains NUL"))?;
+    let n_block = i64::try_from(block.len()).map_err(|_| bad("block too large"))?;
+    let out = call_with_buffer(CLASSIFY_LEN, |buf, len| {
+        // SAFETY: the block was validated (and built) by the graph wrapper and the
+        // arguments are the five values the shim reads; all buffers and the C string stay
+        // live for the call, and the shim honours `cap`.
+        unsafe {
+            sys::sc_query_brep_classify(
+                path.as_ptr(),
+                block.as_ptr(),
+                n_block,
+                args.as_ptr(),
+                args.len() as i64,
+                buf.as_mut_ptr(),
+                buf.len() as i64,
+                &raw mut *len,
+            )
+        }
+    })?;
+    if out.len() != CLASSIFY_LEN {
+        return Err(bad("classify: unexpected output length"));
     }
     Ok(out)
 }

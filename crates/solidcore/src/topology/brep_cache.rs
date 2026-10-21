@@ -22,8 +22,8 @@
 //! uninitialized cache return `InvalidInput` (upstream asserts). Ignored statuses
 //! propagate Unported; an ordinary ignored box failure keeps the previous box,
 //! as upstream. No new recursion; spatial-tree traversal uses geom.tree's bounds.
-//! B-rep box calculation (`query.brep`) and face queries (`topology.face_p4`) remain
-//! explicit back-edges; face boxes call `query::face::p1`; the polygon path is ported.
+//! Face queries (`topology.face_p4`) remain explicit back-edges; the B-rep box calls
+//! `query::brep`, face boxes `query::face::p1`; the polygon path is ported.
 
 use crate::error::{Result, SolidError};
 use crate::geom::a_object::{BREP_TYPE, POLY_BREP_TYPE};
@@ -166,7 +166,7 @@ impl<O: Copy + PartialEq> BrepCache<O> {
         }
         let mut bbox = match source {
             CacheSource::Brep(b) => {
-                let mut bbox = brep_bounding_box(b)?;
+                let mut bbox = brep_bounding_box(k, b)?;
                 bbox.expand_absolute(b.tolerance() * 100.0);
                 let size = bbox.size();
                 bbox.add_point(bbox.max() + 0.15 * size);
@@ -435,17 +435,16 @@ fn resize_edge(
     Ok(())
 }
 
-fn brep_bounding_box(_b: &Brep) -> Result<Extent3d> {
-    // UNPORTED(query.brep): SmBrep::CalculateBoundingBox
-    Err(SolidError::unported(
-        "SmBrep::CalculateBoundingBox",
-        "query.brep",
-    ))
+/// `SmBrep::CalculateBoundingBox(rBox)` (unit `query.brep`, default arguments).
+fn brep_bounding_box(k: &Kernel, b: &Brep) -> Result<Extent3d> {
+    crate::query::brep::calculate_bounding_box(
+        k,
+        b,
+        crate::query::brep::BoundingBoxOptions::default(),
+    )
 }
 
-// (SmBrep::GetVertices / GetEdges / GetFaces are wired to topology::brep::p1; the
-// B-rep tree build calls brep_bounding_box first, so they are not reached until
-// query.brep lands and the unit's report cannot show them yet)
+// (SmBrep::GetVertices / GetEdges / GetFaces are wired to topology::brep::p1)
 fn brep_vertices(b: &Brep) -> Result<Vec<VertexId>> {
     crate::topology::brep::p1::vertices(b, None)
 }

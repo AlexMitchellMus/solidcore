@@ -1515,11 +1515,2811 @@
     },
     {
       "max_rel_err": 0.0,
+      "name": "box_solid_defaults",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#133 (upstream tests/prog_test/src/smTopoTest.cpp:1920)",
+      "values_compared": 7
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_plain",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#134 (upstream source/SMLib/src/SmBrep.cpp:1009)",
+      "values_compared": 7
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_approx",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#135 (upstream source/SMLib/src/SmBrep.cpp:1009)",
+      "values_compared": 14
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_tight_edges_faces",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#136 (upstream source/SMLib/src/SmBrep.cpp:1009)",
+      "values_compared": 14
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_tight_box",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#137 (upstream source/SMLib/src/SmBrep.cpp:1009)",
+      "values_compared": 7
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_lock_then_query",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#138 (upstream source/SMLib/inc/SmBrep.h:1640)",
+      "values_compared": 30
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_lock_tight_relock",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#139 (upstream source/SMLib/src/SmBrep.cpp:1009)",
+      "values_compared": 25
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_tiny_defaults",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#140 (upstream tests/prog_test/src/smTopoTest.cpp:1920)",
+      "values_compared": 7
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_tiny_plain",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#141 (upstream source/SMLib/src/SmBrep.cpp:1009)",
+      "values_compared": 7
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_tiny_approx",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#142 (upstream source/SMLib/src/SmBrep.cpp:1009)",
+      "values_compared": 14
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_tiny_tight_edges_faces",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#143 (upstream source/SMLib/src/SmBrep.cpp:1009)",
+      "values_compared": 14
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_tiny_tight_box",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#144 (upstream source/SMLib/src/SmBrep.cpp:1009)",
+      "values_compared": 7
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_tiny_lock_then_query",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#145 (upstream source/SMLib/inc/SmBrep.h:1640)",
+      "values_compared": 30
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_tiny_lock_tight_relock",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#146 (upstream source/SMLib/src/SmBrep.cpp:1009)",
+      "values_compared": 25
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_large_defaults",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#147 (upstream tests/prog_test/src/smTopoTest.cpp:1920)",
+      "values_compared": 7
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_large_plain",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#148 (upstream source/SMLib/src/SmBrep.cpp:1009)",
+      "values_compared": 7
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_large_approx",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#149 (upstream source/SMLib/src/SmBrep.cpp:1009)",
+      "values_compared": 14
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_large_tight_edges_faces",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#150 (upstream source/SMLib/src/SmBrep.cpp:1009)",
+      "values_compared": 14
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_large_tight_box",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#151 (upstream source/SMLib/src/SmBrep.cpp:1009)",
+      "values_compared": 7
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_large_lock_then_query",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#152 (upstream source/SMLib/inc/SmBrep.h:1640)",
+      "values_compared": 30
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_solid_large_lock_tight_relock",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/box.json#153 (upstream source/SMLib/src/SmBrep.cpp:1009)",
+      "values_compared": 25
+    },
+    {
+      "max_rel_err": 0.0,
       "name": "many_vertices_approx",
       "outcome": "pass",
       "pass": true,
-      "source": "fixture:fixtures/query.brep/box.json#133 (upstream source/SMLib/src/SmBrep.cpp:1057)",
+      "source": "fixture:fixtures/query.brep/box.json#154 (upstream source/SMLib/src/SmBrep.cpp:1057)",
       "values_compared": 14
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "endcap_vertex0_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#0 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "endcap_vertex0_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#1 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "endcap_vertex3_off_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#2 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "endcap_vertex3_off_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#3 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "endcap_face_mid_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#4 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "endcap_face_mid_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#5 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "endcap_face_mid_off_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#6 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "endcap_face_mid_off_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#7 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "endcap_face_corner_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#8 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "endcap_face_corner_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#9 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "endcap_far_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#10 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "endcap_far_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#11 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "endcap_origin_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#12 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "endcap_origin_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#13 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "mouse_vertex0_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#14 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "mouse_vertex0_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#15 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "mouse_vertex3_off_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#16 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "mouse_vertex3_off_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#17 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "mouse_face_mid_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#18 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "mouse_face_mid_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#19 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "mouse_face_mid_off_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#20 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "mouse_face_mid_off_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#21 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "mouse_face_corner_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#22 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "mouse_face_corner_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#23 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "mouse_far_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#24 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "mouse_far_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#25 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "mouse_origin_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#26 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "mouse_origin_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#27 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_with_large_fillet_vertex0_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#28 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_with_large_fillet_vertex0_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#29 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_with_large_fillet_vertex3_off_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#30 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_with_large_fillet_vertex3_off_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#31 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_with_large_fillet_face_mid_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#32 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_with_large_fillet_face_mid_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#33 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_with_large_fillet_face_mid_off_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#34 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_with_large_fillet_face_mid_off_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#35 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_with_large_fillet_face_corner_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#36 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_with_large_fillet_face_corner_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#37 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_with_large_fillet_far_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#38 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_with_large_fillet_far_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#39 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_with_large_fillet_origin_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#40 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_with_large_fillet_origin_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#41 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "disk_vertex0_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#42 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "disk_vertex0_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#43 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "disk_vertex3_off_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#44 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "disk_vertex3_off_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#45 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "disk_face_mid_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#46 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "disk_face_mid_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#47 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "disk_face_mid_off_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#48 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "disk_face_mid_off_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#49 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "disk_face_corner_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#50 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "disk_face_corner_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#51 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "disk_far_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#52 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "disk_far_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#53 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "disk_origin_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#54 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "disk_origin_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#55 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ellips_ts2_vertex0_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#56 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ellips_ts2_vertex0_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#57 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ellips_ts2_vertex3_off_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#58 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ellips_ts2_vertex3_off_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#59 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "ellips_ts2_face_mid_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#60 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ellips_ts2_face_mid_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#61 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "ellips_ts2_face_mid_off_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#62 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ellips_ts2_face_mid_off_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#63 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "ellips_ts2_face_corner_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#64 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ellips_ts2_face_corner_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#65 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ellips_ts2_far_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#66 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ellips_ts2_far_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#67 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "ellips_ts2_origin_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#68 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "ellips_ts2_origin_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#69 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_circ_vertex0_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#70 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_circ_vertex0_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#71 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_circ_vertex3_off_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#72 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_circ_vertex3_off_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#73 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "plane_circ_face_mid_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#74 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_circ_face_mid_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#75 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_circ_face_mid_off_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#76 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_circ_face_mid_off_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#77 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "plane_circ_face_corner_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#78 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_circ_face_corner_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#79 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_circ_far_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#80 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_circ_far_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#81 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "plane_circ_origin_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#82 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_circ_origin_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#83 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_square_vertex0_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#84 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_square_vertex0_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#85 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_square_vertex3_off_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#86 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_square_vertex3_off_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#87 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "plane_square_face_mid_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#88 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_square_face_mid_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#89 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_square_face_mid_off_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#90 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_square_face_mid_off_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#91 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_square_face_corner_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#92 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_square_face_corner_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#93 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_square_far_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#94 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_square_far_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#95 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "plane_square_origin_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#96 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_square_origin_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#97 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "cone_vertex0_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#98 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "cone_vertex0_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#99 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "cone_vertex3_off_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#100 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "cone_vertex3_off_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#101 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "cone_face_mid_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#102 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "cone_face_mid_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#103 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "cone_face_mid_off_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#104 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "cone_face_mid_off_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#105 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "cone_face_corner_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#106 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "cone_face_corner_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#107 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "cone_far_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#108 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "cone_far_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#109 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "cone_origin_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#110 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
+      },
+      "max_rel_err": 0.0,
+      "name": "cone_origin_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#111 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
+      },
+      "max_rel_err": 0.0,
+      "name": "sphere_vertex0_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#112 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
+      },
+      "max_rel_err": 0.0,
+      "name": "sphere_vertex0_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#113 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
+      },
+      "max_rel_err": 0.0,
+      "name": "sphere_vertex3_off_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#114 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
+      },
+      "max_rel_err": 0.0,
+      "name": "sphere_vertex3_off_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#115 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
+      },
+      "max_rel_err": 0.0,
+      "name": "sphere_face_mid_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#116 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
+      },
+      "max_rel_err": 0.0,
+      "name": "sphere_face_mid_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#117 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
+      },
+      "max_rel_err": 0.0,
+      "name": "sphere_face_mid_off_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#118 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
+      },
+      "max_rel_err": 0.0,
+      "name": "sphere_face_mid_off_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#119 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
+      },
+      "max_rel_err": 0.0,
+      "name": "sphere_face_corner_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#120 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
+      },
+      "max_rel_err": 0.0,
+      "name": "sphere_face_corner_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#121 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
+      },
+      "max_rel_err": 0.0,
+      "name": "sphere_far_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#122 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
+      },
+      "max_rel_err": 0.0,
+      "name": "sphere_far_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#123 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
+      },
+      "max_rel_err": 0.0,
+      "name": "sphere_origin_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#124 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
+      },
+      "max_rel_err": 0.0,
+      "name": "sphere_origin_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#125 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "analytic face surface in the B-rep export",
+        "unit": "harness:analytic-geometry-export"
+      },
+      "max_rel_err": 0.0,
+      "name": "torus_vertex0_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#126 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "analytic face surface in the B-rep export",
+        "unit": "harness:analytic-geometry-export"
+      },
+      "max_rel_err": 0.0,
+      "name": "torus_vertex0_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#127 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "analytic face surface in the B-rep export",
+        "unit": "harness:analytic-geometry-export"
+      },
+      "max_rel_err": 0.0,
+      "name": "torus_vertex3_off_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#128 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "analytic face surface in the B-rep export",
+        "unit": "harness:analytic-geometry-export"
+      },
+      "max_rel_err": 0.0,
+      "name": "torus_vertex3_off_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#129 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "analytic face surface in the B-rep export",
+        "unit": "harness:analytic-geometry-export"
+      },
+      "max_rel_err": 0.0,
+      "name": "torus_face_mid_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#130 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "analytic face surface in the B-rep export",
+        "unit": "harness:analytic-geometry-export"
+      },
+      "max_rel_err": 0.0,
+      "name": "torus_face_mid_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#131 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "analytic face surface in the B-rep export",
+        "unit": "harness:analytic-geometry-export"
+      },
+      "max_rel_err": 0.0,
+      "name": "torus_face_mid_off_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#132 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "analytic face surface in the B-rep export",
+        "unit": "harness:analytic-geometry-export"
+      },
+      "max_rel_err": 0.0,
+      "name": "torus_face_mid_off_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#133 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "analytic face surface in the B-rep export",
+        "unit": "harness:analytic-geometry-export"
+      },
+      "max_rel_err": 0.0,
+      "name": "torus_face_corner_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#134 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "analytic face surface in the B-rep export",
+        "unit": "harness:analytic-geometry-export"
+      },
+      "max_rel_err": 0.0,
+      "name": "torus_face_corner_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#135 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "analytic face surface in the B-rep export",
+        "unit": "harness:analytic-geometry-export"
+      },
+      "max_rel_err": 0.0,
+      "name": "torus_far_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#136 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "analytic face surface in the B-rep export",
+        "unit": "harness:analytic-geometry-export"
+      },
+      "max_rel_err": 0.0,
+      "name": "torus_far_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#137 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "analytic face surface in the B-rep export",
+        "unit": "harness:analytic-geometry-export"
+      },
+      "max_rel_err": 0.0,
+      "name": "torus_origin_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#138 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "analytic face surface in the B-rep export",
+        "unit": "harness:analytic-geometry-export"
+      },
+      "max_rel_err": 0.0,
+      "name": "torus_origin_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#139 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "network_vertex0_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#140 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "network_vertex0_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#141 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "network_vertex3_off_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#142 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "network_vertex3_off_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#143 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "network_face_mid_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#144 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "network_face_mid_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#145 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "network_face_mid_off_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#146 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "network_face_mid_off_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#147 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "network_face_corner_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#148 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "network_face_corner_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#149 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "network_far_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#150 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "network_far_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#151 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "network_origin_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#152 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "network_origin_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#153 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "vertices_vertex0_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#154 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "vertices_vertex0_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#155 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "vertices_vertex3_off_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#156 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "vertices_vertex3_off_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#157 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "vertices_face_mid_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#158 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "vertices_face_mid_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#159 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "vertices_face_mid_off_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#160 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "vertices_face_mid_off_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#161 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "vertices_face_corner_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#162 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "vertices_face_corner_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#163 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "vertices_far_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#164 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "vertices_far_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#165 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "vertices_origin_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#166 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "vertices_origin_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#167 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "no_vertices_vertex0_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#168 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "no_vertices_vertex0_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#169 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "no_vertices_vertex3_off_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#170 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "no_vertices_vertex3_off_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#171 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "no_vertices_face_mid_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#172 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "no_vertices_face_mid_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#173 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "no_vertices_face_mid_off_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#174 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "no_vertices_face_mid_off_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#175 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "no_vertices_face_corner_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#176 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "no_vertices_face_corner_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#177 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 1
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "no_vertices_far_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#178 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "no_vertices_far_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#179 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "no_vertices_origin_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#180 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "no_vertices_origin_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#181 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "plane_square_vertex_off_tol0.0",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#182 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "plane_square_vertex_off_tol1e-10",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#183 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_square_vertex_off_tol0.01",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#184 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "plane_square_vertex_off_tol1.0",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#185 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_unit_inside_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#186 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_unit_inside_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#187 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_unit_inside_offcentre_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#188 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_unit_inside_offcentre_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#189 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_unit_outside_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#190 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_unit_outside_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#191 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_unit_outside_diag_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#192 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_unit_outside_diag_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#193 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_unit_on_face_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#194 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_unit_on_face_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#195 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_unit_near_face_in_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#196 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_unit_near_face_in_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#197 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_unit_on_edge_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#198 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_unit_on_edge_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#199 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_unit_vertex0_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#200 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_unit_vertex0_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#201 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_unit_face_point_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#202 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_unit_face_point_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#203 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_moved_inside_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#204 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_moved_inside_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#205 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_moved_inside_offcentre_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#206 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_moved_inside_offcentre_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#207 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_moved_outside_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#208 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_moved_outside_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#209 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_moved_outside_diag_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#210 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_moved_outside_diag_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#211 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_moved_on_face_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#212 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_moved_on_face_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#213 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_moved_near_face_in_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#214 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_moved_near_face_in_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#215 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_moved_on_edge_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#216 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_moved_on_edge_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#217 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_moved_vertex0_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#218 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_moved_vertex0_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#219 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_moved_face_point_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#220 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_moved_face_point_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#221 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_tiny_inside_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#222 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_tiny_inside_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#223 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_tiny_inside_offcentre_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#224 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_tiny_inside_offcentre_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#225 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_tiny_outside_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#226 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_tiny_outside_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#227 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_tiny_outside_diag_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#228 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_tiny_outside_diag_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#229 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_tiny_on_face_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#230 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_tiny_on_face_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#231 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_tiny_near_face_in_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#232 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_tiny_near_face_in_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#233 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_tiny_on_edge_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#234 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_tiny_on_edge_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#235 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_tiny_vertex0_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#236 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_tiny_vertex0_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#237 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_tiny_face_point_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#238 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_tiny_face_point_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#239 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_large_inside_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#240 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_large_inside_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#241 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_large_inside_offcentre_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#242 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_large_inside_offcentre_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#243 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_large_outside_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#244 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_large_outside_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#245 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_large_outside_diag_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#246 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_large_outside_diag_region",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#247 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_large_on_face_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#248 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_large_on_face_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#249 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_large_near_face_in_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#250 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_large_near_face_in_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#251 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_large_on_edge_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#252 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_large_on_edge_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#253 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "box_large_vertex0_bnd",
+      "outcome": "pass",
+      "pass": true,
+      "source": "fixture:fixtures/query.brep/classify.json#254 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_large_vertex0_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#255 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_large_face_point_bnd",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#256 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "box_large_face_point_region",
+      "outcome": "deferred",
+      "pass": false,
+      "source": "fixture:fixtures/query.brep/classify.json#257 (upstream source/SMLib/src/SmBrep.cpp:24687)",
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -2178,20 +4978,28 @@
       "values_compared": 10
     },
     {
+      "deferred": {
+        "symbol": "analytic face surface in the B-rep export",
+        "unit": "harness:analytic-geometry-export"
+      },
       "max_rel_err": 0.0,
       "name": "gen0001",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880579",
-      "values_compared": 16
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0002",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880580",
-      "values_compared": 15
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -2199,7 +5007,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880581",
-      "values_compared": 16
+      "values_compared": 9
     },
     {
       "max_rel_err": 0.0,
@@ -2207,7 +5015,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880582",
-      "values_compared": 28
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2247,7 +5055,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880587",
-      "values_compared": 30
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2263,7 +5071,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880589",
-      "values_compared": 22
+      "values_compared": 37
     },
     {
       "max_rel_err": 0.0,
@@ -2319,23 +5127,31 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880596",
-      "values_compared": 2
+      "values_compared": 29
     },
     {
+      "deferred": {
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
+      },
       "max_rel_err": 0.0,
       "name": "gen0019",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880597",
-      "values_compared": 37
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0020",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880598",
-      "values_compared": 7
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -2343,7 +5159,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880599",
-      "values_compared": 16
+      "values_compared": 29
     },
     {
       "max_rel_err": 0.0,
@@ -2354,12 +5170,16 @@
       "values_compared": 10
     },
     {
+      "deferred": {
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
+      },
       "max_rel_err": 0.0,
       "name": "gen0023",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880601",
-      "values_compared": 3
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -2378,12 +5198,16 @@
       "values_compared": 10
     },
     {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0026",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880604",
-      "values_compared": 7
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -2435,8 +5259,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0033",
@@ -2478,16 +5302,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0038",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880616",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2511,7 +5331,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880619",
-      "values_compared": 8
+      "values_compared": 43
     },
     {
       "max_rel_err": 0.0,
@@ -2522,16 +5342,12 @@
       "values_compared": 32
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0043",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880621",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2555,7 +5371,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880624",
-      "values_compared": 8
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -2563,7 +5379,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880625",
-      "values_compared": 43
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2723,7 +5539,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880645",
-      "values_compared": 8
+      "values_compared": 23
     },
     {
       "max_rel_err": 0.0,
@@ -2731,7 +5547,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880646",
-      "values_compared": 14
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2755,7 +5571,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880649",
-      "values_compared": 15
+      "values_compared": 17
     },
     {
       "max_rel_err": 0.0,
@@ -2782,16 +5598,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0075",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880653",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -2851,7 +5663,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880660",
-      "values_compared": 44
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2862,16 +5674,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0084",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880662",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2887,7 +5695,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880664",
-      "values_compared": 35
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2914,16 +5722,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0090",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880668",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -2931,7 +5735,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880669",
-      "values_compared": 14
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -2943,8 +5747,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0093",
@@ -2975,12 +5779,12 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880674",
-      "values_compared": 30
+      "values_compared": 15
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0097",
@@ -2991,8 +5795,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0098",
@@ -3082,28 +5886,20 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0109",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880687",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0110",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880688",
-      "values_compared": 0
+      "values_compared": 37
     },
     {
       "deferred": {
@@ -3123,12 +5919,12 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880690",
-      "values_compared": 7
+      "values_compared": 29
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0113",
@@ -3170,16 +5966,12 @@
       "values_compared": 32
     },
     {
-      "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0118",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880696",
-      "values_compared": 0
+      "values_compared": 23
     },
     {
       "max_rel_err": 0.0,
@@ -3206,12 +5998,16 @@
       "values_compared": 10
     },
     {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0122",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880700",
-      "values_compared": 24
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3254,12 +6050,16 @@
       "values_compared": 10
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0128",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880706",
-      "values_compared": 11
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3370,28 +6170,20 @@
       "values_compared": 20
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0142",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880720",
-      "values_compared": 0
+      "values_compared": 32
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0143",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880721",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -3402,16 +6194,12 @@
       "values_compared": 32
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0145",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880723",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -3451,7 +6239,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880728",
-      "values_compared": 23
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -3478,12 +6266,16 @@
       "values_compared": 32
     },
     {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
       "max_rel_err": 0.0,
       "name": "gen0154",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880732",
-      "values_compared": 23
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3494,12 +6286,16 @@
       "values_compared": 10
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0156",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880734",
-      "values_compared": 38
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3510,20 +6306,28 @@
       "values_compared": 10
     },
     {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0158",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880736",
-      "values_compared": 16
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0159",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880737",
-      "values_compared": 7
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3531,15 +6335,19 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880738",
-      "values_compared": 15
+      "values_compared": 14
     },
     {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
       "max_rel_err": 0.0,
       "name": "gen0161",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880739",
-      "values_compared": 17
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3571,19 +6379,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880743",
-      "values_compared": 31
+      "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0166",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880744",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -3594,16 +6398,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0168",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880746",
-      "values_compared": 0
+      "values_compared": 2
     },
     {
       "max_rel_err": 0.0,
@@ -3718,12 +6518,16 @@
       "values_compared": 10
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0183",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880761",
-      "values_compared": 30
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3742,24 +6546,24 @@
       "values_compared": 10
     },
     {
-      "max_rel_err": 0.0,
-      "name": "gen0186",
-      "outcome": "pass",
-      "pass": true,
-      "source": "generated:seed=7989681234904880764",
-      "values_compared": 31
-    },
-    {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0187",
+      "name": "gen0186",
       "outcome": "deferred",
       "pass": false,
-      "source": "generated:seed=7989681234904880765",
+      "source": "generated:seed=7989681234904880764",
       "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0187",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7989681234904880765",
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -3839,7 +6643,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880775",
-      "values_compared": 29
+      "values_compared": 18
     },
     {
       "max_rel_err": 0.0,
@@ -3850,16 +6654,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0199",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880777",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -3883,7 +6683,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880780",
-      "values_compared": 15
+      "values_compared": 31
     },
     {
       "max_rel_err": 0.0,
@@ -3899,19 +6699,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880782",
-      "values_compared": 43
+      "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0205",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880783",
-      "values_compared": 0
+      "values_compared": 16
     },
     {
       "max_rel_err": 0.0,
@@ -3978,16 +6774,12 @@
       "values_compared": 20
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0214",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880792",
-      "values_compared": 0
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -4046,12 +6838,16 @@
       "values_compared": 32
     },
     {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
       "max_rel_err": 0.0,
       "name": "gen0222",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880800",
-      "values_compared": 14
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4094,12 +6890,16 @@
       "values_compared": 10
     },
     {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0228",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880806",
-      "values_compared": 36
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4110,16 +6910,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0230",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880808",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -4135,7 +6931,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880810",
-      "values_compared": 23
+      "values_compared": 22
     },
     {
       "max_rel_err": 0.0,
@@ -4170,12 +6966,16 @@
       "values_compared": 10
     },
     {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0237",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880815",
-      "values_compared": 42
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4219,8 +7019,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0243",
@@ -4254,12 +7054,16 @@
       "values_compared": 10
     },
     {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
       "max_rel_err": 0.0,
       "name": "gen0247",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880825",
-      "values_compared": 22
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4270,16 +7074,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0249",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880827",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "max_rel_err": 0.0,
@@ -4290,16 +7090,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0251",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880829",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -4342,20 +7138,28 @@
       "values_compared": 10
     },
     {
+      "deferred": {
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
+      },
       "max_rel_err": 0.0,
       "name": "gen0257",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880835",
-      "values_compared": 15
+      "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "analytic face surface in the B-rep export",
+        "unit": "harness:analytic-geometry-export"
+      },
       "max_rel_err": 0.0,
       "name": "gen0258",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880836",
-      "values_compared": 50
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4363,7 +7167,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880837",
-      "values_compared": 15
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -4379,7 +7183,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880839",
-      "values_compared": 8
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -4390,16 +7194,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0263",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880841",
-      "values_compared": 0
+      "values_compared": 37
     },
     {
       "max_rel_err": 0.0,
@@ -4410,16 +7210,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0265",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880843",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -4443,15 +7239,19 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880846",
-      "values_compared": 43
+      "values_compared": 32
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0269",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880847",
-      "values_compared": 43
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4467,7 +7267,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880849",
-      "values_compared": 16
+      "values_compared": 17
     },
     {
       "max_rel_err": 0.0,
@@ -4515,7 +7315,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880855",
-      "values_compared": 1
+      "values_compared": 22
     },
     {
       "max_rel_err": 0.0,
@@ -4535,8 +7335,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0280",
@@ -4586,16 +7386,12 @@
       "values_compared": 20
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0286",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880864",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -4607,8 +7403,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SmSphere",
+        "unit": "surface.sphere"
       },
       "max_rel_err": 0.0,
       "name": "gen0288",
@@ -4639,24 +7435,20 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880869",
-      "values_compared": 23
+      "values_compared": 28
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0292",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880870",
-      "values_compared": 0
+      "values_compared": 22
     },
     {
       "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0293",
@@ -4675,8 +7467,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0295",
@@ -4691,7 +7483,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880874",
-      "values_compared": 16
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -4710,16 +7502,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0299",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880877",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -4738,16 +7526,12 @@
       "values_compared": 20
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0302",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880880",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -4787,7 +7571,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880885",
-      "values_compared": 1
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -4851,7 +7635,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880893",
-      "values_compared": 44
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -4894,16 +7678,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0321",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880899",
-      "values_compared": 0
+      "values_compared": 43
     },
     {
       "max_rel_err": 0.0,
@@ -4935,7 +7715,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880903",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -4951,7 +7731,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880905",
-      "values_compared": 7
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -4967,15 +7747,19 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880907",
-      "values_compared": 8
+      "values_compared": 13
     },
     {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
       "max_rel_err": 0.0,
       "name": "gen0330",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880908",
-      "values_compared": 8
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4999,7 +7783,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880911",
-      "values_compared": 14
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -5015,7 +7799,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880913",
-      "values_compared": 14
+      "values_compared": 22
     },
     {
       "max_rel_err": 0.0,
@@ -5026,16 +7810,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
-      },
       "max_rel_err": 0.0,
       "name": "gen0337",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880915",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -5047,8 +7827,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0339",
@@ -5066,24 +7846,24 @@
       "values_compared": 10
     },
     {
+      "max_rel_err": 0.0,
+      "name": "gen0341",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7989681234904880919",
+      "values_compared": 38
+    },
+    {
       "deferred": {
         "symbol": "SmFace::GetTolerance",
         "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0341",
+      "name": "gen0342",
       "outcome": "deferred",
       "pass": false,
-      "source": "generated:seed=7989681234904880919",
-      "values_compared": 0
-    },
-    {
-      "max_rel_err": 0.0,
-      "name": "gen0342",
-      "outcome": "pass",
-      "pass": true,
       "source": "generated:seed=7989681234904880920",
-      "values_compared": 7
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -5107,7 +7887,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880923",
-      "values_compared": 43
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -5115,7 +7895,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880924",
-      "values_compared": 36
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -5131,7 +7911,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880926",
-      "values_compared": 7
+      "values_compared": 14
     },
     {
       "deferred": {
@@ -5163,8 +7943,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "gen0352",
@@ -5174,16 +7954,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
-      },
       "max_rel_err": 0.0,
       "name": "gen0353",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880931",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -5202,16 +7978,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0356",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880934",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -5219,7 +7991,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880935",
-      "values_compared": 2
+      "values_compared": 16
     },
     {
       "max_rel_err": 0.0,
@@ -5323,7 +8095,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880948",
-      "values_compared": 14
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -5366,24 +8138,24 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0376",
-      "outcome": "deferred",
-      "pass": false,
-      "source": "generated:seed=7989681234904880954",
-      "values_compared": 0
-    },
-    {
-      "max_rel_err": 0.0,
-      "name": "gen0377",
       "outcome": "pass",
       "pass": true,
+      "source": "generated:seed=7989681234904880954",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0377",
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880955",
-      "values_compared": 22
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -5394,36 +8166,32 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0379",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880957",
-      "values_compared": 0
+      "values_compared": 13
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0380",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7989681234904880958",
+      "values_compared": 13
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
+        "symbol": "analytic face surface in the B-rep export",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
-      "name": "gen0380",
+      "name": "gen0381",
       "outcome": "deferred",
       "pass": false,
-      "source": "generated:seed=7989681234904880958",
-      "values_compared": 0
-    },
-    {
-      "max_rel_err": 0.0,
-      "name": "gen0381",
-      "outcome": "pass",
-      "pass": true,
       "source": "generated:seed=7989681234904880959",
-      "values_compared": 50
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -5443,8 +8211,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0384",
@@ -5454,21 +8222,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0385",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880963",
-      "values_compared": 0
+      "values_compared": 2
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
       },
       "max_rel_err": 0.0,
       "name": "gen0386",
@@ -5486,16 +8250,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0388",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904880966",
-      "values_compared": 0
+      "values_compared": 29
     },
     {
       "max_rel_err": 0.0,
@@ -5554,24 +8314,24 @@
       "values_compared": 10
     },
     {
+      "max_rel_err": 0.0,
+      "name": "gen0396",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7989681234904880974",
+      "values_compared": 15
+    },
+    {
       "deferred": {
         "symbol": "SmFace::GetTolerance",
         "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0396",
+      "name": "gen0397",
       "outcome": "deferred",
       "pass": false,
-      "source": "generated:seed=7989681234904880974",
-      "values_compared": 0
-    },
-    {
-      "max_rel_err": 0.0,
-      "name": "gen0397",
-      "outcome": "pass",
-      "pass": true,
       "source": "generated:seed=7989681234904880975",
-      "values_compared": 29
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -5603,7 +8363,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880979",
-      "values_compared": 10
+      "values_compared": 17
     },
     {
       "max_rel_err": 0.0,
@@ -5611,7 +8371,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880980",
-      "values_compared": 9
+      "values_compared": 44
     },
     {
       "max_rel_err": 0.0,
@@ -5643,15 +8403,19 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880984",
-      "values_compared": 25
+      "values_compared": 7
     },
     {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0407",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904880985",
-      "values_compared": 38
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -5667,7 +8431,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904880987",
-      "values_compared": 17
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -5870,16 +8634,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0435",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881013",
-      "values_compared": 0
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -5890,21 +8650,17 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0437",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881015",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0438",
@@ -5943,7 +8699,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904881020",
-      "values_compared": 28
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -5986,28 +8742,20 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0448",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881026",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0449",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881027",
-      "values_compared": 0
+      "values_compared": 22
     },
     {
       "max_rel_err": 0.0,
@@ -6015,7 +8763,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904881028",
-      "values_compared": 29
+      "values_compared": 8
     },
     {
       "max_rel_err": 0.0,
@@ -6034,12 +8782,16 @@
       "values_compared": 10
     },
     {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0453",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904881031",
-      "values_compared": 30
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -6098,16 +8850,12 @@
       "values_compared": 32
     },
     {
-      "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0461",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881039",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -6126,16 +8874,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0464",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881042",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -6146,28 +8890,20 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0466",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881044",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0467",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881045",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -6178,28 +8914,20 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0469",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881047",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
-      },
       "max_rel_err": 0.0,
       "name": "gen0470",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881048",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -6303,7 +9031,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904881061",
-      "values_compared": 29
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -6379,8 +9107,8 @@
     },
     {
       "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0493",
@@ -6390,28 +9118,20 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0494",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881072",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0495",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881073",
-      "values_compared": 0
+      "values_compared": 43
     },
     {
       "max_rel_err": 0.0,
@@ -6462,16 +9182,12 @@
       "values_compared": 20
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0502",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881080",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -6482,16 +9198,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0504",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881082",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -6562,12 +9274,16 @@
       "values_compared": 10
     },
     {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0513",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904881091",
-      "values_compared": 14
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -6578,12 +9294,16 @@
       "values_compared": 32
     },
     {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
       "max_rel_err": 0.0,
       "name": "gen0515",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904881093",
-      "values_compared": 8
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -6602,16 +9322,12 @@
       "values_compared": 16
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0518",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881096",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
       "max_rel_err": 0.0,
@@ -6619,7 +9335,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904881097",
-      "values_compared": 15
+      "values_compared": 21
     },
     {
       "max_rel_err": 0.0,
@@ -6646,16 +9362,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0523",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881101",
-      "values_compared": 0
+      "values_compared": 42
     },
     {
       "max_rel_err": 0.0,
@@ -6674,12 +9386,16 @@
       "values_compared": 10
     },
     {
+      "deferred": {
+        "symbol": "analytic face surface in the B-rep export",
+        "unit": "harness:analytic-geometry-export"
+      },
       "max_rel_err": 0.0,
       "name": "gen0526",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904881104",
-      "values_compared": 37
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -6690,28 +9406,20 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0528",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881106",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0529",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881107",
-      "values_compared": 0
+      "values_compared": 2
     },
     {
       "max_rel_err": 0.0,
@@ -6730,24 +9438,24 @@
       "values_compared": 16
     },
     {
-      "deferred": {
-        "symbol": "SmCone (no SurfaceKind)",
-        "unit": "surface.cone_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0532",
-      "outcome": "deferred",
-      "pass": false,
-      "source": "generated:seed=7989681234904881110",
-      "values_compared": 0
-    },
-    {
-      "max_rel_err": 0.0,
-      "name": "gen0533",
       "outcome": "pass",
       "pass": true,
+      "source": "generated:seed=7989681234904881110",
+      "values_compared": 13
+    },
+    {
+      "deferred": {
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
+      },
+      "max_rel_err": 0.0,
+      "name": "gen0533",
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904881111",
-      "values_compared": 16
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -6758,12 +9466,16 @@
       "values_compared": 16
     },
     {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0535",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904881113",
-      "values_compared": 23
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -6798,16 +9510,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0540",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881118",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -6834,12 +9542,16 @@
       "values_compared": 10
     },
     {
+      "deferred": {
+        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
+        "unit": "geom.tol"
+      },
       "max_rel_err": 0.0,
       "name": "gen0544",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904881122",
-      "values_compared": 8
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -6851,8 +9563,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
+        "symbol": "analytic face surface in the B-rep export",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "gen0546",
@@ -6906,16 +9618,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0552",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881130",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -6995,7 +9703,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904881140",
-      "values_compared": 14
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -7034,16 +9742,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0567",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881145",
-      "values_compared": 0
+      "values_compared": 7
     },
     {
       "max_rel_err": 0.0,
@@ -7067,7 +9771,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904881148",
-      "values_compared": 1
+      "values_compared": 13
     },
     {
       "deferred": {
@@ -7098,12 +9802,16 @@
       "values_compared": 32
     },
     {
+      "deferred": {
+        "symbol": "SurfaceKind::SurfOfExtrusion",
+        "unit": "surface.surf_of_extrusion_p2"
+      },
       "max_rel_err": 0.0,
       "name": "gen0574",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=7989681234904881152",
-      "values_compared": 44
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -7127,7 +9835,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904881155",
-      "values_compared": 44
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -7171,8 +9879,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFace::GetTolerance",
-        "unit": "topology.face_p2"
+        "symbol": "SmCone (no SurfaceKind)",
+        "unit": "surface.cone_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0583",
@@ -7211,7 +9919,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904881165",
-      "values_compared": 7
+      "values_compared": 43
     },
     {
       "max_rel_err": 0.0,
@@ -7238,28 +9946,20 @@
       "values_compared": 20
     },
     {
-      "deferred": {
-        "symbol": "SurfaceKind::SurfOfExtrusion",
-        "unit": "surface.surf_of_extrusion_p2"
-      },
       "max_rel_err": 0.0,
       "name": "gen0591",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881169",
-      "values_compared": 0
+      "values_compared": 14
     },
     {
-      "deferred": {
-        "symbol": "analytic face surface in the B-rep export",
-        "unit": "harness:analytic-geometry-export"
-      },
       "max_rel_err": 0.0,
       "name": "gen0592",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881170",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -7267,19 +9967,15 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=7989681234904881171",
-      "values_compared": 28
+      "values_compared": 13
     },
     {
-      "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
-      },
       "max_rel_err": 0.0,
       "name": "gen0594",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881172",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -7290,16 +9986,12 @@
       "values_compared": 10
     },
     {
-      "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
-      },
       "max_rel_err": 0.0,
       "name": "gen0596",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7989681234904881174",
-      "values_compared": 0
+      "values_compared": 13
     },
     {
       "max_rel_err": 0.0,
@@ -7310,37 +10002,38 @@
       "values_compared": 32
     },
     {
-      "max_rel_err": 0.0,
-      "name": "gen0598",
-      "outcome": "pass",
-      "pass": true,
-      "source": "generated:seed=7989681234904881176",
-      "values_compared": 22
-    },
-    {
       "deferred": {
-        "symbol": "SmSphere",
-        "unit": "surface.sphere"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
-      "name": "gen0599",
+      "name": "gen0598",
       "outcome": "deferred",
       "pass": false,
-      "source": "generated:seed=7989681234904881177",
+      "source": "generated:seed=7989681234904881176",
       "values_compared": 0
+    },
+    {
+      "max_rel_err": 0.0,
+      "name": "gen0599",
+      "outcome": "pass",
+      "pass": true,
+      "source": "generated:seed=7989681234904881177",
+      "values_compared": 13
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 134,
+  "cases_deferred": 249,
   "cases_failed": 0,
-  "cases_passed": 715,
-  "cases_total": 849,
+  "cases_passed": 879,
+  "cases_total": 1128,
   "deferred_by_unit": {
-    "harness:analytic-geometry-export": 10,
-    "surface.cone_p1": 29,
-    "surface.sphere": 7,
-    "surface.surf_of_extrusion_p2": 35,
-    "topology.face_p2": 53
+    "geom.tol": 72,
+    "harness:analytic-geometry-export": 20,
+    "surface.cone_p1": 47,
+    "surface.sphere": 18,
+    "surface.surf_of_extrusion_p2": 45,
+    "topology.face_p2": 47
   },
   "max_rel_err": 0.0,
   "pass": true,

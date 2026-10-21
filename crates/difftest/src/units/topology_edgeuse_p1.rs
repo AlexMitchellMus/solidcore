@@ -137,6 +137,8 @@ pub(crate) enum BrepIn {
         face: Option<FaceIn>,
         networks: usize,
     },
+    /// The closed box solid of `SmApiCreateBox` (planes and lines; fixtures only).
+    Box { origin: [f64; 3], size: [f64; 3] },
 }
 
 /// The face of a [`BrepIn::Mixed`] B-rep (as [`BrepIn::Face`]).
@@ -305,6 +307,11 @@ pub(crate) fn brep_block_of(
                 v.extend(face.dom);
             }
             v.push(*networks as f64);
+        }
+        BrepIn::Box { origin, size } => {
+            v.push(7.0);
+            v.extend(origin);
+            v.extend(size);
         }
     }
     v.push(flag(validate_only));
