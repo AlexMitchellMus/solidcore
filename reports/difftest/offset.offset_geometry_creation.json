@@ -2,28 +2,20 @@
   "abs_floors": [],
   "cases": [
     {
-      "deferred": {
-        "symbol": "SmCircularCrossSectionFSG::CreateSurfaceFromCurves",
-        "unit": "blend.fillet_standard_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "box_solid_offset_vertex_edge_caps",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/offset.offset_geometry_creation/upstream.json#0 (upstream tests/prog_test/src/smOffsetTest.cpp:my_test_offset (SmOffsetGeometryCreation(dOffsetRadius, dTolerance) over Solids/box.smb; VertexOffset / EdgeuseOffset through SmOffsetExecutive::DoSolidOffset))",
-      "values_compared": 0
+      "values_compared": 1438
     },
     {
-      "deferred": {
-        "symbol": "SmCircularCrossSectionFSG::CreateSurfaceFromCurves",
-        "unit": "blend.fillet_standard_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "box_shell_inset_shell_face",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/offset.offset_geometry_creation/upstream.json#1 (upstream tests/prog_test/src/smOffsetTest.cpp:my_test_offset (lShellFace > 0: SetShellFaces + inset; EdgeuseOffset on an inset edge of a shell face))",
-      "values_compared": 0
+      "values_compared": 642
     },
     {
       "deferred": {
@@ -547,8 +539,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmSurface::LiftCurve iso curve of a subclass (face surface imported as its B-spline part)",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "gen0051",
@@ -878,12 +870,16 @@
       "values_compared": 241
     },
     {
+      "deferred": {
+        "symbol": "SmSurface::LiftCurve iso curve of a subclass (face surface imported as its B-spline part)",
+        "unit": "harness:analytic-geometry-export"
+      },
       "max_rel_err": 0.0,
       "name": "gen0087",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=9515163603058762843",
-      "values_compared": 209
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -1811,8 +1807,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmSurface::LiftCurve iso curve of a subclass (face surface imported as its B-spline part)",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "gen0186",
@@ -1907,8 +1903,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmSurface::LiftCurve iso curve of a subclass (face surface imported as its B-spline part)",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "gen0197",
@@ -2679,7 +2675,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
+        "symbol": "SmSurface::LiftCurve iso curve of a subclass (face surface imported as its B-spline part)",
         "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
@@ -3166,12 +3162,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "UpdateFaceSurfaceDomain on a face surface imported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
+      },
       "max_rel_err": 0.0,
       "name": "gen0335",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=9515163603058763091",
-      "values_compared": 131
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3267,8 +3267,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmSurface::LiftCurve iso curve of a subclass (face surface imported as its B-spline part)",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "gen0346",
@@ -3307,8 +3307,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmSurface::LiftCurve iso curve of a subclass (face surface imported as its B-spline part)",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "gen0350",
@@ -3546,12 +3546,16 @@
       "values_compared": 310
     },
     {
+      "deferred": {
+        "symbol": "SmSurface::LiftCurve iso curve of a subclass (face surface imported as its B-spline part)",
+        "unit": "harness:analytic-geometry-export"
+      },
       "max_rel_err": 0.0,
       "name": "gen0376",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=9515163603058763132",
-      "values_compared": 217
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3582,12 +3586,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "UpdateFaceSurfaceDomain on a face surface imported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
+      },
       "max_rel_err": 0.0,
       "name": "gen0380",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=9515163603058763136",
-      "values_compared": 277
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -3711,8 +3719,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmSurface::LiftCurve iso curve of a subclass (face surface imported as its B-spline part)",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "gen0394",
@@ -3802,12 +3810,16 @@
       "values_compared": 389
     },
     {
+      "deferred": {
+        "symbol": "UpdateFaceSurfaceDomain on a face surface imported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
+      },
       "max_rel_err": 0.0,
       "name": "gen0403",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=9515163603058763159",
-      "values_compared": 57
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4211,8 +4223,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmSurface::LiftCurve iso curve of a subclass (face surface imported as its B-spline part)",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "gen0449",
@@ -4270,12 +4282,16 @@
       "values_compared": 0
     },
     {
+      "deferred": {
+        "symbol": "UpdateFaceSurfaceDomain on a face surface imported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
+      },
       "max_rel_err": 0.0,
       "name": "gen0455",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=9515163603058763211",
-      "values_compared": 169
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -4366,12 +4382,16 @@
       "values_compared": 961
     },
     {
+      "deferred": {
+        "symbol": "UpdateFaceSurfaceDomain on a face surface imported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
+      },
       "max_rel_err": 0.0,
       "name": "gen0465",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=9515163603058763221",
-      "values_compared": 432
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4591,7 +4611,7 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
+        "symbol": "UpdateFaceSurfaceDomain on a face surface imported as its B-spline part",
         "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
@@ -4950,12 +4970,16 @@
       "values_compared": 134
     },
     {
+      "deferred": {
+        "symbol": "SmSurface::LiftCurve iso curve of a subclass (face surface imported as its B-spline part)",
+        "unit": "harness:analytic-geometry-export"
+      },
       "max_rel_err": 0.0,
       "name": "gen0529",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=9515163603058763285",
-      "values_compared": 225
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -4982,12 +5006,16 @@
       "values_compared": 252
     },
     {
+      "deferred": {
+        "symbol": "UpdateFaceSurfaceDomain on a face surface imported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
+      },
       "max_rel_err": 0.0,
       "name": "gen0533",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=9515163603058763289",
-      "values_compared": 583
+      "values_compared": 0
     },
     {
       "deferred": {
@@ -5058,12 +5086,16 @@
       "values_compared": 173
     },
     {
+      "deferred": {
+        "symbol": "UpdateFaceSurfaceDomain on a face surface imported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
+      },
       "max_rel_err": 0.0,
       "name": "gen0541",
-      "outcome": "pass",
-      "pass": true,
+      "outcome": "deferred",
+      "pass": false,
       "source": "generated:seed=9515163603058763297",
-      "values_compared": 60
+      "values_compared": 0
     },
     {
       "max_rel_err": 0.0,
@@ -5799,8 +5831,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "geom.tol"
+        "symbol": "UpdateFaceSurfaceDomain on a face surface imported as its B-spline part",
+        "unit": "harness:analytic-geometry-export"
       },
       "max_rel_err": 0.0,
       "name": "gen0623",
@@ -7430,16 +7462,12 @@
       "values_compared": 73
     },
     {
-      "deferred": {
-        "symbol": "SmCircularCrossSectionFSG::CreateSurfaceFromCurves",
-        "unit": "blend.fillet_standard_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0797",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=9515163603058763553",
-      "values_compared": 0
+      "values_compared": 245
     },
     {
       "max_rel_err": 0.0,
@@ -7607,8 +7635,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmCircularCrossSectionFSG::CreateSurfaceFromCurves",
-        "unit": "blend.fillet_standard_solver_p1"
+        "symbol": "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "box_edgeuse_offset_plain",
@@ -7786,16 +7814,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmCircularCrossSectionFSG::CreateSurfaceFromCurves",
-        "unit": "blend.fillet_standard_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_edgeuse_offset_rails_torus",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "inline",
-      "values_compared": 0
+      "values_compared": 578
     },
     {
       "max_rel_err": 0.0,
@@ -7806,16 +7830,12 @@
       "values_compared": 374
     },
     {
-      "deferred": {
-        "symbol": "SmCircularCrossSectionFSG::CreateSurfaceFromCurves",
-        "unit": "blend.fillet_standard_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_edgeuse_offset_rails_torus_self_intersecting",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "inline",
-      "values_compared": 0
+      "values_compared": 578
     },
     {
       "max_rel_err": 0.0,
@@ -7826,16 +7846,12 @@
       "values_compared": 374
     },
     {
-      "deferred": {
-        "symbol": "SmCircularCrossSectionFSG::CreateSurfaceFromCurves",
-        "unit": "blend.fillet_standard_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_edgeuse_offset_rails_torus_vertical",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "inline",
-      "values_compared": 0
+      "values_compared": 578
     },
     {
       "max_rel_err": 0.0,
@@ -7846,16 +7862,12 @@
       "values_compared": 374
     },
     {
-      "deferred": {
-        "symbol": "SmCircularCrossSectionFSG::CreateSurfaceFromCurves",
-        "unit": "blend.fillet_standard_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_edgeuse_offset_rails_cylinder",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "inline",
-      "values_compared": 0
+      "values_compared": 498
     },
     {
       "max_rel_err": 0.0,
@@ -7866,16 +7878,12 @@
       "values_compared": 262
     },
     {
-      "deferred": {
-        "symbol": "SmCircularCrossSectionFSG::CreateSurfaceFromCurves",
-        "unit": "blend.fillet_standard_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_edgeuse_offset_rails_cone",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "inline",
-      "values_compared": 0
+      "values_compared": 498
     },
     {
       "max_rel_err": 0.0,
@@ -7886,16 +7894,12 @@
       "values_compared": 262
     },
     {
-      "deferred": {
-        "symbol": "SmCircularCrossSectionFSG::CreateSurfaceFromCurves",
-        "unit": "blend.fillet_standard_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_edgeuse_offset_rails_close_rails",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "inline",
-      "values_compared": 0
+      "values_compared": 498
     },
     {
       "max_rel_err": 0.0,
@@ -7906,16 +7910,12 @@
       "values_compared": 262
     },
     {
-      "deferred": {
-        "symbol": "SmCircularCrossSectionFSG::CreateSurfaceFromCurves",
-        "unit": "blend.fillet_standard_solver_p1"
-      },
       "max_rel_err": 0.0,
       "name": "box_with_large_fillet_edgeuse_offset_rails_mismatched_intervals",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "inline",
-      "values_compared": 0
+      "values_compared": 498
     },
     {
       "max_rel_err": 0.0,
@@ -8116,11 +8116,10 @@
   "cases_passed": 595,
   "cases_total": 874,
   "deferred_by_unit": {
-    "blend.fillet_standard_solver_p1": 11,
-    "curve.crv_on_surf": 28,
-    "geom.tol": 83,
-    "harness:analytic-geometry-export": 105,
-    "intersect.surface_drop_curve": 25,
+    "curve.crv_on_surf": 29,
+    "geom.tol": 82,
+    "harness:analytic-geometry-export": 123,
+    "intersect.surface_drop_curve": 18,
     "intersect.surface_drop_lib_p3": 13,
     "surface.surface_p2": 1,
     "topology.face_p2": 13
