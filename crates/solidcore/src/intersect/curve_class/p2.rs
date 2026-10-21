@@ -54,17 +54,17 @@
 //!   surf/surf/surf, surface/edge and edge/surface refinements) is to be ported with the
 //!   `UNPORTED(topology.edge)` site below; it recurses through upstream's own counter
 //!   (`lRecursionCount`, at most 5 levels), which [`RefineCci::recursion_count`] carries.
-//! - **Topology callees.** `SmFace::GetSurface` of `GetMinUV` / `GetMaxUV` reaches the
-//!   face's B-rep through [`ClassGeometry::topology_entity`]; a face handle the adapter
-//!   cannot resolve stays [`SolidError::Unported`]. Still [`SolidError::Unported`]:
-//!   `SmEdge::GetCurve` (`topology.edge`) of `sm_RefineCCIToSurfaces`,
-//!   `SmBrep::IsLiveTopologyMember` (`topology.brep_p1`, not ported) and the topology
-//!   zone tolerances of point classifications the adapter cannot resolve (through
+//! - **Topology callees** return [`SolidError::Unported`]: `SmEdge::GetCurve`
+//!   (`topology.edge`) and `SmFace::GetSurface` (`topology.face_p2`) are called on
+//!   opaque edge / face handles that carry no B-rep the port can reach (as in part 3
+//!   and `intersect::point_class`: the stubs wait for handle-to-B-rep resolution, not
+//!   for those units); `SmBrep::IsLiveTopologyMember` (`topology.brep_p1`, not ported)
+//!   and the topology zone tolerances of point classifications (through
 //!   `intersect.point_class`).
 //! - **Recursion.** None here (see `sm_RefineCCIToSurfaces` above).
 
 use crate::curve::curve::p2::CurveKind;
-use crate::error::{ignore_status, ignored, EntityRef, Result, SolidError};
+use crate::error::{ignore_status, ignored, Result, SolidError};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::solution_array::{Solution, SolutionType};
 use crate::geom::tol::{are_same, xsect_tol_3d_from_zones, zone_tol3d, UNINIT_TOL, ZONE_TOL_3D};
@@ -73,15 +73,17 @@ use crate::intersect::point_class::{
 };
 use crate::kernel::Kernel;
 use crate::math::{Point2, Point3, Vec3};
-use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::p5::DropPointOptions;
-use crate::topology::face::p2 as topo_face;
+use crate::topology::brep::p1::is_live_topology_member;
+use crate::topology::face::p2 as face_p2;
 use crate::topology::Brep;
+use crate::EntityRef;
 
 use super::p1::{
     xsect_tol_2d_or_3d_for_classify_pair, CurveClassification, CurveInterval, IntervalPosition,
 };
 use super::p3::curve_is_degenerate;
+use super::p7::NoObject;
 
 const OP_CC: &str = "intersect::curve_class::p2::CurveClassification";
 const OP_INSERT: &str = "intersect::curve_class::p2::insert_at";
@@ -242,16 +244,21 @@ impl<O: ClassObject> CurveClassification<O> {
 
     /// Whether a vertex, edge or face of an interval boundary classification is no
     /// longer live topology of `brep` (`HasDeadTopologyPointObject`); false for no brep
-    /// and for an empty classification.
+    /// and for an empty classification. The objects resolve through
+    /// [`ClassGeometry::topology_entity`]; one of another B-rep is not a member of `brep`.
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] for any such topology object
-    /// (`SmBrep::IsLiveTopologyMember`, unit `topology.brep_p1`).
-    pub fn has_dead_topology_point_object(&self, brep: Option<&Brep>) -> Result<bool> {
-        if brep.is_none() {
+    /// [`SolidError::Unported`] for a topology object the adapter cannot resolve to a
+    /// B-rep (`SmBrep::IsLiveTopologyMember`, unit `topology.brep_p1`).
+    pub fn has_dead_topology_point_object(
+        &self,
+        geometry: &impl ClassGeometry<O>,
+        brep: Option<&Brep>,
+    ) -> Result<bool> {
+        let Some(brep) = brep else {
             return Ok(false);
-        }
+        };
         if self.size() == 0 {
             return Ok(false); // empty classification has no interval boundaries to inspect
         }
@@ -259,19 +266,21 @@ impl<O: ClassObject> CurveClassification<O> {
         // point classifications: 0..IvlCnt inclusive
         for i in 0..=self.size() {
             let (point_class, _) = self.point_class_by_index(i)?;
-            if point_class.object().is_none() {
+            let Some(obj) = point_class.object() else {
                 continue;
-            }
+            };
             let obj_class = point_class.point_class();
             if obj_class == PointClassType::Vertex
                 || obj_class == PointClassType::Edge
                 || obj_class == PointClassType::Face
             {
-                // UNPORTED(topology.brep_p1): SmBrep::IsLiveTopologyMember
-                return Err(SolidError::unported(
+                let (b, e) = geometry.topology_entity(obj).ok_or(SolidError::unported(
                     "SmBrep::IsLiveTopologyMember",
                     "topology.brep_p1",
-                ));
+                ))?;
+                if !(std::ptr::eq(b, brep) && is_live_topology_member(brep, Some(e))) {
+                    return Ok(true);
+                }
             }
         }
 
@@ -743,10 +752,9 @@ impl<O: ClassObject> CurveClassification<O> {
     /// # Errors
     ///
     /// [`SolidError::InvalidInput`] for `index >= size()` or no curve; `SM_ERR` for a 3D
-    /// curve without a face or a face without a surface; the errors of
-    /// [`Surface::drop_point`](crate::surface::surface::Surface::drop_point);
-    /// [`SolidError::Unported`] for a face handle `geometry`
-    /// cannot resolve to its B-rep ([`ClassGeometry::topology_entity`]).
+    /// curve without a face or face surface; [`SolidError::Unported`] for a face the
+    /// adapter cannot resolve to a B-rep ([`ClassGeometry::topology_entity`];
+    /// `SmFace::GetSurface`, unit `topology.face_p2`); those of the surface drop.
     pub fn interval_min_uv(
         &self,
         k: &Kernel,
@@ -802,7 +810,7 @@ impl<O: ClassObject> CurveClassification<O> {
             return Err(SolidError::sm_err(OP_UV));
         };
         let surface = match geometry.topology_entity(face) {
-            Some((b, EntityRef::Face(f))) => topo_face::surface(b, f)?,
+            Some((b, EntityRef::Face(f))) => face_p2::surface(b, f)?,
             Some(_) => {
                 return Err(SolidError::invalid_input(
                     OP_UV,
@@ -810,27 +818,23 @@ impl<O: ClassObject> CurveClassification<O> {
                 ))
             }
             None => {
-                // an opaque handle (the adapter has no B-rep): still a deferral
-                // UNPORTED(topology.face_p2): SmFace::GetSurface (unresolved handle)
                 return Err(SolidError::unported(
                     "SmFace::GetSurface",
                     "topology.face_p2",
-                ));
+                ))
             }
         };
-        // check state - the surface must be given
-        let Some(surface) = surface else {
-            return Err(SolidError::sm_err(OP_UV));
-        };
-        // (status ignored: an undefined point on failure)
+        let surface = surface.ok_or(SolidError::sm_err(OP_UV))?;
+
+        // (EvaluatePoint's status is ignored upstream: an undefined point on failure)
         let point = ignored(curve.evaluate_point(k, param))?.unwrap_or(Vec3::UNDEF);
-        let dropped = surface.drop_point::<NoObject>(
+        let drop = surface.drop_point::<NoObject>(
             k,
             point,
             &surface.natural_uv_domain(),
             &DropPointOptions::default(),
         )?;
-        Ok(dropped.result_uv)
+        Ok(drop.result_uv)
     }
 }
 
@@ -1041,7 +1045,7 @@ mod tests {
         assert_eq!((p.x, t), (1.0, 1.0));
         assert!(c.classify_crv_loc_by_index(&k, &g, 3).is_err());
         assert!(!c
-            .has_dead_topology_point_object(Some(&Brep::new()))
+            .has_dead_topology_point_object(&g, Some(&Brep::new()))
             .unwrap());
         assert!(c
             .interval_min_uv(&k, &g, 0, Point2::new(0.0, 0.0))
