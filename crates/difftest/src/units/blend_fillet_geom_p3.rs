@@ -35,9 +35,7 @@ use solidcore::blend::fillet_geom::p1::{
     FilletGeomType, FilletSolverId, FilletVertex, FilletVertexType, FilletVertexuse,
 };
 use solidcore::blend::fillet_geom::p3::new_solver_fillet_geom;
-use solidcore::blend::fillet_solver::p1::{
-    FilletGeomRef, FilletSolver, FilletSolverOps, OffsetSurfaceSlot,
-};
+use solidcore::blend::fillet_solver::p1::{FilletSolver, FilletSolverOps, OffsetSurfaceSlot};
 use solidcore::curve::curve::{Curve, CurveKind};
 use solidcore::geom::extent1d::Extent1d;
 use solidcore::geom::vector2d::Point2;
@@ -651,6 +649,8 @@ impl RustModel {
         let mut solvers = Vec::new();
         for s in &m.solvers {
             let mut fs = FilletSolver::new(s.tol, s.ang, s.tang);
+            // the constructor's own geometry is none of the model's
+            fs.fillet_geoms.push(FilletGeomId(u32::MAX));
             for (slot, &e) in fs.edgeuses.iter_mut().zip(&s.eus) {
                 *slot = u32::try_from(sel(e, tg.n_eu()))
                     .ok()
@@ -998,8 +998,6 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                 .map(bspline_of)
                 .transpose()?
                 .map(Curve::from);
-            // the solver's own geometry (made by its constructor) is none of the model's
-            let geometry_id = |_: FilletGeomRef| Ok(FilletGeomId(u32::MAX));
             let solver = m
                 .solvers
                 .get_mut(si.0 as usize)
@@ -1013,7 +1011,6 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                 *analytic,
                 dir.map(|d| Vec3::new(d[0], d[1], d[2])),
                 reference.as_ref(),
-                &geometry_id,
             )
         }
     };

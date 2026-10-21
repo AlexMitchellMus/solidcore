@@ -442,16 +442,12 @@
       "values_compared": 28
     },
     {
-      "deferred": {
-        "symbol": "SmFilletGeom::SetOffsetSurface",
-        "unit": "blend.fillet_geom_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0025",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561849588495854239",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -678,16 +674,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmFilletGeom::SetOffsetSurface",
-        "unit": "blend.fillet_geom_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0054",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561849588495854268",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -714,16 +706,12 @@
       "values_compared": 48
     },
     {
-      "deferred": {
-        "symbol": "SmFilletGeom::SetOffsetSurface",
-        "unit": "blend.fillet_geom_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0058",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561849588495854272",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -990,16 +978,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmFilletGeom::SetOffsetSurface",
-        "unit": "blend.fillet_geom_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0092",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561849588495854306",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -1714,16 +1698,12 @@
       "values_compared": 28
     },
     {
-      "deferred": {
-        "symbol": "SmFilletGeom::SetOffsetSurface",
-        "unit": "blend.fillet_geom_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0182",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561849588495854396",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -1950,16 +1930,12 @@
       "values_compared": 125
     },
     {
-      "deferred": {
-        "symbol": "SmFilletGeom::SetOffsetSurface",
-        "unit": "blend.fillet_geom_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0211",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561849588495854425",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -2706,16 +2682,12 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmFilletGeom::SetOffsetSurface",
-        "unit": "blend.fillet_geom_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0305",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=2561849588495854519",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -2831,17 +2803,15 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 7,
+  "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 343,
+  "cases_passed": 350,
   "cases_total": 350,
-  "deferred_by_unit": {
-    "blend.fillet_geom_p1": 7
-  },
+  "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,
   "rel_tol": 1e-9,
   "seeds": 16,
-  "status": "partial",
+  "status": "green",
   "unit": "blend.fillet_solver_p1"
 }

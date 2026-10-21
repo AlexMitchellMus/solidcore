@@ -54,9 +54,8 @@
 //! - **Callees not ported yet** are private stubs returning [`SolidError::Unported`],
 //!   each tagged `UNPORTED(<unit>)`:
 //!   `SmCircularCrossSectionFSG::CreateSurfaceFromCurves` is
-//!   `blend.fillet_standard_solver_p1`'s, on the centre line's `SmBSplineCurve` part,
-//!   and only the curve on surface below remains a stub. The code after a stub is
-//!   ported in full;
+//!   `blend.fillet_standard_solver_p1`'s, on the centre line's `SmBSplineCurve` part.
+//!   The code after a stub is ported in full;
 //!   `SmEdgeuse::NormalizedEvaluate` / `CreateUVTrimCurve` (`topology.edgeuse_p3`,
 //!   through [`OffsetBrep`]), `SmBrep::MateLaminaEdgeToSurface` / `ReplaceSurface`
 //!   (`topology.brep_p2`, through [`OffsetBrep`]), `SmSurface::GlobalCurveIntersect` (`surface.surface_p8`) and
