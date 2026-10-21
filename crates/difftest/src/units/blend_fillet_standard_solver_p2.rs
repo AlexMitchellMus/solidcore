@@ -541,7 +541,7 @@ fn rust_edgeuse_body(
                 d.min().x + fu * (d.max().x - d.min().x),
                 d.min().y + fv * (d.max().y - d.min().y),
             );
-            match s.surface.evaluate_point(uv) {
+            match s.surface.evaluate_point(&k, uv) {
                 Ok(p) => v.extend([0.0, p.x, p.y, p.z]),
                 Err(e) if e.is_unported() => return Err(e),
                 Err(e) => {
@@ -554,8 +554,8 @@ fn rust_edgeuse_body(
             }
         }
     }
-    put_eu_state(&mut v, b, Some(eu))?;
-    put_eu_state(&mut v, b, radial)?;
+    put_eu_state(&k, &mut v, b, Some(eu))?;
+    put_eu_state(&k, &mut v, b, radial)?;
     Ok(v)
 }
 
@@ -1134,7 +1134,7 @@ fn rust_record(i: &Inputs) -> Result<Rec, HarnessError> {
             let (d1, d2) = (extent2(plane.d1), extent2(plane.d2));
             let mut t = TsectPnt::new();
             let res = if guess {
-                fs.guess_point_on_plane_solve(
+                fs.guess_point_on_plane_solve(&k, 
                     v3(plane.orig),
                     v3(plane.normal),
                     &d1,
@@ -1215,7 +1215,7 @@ fn rust_record(i: &Inputs) -> Result<Rec, HarnessError> {
                         .and_then(|s| {
                             s.surface
                                 .surface
-                                .evaluate_normal_extending(uv, Side::Left, Side::Left)
+                                .evaluate_normal_extending(&k, uv, Side::Left, Side::Left)
                                 .ok()
                         })
                 };

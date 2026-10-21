@@ -41,8 +41,11 @@
 //!   base [`FilletSolver`] (`m_dSavedOffsets` is the base's, uninitialised upstream,
 //!   starts at `0`). The fillet geometry pointer (`SmFilletGeom*`, unit
 //!   `blend.fillet_geom_p1`) is the solver's handle type
-//!   [`FilletSolverOps::FilletGeom`] (the base's [`FilletGeomRef`] for that
-//!   solver); `m_pCurrFilletGeom` is an `Option` of it.
+//!   [`FilletSolverOps::FilletGeom`] (a [`FilletGeomId`] of the executive's pseudo
+//!   B-rep for that solver); `m_pCurrFilletGeom` is an `Option` of it. The writes
+//!   `FlushCurve` makes to the geometry, its rails and their mate edge uses go to
+//!   the pseudo B-rep ([`FilletBrep`]) its caller passes (upstream reaches it through
+//!   the geometry pointer).
 //! - **Virtual overrides (DISPATCH GAP).** `ComputeNextPoint`, `FlushCurve`,
 //!   `ComputePointValues` and `TestSpanAccuracy` are inherent methods here, not
 //!   overrides: the base intersector's drivers (`TraceCurve`, `DoPointIntersection`,
@@ -87,7 +90,8 @@
 //! - **Not ported.** `Dump` and the `SM_DEBUG_CODE` drawing blocks; `SM_ASSERT`s.
 
 use crate::blend::fillet_custom_solver::{offset_evaluate_1st, ConstantRadiusAssistedFs};
-use crate::blend::fillet_solver::p1::{compute_uv_vectors, FilletGeomRef, FilletSolver};
+use crate::blend::fillet_geom::p1::{set_rail_curve, FilletBrep, FilletGeomId};
+use crate::blend::fillet_solver::p1::{compute_uv_vectors, FilletSolver};
 use crate::curve::crv_on_surf::CrvOnSurf;
 use crate::curve::curve::p3::PointSolveOptions;
 use crate::curve::curve::Curve;
@@ -112,6 +116,8 @@ use crate::nurbs::b_spline_curve::{BSplineCurve, BSplineCurveForm, CanonicalData
 use crate::nurbs::b_spline_surface::BSplineSurface;
 use crate::surface::surface::p2::{drop_vectors, TsectCurveType};
 use crate::surface::surface::{Surface, SurfaceKind};
+use crate::topology::edgeuse::p1 as eu1;
+use crate::topology::{edge, EdgeId};
 
 const OP_VALUES: &str = "blend::fillet_intersector::FilletIntersector::compute_point_values";
 const OP_DELTA: &str = "blend::fillet_intersector::FilletIntersector::compute_point_values_delta";
@@ -213,7 +219,8 @@ pub trait FilletSolverOps {
         point: &mut TsectPnt,
     ) -> Result<()>;
 
-    /// `ComputeUVVectors(rTsectPnt)`: the UV tangents of the point.
+    /// `ComputeUVVectors(rTsectPnt)` (non-virtual): the UV tangents of the point
+    /// ([`crate::blend::fillet_solver::p1::compute_uv_vectors`]).
     ///
     /// # Errors
     ///
@@ -292,6 +299,7 @@ pub trait FilletSolverOps {
     /// The evaluation's failure.
     fn rail_surface_evaluate_1st_derivatives(
         &mut self,
+        k: &Kernel,
         rail: usize,
         uv: Point2,
     ) -> Result<(Point3, Vec3, Vec3)>;
@@ -360,95 +368,78 @@ pub trait FilletSolverOps {
         uv2: &mut BSplineCurve,
     ) -> Result<Option<BSplineSurface>>;
 
-    /// `pFilletGeom->SetFilletSurface(pFilletSurface)` (after deleting the old one).
+    /// `pFilletGeom->SetFilletSurface(pFilletSurface)` (after deleting the old one); the
+    /// geometry is stored in `pseudo`.
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] until ported.
+    /// The geometry lookup's.
     fn set_fillet_surface(
         &mut self,
-        _geom: &Self::FilletGeom,
-        _surface: Option<BSplineSurface>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_geom_p1): SmFilletGeom::SetFilletSurface
-        Err(SolidError::unported(
-            "SmFilletGeom::SetFilletSurface",
-            "blend.fillet_geom_p1",
-        ))
-    }
+        pseudo: &mut FilletBrep,
+        geom: &Self::FilletGeom,
+        surface: Option<BSplineSurface>,
+    ) -> Result<()>;
 
     /// `pFilletGeom->m_pCenterLineCurve = pCenterLine` (after deleting the old one).
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] until ported.
+    /// The geometry lookup's.
     fn set_center_line_curve(
         &mut self,
-        _geom: &Self::FilletGeom,
-        _center_line: BSplineCurve,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_geom_p1): SmFilletGeom::m_pCenterLineCurve
-        Err(SolidError::unported(
-            "SmFilletGeom::m_pCenterLineCurve",
-            "blend.fillet_geom_p1",
-        ))
-    }
+        pseudo: &mut FilletBrep,
+        geom: &Self::FilletGeom,
+        center_line: BSplineCurve,
+    ) -> Result<()>;
 
     /// `pRail = pFilletGeom->GetRail(rail); pRail->SetCurve(curve, TRUE);
     /// curve->SetOwner(pRail); pRail->SetInterval(curve->GetNaturalInterval())`.
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] until ported.
+    /// The geometry lookup's; [`SolidError::InvalidInput`] for a geometry without
+    /// that rail (upstream dereferences `NULL`).
     fn set_rail_curve(
         &mut self,
-        _geom: &Self::FilletGeom,
-        _rail: usize,
-        _curve: BSplineCurve,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_geom_p1): SmFilletGeom::GetRail
-        Err(SolidError::unported(
-            "SmFilletGeom::GetRail",
-            "blend.fillet_geom_p1",
-        ))
-    }
+        pseudo: &mut FilletBrep,
+        geom: &Self::FilletGeom,
+        rail: usize,
+        curve: BSplineCurve,
+    ) -> Result<()>;
 
     /// `pRail->GetPrimaryEdgeuse()->GetMate()->SetUVCurve(uv, TRUE);
     /// uv->SetOwner(mate)` for the rail `rail` of the geometry.
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] until ported.
+    /// The geometry lookup's; [`SolidError::InvalidInput`] for a missing rail,
+    /// primary edge use or mate (upstream dereferences `NULL`).
     fn set_rail_mate_uv_curve(
         &mut self,
-        _geom: &Self::FilletGeom,
-        _rail: usize,
-        _uv_curve: BSplineCurve,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_geom_p1): SmFilletGeom::GetRail
-        Err(SolidError::unported(
-            "SmFilletGeom::GetRail",
-            "blend.fillet_geom_p1",
-        ))
-    }
+        pseudo: &mut FilletBrep,
+        geom: &Self::FilletGeom,
+        rail: usize,
+        uv_curve: BSplineCurve,
+    ) -> Result<()>;
 }
 
 /// The `SmFilletSolver` members `SmFilletIntersector` reaches through the
 /// co-ported constant-radius solver, delegated to the base ([`FilletSolver`], unit
-/// `blend.fillet_solver_p1`). The fillet geometry handle is the base's
-/// [`FilletGeomRef`] (the geometry's data belongs to `blend.fillet_geom_*`).
+/// `blend.fillet_solver_p1`). The fillet geometry handle is a [`FilletGeomId`] of the
+/// pseudo B-rep the geometry writes go to (`blend.fillet_geom_p1`).
 impl FilletSolverOps for ConstantRadiusAssistedFs {
-    type FilletGeom = FilletGeomRef;
+    type FilletGeom = FilletGeomId;
 
     fn compute_surface_values(
         &mut self,
-        _k: &Kernel,
+        k: &Kernel,
         uv_values: [Point2; 2],
         point: &mut TsectPnt,
     ) -> Result<()> {
         // non-virtual in the base; it calls the virtual SetupOffsetValues, which
         // SmConstantRadiusFS overrides (blend.fillet_standard_solver_p1)
-        FilletSolver::compute_surface_values(self, uv_values, point)
+        FilletSolver::compute_surface_values(k, self, uv_values, point)
     }
 
     fn set_surfaces_to_zero_offset(&mut self) -> Result<()> {
@@ -497,7 +488,7 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
         Ok(())
     }
 
-    fn last_fillet_geom(&self) -> Result<FilletGeomRef> {
+    fn last_fillet_geom(&self) -> Result<FilletGeomId> {
         self.solver.last_fillet_geom()
     }
 
@@ -509,7 +500,7 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
 
     fn smooth_out_intersection(
         &mut self,
-        _geom: &FilletGeomRef,
+        _geom: &FilletGeomId,
         _curves_3d: &mut Vec<BSplineCurve>,
         _uv_curves1: &mut Vec<BSplineCurve>,
         _uv_curves2: &mut Vec<BSplineCurve>,
@@ -577,11 +568,72 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
 
     fn rail_surface_evaluate_1st_derivatives(
         &mut self,
+        k: &Kernel,
         rail: usize,
         uv: Point2,
     ) -> Result<(Point3, Vec3, Vec3)> {
-        offset_evaluate_1st(self.surface_mut(rail)?, uv)
+        offset_evaluate_1st(k, self.surface_mut(rail)?, uv)
     }
+
+    fn set_fillet_surface(
+        &mut self,
+        pseudo: &mut FilletBrep,
+        geom: &FilletGeomId,
+        surface: Option<BSplineSurface>,
+    ) -> Result<()> {
+        pseudo
+            .geom_mut(*geom)?
+            .set_fillet_surface(surface.map(Surface::from));
+        Ok(())
+    }
+
+    fn set_center_line_curve(
+        &mut self,
+        pseudo: &mut FilletBrep,
+        geom: &FilletGeomId,
+        center_line: BSplineCurve,
+    ) -> Result<()> {
+        pseudo.geom_mut(*geom)?.center_line_curve = Some(center_line);
+        Ok(())
+    }
+
+    fn set_rail_curve(
+        &mut self,
+        pseudo: &mut FilletBrep,
+        geom: &FilletGeomId,
+        rail: usize,
+        curve: BSplineCurve,
+    ) -> Result<()> {
+        let rail_edge = geom_rail(pseudo, *geom, rail)?;
+        let interval = curve.natural_interval();
+        // SetCurve(curve, TRUE): the old curve is deleted and the change notification
+        // clears the edge uses' UV trim curves and cached gaps; SetOwner is identity
+        set_rail_curve(pseudo.brep_mut(), rail_edge, Curve::from(curve))?;
+        edge::set_interval(pseudo.brep_mut(), rail_edge, &interval)
+    }
+
+    fn set_rail_mate_uv_curve(
+        &mut self,
+        pseudo: &mut FilletBrep,
+        geom: &FilletGeomId,
+        rail: usize,
+        uv_curve: BSplineCurve,
+    ) -> Result<()> {
+        let rail_edge = geom_rail(pseudo, *geom, rail)?;
+        let prim = eu1::primary_edgeuse(pseudo.brep(), rail_edge)?
+            .ok_or_else(|| SolidError::invalid_input(OP_FLUSH, "rail without edge use"))?;
+        let mate = eu1::mate(pseudo.brep(), prim)?
+            .ok_or_else(|| SolidError::invalid_input(OP_FLUSH, "rail edge use without mate"))?;
+        pseudo.set_edgeuse_uv_curve(mate, Some(Curve::from(uv_curve)), true, true)
+    }
+}
+
+/// `pFilletGeom->GetRail(rail)`, dereferenced (`NULL` is [`SolidError::InvalidInput`]).
+fn geom_rail(pseudo: &FilletBrep, geom: FilletGeomId, rail: usize) -> Result<EdgeId> {
+    pseudo
+        .geom(geom)?
+        .rail(rail)
+        .ok_or_else(|| SolidError::invalid_input(OP_FLUSH, "fillet geometry without rail"))
 }
 
 // ---- helpers --------------------------------------------------------------------------------
@@ -619,8 +671,8 @@ fn crv_on_surf(
 }
 
 /// `sMap.Evaluate(t, 1, TRUE, aPV)`: the position and first derivative.
-fn eval1(map: &CrvOnSurf, t: f64) -> Result<[Vec3; 2]> {
-    let v = map.evaluate(t, 1, true, true)?;
+fn eval1(k: &Kernel, map: &CrvOnSurf, t: f64) -> Result<[Vec3; 2]> {
+    let v = map.evaluate(k, t, 1, true, true)?;
     let p = v.first().copied().unwrap_or(Vec3::UNDEF);
     let d = v.get(1).copied().unwrap_or(Vec3::UNDEF);
     Ok([p, d])
@@ -755,6 +807,7 @@ impl<'s, 't, O: SolutionObject + 't, G: Clone> FilletIntersector<'s, 't, O, G> {
     ///
     /// Those of [`AdvSurfaceIntersector::new`].
     pub fn new(
+        k: &'s Kernel,
         surface1: &'s Surface,
         uv_domain1: &Extent2d,
         surface2: &'s Surface,
@@ -762,7 +815,7 @@ impl<'s, 't, O: SolutionObject + 't, G: Clone> FilletIntersector<'s, 't, O, G> {
         curr_fillet_geom: Option<G>,
     ) -> Result<Self> {
         let mut base =
-            AdvSurfaceIntersector::new(surface1, uv_domain1, surface2, uv_domain2, true)?;
+            AdvSurfaceIntersector::new(k, surface1, uv_domain1, surface2, uv_domain2, true)?;
         // Will not try to extend boundary intersection point to catch
         // an end point which is also on the boundary. i.e. deactivate this feature
         base.base.do_boundary_point_on_curve_test = false;
@@ -945,12 +998,12 @@ impl<'s, 't, O: SolutionObject + 't, G: Clone> FilletIntersector<'s, 't, O, G> {
         let map1 = crv_on_surf(k, uv_crv1, s1, &si.uv_domains[1])?;
 
         let ivl0 = map0.natural_interval();
-        let [p00, d00] = eval1(&map0, ivl0.min())?;
-        let [p01, d01] = eval1(&map0, ivl0.max())?;
+        let [p00, d00] = eval1(k, &map0, ivl0.min())?;
+        let [p01, d01] = eval1(k, &map0, ivl0.max())?;
         let crv_3d0 = HermiteCurve::new(p00, d00, p01, d01, 3);
         let ivl1 = map1.natural_interval();
-        let [p10, d10] = eval1(&map1, ivl1.min())?;
-        let [p11, d11] = eval1(&map1, ivl1.max())?;
+        let [p10, d10] = eval1(k, &map1, ivl1.min())?;
+        let [p11, d11] = eval1(k, &map1, ivl1.max())?;
         let crv_3d1 = HermiteCurve::new(p10, d10, p11, d11, 3);
 
         // Utilize the angle between the normals to adjust the tolerance.
@@ -967,12 +1020,13 @@ impl<'s, 't, O: SolutionObject + 't, G: Clone> FilletIntersector<'s, 't, O, G> {
 
         let tol_sq = adjusted_tolerance * adjusted_tolerance;
         if let Some(mid_pnt) = &mid_pnt {
-            let test_mid1 = s0.evaluate_point(mid_pnt.uv_pos(SrfIndex::First))?;
-            let test_mid2 = s1.evaluate_point(mid_pnt.uv_pos(SrfIndex::Second))?;
+            let test_mid1 = s0.evaluate_point(k, mid_pnt.uv_pos(SrfIndex::First))?;
+            let test_mid2 = s1.evaluate_point(k, mid_pnt.uv_pos(SrfIndex::Second))?;
             let c0 = Curve::from(crv_3d0);
             let c1 = Curve::from(crv_3d1);
 
             let (found, sol) = c0.local_point_solve::<()>(
+                k,
                 &c0.natural_interval(),
                 SolverOperation::Minimize,
                 test_mid1,
@@ -983,6 +1037,7 @@ impl<'s, 't, O: SolutionObject + 't, G: Clone> FilletIntersector<'s, 't, O, G> {
             let crv_pnt0 = crv_3d0.evaluate_point(t0);
 
             let (found, sol) = c1.local_point_solve::<()>(
+                k,
                 &c1.natural_interval(),
                 SolverOperation::Minimize,
                 test_mid2,
@@ -1011,8 +1066,8 @@ impl<'s, 't, O: SolutionObject + 't, G: Clone> FilletIntersector<'s, 't, O, G> {
             let uv3d1 = uv_crv1.evaluate_point(param);
             let uv0 = si.uv_domains[0].clamp_point(Point2::new(uv3d0.x, uv3d0.y));
             let uv1 = si.uv_domains[1].clamp_point(Point2::new(uv3d1.x, uv3d1.y));
-            let pnt0 = s0.evaluate_point(uv0)?;
-            let pnt1 = s1.evaluate_point(uv1)?;
+            let pnt0 = s0.evaluate_point(k, uv0)?;
+            let pnt1 = s1.evaluate_point(k, uv1)?;
             let crv_pnt0 = crv_3d0.evaluate_point(param);
             let crv_pnt1 = crv_3d1.evaluate_point(param);
             let dist_sq = pnt0.distance_squared(crv_pnt0);
@@ -1290,8 +1345,8 @@ impl<'s, 't, O: SolutionObject + 't, G: Clone> FilletIntersector<'s, 't, O, G> {
         let map0 = crv_on_surf(k, uv_crv0, s0, &si.uv_domains[0])?;
         let map1 = crv_on_surf(k, uv_crv1, s1, &si.uv_domains[1])?;
 
-        let crv_3d0 = rail_hermite(&map0, adjust_derivatives)?;
-        let crv_3d1 = rail_hermite(&map1, adjust_derivatives)?;
+        let crv_3d0 = rail_hermite(k, &map0, adjust_derivatives)?;
+        let crv_3d1 = rail_hermite(k, &map1, adjust_derivatives)?;
 
         let mut adjusted_tolerance = si.this_approx_tol_3d;
         if adjust_derivatives {
@@ -1309,8 +1364,8 @@ impl<'s, 't, O: SolutionObject + 't, G: Clone> FilletIntersector<'s, 't, O, G> {
             let uv1 = si.uv_domains[1].clamp_point(Point2::new(uv3d1.x, uv3d1.y));
 
             // evaluate the associated surface points
-            let pnt0 = s0.evaluate_point(uv0)?;
-            let pnt1 = s1.evaluate_point(uv1)?;
+            let pnt0 = s0.evaluate_point(k, uv0)?;
+            let pnt1 = s1.evaluate_point(k, uv1)?;
 
             // evaluate the associated 3d RailCurve points
             let crv_pnt0 = crv_3d0.evaluate_point(param);
@@ -1360,6 +1415,7 @@ impl<'s, 't, O: SolutionObject + 't, G: Clone> FilletIntersector<'s, 't, O, G> {
         &mut self,
         solver: &mut S,
         k: &Kernel,
+        pseudo: &mut FilletBrep,
         out: &mut TsectCurves,
     ) -> Result<()> {
         // 1. offset surface sample points
@@ -1625,12 +1681,12 @@ impl<'s, 't, O: SolutionObject + 't, G: Clone> FilletIntersector<'s, 't, O, G> {
 
                 // Now lift the point and derivatives of UV curves into 3D on the zero offset surface.
                 let (pnt, du, dv) =
-                    solver.rail_surface_evaluate_1st_derivatives(rail, tsp_last.uv_pos(s))?;
+                    solver.rail_surface_evaluate_1st_derivatives(k, rail, tsp_last.uv_pos(s))?;
                 let p13d = pnt;
                 let d13d = du * der1.x + dv * der1.y;
 
                 let (pnt, du, dv) =
-                    solver.rail_surface_evaluate_1st_derivatives(rail, tsp_curr.uv_pos(s))?;
+                    solver.rail_surface_evaluate_1st_derivatives(k, rail, tsp_curr.uv_pos(s))?;
                 let p43d = pnt;
                 let d23d = du * der2.x + dv * der2.y;
 
@@ -1717,12 +1773,12 @@ impl<'s, 't, O: SolutionObject + 't, G: Clone> FilletIntersector<'s, 't, O, G> {
         //     (bTempTrySelfIntHandler is a FALSE constant).
 
         // 12. Save Fillet Surface and rail curve data
-        solver.set_fillet_surface(&fillet_geom, fillet_surface)?;
-        solver.set_center_line_curve(&fillet_geom, center_line)?;
-        solver.set_rail_curve(&fillet_geom, 0, curve1)?;
-        solver.set_rail_mate_uv_curve(&fillet_geom, 0, uv1)?;
-        solver.set_rail_curve(&fillet_geom, 1, curve2)?;
-        solver.set_rail_mate_uv_curve(&fillet_geom, 1, uv2)?;
+        solver.set_fillet_surface(pseudo, &fillet_geom, fillet_surface)?;
+        solver.set_center_line_curve(pseudo, &fillet_geom, center_line)?;
+        solver.set_rail_curve(pseudo, &fillet_geom, 0, curve1)?;
+        solver.set_rail_mate_uv_curve(pseudo, &fillet_geom, 0, uv1)?;
+        solver.set_rail_curve(pseudo, &fillet_geom, 1, curve2)?;
+        solver.set_rail_mate_uv_curve(pseudo, &fillet_geom, 1, uv2)?;
 
         // restore FilletSolver offset distances in offset Surfaces stored in the FilletSolver
         solver.reload_surface_offsets()?;
@@ -1782,16 +1838,16 @@ impl<'s, 't, O: SolutionObject + 't, G: Clone> FilletIntersector<'s, 't, O, G> {
 /// The 3D Hermite rail span of a UV span on its surface: the end points and
 /// derivatives of the mapped curve; with `adjust`, the derivatives taken at the
 /// interior parameters `0.001` and `0.999` instead.
-fn rail_hermite(map: &CrvOnSurf, adjust: bool) -> Result<HermiteCurve> {
+fn rail_hermite(k: &Kernel, map: &CrvOnSurf, adjust: bool) -> Result<HermiteCurve> {
     let ivl = map.natural_interval();
-    let [p0, mut d0] = eval1(map, ivl.min())?;
-    let [p1, mut d1] = eval1(map, ivl.max())?;
+    let [p0, mut d0] = eval1(k, map, ivl.min())?;
+    let [p1, mut d1] = eval1(k, map, ivl.max())?;
 
     // If we had to find the uv curve derivs by divided differences (above),
     // set 3d curve derivs from nearby internal points.
     if adjust {
-        let [_, da] = eval1(map, ivl.evaluate(0.001))?;
-        let [_, db] = eval1(map, ivl.evaluate(0.999))?;
+        let [_, da] = eval1(k, map, ivl.evaluate(0.001))?;
+        let [_, db] = eval1(k, map, ivl.evaluate(0.999))?;
         d0 = da;
         d1 = db;
     }
@@ -1865,10 +1921,11 @@ mod tests {
 
     #[test]
     fn construction_and_flags() {
+        let k = &Kernel::default();
         let (a, b) = surfaces();
         let d = Extent2d::from_bounds(-1.0, -1.0, 2.0, 2.0);
         let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, ()> =
-            FilletIntersector::new(&a, &d, &b, &d, None).unwrap();
+            FilletIntersector::new(k, &a, &d, &b, &d, None).unwrap();
         assert!(!fi.base.base.do_boundary_point_on_curve_test);
         // the fillet flag keeps domains beyond the natural ones
         assert_eq!(fi.base.base.uv_domains[0], d);
@@ -1883,11 +1940,12 @@ mod tests {
 
     #[test]
     fn span_rejects_large_turn_and_keeps_offsets() {
+        let k = &Kernel::default();
         let (a, b) = surfaces();
         let d = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
         let mut s = solver(&a, &b);
-        let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, FilletGeomRef> =
-            FilletIntersector::new(&a, &d, &b, &d, None).unwrap();
+        let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, FilletGeomId> =
+            FilletIntersector::new(k, &a, &d, &b, &d, None).unwrap();
         let p = fi
             .base
             .base
@@ -1917,11 +1975,12 @@ mod tests {
 
     #[test]
     fn span_accepts_straight_line_on_planes() {
+        let k = &Kernel::default();
         let (a, b) = surfaces();
         let d = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
         let mut s = solver(&a, &b);
-        let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, FilletGeomRef> =
-            FilletIntersector::new(&a, &d, &b, &d, None).unwrap();
+        let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, FilletGeomId> =
+            FilletIntersector::new(k, &a, &d, &b, &d, None).unwrap();
         let p = fi
             .base
             .base
@@ -1947,11 +2006,12 @@ mod tests {
 
     #[test]
     fn next_point_needs_a_crossing() {
+        let k = &Kernel::default();
         let (a, b) = surfaces();
         let d = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
         let mut s = solver(&a, &b);
-        let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, FilletGeomRef> =
-            FilletIntersector::new(&a, &d, &b, &d, None).unwrap();
+        let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, FilletGeomId> =
+            FilletIntersector::new(k, &a, &d, &b, &d, None).unwrap();
         let mut t = pnt([0.1, 0.0], [0.1, 0.0], [1.0, 0.0, 0.0], 0.0);
         t.point_type = IntersectionPointType::TangentCurve;
         let p = fi.base.base.alloc_point(t);
@@ -2066,6 +2126,7 @@ mod tests {
 
         fn rail_surface_evaluate_1st_derivatives(
             &mut self,
+            _k: &Kernel,
             _rail: usize,
             _uv: Point2,
         ) -> Result<(Point3, Vec3, Vec3)> {
@@ -2110,14 +2171,53 @@ mod tests {
         ) -> Result<Option<BSplineSurface>> {
             Ok(None)
         }
+
+        fn set_fillet_surface(
+            &mut self,
+            _pseudo: &mut FilletBrep,
+            _geom: &(),
+            _surface: Option<BSplineSurface>,
+        ) -> Result<()> {
+            Ok(())
+        }
+
+        fn set_center_line_curve(
+            &mut self,
+            _pseudo: &mut FilletBrep,
+            _geom: &(),
+            _center_line: BSplineCurve,
+        ) -> Result<()> {
+            Ok(())
+        }
+
+        fn set_rail_curve(
+            &mut self,
+            _pseudo: &mut FilletBrep,
+            _geom: &(),
+            _rail: usize,
+            _curve: BSplineCurve,
+        ) -> Result<()> {
+            Ok(())
+        }
+
+        fn set_rail_mate_uv_curve(
+            &mut self,
+            _pseudo: &mut FilletBrep,
+            _geom: &(),
+            _rail: usize,
+            _uv_curve: BSplineCurve,
+        ) -> Result<()> {
+            Ok(())
+        }
     }
 
     #[test]
     fn next_point_uses_the_step_size_step_solve_returns() {
+        let k = &Kernel::default();
         let (a, b) = surfaces();
         let d = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
         let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, ()> =
-            FilletIntersector::new(&a, &d, &b, &d, None).unwrap();
+            FilletIntersector::new(k, &a, &d, &b, &d, None).unwrap();
         let p = fi
             .base
             .base
@@ -2147,10 +2247,11 @@ mod tests {
 
     #[test]
     fn next_point_aliased_non_crossing_is_no_point() {
+        let k = &Kernel::default();
         let (a, b) = surfaces();
         let d = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
         let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, ()> =
-            FilletIntersector::new(&a, &d, &b, &d, None).unwrap();
+            FilletIntersector::new(k, &a, &d, &b, &d, None).unwrap();
         let mut q = pnt([0.1, 0.0], [0.1, 0.0], [1.0, 0.0, 0.0], 0.0);
         q.point_type = IntersectionPointType::TangentPoint;
         let p = fi.base.base.alloc_point(q);
@@ -2174,15 +2275,16 @@ mod tests {
 
     #[test]
     fn flush_curve_short_lists() {
+        let k = &Kernel::default();
         let (a, b) = surfaces();
         let d = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
         let mut s = solver(&a, &b);
-        let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, FilletGeomRef> =
-            FilletIntersector::new(&a, &d, &b, &d, None).unwrap();
+        let mut fi: FilletIntersector<'_, '_, NoSurfaceHandle, FilletGeomId> =
+            FilletIntersector::new(k, &a, &d, &b, &d, None).unwrap();
         let mut out = TsectCurves::default();
         // no points: SM_ERR_NULL_POINTER
         assert!(fi
-            .flush_curve(&mut s, &Kernel::default(), &mut out)
+            .flush_curve(&mut s, &Kernel::default(), &mut FilletBrep::new(), &mut out)
             .is_err());
         // one point on the boundary of the first domain
         let p = fi
@@ -2190,7 +2292,7 @@ mod tests {
             .base
             .alloc_point(pnt([1.0, 0.5], [0.5, 0.5], [1.0, 0.0, 0.0], 0.0));
         fi.base.base.add_point_to_curve(p).unwrap();
-        fi.flush_curve(&mut s, &Kernel::default(), &mut out)
+        fi.flush_curve(&mut s, &Kernel::default(), &mut FilletBrep::new(), &mut out)
             .unwrap();
         assert!(fi.curr_fillet_touch_boundary());
         assert!(fi.base.base.curve_points().is_empty());
@@ -2209,7 +2311,7 @@ mod tests {
         fi.base.base.add_point_to_curve(p).unwrap();
         fi.base.base.add_point_to_curve(q).unwrap();
         let e = fi
-            .flush_curve(&mut s, &Kernel::default(), &mut out)
+            .flush_curve(&mut s, &Kernel::default(), &mut FilletBrep::new(), &mut out)
             .unwrap_err();
         assert!(matches!(e, SolidError::InvalidInput { .. }), "{e:?}");
         assert!(!fi.curr_fillet_touch_boundary());
@@ -2228,7 +2330,60 @@ mod tests {
         assert_eq!(s.solver.status(), FilStatus::Processed);
 
         assert!(!s.has_surface_generator().unwrap());
-        assert_eq!(s.last_fillet_geom().unwrap(), FilletGeomRef { index: 0 });
+        // the base constructor's geometry lives in the pseudo B-rep
+        assert!(matches!(
+            s.last_fillet_geom().unwrap_err(),
+            SolidError::InvalidInput { .. }
+        ));
+        let mut pseudo = FilletBrep::new();
+        let g = s
+            .solver
+            .add_constructor_fillet_geom(
+                &k,
+                &mut pseudo,
+                crate::blend::fillet_geom::p1::FilletSolverId(0),
+            )
+            .unwrap();
+        assert_eq!(s.last_fillet_geom().unwrap(), g);
+        // its offset surfaces are copies of the solver's (set before the geometry here)
+        assert!(pseudo
+            .geom(g)
+            .unwrap()
+            .off_surfs
+            .iter()
+            .all(Option::is_some));
+
+        // FlushCurve's writes go to the geometry in the pseudo B-rep
+        let mut curves = Vec::new();
+        flush_crv(
+            3,
+            &[
+                Point3::new(0.0, 0.0, 0.0),
+                Point3::new(1.0, 0.0, 0.0),
+                Point3::new(2.0, 0.0, 0.0),
+                Point3::new(3.0, 0.0, 0.0),
+            ],
+            &[0.0, 1.0],
+            &mut curves,
+        )
+        .unwrap();
+        let line = curves.pop().unwrap();
+        s.set_center_line_curve(&mut pseudo, &g, line.clone())
+            .unwrap();
+        assert!(pseudo.geom(g).unwrap().center_line_curve().is_some());
+        s.set_fillet_surface(&mut pseudo, &g, None).unwrap();
+        assert!(pseudo.geom(g).unwrap().fillet_surface().is_none());
+        // a geometry without rails: upstream dereferences NULL
+        assert!(matches!(
+            s.set_rail_curve(&mut pseudo, &g, 0, line.clone())
+                .unwrap_err(),
+            SolidError::InvalidInput { .. }
+        ));
+        assert!(matches!(
+            s.set_rail_mate_uv_curve(&mut pseudo, &g, 1, line)
+                .unwrap_err(),
+            SolidError::InvalidInput { .. }
+        ));
 
         // the handler is the executive's member
         assert!(matches!(

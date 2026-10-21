@@ -281,8 +281,11 @@ fn get_or_create_uv_trim_curve(k: &Kernel, b: &mut Brep, eu: EdgeuseId) -> Resul
 
 /// `rCrvClass.IsCrossedByEdge()`: upstream returns a plain boolean, so a failure other
 /// than [`SolidError::Unported`] reads as `FALSE`.
-fn is_crossed_by_edge<O: LoopObject>(c: &CurveClassification<O>) -> Result<bool> {
-    Ok(ignored(c.is_crossed_by_edge())?.unwrap_or(false))
+fn is_crossed_by_edge<O: LoopObject>(
+    geometry: &impl ClassGeometry<O>,
+    c: &CurveClassification<O>,
+) -> Result<bool> {
+    Ok(ignored(c.is_crossed_by_edge(geometry))?.unwrap_or(false))
 }
 
 /// `rCrvClass.HasNearMisses()` (default `bInSurfaceGaps = FALSE`): upstream returns a
@@ -671,7 +674,7 @@ pub fn create_oriented_trim_boundary(
                 let ivl = uv_curve.natural_interval();
 
                 // get trim curve's start UV point
-                let pnt = uv_curve.evaluate_point(ivl.min())?;
+                let pnt = uv_curve.evaluate_point(k, ivl.min())?;
 
                 // get dist from this start pt to last curve's end-point
                 let diff = pnt - last_pnt;
@@ -683,7 +686,7 @@ pub fn create_oriented_trim_boundary(
                 }
 
                 // Get UVCurve->End UVPoint
-                last_pnt = uv_curve.evaluate_point(ivl.max())?;
+                last_pnt = uv_curve.evaluate_point(k, ivl.max())?;
                 edges_in_loop += 1;
                 if parameter_space {
                     // (status ignored upstream; only NER(pOrig))
@@ -715,7 +718,7 @@ pub fn create_oriented_trim_boundary(
 
                 let ivl = bsc.natural_interval();
                 let ivl = bsc.reverse_parameterization(k, &ivl)?;
-                let pnt = bsc.evaluate_point(ivl.min())?;
+                let pnt = bsc.evaluate_point(k, ivl.min())?;
                 let diff = pnt - last_pnt;
                 let scaled_zero = EFF_ZERO * (1.0 + pnt.max_dimension());
                 if diff.length_squared() > scaled_zero && parameter_space && fill_singularities {
@@ -723,7 +726,7 @@ pub fn create_oriented_trim_boundary(
                     edges_in_loop += 1;
                     out.curves.push(gap_line(last_pnt, pnt)?);
                 }
-                last_pnt = bsc.evaluate_point(ivl.max())?;
+                last_pnt = bsc.evaluate_point(k, ivl.max())?;
                 edges_in_loop += 1;
                 out.curves.push(bsc);
             }
@@ -1276,7 +1279,7 @@ fn sample_uv(
     param: f64,
     pv: &mut [Vec3; 2],
 ) -> Result<Point2> {
-    if let Some(v) = ignored(evaluate_geometric(curve, param, 1, true))? {
+    if let Some(v) = ignored(evaluate_geometric(k, curve, param, 1, true))? {
         if let [p, d, ..] = v.as_slice() {
             *pv = [*p, *d];
         }
@@ -1289,6 +1292,7 @@ fn sample_uv(
     }
     // DropVectors of the tangent (its output is never read)
     ignore_status(drop_vectors_at(
+        k,
         surface,
         uv,
         Side::Left,
@@ -1392,11 +1396,11 @@ pub fn move_seam<O: LoopObject>(
 
     let crosses_u = match props {
         Some(p) => names(p.bad_crossed_seam_dir, Sp::U),
-        None => is_crossed_by_edge(crv_class_u)?,
+        None => is_crossed_by_edge(geometry, crv_class_u)?,
     };
     let crosses_v = match props {
         Some(p) => names(p.bad_crossed_seam_dir, Sp::V),
-        None => is_crossed_by_edge(crv_class_v)?,
+        None => is_crossed_by_edge(geometry, crv_class_v)?,
     };
     let near_miss_u = match props {
         Some(p) => names(p.bad_near_miss_seam_dir, Sp::U),
@@ -1851,8 +1855,8 @@ fn split_at_seam_depth<O: LoopObject>(
         Some(p) => (p.closed_u != Tri::False, p.closed_v != Tri::False),
         // (IsPeriodic returns a flag upstream; its SER inside makes a failure TRUE)
         None => (
-            ignored(surface.is_periodic(&uv_domain, Sp::U))?.unwrap_or(true),
-            ignored(surface.is_periodic(&uv_domain, Sp::V))?.unwrap_or(true),
+            ignored(surface.is_periodic(k, &uv_domain, Sp::U))?.unwrap_or(true),
+            ignored(surface.is_periodic(k, &uv_domain, Sp::V))?.unwrap_or(true),
         ),
     };
     if !periodic_u && !periodic_v {
