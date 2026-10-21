@@ -3019,8 +3019,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmFace::CreateUVTrimCurves",
+        "unit": "topology.face_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0322",
@@ -3682,9 +3682,9 @@
   "cases_passed": 396,
   "cases_total": 434,
   "deferred_by_unit": {
-    "intersect.surface_drop_lib_p3": 1,
     "surface.surface_p2": 3,
     "topology.edge": 27,
+    "topology.face_p3": 1,
     "topology.face_p4": 7
   },
   "max_rel_err": 0.0,

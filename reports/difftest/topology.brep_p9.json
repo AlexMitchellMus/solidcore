@@ -471,8 +471,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "bspline_face_insert_0",
@@ -5541,8 +5541,8 @@
   "cases_total": 684,
   "deferred_by_unit": {
     "intersect.surface_drop_curve": 1,
-    "intersect.surface_drop_lib_p3": 1,
     "query.brep": 1,
+    "topology.face_p2": 1,
     "topology.face_p4": 12
   },
   "max_rel_err": 0.0,

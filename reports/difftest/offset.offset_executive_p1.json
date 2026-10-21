@@ -4410,13 +4410,22 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+      "inputs": {
+        "approx_tol": 1e-6,
+        "branch": "map_plane",
+        "op": "probe"
       },
       "max_rel_err": 0.0,
+      "mismatch_count": 1,
+      "mismatches": [
+        {
+          "cpp": "None",
+          "field": "error",
+          "rust": "Some(\"Rust operation: topology::edgeuse::p1: invalid input: SetUVTrimCurve: edge use without B-rep\")"
+        }
+      ],
       "name": "probe_map_plane",
-      "outcome": "deferred",
+      "outcome": "fail",
       "pass": false,
       "source": "fixture:fixtures/offset.offset_executive_p1/probe.json#11",
       "values_compared": 0
@@ -9545,13 +9554,12 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 317,
-  "cases_failed": 0,
+  "cases_deferred": 316,
+  "cases_failed": 1,
   "cases_passed": 714,
   "cases_rejected": 1,
   "cases_total": 1032,
   "deferred_by_unit": {
-    "intersect.surface_drop_lib_p3": 1,
     "offset.offset_geometry_creation": 1,
     "query.brep": 1,
     "topology.brep_p1": 1,
@@ -9559,9 +9567,9 @@
     "topology.brep_p4": 1
   },
   "max_rel_err": 1.850371707708594e-16,
-  "pass": true,
+  "pass": false,
   "rel_tol": 1e-9,
   "seeds": 16,
-  "status": "partial",
+  "status": "fail",
   "unit": "offset.offset_executive_p1"
 }
