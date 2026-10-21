@@ -32,6 +32,7 @@ use crate::kernel::Kernel;
 use crate::math::{Point2, Point3};
 use crate::nurbs::b_spline_curve::p2::BoundingBoxRequest;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::{BrepIdentity, BrepQuery};
 use crate::query::face::p2::{
     curve_on_classify, point_classify, CurveOnClassifyObjects, PointClassifyOptions,
 };
@@ -49,7 +50,7 @@ use crate::topology::proto_topology::p1::ProtoTopology;
 use crate::topology::proto_topology::{ProtoBrep, ProtoGeometry};
 use crate::topology::topology::Topology;
 use crate::topology::vertex as vx;
-use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, LoopId, VertexId, VertexuseId};
+use crate::topology::{Brep, BrepId, EdgeId, EdgeuseId, FaceId, LoopId, VertexId, VertexuseId};
 use crate::{EntityRef, SolidError};
 use std::collections::BTreeMap;
 const K_VERTEX: u8 = 0;
@@ -66,6 +67,7 @@ const K_LOOP: u8 = 10;
 const K_TI: u8 = 11;
 const K_TRIM_CURVE: u8 = 12;
 const K_NULL: u8 = 13;
+const K_REGION: u8 = 14;
 /// An object handle: the B-rep (`2` for the curve stores, `-1` for the intersector),
 /// the kind and the index. Ordered by operand, class and arena index. A
 /// curve handle also carries its curve's natural interval (what `SmSolutionArray`
@@ -129,6 +131,7 @@ impl ClassObject for H {
             K_EDGEUSE => ClassObjectKind::Edgeuse,
             K_VERTEXUSE => ClassObjectKind::Vertexuse,
             K_LOOP => ClassObjectKind::Loop,
+            K_REGION => ClassObjectKind::Region,
             _ => ClassObjectKind::Other,
         }
     }
@@ -273,6 +276,7 @@ impl ArenaPair<'_> {
             EntityRef::Face(f) => Some(hd(b, K_FACE, f.index())),
             EntityRef::Loop(l) => Some(hd(b, K_LOOP, l.index())),
             EntityRef::Edgeuse(eu) => Some(hd(b, K_EDGEUSE, eu.index())),
+            EntityRef::Region(r) => Some(hd(b, K_REGION, r.index())),
             _ => None,
         }
     }
@@ -431,6 +435,29 @@ impl ProtoBrep<H> for ArenaPair<'_> {
             .map(|e| hd(v1.b, K_EDGE, e.index()))
             .collect())
     }
+    fn brep_point_3d_classify(
+        &mut self,
+        k: &Kernel,
+        brep: H,
+        point: Point3,
+        tolerance: f64,
+        boundary_intersections: bool,
+    ) -> crate::Result<PointClassification<H>> {
+        let operand = brep.b;
+        let id = BrepId::from_index(u32::try_from(operand).map_err(|_| invalid("not an operand"))?);
+        let pc = BrepQuery::new(BrepIdentity::arena(id)).point_3d_classify(
+            k,
+            self.brep_m(brep)?,
+            point,
+            tolerance,
+            boundary_intersections,
+        )?;
+        pc.map_objects(&mut |e| {
+            Self::entity_h(operand, e)
+                .ok_or_else(|| invalid("classification object without a handle"))
+        })
+    }
+
     fn face_curve_on_classify(
         &self,
         k: &Kernel,
@@ -1209,7 +1236,7 @@ pub(super) fn decode(h: H) -> EntityRef {
         K_FACE => EntityRef::Face(fid(h)),
         K_EDGE => EntityRef::Edge(eid(h)),
         K_VERTEX => EntityRef::Vertex(vid(h)),
-        _ => EntityRef::Brep(crate::topology::BrepId::from_index(h.i)),
+        _ => EntityRef::Brep(BrepId::from_index(h.i)),
     }
 }
 

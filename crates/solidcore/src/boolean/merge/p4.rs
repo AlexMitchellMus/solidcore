@@ -34,6 +34,7 @@ use crate::intersect::point_class::{PointClassType, PointClassification};
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3};
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::BrepQuery;
 use crate::topology::brep::p1 as bp;
 use crate::topology::edgeuse::p1 as eu;
 use crate::topology::face::p2 as face;
@@ -709,22 +710,20 @@ fn classify_edge_faces(
     Ok(true)
 }
 
+/// `pBrep->Point3DClassify(point, tolerance, boundary, sPC)` (unit `query.brep`, on the
+/// B-rep's current state); the caller disables editing around it. On failure the
+/// classification keeps what it held (the callers ignore the status and move on).
 fn classify_point(
-    _k: &Kernel,
-    _brep: &Brep,
-    _point: Point3,
-    _tolerance: f64,
-    _boundary_intersections: bool,
-    _classification: &mut PointClassification<EntityRef>,
+    k: &Kernel,
+    brep: &mut Brep,
+    point: Point3,
+    tolerance: f64,
+    boundary_intersections: bool,
+    classification: &mut PointClassification<EntityRef>,
 ) -> Result<()> {
-    // DISPATCH GAP: SmBrep::Point3DClassify is ported (`query::brep::point_3d_classify`,
-    // query.brep partial; no UNPORTED marker), but it needs the B-rep mutably with its
-    // B-rep cache and object identities (as `topology::brep::p2::ray_fire`), which this
-    // caller (`&Brep` only) does not have.
-    Err(SolidError::unported(
-        "SmBrep::Point3DClassify",
-        "query.brep",
-    ))
+    let query = BrepQuery::default();
+    *classification = query.point_3d_classify(k, brep, point, tolerance, boundary_intersections)?;
+    Ok(())
 }
 
 fn classify_remaining(

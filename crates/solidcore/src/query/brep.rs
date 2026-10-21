@@ -331,6 +331,14 @@ impl BrepIdentity<'static> {
     }
 }
 
+impl Default for BrepIdentity<'static> {
+    /// [`BrepIdentity::arena`] of the first B-rep of the caller's store (a caller
+    /// querying one B-rep at a time).
+    fn default() -> Self {
+        Self::arena(BrepId::from_index(0))
+    }
+}
+
 /// The ray directions of [`BrepQuery::point_3d_classify`], in firing order: each axis
 /// forward, then backward when the forward ray fails.
 const CLASSIFY_RAYS: [(Vec3, Vec3); 3] = [
@@ -347,6 +355,13 @@ const CLASSIFY_RAYS: [(Vec3, Vec3); 3] = [
 pub struct BrepQuery<'a> {
     identity: BrepIdentity<'a>,
     cache: OnceCell<BrepCache>,
+}
+
+impl Default for BrepQuery<'static> {
+    /// The queries of a B-rep with the default identities ([`BrepIdentity::default`]).
+    fn default() -> Self {
+        Self::new(BrepIdentity::default())
+    }
 }
 
 impl<'a> BrepQuery<'a> {

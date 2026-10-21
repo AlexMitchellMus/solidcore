@@ -10,8 +10,8 @@
 //!
 //! Deviations: operands, marks and mate maps are borrowed explicitly instead of
 //! reading `SmMerge::m_vTI`; ids replace pointers. Output stays mutable because
-//! upstream preserves its partial contents on failure. Classification (including
-//! face/edge-to-region resolution) waits for `query.brep`; graph deletion waits
+//! upstream preserves its partial contents on failure. Classification goes through
+//! `query.brep` ([`p1::classify_point_editing_disabled`]); graph deletion waits
 //! for `topology.brep_p4`; edge copying waits for `boolean.merge_p2`. Vertex
 //! copying delegates to [`p1::merge_vertex`]. B-rep
 //! caches are not attached to arena B-reps yet, so the optional cache resizing is
@@ -26,45 +26,65 @@
 
 use crate::boolean::merge::p1::{self, VertexCopy};
 use crate::boolean::topology_intersector::p1::Relations;
-use crate::error::{Result, SolidError};
+use crate::error::{EntityRef, Result, SolidError};
 use crate::geom::a_object::BooleanOperation;
 use crate::geom::context::{Context, MarkType};
+use crate::intersect::point_class::PointClassType;
 use crate::kernel::Kernel;
-use crate::math::Point3;
+use crate::math::{Point3, EFF_ZERO};
+use crate::topology::edgeuse::p1 as eu1;
 use crate::topology::topology_traverser::{collect_wire_edges, Entity, Marks};
-use crate::topology::{edge, vertex, vertexuse, Brep, EdgeId, RegionId, VertexId};
+use crate::topology::{edge, face, vertex, vertexuse, Brep, EdgeId, RegionId, ShellId, VertexId};
 
 const OP: &str = "boolean::merge::p5::process_wires_and_shell_vertices";
 
-// Result contract of Point3DClassify followed by the upstream region lookup.
-// This is not a new topology record: region data remains owned by the B-rep.
+/// The region a point classified to, and whether it is void (`pRegion->IsVoid()` as a
+/// C++ condition: `UNSURE` is non-zero).
 struct LocatedRegion {
     id: RegionId,
     is_void: bool,
 }
 
+/// `pBrep->Point3DClassify(point, SM_EFF_ZERO, boundary, sPC)` with editing disabled
+/// ([`p1::classify_point_editing_disabled`]; the classification's construction
+/// tolerance, the source object's, is not read) and the region it lies in: a region
+/// class gives its region; with `accept_face_or_edge` (the primary-wire pass) a face
+/// gives its upward face use's shell's region and an edge its primary edge use's
+/// shell's region. `None` for any other class: the wire passes then signal `SE(SM_ERR)`
+/// and go on, the shell-vertex passes return `SM_ERR`.
 fn classify_region(
-    _k: &Kernel,
-    _b: &Brep,
-    _point: Point3,
-    _zone_tolerance: f64,
-    _boundary_intersections: bool,
-    _accept_face_or_edge: bool,
+    k: &Kernel,
+    b: &mut Brep,
+    point: Point3,
+    boundary_intersections: bool,
+    accept_face_or_edge: bool,
 ) -> Result<Option<LocatedRegion>> {
-    // Point3DClassify uses SM_EFF_ZERO, boundary_intersections, and an SmPointClassification
-    // initialised with the source object's zone tolerance. Editing is temporarily
-    // disabled. Only the primary-wire pass accepts a face or edge and resolves its
-    // region through upward faceuse / primary edgeuse -> shell -> region.
-    // None means another classification kind: wire passes signal SE(SM_ERR)
-    // and continue; shell-vertex passes return SM_ERR via SER(SM_ERR).
-    // DISPATCH GAP: SmBrep::Point3DClassify is ported (`query::brep::point_3d_classify`,
-    // query.brep partial; no UNPORTED marker), but it needs the B-rep mutably with its
-    // B-rep cache and object identities (as `topology::brep::p2::ray_fire`), which this
-    // caller (`&Brep` only) does not have.
-    Err(SolidError::unported(
-        "SmBrep::Point3DClassify",
-        "query.brep",
-    ))
+    let pc = p1::classify_point_editing_disabled(k, b, point, EFF_ZERO, boundary_intersections)?;
+    let shell_region = |shell: Option<ShellId>| -> Result<RegionId> {
+        let shell = shell.ok_or_else(|| SolidError::null_pointer(OP))?;
+        b.shell(shell)?
+            .region
+            .ok_or_else(|| SolidError::null_pointer(OP))
+    };
+    let region = match (pc.point_class(), pc.object()) {
+        (PointClassType::Region, Some(EntityRef::Region(r))) => r,
+        (PointClassType::Face, Some(EntityRef::Face(f))) if accept_face_or_edge => {
+            let fu = face::p2::upward_faceuse(b, f)?.ok_or_else(|| SolidError::null_pointer(OP))?;
+            shell_region(b.faceuse(fu)?.shell)?
+        }
+        (PointClassType::Edge, Some(EntityRef::Edge(e))) if accept_face_or_edge => {
+            let eu = eu1::primary_edgeuse(b, e)?.ok_or_else(|| SolidError::null_pointer(OP))?;
+            shell_region(eu1::shell(b, eu)?)?
+        }
+        (PointClassType::Region | PointClassType::Face | PointClassType::Edge, None) => {
+            return Err(SolidError::null_pointer(OP))
+        }
+        _ => return Ok(None),
+    };
+    Ok(Some(LocatedRegion {
+        id: region,
+        is_void: b.region(region)?.is_void() != 0,
+    }))
 }
 
 fn delete_edge(_brep: &mut Brep, _edge: EdgeId) -> Result<()> {
@@ -255,14 +275,8 @@ fn collect_wires_and_shell_vertices(
             {
                 continue;
             }
-            let region = classify_region(
-                k,
-                other,
-                midpoint(brep, id)?,
-                brep.edge(id)?.tolerance,
-                true,
-                true,
-            )?;
+            let point = midpoint(brep, id)?;
+            let region = classify_region(k, other, point, true, true)?;
             let Some(region) = region else { continue };
             collect_wire_edges(
                 k,
@@ -319,14 +333,8 @@ fn collect_wires_and_shell_vertices(
         } else if marked || !is_wire {
             continue;
         }
-        let region = classify_region(
-            k,
-            brep,
-            midpoint(other, id)?,
-            other.edge(id)?.tolerance,
-            true,
-            false,
-        )?;
+        let point = midpoint(other, id)?;
+        let region = classify_region(k, brep, point, true, false)?;
         let Some(region) = region else { continue };
         collect_wire_edges(
             other_k,
@@ -352,8 +360,8 @@ fn collect_wires_and_shell_vertices(
             {
                 continue;
             }
-            let vertex = brep.vertex(v)?;
-            let region = classify_region(k, other, vertex.point, vertex.tolerance, false, false)?
+            let point = brep.vertex(v)?.point;
+            let region = classify_region(k, other, point, false, false)?
                 .ok_or_else(|| SolidError::sm_err(OP))?;
             if remove_in_region(operation, region.is_void) {
                 delete_vertex(brep, v)?;
@@ -368,9 +376,9 @@ fn collect_wires_and_shell_vertices(
         {
             continue;
         }
-        let vertex = other.vertex(v)?;
-        let region = classify_region(k, brep, vertex.point, vertex.tolerance, false, false)?
-            .ok_or_else(|| SolidError::sm_err(OP))?;
+        let point = other.vertex(v)?.point;
+        let region =
+            classify_region(k, brep, point, false, false)?.ok_or_else(|| SolidError::sm_err(OP))?;
         if keep_other(operation, region.is_void) {
             keep_vertices.push((v, region.id));
         }
@@ -403,11 +411,11 @@ mod tests {
                 type_code: 16021,
             },
             destination_key: &|e| match e {
-                crate::EntityRef::Vertex(v) => ObjectRef {
+                EntityRef::Vertex(v) => ObjectRef {
                     key: ObjectKey(u64::from(v.index())),
                     type_code: 16021,
                 },
-                crate::EntityRef::Vertexuse(v) => ObjectRef {
+                EntityRef::Vertexuse(v) => ObjectRef {
                     key: ObjectKey(2_000_000 + u64::from(v.index())),
                     type_code: 16006,
                 },
@@ -485,13 +493,8 @@ mod tests {
             mt,
             &mut keep,
         );
-        assert!(matches!(
-            result,
-            Err(SolidError::Unported {
-                unit: "query.brep",
-                ..
-            })
-        ));
+        // the second wire's classification reaches a callee not ported yet
+        assert!(matches!(result, Err(SolidError::Unported { .. })), "{result:?}");
         assert_eq!(keep, [ae]);
     }
 

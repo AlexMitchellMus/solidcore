@@ -96,7 +96,10 @@ use solidcore::topology::proto_topology::p1::ProtoTopology;
 use solidcore::topology::proto_topology::{ProtoBrep, ProtoGeometry, ProtoTopologyManager};
 use solidcore::topology::topology::Topology;
 use solidcore::topology::vertex as vx;
-use solidcore::topology::{Brep, EdgeId, EdgeuseId, FaceId, LoopId, VertexId, VertexuseId};
+use solidcore::query::brep::{BrepIdentity, BrepQuery};
+use solidcore::topology::{
+    Brep, BrepId, EdgeId, EdgeuseId, FaceId, LoopId, VertexId, VertexuseId,
+};
 use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::boolean_topology_intersector_p1::{self as ffi, Op};
 use solidcore_ffi::units::boolean_topology_intersector_p2 as ffi2;
@@ -598,6 +601,8 @@ const K_VERTEXUSE: u8 = 12;
 /// The UV trim curve stored on an edge use (or its mate), by the edge use's index
 /// (Rust side only, resolved by `ClassGeometry::curve`).
 const K_TRIM_CURVE: u8 = 13;
+/// A region (classification results).
+const K_REGION: u8 = 14;
 
 /// An object handle: the B-rep (`2` for the curve stores, `-1` for the intersector),
 /// the kind and the index. Ordered as the shim sorts (`brep`, `kind`, `index`). A
@@ -662,6 +667,7 @@ impl ClassObject for H {
             K_EDGEUSE => ClassObjectKind::Edgeuse,
             K_VERTEXUSE => ClassObjectKind::Vertexuse,
             K_LOOP => ClassObjectKind::Loop,
+            K_REGION => ClassObjectKind::Region,
             _ => ClassObjectKind::Other,
         }
     }
@@ -857,6 +863,7 @@ impl Two {
             EntityRef::Face(f) => Some(hd(b, K_FACE, f.index())),
             EntityRef::Loop(l) => Some(hd(b, K_LOOP, l.index())),
             EntityRef::Edgeuse(eu) => Some(hd(b, K_EDGEUSE, eu.index())),
+            EntityRef::Region(r) => Some(hd(b, K_REGION, r.index())),
             _ => None,
         }
     }
@@ -1047,6 +1054,35 @@ impl ProtoBrep<H> for Two {
             .map(|e| hd(v1.b, K_EDGE, e.index()))
             .collect())
     }
+    fn brep_point_3d_classify(
+        &mut self,
+        k: &Kernel,
+        brep: H,
+        point: Point3,
+        tolerance: f64,
+        boundary_intersections: bool,
+    ) -> solidcore::Result<PointClassification<H>> {
+        let operand = brep.b;
+        let slot = usize::try_from(operand).map_err(|_| invalid("bad B-rep"))?;
+        let keys = |object: CacheObject| query_key(slot, object);
+        let no_owner = |_: ObjectRef| None;
+        let identity = BrepIdentity {
+            brep_id: BrepId::from_index(slot as u32),
+            keys: &keys,
+            owner_of: &no_owner,
+        };
+        let pc = BrepQuery::new(identity).point_3d_classify(
+            k,
+            self.brep_m(brep)?,
+            point,
+            tolerance,
+            boundary_intersections,
+        )?;
+        pc.map_objects(&mut |e| {
+            Self::entity_h(operand, e).ok_or_else(|| invalid("classification object without a handle"))
+        })
+    }
+
     fn face_curve_on_classify(
         &self,
         k: &Kernel,

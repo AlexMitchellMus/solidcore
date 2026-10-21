@@ -36,15 +36,17 @@
 use std::collections::BTreeMap;
 
 use crate::boolean::topology_intersector::p1::Relations;
-use crate::error::{Result, SolidError};
+use crate::error::{EntityRef, Result, SolidError};
 use crate::geom::a_object::{self, BooleanOperation};
 use crate::geom::attribute::{ids, AttributeStore, ObjectKey};
 use crate::geom::axis2_placement::Axis2Placement;
 use crate::geom::context::Context;
 use crate::geom::object::{NotifyOperation, ObjectRef};
+use crate::intersect::point_class::{PointClassType, PointClassification};
 use crate::kernel::Kernel;
-use crate::math::Vec3;
+use crate::math::{Point3, Vec3};
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::BrepQuery;
 use crate::topology::edgeuse::p1 as eu;
 use crate::topology::shell;
 use crate::topology::topology::{self as topo, Topology};
@@ -245,19 +247,50 @@ pub fn find_brep_region_of_other_face(
             .curve
             .as_ref()
             .ok_or_else(|| SolidError::null_pointer(OP))?;
-        let Some(_point) = ignore_failure(curve.evaluate_point(edge.interval.evaluate(0.456789)))?
+        let Some(point) = ignore_failure(curve.evaluate_point(edge.interval.evaluate(0.456789)))?
         else {
             continue;
         };
-        // Point classification uses tolerance 0.0, boundary intersections FALSE,
-        // a classification initialised with edge.tolerance and editing disabled.
-        // DISPATCH GAP: SmBrep::Point3DClassify is ported (`query::brep::point_3d_classify`,
-        // query.brep partial; no UNPORTED marker), but it needs the B-rep mutably with its
-        // B-rep cache and object identities (as `topology::brep::p2::ray_fire`), which this
-        // caller (`&Brep` only) does not have.
-        return unavailable("SmBrep::Point3DClassify", "query.brep");
+        // (the classification's construction tolerance, the edge's, is not read)
+        let Some(pc) = ignore_failure(classify_point_editing_disabled(k, brep, point, 0.0, false))?
+        else {
+            continue;
+        };
+        // skip points that don't classify to a region
+        if pc.point_class() != PointClassType::Region {
+            continue;
+        }
+        // use the point's classified region as the input face's Brep region
+        return match pc.object() {
+            Some(EntityRef::Region(r)) => Ok(Some(r)),
+            _ => Err(SolidError::null_pointer(OP)),
+        };
     }
     Ok(None)
+}
+
+/// `pBrep->Point3DClassify(point, tolerance, boundary, sPC)` (unit `query.brep`) with
+/// `pBrep->m_bEditingEnabled` set to `FALSE` around it (`SmTemporaryChangeValue`), on the
+/// B-rep's current state (a fresh [`BrepQuery`]: the merge edits the operands between
+/// classifications, and upstream's `CacheMakeOrValidate` rebuilds an invalidated cache).
+/// The operands' geometry is owned by their arena identities ([`crate::query::brep::BrepIdentity::default`]).
+///
+/// # Errors
+///
+/// Those of [`BrepQuery::point_3d_classify`].
+pub(crate) fn classify_point_editing_disabled(
+    k: &Kernel,
+    b: &mut Brep,
+    point: Point3,
+    tolerance: f64,
+    boundary: bool,
+) -> Result<PointClassification<EntityRef>> {
+    let editing = b.editing_enabled();
+    b.set_editing_enabled(false);
+    let query = BrepQuery::default();
+    let result = query.point_3d_classify(k, b, point, tolerance, boundary);
+    b.set_editing_enabled(editing);
+    result
 }
 
 /// `pRegion->IsVoid()` as a C++ condition (`UNSURE` is non-zero, so true).
@@ -289,7 +322,7 @@ pub struct VertexCopy<'a> {
     /// Notification identity of each other-operand vertex.
     pub source_key: &'a dyn Fn(VertexId) -> ObjectRef,
     /// Notification identity of each primary topology entity, including newly created vertices and vertex uses.
-    pub destination_key: &'a dyn Fn(crate::EntityRef) -> ObjectRef,
+    pub destination_key: &'a dyn Fn(EntityRef) -> ObjectRef,
 }
 
 /// Reuse a mated primary vertex or create a shell vertex, relate it and notify
@@ -332,13 +365,19 @@ pub fn merge_vertex(
     if tolerance > vertex::tolerance(brep, dest)? {
         vertex::set_tolerance(brep, dest, tolerance, true, true)?;
     }
+    // Both vertices are SmTopology objects upstream; a record this crate has not made
+    // yet (a vertex the merge did not create) is the default one.
+    let source_ref = (copy.source_key)(source);
+    let dest_ref = (copy.destination_key)(EntityRef::Vertex(dest));
+    copy.records.entry(source_ref.key).or_default();
+    copy.records.entry(dest_ref.key).or_default();
     topo::notify(
         copy.records,
         copy.attributes,
         context,
         NotifyOperation::Copy,
-        (copy.source_key)(source),
-        Some((copy.destination_key)(crate::EntityRef::Vertex(dest))),
+        source_ref,
+        Some(dest_ref),
         None, // SM_NO_GET_BREP(pBrepVertex) is NULL in pinned SmTypes.h.
         None, // SM_NO_GET_BREP(pVertexInOther) is NULL as well.
     )?;

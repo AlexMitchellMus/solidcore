@@ -27,7 +27,7 @@
 //! output stays undefined); Unported errors still propagate. The containment tests of
 //! [`brep_relationship`] (`sm_PointInSolid`, `sm_CountContainedSamples`) classify on a
 //! private copy of each target ([`BrepClassifier`], keyed by
-//! [`BrepIdentity::arena`]). No new recursion or allocation from serialized counts.
+//! [`BrepIdentity::default`]). No new recursion or allocation from serialized counts.
 
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::Curve;
@@ -365,10 +365,7 @@ struct Target(BrepClassifier<'static>);
 
 impl Target {
     fn new(brep: &Brep) -> Self {
-        Self(BrepClassifier::new(
-            brep,
-            BrepIdentity::arena(BrepId::from_index(0)),
-        ))
+        Self(BrepClassifier::new(brep, BrepIdentity::default()))
     }
 
     /// `pTarget->Point3DClassify(point, tolerance, FALSE, sPC)`: the point class and

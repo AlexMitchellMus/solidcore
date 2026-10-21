@@ -25,6 +25,9 @@ use solidcore::SolidError;
 use solidcore_ffi::units::{boolean_merge_p1 as ffi, topology_vertexuse as fixture};
 use std::collections::BTreeMap;
 
+/// The op of `find_brep_region_of_other_face` (`SmMerge::FindBrepRegionOfOtherFace`).
+const OP_FIND_REGION: u8 = 5;
+
 /// Differential runner for `boolean.merge_p1`.
 pub struct Runner;
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -811,7 +814,7 @@ fn run_rust(i: &Inputs, b: &mut Brep, other: &Brep) -> Result<Vec<f64>, SolidErr
             }
             append_events(&context, &mut out)?;
         }
-        5 => {
+        OP_FIND_REGION => {
             let f = FaceuseId::from_index(u32::from(a) % other.faceuses().len() as u32);
             out.push(
                 port::find_brep_region_of_other_face(
@@ -936,7 +939,19 @@ impl UnitDiff for Runner {
         let (path, block) = block(&i)?;
         let raw = fixture::eval(fixture::Op::Export, &path, &block)
             .map_err(|e| harness(e.to_string()))?;
-        let (mut b, _) = import(&raw)?;
+        let (mut b, exact) = import(&raw)?;
+        // Op 5 without mates classifies points against `b` (SmBrep::Point3DClassify;
+        // with mates every edge is mated, so the radial sectors decide): a face surface
+        // the export carries only as its B-spline part would be classified against other
+        // geometry than the C++ one (the harness limitation of `query.face_p1`).
+        let [_, mates, _] = i.args;
+        let mated = mates != 0;
+        if i.op == OP_FIND_REGION && !mated && exact.iter().any(|&e| !e) {
+            return Ok(Output::deferred(
+                "harness:analytic-geometry-export",
+                "analytic face surface in the B-rep export",
+            ));
+        }
         let (other_path, other_block) = other_block(&i)?;
         let other_raw = fixture::eval(fixture::Op::Export, &other_path, &other_block)
             .map_err(|e| harness(e.to_string()))?;
