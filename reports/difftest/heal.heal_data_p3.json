@@ -595,8 +595,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::CalculateBoundingBox",
-        "unit": "query.brep"
+        "symbol": "SmBrep::DeleteEdge",
+        "unit": "topology.brep_p4"
       },
       "max_rel_err": 0.0,
       "name": "fuzz07609_remove_then_readd_edge_is_valid",
@@ -3941,8 +3941,8 @@
   "cases_total": 478,
   "deferred_by_unit": {
     "curve.crv_on_surf": 19,
-    "query.brep": 1,
     "surface.surface_p2": 2,
+    "topology.brep_p4": 1,
     "topology.edge": 5
   },
   "max_rel_err": 0.0,
