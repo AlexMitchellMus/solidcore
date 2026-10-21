@@ -20,12 +20,13 @@
 //!   proto faces (coincident lists) and other proto edges (overlap lists) still name
 //!   it, and `GlueCoincidentBrepVertices` reads it after the free. Here the faces it
 //!   bounded get the surviving edge first
-//!   ([`ProtoTopologyManager::hand_over_coincident_proto_edge`]), and its delete
-//!   ([`ProtoTopologyManager::delete_proto_edge_object`], part 1) drops every
-//!   reference to it. The fork does that in `RemoveProtoEdge`, which every library
-//!   caller follows with the delete; at the delete, an edge that is only unlisted
-//!   keeps upstream's lists. Without that, the stale id names a deleted slot and the
-//!   later passes fail with `InvalidInput`.
+//!   ([`ProtoTopologyManager::hand_over_coincident_proto_edge`]), and every reference
+//!   to it is dropped before the delete ([`ProtoTopologyManager::forget_proto_edge`],
+//!   part 1), here and in `ResolveOverlappingProtoEdges`. The fork does that inside
+//!   `RemoveProtoEdge`; the port does it at these library deletes, so unlisting or
+//!   deleting a proto edge on its own (the difftest's script ops) stays upstream's.
+//!   Without it, the stale id names a deleted slot and the later passes fail with
+//!   `InvalidInput`.
 //! - **B-rep access.** Topology objects are the caller's handles `O`, as in
 //!   [`p1`](super::p1). What these functions read from vertices and edges, and the
 //!   store new curves go to, is [`ProtoBrep`] (of `topology.proto_topology_p2`, which
@@ -936,6 +937,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                 self.hand_over_coincident_proto_edge(pe1_to_combine, pe2_to_combine);
 
                 ignore_soft(self.remove_proto_edge(pe2_to_combine))?;
+                self.forget_proto_edge(pe2_to_combine);
                 deleted.extend(self.delete_proto_edge_object(pe2_to_combine));
             }
         }
@@ -1468,6 +1470,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
 
                 // remove OverlapPE from ProtoTopoMgr, then delete it
                 ignore_soft(self.remove_proto_edge(overlap))?;
+                self.forget_proto_edge(overlap);
                 deleted_curves.extend(self.delete_proto_edge_object(overlap));
             }
 
