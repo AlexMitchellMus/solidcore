@@ -1420,11 +1420,11 @@ impl FilletSolver {
         // `SmTemporaryRadiusChange::SetUp` does nothing unless the solver is an
         // `SmVariableRadiusFS` (`SM_CAST_PTR`), first for this solver, then the other.
         if ops.is_kind_of(VARIABLE_RADIUS_FS_TYPE)? {
-            // UNPORTED(blend.fillet_executive_p2): SmTemporaryRadiusChange::SetUp
+            // UNPORTED(blend.fillet_executive_p2): SmTemporaryRadiusChange::SetUp (justified: findings.md "blend.fillet_solver_p2: SmTemporaryRadiusChange needs the executive's handles")
             return unported_temporary_radius_change();
         }
         if other.is_kind_of(VARIABLE_RADIUS_FS_TYPE)? {
-            // UNPORTED(blend.fillet_executive_p2): SmTemporaryRadiusChange::SetUp
+            // UNPORTED(blend.fillet_executive_p2): SmTemporaryRadiusChange::SetUp (justified: findings.md "blend.fillet_solver_p2: SmTemporaryRadiusChange needs the executive's handles")
             return unported_temporary_radius_change();
         }
 

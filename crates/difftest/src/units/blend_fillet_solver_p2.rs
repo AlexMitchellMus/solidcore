@@ -52,7 +52,7 @@ use solidcore::geom::axis2_placement::Axis2Placement;
 use solidcore::geom::extent1d::{Extent1d, ExtentNd};
 use solidcore::geom::extent2d::Extent2d;
 use solidcore::geom::matrix::Matrix;
-use solidcore::geom::tol::ZONE_TOL_3D;
+use solidcore::geom::tol::zone_tol3d;
 use solidcore::geom::vector2d::Point2;
 use solidcore::geom::vector3d::Vec3;
 use solidcore::intersect::surface_intersector::p1::{
@@ -65,8 +65,9 @@ use solidcore::nurbs::math::NOW;
 use solidcore::surface::offset_surface::SS_UNKNOWN;
 use solidcore::surface::surface::p1::evaluate_1st_derivatives;
 use solidcore::surface::surface::Surface;
+use solidcore::topology::brep::p2::{make_edge_vertex_topology, make_shell_vertex_topology};
 use solidcore::topology::{
-    edge, Brep, Edgeuse, EdgeuseId, EdgeId, Vertexuse, VertexuseOwner, VertexId,
+    edge, vertex, Brep, Edgeuse, EdgeuseId, EdgeId, Vertexuse, VertexuseOwner, VertexId,
 };
 use solidcore::SolidError;
 use solidcore_ffi::units::blend_fillet_solver_p2::{self as ffi, Op};
@@ -786,9 +787,18 @@ fn link_uses(
     Ok([(eu1, vu1), (eu2, vu2)])
 }
 
-/// A wire edge of the analytic curve of `spec` (`CreateWireEdgeFromCurve` over its natural
-/// interval): start and end vertices at the curve ends (the start vertex alone for a
-/// closed curve), the edge and its two edge uses.
+/// A wire edge of the analytic curve of `spec`, built as the shim's
+/// `SmBrep::CreateWireEdgeFromCurve(curve, curve->GetNaturalInterval())` on a fresh
+/// `SmBrep()` builds it: `MakeShellVertex` at the start point (a vertex shell of the
+/// infinite region, the B-rep's tolerance), `MakeWireEdgeVertex` (`MakeEdgeVertexTopology`:
+/// the vertex shell becomes the wire shell of the two edge uses and a new vertex takes the
+/// end point; the edge's then the vertex's `SetTolerance(GetTolerance())`, the interval,
+/// `SetOrientation(SM_OT_SAME)` (the first edge use `SM_OT_SAME`, its mate
+/// `SM_OT_OPPOSITE`), the curve, `RefreshTolerance(FALSE)` of both vertices), then
+/// `GlueVertices(start, end)` when the ends are closer than the B-rep's tolerance (a
+/// closed curve): the end vertex's use moves to the start vertex, whose tolerance grows
+/// to the distance plus the end vertex's. The Rust arena keeps the glued-away end
+/// vertex's record (B-rep records cannot be erased yet); nothing references it.
 fn analytic_brep(k: &Kernel, spec: &AnalyticEdge) -> Result<Brep, HarnessError> {
     let h = |e: SolidError| harness(e.to_string());
     let curve = match spec {
@@ -809,20 +819,45 @@ fn analytic_brep(k: &Kernel, spec: &AnalyticEdge) -> Result<Brep, HarnessError> 
     let ivl = curve.natural_interval();
     let ps = curve.evaluate_point(ivl.min()).map_err(h)?;
     let pe = curve.evaluate_point(ivl.max()).map_err(h)?;
-    let mut b = Brep::new();
-    let vs = b.add_vertex(ps).map_err(h)?;
-    let ve = if ps.distance(pe) < ZONE_TOL_3D {
-        vs
-    } else {
-        b.add_vertex(pe).map_err(h)?
+    let mut b = Brep::new_with_infinite_region().map_err(h)?;
+    let tol = b.tolerance();
+
+    // MakeShellVertex(NULL, sStartPt, ..)
+    let (_, vs) = make_shell_vertex_topology(&mut b, None).map_err(h)?;
+    b.vertex_mut(vs).map_err(h)?.point = ps;
+    vertex::set_tolerance(&mut b, vs, tol, true, true).map_err(h)?;
+
+    // MakeWireEdgeVertex(NULL, pNewV1, pCurve, crInterval, SM_OT_SAME, sEndPt, ..)
+    let (e, ve) = make_edge_vertex_topology(&mut b, None, vs).map_err(h)?;
+    b.vertex_mut(ve).map_err(h)?.point = pe;
+    edge::set_tolerance(&mut b, e, tol, true, true).map_err(h)?;
+    vertex::set_tolerance(&mut b, ve, tol, true, true).map_err(h)?;
+    b.edge_mut(e).map_err(h)?.interval = ivl;
+    let eus = b.edge(e).map_err(h)?.edgeuses.clone();
+    let [eu1, eu2] = eus.as_slice() else {
+        return Err(harness("wire edge without two edge uses"));
     };
-    let e = b.add_edge(vs, ve).map_err(h)?;
-    {
-        let edge = b.edge_mut(e).map_err(h)?;
-        edge.curve = Some(curve);
-        edge.interval = ivl;
+    b.edgeuse_mut(*eu1).map_err(h)?.orientation = OrientType::Same;
+    b.edgeuse_mut(*eu2).map_err(h)?.orientation = OrientType::Opposite;
+    b.edge_mut(e).map_err(h)?.curve = Some(curve);
+    vertex::refresh_tolerance(&mut b, vs, false).map_err(h)?;
+    vertex::refresh_tolerance(&mut b, ve, false).map_err(h)?;
+
+    // glue vertices for short edges (GlueVertices(pNewV1, pNewV2))
+    let dist = ps.distance(pe);
+    if dist < tol {
+        let radius = dist + b.vertex(ve).map_err(h)?.tolerance;
+        if radius > b.vertex(vs).map_err(h)?.tolerance {
+            let radius = zone_tol3d(k, radius);
+            vertex::set_tolerance(&mut b, vs, radius, true, true).map_err(h)?;
+        }
+        let vus = std::mem::take(&mut b.vertex_mut(ve).map_err(h)?.vertexuses);
+        for vu in vus {
+            b.vertexuse_mut(vu).map_err(h)?.vertex = Some(vs);
+            b.vertex_mut(vs).map_err(h)?.vertexuses.push(vu);
+        }
+        b.edge_mut(e).map_err(h)?.vertices = [vs, vs];
     }
-    link_uses(&mut b, e, vs, ve)?;
     Ok(b)
 }
 
