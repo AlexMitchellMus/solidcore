@@ -115,7 +115,7 @@ impl SolutionObject for Obj {
 
     fn curve_point(&self, t: f64) -> Option<Point3> {
         (self.kind() == ObjectKind::Curve)
-            .then(|| shim_line().evaluate_point(t).ok())
+            .then(|| shim_line().evaluate_point(&solidcore::Kernel::default(), t).ok())
             .flatten()
     }
 
@@ -132,7 +132,9 @@ impl SolutionObject for Obj {
 
     fn surface_point(&self, u: f64, v: f64) -> Option<Point3> {
         (self.kind() == ObjectKind::Surface)
-            .then(|| shim_plane().evaluate_point(Point2::new(u, v)).ok())
+            .then(|| shim_plane()
+                .evaluate_point(&solidcore::Kernel::default(), Point2::new(u, v))
+                .ok())
             .flatten()
     }
 }
