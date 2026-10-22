@@ -399,7 +399,10 @@ impl<O> ObjectZoneTol<'_, O> {
 /// # Errors
 ///
 /// The resolver's; [`SolidError::Unported`] without one.
-pub fn resolve_object_zone_tol_3d<O>(resolver: Option<ObjectZoneTol<'_, O>>, object: O) -> Result<f64> {
+pub fn resolve_object_zone_tol_3d<O>(
+    resolver: Option<ObjectZoneTol<'_, O>>,
+    object: O,
+) -> Result<f64> {
     match resolver {
         Some(r) => r.get(object),
         // UNPORTED(geom.tol): SmTol::GetZoneTol3d(const SmObject*) on a handle the

@@ -76,18 +76,18 @@ use crate::geom::extent2d::Extent2d;
 use crate::geom::extent3d::{Extent3d, LineHit};
 use crate::geom::geom_utility::p1::{line_closest_point, point_project_to_plane};
 use crate::geom::global_solver::{
-    Branch, GlobalSolve, GlobalSolver, ObjectZoneTol, OperationCategory, SolutionRequested, SolverOperation,
-    MAX_SOLVER_TREES,
+    Branch, GlobalSolve, GlobalSolver, ObjectZoneTol, OperationCategory, SolutionRequested,
+    SolverOperation, MAX_SOLVER_TREES,
 };
 use crate::geom::object::{Shape, ShapeMember};
 use crate::geom::solution_array::{
     Solution, SolutionArray, SolutionObject, SolutionType, SortKey, MAX_TREES,
 };
+use crate::geom::tol::{zone_tol_3d, SmallTopoType};
 use crate::geom::tree::Tree;
 use crate::geom::vector2d::Vec2;
 use crate::geom::vector3d::sqrt;
 use crate::kernel::Kernel;
-use crate::geom::tol::{zone_tol_3d, SmallTopoType};
 use crate::math::{Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT, PI};
 use crate::surface::surface::p2::{surface_cache, Surface, SurfaceKind};
 use crate::surface::surface_cache::p1::{AltCacheKey, AltSrfCacheType};
@@ -1134,8 +1134,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
         sol.start.solution_value = sign * sqrt(dist_sq);
 
         // accumulate unique solutions sorted by value into SmGlobalSolver::m_pSolutions
-        ts
-            .add_sorted_solution(&sol, SortKey::BySolutionValue, true)
+        ts.add_sorted_solution(&sol, SortKey::BySolutionValue, true)
     }
 
     /// Loads the vertex among `object1`, `object2` (the first unless swapped) as
@@ -1288,8 +1287,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
             if sol.solution_type == SolutionType::RangeOfValues {
                 sol.end.solution_value *= sign;
             }
-            ts
-                .add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
+            ts.add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
         } // end iter every solution building final solution list
 
         Ok(())
@@ -1479,8 +1477,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 *sol.start.param_mut(1)? = sol.start.param(2)?;
 
                 // add solution to output m_rTopologySolver.m_pSolutions if appropriate
-                ts
-                    .add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
+                ts.add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
             } // end for each solution
         } else if ts.base.projected_operation {
             let opt_vectors = ts.base.opt_vectors.clone();
@@ -1541,8 +1538,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 if sol.solution_type == SolutionType::RangeOfValues {
                     sol.end.solution_value *= sign;
                 }
-                ts
-                    .add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
+                ts.add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
             }
         } // end not a ProjectedOperation branch
 
@@ -1727,8 +1723,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
             if sol.solution_type == SolutionType::RangeOfValues {
                 sol.end.solution_value *= sign;
             }
-            ts
-                .add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
+            ts.add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
         }
 
         Ok(())

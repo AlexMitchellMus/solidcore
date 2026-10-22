@@ -26,6 +26,7 @@
 //! | [`Solution::object_index_for_parameter_index`] | `SmSolution::GetObjectIndexForParameterIndex`             |
 //! | [`Solution::parameter_interval`]              | `SmSolution::GetParameterInterval`                         |
 //! | [`Solution::object_tolerance`]                | `SmSolution::GetObjectTolerance`                           |
+//! | [`Solution::object_tolerance_with`]           | `SmSolution::GetObjectTolerance` (caller-resolved handle)   |
 //! | [`Solution::is_equal`]                        | `SmSolution::IsEqual`                                      |
 //! | `are_sequential` (private)                    | `sm_AreSequential`                                         |
 //! | [`SolutionObject`], [`ObjectKind`]            | the `SmObject*` of `m_apObjects` and its `IsKindOf` tests  |

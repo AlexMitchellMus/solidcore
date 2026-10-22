@@ -184,8 +184,8 @@ use crate::geom::geom_utility::p2::{
     evaluate_curve_continuity, frenet_from_derivatives, ContinuityType, CurveEval,
 };
 use crate::geom::global_solver::{
-    resolve_object_zone_tol_3d, Branch, GlobalSolve, GlobalSolver, ObjectZoneTol, SolutionRequested,
-    SolverOperation,
+    resolve_object_zone_tol_3d, Branch, GlobalSolve, GlobalSolver, ObjectZoneTol,
+    SolutionRequested, SolverOperation,
 };
 use crate::geom::object::{NotifyOperation, ObjectRef};
 use crate::geom::solution_array::{Solution, SolutionObject};
