@@ -28,6 +28,8 @@
 //! that is not `SmEdge::IsManifold` is refused with error code
 //! `SM_FILERR_BAD_MERGE`, the edge in the error info and in the error, where
 //! upstream returns success. `do_filleting` alone is unchanged.
+//! Not upstream: [`ExecutiveAccess::shrink_face`] shrinks the new fillet faces with
+//! knot snapping of rounding errors (tangency-labs/solidcore#472).
 
 use crate::blend::fillet_geom::p1::FilletCornerType;
 use crate::blend::fillet_solver::p1::FilletSurfaceGenerator;
@@ -336,6 +338,12 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         body: impl FnOnce(&mut Self, &mut Kernel, &[ContextMark]) -> Result<T>,
     ) -> Result<T>;
     /// `SmFace::ShrinkGeometry()` with its header defaults; status is ignored.
+    /// Not upstream (tangency-labs/solidcore#472): implementations run
+    /// [`crate::topology::face::p1::shrink_geometry_with`] with
+    /// [`crate::nurbs::b_spline_surface_n_lib::p2::TrimOptions::snap_roundoff_to_knots`],
+    /// so that a fillet face whose domain lies a rounding error inside a knot of its
+    /// round keeps no sliver span (upstream's `TrimWithDomain` leaves one of
+    /// `10 * SM_EFF_ZERO_SQRT * (1 + |u|)`).
     fn shrink_face(&mut self, k: &mut Kernel, face: O) -> Result<()>;
     /// `SmFace::Notify`, adapting to `topology::face::p3::notify` with the
     /// caller's live notification records, attributes and surface trim cache.
@@ -794,17 +802,13 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     /// `FilletSolver::edgeuse` (`blend.fillet_solver_p1`).
     fn solver_edgeuse(&self, solver: O, index: usize) -> Result<Option<O>>;
 
-    /// `SmFilletSolver::GetFilletCorner(lIndex)`; waiting for `blend.fillet_solver_p2`.
-    /// A vertex without a corner (`SmFilletCorner::Create` returned `NULL`) yields
-    /// `None`; upstream returns its raw `m_vVertexCornerMap` edge-use array cast to a
-    /// corner (UB-209).
-    fn solver_corner(&self, _solver: O, _index: usize) -> Result<Option<O>> {
-        // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::GetFilletCorner
-        Err(SolidError::unported(
-            "SmFilletSolver::GetFilletCorner",
-            "blend.fillet_solver_p2",
-        ))
-    }
+    /// `SmFilletSolver::GetFilletCorner(lIndex)`: delegate to the solver's
+    /// `FilletSolver::fillet_corner` (`blend.fillet_solver_p2`; its corner lookup,
+    /// `SmFilletExecutive::GetFilletCornerOfVertex`, is unit
+    /// `blend.fillet_executive_p1`'s). A vertex without a corner
+    /// (`SmFilletCorner::Create` returned `NULL`) yields `None`; upstream returns its
+    /// raw `m_vVertexCornerMap` edge-use array cast to a corner (UB-209).
+    fn solver_corner(&self, solver: O, index: usize) -> Result<Option<O>>;
 
     /// `SmFilletSolver::GetOtherFilletCorner(pCorner)`; waiting for
     /// `blend.fillet_solver_p3`.

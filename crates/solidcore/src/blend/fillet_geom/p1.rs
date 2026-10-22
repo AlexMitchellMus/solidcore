@@ -167,8 +167,7 @@
 //!   examine path (`DropCurve`). `sm_TwoPntsIntersection` hands its tolerance to
 //!   `PointBasedSurfaceIntersect` through `SM_CAST_APPROXTOL3D_PTR` (a pointer cast, no
 //!   conversion), so it stays raw there.
-//! - **Unported callees.** `SmSurface::PointBasedSurfaceIntersect` defers in
-//!   `intersect.surface_intersector_p4`; `SmSurface::GlobalCurveIntersect` (in
+//! - **Unported callees.** `SmSurface::GlobalCurveIntersect` (in
 //!   [`FilletBrep::calc_cliff_rail_int_edge`]) stops at the unwired
 //!   `SmSurfaceDropCurve::DoTrace` call of `intersect.surface_drop_lib_p1` (its stub
 //!   carries the label `intersect.surface_drop_curve`);
@@ -176,9 +175,11 @@
 //!   `SmFace::CalculateUVDomainFromUVTrimCurves` of `topology.face_p1`) and the
 //!   unported callees of `SmFace::Point3DClassify` (wired to `query::face::p1`) in
 //!   `sm_ClassifyFacePoint`;
-//!   `SmFilletSolver::RailRailIntersect` (`blend.fillet_solver_p2`) in
-//!   `sm_CreateCubicRailRailInterpolant` (the cubic built from their result is ported
-//!   behind them). Every stub replaces only its call.
+//!   `SmTemporaryRadiusChange` (`blend.fillet_executive_p2`) inside the wired
+//!   `SmFilletSolver::RailRailIntersect` of `sm_CreateCubicRailRailInterpolant` (the
+//!   cubic built from its result is ported behind it; the solvers are `SmFilletSolver*`
+//!   upstream, here `&mut` [`FilletSolver`]s because its virtual callees may change
+//!   them). Every stub replaces only its call.
 //! - **Bounds.** `sm_ExamineNFixFilletGeoms` copies at most the smaller control net
 //!   row; indices are checked. No input-driven recursion.
 
@@ -1062,7 +1063,8 @@ pub struct FilletGeom {
 impl FilletGeom {
     /// `SmFilletGeom(pFilletSolver, eType)` (CO-PORTED from `blend.fillet_geom_p5`):
     /// no rails, curves or surface, unprocessed; with a solver, copies of its offset
-    /// surfaces.
+    /// surfaces. The solver is its `SmFilletSolver` base (the constructor reads only
+    /// `GetSurface(i)`), so any solver class passes its base.
     ///
     /// # Errors
     ///
@@ -2409,8 +2411,7 @@ fn is_closed(
 /// # Errors
 ///
 /// Those of the point drops ([`surface_drop_point`]) and of
-/// [`Surface::point_based_surface_intersect`] (deferred:
-/// `intersect.surface_intersector_p4`); [`SolidError::InvalidInput`] for a zero
+/// [`Surface::point_based_surface_intersect`]; [`SolidError::InvalidInput`] for a zero
 /// direction. `direction` is unitised in place before the intersection (upstream
 /// `pDirection->Unitize()`).
 pub fn two_pnts_intersection(
@@ -2980,16 +2981,17 @@ pub fn adjust_uv_on_seam(
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`]: `SmFilletSolver::RailRailIntersect`
-/// (`blend.fillet_solver_p2`); those of `SmFilletSolver::FindIndexOfRailOnFace`; [`SolidError::Upstream`] (`SM_ERR_NULL_POINTER`) for a
+/// Those of `SmFilletSolver::FindIndexOfRailOnFace` and `RailRailIntersect`
+/// ([`SolidError::Unported`] at its `SmTemporaryRadiusChange`,
+/// `blend.fillet_executive_p2`); [`SolidError::Upstream`] (`SM_ERR_NULL_POINTER`) for a
 /// rail index past the solver's two edge uses, a missing edge use or vertex use (all
 /// dereferenced unchecked upstream); `SM_ERR` when the rails do not intersect; those of
 /// the angle computations and [`BSplineCurve::create_canonical`].
 pub fn create_cubic_rail_rail_interpolant(
     k: &Kernel,
     brep: &mut Brep,
-    fil_solver1: &ConstantRadiusAssistedFs,
-    fil_solver2: &ConstantRadiusAssistedFs,
+    fil_solver1: &mut FilletSolver,
+    fil_solver2: &mut FilletSolver,
     face: FaceId,
     corner_vert: VertexId,
     start_pnt: Point3,
@@ -2999,29 +3001,24 @@ pub fn create_cubic_rail_rail_interpolant(
     bulge_factor: f64,
 ) -> Result<BSplineCurve> {
     const OP: &str = "blend::fillet_geom::p1::create_cubic_rail_rail_interpolant";
-    let solver_edgeuse = |fs: &ConstantRadiusAssistedFs, i: usize| {
-        fs.solver
-            .edgeuses
+    let solver_edgeuse = |fs: &FilletSolver, i: usize| {
+        fs.edgeuses
             .get(i)
             .copied()
             .flatten()
             .ok_or_else(|| SolidError::null_pointer(OP))
     };
     // First, calculate the intersection of two rails
-    let rail_index = fil_solver1
-        .solver
-        .find_index_of_rail_on_face(brep, Some(face))?;
-    let other_rail_index = fil_solver2
-        .solver
-        .find_index_of_rail_on_face(brep, Some(face))?;
+    let rail_index = fil_solver1.find_index_of_rail_on_face(brep, Some(face))?;
+    let other_rail_index = fil_solver2.find_index_of_rail_on_face(brep, Some(face))?;
     // Derive guess uv point here
-    let mut eu = solver_edgeuse(fil_solver1, rail_index)?;
+    let mut eu = solver_edgeuse(&*fil_solver1, rail_index)?;
     let eu_vertex = |brep: &Brep, eu: EdgeuseId| -> Result<(VertexuseId, Option<VertexId>)> {
         let vu = eu1::vertexuse(brep, eu)?.ok_or_else(|| SolidError::null_pointer(OP))?;
         Ok((vu, vertexuse_unit::vertex(brep, vu)?))
     };
     if eu_vertex(brep, eu)?.1 != Some(corner_vert) {
-        eu = solver_edgeuse(fil_solver2, other_rail_index)?;
+        eu = solver_edgeuse(&*fil_solver2, other_rail_index)?;
     }
     let (vu, _) = eu_vertex(brep, eu)?;
     // ComputeUVPoint(sUVGuess) with its default bOKToMakeUVTrimCurve = TRUE; its status
@@ -3032,12 +3029,18 @@ pub fn create_cubic_rail_rail_interpolant(
         Err(_) => Point2::new(UNDEF_DOUBLE, UNDEF_DOUBLE),
     };
 
-    let (found_intersection, tsect_pnt1, _tsect_pnt2) = rail_rail_intersect(
+    let mut tsect_pnt1 = TsectPnt::default();
+    let mut tsect_pnt2 = TsectPnt::default();
+    let found_intersection = FilletSolver::rail_rail_intersect(
         fil_solver1,
+        fil_solver2,
+        k,
+        Some(&*brep),
         uv_guess,
         rail_index,
-        fil_solver2,
         other_rail_index,
+        &mut tsect_pnt1,
+        &mut tsect_pnt2,
     )?;
     if !found_intersection {
         return Err(SolidError::sm_err(OP));
@@ -3076,23 +3079,6 @@ pub fn create_cubic_rail_rail_interpolant(
         weights: None,
         trim: None,
     })
-}
-
-/// `SmFilletSolver::RailRailIntersect(crUVGuess, lRailIndex, pOtherFillet,
-/// lOtherRailIndex, rbFoundIntersection, rThisTsectPnt, rOtherTsectPnt)` (unit
-/// `blend.fillet_solver_p2`): the three out-parameters.
-fn rail_rail_intersect(
-    _solver: &ConstantRadiusAssistedFs,
-    _uv_guess: Point2,
-    _rail_index: usize,
-    _other_fillet: &ConstantRadiusAssistedFs,
-    _other_rail_index: usize,
-) -> Result<(bool, TsectPnt, TsectPnt)> {
-    // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::RailRailIntersect
-    Err(SolidError::unported(
-        "SmFilletSolver::RailRailIntersect",
-        "blend.fillet_solver_p2",
-    ))
 }
 
 /// `smos_CleanUpNoise`: removes floating-point noise up to four decimal places

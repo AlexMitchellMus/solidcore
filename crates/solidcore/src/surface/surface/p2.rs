@@ -31,7 +31,7 @@
 //! | [`Surface::intersect_with_plane`]                 | `IntersectWithPlane`                             |
 //! | [`Surface::reverse`], [`Surface::reparameterize`] | `Reverse`, `Reparameterize`                      |
 //! | [`Surface::split_at`], [`Surface::step_inversion`] | `SplitAt`, `STEPInversion`                      |
-//! | [`Surface::swap_uv`], [`Surface::transform`], [`Surface::trim_with_domain`] | `SwapUV`, `Transform`, `TrimWithDomain` |
+//! | [`Surface::swap_uv`], [`Surface::transform`], [`Surface::trim_with_domain`], [`Surface::trim_with_domain_with`] | `SwapUV`, `Transform`, `TrimWithDomain` |
 //! | [`Surface::knots`]                                | `GetKnots`                                       |
 //! | [`Surface::convert_uv_from_step_to_nurbs`], [`Surface::convert_uv_from_nurbs_to_step`] | `ConvertUVFromSTEPToNURBS`, `ConvertUVFromNURBSToSTEP` |
 //! | [`Surface::curve_on_classify`]                    | `CurveOnClassify`                                |
@@ -112,8 +112,7 @@
 //!   same value.
 //! - **Unported callees.** `GlobalSurfaceIntersect` runs
 //!   `SmSurfaceIntersector::DoIntersection` (unit `intersect.surface_intersector_p5`);
-//!   `PointBasedSurfaceIntersect` builds the `SmAdvSurfaceIntersector` and then needs
-//!   `DoPointIntersection` (`intersect.surface_intersector_p4`); `CreatePlaneWith3DCurves`
+//!   `CreatePlaneWith3DCurves`
 //!   needs `SmTrimmingTools` (`topology.trimming_tools`); `smsurf_GetSurfaceCache`
 //!   needs the cache store to make surface caches (`SmSurface::CacheMakeOrValidate`,
 //!   `surface.surface_p1`); the polar box test of `sm_CsArePerpenDisjoint` needs the
@@ -185,12 +184,15 @@ use crate::geom::vector3d::{sqrt, Point3, Vec3};
 use crate::intersect::adv_surface_intersector::{AdvSurfaceIntersector, NoSurfaceHandle};
 use crate::intersect::curve_class::{CurveClassification, ResetOptions};
 use crate::intersect::point_class::{ClassGeometry, ClassObject, PointClassType};
-use crate::intersect::surface_intersector::p1::{SrfIndex, TsectPnt};
+use crate::intersect::surface_intersector::p1::{SrfIndex, TsectId, TsectPnt};
+use crate::intersect::surface_intersector::p4::PointIntersectionOptions;
 use crate::kernel::Kernel;
 use crate::math::{EFF_ZERO, EFF_ZERO_SQ, EFF_ZERO_SQRT, PI, UNDEF_DOUBLE};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_surface::{BSplineSurface, LocationType, SurfParamType};
-use crate::nurbs::b_spline_surface_n_lib::p2::{EvaluateFlags, OrientType, SkinnedSurfaceOptions};
+use crate::nurbs::b_spline_surface_n_lib::p2::{
+    EvaluateFlags, OrientType, SkinnedSurfaceOptions, TrimOptions,
+};
 use crate::nurbs::crv_fit::p1::ParamMethod;
 use crate::nurbs::knots::Side;
 use crate::surface::cone::Cone;
@@ -200,8 +202,10 @@ use crate::surface::plane::Plane;
 use crate::surface::sphere::Sphere;
 use crate::surface::srf_in_volume::SrfInVolume;
 use crate::surface::surf_of_extrusion::SurfOfExtrusion;
-use crate::surface::surf_of_revolution::SurfOfRevolution;
+use crate::surface::surf_of_revolution::p3::intersect_revolved;
+use crate::surface::surf_of_revolution::{Revolved, SurfOfRevolution};
 use crate::surface::surface::p1::StepSurface;
+use crate::surface::surface::p8::FaceSolveCache;
 use crate::surface::surface_cache::p1::SurfaceCache;
 use crate::surface::torus::Torus;
 use crate::topology::database_io::DatabaseReader;
@@ -329,6 +333,13 @@ impl Clone for Surface {
     }
 }
 
+/// The owned geometry branches checked before recursive evaluation copies.
+enum EvaluationCopyGeometry<'a> {
+    Surface(&'a Surface),
+    Curve(&'a Curve),
+    Volume(&'a crate::surface::volume::Volume),
+}
+
 impl Surface {
     /// A temporary evaluation copy: retain the owner and exact NURBS data rather
     /// than invoking the upstream copy constructor's knot fix-up.
@@ -339,17 +350,49 @@ impl Surface {
     /// Check every owned geometry branch before invoking recursive `Clone` impls.
     /// This includes trim curves and volume chains, not only the surface basis.
     pub(crate) fn check_evaluation_copy_depth(&self, initial_depth: usize) -> Result<()> {
+        Self::check_owned_evaluation_copy_depth(
+            EvaluationCopyGeometry::Surface(self),
+            initial_depth,
+            "surface::surface::p2::clone_for_evaluation",
+        )
+    }
+
+    /// The same nesting bound for a temporary curve evaluation copy.
+    pub(crate) fn check_curve_evaluation_copy_depth(
+        curve: &Curve,
+        initial_depth: usize,
+    ) -> Result<()> {
+        Self::check_owned_evaluation_copy_depth(
+            EvaluationCopyGeometry::Curve(curve),
+            initial_depth,
+            "curve::curve::p2::clone_for_evaluation",
+        )
+    }
+
+    /// Bound a volume chain before its field-wise, exact recursive `Clone`.
+    pub(crate) fn check_volume_evaluation_copy_depth(
+        volume: &crate::surface::volume::Volume,
+        initial_depth: usize,
+    ) -> Result<()> {
+        Self::check_owned_evaluation_copy_depth(
+            EvaluationCopyGeometry::Volume(volume),
+            initial_depth,
+            "surface::surface::p2::clone_for_evaluation",
+        )
+    }
+
+    fn check_owned_evaluation_copy_depth(
+        geometry: EvaluationCopyGeometry<'_>,
+        initial_depth: usize,
+        operation: &'static str,
+    ) -> Result<()> {
         use crate::curve::curve::CurveKind;
-        enum Geometry<'a> {
-            Surface(&'a Surface),
-            Curve(&'a Curve),
-            Volume(&'a crate::surface::volume::Volume),
-        }
-        let mut pending = vec![(Geometry::Surface(self), initial_depth)];
+        use EvaluationCopyGeometry as Geometry;
+        let mut pending = vec![(geometry, initial_depth)];
         while let Some((geometry, depth)) = pending.pop() {
             if depth >= 64 {
                 return Err(SolidError::invalid_input(
-                    "surface::surface::p2::clone_for_evaluation",
+                    operation,
                     "owned geometry nesting exceeds 64",
                 ));
             }
@@ -446,29 +489,30 @@ impl Surface {
         let kind = match &self.kind {
             SurfaceKind::BSpline(s) => SurfaceKind::BSpline(s.clone_exact()),
             SurfaceKind::Plane(s) => SurfaceKind::Plane(s.clone_exact()),
-            SurfaceKind::Cone(s) => {
-                let mut c = s.as_ref().clone();
-                c.rev = s.rev().clone_exact();
-                SurfaceKind::Cone(Box::new(c))
-            }
-            SurfaceKind::Sphere(s) => {
-                let mut c = s.as_ref().clone();
-                c.base = s.base().clone_exact();
-                SurfaceKind::Sphere(Box::new(c))
-            }
-            SurfaceKind::Torus(s) => {
-                // (an exact evaluation copy: the copy constructor's reset of the
-                // inside-out flag does not apply)
-                let mut c = s.as_ref().clone();
-                c.base = s.base().clone_exact();
-                c.inside_out = s.inside_out;
-                SurfaceKind::Torus(Box::new(c))
-            }
+            SurfaceKind::Cone(s) => SurfaceKind::Cone(Box::new(Cone {
+                rev: s.rev().clone_for_evaluation(depth + 1)?,
+                base_radius: s.base_radius,
+                semi_angle_deg: s.semi_angle_deg,
+                inside_out: s.inside_out,
+                cylinder: s.cylinder,
+            })),
+            SurfaceKind::Sphere(s) => SurfaceKind::Sphere(Box::new(Sphere {
+                base: s.base().clone_for_evaluation(depth + 1)?,
+                radius: s.radius,
+                inside_out: s.inside_out,
+            })),
+            SurfaceKind::Torus(s) => SurfaceKind::Torus(Box::new(Torus {
+                base: s.base().clone_for_evaluation(depth + 1)?,
+                major_radius: s.major_radius,
+                minor_radius: s.minor_radius,
+                // The copy constructor resets this flag; an evaluation copy must not.
+                inside_out: s.inside_out,
+            })),
             SurfaceKind::SurfOfRevolution(s) => {
-                SurfaceKind::SurfOfRevolution(Box::new(s.clone_exact()))
+                SurfaceKind::SurfOfRevolution(Box::new(s.clone_for_evaluation(depth + 1)?))
             }
             SurfaceKind::SurfOfExtrusion(s) => {
-                SurfaceKind::SurfOfExtrusion(Box::new(s.clone_exact()))
+                SurfaceKind::SurfOfExtrusion(Box::new(s.clone_for_evaluation(depth + 1)?))
             }
             SurfaceKind::Step(s) => SurfaceKind::Step(s.clone_for_evaluation(depth + 1)?),
             SurfaceKind::CurveBounded(s) => {
@@ -557,19 +601,21 @@ pub struct SurfaceIntersection {
 }
 
 /// The curve of a point-based surface/surface intersection
-/// (`PointBasedSurfaceIntersect`'s outputs).
-#[derive(Debug, Clone)]
+/// (`PointBasedSurfaceIntersect`'s outputs). Each member is `None` where upstream
+/// leaves the out-param `NULL` or unset (it is set only when exactly one curve was
+/// found).
+#[derive(Debug, Clone, Default)]
 pub struct PointIntersection {
     /// `rp3DCurve`: the 3D curve (`None` when no curve passes through all points).
-    pub curve_3d: Option<BSplineCurve>,
+    pub curve_3d: Option<Curve>,
     /// `rpSurface1UVCurve`: its UV curve on this surface.
-    pub surface1_uv_curve: Option<BSplineCurve>,
+    pub surface1_uv_curve: Option<Curve>,
     /// `rpSurface2UVCurve`: its UV curve on the other surface.
-    pub surface2_uv_curve: Option<BSplineCurve>,
+    pub surface2_uv_curve: Option<Curve>,
     /// `reCurveType`: the kind of intersection.
-    pub curve_type: TsectCurveType,
+    pub curve_type: Option<TsectCurveType>,
     /// `rdDeviation`: the maximum distance between the curve and the surfaces.
-    pub deviation: f64,
+    pub deviation: Option<f64>,
 }
 
 /// The kind of an intersection curve (`SmTsectCurveType`).
@@ -1330,8 +1376,9 @@ impl Surface {
 
     /// `DropPointFast`: the plane and surface of revolution overrides (their
     /// solutions name no object; the surface of revolution's are merged as
-    /// upstream's, which name the surface); the other ported kinds run the base
-    /// default, which fails.
+    /// upstream's, which name the surface; the cone, sphere and torus inherit the
+    /// revolution's with their own `EvaluateSTEPPoint`); the other ported kinds run
+    /// the base default, which fails.
     ///
     /// # Errors
     ///
@@ -1357,16 +1404,30 @@ impl Surface {
                 target_distance,
                 None,
             ),
-            SurfaceKind::Cone(_s) => {
-                // DISPATCH GAP (#76): inherited solver still needs cone virtual callbacks.
-                Err(SolidError::unported(
-                    "SurfaceKind::Cone::DropPointFast callbacks",
-                    "surface.surface_p2",
-                ))
-            }
             // the inherited SmSurfOfRevolution::DropPointFast, its virtual
-            // EvaluateSTEPPoint and LocalPointSolve those of the sphere/torus; the
+            // EvaluateSTEPPoint and LocalPointSolve those of the cone/sphere/torus; the
             // solutions name a stand-in for this surface, as for the revolution below
+            SurfaceKind::Cone(s) => Ok(s
+                .rev()
+                .drop_point_fast_using(
+                    k,
+                    uv_domain,
+                    operation,
+                    test_point,
+                    in_pointing_vector,
+                    distance_tolerance,
+                    target_distance,
+                    requested,
+                    Some(OperandObject::Surface(0, self.natural_uv_domain())),
+                    &|_, uv| s.evaluate_step_point(uv),
+                    &|k, domain, operation, point, guess| {
+                        let r = self.local_point_solve::<OperandObject>(
+                            k, domain, operation, point, guess,
+                        )?;
+                        Ok((r.found, r.solution))
+                    },
+                )?
+                .without_objects()),
             SurfaceKind::Sphere(s) => Ok(s
                 .base()
                 .drop_point_fast_using(
@@ -1719,8 +1780,25 @@ impl Surface {
     ///
     /// Those of the kind's override (the base default is `SM_ERR`).
     pub fn trim_with_domain(&mut self, k: &Kernel, trim_domain: &mut Extent2d) -> Result<()> {
+        self.trim_with_domain_with(k, trim_domain, TrimOptions::default())
+    }
+
+    /// [`Surface::trim_with_domain`] with [`TrimOptions`] (not upstream,
+    /// tangency-labs/solidcore#472). Only a plain B-spline surface reads them
+    /// ([`BSplineSurface::trim_with_domain_with`]); the other kinds trim as
+    /// [`Surface::trim_with_domain`]. The default options are upstream's.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Surface::trim_with_domain`].
+    pub fn trim_with_domain_with(
+        &mut self,
+        k: &Kernel,
+        trim_domain: &mut Extent2d,
+        options: TrimOptions,
+    ) -> Result<()> {
         match &mut self.kind {
-            SurfaceKind::BSpline(s) => s.trim_with_domain(trim_domain),
+            SurfaceKind::BSpline(s) => s.trim_with_domain_with(trim_domain, options),
             SurfaceKind::CurveBounded(_) | SurfaceKind::Step(_) => base_edit(),
             SurfaceKind::OffsetSurface(s) => s.trim_with_domain(k, trim_domain),
             SurfaceKind::SrfInVolume(s) => s.trim_with_domain(k, trim_domain),
@@ -2135,61 +2213,68 @@ impl Surface {
             ),
             // the inherited SmSurfOfRevolution::GlobalSurfaceIntersect: the plane
             // special case runs the inherited IntersectWithPlane with the torus's iso
-            // circles, then the general intersection when it needs more (its curves
-            // follow: upstream appends to the same arrays); the other special cases
-            // (sphere, cone, surface of revolution) run through the torus's virtual
-            // iso curves and conversions (DISPATCH GAP, #76); any other surface takes
-            // the general intersection
-            SurfaceKind::Torus(t) => match other.kind() {
-                SurfaceKind::Plane(p) => {
+            // circles, the sphere, cone and surface of revolution cases the inherited
+            // intersections with the torus's domain conversion; each then takes the
+            // general intersection when it needs more (its curves follow: upstream
+            // appends to the same arrays); any other surface takes the general
+            // intersection
+            SurfaceKind::Torus(t) => {
+                // IntersectWithSphere / IntersectWithCone: a planar generator, else
+                // the general intersection
+                let revolved = |other: &dyn Revolved| -> Result<(bool, SurfaceIntersection)> {
+                    if !t.base().planar_generator {
+                        return Ok((true, SurfaceIntersection::default()));
+                    }
+                    intersect_revolved(
+                        t.as_ref(),
+                        k,
+                        uv_domain,
+                        other,
+                        other_uv_domain,
+                        approx_tol_3d,
+                    )
+                };
+                let (more, mut out) = match other.kind() {
                     // the plane's boxes take its face's tolerance
-                    let (more, mut out) = t.intersect_with_plane_owned(
+                    SurfaceKind::Plane(p) => t.intersect_with_plane_owned(
                         k,
                         p,
                         crate::surface::plane::p2::PlaneOwner::of(other)?,
                         other_uv_domain,
                         approx_tol_3d,
+                    )?,
+                    SurfaceKind::Sphere(o) => revolved(o.as_ref())?,
+                    SurfaceKind::Cone(o) if o.type_code() == CONE_TYPE => revolved(o.as_ref())?,
+                    // (IntersectWithSurfOfRevolution checks the generator itself)
+                    SurfaceKind::SurfOfRevolution(o) => intersect_revolved(
+                        t.as_ref(),
+                        k,
+                        uv_domain,
+                        o.as_ref(),
+                        other_uv_domain,
+                        approx_tol_3d,
+                    )?,
+                    _ => (true, SurfaceIntersection::default()),
+                };
+                if more {
+                    let more = base_global_surface_intersect(
+                        k,
+                        self,
+                        uv_domain,
+                        other,
+                        other_uv_domain,
+                        use_surface_edges,
+                        approx_tol_3d,
+                        ang_tol_rad,
                     )?;
-                    if more {
-                        let more = base_global_surface_intersect(
-                            k,
-                            self,
-                            uv_domain,
-                            other,
-                            other_uv_domain,
-                            use_surface_edges,
-                            approx_tol_3d,
-                            ang_tol_rad,
-                        )?;
-                        out.curves_3d.extend(more.curves_3d);
-                        out.surface1_uv_curves.extend(more.surface1_uv_curves);
-                        out.surface2_uv_curves.extend(more.surface2_uv_curves);
-                        out.curve_types.extend(more.curve_types);
-                        out.deviations.extend(more.deviations);
-                    }
-                    Ok(out)
+                    out.curves_3d.extend(more.curves_3d);
+                    out.surface1_uv_curves.extend(more.surface1_uv_curves);
+                    out.surface2_uv_curves.extend(more.surface2_uv_curves);
+                    out.curve_types.extend(more.curve_types);
+                    out.deviations.extend(more.deviations);
                 }
-                SurfaceKind::Sphere(_) | SurfaceKind::SurfOfRevolution(_) => {
-                    Err(SolidError::unported(
-                        "SurfaceKind::Torus::GlobalSurfaceIntersect special cases",
-                        "surface.surface_p2",
-                    ))
-                }
-                SurfaceKind::Cone(c) if c.type_code() == CONE_TYPE => Err(SolidError::unported(
-                    "SurfaceKind::Torus::GlobalSurfaceIntersect special cases",
-                    "surface.surface_p2",
-                )),
-                _ => base_global_surface_intersect(
-                    k,
-                    self,
-                    uv_domain,
-                    other,
-                    other_uv_domain,
-                    use_surface_edges,
-                    approx_tol_3d,
-                    ang_tol_rad,
-                ),
-            },
+                Ok(out)
+            }
             SurfaceKind::SurfOfRevolution(s) => s.global_surface_intersect(
                 self,
                 k,
@@ -2228,15 +2313,16 @@ impl Surface {
     }
 
     /// The intersection curve of this surface with `other` through the given pairs
-    /// of UV points (`PointBasedSurfaceIntersect`, UV point version, through
-    /// `SmAdvSurfaceIntersector::DoPointIntersection`).
+    /// of UV points (`PointBasedSurfaceIntersect`, UV point version): the points are
+    /// handed to `SmAdvSurfaceIntersector::DoPointIntersection` (the base driver,
+    /// [`crate::intersect::surface_intersector::SurfaceIntersector::do_point_intersection`],
+    /// which reaches the advanced intersector's `ComputeSingularityPoint` override).
     ///
     /// # Errors
     ///
     /// [`SolidError::InvalidInput`] for point lists of different lengths or of 20
     /// points or more (upstream writes past its arrays); those of the intersector's
-    /// construction; [`SolidError::Unported`]: `SmSurfaceIntersector::DoPointIntersection`
-    /// (`intersect.surface_intersector_p4`).
+    /// construction and of `DoPointIntersection`.
     pub fn point_based_surface_intersect(
         &self,
         k: &Kernel,
@@ -2245,10 +2331,10 @@ impl Surface {
         other_uv_domain: &Extent2d,
         surface1_points: &[Point2],
         surface2_points: &[Point2],
-        _extend: [bool; 2],
-        _directions: [Option<Vec3>; 2],
-        _approx_tol_3d: Option<f64>,
-        _ang_tol_rad: Option<f64>,
+        extend: [bool; 2],
+        directions: [Option<Vec3>; 2],
+        approx_tol_3d: Option<f64>,
+        ang_tol_rad: Option<f64>,
     ) -> Result<PointIntersection> {
         if surface1_points.len() >= 20 || surface1_points.len() != surface2_points.len() {
             return Err(SolidError::invalid_input(
@@ -2257,31 +2343,46 @@ impl Surface {
             ));
         }
 
-        // store every given surface point in a SmTsectPnt object
-        let _tsect_points: Vec<TsectPnt> = surface1_points
+        // allocate the surf/surf intersector
+        let mut ssi: AdvSurfaceIntersector<'_, '_, NoSurfaceHandle> =
+            AdvSurfaceIntersector::new(k, self, uv_domain, other, other_uv_domain, false)?;
+
+        // store every given surface point in a SmTsectPnt object (upstream's are on
+        // its stack, here in the intersector's arena)
+        let tsect_points: Vec<TsectId> = surface1_points
             .iter()
             .zip(surface2_points)
             .map(|(&uv1, &uv2)| {
                 let mut tsp = TsectPnt::new();
                 *tsp.uv_pos_mut(SrfIndex::First) = uv1;
                 *tsp.uv_pos_mut(SrfIndex::Second) = uv2;
-                tsp
+                ssi.base.alloc_point(tsp)
             })
             .collect();
 
-        // allocate the surf/surf intersector
-        let _ssi: AdvSurfaceIntersector<'_, '_, NoSurfaceHandle> =
-            AdvSurfaceIntersector::new(k, self, uv_domain, other, other_uv_domain, false)?;
-
-        // (SurfaceIntersector::do_point_intersection, part 4, is the basic intersector's:
-        // through TraceCurve and ComputePointValues it calls the basic
-        // ComputeSingularityPoint, not SmAdvSurfaceIntersector's override, so it cannot
-        // stand in here until the intersector parts dispatch their virtual calls)
-        // UNPORTED(intersect.surface_intersector_p4): SmSurfaceIntersector::DoPointIntersection
-        Err(SolidError::unported(
-            "SmSurfaceIntersector::DoPointIntersection",
-            "intersect.surface_intersector_p4",
-        ))
+        // pass the call along
+        let [extend_before_start, extend_after_end] = extend;
+        let [start_direction, end_direction] = directions;
+        let curve = ssi.base.do_point_intersection(
+            k,
+            &tsect_points,
+            &PointIntersectionOptions {
+                extend_before_start,
+                extend_after_end,
+                start_direction,
+                end_direction,
+                approx_tol_3d,
+                ang_tol_rad,
+            },
+        )?;
+        let [surface1_uv_curve, surface2_uv_curve] = curve.uv_curves;
+        Ok(PointIntersection {
+            curve_3d: curve.curve_3d,
+            surface1_uv_curve,
+            surface2_uv_curve,
+            curve_type: curve.curve_type,
+            deviation: curve.deviation,
+        })
     }
 
     /// A plane containing a set of coplanar 3D curves, with the curves ordered into
@@ -5116,7 +5217,6 @@ pub fn cs_are_perpen_disjoint_in<O: Copy + PartialEq>(
 
 /// The line/surface intersection global solver (`SmLSIGlobalSolver`): one tree (the
 /// surface cache tree), solutions `[line t, surface u, surface v]`.
-#[derive(Debug, Clone)]
 pub struct LsiGlobalSolver<'t, 's, O> {
     /// Caller context for virtual evaluations.
     pub kernel: &'s Kernel,
@@ -5140,6 +5240,30 @@ pub struct LsiGlobalSolver<'t, 's, O> {
     /// The cache holding the patches of the surface tree's nodes, read by the leaf
     /// solve (part 10; upstream reaches it through the node's tree owner).
     pub surface_cache: Option<&'s SurfaceCache<O>>,
+    /// Prepared face classification shared with other caches in this operation.
+    pub face_queries: Option<&'s dyn crate::surface::surface_cache::face_context::FaceQueries<O>>,
+    /// The point test of the face's trimmed cache when the cache is one
+    /// (`SmTrimSrfCache::PointTest`, the virtual `PointTest` `sm_IsPointValid`
+    /// calls); `None` tests against the cache's domain (`SmSurfaceCache::PointTest`).
+    pub face_cache: Option<&'s mut (dyn FaceSolveCache<O> + 's)>,
+}
+
+impl<O: std::fmt::Debug> std::fmt::Debug for LsiGlobalSolver<'_, '_, O> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LsiGlobalSolver")
+            .field("base", &self.base)
+            .field("surface", &self.surface)
+            .field("uv_domain", &self.uv_domain)
+            .field("line_point", &self.line_point)
+            .field("line_vector", &self.line_vector)
+            .field("line_interval", &self.line_interval)
+            .field("ray_fire", &self.ray_fire)
+            .field("distance_tolerance", &self.distance_tolerance)
+            .field("surface_cache", &self.surface_cache)
+            .field("face_cache", &self.face_cache.is_some())
+            .field("face_queries", &self.face_queries.is_some())
+            .finish_non_exhaustive()
+    }
 }
 
 impl<O: SolutionObject> LsiGlobalSolver<'_, '_, O> {
@@ -5687,6 +5811,8 @@ mod tests {
             ray_fire: false,
             distance_tolerance: 1e-6,
             surface_cache: None,
+            face_queries: None,
+            face_cache: None,
             kernel: &Kernel::default(),
         };
         let mut branch: Branch = Default::default();
@@ -6019,17 +6145,11 @@ mod kernel_dispatch_tests {
                 Curve::from(iso).evaluate_point(&kernel, uv.y).unwrap(),
                 expected
             );
-            // Part 9's B-spline storage cannot retain analytic iso overrides yet.
-            let gap = surface
+            // Part 9 builds the boundaries through the cone's own iso curves.
+            assert!(surface
                 .create_iso_boundaries(&kernel, SurfParamType::U, 0.0)
-                .unwrap_err();
-            assert!(matches!(
-                gap,
-                SolidError::Unported {
-                    unit: "surface.surface_p9",
-                    ..
-                }
-            ));
+                .unwrap()
+                .is_some());
             let step = StepSurface::new(surface, true);
             let step_uv = Point2::new(90.0, 1.0);
             assert_eq!(
