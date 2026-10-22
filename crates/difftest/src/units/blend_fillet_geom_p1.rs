@@ -23,9 +23,9 @@
 //!
 //! Deferred on the Rust side (unported callees): `two_pnts` past its point drops
 //! (`intersect.surface_intersector_p4`), `classify_face_point` and `fb` `split_face` of
-//! a vertex classified to the split face where `Point3DClassify` reaches the trimmed
-//! surface cache's face (`SmFace` handle of a surface's face, `topology.face_p2`), and
-//! `fb` `cliff`
+//! a vertex classified to the split face (`SmSurface::DropCurve` of
+//! `intersect.surface_drop_lib_p3`, making the faces' UV trim curves in
+//! `CalculateUVDomainFromUVTrimCurves`), and `fb` `cliff`
 //! (`intersect.surface_drop_lib_p1`'s own unwired `SmSurfaceDropCurve::DoTrace`, whose
 //! stub prints `intersect.surface_drop_curve`). `fb` `examine` past its pre-checks is
 //! refused by the shim (no `SmFilletSolver`; see the FFI module). Fixtures flagged
@@ -69,7 +69,6 @@ use solidcore::surface::surf_of_revolution::SurfOfRevolution;
 use solidcore::surface::surface::{Surface, SurfaceKind};
 use solidcore::topology::brep::p8::{create_face_from_surface, FaceBuildEnv};
 use solidcore::topology::edge::NotifyEnv;
-use solidcore::topology::face::p3::create_uv_trim_curves;
 use solidcore::topology::topology_traverser::Marks;
 use solidcore::topology::{
     Brep, EdgeId, Edgeuse, EdgeuseId, FaceId, VertexId, Vertexuse, VertexuseId, VertexuseOwner,
@@ -1345,19 +1344,12 @@ pub(crate) fn new_brep(k: &mut Kernel) -> Result<Brep, HarnessError> {
         .map_err(|e| harness(e.to_string()))
 }
 
-/// The shim's `face_of`: `CreateFaceFromSurface` over the surface's natural domain (a
-/// face in its own shell of the infinite region, bounded by edges on the natural trim
-/// curves), then `CreateUVTrimCurves(FALSE, natural UV curves, orientations)` with the
-/// surface's natural UV trim curves (reparametrised to their 3D curves, as
-/// `CreateFaceInRegionFromSurface` does; status ignored), so every edge use carries its UV
-/// trim curve as on a face read from a file. Without them, upstream builds them on demand
-/// through `SmSurface::DropCurve` (`intersect.surface_drop_lib_p3`), e.g. in
-/// `sm_ClassifyFacePoint`'s `CalculateUVDomainFromUVTrimCurves`. The shim refuses the case
-/// when `CreateFaceFromSurface` fails, so a Rust failure there is a harness error.
-/// `CreateUVTrimCurves` stopping at an unported callee (an analytic surface's
-/// `SmCrvOnSurf`) leaves edge uses without UV trim curves on the Rust side only; a later
-/// call that needs one makes it on demand (`GetOrCreateUVTrimCurve`), which is compared or
-/// defers like any other call.
+/// The shim's `face_of`: `CreateFaceFromSurface` over the surface's natural domain, a
+/// face in its own shell of the infinite region bounded by edges on the natural trim
+/// curves (no UV trim curves yet: upstream makes them on demand with
+/// `SmSurface::DropCurve`, `intersect.surface_drop_lib_p3`), with the tolerances that
+/// sets. The shim refuses the case when upstream fails, so a Rust failure is a harness
+/// error.
 pub(crate) fn natural_face(
     k: &mut Kernel,
     b: &mut Brep,
@@ -1380,29 +1372,8 @@ pub(crate) fn natural_face(
         marks: &mut marks,
         this_face: &this_face,
     };
-    let f = create_face_from_surface(k, b, Some(surface), &domain, &mut fenv)
-        .map_err(|e| harness(format!("CreateFaceFromSurface: {e}")))?;
-
-    let natural = b
-        .face(f)
-        .map_err(|e| harness(e.to_string()))?
-        .surface
-        .as_ref()
-        .ok_or_else(|| harness("face without surface"))?
-        .create_natural_uv_trim_curves(k, &domain, SurfParamType::U, false);
-    // (the shim ignores a failure here and keeps the face without UV trim curves)
-    if let Ok(natural) = natural {
-        let mut uv_curves = Vec::new();
-        for (uv, c3) in natural.uv_curves.into_iter().zip(&natural.curves_3d) {
-            let mut uv = uv;
-            // status ignored, as in CreateFaceInRegionFromSurface
-            let _ = uv.edit_parameterization(&c3.natural_interval());
-            uv_curves.push(Some(Curve::from(uv)));
-        }
-        // status ignored, as the shim does (an unported callee too: see above)
-        let _ = create_uv_trim_curves(k, b, f, false, Some((&mut uv_curves, &natural.orients)));
-    }
-    Ok(f)
+    create_face_from_surface(k, b, Some(surface), &domain, &mut fenv)
+        .map_err(|e| harness(format!("CreateFaceFromSurface: {e}")))
 }
 
 /// A single face on `surface` in a fresh B-rep (`CreateFaceFromSurface` over the natural

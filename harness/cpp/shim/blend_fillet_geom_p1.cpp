@@ -342,37 +342,11 @@ SmEdge* wire_edge(SmBrep* b, SmBSplineCurve* curve)
     return e;
 }
 
-// A face on `surface` (consumed) over its natural domain, with the natural UV trim curves on
-// its edge uses (as on a face read from a file): CreateFaceFromSurface, then
-// CreateUVTrimCurves(FALSE, natural UV curves, orientations) (status ignored), the curves
-// reparametrised to their 3D curves as CreateFaceInRegionFromSurface does. Without them,
-// upstream makes them on demand with SmSurface::DropCurve, which the Rust side has not
-// ported (intersect.surface_drop_lib_p3). NULL when CreateFaceFromSurface fails.
 SmFace* face_of(SmBrep* b, SmSurface* surface)
 {
     SmFace* f = NULL;
-    SmExtent2d domain = surface->GetNaturalUVDomain();
-    if (b->CreateFaceFromSurface(surface, domain, f) != SM_SUCCESS)
+    if (b->CreateFaceFromSurface(surface, surface->GetNaturalUVDomain(), f) != SM_SUCCESS)
         return NULL;
-    SmTArray<SmCurve*> curves3d;
-    SmTArray<SmBSplineCurve*> uvCurves;
-    SmTArray<SmOrientType> orients;
-    if (surface->CreateNaturalUVTrimCurves(*b->GetContext(), domain, SM_SP_U, FALSE, curves3d,
-                                           uvCurves, orients, NULL) == SM_SUCCESS)
-    {
-        for (ULONG i = 0; i < uvCurves.GetSize() && i < curves3d.GetSize(); ++i)
-            uvCurves[i]->EditParameterization(curves3d[i]->GetNaturalInterval());
-        double d = 0.0;
-        // takes the UV curves (it deletes the ones it does not attach)
-        f->CreateUVTrimCurves(FALSE, &uvCurves, &orients, d, d, d, d, d, d);
-    }
-    else
-    {
-        for (ULONG i = 0; i < uvCurves.GetSize(); ++i)
-            delete uvCurves[i];
-    }
-    for (ULONG i = 0; i < curves3d.GetSize(); ++i)
-        delete curves3d[i];
     return f;
 }
 

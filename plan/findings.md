@@ -16026,23 +16026,26 @@ Follow-up to "blend.fillet_geom_p1: `sm_ClassifyFacePoint` returns 0 where the C
 Cause: the shim builds every face with `face_of` = `SmBrep::CreateFaceFromSurface` (an outer
 loop of four natural trim edges, edge and face tolerances set), but the runner's Rust side
 (`classify_face_point`, the model's target faces, `evaluate_mate`) added a bare face with no
-loops and tolerance 0 to a `Brep::new()`. In `sm_ClassifyFacePoint`, `SmTol::GetZoneTol3d(pOrigFace)`
-is the face's tolerance (old-tolerance build: `pTopo->GetTolerance()`), so the Rust
-`Point3DClassify` ran with a zero tolerance on loopless faces and returned `SM_PC_UNKNOWN` for
-both faces (result 0), where the C++ classified the point into the face it lies in.
-`classify_face_point` itself matches upstream line by line (branch order, `ContainsPoint2d`
-default tolerance 0, guess UVs, flags).
+loops and tolerance 0 to a `Brep::new()`. In `sm_ClassifyFacePoint`,
+`SmTol::GetZoneTol3d(pOrigFace)` is the face's tolerance (old-tolerance build:
+`pTopo->GetTolerance()`), so the Rust `Point3DClassify` ran with a zero tolerance on loopless
+faces and returned `SM_PC_UNKNOWN` for both faces (result 0), where the C++ classified the
+point into the face it lies in. `classify_face_point` itself matches upstream line by line
+(branch order, `ContainsPoint2d` default tolerance 0, guess UVs, flags).
 
-Fix (runner and shim only, no kernel change): both sides now build the face the same way:
-`CreateFaceFromSurface` over the natural domain, then `CreateUVTrimCurves(FALSE, natural UV
-curves, orientations)` (status ignored) so the edge uses carry their UV trim curves as a face
-read from a file does. Without that step upstream makes them on demand with
-`SmSurface::DropCurve` (`intersect.surface_drop_lib_p3`, todo). With a face-owned surface,
-`Point3DClassify`'s trimmed surface cache needs the surface's `SmFace` handle
-(`SurfaceCache::face`, `UNPORTED(topology.face_p2)`), so these cases now defer instead of
-comparing two different setups: `blend.fillet_geom_p1` 471 pass -> 461 pass + 16 deferred
-(12 previously compared, 4 of 6 new corner-model fixtures), `blend.fillet_geom_p5` 300 pass ->
-284 pass + 16 deferred (`split_face`); both green -> partial. On main merged with #268 (and
-#268's own pending adaptations), `blend.fillet_corner_p2`'s `gen0014` and
-`corner_update_split_face_08/_11/_71/_75` defer on `topology.face_p2` instead of failing
-(0 failed). They become comparable once the surface-owner face handle is wired.
+Fix (runner only, no kernel or shim change): the Rust side builds the faces as the shim does
+(`create_face_from_surface` on a `new_brep`). Those faces have no UV trim curves yet, and
+`CalculateUVDomainFromUVTrimCurves` makes them with `SmSurface::DropCurve`
+(`intersect.surface_drop_lib_p3`, todo), so these cases now defer instead of comparing two
+different setups: `blend.fillet_geom_p1` 471 pass -> 457 pass + 20 deferred (16 previously
+compared, 4 of 6 new corner-model fixtures), `blend.fillet_geom_p5` 300 pass -> 274 pass + 26
+deferred (`split_face`); both green -> partial. On main merged with #268 (plus #268's own
+pending adaptations), `blend.fillet_corner_p2`'s `gen0014` and
+`corner_update_split_face_08/_11/_71/_75` defer instead of failing (0 failed).
+
+Considered and not done: also attaching the natural UV trim curves in the shim's `face_of`
+(`CreateUVTrimCurves` with the natural curves) so the cases get past `DropCurve`. They then
+stop at `Point3DClassify`'s trimmed surface cache face handle (`UNPORTED(topology.face_p2)`)
+instead, and every face-building op (`evaluate_mate`, every `fb` op) enters HANG-29's
+`CreateUVTrimCurves` regime: the FFI fuzz sweep hung 30 s in `EvaluateMate` on a control
+point of `-DBL_MAX`, which would need the `MAX_MAGNITUDE` bound on those ops too.
