@@ -517,20 +517,17 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         executive: &mut FilletExecutive<O>,
     ) -> Result<()>;
 
-    /// `SmFilletSolver::TestRollOver`; waiting for `blend.fillet_solver_p5`.
+    /// `SmFilletSolver::TestRollOver(sAdjustedCorners)` (`SmFilletExecutive.cpp:2384`):
+    /// delegate to the already ported `FilletSolver::test_roll_over` in
+    /// `blend::fillet_solver::p5` on the solver `solver` resolves to. Its status is
+    /// returned unchanged; the caller handles it as upstream does.
     fn test_rollover(
         &mut self,
-        _k: &mut Kernel,
-        _solver: O,
-        _adjusted_corners: &mut Vec<O>,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_solver_p5): SmFilletSolver::TestRollOver
-        Err(SolidError::unported(
-            "SmFilletSolver::TestRollOver",
-            "blend.fillet_solver_p5",
-        ))
-    }
+        k: &mut Kernel,
+        solver: O,
+        adjusted_corners: &mut Vec<O>,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
 
     /// `SmBrep::SetTolerance(sZoneTol3d, bUpdateOnlyIfLarger, bCascadeToBndries)`:
     /// delegate to the already ported `topology::brep::p2::set_tolerance` (brep p2) on
@@ -846,7 +843,9 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
 
     /// `new SmConstantRadiusFS(ctx, dApproxTol, dAngTolRad, dTanTolRad, dRadius, pEU)`:
     /// delegate to `fillet_standard_solver::p1::constant_radius_from_edgeuse` on the
-    /// B-rep of `edgeuse` (no second radius) and return the new solver's handle.
+    /// B-rep of `edgeuse` (no second radius), with the executive's pseudo B-rep
+    /// (`m_pPseudoBrep`, which receives the solver's fillet geometry) and the new
+    /// solver's identity, and return the new solver's handle.
     fn new_constant_radius_solver(
         &mut self,
         k: &mut Kernel,

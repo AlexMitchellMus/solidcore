@@ -40,9 +40,9 @@
 //!
 //! Deviations:
 //! - **Derived class.** `SmSurfOfExtrusion` derives from `SmBSplineSurface`; the base
-//!   object is the [`SurfOfExtrusion::base`] field. The surface is not a
-//!   [`crate::surface::surface::SurfaceKind`] yet: its overrides need a [`Kernel`] the
-//!   `Surface` dispatchers do not take (see `surface.surf_of_extrusion_p2`).
+//!   object is the [`SurfOfExtrusion::base`] field. As a
+//!   [`crate::surface::surface::SurfaceKind::SurfOfExtrusion`] the `Surface` dispatchers
+//!   run its overrides, else the inherited bodies on that base.
 //! - **Generator.** `m_pGenCurve` is a [`Curve`] of a kind derived from
 //!   `SmBSplineCurve` (B-spline, ellipse, line, hyperbola, parabola); other kinds are
 //!   rejected (`InvalidInput`) where upstream casts. It is `None` only for the empty
@@ -86,6 +86,8 @@
 //!   parameter conversion) is returned. A failed `IntersectWithLine` in
 //!   `CreateDirectrixFromPoint` asks for the general intersection (upstream reads an
 //!   unset flag).
+//! - **Transform nesting.** The generator transform carries the caller's geometry
+//!   depth so volume appends remain subject to the 64-level whole-geometry bound.
 //! - **Unported callees.** `STEPInversion` of a
 //!   generator not perpendicular to the extrusion uses `SmBSplineSurface::STEPInversion`
 //!   (whose solves are in `surface.surface_p1` / `surface.surface_p5`). Those return
@@ -688,6 +690,29 @@ impl SurfOfExtrusion {
     #[must_use]
     pub const fn base(&self) -> &BSplineSurface {
         &self.base
+    }
+
+    /// The `SmBSplineSurface` base object, mutably.
+    pub fn base_mut(&mut self) -> &mut BSplineSurface {
+        &mut self.base
+    }
+
+    /// A temporary evaluation copy: the surface's and the generator's NURBS data are
+    /// kept exactly (no copy-constructor knot fix-up), as
+    /// [`crate::surface::surf_of_revolution::SurfOfRevolution::clone_exact`].
+    #[must_use]
+    pub fn clone_exact(&self) -> Self {
+        let mut copy = Self {
+            base: self.base.clone_exact(),
+            ..self.clone()
+        };
+        if let (Some(dst), Some(src)) = (
+            copy.gen_curve.as_mut().and_then(|g| gen_base_mut(g).ok()),
+            self.gen_curve.as_ref().and_then(|g| gen_base(g).ok()),
+        ) {
+            *dst = src.clone_exact();
+        }
+        copy
     }
 
     fn gen(&self) -> Result<&Curve> {
@@ -1576,6 +1601,17 @@ impl SurfOfExtrusion {
         rotate_n_move: &Axis2Placement,
         scale: Option<Vec3>,
     ) -> Result<()> {
+        self.transform_at_depth(k, rotate_n_move, scale, 0)
+    }
+
+    /// Carries the caller's whole-geometry depth into the generator transform.
+    pub(crate) fn transform_at_depth(
+        &mut self,
+        k: &Kernel,
+        rotate_n_move: &Axis2Placement,
+        scale: Option<Vec3>,
+        depth: usize,
+    ) -> Result<()> {
         let identity_scale = Vec3::new(1.0, 1.0, 1.0);
 
         // no work - identity transform
@@ -1601,7 +1637,7 @@ impl SurfOfExtrusion {
 
         // transform the rest of the 3d data (status ignored)
         if let Some(gen) = self.gen_curve.as_mut() {
-            ignore_status(gen.transform(k, rotate_n_move, scale))?;
+            ignore_status(gen.transform_at_depth(k, rotate_n_move, scale, depth + 1))?;
         }
 
         // Scale first.

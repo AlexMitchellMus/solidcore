@@ -1041,6 +1041,7 @@ impl Surface {
             (SurfaceKind::SurfOfRevolution(a), SurfaceKind::SurfOfRevolution(b)) => {
                 a.approx_eq(k, b)
             }
+            (SurfaceKind::SurfOfExtrusion(a), SurfaceKind::SurfOfExtrusion(b)) => a.approx_eq(k, b),
             (SurfaceKind::SrfInVolume(a), SurfaceKind::SrfInVolume(b)) => a.approx_eq(k, b),
             _ => Ok(false),
         }
@@ -1164,6 +1165,12 @@ impl Surface {
                     .map(<[Vec3]>::to_vec)
                     .collect())
             }
+            // the SmSurfOfExtrusion override (the side and half flags are not used)
+            SurfaceKind::SurfOfExtrusion(s) => Ok(s
+                .evaluate_step(k, uv, highest_u_deriv, highest_v_deriv)?
+                .chunks(highest_v_deriv + 1)
+                .map(<[Vec3]>::to_vec)
+                .collect()),
             // the SmTorus override (the side and half flags are not used)
             SurfaceKind::Torus(s) => Ok(s
                 .evaluate_step(uv, highest_u_deriv, highest_v_deriv)?
@@ -1216,6 +1223,7 @@ impl Surface {
                 flags,
             ),
             SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_)
             | SurfaceKind::Cone(_)
             | SurfaceKind::Sphere(_)
             | SurfaceKind::Torus(_) => {
@@ -1252,6 +1260,7 @@ impl Surface {
             SurfaceKind::Sphere(s) => s.evaluate_step_point(uv),
             SurfaceKind::Torus(s) => s.evaluate_step_point(uv),
             SurfaceKind::SurfOfRevolution(s) => s.evaluate_step_point_at(k, uv),
+            SurfaceKind::SurfOfExtrusion(s) => s.evaluate_step_point(k, uv),
             SurfaceKind::BSpline(_)
             | SurfaceKind::Plane(_)
             | SurfaceKind::Step(_)
@@ -1295,6 +1304,14 @@ impl Surface {
                 flags.only_upper_half,
             ),
             SurfaceKind::SurfOfRevolution(s) => s.base().evaluate_simple(
+                uv,
+                highest_u_deriv,
+                highest_v_deriv,
+                flags.u_side == Side::Left,
+                flags.v_side == Side::Left,
+                flags.only_upper_half,
+            ),
+            SurfaceKind::SurfOfExtrusion(s) => s.base().evaluate_simple(
                 uv,
                 highest_u_deriv,
                 highest_v_deriv,
@@ -1595,7 +1612,8 @@ impl Surface {
             | SurfaceKind::Torus(_)
             | SurfaceKind::BSpline(_)
             | SurfaceKind::Plane(_)
-            | SurfaceKind::SurfOfRevolution(_) => {
+            | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_) => {
                 // the B-spline override expands by its face's tolerance (GetFace()):
                 // the owner is held here, not by the B-spline, so the face's cached
                 // tolerance is passed down (the GetBrep() arm is reached only without
@@ -1626,6 +1644,9 @@ impl Surface {
                         s.base().base().calculate_bounding_box(k, uv_domain, &req)?
                     }
                     SurfaceKind::SurfOfRevolution(s) => {
+                        s.base().calculate_bounding_box(k, uv_domain, &req)?
+                    }
+                    SurfaceKind::SurfOfExtrusion(s) => {
                         s.base().calculate_bounding_box(k, uv_domain, &req)?
                     }
                     SurfaceKind::Plane(p) => plane_bounding_box(k, p, uv_domain, &req)?,
@@ -1828,7 +1849,9 @@ impl Surface {
             SurfaceKind::Torus(s) => Ok(s
                 .create_offset_surface(k, signed_offset_distance, approx_tol_3d)?
                 .map(Self::from)),
+            // (SmSurfOfExtrusion's override is commented out upstream)
             SurfaceKind::BSpline(_)
+            | SurfaceKind::SurfOfExtrusion(_)
             | SurfaceKind::CurveBounded(_)
             | SurfaceKind::Step(_)
             | SurfaceKind::SrfInVolume(_) => {
@@ -2056,6 +2079,7 @@ impl Surface {
                 }
             }
             SurfaceKind::SurfOfRevolution(s) => s.base().is_degenerate_point(k, tol_3d, uv_domain),
+            SurfaceKind::SurfOfExtrusion(s) => s.base().is_degenerate_point(k, tol_3d, uv_domain),
             SurfaceKind::Sphere(s) => s.base().base().is_degenerate_point(k, tol_3d, uv_domain),
             SurfaceKind::Torus(s) => s.base().base().is_degenerate_point(k, tol_3d, uv_domain),
             SurfaceKind::Plane(p) => p.base_for_query().is_degenerate_point(k, tol_3d, uv_domain),
@@ -2086,6 +2110,10 @@ impl Surface {
             }
             // inherited from SmBSplineSurface
             SurfaceKind::SurfOfRevolution(s) => {
+                s.base()
+                    .is_degenerate_curve(k, angle_tol_deg, uv_domain, opt_3d_tol)
+            }
+            SurfaceKind::SurfOfExtrusion(s) => {
                 s.base()
                     .is_degenerate_curve(k, angle_tol_deg, uv_domain, opt_3d_tol)
             }
@@ -2741,6 +2769,12 @@ pub fn crossed_seam_or_pole(
             }
         }
         SurfaceKind::SurfOfRevolution(s) => {
+            let b = s.base();
+            if b.degree(SurfParamType::U) == 1 && b.degree(SurfParamType::V) == 1 {
+                return false;
+            }
+        }
+        SurfaceKind::SurfOfExtrusion(s) => {
             let b = s.base();
             if b.degree(SurfParamType::U) == 1 && b.degree(SurfParamType::V) == 1 {
                 return false;
