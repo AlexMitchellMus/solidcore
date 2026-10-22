@@ -1103,12 +1103,17 @@ impl OffsetBrep<H> for Two {
             return get_surface_cache(k, surface, handle);
         };
         let b = self.brep_m(h)?;
-        let face = b
-            .faces()
-            .iter()
-            .find(|(id, _)| key_of(EntityRef::Face(*id)) == owner)
-            .map(|(id, _)| id)
-            .ok_or_else(|| invalid("surface owner is not in the selected B-rep"))?;
+        // The typed surface handle already names its face; the imported owner
+        // key belongs to the importer's object space, not the notification store's
+        // `key_of` convention. Validate the actual record instead of conflating
+        // those independent key mappings.
+        let face = fid(h);
+        let actual_owner = fp2::surface(b, face)?
+            .ok_or_else(|| invalid("cache face has no surface"))?
+            .face()?;
+        if actual_owner != Some(owner) {
+            return Err(invalid("surface owner is not the selected B-rep face"));
+        }
         let map = |entity| Ok(cache_topology_handle(h.b, entity));
         let unmap = |handle: H| {
             if handle.b != h.b {
