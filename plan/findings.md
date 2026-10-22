@@ -15112,6 +15112,7 @@ reconciliation with main's `surface.offset_surface`. With both, the affected dif
   returns `SM_ERR_INVALID_INPUT` (1007; both located with gdb on the reference build). The B-spline-data port skipped the
   sweep test and stopped at the zero-radius cross section (`SM_ERR`, 1001):
   `values.state[410]` C++ 1007 vs Rust 1001. With the dispatch both give 1007.
+
 ## topology.topology_traverser: `IsInnerShell` rebuilt the target surface cache per ray (perf, 2026-10-21)
 
 - **Symptom.** Case `adversarial_02_op7_00` (`fixtures/topology.topology_traverser/traversals.json`,
