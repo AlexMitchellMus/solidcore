@@ -16068,3 +16068,8 @@ The merge brought 24 PRs and 108 changed kernel files (about 8,900 lines). New p
   `intersect.adv_surface_intersector`, `intersect.topology_solver_p1`, `query.tess`,
   `surface.surf_of_extrusion_p1`/`p2`, `surface.surface_p2`, `surface.offset_surface`)
   gives 3 passed, 5 partial, 0 failed, `max_rel_err` 0.
+- **Follow-up merge through `16192513`.** #517 wires `Surface::point_based_surface_intersect`
+  to `SurfaceIntersector::do_point_intersection` (three kernel files). That path was
+  audited before: its re-entry through `join_from_singular_point` is limited to depth
+  2. No new self-call, cycle or nested-geometry install. fmt, clippy, 1887 solidcore
+  tests, 39 difftest tests and the wasm check pass.
